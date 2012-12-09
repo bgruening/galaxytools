@@ -50,6 +50,7 @@ History
 
 tRNAscan:
 v0.1 - Initial public release
+v0.2 - add fasta output
 
 aragorn:
 v0.1 - Initial public release
