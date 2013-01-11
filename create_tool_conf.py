@@ -28,7 +28,7 @@ def main(options):
             if os.path.splitext( path )[-1] == '.xml':
                 tools.append('\t\t<tool file="%s"/>\n' % os.path.abspath( os.path.join(root,filename) ))
         if tools:
-            ohandle.write('\t<section id="%s" name="%s" version="">\n' % ('ctb_%s' % os.path.basename(root), os.path.basename(root)))
+            ohandle.write('\t<section id="%s" name="%s" version="">\n' % ('bgruening_%s' % os.path.basename(root), os.path.basename(root)))
             ohandle.write(''.join(tools))
             ohandle.write('\t</section>\n')
     ohandle.write('</toolbox>\n')
