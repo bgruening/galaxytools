@@ -189,7 +189,7 @@ def squared_euclidean_distance(a, b):
     except ValueError:
         return 0
 
-def split_library( lib_path, lib_format = 'sdf', package_size ):
+def split_library( lib_path, lib_format = 'sdf', package_size = None ):
     """
         Split a library of compounds. Usage: split_library( lib_path, lib_format, package_size )
         IT currently ONLY WORKS FOR SD-Files
