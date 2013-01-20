@@ -221,7 +221,8 @@ def split_smi_library( smiles_file, structures_in_one_file ):
     output_files = []
     tfile = tempfile.NamedTemporaryFile(delete=False)
 
-    for count, line in enumerate(open(smiles_file)):
+    smiles_handle = open(smiles_file, 'r')
+    for count, line in enumerate( smiles_handle ):
         if count % structures_in_one_file == 0 and count != 0:
             tfile.close()
             output_files.append(tfile.name)
@@ -229,6 +230,7 @@ def split_smi_library( smiles_file, structures_in_one_file ):
         tfile.write(line)
     tfile.close()
     output_files.append(tfile.name)
+    smiles_handle.close()
     return output_files
 
 
