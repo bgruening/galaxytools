@@ -120,7 +120,7 @@ def __main__():
             cmd_index = 'bismark_genome_preparation %s ' % ( tmp_index_dir )
         if args.bismark_path:
             # add the path to the bismark perl scripts, that is needed for galaxy
-            cmd_index = '%s/%s' % (args.bismark_path, cmd_index)
+            cmd_index = os.path.join(args.bismark_path, cmd_index)
         try:
             tmp = tempfile.NamedTemporaryFile( dir=tmp_index_dir ).name
             tmp_stderr = open( tmp, 'wb' )
@@ -155,7 +155,7 @@ def __main__():
     cmd = 'bismark %(args)s --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
     if args.bismark_path:
         # add the path to the bismark perl scripts, that is needed for galaxy
-        cmd = '%s/%s' % (args.bismark_path, cmd)
+        cmd = os.path.join(args.bismark_path, cmd)
 
     arguments = {
         'genome_folder': index_dir,
@@ -178,7 +178,7 @@ def __main__():
 
     if not args.bowtie2:
         # use bowtie specific options
-        additional_opts += ' --best '
+        #additional_opts += ' --best ' # bug in bismark, --best is not available only --non-best, best is default
         if args.seed_mismatches:
             # --seedmms
             additional_opts += ' -n %s ' % args.seed_mismatches

@@ -25,6 +25,8 @@ def __main__():
     parser = argparse.ArgumentParser(description='Wrapper for the bismark methylation caller.')
 
     # input options
+    parser.add_argument( '--bismark_path', dest='bismark_path', help='Path to the bismark perl scripts' )
+
     parser.add_argument( '--infile', help='Input file in SAM format.' )
     parser.add_argument( '--single-end', dest='single_end', action="store_true" )
     parser.add_argument( '--paired-end', dest='paired_end', action="store_true" )
@@ -70,6 +72,9 @@ def __main__():
     # Build methylation extractor command
     output_dir = tempfile.mkdtemp()
     cmd = 'bismark_methylation_extractor --no_header -o %s %s %s'
+    if args.bismark_path:
+        # add the path to the bismark perl scripts, that is needed for galaxy
+        cmd = os.path.join(args.bismark_path, cmd)
 
     additional_opts = ''
     # Set up all options
