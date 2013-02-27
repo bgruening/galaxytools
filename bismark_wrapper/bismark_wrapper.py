@@ -119,8 +119,12 @@ def __main__():
         else:
             cmd_index = 'bismark_genome_preparation %s ' % ( tmp_index_dir )
         if args.bismark_path:
-            # add the path to the bismark perl scripts, that is needed for galaxy
-            cmd_index = os.path.join(args.bismark_path, cmd_index)
+            if os.path.exists(args.bismark_path):
+                # add the path to the bismark perl scripts, that is needed for galaxy
+                cmd_index = os.path.join(args.bismark_path, cmd_index)
+            else:
+                # assume the same directory as that script
+                cmd_index = 'perl %s' % os.path.join(os.path.realpath(os.path.dirname(__file__)), cmd_index)
         try:
             tmp = tempfile.NamedTemporaryFile( dir=tmp_index_dir ).name
             tmp_stderr = open( tmp, 'wb' )
@@ -155,7 +159,11 @@ def __main__():
     cmd = 'bismark %(args)s --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
     if args.bismark_path:
         # add the path to the bismark perl scripts, that is needed for galaxy
-        cmd = os.path.join(args.bismark_path, cmd)
+        if os.path.exists(args.bismark_path):
+            cmd = os.path.join(args.bismark_path, cmd)
+        else:
+            # assume the same directory as that script
+            cmd = 'perl %s' % os.path.join(os.path.realpath(os.path.dirname(__file__)), cmd)
 
     arguments = {
         'genome_folder': index_dir,
