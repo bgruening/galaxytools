@@ -151,7 +151,8 @@ def __main__():
             stop_err( 'Error indexing reference sequence\n' + str( e ) )
         index_dir = tmp_index_dir
     else:
-        index_dir = args.index_path
+        # bowtie path is the path to the index directory and the first path of the index file name
+        index_dir = os.path.dirname( args.index_path )
 
     # Build bismark command
     tmp_bismark_dir = tempfile.mkdtemp()
