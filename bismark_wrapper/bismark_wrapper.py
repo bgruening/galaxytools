@@ -158,7 +158,7 @@ def __main__():
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join( tmp_bismark_dir, 'results')
     cmd = 'bismark %(args)s --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
-    
+
     if args.fasta:
         # he query input files (specified as mate1,mate2 or singles) are FastA
         cmd = '%s %s' % (cmd, '--fasta')
@@ -194,7 +194,7 @@ def __main__():
 
     if not args.bowtie2:
         # use bowtie specific options
-        #additional_opts += ' --best ' # bug in bismark, --best is not available only --non-best, best is default
+        #additional_opts += ' --best ' # bug in bismark, --best is not available as option. Only --non-best, best-mode is activated by default
         if args.seed_mismatches:
             # --seedmms
             additional_opts += ' -n %s ' % args.seed_mismatches
