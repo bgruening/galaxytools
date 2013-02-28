@@ -158,6 +158,13 @@ def __main__():
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join( tmp_bismark_dir, 'results')
     cmd = 'bismark %(args)s --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
+    
+    if args.fasta:
+        # he query input files (specified as mate1,mate2 or singles) are FastA
+        cmd = '%s %s' % (cmd, '--fasta')
+    elif args.fastq:
+        cmd = '%s %s' % (cmd, '--fastq')
+
     if args.bismark_path:
         # add the path to the bismark perl scripts, that is needed for galaxy
         if os.path.exists(args.bismark_path):
