@@ -1,7 +1,7 @@
 Galaxy wrapper for RepeatMasker
 =====================================
 
-This wrapper is copyright 2012 by Björn Grüning.
+This wrapper is copyright 2013 by Björn Grüning.
 
 This is a wrapper for the command line tool of RepeatMasker from the Institute for Systems Biology.
 http://www.repeatmasker.org/
@@ -34,6 +34,7 @@ History
 =======
 
 v0.1 - Initial public release
+v0.1.1 - patch from Simon Guest, to create empty files if no repeat is found
 
 
 Wrapper Licence (MIT/BSD style)

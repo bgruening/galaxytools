@@ -119,8 +119,12 @@ def __main__():
         else:
             cmd_index = 'bismark_genome_preparation %s ' % ( tmp_index_dir )
         if args.bismark_path:
-            # add the path to the bismark perl scripts, that is needed for galaxy
-            cmd_index = '%s/%s' % (args.bismark_path, cmd_index)
+            if os.path.exists(args.bismark_path):
+                # add the path to the bismark perl scripts, that is needed for galaxy
+                cmd_index = os.path.join(args.bismark_path, cmd_index)
+            else:
+                # assume the same directory as that script
+                cmd_index = 'perl %s' % os.path.join(os.path.realpath(os.path.dirname(__file__)), cmd_index)
         try:
             tmp = tempfile.NamedTemporaryFile( dir=tmp_index_dir ).name
             tmp_stderr = open( tmp, 'wb' )
@@ -147,15 +151,27 @@ def __main__():
             stop_err( 'Error indexing reference sequence\n' + str( e ) )
         index_dir = tmp_index_dir
     else:
-        index_dir = args.index_path
+        # bowtie path is the path to the index directory and the first path of the index file name
+        index_dir = os.path.dirname( args.index_path )
 
     # Build bismark command
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join( tmp_bismark_dir, 'results')
     cmd = 'bismark %(args)s --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
+
+    if args.fasta:
+        # he query input files (specified as mate1,mate2 or singles) are FastA
+        cmd = '%s %s' % (cmd, '--fasta')
+    elif args.fastq:
+        cmd = '%s %s' % (cmd, '--fastq')
+
     if args.bismark_path:
         # add the path to the bismark perl scripts, that is needed for galaxy
-        cmd = '%s/%s' % (args.bismark_path, cmd)
+        if os.path.exists(args.bismark_path):
+            cmd = os.path.join(args.bismark_path, cmd)
+        else:
+            # assume the same directory as that script
+            cmd = 'perl %s' % os.path.join(os.path.realpath(os.path.dirname(__file__)), cmd)
 
     arguments = {
         'genome_folder': index_dir,
@@ -178,7 +194,7 @@ def __main__():
 
     if not args.bowtie2:
         # use bowtie specific options
-        additional_opts += ' --best '
+        #additional_opts += ' --best ' # bug in bismark, --best is not available as option. Only --non-best, best-mode is activated by default
         if args.seed_mismatches:
             # --seedmms
             additional_opts += ' -n %s ' % args.seed_mismatches
