@@ -39,14 +39,16 @@ def __main__():
         help='File name for unmapped reads (left, paired-end).' )
     parser.add_argument( '--output-unmapped-reads-r', dest='output_unmapped_reads_r',
         help='File name for unmapped reads (right, paired-end).' )
-   
-   
+
+
     parser.add_argument( '--output-suppressed-reads', dest='output_suppressed_reads',
         help='Additional output file with suppressed reads (single-end).' )
     parser.add_argument( '--output-suppressed-reads-l', dest='output_suppressed_reads_l',
         help='File name for suppressed reads (left, paired-end).' )
     parser.add_argument( '--output-suppressed-reads-r', dest='output_suppressed_reads_r',
         help='File name for suppressed reads (right, paired-end).' )
+    parser.add_argument( '--stdout', dest='output_stdout',
+        help='File name for the standard output of bismark.' )
 
 
     parser.add_argument( '--single-paired', dest='single_paired',
@@ -263,11 +265,10 @@ def __main__():
         tmp_stderr.close()
         if returncode != 0:
             raise Exception, stderr
-            
+
         # TODO: look for errors in program output.
     except Exception, e:
         stop_err( 'Error in bismark:\n' + str( e ) ) 
-
 
     # collect and copy output files
     """
@@ -278,6 +279,9 @@ def __main__():
         output_report_file.close()
     """
 
+    if args.output_stdout:
+        # copy the temporary saved stdout from bismark
+        shutil.move( tmp_out, args.output_stdout )
     if args.output_suppressed_reads:
         shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads.txt'))[0], args.output_suppressed_reads )
     if args.output_suppressed_reads_l:
