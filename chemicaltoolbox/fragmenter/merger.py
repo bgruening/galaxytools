@@ -45,12 +45,7 @@ def unique_files( file_paths, unique_file, temp = False ):
         for filename in file_paths:
             shutil.copyfileobj(open(filename, 'rb'), concat)
         concat.close()
-
-
-        #cat_command = 'cat %s' % ' '.join(file_paths)
-        #p1 = subprocess.Popen(cat_command.split(), stdout=subprocess.PIPE) #Set up the echo command and direct the output to a pipe
         p2 = subprocess.Popen(['sort', '-u', '-k', '1,1'], stdin=open(concat.name), stdout=unique_file) #send p1's output to p2
-        #p1.stdout.close() #make sure we close the output so p2 doesn't hang waiting for more input
     except Exception, err:
         sys.stderr.write("Error invoking command:\n%s\n" % (err))
         raise
@@ -167,7 +162,10 @@ def merge(mol_one, mol_two, options, mark_fragments = False):
     for atomicnum_atom1, idx_atom1 in replaced_atoms_1:
         for atomicnum_atom2, idx_atom2 in replaced_atoms_2:
             if reaction_matrix[ atomicnum_atom1 ][ atomicnum_atom2 ] == 1:
-                """ in the special case of alkene we need to take the bond order into account, to create a double bond """
+                """ 
+                    in the special case of alkene we need to take the bond 
+                    order into account, to create a double bond 
+                """
                 if atomicnum_atom1 == 99:
                     bond_order = 2
                 else:
@@ -220,13 +218,11 @@ def merge(mol_one, mol_two, options, mark_fragments = False):
         # save the parent fragments to the SMILES header
         #concat_mol.title += 'Fragment1: %s Fragment2: %s' % (mol_one_smiles, mol_two_smiles)
 
-        # concat_mol_smiles = concat_mol.write('can')
         concat_mol_smiles = smi2can( concat_mol )
         true_mol = replace_markers(concat_mol)
         true_mol.title = ''
 
         if check_constraint( true_mol, options ):
-            # temp_results.append( true_mol.write('can') )
             temp_results.append( smi2can( true_mol ) )
             no_result = False
             if is_fragment( concat_mol_smiles.split()[0] ):
@@ -257,12 +253,17 @@ def test(options):
 
 
 def smi2can( mol ):
+    """
+        convert the pybel molecule object to a canonical SMILES string
+        The same as:
+        obabel -:'Cc1ccc(cc1)C(=CCC=CCN(c1cc(N)[n+](c(n1)N)[O-])C)c1ccccn1' -ocan -e -d -b -xci
+    """
     conv = pybel.ob.OBConversion()
     conv.SetOutFormat("can")
     conv.SetOptions("i", conv.OUTOPTIONS)
     conv.SetOptions("c", conv.OUTOPTIONS)
-    conv.SetOptions("d", conv.OUTOPTIONS)
-    conv.SetOptions("b", conv.OUTOPTIONS)
+    mol.OBMol.ConvertDativeBonds()
+    mol.OBMol.DeleteHydrogens()
     can_smiles = conv.WriteString(mol.OBMol)
     return can_smiles
 
@@ -279,12 +280,6 @@ def clean( trash_list ):
                 shutil.rmtree( path )
             else:
                 os.remove( path )
-
-
-result_files = list()
-def log_result_special_mode( results ):
-    if results:
-        result_files.append(results)
 
 
 def mp_helper(file_one, file_two, mark_fragments = False):
@@ -434,7 +429,7 @@ if __name__ == '__main__':
     #        print line.strip()
     #        #print is_fragment(line)
     #sys.exit()
-
+    result_files = list()
     result_files.append( unique_input_non_fragments.name )
     """
         special mode
@@ -444,8 +439,10 @@ if __name__ == '__main__':
 
     for counter, fragment_file_one in enumerate( splitted_files ):
         logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
-        pool.apply_async(mp_helper_special_mode, args=( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ), callback=log_result_special_mode)
-        #log_result_special_mode(mp_helper_special_mode( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ))
+        #pool.apply_async(mp_helper_special_mode, args=( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ), callback=log_result_special_mode)
+        res = mp_helper_special_mode( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth )
+        if res:
+            result_files.append( res )
 
 
     temp_final_result = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
@@ -458,7 +455,7 @@ if __name__ == '__main__':
 
     if not type(options.output.name) != str():
         logging.info('Results are written to %s (%s).' % (options.output.name, CountLines( options.output.name )))
-    trash_list.extend( result_compounds )
+    trash_list.extend( result_files )
     trash_list.append( temp_dir )
     logging.info('Cleaning temporary files.')
     clean( trash_list )
