@@ -2,14 +2,14 @@
 
 from galaxy.datatypes import data
 import logging
-from galaxy.datatypes.sniff import *
+from galaxy.datatypes.sniff import get_headers, get_test_fname
 from galaxy.datatypes.data import get_file_peek
 from galaxy.datatypes.tabular import Tabular
 from galaxy.datatypes.binary import Binary
 import subprocess
-import pybel
-import openbabel
-openbabel.obErrorLog.StopLogging()
+#import pybel
+#import openbabel
+#openbabel.obErrorLog.StopLogging()
 
 from galaxy.datatypes.metadata import MetadataElement
 from galaxy.datatypes import metadata
@@ -28,7 +28,7 @@ def count_special_lines( word, filename, invert = False ):
             cmd.append('-v')
         cmd.extend([word, filename])
         out = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-        return int(out[0].strip())
+        return int(out.communicate()[0].split()[0])
     except:
         pass
     return 0
@@ -42,7 +42,7 @@ def count_lines( filename, non_empty = False):
             out = subprocess.Popen(['grep', '-cve', '^\s*$', filename], stdout=subprocess.PIPE)
         else:
             out = subprocess.Popen(['wc', '-l', filename], stdout=subprocess.PIPE)
-        return int(out[0].strip())
+        return int(out.communicate()[0].split()[0])
     except:
         pass
     return 0
@@ -52,18 +52,15 @@ class GenericMolFile( data.Text ):
     """
         abstract class for most of the molecule files
     """
-    MetadataElement( name="molecules", default=0, desc="Number of molecules", readonly=True, visible=False, optional=True, no_value=0 )
-
-    self.molecule_number = 0
+    MetadataElement( name="number_of_molecules", default=0, desc="Number of molecules", readonly=True, visible=True, optional=True, no_value=0 )
 
     def set_peek( self, dataset, is_multi_byte=False ):
         if not dataset.dataset.purged:
-            if(self.check_filetype(dataset.file_name)):
-                dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
-                if (self.molecule_number == 1):
-                    dataset.blurb = "1 molecule"
-                else:
-                    dataset.blurb = "%s molecules" % self.molecule_number
+            dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+            if (dataset.metadata.number_of_molecules == 1):
+                dataset.blurb = "1 molecule"
+            else:
+                dataset.blurb = "%s molecules" % dataset.metadata.number_of_molecules
             dataset.peek = data.get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
         else:
             dataset.peek = 'file does not exist'
@@ -73,7 +70,7 @@ class GenericMolFile( data.Text ):
         return 'text/plain'
 
 
-def read_sdf_records( filename ):
+def _read_sdf_records( filename ):
     lines = []
     with open(filename) as handle:
         for line in handle:
@@ -82,21 +79,27 @@ def read_sdf_records( filename ):
                 yield lines
                 lines = []
 
+
 class SDF( GenericMolFile ):
     file_ext = "sdf"
     def sniff( self, filename ):
-        self.molecule_number = count_special_lines("^\$\$\$\$", filename)
-        if self.molecule_number > 0:
+        if count_special_lines("^\$\$\$\$", filename) > 0:
             return True
         else:
             return False
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number of lines of data in dataset.
+        """
+        dataset.metadata.number_of_molecules = count_special_lines("^\$\$\$\$", dataset.file_name)#self.count_data_lines(dataset.file_name)
 
     def merge(split_files, output_file):
         """Merge SD files (not yet implemented)."""
         raise NotImplementedError("Merging SD files is not supported at the moment.")
 
     def split( cls, input_datasets, subdir_generator_function, split_params):
-        """Split a SD file (not implemented for now). See read_sdf_records() functions as a start"""
+        """Split a SD file (not implemented for now). See _read_sdf_records() functions as a start"""
         if split_params is None:
             return None
         raise NotImplementedError("Splitting SD files is not supported at the moment.")
@@ -105,11 +108,16 @@ class SDF( GenericMolFile ):
 class MOL2( GenericMolFile ):
     file_ext = "mol2"
     def sniff( self, filename ):
-        self.molecule_number = count_special_lines("@\<TRIPOS\>MOLECULE", filename)
-        if self.molecule_number > 0
+        if count_special_lines("@\<TRIPOS\>MOLECULE", filename) > 0:
             return True
         else:
             return False
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number of lines of data in dataset.
+        """
+        dataset.metadata.number_of_molecules = count_special_lines("@\<TRIPOS\>MOLECULE", dataset.file_name)#self.count_data_lines(dataset)
 
 
 class FPS( GenericMolFile ):
@@ -118,22 +126,27 @@ class FPS( GenericMolFile ):
     """
     file_ext = "fps"
     def sniff( self, filename ):
-        self.molecule_number = count_special_lines('^#', filename, invert = True)
         header = get_headers( filename, sep='\t', count=1 )
-        if header[0].strip() == '#FPS1':
+        if header[0][0].strip() == '#FPS1':
             return True
         else:
             return False
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number of lines of data in dataset.
+        """
+        dataset.metadata.number_of_molecules = count_special_lines('^#', dataset.file_name, invert = True)#self.count_data_lines(dataset)
 
 
 class DRF( GenericMolFile ):
     file_ext = "drf"
-    def sniff( self, filename ):
-        self.molecule_number = count_special_lines('\"ligand id\"', filename)
-        if self.molecule_number > 0:
-            return True
-        else:
-            return False
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number of lines of data in dataset.
+        """
+        dataset.metadata.number_of_molecules = count_special_lines('\"ligand id\"', dataset.file_name, invert = True)#self.count_data_lines(dataset)
 
 
 class PHAR( GenericMolFile ):
@@ -150,7 +163,7 @@ class PHAR( GenericMolFile ):
 class PDB( GenericMolFile ):
     file_ext = "pdb"
     def sniff( self, filename ):
-        headers = get_headers( filename, sep='\t', count=300 )
+        headers = get_headers( filename, sep=' ', count=300 )
         h = t = c = s = k = e = False
         for line in headers:
             section_name = line[0].strip()
@@ -174,12 +187,10 @@ class PDB( GenericMolFile ):
 
     def set_peek( self, dataset, is_multi_byte=False ):
         if not dataset.dataset.purged:
-            residue_numbers = count_special_lines("^HETATM", filename) + count_special_lines("^ATOM", filename)
+            atom_numbers = count_special_lines("^ATOM", dataset.file_name)
+            hetatm_numbers = count_special_lines("^HETATM", dataset.file_name)
             dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
-            if (residue_numbers == 1):
-                dataset.blurb = "1 residue"
-            else:
-                dataset.blurb = "%s residues" % self.residue_numbers
+            dataset.blurb = "%s atoms and %s HET-atoms" % (atom_numbers, hetatm_numbers)
         else:
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disk'
@@ -212,53 +223,131 @@ class InChI( Tabular ):
     column_names = [ 'InChI' ]
     MetadataElement( name="columns", default=2, desc="Number of columns", readonly=True, visible=False )
     MetadataElement( name="column_types", default=['str'], param=metadata.ColumnTypesParameter, desc="Column types", readonly=True, visible=False )
+    MetadataElement( name="number_of_molecules", default=0, desc="Number of molecules", readonly=True, visible=True, optional=True, no_value=0 )
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number of lines of data in dataset.
+        """
+        dataset.metadata.number_of_molecules = self.count_data_lines(dataset)
+
+    def set_peek( self, dataset, is_multi_byte=False ):
+        if not dataset.dataset.purged:
+            dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+            if (dataset.metadata.number_of_molecules == 1):
+                dataset.blurb = "1 molecule"
+            else:
+                dataset.blurb = "%s molecules" % dataset.metadata.number_of_molecules
+            dataset.peek = data.get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+        else:
+            dataset.peek = 'file does not exist'
+            dataset.blurb = 'file purged from disk'
 
     def sniff( self, filename ):
-        self.molecule_number = count_special_lines("^InChI=", filename)
+        """
+            InChI files starts with 'InChI='
+        """
+        inchi_lines = get_headers( filename, sep=' ', count=10 )
+        for inchi in inchi_lines:
+            print ':',inchi[0],':'
+            if not inchi[0].startswith('InChI='):
+                return False
+        return True
+
+
+class SMILES( Tabular ):
+    file_ext = "smi"
+    column_names = [ 'SMILES', 'TITLE' ]
+    MetadataElement( name="columns", default=2, desc="Number of columns", readonly=True, visible=False )
+    MetadataElement( name="column_types", default=['str','str'], param=metadata.ColumnTypesParameter, desc="Column types", readonly=True, visible=False )
+    MetadataElement( name="number_of_molecules", default=0, desc="Number of molecules", readonly=True, visible=True, optional=True, no_value=0 )
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number of lines of data in dataset.
+        """
+        dataset.metadata.number_of_molecules = self.count_data_lines(dataset)
+
+    def set_peek( self, dataset, is_multi_byte=False ):
+        if not dataset.dataset.purged:
+            dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+            if (dataset.metadata.number_of_molecules == 1):
+                dataset.blurb = "1 molecule"
+            else:
+                dataset.blurb = "%s molecules" % dataset.metadata.number_of_molecules
+            dataset.peek = data.get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+        else:
+            dataset.peek = 'file does not exist'
+            dataset.blurb = 'file purged from disk'
+
+
+    '''
+    def sniff( self, filename ):
+        """
+        Its hard or impossible to sniff a SMILES File. We can
+        try to import the first SMILES and check if it is a molecule, but 
+        currently its not possible to use external libraries from the toolshed
+        in datatype definition files. TODO
+        """
+        self.molecule_number = count_lines( filename, non_empty = True )
         word_count = count_lines( filename )
 
         if self.molecule_number != word_count:
             return False
 
         if self.molecule_number > 0:
-            return True
-        else:
-            return False
-
-
-class SMILES( Tabular ):
-    file_ext = "smi"
-    column_names = [ 'SMILES', 'HEADER' ]
-    MetadataElement( name="columns", default=2, desc="Number of columns", readonly=True, visible=False )
-    MetadataElement( name="column_types", default=['str','str'], param=metadata.ColumnTypesParameter, desc="Column types", readonly=True, visible=False )
-
-
-    def sniff( self, filename ):
-        """
-        Its hard or impossible to sniff a SMILES File. All what i know is the
-        word_count must be the same as the non-empty line count. And that i can
-        try to import the first SMILES and check if it is a molecule.
-        """
-
-        self.molecule_number = count_lines( filename, non_empty = True )
-        word_count = count_lines( filename )
-
-        if int(self.molecule_number) != word_count:
-            return False
-
-        if self.molecule_number > 0:
-            for line in open(filename):
-                line = line.strip()
-                if line:
+            # test first 3 SMILES
+            smiles_lines = get_headers( filename, sep='\t', count=3 )
+            for smiles_line in smiles_lines:
+                if len(smiles_line) > 2:
+                    return False
+                smiles = smiles_line[0]
+                try:
                     # if we have atoms, we have a molecule
-                    try:
-                        if len(pybel.readstring('smi', line).atoms) > 0:
-                            return True
-                        else:
-                            return False
-                    except:
-                        # if convert fails its not a smiles string
+                    if not len( pybel.readstring('smi', smiles).atoms ) > 0:
                         return False
+                except:
+                    # if convert fails its not a smiles string
+                    return False
             return True
         else:
             return False
+    '''
+
+
+if __name__ == '__main__':
+    """
+        TODO: We need to figure out, how to put example files under /lib/galaxy/datatypes/test/ from a toolshed, so that doctest can work properly.
+    """
+    inchi = get_test_fname('drugbank_drugs.inchi')
+    smiles = get_test_fname('drugbank_drugs.smi')
+    sdf = get_test_fname('drugbank_drugs.sdf')
+    fps = get_test_fname('50_chemfp_fingerprints_FPS1.fps')
+    pdb = get_test_fname('2zbz.pdb')
+
+    print 'SMILES test'
+    print SMILES().sniff(smiles), 'smi'
+    print SMILES().sniff(inchi)
+    print SMILES().sniff(pdb)
+
+    print 'InChI test'
+    print InChI().sniff(smiles)
+    print InChI().sniff(sdf)
+    print InChI().sniff(inchi), 'inchi'
+
+    print 'FPS test'
+    print FPS().sniff(smiles)
+    print FPS().sniff(sdf)
+    f = FPS()
+    print f.sniff(fps)
+
+    print 'SDF test'
+    print SDF().sniff(smiles)
+    print SDF().sniff(sdf), 'sdf'
+    print SDF().sniff(fps)
+
+    print 'PDB test'
+    print PDB().sniff(smiles)
+    print PDB().sniff(sdf)
+    print PDB().sniff(fps)
+    print PDB().sniff(pdb), 'pdb'
