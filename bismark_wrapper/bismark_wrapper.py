@@ -271,13 +271,12 @@ def __main__():
         stop_err( 'Error in bismark:\n' + str( e ) ) 
 
     # collect and copy output files
-    """
     if args.output_report_file:
         output_report_file = open(args.output_report_file, 'w+')
-        for line in fileinput.input(glob( os.path.join( output_dir, '*.txt') )):
+        for line in fileinput.input(glob( os.path.join( output_dir, '*report.txt') )):
             output_report_file.write(line)
         output_report_file.close()
-    """
+
 
     if args.output_stdout:
         # copy the temporary saved stdout from bismark
