@@ -261,8 +261,8 @@ def smi2can( mol ):
     conv.SetOutFormat("can")
     conv.SetOptions("i", conv.OUTOPTIONS)
     conv.SetOptions("c", conv.OUTOPTIONS)
-    conv.SetOptions("d", conv.OUTOPTIONS)
-    conv.SetOptions("b", conv.OUTOPTIONS)
+    mol.OBMol.ConvertDativeBonds()
+    mol.OBMol.DeleteHydrogens()
     can_smiles = conv.WriteString(mol.OBMol)
     return can_smiles
 
@@ -444,8 +444,8 @@ if __name__ == '__main__':
 
     for counter, fragment_file_one in enumerate( splitted_files ):
         logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
-        pool.apply_async(mp_helper_special_mode, args=( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ), callback=log_result_special_mode)
-        #log_result_special_mode(mp_helper_special_mode( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ))
+        #pool.apply_async(mp_helper_special_mode, args=( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ), callback=log_result_special_mode)
+        log_result_special_mode(mp_helper_special_mode( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ))
 
 
     temp_final_result = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
@@ -458,7 +458,7 @@ if __name__ == '__main__':
 
     if not type(options.output.name) != str():
         logging.info('Results are written to %s (%s).' % (options.output.name, CountLines( options.output.name )))
-    trash_list.extend( result_compounds )
+    trash_list.extend( result_files )
     trash_list.append( temp_dir )
     logging.info('Cleaning temporary files.')
     clean( trash_list )
