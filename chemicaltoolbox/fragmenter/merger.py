@@ -439,7 +439,6 @@ if __name__ == '__main__':
 
     for counter, fragment_file_one in enumerate( splitted_files ):
         logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
-        #pool.apply_async(mp_helper_special_mode, args=( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth ), callback=log_result_special_mode)
         res = mp_helper_special_mode( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth )
         if res:
             result_files.append( res )
