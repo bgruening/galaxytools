@@ -208,7 +208,7 @@ def properties(mol):
     matches = []
     if (mol is None):
         raise WrongArgument("properties(mol)", "mol argument is \'None\'")
-    x = [0] * 8
+    x = [0] * 9
     x[0] = Descriptors.MolWt(mol)                                                # MW 
     x[1] = Descriptors.MolLogP(mol)                                                # ALOGP
     for hba in Acceptors:                                                        # HBA
@@ -221,12 +221,22 @@ def properties(mol):
     x[6] = Chem.GetSSSR(Chem.DeleteSubstructs(deepcopy(mol), AliphaticRings))    # AROM
     for alert in StructuralAlerts:                                                # ALERTS
         if (mol.HasSubstructMatch(alert)): x[7] += 1
+    ro5_failed = 0
+    if x[3] > 5:
+        ro5_failed += 1 #HBD
+    if x[2] > 10:
+        ro5_failed += 1 #HBA
+    if x[0] >= 500:
+        ro5_failed += 1
+    if x[1] > 5:
+        ro5_failed += 1
+    x[8] = ro5_failed
     return x
 
 
 def qed(w, p, gerebtzoff):
     d = [0.00] * 8
-    if (gerebtzoff):
+    if gerebtzoff:
         for i in range(0, 8):
             d[i] = ads(p[i], pads1[i][0], pads1[i][1], pads1[i][2], pads1[i][3], pads1[i][4], pads1[i][5], pads1[i][6])
     else:
@@ -238,27 +248,33 @@ def qed(w, p, gerebtzoff):
     return (exp(t / sum(w)))
 
 
-def weights_max(mol, gerebtzoff = True):
+def weights_max(mol, gerebtzoff = True, props = False):
     """
     Calculates the QED descriptor using maximal descriptor weights.
+    If props is specified we skip the calculation step and use the props-list of properties.
     """
-    props = properties(mol)
+    if not props:
+        props = properties(mol)
     return qed([0.50, 0.25, 0.00, 0.50, 0.00, 0.50, 0.25, 1.00], props, gerebtzoff)
 
 
-def weights_mean(mol, gerebtzoff = True):
+def weights_mean(mol, gerebtzoff = True, props = False):
     """
     Calculates the QED descriptor using average descriptor weights.
+    If props is specified we skip the calculation step and use the props-list of properties.
     """
-    props = properties(mol)
+    if not props:
+        props = properties(mol)
     return qed([0.66, 0.46, 0.05, 0.61, 0.06, 0.65, 0.48, 0.95], props, gerebtzoff)
 
 
-def weights_none(mol, gerebtzoff = True):
+def weights_none(mol, gerebtzoff = True, props = False):
     """
     Calculates the QED descriptor using unit weights.
+    If props is specified we skip the calculation step and use the props-list of properties.
     """
-    props = properties(mol)
+    if not props:
+        props = properties(mol)
     return qed([1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00, 1.00], props, gerebtzoff)
 
 
@@ -278,6 +294,12 @@ if __name__ == "__main__":
 
     parser.add_argument('-o', '--outfile', type=argparse.FileType('w+'), 
         default=sys.stdout, help="path to the result file, default it sdtout")
+
+    parser.add_argument("--header", dest="header", action="store_true",
+                    default=False,
+                    help="Write header line.")
+
+
     args = parser.parse_args()
 
     # Elucidate filetype and open supplier
@@ -302,7 +324,8 @@ if __name__ == "__main__":
     if filetype == 'sdf':
         supplier = Chem.SDMolSupplier(ifile)
         # Process file
-        args.outfile.write("MW\tALOGP\tHBA\tHBD\tPSA\tROTB\tAROM\tALERTS\tQED\tNAME\n")
+        if args.header:
+            args.outfile.write("MW\tALOGP\tHBA\tHBD\tPSA\tROTB\tAROM\tALERTS\tLRo5\tQED\tNAME\n")
         count = 0
         for mol in supplier:
             count += 1
@@ -312,13 +335,13 @@ if __name__ == "__main__":
             props = properties(mol)
 
             if args.method == 'max':
-                calc_qed = weights_max(mol, gerebtzoff = True)
+                calc_qed = weights_max(mol, True, props)
             elif args.method == 'unweighted':
-                calc_qed = weights_none(mol, gerebtzoff = True)
+                calc_qed = weights_none(mol, True, props)
             else:
-                calc_qed = weights_mean(mol, gerebtzoff = True)
+                calc_qed = weights_mean(mol, True, props)
 
-            args.outfile.write( "%.2f\t%.3f\t%d\t%d\t%.2f\t%d\t%d\t%d\t%.3f\t%-s\n" % (
+            args.outfile.write( "%.2f\t%.3f\t%d\t%d\t%.2f\t%d\t%d\t%d\t%s\t%.3f\t%-s\n" % (
                 props[0], 
                 props[1], 
                 props[2], 
@@ -327,6 +350,7 @@ if __name__ == "__main__":
                 props[5], 
                 props[6], 
                 props[7],
+                props[8],
                 calc_qed,
                 mol.GetProp("_Name"),
                 ))
@@ -334,7 +358,8 @@ if __name__ == "__main__":
         supplier = Chem.SmilesMolSupplier(ifile, " \t", 0, 1, False, True)
 
         # Process file
-        args.outfile.write("MW\tALOGP\tHBA\tHBD\tPSA\tROTB\tAROM\tALERTS\tQED\tNAME\tSMILES\n")
+        if args.header:
+            args.outfile.write("MW\tALOGP\tHBA\tHBD\tPSA\tROTB\tAROM\tALERTS\tLRo5\tQED\tNAME\tSMILES\n")
         count = 0
         for line in open(ifile):
             tokens = line.strip().split('\t')
@@ -351,13 +376,13 @@ if __name__ == "__main__":
             props = properties(mol)
 
             if args.method == 'max':
-                calc_qed = weights_max(mol, gerebtzoff = True)
+                calc_qed = weights_max(mol, True, props)
             elif args.method == 'unweighted':
-                calc_qed = weights_none(mol, gerebtzoff = True)
+                calc_qed = weights_none(mol, True, props)
             else:
-                calc_qed = weights_mean(mol, gerebtzoff = True)
+                calc_qed = weights_mean(mol, True, props)
 
-            args.outfile.write( "%.2f\t%.3f\t%d\t%d\t%.2f\t%d\t%d\t%d\t%.3f\t%-s\t%s\n" % (
+            args.outfile.write( "%.2f\t%.3f\t%d\t%d\t%.2f\t%d\t%d\t%d\t%s\t%.3f\t%-s\t%s\n" % (
                 props[0], 
                 props[1], 
                 props[2], 
@@ -366,6 +391,7 @@ if __name__ == "__main__":
                 props[5], 
                 props[6], 
                 props[7],
+                props[8],
                 calc_qed,
                 title,
                 smiles
