@@ -226,6 +226,49 @@ class FPS( GenericMolFile ):
         dataset.metadata.number_of_molecules = count_special_lines('^#', dataset.file_name, invert = True)#self.count_data_lines(dataset)
 
 
+class OBFS( Binary ):
+    """OpenBabel Fastsearch format (fs)."""
+    file_ext = 'fs'
+    def set_peek( self, dataset, is_multi_byte=False ):
+        """Set the peek and blurb text."""
+        if not dataset.dataset.purged:
+            dataset.peek  = "OpenBabel Fastsearch format"
+            dataset.blurb = "OpenBabel Fastsearch format"
+        else:
+            dataset.peek = 'file does not exist'
+            dataset.blurb = 'file purged from disk'
+
+    def display_peek( self, dataset ):
+        """Create HTML content, used for displaying peek."""
+        try:
+            return dataset.peek
+        except:
+            return "OpenBabel Fastsearch format"
+
+    def display_data(self, trans, data, preview=False, filename=None,
+                     to_ext=None, size=None, offset=None, **kwd):
+        """Apparently an old display method, but still gets called.
+
+        This allows us to format the data shown in the central pane via the "eye" icon.
+        """
+        return "This is a OpenBabel Fastsearch format. You can speed up your similarity and substructure search with it."
+
+    def get_mime(self):
+        """Returns the mime type of the datatype (pretend it is text for peek)"""
+        return 'text/plain'
+
+    def merge(split_files, output_file):
+        """Merging Fastsearch indices is not supported."""
+        raise NotImplementedError("Merging Fastsearch indices is not supported.")
+
+    def split( cls, input_datasets, subdir_generator_function, split_params):
+        """Splitting Fastsearch indices is not supported."""
+        if split_params is None:
+            return None
+        raise NotImplementedError("Splitting Fastsearch indices is not possible.")
+
+
+
 class DRF( GenericMolFile ):
     file_ext = "drf"
 
