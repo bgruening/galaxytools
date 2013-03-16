@@ -18,7 +18,7 @@ cheminfolib.pybel_stop_logging()
 def parse_command_line(argv):
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', help='Input file name')
-    parser.add_argument('-iformat', help='Input file format')	
+    parser.add_argument('-iformat', help='Input file format')
     parser.add_argument('-oformat', 
         default='smi',
         help='Output file format')
@@ -49,9 +49,14 @@ def filter_precalculated_compounds(args, filters):
             outfile.write(mol)
     outfile.close()
 
-def filter_new_compounds(args, filters, filetype):
-    
-    cmd = 'obabel -i%s %s -o%s -O %s --filter' % (filetype, args.input, args.oformat, args.output)
+def filter_new_compounds(args, filters):
+
+    if args.iformat == args.oformat:
+        # use the -ocopy option from openbabel to speed up the filtering, additionally no conversion is carried out
+        # http://openbabel.org/docs/dev/FileFormats/Copy_raw_text.html#copy-raw-text
+        cmd = 'obabel -i%s %s -ocopy -O %s --filter' % (args.iformat, args.input, args.output)
+    else:
+        cmd = 'obabel -i%s %s -o%s -O %s --filter' % (args.iformat, args.input, args.oformat, args.output)
     filter_cmd = ''
     # OBDescriptor stores a mapping from our desc shortcut to the OB name [0] and a long description [1]
     for key, elem in filters.items():
@@ -88,9 +93,7 @@ def __main__():
     # To keep it readable in the xml file, many white-spaces are included in that string it needs to be removed.
     # Also the last loop creates a ',{' that is not an valid jason expression.
     filters = json.loads((args.filters).replace(' ', '').replace(',}', '}'))
-    #filetype = cheminfolibcheck_filetype(args.input)
-    filetype = args.iformat
-    if filetype == 'sdf':
+    if args.iformat == 'sdf':
         # Check if the sdf file contains all of the required metadata to invoke the precalculation filtering
         mol = pybel.readfile('sdf', args.input).next()
         for key, elem in filters.items():
@@ -102,7 +105,7 @@ def __main__():
             # assume it is the same for all other molecules and start the precalculated filtering
             filter_precalculated_compounds(args, filters)
             return True
-    filter_new_compounds(args, filters, filetype)
+    filter_new_compounds(args, filters)
 
 
 if __name__ == "__main__" :
