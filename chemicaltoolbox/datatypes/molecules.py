@@ -7,6 +7,7 @@ from galaxy.datatypes.data import get_file_peek
 from galaxy.datatypes.tabular import Tabular
 from galaxy.datatypes.binary import Binary
 import subprocess
+import os
 #import pybel
 #import openbabel
 #openbabel.obErrorLog.StopLogging()
@@ -70,15 +71,6 @@ class GenericMolFile( data.Text ):
         return 'text/plain'
 
 
-def _read_sdf_records( filename ):
-    lines = []
-    with open(filename) as handle:
-        for line in handle:
-            lines.append( line )
-            if line.startswith("$$$$"):
-                yield lines
-                lines = []
-
 
 class SDF( GenericMolFile ):
     file_ext = "sdf"
@@ -94,15 +86,55 @@ class SDF( GenericMolFile ):
         """
         dataset.metadata.number_of_molecules = count_special_lines("^\$\$\$\$", dataset.file_name)#self.count_data_lines(dataset.file_name)
 
-    def merge(split_files, output_file):
-        """Merge SD files (not yet implemented)."""
-        raise NotImplementedError("Merging SD files is not supported at the moment.")
-
     def split( cls, input_datasets, subdir_generator_function, split_params):
-        """Split a SD file (not implemented for now). See _read_sdf_records() functions as a start"""
+        """
+        Split the input files by molecule records.
+        """
         if split_params is None:
             return None
-        raise NotImplementedError("Splitting SD files is not supported at the moment.")
+
+        if len(input_datasets) > 1:
+            raise Exception("SD-file splitting does not support multiple files")
+        input_files = [ds.file_name for ds in input_datasets]
+
+        chunk_size = None
+        if split_params['split_mode'] == 'number_of_parts':
+            raise Exception('Split mode "%s" is currently not implemented for SD-files.' % split_params['split_mode'])
+        elif split_params['split_mode'] == 'to_size':
+            chunk_size = int(split_params['split_size'])
+        else:
+            raise Exception('Unsupported split mode %s' % split_params['split_mode'])
+
+        def _read_sdf_records( filename ):
+            lines = []
+            with open(filename) as handle:
+                for line in handle:
+                    lines.append( line )
+                    if line.startswith("$$$$"):
+                        yield lines
+                        lines = []
+
+        def _write_part_sdf_file( accumulated_lines ):
+            part_dir = subdir_generator_function()
+            part_path = os.path.join(part_dir, os.path.basename(input_files[0]))
+            part_file = open(part_path, 'w')
+            part_file.writelines( sdf_lines_accumulated )
+            part_file.close()
+
+        try:
+            sdf_records = _read_sdf_records( input_files[0] )
+            sdf_lines_accumulated = []
+            for counter, sdf_record in enumerate( sdf_records, start = 1):
+                sdf_lines_accumulated.extend( sdf_record )
+                if counter % chunk_size == 0:
+                    _write_part_sdf_file( sdf_lines_accumulated )
+                    sdf_lines_accumulated = []
+            if sdf_lines_accumulated:
+                _write_part_sdf_file( sdf_lines_accumulated )
+        except Exception,  e:
+            log.error('Unable to split files: %s' % str(e))
+            raise
+    split = classmethod(split)
 
 
 class MOL2( GenericMolFile ):
@@ -117,7 +149,62 @@ class MOL2( GenericMolFile ):
         """
         Set the number of lines of data in dataset.
         """
-        dataset.metadata.number_of_molecules = count_special_lines("@\<TRIPOS\>MOLECULE", dataset.file_name)#self.count_data_lines(dataset)
+        dataset.metadata.number_of_molecules = count_special_lines("@<TRIPOS>MOLECULE", dataset.file_name)#self.count_data_lines(dataset)
+
+    def split( cls, input_datasets, subdir_generator_function, split_params):
+        """
+        Split the input files by molecule records.
+        """
+        if split_params is None:
+            return None
+
+        if len(input_datasets) > 1:
+            raise Exception("MOL2-file splitting does not support multiple files")
+        input_files = [ds.file_name for ds in input_datasets]
+
+        chunk_size = None
+        if split_params['split_mode'] == 'number_of_parts':
+            raise Exception('Split mode "%s" is currently not implemented for MOL2-files.' % split_params['split_mode'])
+        elif split_params['split_mode'] == 'to_size':
+            chunk_size = int(split_params['split_size'])
+        else:
+            raise Exception('Unsupported split mode %s' % split_params['split_mode'])
+
+        def _read_sdf_records( filename ):
+            lines = []
+            start = True
+            with open(filename) as handle:
+                for line in handle:
+                    if line.startswith("@<TRIPOS>MOLECULE"):
+                        if start:
+                            start = False
+                        else:
+                            yield lines
+                            lines = []
+                    lines.append( line )
+
+        def _write_part_sdf_file( accumulated_lines ):
+            part_dir = subdir_generator_function()
+            part_path = os.path.join(part_dir, os.path.basename(input_files[0]))
+            part_file = open(part_path, 'w')
+            part_file.writelines( sdf_lines_accumulated )
+            part_file.close()
+
+        try:
+            sdf_records = _read_sdf_records( input_files[0] )
+            sdf_lines_accumulated = []
+            for counter, sdf_record in enumerate( sdf_records, start = 1):
+                sdf_lines_accumulated.extend( sdf_record )
+                if counter % chunk_size == 0:
+                    _write_part_sdf_file( sdf_lines_accumulated )
+                    sdf_lines_accumulated = []
+            if sdf_lines_accumulated:
+                _write_part_sdf_file( sdf_lines_accumulated )
+        except Exception,  e:
+            log.error('Unable to split files: %s' % str(e))
+            raise
+    split = classmethod(split)
+
 
 
 class FPS( GenericMolFile ):
@@ -249,7 +336,6 @@ class InChI( Tabular ):
         """
         inchi_lines = get_headers( filename, sep=' ', count=10 )
         for inchi in inchi_lines:
-            print ':',inchi[0],':'
             if not inchi[0].startswith('InChI='):
                 return False
         return True
