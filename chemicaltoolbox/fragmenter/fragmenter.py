@@ -85,7 +85,6 @@ class Fragmenter():
         if hits:
             # find all atom pairs that match
             for atom_id_one, atom_id_two in hits:
-                #print atom_id_one, atom_id_two
                 if atom_id_one < atom_id_two:
                     atom_one = self.mol.atoms[ atom_id_one - 1 ].OBAtom
                     atom_two = self.mol.atoms[ atom_id_two - 1 ].OBAtom
