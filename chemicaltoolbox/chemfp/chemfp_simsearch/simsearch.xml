@@ -1,16 +1,46 @@
 <tool id="chemfp_simsearch" name="Similarity Search" version="0.1">
     <description>of fingerprint data sets</description>
+    <!--<parallelism method="multi" split_inputs="query" split_mode="to_size" split_size="10000" shared_inputs="targets,fastsearch" merge_outputs="outfile"></parallelism>-->
     <requirements>
         <requirement type="binary">simsearch</requirement>
     </requirements>
     <command>
-        simsearch -k $k --threshold $th -q $query $targets > $outfile
+        #if $method_opts.method_opts_selector == "chemfp":
+            ## TODO: remove all comment lines, in muti mode many comment lines will be appear, also in the middle of the result file, remove them
+            simsearch -k $method_opts.k --threshold $method_opts.threshold --in fps --target-format fps -q "${method_opts.query}" "${method_opts.targets}" -o "${outfile}"
+        #else:
+            ## OpenBabel needs the original molecule file (molecule.'fileformat') next to the fastsearch index (molecule.fs). We use a composite datatype to accomplish that.
+            ## Furthermore OpenBabel is really picky with fileextensions. We need to specify every datatype. I did not find a solution to specify the query-filetype.
+            ## A workaround is to create a symlink with a proper file-extension.
+            #import tempfile
+            #set $temp_file = tempfile.NamedTemporaryFile()
+            #set $temp_link = "%s.%s" % ($temp_file.name, $method_opts.query.ext)
+            $temp_file.close()
+            ln -s $method_opts.query $temp_link;
+            obabel -i fs "${os.path.join($method_opts.fastsearch.extra_files_path,'molecule.fs')}" -S "${temp_link}" -at${method_opts.threshold} -O "${outfile}" -osmi 2>&#38;1;
+            rm $temp_link
+        #end if
     </command>
     <inputs>
-        <param name="targets" type='data' format="fps" label="target database"/>
-        <param name="query" type='data' format="fps" label="query"/>
-        <param name="k" type='text'  label="k nearest neighbor" value='all'/>
-        <param name="th" type='float' label="threshold" value='0.7'/>
+
+        <conditional name="method_opts">
+            <param name="method_opts_selector" type="select" label="Subject database/sequences">
+              <option value="chemfp">Chemfp fingerprint file</option>
+              <option value="obabel">OpenBabel Fastsearch Index</option>
+            </param>
+            <when value="chemfp">
+                <param name="query" type='data' format="fps" label="query"/>
+                <param name="targets" type='data' format="fps" label="Target database"/>
+                <param name="k" type='text'  label="k nearest neighbor" value='all'/>
+                <param name="threshold" type='float' label="threshold" value='0.7'/>
+            </when>
+            <when value="obabel">
+                <param name="query" type='data' format="smi,mol,sdf,inchi" label="query"/>
+                <param name="fastsearch" type='data' format="obfs" label="OpenBabel Fastsearch Index"/>
+                <param name="threshold" type='float' label="threshold" value='0.7'/>
+            </when>
+        </conditional>
+
     </inputs>
     <outputs>
         <data name="outfile" format="tabular" />
