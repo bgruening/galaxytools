@@ -118,7 +118,7 @@ class SDF( GenericMolFile ):
             part_dir = subdir_generator_function()
             part_path = os.path.join(part_dir, os.path.basename(input_files[0]))
             part_file = open(part_path, 'w')
-            part_file.writelines( sdf_lines_accumulated )
+            part_file.writelines( accumulated_lines )
             part_file.close()
 
         try:
@@ -183,11 +183,11 @@ class MOL2( GenericMolFile ):
                             lines = []
                     lines.append( line )
 
-        def _write_part_sdf_file( accumulated_lines ):
+        def _write_part_mol2_file( accumulated_lines ):
             part_dir = subdir_generator_function()
             part_path = os.path.join(part_dir, os.path.basename(input_files[0]))
             part_file = open(part_path, 'w')
-            part_file.writelines( sdf_lines_accumulated )
+            part_file.writelines( accumulated_lines )
             part_file.close()
 
         try:
@@ -196,10 +196,10 @@ class MOL2( GenericMolFile ):
             for counter, sdf_record in enumerate( sdf_records, start = 1):
                 sdf_lines_accumulated.extend( sdf_record )
                 if counter % chunk_size == 0:
-                    _write_part_sdf_file( sdf_lines_accumulated )
+                    _write_part_mol2_file( sdf_lines_accumulated )
                     sdf_lines_accumulated = []
             if sdf_lines_accumulated:
-                _write_part_sdf_file( sdf_lines_accumulated )
+                _write_part_mol2_file( sdf_lines_accumulated )
         except Exception,  e:
             log.error('Unable to split files: %s' % str(e))
             raise
@@ -226,24 +226,127 @@ class FPS( GenericMolFile ):
         dataset.metadata.number_of_molecules = count_special_lines('^#', dataset.file_name, invert = True)#self.count_data_lines(dataset)
 
 
+    def split( cls, input_datasets, subdir_generator_function, split_params):
+        """
+        Split the input files by fingerprint records.
+        """
+        if split_params is None:
+            return None
+
+        if len(input_datasets) > 1:
+            raise Exception("FPS-file splitting does not support multiple files")
+        input_files = [ds.file_name for ds in input_datasets]
+
+        chunk_size = None
+        if split_params['split_mode'] == 'number_of_parts':
+            raise Exception('Split mode "%s" is currently not implemented for MOL2-files.' % split_params['split_mode'])
+        elif split_params['split_mode'] == 'to_size':
+            chunk_size = int(split_params['split_size'])
+        else:
+            raise Exception('Unsupported split mode %s' % split_params['split_mode'])
+
+
+        def _write_part_fingerprint_file( accumulated_lines ):
+            part_dir = subdir_generator_function()
+            part_path = os.path.join(part_dir, os.path.basename(input_files[0]))
+            part_file = open(part_path, 'w')
+            part_file.writelines( accumulated_lines )
+            part_file.close()
+
+        try:
+            header_lines = []
+            lines_accumulated = []
+            fingerprint_counter = 0
+            for line in open( input_files[0] ):
+                if not line.strip():
+                    continue
+                if line.startswith('#'):
+                    header_lines.append( line )
+                else:
+                    fingerprint_counter += 1
+                    lines_accumulated.append( line )
+                if fingerprint_counter != 0 and fingerprint_counter % chunk_size == 0:
+                    _write_part_fingerprint_file( header_lines + lines_accumulated )
+                    lines_accumulated = []
+            if lines_accumulated:
+                _write_part_fingerprint_file( header_lines + lines_accumulated )
+        except Exception,  e:
+            log.error('Unable to split files: %s' % str(e))
+            raise
+    split = classmethod(split)
+
+
+    def merge(split_files, output_file):
+        """
+        Merging fps files requires merging the header manually.
+        We take the header from the first file.
+        """
+        if len(split_files) == 1:
+            #For one file only, use base class method (move/copy)
+            return Text.merge(split_files, output_file)
+        if not split_files:
+            raise ValueError("No fps files given, %r, to merge into %s" \
+                             % (split_files, output_file))
+        out = open(output_file, "w")
+        first = True
+        for filename in split_files:
+            with open(filename) as handle:
+                for line in handle:
+                    if line.startswith('#'):
+                        if first:
+                            out.write(line)
+                    else:
+                        # line is no header and not a comment, we assume the first header is written to out and we set 'first' to False
+                        first = False
+                        out.write(line)
+        out.close()
+    merge = staticmethod(merge)
+
+
+
 class OBFS( Binary ):
     """OpenBabel Fastsearch format (fs)."""
     file_ext = 'fs'
+    composite_type ='basic'
+    allow_datatype_change = False
+
+    MetadataElement( name="base_name", default='OpenBabel Fastsearch Index',
+        readonly=True, visible=True, optional=True,)
+
+    def __init__(self,**kwd):
+        """
+            A Fastsearch Index consists of a binary file with the fingerprints
+            and a pointer the actual molecule file.
+        """
+        Binary.__init__(self, **kwd)
+        self.add_composite_file('molecule.fs', is_binary = True,
+            description = 'OpenBabel Fastsearch Index' )
+        self.add_composite_file('molecule.sdf', optional=True,
+            is_binary = False, description = 'Molecule File' )
+        self.add_composite_file('molecule.smi', optional=True,
+            is_binary = False, description = 'Molecule File' )
+        self.add_composite_file('molecule.inchi', optional=True,
+            is_binary = False, description = 'Molecule File' )
+        self.add_composite_file('molecule.mol2', optional=True,
+            is_binary = False, description = 'Molecule File' )
+        self.add_composite_file('molecule.cml', optional=True,
+            is_binary = False, description = 'Molecule File' )
+
     def set_peek( self, dataset, is_multi_byte=False ):
         """Set the peek and blurb text."""
         if not dataset.dataset.purged:
-            dataset.peek  = "OpenBabel Fastsearch format"
-            dataset.blurb = "OpenBabel Fastsearch format"
+            dataset.peek  = "OpenBabel Fastsearch Index"
+            dataset.blurb = "OpenBabel Fastsearch Index"
         else:
-            dataset.peek = 'file does not exist'
-            dataset.blurb = 'file purged from disk'
+            dataset.peek = "file does not exist"
+            dataset.blurb = "file purged from disk"
 
     def display_peek( self, dataset ):
         """Create HTML content, used for displaying peek."""
         try:
             return dataset.peek
         except:
-            return "OpenBabel Fastsearch format"
+            return "OpenBabel Fastsearch Index"
 
     def display_data(self, trans, data, preview=False, filename=None,
                      to_ext=None, size=None, offset=None, **kwd):
@@ -257,7 +360,7 @@ class OBFS( Binary ):
         """Returns the mime type of the datatype (pretend it is text for peek)"""
         return 'text/plain'
 
-    def merge(split_files, output_file):
+    def merge(split_files, output_file, extra_merge_args):
         """Merging Fastsearch indices is not supported."""
         raise NotImplementedError("Merging Fastsearch indices is not supported.")
 
