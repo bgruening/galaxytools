@@ -19,12 +19,11 @@ def main(args):
         
             tRNAscan-SE $organism $mode $showPrimSecondOpt $disablePseudo $showCodons -d -Q -y -q -b -o $tabular_output $inputfile;
     """
-    cmd = """ tRNAscan-SE -d -Q -y -q -b %s """ % ' '.join( args[:-1] )
+    cmd = """tRNAscan-SE -Q -y -q -b %s""" % ' '.join( args[:-1] )
     child = subprocess.Popen(cmd.split(),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
     stdout, stderr = child.communicate()
     return_code = child.returncode
-    
     if return_code:
         sys.stdout.write(stdout)
         sys.stderr.write(stderr)

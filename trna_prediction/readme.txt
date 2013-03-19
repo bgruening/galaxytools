@@ -51,9 +51,11 @@ History
 tRNAscan:
 v0.1 - Initial public release
 v0.2 - add fasta output
+v0.2.1 - added tool-dependency
 
 aragorn:
 v0.1 - Initial public release
+v0.2 - added options, upgrade to 1.2.36, tool-dependency
 
 
 
