@@ -15,7 +15,7 @@ import shlex, subprocess
 
 cheminfolib.pybel_stop_logging()
 
-def parse_command_line(argv):
+def parse_command_line():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', help='Input file name')
     parser.add_argument('-iformat', help='Input file format')
@@ -88,7 +88,7 @@ def __main__():
     """
         Select compounds with certain properties from a small library
     """
-    args = parse_command_line(sys.argv)
+    args = parse_command_line()
     # Its a small trick to get the parameters in an easy way from the xml file.
     # To keep it readable in the xml file, many white-spaces are included in that string it needs to be removed.
     # Also the last loop creates a ',{' that is not an valid jason expression.
