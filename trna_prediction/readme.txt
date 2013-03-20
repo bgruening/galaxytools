@@ -1,7 +1,7 @@
 Galaxy wrapper for t-RNA prediction tools
 =========================================
 
-This wrapper is copyright 2012 by Björn Grüning.
+This wrapper is copyright 2013 by Björn Grüning.
 
 This prepository contains wrapper for the command line tools of tRNAscan-SE and Arogorn.
 http://lowelab.ucsc.edu/tRNAscan-SE/
