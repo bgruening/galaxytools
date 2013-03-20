@@ -283,7 +283,7 @@ class FPS( GenericMolFile ):
         """
         if len(split_files) == 1:
             #For one file only, use base class method (move/copy)
-            return Text.merge(split_files, output_file)
+            return data.Text.merge(split_files, output_file)
         if not split_files:
             raise ValueError("No fps files given, %r, to merge into %s" \
                              % (split_files, output_file))
