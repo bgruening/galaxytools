@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 """
-    Input: molecular input file.
-    Output: Molecule file with removed ions and fragments.
-    Copyright 2012, Bjoern Gruening and Xavier Lucas
+    Input: Molecules in SDF, SMILES ...
+    Output: Moleculs filtered with specified substructures.
+    Copyright 2013, Bjoern Gruening and Xavier Lucas
 """
 import sys, os
 import argparse
@@ -16,14 +16,14 @@ import shutil
 
 def parse_command_line():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--infile', required=True, help='input file name')
+    parser.add_argument('-i', '--infile', required=True, help='Molecule file.')
     parser.add_argument('--fastsearch-index', dest="fastsearch_index", 
-        required=True, help='input file name')
-    parser.add_argument('-o', '--outfile', required=True, help='output file name')
+        required=True, help='Path to the openbabel fastsearch index.')
+    parser.add_argument('-o', '--outfile', required=True, help='Path to the output file.')
     parser.add_argument('--oformat', 
         default='smi', help='Output file format')
     parser.add_argument("--max-candidates", dest="max_candidates", type=int,
-                    default=4000, help="The maximum number of candidates")
+                    default=4000, help="The maximum number of candidates.")
     parser.add_argument('-p', '--processors', type=int, 
         default=multiprocessing.cpu_count())
     return parser.parse_args()
@@ -47,7 +47,6 @@ def mp_helper( query, args ):
     tmp = tempfile.NamedTemporaryFile(delete=False)
     cmd = 'obabel %s -O %s %s -ifs -s%s -al %s' % (args.fastsearch_index, tmp.name, opts, query, args.max_candidates)
 
-    print cmd
     child = subprocess.Popen(cmd.split(),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
@@ -69,8 +68,8 @@ def substructure_search( args ):
 
     pool = multiprocessing.Pool( args.processors )
     for query in open( args.infile ):
-        #pool.apply_async(mp_helper, args=(query.strip(), args), callback=mp_callback)
-        mp_callback( mp_helper(query.strip(), args) )
+        pool.apply_async(mp_helper, args=(query.strip(), args), callback=mp_callback)
+        #mp_callback( mp_helper(query.strip(), args) )
     pool.close()
     pool.join()
 
@@ -85,7 +84,6 @@ def substructure_search( args ):
     else:
         out_handle = open( args.outfile, 'wb' )
         for result_file, query in results:
-            print result_file
             res_handle = open(result_file,'rb')
             shutil.copyfileobj( res_handle, out_handle )
             res_handle.close()
@@ -95,7 +93,7 @@ def substructure_search( args ):
 
 def __main__():
     """
-        Remove any counterion and delete any fragment but the largest one for each molecule.
+        Multiprocessing Open Babel Substructure Search.
     """
     args = parse_command_line()
     substructure_search( args )
