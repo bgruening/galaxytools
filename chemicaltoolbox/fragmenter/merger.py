@@ -180,7 +180,6 @@ def merge(mol_one, mol_two, options, mark_fragments = False):
         # that step is necessary to reserve the atom-order
         concat_mol = pybel.readstring('smi', "%s.%s" % (mol_one_smiles, mol_two_smiles) )
         mol_one_atom_count = len(mol_one.atoms)
-
         # build the bond between two atoms
         # the assumption is, when we cancatenate whith the SMILES trick, the atom-order remains the same.
         # For the second molecule all atomnums are increased by the number of atoms in molecule one.
@@ -227,6 +226,7 @@ def merge(mol_one, mol_two, options, mark_fragments = False):
             no_result = False
             if is_fragment( concat_mol_smiles.split()[0] ):
                 if mark_fragments and sticky_ends == 0:
+                    #print 'jump out'
                     continue
                 temp_fragments.append( concat_mol_smiles )
                 no_fragments = False
@@ -291,10 +291,13 @@ def mp_helper(file_one, file_two, mark_fragments = False):
     fragments = list()
     for mol_one in pybel.readfile( 'smi', file_one ):
         for i,mol_two in enumerate(pybel.readfile( 'smi', file_two )):
+            #print 'merge:', str(mol_one).strip(), str(mol_two).strip()
             result, fragment = merge(mol_two,mol_one, options, mark_fragments)
             if result:
+                #print '\tr', result
                 results.extend( result )
             if fragment:
+                #print '\tf', fragment
                 fragments.extend( fragment )
 
     fragment_return, molecule_return = None, None
@@ -311,7 +314,11 @@ def mp_helper(file_one, file_two, mark_fragments = False):
     return molecule_return, fragment_return
 
 
-def mp_helper_special_mode(one_fragment, fragment_file_chunks, molecule_dependent_iter_depth = False, chunk_size = 100):
+def mp_helper_special_mode(one_fragment, fragment_file_chunks, options, chunk_size = 100):
+
+    molecule_dependent_iter_depth = options.molecule_dependent_iter_depth
+    repeats = options.repeats
+
     results = list()
     # one_fragment in a list of one fragment
     fragments = one_fragment
@@ -323,25 +330,27 @@ def mp_helper_special_mode(one_fragment, fragment_file_chunks, molecule_dependen
         if f:
             fragments.append(f)
 
-    for counter, fragment_file_two in enumerate( fragment_file_chunks ):
-        combined_fragments = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='tmp_fragments_', delete=False)
-        unique_files( fragments, combined_fragments, '1' )
+    for repeat_number in range(repeats):
+        logging.info('%s run. You can change the repeat count with --repeats.' % ( repeat_number + 1 ) )
+        for counter, fragment_file_two in enumerate( fragment_file_chunks ):
+            combined_fragments = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='tmp_fragments_', delete=False)
+            unique_files( fragments, combined_fragments, '1' )
 
-        #logging.debug('fragments (%s)' % ( open(combined_fragments.name).read().strip() ))
-        if counter > 0:
-            clean( fragments )
-        fragments = [combined_fragments.name]
-        #logging.debug('Linecount: %s (%s) - loop-counter (%s)' % ( CountLines( combined_fragments.name ), combined_fragments.name, counter))
+            #logging.debug('fragments (%s)' % ( open(combined_fragments.name).read().strip() ))
+            if counter > 0:
+                clean( fragments )
+            fragments = [combined_fragments.name]
+            #logging.debug('Linecount: %s (%s) - loop-counter (%s)' % ( CountLines( combined_fragments.name ), combined_fragments.name, counter))
 
-        splitted_files = split_smi_library( combined_fragments.name, chunk_size )
-        logging.info('Fragments to process: %s (%s); Files to process: %s (%s)' % ( CountLines(combined_fragments.name), combined_fragments.name, len(splitted_files), counter) )
+            splitted_files = split_smi_library( combined_fragments.name, chunk_size )
+            logging.info('Fragments to process: %s (%s); Files to process: %s (%s)' % ( CountLines(combined_fragments.name), combined_fragments.name, len(splitted_files), counter) )
 
-        pool = multiprocessing.Pool( options.processors )
-        for fragment_file in splitted_files:
-            pool.apply_async(mp_helper, args=(fragment_file_two, fragment_file, options.molecule_dependent_iter_depth), callback=mp_callback)
-        pool.close()
-        pool.join()
-        clean( splitted_files )
+            pool = multiprocessing.Pool( options.processors )
+            for fragment_file in splitted_files:
+                pool.apply_async(mp_helper, args=(fragment_file_two, fragment_file, options.molecule_dependent_iter_depth), callback=mp_callback)
+            pool.close()
+            pool.join()
+            clean( splitted_files )
 
     if results:
         combined_results = tempfile.NamedTemporaryFile(dir=temp_dir, prefix='tmp_results_', delete=False)
@@ -367,12 +376,12 @@ if __name__ == '__main__':
                     help="Specify a temporary directory to use.")
 
     parser.add_argument("--molwt-cutoff", dest="molwt", type=int,
-                    default=1000,
+                    default=500,
                     help="Limiting the molecular weight of produced molecules. [1000]")
 
-    parser.add_argument("--max-iteration-depth", dest="max_depth", type=int,
-                    default=2,
-                    help="Max iteration depth. Only used when --mdid-off is specified. [2]")
+    parser.add_argument("--repeats", dest="repeats", type=int,
+                    default=1,
+                    help="Number of repeats all new created fragments should be merged against the inital ones.")
 
     parser.add_argument("--mdid-off", dest="molecule_dependent_iter_depth", action="store_false",
                     default=True,
@@ -432,14 +441,14 @@ if __name__ == '__main__':
     result_files = list()
     result_files.append( unique_input_non_fragments.name )
     """
-        special mode
+        Every single fragment against each of the other fragments, including itself
     """
     splitted_files = split_smi_library( unique_input.name, 1 )
     trash_list.extend( splitted_files )
 
     for counter, fragment_file_one in enumerate( splitted_files ):
         logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
-        res = mp_helper_special_mode( [fragment_file_one], splitted_files, options.molecule_dependent_iter_depth )
+        res = mp_helper_special_mode( [fragment_file_one], splitted_files, options )
         if res:
             result_files.append( res )
 
