@@ -52,6 +52,7 @@ tRNAscan:
 v0.1 - Initial public release
 v0.2 - add fasta output
 v0.2.1 - added tool-dependency
+v0.2.2 - patch from Nicola Soranzo added
 
 aragorn:
 v0.1 - Initial public release
