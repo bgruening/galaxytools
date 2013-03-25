@@ -54,11 +54,10 @@ def mp_helper( query, args ):
     if args.number_of_matches:
         cmd_list.append('-c')
     if args.n_times:
-        cmd_list.append(str(args.n_times))
+        cmd_list.append('-t %s' % str(args.n_times))
 
     tmp = tempfile.NamedTemporaryFile(delete=False)
     cmd = 'obgrep %s "%s" %s' % (' '.join(cmd_list), query, args.infile)
-
     child = subprocess.Popen(shlex.split(cmd),
         stdout=open(tmp.name, 'w+'), stderr=subprocess.PIPE)
 
