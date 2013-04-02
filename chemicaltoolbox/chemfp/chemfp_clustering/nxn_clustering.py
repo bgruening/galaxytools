@@ -6,7 +6,7 @@
 """
 import matplotlib
 matplotlib.use('Agg')
-import sys
+import argparse
 import os
 import chemfp
 import scipy.cluster.hierarchy as hcluster
@@ -14,38 +14,63 @@ import pylab
 import numpy
 
 
-def distance_matrix(arena,t):
+def distance_matrix(arena, tanimoto_threshold = 0.0):
     n = len(arena)
-    # The Tanimoto search computes all of the scores when threshold=0.0.
-    # The SearchResult contains sparse data, so I set all values
-    # now to 1.0 so you can experiment with higher thresholds.
-    distances = numpy.ones((n, n), numpy.float64)
+    # Start off a similarity matrix with 1.0s along the diagonal
+    try:
+        similarities = numpy.identity(n, "d")
+    except:
+        raise Exception('Input dataset is to large!')
+    chemfp.set_num_threads( args.processors )
 
-    # Keep track of where the query subarena is in the query
-    query_row = 0
+    ## Compute the full similarity matrix.
+    # The implementation computes the upper-triangle then copies
+    # the upper-triangle into lower-triangle. It does not include
+    # terms for the diagonal.
+    results = chemfp.search.threshold_tanimoto_search_symmetric(arena, threshold=tanimoto_threshold)
 
-    for query_arena in arena.iter_arenas():
-        results = arena.threshold_tanimoto_search_arena(query_arena, threshold=t)  
-    for q_i, hits in enumerate(results.iter_indices_and_scores()):
-            query_idx = query_row + q_i
-            for target_idx, score in hits:
-                distances[query_idx, target_idx] = 1.0 - score
-        query_row += len(query_arena)
+    # Copy the results into the NumPy array.
+    for row_index, row in enumerate(results.iter_indices_and_scores()):
+        for target_index, target_score in row:
+            similarities[row_index, target_index] = target_score
 
-    return distances
-
-dataset = chemfp.load_fingerprints( sys.argv[1] )
-distances  = distance_matrix( dataset,float( sys.argv[2] ) )
-linkage = hcluster.linkage( distances, method="single", metric="euclidean" )
-
-# Plot using matplotlib, which you must have installed
-hcluster.dendrogram(linkage, labels=dataset.ids)
-
-pylab.savefig( sys.argv[3], format='svg' )
+    # Return the distance matrix using the similarity matrix
+    return 1.0 - similarities
 
 
 
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="""NxN clustering for fps files.
+For more details please see the chemfp documentation:
+https://chemfp.readthedocs.org
+""")
 
+    parser.add_argument("-i", "--input", dest="input_path",
+                    required=True,
+                    help="Path to the input file.")
+
+    parser.add_argument("-o", "--output", dest="output_path",
+                    help="Path to the output file.")
+
+    parser.add_argument("-t", "--threshold", dest="tanimoto_threshold", 
+                    type=float, default=0.0,
+                    help="Tanimoto threshold [0.0]")
+
+    parser.add_argument("--oformat", default='png', help="Output format (png, svg).")
+
+    parser.add_argument('-p', '--processors', type=int, 
+        default=4)
+
+    args = parser.parse_args()
+
+
+    arena = chemfp.load_fingerprints( args.input_path )
+    distances  = distance_matrix( arena, args.tanimoto_threshold )
+    linkage = hcluster.linkage( distances, method="single", metric="euclidean" )
+
+    hcluster.dendrogram(linkage, labels=arena.ids)
+
+    pylab.savefig( args.output_path, format=args.oformat )
 
 
 
