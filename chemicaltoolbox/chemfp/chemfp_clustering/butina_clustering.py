@@ -11,11 +11,33 @@ import sys
 import os
 import tempfile
 import argparse
+import subprocess
 
 
-def get_results(results):
-    for (i,indices) in enumerate(results.iter_indices()):
-        yield (len(indices), i, indices)
+def unix_sort(results):
+    temp_unsorted = tempfile.NamedTemporaryFile(delete=False)
+    for (i,indices) in enumerate( results.iter_indices() ):
+        temp_unsorted.write('%s %s\n' % (len(indices), i))
+    temp_unsorted.close()
+    temp_sorted = tempfile.NamedTemporaryFile(delete=False)
+    temp_sorted.close()
+    p = subprocess.Popen(['sort', '-n', '-r', '-k', '1,1'], stdin=open(temp_unsorted.name), stdout=open(temp_sorted.name, 'w+'))
+    stdout, stderr = p.communicate()
+    return_code = p.returncode
+
+    if return_code:
+        sys.stdout.write(stdout)
+        sys.stderr.write(stderr)
+        sys.stderr.write("Return error code %i from command:\n" % return_code)
+    temp_sorted.close()
+    os.remove(temp_unsorted.name)
+
+    for line in open(temp_sorted.name):
+        size, fp_idx = line.strip().split()
+        yield (int(size), int(fp_idx))
+
+    os.remove(temp_sorted.name)
+
 
 def butina( args ):
     """
@@ -40,18 +62,23 @@ def butina( args ):
     # Reorder so the centroid with the most hits comes first.
     # (That's why I do a reverse search.)
     # Ignore the arbitrariness of breaking ties by fingerprint index
-    
+    """
     results = sorted( (  (len(indices), i, indices)
                               for (i,indices) in enumerate(results.iter_indices()) ),
                       reverse=True)
-
+    """
+    sorted_ids = unix_sort(results)
+    
     # Determine the true/false singletons and the clusters
     true_singletons = []
     false_singletons = []
     clusters = []
 
     seen = set()
-    for (size, fp_idx, members) in results:#get_results(results):
+    #for (size, fp_idx, members) in results:
+    for (size, fp_idx) in sorted_ids:
+        members = results[fp_idx].get_indices()
+
         if fp_idx in seen:
             # Can't use a centroid which is already assigned
             continue
