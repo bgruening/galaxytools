@@ -9,9 +9,13 @@ ChemicalToolBoX
 	- sdf
 	- smi
 - Parallelisation
+
 2. Installation Guide
 ---------------------
-bla
+- Toolshed
+- VirtualBoX
+- Dependencies
+
 3. The Tools
 ------------
 - PubChem Download
