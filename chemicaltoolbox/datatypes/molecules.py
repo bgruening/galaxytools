@@ -70,6 +70,19 @@ class GenericMolFile( data.Text ):
     def get_mime(self):
         return 'text/plain'
 
+class MOL( GenericMolFile ):
+    file_ext = "mol"
+    def sniff( self, filename ):
+        if count_special_lines("^M\s*END", filename) = 1:
+            return True
+        else:
+            return False
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number molecules, in the case of MOL its always one.
+        """
+        dataset.metadata.number_of_molecules = 1
 
 
 class SDF( GenericMolFile ):
@@ -82,9 +95,9 @@ class SDF( GenericMolFile ):
 
     def set_meta( self, dataset, **kwd ):
         """
-        Set the number of lines of data in dataset.
+        Set the number of molecules in dataset.
         """
-        dataset.metadata.number_of_molecules = count_special_lines("^\$\$\$\$", dataset.file_name)#self.count_data_lines(dataset.file_name)
+        dataset.metadata.number_of_molecules = count_special_lines("^\$\$\$\$", dataset.file_name)
 
     def split( cls, input_datasets, subdir_generator_function, split_params):
         """
