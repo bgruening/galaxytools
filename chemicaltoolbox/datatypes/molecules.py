@@ -73,7 +73,7 @@ class GenericMolFile( data.Text ):
 class MOL( GenericMolFile ):
     file_ext = "mol"
     def sniff( self, filename ):
-        if count_special_lines("^M\s*END", filename) = 1:
+        if count_special_lines("^M\s*END", filename) == 1:
             return True
         else:
             return False
