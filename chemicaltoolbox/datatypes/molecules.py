@@ -6,6 +6,7 @@ from galaxy.datatypes.sniff import get_headers, get_test_fname
 from galaxy.datatypes.data import get_file_peek
 from galaxy.datatypes.tabular import Tabular
 from galaxy.datatypes.binary import Binary
+from galaxy.datatypes.xml import GenericXml
 import subprocess
 import os
 #import pybel
@@ -183,7 +184,7 @@ class MOL2( GenericMolFile ):
         else:
             raise Exception('Unsupported split mode %s' % split_params['split_mode'])
 
-        def _read_sdf_records( filename ):
+        def _read_mol2_records( filename ):
             lines = []
             start = True
             with open(filename) as handle:
@@ -204,15 +205,15 @@ class MOL2( GenericMolFile ):
             part_file.close()
 
         try:
-            sdf_records = _read_sdf_records( input_files[0] )
-            sdf_lines_accumulated = []
-            for counter, sdf_record in enumerate( sdf_records, start = 1):
-                sdf_lines_accumulated.extend( sdf_record )
+            mol2_records = _read_mol2_records( input_files[0] )
+            mol2_lines_accumulated = []
+            for counter, mol2_record in enumerate( mol2_records, start = 1):
+                mol2_lines_accumulated.extend( mol2_record )
                 if counter % chunk_size == 0:
-                    _write_part_mol2_file( sdf_lines_accumulated )
-                    sdf_lines_accumulated = []
-            if sdf_lines_accumulated:
-                _write_part_mol2_file( sdf_lines_accumulated )
+                    _write_part_mol2_file( mol2_lines_accumulated )
+                    mol2_lines_accumulated = []
+            if mol2_lines_accumulated:
+                _write_part_mol2_file( mol2_lines_accumulated )
         except Exception,  e:
             log.error('Unable to split files: %s' % str(e))
             raise
@@ -222,7 +223,7 @@ class MOL2( GenericMolFile ):
 
 class FPS( GenericMolFile ):
     """
-        chemfp fingerprint file: http://code.google.com/p/chem-fingerprints/wiki/FPS
+    chemfp fingerprint file: http://code.google.com/p/chem-fingerprints/wiki/FPS
     """
     file_ext = "fps"
     def sniff( self, filename ):
@@ -236,7 +237,7 @@ class FPS( GenericMolFile ):
         """
         Set the number of lines of data in dataset.
         """
-        dataset.metadata.number_of_molecules = count_special_lines('^#', dataset.file_name, invert = True)#self.count_data_lines(dataset)
+        dataset.metadata.number_of_molecules = count_special_lines('^#', dataset.file_name, invert = True)
 
 
     def split( cls, input_datasets, subdir_generator_function, split_params):
@@ -392,10 +393,13 @@ class DRF( GenericMolFile ):
         """
         Set the number of lines of data in dataset.
         """
-        dataset.metadata.number_of_molecules = count_special_lines('\"ligand id\"', dataset.file_name, invert = True)#self.count_data_lines(dataset)
+        dataset.metadata.number_of_molecules = count_special_lines('\"ligand id\"', dataset.file_name, invert = True)
 
 
 class PHAR( GenericMolFile ):
+    """
+    Pharmacophore database format from silicos-it.
+    """
     file_ext = "phar"
     def set_peek( self, dataset, is_multi_byte=False ):
         if not dataset.dataset.purged:
@@ -407,6 +411,10 @@ class PHAR( GenericMolFile ):
 
 
 class PDB( GenericMolFile ):
+    """
+    Protein Databank format.
+    http://www.wwpdb.org/documentation/format33/v3.3.html
+    """
     file_ext = "pdb"
     def sniff( self, filename ):
         headers = get_headers( filename, sep=' ', count=300 )
@@ -560,21 +568,174 @@ class SMILES( Tabular ):
     '''
 
 
+
+class CML( GenericXml ):
+    """
+    Chemical Markup Language
+    http://cml.sourceforge.net/
+    """
+    file_ext = "cml"
+    MetadataElement( name="number_of_molecules", default=0, desc="Number of molecules", readonly=True, visible=True, optional=True, no_value=0 )
+
+
+    def set_meta( self, dataset, **kwd ):
+        """
+        Set the number of lines of data in dataset.
+        """
+        dataset.metadata.number_of_molecules = count_special_lines( '^\s*<molecule', dataset.file_name )
+
+    def set_peek( self, dataset, is_multi_byte=False ):
+        if not dataset.dataset.purged:
+            dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+            if (dataset.metadata.number_of_molecules == 1):
+                dataset.blurb = "1 molecule"
+            else:
+                dataset.blurb = "%s molecules" % dataset.metadata.number_of_molecules
+            dataset.peek = data.get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+        else:
+            dataset.peek = 'file does not exist'
+            dataset.blurb = 'file purged from disk'
+
+    def sniff( self, filename ):
+        """
+        Try to guess if the file is a CML file.
+        TODO: add true positive test, need to submit a CML example
+
+        >>> fname = get_test_fname( 'interval.interval' )
+        >>> CML().sniff( fname )
+        False
+        """
+        handle = open(filename)
+        line = handle.readline()
+        if line.strip() != '<?xml version="1.0"?>':
+            handle.close()
+            return False
+        line = handle.readline()
+        if line.strip().find('http://www.xml-cml.org/schema') == -1:
+            handle.close()
+            return False
+        handle.close()
+        return True
+
+
+    def split( cls, input_datasets, subdir_generator_function, split_params):
+        """
+        Split the input files by molecule records.
+        """
+        if split_params is None:
+            return None
+
+        if len(input_datasets) > 1:
+            raise Exception("CML-file splitting does not support multiple files")
+        input_files = [ds.file_name for ds in input_datasets]
+
+        chunk_size = None
+        if split_params['split_mode'] == 'number_of_parts':
+            raise Exception('Split mode "%s" is currently not implemented for CML-files.' % split_params['split_mode'])
+        elif split_params['split_mode'] == 'to_size':
+            chunk_size = int(split_params['split_size'])
+        else:
+            raise Exception('Unsupported split mode %s' % split_params['split_mode'])
+
+        def _read_cml_records( filename ):
+            lines = []
+            with open(filename) as handle:
+                for line in handle:
+                    if line.lstrip().startswith('<?xml version="1.0"?>') or \
+                        line.lstrip().startswith('<cml xmlns="http://www.xml-cml.org/schema') or \
+                        line.lstrip().startswith('</cml>'):
+                        continue
+                    lines.append( line )
+                    if line.lstrip().startswith('</molecule>'):
+                        yield lines
+                        lines = []
+
+        header_lines = ['<?xml version="1.0"?>\n', '<cml xmlns="http://www.xml-cml.org/schema">\n']
+        footer_line = ['</cml>\n']
+        def _write_part_cml_file( accumulated_lines ):
+            part_dir = subdir_generator_function()
+            part_path = os.path.join(part_dir, os.path.basename(input_files[0]))
+            part_file = open(part_path, 'w')
+            part_file.writelines( header_lines )
+            part_file.writelines( accumulated_lines )
+            part_file.writelines( footer_line )
+            part_file.close()
+
+        try:
+            cml_records = _read_cml_records( input_files[0] )
+            cml_lines_accumulated = []
+            for counter, cml_record in enumerate( cml_records, start = 1):
+                cml_lines_accumulated.extend( cml_record )
+                if counter % chunk_size == 0:
+                    _write_part_cml_file( cml_lines_accumulated )
+                    cml_lines_accumulated = []
+            if cml_lines_accumulated:
+                _write_part_cml_file( cml_lines_accumulated )
+        except Exception,  e:
+            log.error('Unable to split files: %s' % str(e))
+            raise
+    split = classmethod(split)
+
+
+    def merge(split_files, output_file):
+        """
+        Merging CML files.
+        """
+        if len(split_files) == 1:
+            #For one file only, use base class method (move/copy)
+            return Text.merge(split_files, output_file)
+        if not split_files:
+            raise ValueError("Given no CML files, %r, to merge into %s" \
+                             % (split_files, output_file))
+        with open(output_file, "w") as out:
+            for filename in split_files:
+                with open( filename ) as handle:
+                    header = handle.readline()
+                    if not header:
+                        raise ValueError("CML file %s was empty" % f)
+                    if not header.lstrip().startswith('<?xml version="1.0"?>'):
+                        out.write(header)
+                        raise ValueError("%s is not a valid XML file!" % f)
+                    line = handle.readline()
+                    header += line
+                    if not line.lstrip().startswith('<cml xmlns="http://www.xml-cml.org/schema'):
+                        out.write(header)
+                        raise ValueError("%s is not a CML file!" % f)
+                    molecule_found = False
+                    for line in handle.readlines():
+                        # we found two required header lines, the next line should start with <molecule >
+                        if line.lstrip().startswith('</cml>'):
+                            continue
+                        if line.lstrip().startswith('<molecule'):
+                            molecule_found = True
+                        if molecule_found:
+                            out.write( line )
+            out.write("</cml>\n")
+    merge = staticmethod(merge)
+
+
 if __name__ == '__main__':
     """
-        TODO: We need to figure out, how to put example files under /lib/galaxy/datatypes/test/ from a toolshed, so that doctest can work properly.
+    TODO: We need to figure out, how to put example files under /lib/galaxy/datatypes/test/ from a toolshed, so that doctest can work properly.
     """
     inchi = get_test_fname('drugbank_drugs.inchi')
     smiles = get_test_fname('drugbank_drugs.smi')
     sdf = get_test_fname('drugbank_drugs.sdf')
     fps = get_test_fname('50_chemfp_fingerprints_FPS1.fps')
     pdb = get_test_fname('2zbz.pdb')
+    cml = get_test_fname('/home/bag/Downloads/approved.cml')
 
+    print 'CML test'
+    print CML().sniff(cml), 'cml'
+    print CML().sniff(inchi)
+    print CML().sniff(pdb)
+    CML().split()
+    """
     print 'SMILES test'
     print SMILES().sniff(smiles), 'smi'
     print SMILES().sniff(inchi)
     print SMILES().sniff(pdb)
-
+    """
     print 'InChI test'
     print InChI().sniff(smiles)
     print InChI().sniff(sdf)
