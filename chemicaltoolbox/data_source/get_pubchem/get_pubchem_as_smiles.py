@@ -39,21 +39,20 @@ def fetch_convert(args):
     (filename, td) = args
 
     tmp_name = os.path.join( tempfile.gettempdir(), filename)
-    os.system('wget -O %s %s' % (tmp_name, 'ftp://ftp.ncbi.nih.gov/pubchem/Compound/CURRENT-Full/SDF/' + filename))
+    subprocess.call( ['wget', '-O', tmp_name, os.path.join('ftp://ftp.ncbi.nih.gov/pubchem/Compound/CURRENT-Full/SDF/', filename)] )
     output = os.path.join(td, filename)
     subprocess.call(["obabel", "-isdf", tmp_name, "-ocan", '-O', output])
     os.remove(tmp_name)
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Downloads PubChem and converts it to canonical SMILES, on the fly.')
+    parser = argparse.ArgumentParser(description='Download the whole PubChem and converts it to canonical SMILES on the fly.')
     parser.add_argument("-o", "--output", dest="output",
                     required=True,
                     help="Path to the output file.")
     parser.add_argument("-p", "--processors", dest="processors",
                     type=int, default=10,
-                    help="How many processors/threads you want to use.")
-
+                    help="How many processors you want to use.")
 
     options = parser.parse_args()
     main( options.output, options.processors )

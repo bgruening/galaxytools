@@ -14,9 +14,9 @@ import cheminfolib
 
 def parse_command_line(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument('-iformat', default='sdf' , help='input file format')
+    parser.add_argument('--iformat', default='sdf' , help='input file format')
     parser.add_argument('-i', '--input', required=True, help='input file name')
-    parser.add_argument('-oformat', default='sdf', choices = ['sdf', 'table'] , help='output file format')
+    parser.add_argument('--oformat', default='sdf', choices = ['sdf', 'table'] , help='output file format')
     parser.add_argument('--header', type=bool, help='Include the header as the first line of the output table')
     parser.add_argument('-o', '--output', required=True, help='output file name')
     return parser.parse_args()

@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 __all__ = ['weights_max', 'weights_mean', 'weights_none', 'default']
 
 # Silicos-it

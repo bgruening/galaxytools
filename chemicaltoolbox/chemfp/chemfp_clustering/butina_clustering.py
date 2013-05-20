@@ -18,6 +18,7 @@ def unix_sort(results):
     temp_unsorted = tempfile.NamedTemporaryFile(delete=False)
     for (i,indices) in enumerate( results.iter_indices() ):
         temp_unsorted.write('%s %s\n' % (len(indices), i))
+        print i, indices
     temp_unsorted.close()
     temp_sorted = tempfile.NamedTemporaryFile(delete=False)
     temp_sorted.close()
@@ -48,7 +49,7 @@ def butina( args ):
     temp_file = tempfile.NamedTemporaryFile()
     temp_link = "%s.%s" % (temp_file.name, 'fps')
     temp_file.close()
-    os.symlink(args.input_path, temp_link)
+    os.symlink(os.path.realpath(args.input_path), temp_link)
     #os.system('ln -s %s %s' % (args.input_path, temp_link) )
 
     out = args.output_path
@@ -57,6 +58,7 @@ def butina( args ):
     chemfp.set_num_threads( args.processors )
     results = search.threshold_tanimoto_search_symmetric(arena, threshold = args.tanimoto_threshold)
     results.reorder_all("move-closest-first")
+    print [r.get_indices() for r in results]
 
     # TODO: more memory efficient search?
     # Reorder so the centroid with the most hits comes first.
@@ -78,13 +80,14 @@ def butina( args ):
     #for (size, fp_idx, members) in results:
     for (size, fp_idx) in sorted_ids:
         members = results[fp_idx].get_indices()
-
+        print 'indices (s: %s, fp_idx:%s) -> %s' % (size, fp_idx, members)
+        print 'scores (s: %s, fp_idx:%s) -> %s' % (size, fp_idx,  results[fp_idx].get_scores())
         if fp_idx in seen:
             # Can't use a centroid which is already assigned
             continue
         seen.add(fp_idx)
 
-        if size == 1:
+        if size == 0:
             # The only fingerprint in the exclusion sphere is itself
             true_singletons.append(fp_idx)
             continue
