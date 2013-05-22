@@ -17,6 +17,7 @@ import shutil
 def parse_command_line():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--infile', required=True, help='Molecule file.')
+    parser.add_argument('--iformat', help='Input format.')
     parser.add_argument('--fastsearch-index', dest="fastsearch_index", 
         required=True, help='Path to the openbabel fastsearch index.')
     parser.add_argument('-o', '--outfile', required=True, help='Path to the output file.')
@@ -45,7 +46,7 @@ def mp_helper( query, args ):
         opts = '-o%s' % args.oformat
 
     tmp = tempfile.NamedTemporaryFile(delete=False)
-    cmd = 'obabel %s -O %s %s -ifs -s%s -al %s' % (args.fastsearch_index, tmp.name, opts, query, args.max_candidates)
+    cmd = 'obabel -ifs %s -O %s %s -s%s -al %s' % (args.fastsearch_index, tmp.name, opts, query, args.max_candidates)
 
     child = subprocess.Popen(cmd.split(),
         stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -64,12 +65,25 @@ def mp_helper( query, args ):
     return (tmp.name, query)
 
 
+def get_smiles_or_smarts( args ):
+    """
+    Wrapper to retrieve a striped SMILES or SMARTS string from different input formats.
+    """
+    if args.iformat in ['smi', 'text', 'tabular']:
+        with open( args.infile ) as text_file:
+            for line in text_file:
+                yield line.split('\t')[0].strip()
+    else:
+        # inchi or sdf files
+        for mol in pybel.readfile( args.iformat, args.infile ):
+            yield mol.wrtie('smiles').split('\t')[0]
+
 def substructure_search( args ):
 
     pool = multiprocessing.Pool( args.processors )
-    for query in open( args.infile ):
-        pool.apply_async(mp_helper, args=(query.strip(), args), callback=mp_callback)
-        #mp_callback( mp_helper(query.strip(), args) )
+    for query in get_smiles_or_smarts( args ):
+        pool.apply_async(mp_helper, args=(query, args), callback=mp_callback)
+        #mp_callback( mp_helper(query, args) )
     pool.close()
     pool.join()
 

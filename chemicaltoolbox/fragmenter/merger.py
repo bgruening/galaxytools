@@ -144,7 +144,7 @@ def is_fragment( smiles ):
 
 
 reaction_matrix = read_reaction_matrix()
-def merge(mol_one, mol_two, options, mark_fragments = False):
+def merge(mol_one, mol_two, options, iteration_depth = 1):
     """
         Main merge function.
         Two pybel molecules are passed to that function and the possible bonds that can be created are looked up.
@@ -199,20 +199,29 @@ def merge(mol_one, mol_two, options, mark_fragments = False):
         """
         sticky_ends = False
 
-        if mark_fragments:
-            if mol_one.title.find('sticky_ends:') != -1:
-                tokens = mol_one.title.split(':')
-                sticky_ends = int(tokens[1]) -1
-                concat_mol.title = re.sub('sticky_ends:\d*:', 'sticky_ends:%s:' % ( sticky_ends ), mol_one.title)
-                #logging.debug('decrease sticky ends to: %s' % sticky_ends)
-            elif mol_one.title.strip() or mol_one.title.find('Fragment1:') == -1:
+
+        if mol_one.title.find('sticky_ends:') != -1:
+            tokens = mol_one.title.split(':')
+            sticky_ends = int(tokens[1]) - 1
+            concat_mol.title = re.sub('sticky_ends:\d*:', 'sticky_ends:%s:' % ( sticky_ends ), mol_one.title)
+            #logging.debug('decrease sticky ends to: %s' % sticky_ends)
+        elif mol_one.title.strip() or mol_one.title.find('Fragment1:') == -1:
+            # set the initial iteration depth
+            if iteration_depth == 0:
                 """
-                    set initial fragment counter to the count of all possible replacements -1, 
+                    Molecule dependent iteration depth.
+                    set initial fragment counter to the count of all possible replacements, 
                     because we already did one replacement
                 """
                 sticky_ends = max(len(replaced_atoms_1), len(replaced_atoms_2))
                 concat_mol.title = 'sticky_ends:%s:' % sticky_ends
                 #logging.debug('set sticky end count: %s' % sticky_ends)
+            else:
+                """
+                    maximum iteration depth is specified by the user
+                """
+                sticky_ends = iteration_depth - 1
+                concat_mol.title = 'sticky_ends:%s:' % sticky_ends
 
         # save the parent fragments to the SMILES header
         #concat_mol.title += 'Fragment1: %s Fragment2: %s' % (mol_one_smiles, mol_two_smiles)
@@ -225,7 +234,7 @@ def merge(mol_one, mol_two, options, mark_fragments = False):
             temp_results.append( smi2can( true_mol ) )
             no_result = False
             if is_fragment( concat_mol_smiles.split()[0] ):
-                if mark_fragments and sticky_ends == 0:
+                if sticky_ends == 0:
                     #print 'jump out'
                     continue
                 temp_fragments.append( concat_mol_smiles )
@@ -246,9 +255,9 @@ def test(options):
     mol_two = pybel.readstring('can','[Th]c1ccc(cc1)[Ac]=O')
 
     result, temp = merge(mol_one, mol_two, options)
-    result = temp.pop().split('\t')[0]
-    assert result == 'O=[Ac]c1ccc(cc1)NC(=O)c1ccc(cc1)[Th]'
+    result = result.pop().split('\t')[0]
 
+    #assert result == 'O=[Ac]c1ccc(cc1)NC(=O)c1ccc(cc1)[Th]'
     options.molwt = options_temp
 
 
@@ -282,7 +291,7 @@ def clean( trash_list ):
                 os.remove( path )
 
 
-def mp_helper(file_one, file_two, mark_fragments = False):
+def mp_helper(file_one, file_two, iteration_depth = 1):
     """
         Helper function for the multiprocessing library.
         Two fragment files gets passed and we merge all against all molecules in that two files.
@@ -292,7 +301,7 @@ def mp_helper(file_one, file_two, mark_fragments = False):
     for mol_one in pybel.readfile( 'smi', file_one ):
         for i,mol_two in enumerate(pybel.readfile( 'smi', file_two )):
             #print 'merge:', str(mol_one).strip(), str(mol_two).strip()
-            result, fragment = merge(mol_two,mol_one, options, mark_fragments)
+            result, fragment = merge(mol_two,mol_one, options, iteration_depth)
             if result:
                 #print '\tr', result
                 results.extend( result )
@@ -316,7 +325,7 @@ def mp_helper(file_one, file_two, mark_fragments = False):
 
 def mp_helper_special_mode(one_fragment, fragment_file_chunks, options, chunk_size = 100):
 
-    molecule_dependent_iter_depth = options.molecule_dependent_iter_depth
+    iteration_depth = options.iteration_depth
     repeats = options.repeats
 
     results = list()
@@ -343,11 +352,11 @@ def mp_helper_special_mode(one_fragment, fragment_file_chunks, options, chunk_si
             #logging.debug('Linecount: %s (%s) - loop-counter (%s)' % ( CountLines( combined_fragments.name ), combined_fragments.name, counter))
 
             splitted_files = split_smi_library( combined_fragments.name, chunk_size )
-            logging.info('Fragments to process: %s (%s); Files to process: %s (%s)' % ( CountLines(combined_fragments.name), combined_fragments.name, len(splitted_files), counter) )
+            logging.debug('Fragments to process: %s (%s); Files to process: %s (%s)' % ( CountLines(combined_fragments.name), combined_fragments.name, len(splitted_files), counter) )
 
             pool = multiprocessing.Pool( options.processors )
             for fragment_file in splitted_files:
-                pool.apply_async(mp_helper, args=(fragment_file_two, fragment_file, options.molecule_dependent_iter_depth), callback=mp_callback)
+                pool.apply_async(mp_helper, args=(fragment_file, fragment_file_two, iteration_depth), callback=mp_callback)
             pool.close()
             pool.join()
             clean( splitted_files )
@@ -361,12 +370,46 @@ def mp_helper_special_mode(one_fragment, fragment_file_chunks, options, chunk_si
         return False
 
 
+def filter_input_files( input_file ):
+    """
+        unique the input_file
+        separating the non-fragments from the fragments
+        returns: fragments, non_fragments as closed file object
+    """
+
+    # unique the input file
+    unique_input_raw = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
+    unique_files( [ input_file ], unique_input_raw )
+    unique_input_raw.close()
+
+    # filter out non-fragments
+    unique_input = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
+    unique_input_non_fragments = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
+    non_fragment_counter = 0
+    for mol in open( unique_input_raw.name ):
+        mol = mol.strip()
+        if mol:
+            if is_fragment(mol):
+                unique_input.write('%s\n' % mol)
+            else:
+                non_fragment_counter += 1
+                unique_input_non_fragments.write('%s\n' % mol)
+    logging.info('Your input file contains %s non-fragment molecules. These molecules will be merged back in the end-results.' % non_fragment_counter)
+    trash_list.append( unique_input_raw.name )
+    unique_input.close()
+    unique_input_non_fragments.close()
+
+    return (unique_input, unique_input_non_fragments)
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Splits a molecule to several fragments.')
 
     parser.add_argument("-i", "--input", dest="input_path",
                     required=True,
                     help="Path to the input file.")
+
+    parser.add_argument("--input2", dest="second_input",
+                    help="Path to the second input file. If two files are given, the first is merged against the second.")
 
     parser.add_argument("-o", "--output", type=argparse.FileType('w'),
                     default=sys.stdout,
@@ -383,9 +426,9 @@ if __name__ == '__main__':
                     default=1,
                     help="Number of repeats all new created fragments should be merged against the inital ones.")
 
-    parser.add_argument("--mdid-off", dest="molecule_dependent_iter_depth", action="store_false",
-                    default=True,
-                    help="Disable molecule dependent iteration depth. If specified the options is deactivated and --max-iteration-depth is taken into account.")
+    parser.add_argument("--iteration-depth", dest="iteration_depth", type=int,
+                    default = 0,
+                    help="How deep is the maximum of iterations a compound can have. 0 means the iteration depth will be calaculated from the sticky ends from each molecule.")
 
     parser.add_argument('-v', action='append_const', const=1, help="Verbose output")
 
@@ -411,46 +454,43 @@ if __name__ == '__main__':
     unique_compounds = set()
     multiple_merge_compounds = set()
     trash_list = list()
-
-    unique_input_raw = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
-    unique_files( [options.input_path], unique_input_raw )
-    unique_input_raw.close()
-
-    unique_input = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
-    unique_input_non_fragments = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
-    non_fragment_counter = 0
-    for mol in open( unique_input_raw.name ):
-        mol = mol.strip()
-        if mol:
-            if is_fragment(mol):
-                unique_input.write('%s\n' % mol)
-            else:
-                non_fragment_counter += 1
-                unique_input_non_fragments.write('%s\n' % mol)
-    logging.info('Your input file contains %s non-fragment molecules. These molecules will be merged back in the end-results.' % non_fragment_counter)
-    trash_list.append( unique_input_raw.name )
-    unique_input.close()
-    unique_input_non_fragments.close()
-
-    ##### get a clue out of the input file
-    #for line in open(unique_input.name):
-    #    if is_fragment(line) >= 4:
-    #        print line.strip()
-    #        #print is_fragment(line)
-    #sys.exit()
     result_files = list()
-    result_files.append( unique_input_non_fragments.name )
-    """
-        Every single fragment against each of the other fragments, including itself
-    """
+
+
+
+    unique_input, unique_input_non_fragments = filter_input_files( options.input_path )
+    # adding the non-fragments to the results
+    # result_files.append( unique_input_non_fragments.name )
     splitted_files = split_smi_library( unique_input.name, 1 )
     trash_list.extend( splitted_files )
 
-    for counter, fragment_file_one in enumerate( splitted_files ):
-        logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
-        res = mp_helper_special_mode( [fragment_file_one], splitted_files, options )
-        if res:
-            result_files.append( res )
+
+
+    # If we have two input files, merge one against the other
+    if options.second_input:
+        logging.info('Merging file %s against file %s.' % (options.input_path, options.second_input ))
+        unique_input2, unique_input_non_fragments2 = filter_input_files( options.second_input )
+        # adding the non-fragments to the results
+        
+        # result_files.append( unique_input_non_fragments2.name )
+        splitted_files2 = split_smi_library( unique_input2.name, 1 )
+        trash_list.extend( splitted_files2 )
+
+        for counter, fragment_file_one in enumerate( splitted_files ):
+            logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
+            res = mp_helper_special_mode( [fragment_file_one], splitted_files2, options )
+            if res:
+                result_files.append( res )
+
+    else:
+        """
+            Every single fragment against each of the other fragments, including itself
+        """
+        for counter, fragment_file_one in enumerate( splitted_files ):
+            logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
+            res = mp_helper_special_mode( [fragment_file_one], splitted_files, options )
+            if res:
+                result_files.append( res )
 
 
     temp_final_result = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)

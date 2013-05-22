@@ -7,7 +7,7 @@ $|++;
 use Getopt::Long;
 
 
-## This program is Copyright (C) 2010-12, Felix Krueger (felix.krueger@babraham.ac.uk)
+## This program is Copyright (C) 2010-13, Felix Krueger (felix.krueger@babraham.ac.uk)
 
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -24,7 +24,7 @@ use Getopt::Long;
 
 
 my $parent_dir = getcwd;
-my $bismark_version = 'v0.7.7';
+my $bismark_version = 'v0.7.11';
 my $command_line = join (" ",@ARGV);
 
 ### before processing the command line we will replace --solexa1.3-quals with --phred64-quals as the '.' in the option name will cause Getopt::Long to fail
@@ -35,7 +35,7 @@ foreach my $arg (@ARGV){
 }
 my @filenames;   # will be populated by processing the command line
 
-my ($genome_folder,$CT_index_basename,$GA_index_basename,$path_to_bowtie,$sequence_file_format,$bowtie_options,$directional,$unmapped,$ambiguous,$phred64,$solexa,$output_dir,$bowtie2,$vanilla,$sam_no_hd,$skip,$upto,$temp_dir) = process_command_line();
+my ($genome_folder,$CT_index_basename,$GA_index_basename,$path_to_bowtie,$sequence_file_format,$bowtie_options,$directional,$unmapped,$ambiguous,$phred64,$solexa,$output_dir,$bowtie2,$vanilla,$sam_no_hd,$skip,$upto,$temp_dir,$non_bs_mm,$insertion_open,$insertion_extend,$deletion_open,$deletion_extend,$gzip,$bam,$samtools_path,$pbat) = process_command_line();
 
 my @fhs;         # stores alignment process names, bisulfite index location, bowtie filehandles and the number of times sequences produced an alignment
 my %chromosomes; # stores the chromosome sequences of the mouse genome
@@ -59,17 +59,17 @@ foreach my $filename (@filenames){
     $fhs[2]->{name} = 'GAread1CTread2CTgenome';
     $fhs[3]->{name} = 'CTread1GAread2GAgenome';
 
-    print "\nPaired-end alignments will be performed\n",'='x39,"\n\n";
+    warn "\nPaired-end alignments will be performed\n",'='x39,"\n\n";
 
     my ($filename_1,$filename_2) = (split (/,/,$filename));
-    print "The provided filenames for paired-end alignments are $filename_1 and $filename_2\n";
+    warn "The provided filenames for paired-end alignments are $filename_1 and $filename_2\n";
 
     ### additional variables only for paired-end alignments
     my ($C_to_T_infile_2,$G_to_A_infile_2); # to be made from mate2 file
 
     ### FastA format
     if ($sequence_file_format eq 'FASTA'){
-      print "Input files are in FastA format\n";
+      warn "Input files are in FastA format\n";
 
       if ($directional){
 	($C_to_T_infile_1) = biTransformFastAFiles_paired_end ($filename_1,1); # also passing the read number
@@ -108,39 +108,110 @@ foreach my $filename (@filenames){
 
     ### FastQ format
     else{
-      print "Input files are in FastQ format\n";
+      warn "Input files are in FastQ format\n";
       if ($directional){
-	($C_to_T_infile_1) = biTransformFastQFiles_paired_end ($filename_1,1); # also passing the read number
-	($G_to_A_infile_2) = biTransformFastQFiles_paired_end ($filename_2,2);
+	if ($bowtie2){
+	  ($C_to_T_infile_1) = biTransformFastQFiles_paired_end ($filename_1,1); # also passing the read number
+	  ($G_to_A_infile_2) = biTransformFastQFiles_paired_end ($filename_2,2);
 	
-	$fhs[0]->{inputfile_1} = $C_to_T_infile_1;
-	$fhs[0]->{inputfile_2} = $G_to_A_infile_2;
-	$fhs[1]->{inputfile_1} = undef;
-	$fhs[1]->{inputfile_2} = undef;
-	$fhs[2]->{inputfile_1} = undef;
-	$fhs[2]->{inputfile_2} = undef;
-	$fhs[3]->{inputfile_1} = $C_to_T_infile_1;
-	$fhs[3]->{inputfile_2} = $G_to_A_infile_2;
+	  $fhs[0]->{inputfile_1} = $C_to_T_infile_1;
+	  $fhs[0]->{inputfile_2} = $G_to_A_infile_2;
+	  $fhs[1]->{inputfile_1} = undef;
+	  $fhs[1]->{inputfile_2} = undef;
+	  $fhs[2]->{inputfile_1} = undef;
+	  $fhs[2]->{inputfile_2} = undef;
+	  $fhs[3]->{inputfile_1} = $C_to_T_infile_1;
+	  $fhs[3]->{inputfile_2} = $G_to_A_infile_2;
+	}
+	else{ # Bowtie 1 alignments
+	  if ($gzip){
+	    ($C_to_T_infile_1) = biTransformFastQFiles_paired_end_bowtie1_gzip ($filename_1,$filename_2); # passing both reads at the same time
+	
+	    $fhs[0]->{inputfile_1} = $C_to_T_infile_1; # this file contains both read 1 and read 2 in tab delimited format
+	    $fhs[0]->{inputfile_2} = undef; # no longer needed
+	    $fhs[1]->{inputfile_1} = undef;
+	    $fhs[1]->{inputfile_2} = undef;
+	    $fhs[2]->{inputfile_1} = undef;
+	    $fhs[2]->{inputfile_2} = undef;
+	    $fhs[3]->{inputfile_1} = $C_to_T_infile_1; # this file contains both read 1 and read 2 in tab delimited format
+	    $fhs[3]->{inputfile_2} = undef; # no longer needed
+	  }
+	  else{
+	    ($C_to_T_infile_1) = biTransformFastQFiles_paired_end ($filename_1,1); # also passing the read number
+	    ($G_to_A_infile_2) = biTransformFastQFiles_paired_end ($filename_2,2);
+	
+	    $fhs[0]->{inputfile_1} = $C_to_T_infile_1;
+	    $fhs[0]->{inputfile_2} = $G_to_A_infile_2;
+	    $fhs[1]->{inputfile_1} = undef;
+	    $fhs[1]->{inputfile_2} = undef;
+	    $fhs[2]->{inputfile_1} = undef;
+	    $fhs[2]->{inputfile_2} = undef;
+	    $fhs[3]->{inputfile_1} = $C_to_T_infile_1;
+	    $fhs[3]->{inputfile_2} = $G_to_A_infile_2;
+	  }
+	}
       }
-      else{
+      elsif($pbat){ # PBAT-Seq
+	### At the moment we are only performing uncompressed FastQ alignments with Bowtie1
 	($C_to_T_infile_1,$G_to_A_infile_1) = biTransformFastQFiles_paired_end ($filename_1,1); # also passing the read number
 	($C_to_T_infile_2,$G_to_A_infile_2) = biTransformFastQFiles_paired_end ($filename_2,2);
-
-	$fhs[0]->{inputfile_1} = $C_to_T_infile_1;
-	$fhs[0]->{inputfile_2} = $G_to_A_infile_2;
+	
+	$fhs[0]->{inputfile_1} = undef;
+	$fhs[0]->{inputfile_2} = undef;
 	$fhs[1]->{inputfile_1} = $G_to_A_infile_1;
 	$fhs[1]->{inputfile_2} = $C_to_T_infile_2;
 	$fhs[2]->{inputfile_1} = $G_to_A_infile_1;
 	$fhs[2]->{inputfile_2} = $C_to_T_infile_2;
-	$fhs[3]->{inputfile_1} = $C_to_T_infile_1;
-	$fhs[3]->{inputfile_2} = $G_to_A_infile_2;
+	$fhs[3]->{inputfile_1} = undef;
+	$fhs[3]->{inputfile_2} = undef;
       }
-
+      else{
+	if ($bowtie2){
+	  ($C_to_T_infile_1,$G_to_A_infile_1) = biTransformFastQFiles_paired_end ($filename_1,1); # also passing the read number
+	  ($C_to_T_infile_2,$G_to_A_infile_2) = biTransformFastQFiles_paired_end ($filename_2,2);
+	
+	  $fhs[0]->{inputfile_1} = $C_to_T_infile_1;
+	  $fhs[0]->{inputfile_2} = $G_to_A_infile_2;
+	  $fhs[1]->{inputfile_1} = $G_to_A_infile_1;
+	  $fhs[1]->{inputfile_2} = $C_to_T_infile_2;
+	  $fhs[2]->{inputfile_1} = $G_to_A_infile_1;
+	  $fhs[2]->{inputfile_2} = $C_to_T_infile_2;
+	  $fhs[3]->{inputfile_1} = $C_to_T_infile_1;
+	  $fhs[3]->{inputfile_2} = $G_to_A_infile_2;
+	}
+	else{ # Bowtie 1 alignments
+	  if ($gzip){
+	    ($C_to_T_infile_1,$G_to_A_infile_1) = biTransformFastQFiles_paired_end_bowtie1_gzip ($filename_1,$filename_2); # passing both reads at the same time
+	
+	    $fhs[0]->{inputfile_1} = $C_to_T_infile_1;
+	    $fhs[0]->{inputfile_2} = undef; # not needed for compressed temp files
+	    $fhs[1]->{inputfile_1} = $G_to_A_infile_1;
+	    $fhs[1]->{inputfile_2} = undef;
+	    $fhs[2]->{inputfile_1} = $G_to_A_infile_1;
+	    $fhs[2]->{inputfile_2} = undef;
+	    $fhs[3]->{inputfile_1} = $C_to_T_infile_1;
+	    $fhs[3]->{inputfile_2} = undef; # not needed for compressed temp files
+	  }
+	  else{ #uncompressed temp files
+	    ($C_to_T_infile_1,$G_to_A_infile_1) = biTransformFastQFiles_paired_end ($filename_1,1); # also passing the read number
+	    ($C_to_T_infile_2,$G_to_A_infile_2) = biTransformFastQFiles_paired_end ($filename_2,2);
+	
+	    $fhs[0]->{inputfile_1} = $C_to_T_infile_1;
+	    $fhs[0]->{inputfile_2} = $G_to_A_infile_2;
+	    $fhs[1]->{inputfile_1} = $G_to_A_infile_1;
+	    $fhs[1]->{inputfile_2} = $C_to_T_infile_2;
+	    $fhs[2]->{inputfile_1} = $G_to_A_infile_1;
+	    $fhs[2]->{inputfile_2} = $C_to_T_infile_2;
+	    $fhs[3]->{inputfile_1} = $C_to_T_infile_1;
+	    $fhs[3]->{inputfile_2} = $G_to_A_infile_2;
+	  }
+	}
+      }
       if ($bowtie2){
 	paired_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2);
       }
       else{
-	paired_end_align_fragments_to_bisulfite_genome_fastQ ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2);	
+       	paired_end_align_fragments_to_bisulfite_genome_fastQ ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2);	
       }
     }
     start_methylation_call_procedure_paired_ends($filename_1,$filename_2,$C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2);
@@ -148,14 +219,14 @@ foreach my $filename (@filenames){
 
   ### Else we are performing SINGLE-END ALIGNMENTS
   else{
-    print "\nSingle-end alignments will be performed\n",'='x39,"\n\n";
+    warn "\nSingle-end alignments will be performed\n",'='x39,"\n\n";
     ### Initialising bisulfite conversion filenames
     my ($C_to_T_infile,$G_to_A_infile);
 
 
     ### FastA format
     if ($sequence_file_format eq 'FASTA'){
-      print "Inut file is in FastA format\n";
+      warn "Inut file is in FastA format\n";
       if ($directional){
 	($C_to_T_infile) = biTransformFastAFiles ($filename);
 	$fhs[0]->{inputfile} = $fhs[1]->{inputfile} = $C_to_T_infile;
@@ -177,10 +248,14 @@ foreach my $filename (@filenames){
 
     ## FastQ format
     else{
-      print "Input file is in FastQ format\n";
+      warn "Input file is in FastQ format\n";
       if ($directional){
 	($C_to_T_infile) = biTransformFastQFiles ($filename);
 	$fhs[0]->{inputfile} = $fhs[1]->{inputfile} = $C_to_T_infile;
+      }
+      elsif($pbat){
+	($G_to_A_infile) = biTransformFastQFiles ($filename);
+	$fhs[0]->{inputfile} = $fhs[1]->{inputfile} = $G_to_A_infile; # PBAT-Seq only uses the G to A converted files
       }
       else{
 	($C_to_T_infile,$G_to_A_infile) = biTransformFastQFiles ($filename);
@@ -188,9 +263,12 @@ foreach my $filename (@filenames){
 	$fhs[2]->{inputfile} = $fhs[3]->{inputfile} = $G_to_A_infile;
       }
 
-      ### Creating 4 different bowtie filehandles and storing the first entry
+      ### Creating up to 4 different bowtie filehandles and storing the first entry
       if ($bowtie2){
 	single_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 ($C_to_T_infile,$G_to_A_infile);
+      }
+      elsif ($pbat){
+	single_end_align_fragments_to_bisulfite_genome_fastQ (undef,$G_to_A_infile);
       }
       else{
 	single_end_align_fragments_to_bisulfite_genome_fastQ ($C_to_T_infile,$G_to_A_infile);
@@ -225,8 +303,24 @@ sub start_methylation_call_procedure_single_ends {
   else{ # SAM is the default output
     $outfile =~ s/$/_bismark.sam/;
   }
-  print "Writing bisulfite mapping results to $output_dir$outfile\n\n";
-  open (OUT,'>',"$output_dir$outfile") or die "Failed to write to $outfile: $!\n";
+
+  $bam = 0 unless (defined $bam);
+
+  if ($bam == 1){ ### Samtools is installed, writing out BAM directly
+    $outfile =~ s/sam/bam/;
+    open (OUT,"| $samtools_path view -bSh 2>/dev/null - > $output_dir$outfile") or die "Failed to write to $outfile: $!\n";
+  }
+  elsif($bam == 2){ ### no Samtools found on system. Using GZIP compression instead
+    $outfile .= '.gz';
+    open (OUT,"| gzip -c - > $output_dir$outfile") or die "Failed to write to $outfile: $!\n";
+  }
+  else{ # uncompressed ouput, default
+    open (OUT,'>',"$output_dir$outfile") or die "Failed to write to $outfile: $!\n";
+  }
+
+  warn "\n>>> Writing bisulfite mapping results to $output_dir$outfile <<<\n\n";
+  sleep(1);
+
   if ($vanilla){
     print OUT "Bismark version: $bismark_version\n";
   }
@@ -234,10 +328,10 @@ sub start_methylation_call_procedure_single_ends {
   ### printing alignment and methylation call summary to a report file
   my $reportfile = $filename;
   if ($bowtie2){
-    $reportfile =~ s/$/_bt2_Bismark_mapping_report.txt/;
+    $reportfile =~ s/$/_bt2_bismark_SE_report.txt/;
   }
   else{
-    $reportfile =~ s/$/_Bismark_mapping_report.txt/;
+    $reportfile =~ s/$/_bismark_SE_report.txt/;
   }
 
   open (REPORT,'>',"$output_dir$reportfile") or die "Failed to write to $reportfile: $!\n";
@@ -316,8 +410,23 @@ sub start_methylation_call_procedure_paired_ends {
     $outfile =~ s/$/_bismark_pe.sam/;
   }
 
-  print "Writing bisulfite mapping results to $outfile\n\n";
-  open (OUT,'>',"$output_dir$outfile") or die "Failed to write to $outfile: $!";
+  $bam = 0 unless (defined $bam);
+
+  if ($bam == 1){ ### Samtools is installed, writing out BAM directly
+    $outfile =~ s/sam/bam/;
+    open (OUT,"| $samtools_path view -bSh 2>/dev/null - > $output_dir$outfile") or die "Failed to write to $outfile: $!\n";
+  }
+  elsif($bam == 2){ ### no Samtools found on system. Using GZIP compression instead
+    $outfile .= '.gz';
+    open (OUT,"| gzip -c - > $output_dir$outfile") or die "Failed to write to $outfile: $!\n";
+  }
+  else{ # uncompressed ouput, default
+    open (OUT,'>',"$output_dir$outfile") or die "Failed to write to $outfile: $!\n";
+  }
+
+  warn "\n>>> Writing bisulfite mapping results to $outfile <<<\n\n";
+  sleep(1);
+
   if ($vanilla){
     print OUT "Bismark version: $bismark_version\n";
   }
@@ -325,10 +434,10 @@ sub start_methylation_call_procedure_paired_ends {
   ### printing alignment and methylation call summary to a report file
   my $reportfile = $filename_1;
   if ($bowtie2){
-    $reportfile =~ s/$/_Bismark_bt2_paired-end_mapping_report.txt/;
+    $reportfile =~ s/$/_bismark_bt2_PE_report.txt/;
   }
   else{
-    $reportfile =~ s/$/_Bismark_paired-end_mapping_report.txt/;
+    $reportfile =~ s/$/_bismark_PE_report.txt/;
   }
 
   open (REPORT,'>',"$output_dir$reportfile") or die "Failed to write to $reportfile: $!\n";
@@ -396,7 +505,15 @@ sub print_final_analysis_report_single_end{
       warn "Could not delete temporary file $C_to_T_infile properly $!\n";
     }
   }
-
+  elsif ($pbat){
+    my $deletion_successful =  unlink "$temp_dir$G_to_A_infile";
+    if ($deletion_successful == 1){
+      warn "\nSuccessfully deleted the temporary file $temp_dir$G_to_A_infile\n\n";
+    }
+    else{
+      warn "Could not delete temporary file $G_to_A_infile properly $!\n";
+    }
+  }
   else{
     my $deletion_successful =  unlink "$temp_dir$C_to_T_infile","$temp_dir$G_to_A_infile";
     if ($deletion_successful == 2){
@@ -409,7 +526,7 @@ sub print_final_analysis_report_single_end{
 
   ### printing a final report for the alignment procedure
   print REPORT "Final Alignment report\n",'='x22,"\n";
-  print "Final Alignment report\n",'='x22,"\n";
+  warn "Final Alignment report\n",'='x22,"\n";
   #  foreach my $index (0..$#fhs){
   #    print "$fhs[$index]->{name}\n";
   #    print "$fhs[$index]->{seen}\talignments on the correct strand in total\n";
@@ -530,21 +647,43 @@ sub print_final_analysis_report_paired_ends{
   my ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2) = @_;
   ### All sequences from the original sequence file have been analysed now, therefore deleting temporary C->T or G->A infiles
   if ($directional){
-    my $deletion_successful =  unlink "$temp_dir$C_to_T_infile_1","$temp_dir$G_to_A_infile_2";
-    if ($deletion_successful == 2){
-      warn "\nSuccessfully deleted the temporary files $temp_dir$C_to_T_infile_1 and $temp_dir$G_to_A_infile_2\n\n";
+    if ($G_to_A_infile_2){
+      my $deletion_successful =  unlink "$temp_dir$C_to_T_infile_1","$temp_dir$G_to_A_infile_2";
+      if ($deletion_successful == 2){
+	warn "\nSuccessfully deleted the temporary files $temp_dir$C_to_T_infile_1 and $temp_dir$G_to_A_infile_2\n\n";
+      }
+      else{
+	warn "Could not delete temporary files $temp_dir$C_to_T_infile_1 and $temp_dir$G_to_A_infile_2 properly: $!\n";
+      }
     }
-    else{
-      warn "Could not delete temporary files $temp_dir$C_to_T_infile_1 and $temp_dir$G_to_A_infile_2 properly: $!\n";
+    else{ # for paired-end FastQ infiles with Bowtie1 there is only one file to delete
+      my $deletion_successful =  unlink "$temp_dir$C_to_T_infile_1";
+      if ($deletion_successful == 1){
+	warn "\nSuccessfully deleted the temporary file $temp_dir$C_to_T_infile_1\n\n";
+      }
+      else{
+	warn "Could not delete temporary file $temp_dir$C_to_T_infile_1 properly: $!\n";
+      }
     }
   }
   else{
-    my $deletion_successful =  unlink "$temp_dir$C_to_T_infile_1","$temp_dir$G_to_A_infile_1","$temp_dir$C_to_T_infile_2","$temp_dir$G_to_A_infile_2";
-    if ($deletion_successful == 4){
-      warn "\nSuccessfully deleted the temporary files $temp_dir$C_to_T_infile_1, $temp_dir$G_to_A_infile_1, $temp_dir$C_to_T_infile_2 and $temp_dir$G_to_A_infile_2\n\n";
+    if ($G_to_A_infile_2 and $C_to_T_infile_2){
+      my $deletion_successful =  unlink "$temp_dir$C_to_T_infile_1","$temp_dir$G_to_A_infile_1","$temp_dir$C_to_T_infile_2","$temp_dir$G_to_A_infile_2";
+      if ($deletion_successful == 4){
+	warn "\nSuccessfully deleted the temporary files $temp_dir$C_to_T_infile_1, $temp_dir$G_to_A_infile_1, $temp_dir$C_to_T_infile_2 and $temp_dir$G_to_A_infile_2\n\n";
+      }
+      else{
+	warn "Could not delete temporary files properly: $!\n";
+      }
     }
-    else{
-      warn "Could not delete temporary files properly: $!\n";
+    else{ # for paired-end FastQ infiles with Bowtie1 there are only two files to delete
+      my $deletion_successful =  unlink "$temp_dir$C_to_T_infile_1","$temp_dir$G_to_A_infile_1";
+      if ($deletion_successful == 2){
+	warn "\nSuccessfully deleted the temporary files $temp_dir$C_to_T_infile_1 and $temp_dir$G_to_A_infile_1\n\n";
+      }
+      else{
+	warn "Could not delete temporary files properly: $!\n";
+      }
     }
   }
 
@@ -896,7 +1035,9 @@ sub process_fastA_files_for_paired_end_methylation_calls{
     }
   }
 
-  print "Processed $counting{sequences_count} sequences in total\n\n";
+  warn "Processed $counting{sequences_count} sequences in total\n\n";
+
+  close OUT or die $!;
 
   print_final_analysis_report_paired_ends($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2);
 
@@ -1006,7 +1147,9 @@ sub process_fastQ_files_for_paired_end_methylation_calls{
     }
   }
 
-  print "Processed $counting{sequences_count} sequences in total\n\n";
+  warn "Processed $counting{sequences_count} sequences in total\n\n";
+
+  close OUT or die $!;
 
   print_final_analysis_report_paired_ends($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2);
 
@@ -1297,7 +1440,13 @@ sub check_bowtie_results_single_end{
 
   ### If the sequence has not been rejected so far it will have a unique best alignment
   $counting{unique_best_alignment_count}++;
-  extract_corresponding_genomic_sequence_single_end($identifier,$methylation_call_params);
+  if ($pbat){
+    extract_corresponding_genomic_sequence_single_end_pbat($identifier,$methylation_call_params);
+  }
+  else{
+    extract_corresponding_genomic_sequence_single_end($identifier,$methylation_call_params);
+  }
+
   ### check test to see if the genomic sequence we extracted has the same length as the observed sequence+2, and only then we perform the methylation call
   if (length($methylation_call_params->{$identifier}->{unmodified_genomic_sequence}) != length($sequence)+2){
     warn "Chromosomal sequence could not be extracted for\t$identifier\t$methylation_call_params->{$identifier}->{chromosome}\t$methylation_call_params->{$identifier}->{position}\n";
@@ -1315,12 +1464,14 @@ sub check_bowtie_results_single_end{
 sub check_bowtie_results_single_end_bowtie2{
   my ($sequence,$identifier,$quality_value) = @_;
 
+
   unless ($quality_value){ # FastA sequences get assigned a quality value of Phred 40 throughout
     $quality_value = 'I'x(length$sequence);
   }
 
   # as of version Bowtie 2 2.0.0 beta7, when input reads are unpaired, Bowtie 2 no longer removes the trailing /1 or /2 from the read name.
   # $identifier =~ s/\/[1234567890]+$//; # some sequencers don't just have /1 or /2 at the end of read IDs
+  # print "sequence $sequence\nid $identifier\nquality: '$quality_value'\n";
 
   my $alignment_ambiguous = 0;
 
@@ -1328,18 +1479,17 @@ sub check_bowtie_results_single_end_bowtie2{
 
   ### reading from the Bowtie 2 output filehandles
   foreach my $index (0..$#fhs){
-    # print "Index: $index\n";
-    # print "$fhs[$index]->{last_line}\n";
-    # print "$fhs[$index]->{last_seq_id}\n\n";
-
+    #  print "Index: $index\n";
+    #   print "$fhs[$index]->{last_line}\n";
+    #   print "$fhs[$index]->{last_seq_id}\n";
+    sleep (1);
     ### skipping this index if the last alignment has been set to undefined already (i.e. end of bowtie output)
     next unless ($fhs[$index]->{last_line} and defined $fhs[$index]->{last_seq_id});
 
     ### if the sequence we are currently looking at produced an alignment we are doing various things with it
     # print "last seq id: $fhs[$index]->{last_seq_id} and identifier: $identifier\n";
 
-   if ($fhs[$index]->{last_seq_id} eq $identifier) {
-
+    if ($fhs[$index]->{last_seq_id} eq $identifier) {
       #  SAM format specifications for Bowtie 2
       #  (1) Name of read that aligned
       #  (2) Sum of all applicable flags. Flags relevant to Bowtie are:
@@ -1405,7 +1555,7 @@ sub check_bowtie_results_single_end_bowtie2{
       else{
 	die "Chromosome number extraction failed for $mapped_chromosome\n";
       }
-	  
+
       ### We will use the optional field to determine the best alignment. Later on we extract the number of mismatches and/or indels from the CIGAR string
       my ($alignment_score,$second_best,$MD_tag);
       my @fields = split (/\t/,$fhs[$index]->{last_line});
@@ -1422,12 +1572,12 @@ sub check_bowtie_results_single_end_bowtie2{
 	}
       }
 
-      # warn "First  best alignment_score is: '$alignment_score'\n";
-      # warn "MD tag is: '$MD_tag'\n";
+      #      warn "First  best alignment_score is: '$alignment_score'\n";
+      #     warn "MD tag is: '$MD_tag'\n";
       die "Failed to extract alignment score ($alignment_score) and MD tag ($MD_tag)!\n" unless (defined $alignment_score and defined $MD_tag);
 
       if (defined $second_best){
-	# warn "second best alignment_score is: '$second_best'\n";
+	#	warn "second best alignment_score is: '$second_best'\n\n";
 
 	# If the first alignment score is the same as the alignment score of the second best hit we are going to boot this sequence altogether
 	if ($alignment_score == $second_best){
@@ -1796,8 +1946,8 @@ sub check_bowtie_results_paired_ends{
     $quality_value_2 = 'I'x(length$sequence_2);
   }
 
-  #  print "$identifier\n$fhs[0]->{last_seq_id}\n$fhs[1]->{last_seq_id}\n$fhs[2]->{last_seq_id}\n$fhs[3]->{last_seq_id}\n\n";
-
+  #  warn "$identifier\n$fhs[0]->{last_seq_id}\n$fhs[1]->{last_seq_id}\n$fhs[2]->{last_seq_id}\n$fhs[3]->{last_seq_id}\n\n";
+  #  sleep (1);
   my %mismatches = ();
   ### reading from the bowtie output files to see if this sequence pair aligned to a bisulfite converted genome
 
@@ -3399,6 +3549,112 @@ sub extract_corresponding_genomic_sequence_single_end {
   $methylation_call_params->{$sequence_identifier}->{end_position} = $methylation_call_params->{$sequence_identifier}->{position}+length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence});
 }
 
+sub extract_corresponding_genomic_sequence_single_end_pbat {
+  my ($sequence_identifier,$methylation_call_params) = @_;
+  ### A bisulfite sequence for 1 location in the genome can theoretically be any of the 4 possible converted strands. We are also giving the
+  ### sequence a 'memory' of the conversion we are expecting which we will need later for the methylation call
+
+  ### the alignment_strand information is needed to determine which strand of the genomic sequence we are comparing the read against,
+  ### the read_conversion information is needed to know whether we are looking for C->T or G->A substitutions
+  my $alignment_strand;
+  my $read_conversion_info;
+  my $genome_conversion;
+  ### Also extracting the corresponding genomic sequence, +2 extra bases at the end so that we can also make a CpG methylation call and
+  ### in addition make differential calls for Cs non-CpG context, which will now be divided into CHG and CHH methylation,
+  ### if the C happens to be at the last position of the actually observed sequence
+  my $non_bisulfite_sequence;
+  ### depending on the conversion we want to make need to capture 1 extra base at the 3' end
+
+  my $pbat_index = $methylation_call_params->{$sequence_identifier}->{index} + 2; # (we are simply not running indexes 0 or 1!
+
+  ### results from CT converted read vs. CT converted genome (+ orientation alignments are reported only)
+  if ($pbat_index == 0){
+    ### [Index 0, sequence originated from (converted) forward strand]
+    $counting{CT_CT_count}++;
+    $alignment_strand = '+';
+    $read_conversion_info = 'CT';
+    $genome_conversion = 'CT';
+
+    ## checking if the substring will be valid or if we can't extract the sequence because we are right at the edge of a chromosome
+    if (length($chromosomes{$methylation_call_params->{$sequence_identifier}->{chromosome}}) > $methylation_call_params->{$sequence_identifier}->{position}+length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence})+1){ ## CHH changed to +1
+      ### + 2 extra base at the 3' end
+      $non_bisulfite_sequence = substr ($chromosomes{$methylation_call_params->{$sequence_identifier}->{chromosome}},$methylation_call_params->{$sequence_identifier}->{position},length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence})+2); ## CHH changed to +2
+    }
+    else{
+      $non_bisulfite_sequence = '';
+    }
+  }
+
+  ### results from CT converted reads vs. GA converted genome (- orientation alignments are reported only)
+  elsif ($pbat_index == 1){
+    ### [Index 1, sequence originated from (converted) reverse strand]
+    $counting{CT_GA_count}++;
+    $alignment_strand = '-';
+    $read_conversion_info = 'CT';
+    $genome_conversion = 'GA';
+
+    ## checking if the substring will be valid or if we can't extract the sequence because we are right at the edge of a chromosome
+    if ($methylation_call_params->{$sequence_identifier}->{position}-2 >= 0){ ## CHH changed to -2 # 02 02 2012 Changed this to >= from >
+      ### Extracting 2 extra 5' bases on forward strand which will become 2 extra 3' bases after reverse complementation
+      $non_bisulfite_sequence = substr ($chromosomes{$methylation_call_params->{$sequence_identifier}->{chromosome}},$methylation_call_params->{$sequence_identifier}->{position}-2,length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence})+2); ## CHH changed to -2/+2
+      ## reverse complement!
+      $non_bisulfite_sequence = reverse_complement($non_bisulfite_sequence);
+    }
+    else{
+      $non_bisulfite_sequence = '';
+    }
+  }
+
+  ### results from GA converted reads vs. CT converted genome (- orientation alignments are reported only)
+  elsif ($pbat_index == 2){
+    ### [Index 2, sequence originated from complementary to (converted) forward strand]
+    $counting{GA_CT_count}++;
+    $alignment_strand = '-';
+    $read_conversion_info = 'GA';
+    $genome_conversion = 'CT';
+
+    ### +2 extra bases on the forward strand 3', which will become 2 extra 5' bases after reverse complementation
+    ## checking if the substring will be valid or if we can't extract the sequence because we are right at the edge of a chromosome
+    if (length($chromosomes{$methylation_call_params->{$sequence_identifier}->{chromosome}}) > $methylation_call_params->{$sequence_identifier}->{position}+length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence})+1){ ## changed to +1 on 02 02 2012
+      $non_bisulfite_sequence = substr ($chromosomes{$methylation_call_params->{$sequence_identifier}->{chromosome}},$methylation_call_params->{$sequence_identifier}->{position},length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence})+2); ## CHH changed to +2
+      ## reverse complement!
+      $non_bisulfite_sequence = reverse_complement($non_bisulfite_sequence);
+    }
+    else{
+      $non_bisulfite_sequence = '';
+    }
+  }
+
+  ### results from GA converted reads vs. GA converted genome (+ orientation alignments are reported only)
+  elsif ($pbat_index == 3){
+    ### [Index 3, sequence originated from complementary to (converted) reverse strand]
+    $counting{GA_GA_count}++;
+    $alignment_strand = '+';
+    $read_conversion_info = 'GA';
+    $genome_conversion = 'GA';
+
+    ## checking if the substring will be valid or if we can't extract the sequence because we are right at the edge of a chromosome
+    if ($methylation_call_params->{$sequence_identifier}->{position}-2 >= 0){ ## CHH changed to +2 # 02 02 2012 Changed this to >= from >
+      ### +2 extra base at the 5' end as we are nominally checking the converted reverse strand
+      $non_bisulfite_sequence = substr ($chromosomes{$methylation_call_params->{$sequence_identifier}->{chromosome}},$methylation_call_params->{$sequence_identifier}->{position}-2,length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence})+2); ## CHH changed to -2/+2
+    }
+    else{
+      $non_bisulfite_sequence = '';
+    }
+  }
+  else{
+    die "Too many bowtie result filehandles\n";
+  }
+
+  $methylation_call_params->{$sequence_identifier}->{alignment_strand} = $alignment_strand;
+  $methylation_call_params->{$sequence_identifier}->{read_conversion} = $read_conversion_info;
+  $methylation_call_params->{$sequence_identifier}->{genome_conversion} = $genome_conversion;
+  $methylation_call_params->{$sequence_identifier}->{unmodified_genomic_sequence} = $non_bisulfite_sequence;
+
+  ### at this point we can also determine the end position of a read
+  $methylation_call_params->{$sequence_identifier}->{end_position} = $methylation_call_params->{$sequence_identifier}->{position}+length($methylation_call_params->{$sequence_identifier}->{bowtie_sequence});
+}
+
 
 sub extract_corresponding_genomic_sequence_single_end_bowtie2{
   my ($sequence_identifier,$methylation_call_params) = @_;
@@ -3840,17 +4096,37 @@ sub biTransformFastAFiles {
   }
 
   my $C_to_T_infile = my $G_to_A_infile = $filename;
-  $C_to_T_infile =~ s/$/_C_to_T.fa/;
-  $G_to_A_infile =~ s/$/_G_to_A.fa/;
-  print "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
-  open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
+
+  if ($gzip){
+    $C_to_T_infile =~ s/$/_C_to_T.fa.gz/;
+    $G_to_A_infile =~ s/$/_G_to_A.fa.gz/;
+  }
+  else{
+    $C_to_T_infile =~ s/$/_C_to_T.fa/;
+    $G_to_A_infile =~ s/$/_G_to_A.fa/;
+  }
+
+  warn "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
+
+  if ($gzip){
+    open (CTOT,"| gzip -c - > ${temp_dir}${C_to_T_infile}") or die "Can't write to file: $!\n";
+  }
+  else{
+    open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
+  }
 
   unless ($directional){
-    print "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
-    open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+    warn "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
+    if ($gzip){
+      open (GTOA,"| gzip -c - > ${temp_dir}${G_to_A_infile}") or die "Can't write to file: $!\n";
+    }
+    else{
+      open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+    }
   }
 
   my $count = 0;
+
   while (1){
     my $header = <IN>;
     my $sequence= <IN>;
@@ -3887,17 +4163,25 @@ sub biTransformFastAFiles {
       print GTOA "$header$sequence_G_to_A";
     }
   }
+  close CTOT or die "Failed to close filehandle $!\n";
+
   if ($directional){
-    print "\nCreated C -> T converted versions of the FastA file $filename ($count sequences in total)\n\n";
+    warn "\nCreated C -> T converted versions of the FastA file $filename ($count sequences in total)\n\n";
   }
   else{
-    print "\nCreated C -> T as well as G -> A converted versions of the FastA file $filename ($count sequences in total)\n\n";
+    close GTOA or die "Failed to close filehandle $!\n";
+    warn "\nCreated C -> T as well as G -> A converted versions of the FastA file $filename ($count sequences in total)\n\n";
   }
   return ($C_to_T_infile,$G_to_A_infile);
 }
 
 sub biTransformFastAFiles_paired_end {
   my ($file,$read_number) = @_;
+
+  if ($gzip){
+    warn "GZIP compression of temporary files is not supported for paired-end FastA data. Continuing to write uncompressed files\n";
+    sleep (2);
+  }
 
   my ($dir,$filename);
   if ($file =~ /\//){
@@ -3930,11 +4214,11 @@ sub biTransformFastAFiles_paired_end {
 
   if ($directional){
     if ($read_number == 1){
-      print "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
+      warn "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
       open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
     }
     elsif ($read_number == 2){
-      print "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
+      warn "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
       open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
     }
     else{
@@ -3942,8 +4226,8 @@ sub biTransformFastAFiles_paired_end {
     }
   }
   else{ # all four strand output
-    print "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
-    print "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
+    warn "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
+    warn "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
     open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
     open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
   }
@@ -3974,7 +4258,7 @@ sub biTransformFastAFiles_paired_end {
     }
 
     ## small check if the sequence seems to be in FastA format
-    die "Input file doesn't seem to be in FastA format at sequence $count: $!\n" unless ($header =~ /^>.*/);
+    die "Input file doesn't seem to be in FastA format at sequence $count: $!\n" unless ($header =~ /^>/);
 
     if ($read_number == 1){
       if ($bowtie2){
@@ -4017,14 +4301,14 @@ sub biTransformFastAFiles_paired_end {
 
   if ($directional){
     if ($read_number == 1){
-      print "\nCreated C -> T converted version of the FastA file $filename ($count sequences in total)\n\n";
+      warn "\nCreated C -> T converted version of the FastA file $filename ($count sequences in total)\n\n";
     }
     else{
-      print "\nCreated G -> A converted version of the FastA file $filename ($count sequences in total)\n\n";
+      warn "\nCreated G -> A converted version of the FastA file $filename ($count sequences in total)\n\n";
     }
   }
   else{
-    print "\nCreated C -> T as well as G -> A converted versions of the FastA file $filename ($count sequences in total)\n\n";
+    warn "\nCreated C -> T as well as G -> A converted versions of the FastA file $filename ($count sequences in total)\n\n";
   }
 
   if ($directional){
@@ -4070,14 +4354,57 @@ sub biTransformFastQFiles {
 
   my $C_to_T_infile = my $G_to_A_infile = $filename;
 
-  $C_to_T_infile =~ s/$/_C_to_T.fastq/;
-  print "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
-  open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
+  if ($pbat){ # PBAT-Seq
+    if ($gzip){
+      $G_to_A_infile =~ s/$/_G_to_A.fastq.gz/;
+    }
+    else{
+      $G_to_A_infile =~ s/$/_G_to_A.fastq/;
+    }
 
-  unless ($directional){
-    $G_to_A_infile =~ s/$/_G_to_A.fastq/;
-    print "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
-    open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+    warn "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
+
+    if ($gzip){
+      open (GTOA,"| gzip -c - > ${temp_dir}${G_to_A_infile}") or die "Can't write to file: $!\n";
+    }
+    else{
+      open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+    }
+  }
+  else{ # directional or non-directional
+    if ($gzip){
+      $C_to_T_infile =~ s/$/_C_to_T.fastq.gz/;
+    }
+    else{
+      $C_to_T_infile =~ s/$/_C_to_T.fastq/;
+    }
+
+    warn "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
+
+    if ($gzip){
+      open (CTOT,"| gzip -c - > ${temp_dir}${C_to_T_infile}") or die "Can't write to file: $!\n";
+    }
+    else{
+      open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n"; # uncompressed option
+    }
+
+    unless ($directional){
+      if ($gzip){
+	$G_to_A_infile =~ s/$/_G_to_A.fastq.gz/;
+      }
+      else{
+	$G_to_A_infile =~ s/$/_G_to_A.fastq/;
+      }
+
+      warn "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
+
+      if ($gzip){
+	open (GTOA,"| gzip -c - > ${temp_dir}${G_to_A_infile}") or die "Can't write to file: $!\n";
+      }
+      else{
+	open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+      }
+    }
   }
 
   my $count = 0;
@@ -4107,26 +4434,43 @@ sub biTransformFastQFiles {
     }
 
     ## small check if the sequence file appears to be a FastQ file
-    if ($identifier !~ /^\@/ or $identifier2 !~ /^\+/){
-      die "Input file doesn't seem to be in FastQ format at sequence $count: $!\n";
+    if ($count == 1){
+      if ($identifier !~ /^\@/ or $identifier2 !~ /^\+/){
+	die "Input file doesn't seem to be in FastQ format at sequence $count: $!\n";
+      }
     }
 
-    my $sequence_C_to_T = $sequence;
-    $sequence_C_to_T =~ tr/C/T/;
-    print CTOT join ('',$identifier,$sequence_C_to_T,$identifier2,$quality_score);
-
-    unless ($directional){
+    if ($pbat){
       my $sequence_G_to_A = $sequence;
       $sequence_G_to_A =~ tr/G/A/;
       print GTOA join ('',$identifier,$sequence_G_to_A,$identifier2,$quality_score);
     }
+    else{ # directional or non-directional
+      my $sequence_C_to_T = $sequence;
+      $sequence_C_to_T =~ tr/C/T/;
+      print CTOT join ('',$identifier,$sequence_C_to_T,$identifier2,$quality_score);
+
+      unless ($directional){
+	my $sequence_G_to_A = $sequence;
+	$sequence_G_to_A =~ tr/G/A/;
+	print GTOA join ('',$identifier,$sequence_G_to_A,$identifier2,$quality_score);
+      }
+    }
   }
 
   if ($directional){
-    print "\nCreated C -> T converted versions of the FastQ file $filename ($count sequences in total)\n\n";
+    close CTOT or die "Failed to close filehandle $!\n";
+    warn "\nCreated C -> T converted version of the FastQ file $filename ($count sequences in total)\n\n";
+  }
+  elsif($pbat){
+    warn "\nCreated G -> A converted version of the FastQ file $filename ($count sequences in total)\n\n";
+    close GTOA or die "Failed to close filehandle $!\n";
+    return ($G_to_A_infile);
   }
   else{
-    print "\nCreated C -> T as well as G -> A converted versions of the FastQ file $filename ($count sequences in total)\n\n";
+    close CTOT or die "Failed to close filehandle $!\n";
+    close GTOA or die "Failed to close filehandle $!\n";
+    warn "\nCreated C -> T as well as G -> A converted versions of the FastQ file $filename ($count sequences in total)\n\n";
   }
 
   return ($C_to_T_infile,$G_to_A_infile);
@@ -4161,31 +4505,53 @@ sub biTransformFastQFiles_paired_end {
   }
 
   my $C_to_T_infile = my $G_to_A_infile = $filename;
-  $C_to_T_infile =~ s/$/_C_to_T.fastq/;
-  $G_to_A_infile =~ s/$/_G_to_A.fastq/;
+
+  if ($gzip){
+    $C_to_T_infile =~ s/$/_C_to_T.fastq.gz/;
+    $G_to_A_infile =~ s/$/_G_to_A.fastq.gz/;
+  }
+  else{
+    $C_to_T_infile =~ s/$/_C_to_T.fastq/;
+    $G_to_A_infile =~ s/$/_G_to_A.fastq/;
+  }
 
   if ($directional){
     if ($read_number == 1){
-      print "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
-      open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
+      warn "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
+      if ($gzip){
+	open (CTOT,"| gzip -c - > ${temp_dir}${C_to_T_infile}") or die "Can't write to file: $!\n";
+      }
+      else{
+	open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
+      }
     }
     elsif ($read_number == 2){
-      print "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
-      open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+      warn "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
+      if ($gzip){
+	open (GTOA,"| gzip -c - > ${temp_dir}${G_to_A_infile}") or die "Can't write to file: $!\n";
+      }
+      else{
+	open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+      }
     }
     else{
       die "Read number needs to be 1 or 2, but was $read_number!\n\n";
     }
   }
   else{
-    print "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
-    print "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
-    open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
-    open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+    warn "Writing a C -> T converted version of the input file $filename to $temp_dir$C_to_T_infile\n";
+    warn "Writing a G -> A converted version of the input file $filename to $temp_dir$G_to_A_infile\n";
+    if ($gzip){
+      open (CTOT,"| gzip -c - > ${temp_dir}${C_to_T_infile}") or die "Can't write to file: $!\n";
+      open (GTOA,"| gzip -c - > ${temp_dir}${G_to_A_infile}") or die "Can't write to file: $!\n";
+    }
+    else{
+      open (CTOT,'>',"$temp_dir$C_to_T_infile") or die "Couldn't write to file $!\n";
+      open (GTOA,'>',"$temp_dir$G_to_A_infile") or die "Couldn't write to file $!\n";
+    }
   }
 
   my $count = 0;
-
   while (1){
     my $identifier = <IN>;
     my $sequence = <IN>;
@@ -4206,8 +4572,10 @@ sub biTransformFastQFiles_paired_end {
     $sequence= uc$sequence; # make input file case insensitive
 
     ## small check if the sequence file appears to be a FastQ file
-    if ($identifier !~ /^\@/ or $identifier2 !~ /^\+/){
-      die "Input file doesn't seem to be in FastQ format at sequence $count: $!\n";
+    if ($count == 1){
+      if ($identifier !~ /^\@/ or $identifier2 !~ /^\+/){
+	die "Input file doesn't seem to be in FastQ format at sequence $count: $!\n";
+      }
     }
     my $sequence_C_to_T = my $sequence_G_to_A = $sequence;
 
@@ -4222,7 +4590,7 @@ sub biTransformFastQFiles_paired_end {
     elsif ($read_number == 2){
       if ($bowtie2){
 	$identifier =~ s/$/\/2\/2/;
-       }
+      }
       else{
 	$identifier =~ s/$/\/2/;
       }
@@ -4250,27 +4618,165 @@ sub biTransformFastQFiles_paired_end {
 
   if ($directional){
     if ($read_number == 1){
-      print "\nCreated C -> T converted version of the FastQ file $filename ($count sequences in total)\n\n";
+      warn "\nCreated C -> T converted version of the FastQ file $filename ($count sequences in total)\n\n";
     }
     else{
-      print "\nCreated G -> A converted version of the FastQ file $filename ($count sequences in total)\n\n";
+      warn "\nCreated G -> A converted version of the FastQ file $filename ($count sequences in total)\n\n";
     }
   }
   else{
-    print "\nCreated C -> T as well as G -> A converted versions of the FastQ file $filename ($count sequences in total)\n\n";
+    warn "\nCreated C -> T as well as G -> A converted versions of the FastQ file $filename ($count sequences in total)\n\n";
   }
   if ($directional){
     if ($read_number == 1){
+      close CTOT or die "Failed to close filehandle $!\n";
       return ($C_to_T_infile);
     }
     else{
+      close GTOA or die "Failed to close filehandle $!\n";
       return ($G_to_A_infile);
     }
   }
   else{
+    close CTOT or die "Failed to close filehandle $!\n";
+    close GTOA or die "Failed to close filehandle $!\n";
     return ($C_to_T_infile,$G_to_A_infile);
   }
 }
+
+
+### SPECIAL BOWTIE 1 PAIRED-END FORMAT FOR GZIPPED OUTPUT FILES
+
+sub biTransformFastQFiles_paired_end_bowtie1_gzip {
+  my ($file_1,$file_2) = @_;
+  my ($dir,$filename);
+
+  if ($file_1 =~ /\//){
+    ($dir,$filename) = $file_1 =~ m/(.*\/)(.*)$/;
+  }
+  else{
+    $filename = $file_1;
+  }
+
+  ### gzipped version of infile 1
+  if ($file_1 =~ /\.gz$/){
+    open (IN_1,"zcat $file_1 |") or die "Couldn't read from file $file_1: $!\n";
+  }
+  else{
+    open (IN_1,$file_1) or die "Couldn't read from file $file_1: $!\n";
+  }
+  ### gzipped version of infile 2
+  if ($file_2 =~ /\.gz$/){
+    open (IN_2,"zcat $file_2 |") or die "Couldn't read from file $file_2: $!\n";
+  }
+  else{
+    open (IN_2,$file_2) or die "Couldn't read from file $file_2: $!\n";
+  }
+
+
+  if ($skip){
+    warn "Skipping the first $skip reads from $file_1 and $file_2\n";
+    sleep (1);
+  }
+  if ($upto){
+    warn "Processing reads up to sequence no. $upto from $file_1 and $file_2\n";
+    sleep (1);
+  }
+
+  my $CT_plus_GA_infile = my $GA_plus_CT_infile = $filename;
+
+  $CT_plus_GA_infile =~ s/$/.CT_plus_GA.fastq.gz/;
+  $GA_plus_CT_infile =~ s/$/.GA_plus_CT.fastq.gz/;
+
+  warn "Writing a C -> T converted version of $file_1 and a G -> A converted version of $file_2 to $temp_dir$CT_plus_GA_infile\n";
+  open (CTPLUSGA,"| gzip -c - > ${temp_dir}${CT_plus_GA_infile}") or die "Can't write to file: $!\n";
+  # open (CTPLUSGA,'>',"$temp_dir$CT_plus_GA_infile") or die "Couldn't write to file $!\n";
+
+  unless ($directional){
+    print "Writing a G -> A converted version of $file_1 and a C -> T converted version of $file_2 to $temp_dir$GA_plus_CT_infile\n";
+    open (GAPLUSCT,"| gzip -c - > ${temp_dir}${GA_plus_CT_infile}") or die "Can't write to file: $!\n";
+  }
+
+  ### for Bowtie 1 we need to write a single gzipped file with 1 line per pair of sequences in the the following format:
+  ### <seq-ID>     <sequence #1 mate>     <quality #1 mate>     <sequence #2 mate>     <quality #2 mate>
+
+  my $count = 0;
+  while (1){
+    my $identifier_1 = <IN_1>;
+    my $sequence_1 = <IN_1>;
+    my $identifier2_1 = <IN_1>;
+    my $quality_score_1 = <IN_1>;
+
+    my $identifier_2 = <IN_2>;
+    my $sequence_2 = <IN_2>;
+    my $identifier2_2 = <IN_2>;
+    my $quality_score_2 = <IN_2>;
+
+    last unless ($identifier_1 and $sequence_1 and $identifier2_1 and $quality_score_1 and $identifier_2 and $sequence_2 and $identifier2_2 and $quality_score_2);
+
+    ++$count;
+
+    ## small check if the sequence file appears to be a FastQ file
+    if ($count == 1){
+      if ($identifier_1 !~ /^\@/ or $identifier2_1 !~ /^\+/){
+	die "Input file 1 doesn't seem to be in FastQ format at sequence $count: $!\n";
+      }
+      if ($identifier_2 !~ /^\@/ or $identifier2_2 !~ /^\+/){
+	die "Input file 2 doesn't seem to be in FastQ format at sequence $count: $!\n";
+      }
+    }
+
+    $identifier_1 = fix_IDs($identifier_1); # this is to avoid problems with truncated read ID when they contain white spaces
+    chomp $identifier_1;
+    chomp $sequence_1;
+    chomp $sequence_2;
+    chomp $quality_score_1;
+    chomp $quality_score_2;
+
+    $identifier_1 =~ s/^\@//;
+    $identifier_1 =~ s/$/\/1/; #adding an extra /1 to the end which is being removed by Bowtie otherwise (which leads to no sequences alignments whatsoever)
+
+    if ($skip){
+      next unless ($count > $skip);
+    }
+    if ($upto){
+      last if ($count > $upto);
+    }
+
+    $sequence_1 = uc$sequence_1; # make input file 1 case insensitive
+    $sequence_2 = uc$sequence_2; # make input file 2 case insensitive
+
+    # print "$identifier_1\t$sequence_1\t$quality_score_1\t$sequence_2\t$quality_score_2\n";
+    my $sequence_1_C_to_T = $sequence_1;
+    my $sequence_2_G_to_A = $sequence_2;
+    $sequence_1_C_to_T =~ tr/C/T/;
+    $sequence_2_G_to_A =~ tr/G/A/;
+
+    print CTPLUSGA "$identifier_1\t$sequence_1_C_to_T\t$quality_score_1\t$sequence_2_G_to_A\t$quality_score_2\n";
+
+    unless ($directional){
+      my $sequence_1_G_to_A = $sequence_1;
+      my $sequence_2_C_to_T = $sequence_2;
+      $sequence_1_G_to_A =~ tr/G/A/;
+      $sequence_2_C_to_T =~ tr/C/T/;
+      print GAPLUSCT "$identifier_1\t$sequence_1_G_to_A\t$quality_score_1\t$sequence_2_C_to_T\t$quality_score_2\n";
+    }
+  }
+
+  close CTPLUSGA or die "Couldn't close filehandle\n";
+  warn "\nCreated C -> T converted version of FastQ file '$file_1' and G -> A converted version of FastQ file '$file_2' ($count sequences in total)\n";
+
+  if ($directional){
+    warn "\n";
+    return ($CT_plus_GA_infile);
+  }
+  else{
+    close GAPLUSCT or die "Couldn't close filehandle\n";
+    warn "Created G -> A converted version of FastQ file '$file_1' and C -> T converted version of FastQ file '$file_2' ($count sequences in total)\n\n";
+    return ($CT_plus_GA_infile,$GA_plus_CT_infile);
+  }
+}
+
 
 sub fix_IDs{
   my $id = shift;
@@ -4457,10 +4963,10 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastA {
   my ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2) = @_;
 
   if ($directional){
-    print "Input files are $C_to_T_infile_1 and $G_to_A_infile_2 (FastA)\n";
+    warn "Input files are $C_to_T_infile_1 and $G_to_A_infile_2 (FastA)\n";
   }
   else{
-    print "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 and $C_to_T_infile_2 and $G_to_A_infile_2 (FastA)\n";
+    warn "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 and $C_to_T_infile_2 and $G_to_A_infile_2 (FastA)\n";
   }
 
   ## Now starting up to 4 instances of Bowtie feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in the
@@ -4523,7 +5029,7 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastA {
     }
     # otherwise we just initialise last_seq_id and last_lines as undefined
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_lines\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_lines\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line_1} = undef;
       $fh->{last_line_2} = undef;
@@ -4536,10 +5042,10 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastA {
 sub paired_end_align_fragments_to_bisulfite_genome_fastA_bowtie2 {
   my ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2) = @_;
   if ($directional){
-    print "Input files are $C_to_T_infile_1 and $G_to_A_infile_2 (FastA)\n";
+    warn "Input files are $C_to_T_infile_1 and $G_to_A_infile_2 (FastA)\n";
   }
   else{
-    print "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 and $C_to_T_infile_2 and $G_to_A_infile_2 (FastA)\n";
+    warn "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 and $C_to_T_infile_2 and $G_to_A_infile_2 (FastA)\n";
   }
 
   ## Now starting up to 4 instances of Bowtie feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in the
@@ -4613,7 +5119,7 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastA_bowtie2 {
     }
     # otherwise we just initialise last_seq_id and last_lines as undefined
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_lines\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_lines\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line_1} = undef;
       $fh->{last_line_2} = undef;
@@ -4625,16 +5131,20 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastA_bowtie2 {
 
 sub paired_end_align_fragments_to_bisulfite_genome_fastQ {
   my ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2) = @_;
+
   if ($directional){
-    print "Input files are $C_to_T_infile_1 $G_to_A_infile_2 (FastQ)\n";
+    warn "Input file is $C_to_T_infile_1 (FastQ)\n";
+  }
+  elsif($pbat){
+    warn "Input file is $G_to_A_infile_1 (FastQ; PBAT-Seq)\n";
   }
   else{
-    print "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 and $C_to_T_infile_2 and $G_to_A_infile_2 (FastQ)\n";
+    warn "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 (FastQ)\n";
   }
 
   ## Now starting up to 4 instances of Bowtie feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in the
   ## data structure above
-  if ($directional){
+  if ($directional or $pbat){
     warn "Now running 2 instances of Bowtie against the bisulfite genome of $genome_folder with the specified options: $bowtie_options\n\n";
   }
   else{
@@ -4643,12 +5153,12 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastQ {
 
   foreach my $fh (@fhs) {
 
-    if ($directional){
+    if ($directional or $pbat){
       unless ($fh->{inputfile_1}){
 	$fh->{last_seq_id} = undef;
 	$fh->{last_line_1} = undef;
 	$fh->{last_line_2} = undef;
-	next;
+	next; # skipping unwanted filehandles
       }
     }
 
@@ -4660,8 +5170,15 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastQ {
       $bt_options .= ' --nofw';
     }
 
-    warn "Now starting a Bowtie paired-end alignment for $fh->{name} (reading in sequences from $temp_dir$fh->{inputfile_1} and $temp_dir$fh->{inputfile_2}, with the options: $bt_options))\n";
-    open ($fh->{fh},"$path_to_bowtie $bt_options $fh->{bisulfiteIndex} -1 $temp_dir$fh->{inputfile_1} -2 $temp_dir$fh->{inputfile_2} |") or die "Can't open pipe to bowtie: $!";
+    if ($gzip){
+      warn "Now starting a Bowtie paired-end alignment for $fh->{name} (reading in sequences from ${temp_dir}$fh->{inputfile_1}, with the options: $bt_options)\n";
+      open ($fh->{fh},"zcat ${temp_dir}$fh->{inputfile_1} | $path_to_bowtie $bt_options $fh->{bisulfiteIndex} --12 - |") or die "Can't open pipe to bowtie: $!";
+    }
+    else{
+      warn "Now starting a Bowtie paired-end alignment for $fh->{name} (reading in sequences from ${temp_dir}$fh->{inputfile_1} and ${temp_dir}$fh->{inputfile_2}, with the options: $bt_options))\n";
+      sleep(5);
+      open ($fh->{fh},"$path_to_bowtie $bt_options $fh->{bisulfiteIndex} -1 $temp_dir$fh->{inputfile_1} -2 $temp_dir$fh->{inputfile_2} |") or die "Can't open pipe to bowtie: $!";
+    }
 
     my $line_1 = $fh->{fh}->getline();
     my $line_2 = $fh->{fh}->getline();
@@ -4693,7 +5210,7 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastQ {
 
     # otherwise we just initialise last_seq_id and last_lines as undefined
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_lines\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_lines\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line_1} = undef;
       $fh->{last_line_2} = undef;
@@ -4706,10 +5223,10 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastQ {
 sub paired_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 {
   my ($C_to_T_infile_1,$G_to_A_infile_1,$C_to_T_infile_2,$G_to_A_infile_2) = @_;
   if ($directional){
-    print "Input files are $C_to_T_infile_1 and $G_to_A_infile_2 (FastQ)\n";
+    warn "Input files are $C_to_T_infile_1 and $G_to_A_infile_2 (FastQ)\n";
   }
   else{
-    print "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 and $C_to_T_infile_2 and $G_to_A_infile_2 (FastQ)\n";
+    warn "Input files are $C_to_T_infile_1 and $G_to_A_infile_1 and $C_to_T_infile_2 and $G_to_A_infile_2 (FastQ)\n";
   }
 
   ## Now starting up 4 instances of Bowtie 2 feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in the
@@ -4784,7 +5301,7 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 {
 
     # otherwise we just initialise last_seq_id and last_lines as undefined
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_lines\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_lines\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line_1} = undef;
       $fh->{last_line_2} = undef;
@@ -4798,10 +5315,10 @@ sub paired_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 {
 sub single_end_align_fragments_to_bisulfite_genome_fastA {
   my ($C_to_T_infile,$G_to_A_infile) = @_;
   if ($directional){
-    print "Input file is $C_to_T_infile (FastA)\n";
+    warn "Input file is $C_to_T_infile (FastA)\n";
   }
   else{
-    print "Input files are $C_to_T_infile and $G_to_A_infile (FastA)\n";
+    warn "Input files are $C_to_T_infile and $G_to_A_infile (FastA)\n";
   }
 
   ## Now starting up to 4 instances of Bowtie feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in
@@ -4824,7 +5341,12 @@ sub single_end_align_fragments_to_bisulfite_genome_fastA {
     }
 
     warn "Now starting the Bowtie aligner for $fh->{name} (reading in sequences from $temp_dir$fh->{inputfile} with options: $bt_options)\n";
-    open ($fh->{fh},"$path_to_bowtie $bt_options $fh->{bisulfiteIndex} $temp_dir$fh->{inputfile} |") or die "Can't open pipe to bowtie: $!";
+    if ($gzip){
+      open ($fh->{fh},"zcat $temp_dir$fh->{inputfile} | $path_to_bowtie $bt_options $fh->{bisulfiteIndex} - |") or die "Can't open pipe to bowtie: $!";
+    }
+    else{
+      open ($fh->{fh},"$path_to_bowtie $bt_options $fh->{bisulfiteIndex} $temp_dir$fh->{inputfile} |") or die "Can't open pipe to bowtie: $!"; # command for uncompressed data
+    }
 
     # if Bowtie produces an alignment we store the first line of the output
     $_ = $fh->{fh}->getline();
@@ -4837,7 +5359,7 @@ sub single_end_align_fragments_to_bisulfite_genome_fastA {
     }
     # otherwise we just initialise last_seq_id and last_line as undefined
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_line\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_line\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line} = undef;
     }
@@ -4848,10 +5370,10 @@ sub single_end_align_fragments_to_bisulfite_genome_fastA {
 sub single_end_align_fragments_to_bisulfite_genome_fastA_bowtie2 {
   my ($C_to_T_infile,$G_to_A_infile) = @_;
   if ($directional){
-    print "Input file is $C_to_T_infile (FastA)\n";
+    warn "Input file is $C_to_T_infile (FastA)\n";
   }
   else{
-    print "Input files are $C_to_T_infile and $G_to_A_infile (FastA)\n";
+    warn "Input files are $C_to_T_infile and $G_to_A_infile (FastA)\n";
   }
 
   ## Now starting up to 4 instances of Bowtie feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in
@@ -4897,7 +5419,7 @@ sub single_end_align_fragments_to_bisulfite_genome_fastA_bowtie2 {
     }
     # otherwise we just initialise last_seq_id and last_line as undefinded. This should only happen at the end of a file for Bowtie 2 output
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_line\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_line\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line} = undef;
     }
@@ -4909,15 +5431,19 @@ sub single_end_align_fragments_to_bisulfite_genome_fastA_bowtie2 {
 sub single_end_align_fragments_to_bisulfite_genome_fastQ {
   my ($C_to_T_infile,$G_to_A_infile) = @_;
   if ($directional){
-    print "Input file is $C_to_T_infile (FastQ)\n";
+    warn "Input file is $C_to_T_infile (FastQ)\n";
+  }
+  elsif($pbat){
+    warn "Input file is $G_to_A_infile (FastQ)\n";
   }
   else{
-    print "Input files are $C_to_T_infile and $G_to_A_infile (FastQ)\n";
+    warn "Input files are $C_to_T_infile and $G_to_A_infile (FastQ)\n";
   }
+
 
   ## Now starting up to 4 instances of Bowtie feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in
   ## the data structure above
-  if ($directional){
+  if ($directional or $pbat){
     warn "Now running 2 instances of Bowtie against the bisulfite genome of $genome_folder with the specified options: $bowtie_options\n\n";
   }
   else{
@@ -4934,7 +5460,14 @@ sub single_end_align_fragments_to_bisulfite_genome_fastQ {
     }
 
     warn "Now starting the Bowtie aligner for $fh->{name} (reading in sequences from $temp_dir$fh->{inputfile} with options: $bt_options)\n";
-    open ($fh->{fh},"$path_to_bowtie $bowtie_options $fh->{bisulfiteIndex} $temp_dir$fh->{inputfile} |") or die "Can't open pipe to bowtie: $!";
+    sleep (5);
+
+    if ($gzip){
+      open ($fh->{fh},"zcat $temp_dir$fh->{inputfile} | $path_to_bowtie $bowtie_options $fh->{bisulfiteIndex} - |") or die "Can't open pipe to bowtie: $!";
+    }
+    else{
+      open ($fh->{fh},"$path_to_bowtie $bowtie_options $fh->{bisulfiteIndex} $temp_dir$fh->{inputfile} |") or die "Can't open pipe to bowtie: $!"; # command for uncompressed data
+    }
 
     # if Bowtie produces an alignment we store the first line of the output
     $_ = $fh->{fh}->getline();
@@ -4947,7 +5480,7 @@ sub single_end_align_fragments_to_bisulfite_genome_fastQ {
     }
     # otherwise we just initialise last_seq_id and last_line as undefined
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_line\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_line\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line} = undef;
     }
@@ -4956,12 +5489,13 @@ sub single_end_align_fragments_to_bisulfite_genome_fastQ {
 
 ### Bowtie 2 | SINGLE-END | FASTQ
 sub single_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 {
+
   my ($C_to_T_infile,$G_to_A_infile) = @_;
   if ($directional){
-    print "Input file is $C_to_T_infile (FastQ)\n\n";
+    warn "Input file is $C_to_T_infile (FastQ)\n\n";
   }
   else{
-    print "Input files are $C_to_T_infile and $G_to_A_infile (FastQ)\n\n";
+    warn "Input files are $C_to_T_infile and $G_to_A_infile (FastQ)\n\n";
   }
 
   ## Now starting up to 4 instances of Bowtie 2 feeding in the converted sequence files and reading in the first line of the bowtie output, and storing it in
@@ -4972,8 +5506,7 @@ sub single_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 {
   else{
     warn "Now running 4 individual instances of Bowtie 2 against the bisulfite genome of $genome_folder with the specified options: $bowtie_options\n\n";
   }
-
-  foreach my $fh (@fhs) {
+   foreach my $fh (@fhs) {
     my $bt2_options = $bowtie_options;
     if ($fh->{name} eq 'CTreadCTgenome' or $fh->{name} eq 'GAreadGAgenome'){
       $bt2_options .= ' --norc'; ### ensuring the alignments are only reported in a sensible manner
@@ -4988,6 +5521,8 @@ sub single_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 {
     ### Bowtie 2 outputs out SAM format, so we need to skip everything until the first sequence
     while (1){
       $_ = $fh->{fh}->getline();
+      # warn "$_\n";
+      # sleep(1);
       if ($_) {
 	last unless ($_ =~ /^\@/); # SAM headers start with @
       }
@@ -5003,10 +5538,11 @@ sub single_end_align_fragments_to_bisulfite_genome_fastQ_bowtie2 {
       $fh->{last_seq_id} = $id;
       $fh->{last_line} = $_;
       warn "Found first alignment:\t$fh->{last_line}\n";
+      # warn "storing $id and\n$_\n";
     }
     # otherwise we just initialise last_seq_id and last_line as undefined. This should only happen at the end of a file for Bowtie 2 output
     else {
-      print "Found no alignment, assigning undef to last_seq_id and last_line\n";
+      warn "Found no alignment, assigning undef to last_seq_id and last_line\n";
       $fh->{last_seq_id} = undef;
       $fh->{last_line} = undef;
     }
@@ -5087,6 +5623,52 @@ sub reset_counters_and_fhs{
 	   );
     }
   }
+  elsif($pbat){
+    if ($filename =~ ','){ # paired-end files
+      @fhs=(
+	    { name => 'CTreadCTgenome',
+	      strand_identity => 'con ori forward',
+	      bisulfiteIndex => $CT_index_basename,
+	      seen => 0,
+	      wrong_strand => 0,
+	    },
+	    { name => 'CTreadGAgenome',
+	      strand_identity => 'con ori reverse',
+	      bisulfiteIndex => $GA_index_basename,
+	      seen => 0,
+	      wrong_strand => 0,
+	    },
+	    { name => 'GAreadCTgenome',
+	      strand_identity => 'compl ori con forward',
+	      bisulfiteIndex => $CT_index_basename,
+	      seen => 0,
+	      wrong_strand => 0,
+	    },
+	    { name => 'GAreadGAgenome',
+	    strand_identity => 'compl ori con reverse',
+	      bisulfiteIndex => $GA_index_basename,
+	      seen => 0,
+	      wrong_strand => 0,
+	    },
+	   );
+    }
+    else{ # single-end files
+      @fhs=(
+	    { name => 'GAreadCTgenome',
+	      strand_identity => 'compl ori con forward',
+	      bisulfiteIndex => $CT_index_basename,
+	      seen => 0,
+	      wrong_strand => 0,
+	    },
+	    { name => 'GAreadGAgenome',
+	      strand_identity => 'compl ori con reverse',
+	      bisulfiteIndex => $GA_index_basename,
+	      seen => 0,
+	      wrong_strand => 0,
+	    },
+	   );
+    }
+  }
   else{
     @fhs=(
 	  { name => 'CTreadCTgenome',
@@ -5156,6 +5738,11 @@ sub process_command_line{
   my $temp_dir;
   my $rdg;
   my $rfg;
+  my $non_bs_mm;
+  my $samtools_path;
+  my $bam;
+  my $gzip;
+  my $pbat;
 
   my $command_line = GetOptions ('help|man' => \$help,
 				 '1=s' => \$mates1,
@@ -5192,6 +5779,11 @@ sub process_command_line{
 				 'temp_dir=s' => \$temp_dir,
 				 'rdg=s' => \$rdg,
 				 'rfg=s' => \$rfg,
+				 'non_bs_mm' => \$non_bs_mm,
+				 'samtools_path=s' => \$samtools_path,
+				 'bam' => \$bam,
+				 'gzip' => \$gzip,
+				 'pbat' => \$pbat,
 				);
 
 
@@ -5210,7 +5802,8 @@ sub process_command_line{
 
           Bismark - Bisulfite Mapper and Methylation Caller.
 
-   Bismark Version: $bismark_version Copyright 2010-12 Felix Krueger, Babraham Bioinformatics
+                       Bismark Version: $bismark_version 
+        Copyright 2010-13 Felix Krueger, Babraham Bioinformatics
               www.bioinformatics.babraham.ac.uk/projects/
 
 
@@ -5257,6 +5850,57 @@ VERSION
       warn "Path to Bowtie specified as: $path_to_bowtie\n";
     }
   }
+
+  ### OUTPUT REQUESTED AS BAM FILE
+  if ($bam){
+    if ($vanilla){
+      die "Specifying BAM output is not compatible with \"--vanilla\" format. Please respecify\n\n";
+    }
+
+    ### PATH TO SAMTOOLS
+    if (defined $samtools_path){
+      # if Samtools was specified as full command
+      if ($samtools_path =~ /samtools$/){
+	if (-e $samtools_path){
+	  # Samtools executable found
+	}
+	else{
+	  die "Could not find an installation of Samtools at the location $samtools_path. Please respecify\n";
+	}
+      }
+      else{
+	unless ($samtools_path =~ /\/$/){
+	  $samtools_path =~ s/$/\//;
+	}
+	$samtools_path .= 'samtools';
+   	if (-e $samtools_path){
+	  # Samtools executable found
+	}
+	else{
+	  die "Could not find an installation of Samtools at the location $samtools_path. Please respecify\n";
+	}
+      }
+
+      warn "Alignments will be written out in BAM format. Samtools path provided as: '$samtools_path'\n";
+      $bam = 1;
+    }
+    # Check whether Samtools is in the PATH if no path was supplied by the user
+    else{
+      if (!system "which samtools >/dev/null 2>&1"){ # STDOUT is binned, STDERR is redirected to STDOUT. Returns 0 if samtools is in the PATH
+	$samtools_path = `which samtools`;
+	chomp $samtools_path;
+	warn "Alignments will be written out in BAM format. Samtools found here: '$samtools_path'\n";
+	$bam = 1;
+      }
+    }
+
+    unless (defined $samtools_path){
+      $bam = 2;
+      warn "Did not find Samtools on the system. Alignments will be compressed with GZIP instead (.sam.gz)\n";
+    }
+    sleep (1);
+  }
+
 
   ####################################
   ### PROCESSING ARGUMENTS
@@ -5493,23 +6137,40 @@ VERSION
   }
 
   ### BOWTIE 2 READ GAP OPTIONS
+  my ($insertion_open,$insertion_extend,$deletion_open,$deletion_extend);
+
   if ($rdg){
     die "The option '--rdg <int1>,<int2>' is only available when using Bowtie 2\n\n" unless ($bowtie2);
-    unless ($rdg =~ /^.+,.+$/){
+    if ($rdg =~ /^(\d+),(\d+)$/){
+      $deletion_open = $1;
+      $deletion_extend = $2;
+    }
+    else{
       die "The option '--rdg <int1>,<int2>' needs to be in the format <integer,integer> . Please consult \"setting up functions\" in the Bowtie 2 manual for further information\n\n";
     }
     push @bowtie_options,"--rdg $rdg";
+  }
+  else{
+    $deletion_open = 5;
+    $deletion_extend = 3;
   }
 
   ### BOWTIE 2 REFERENCE GAP OPTIONS
   if ($rfg){
     die "The option '--rfg <int1>,<int2>' is only available when using Bowtie 2\n\n" unless ($bowtie2);
-    unless ($rfg =~ /^.+,.+$/){
+    if ($rfg =~ /^(\d+),(\d+)$/){
+      $insertion_open = $1;
+      $insertion_extend = $2;
+    }
+    else{
       die "The option '--rfg <int1>,<int2>' needs to be in the format <integer,integer> . Please consult \"setting up functions\" in the Bowtie 2 manual for further information\n\n";
     }
     push @bowtie_options,"--rfg $rfg";
   }
-
+  else{
+    $insertion_open = 5;
+    $insertion_extend = 3;
+  }
 
 
   ### BOWTIE 2 PARALLELIZATION OPTIONS
@@ -5646,14 +6307,24 @@ VERSION
   ### STRAND-SPECIFIC LIBRARIES
   my $directional;
   if ($non_directional){
-    print "Library was specified to be not strand-specific (non-directional), therefore alignments to all four possible bisulfite strands (OT, CTOT, OB and CTOB) will be reported.\n";
+    die "A library can only be specified to be either non-directional or a PBAT-Seq library. Please respecify!\n\n" if ($pbat);
+    warn "Library was specified to be not strand-specific (non-directional), therefore alignments to all four possible bisulfite strands (OT, CTOT, OB and CTOB) will be reported\n";
+    sleep (3);
+    $directional = 0;
+  }
+  elsif($pbat){
+    die "The option --pbat is currently not compatible with --gzip. Please run alignments with uncompressed temporary files, i.e. lose the option --gzip\n" if ($gzip);
+    die "The option --pbat is currently not working for Bowtie 2. Please run alignments in default (i.e. Bowtie 1) mode!\n" if ($bowtie2);
+    die "The option --pbat is currently only working with FastQ files. Please respecify (i.e. lose the option -f)!\n" if ($fasta);
+
+    warn "Library was specified as PBAT-Seq (Post-Bisulfite Adapter Tagging), only performing alignments to the complementary strands (CTOT and CTOB)\n";
     sleep (3);
     $directional = 0;
   }
   else{
-    print "Library is assumed to be strand-specific (directional), alignments to strands complementary to the original top or bottom strands will be ignored (i.e. not performed!).\n";
+    warn "Library is assumed to be strand-specific (directional), alignments to strands complementary to the original top or bottom strands will be ignored (i.e. not performed!)\n";
     sleep (3);
-    $directional = 1; # Changed this to being the default behaviour
+    $directional = 1; # default behaviour
   }
 
   ### UNMAPPED SEQUENCE OUTPUT
@@ -5722,8 +6393,14 @@ VERSION
     $temp_dir = '';
   }
 
+  ### OPTIONAL NON-BS MISMATCH OUTPUT AS EXTRA COLUMN IN SAM FILE
+  if ($non_bs_mm){
+    if ($vanilla){
+      die "Option '--non_bs_mm' may only be specified for output in SAM format. Please respecify!\n";
+    }
+  }
 
-  return ($genome_folder,$CT_index_basename,$GA_index_basename,$path_to_bowtie,$sequence_format,$bowtie_options,$directional,$unmapped,$multi_map,$phred64,$solexa,$output_dir,$bowtie2,$vanilla,$sam_no_hd,$skip,$qupto,$temp_dir);
+  return ($genome_folder,$CT_index_basename,$GA_index_basename,$path_to_bowtie,$sequence_format,$bowtie_options,$directional,$unmapped,$multi_map,$phred64,$solexa,$output_dir,$bowtie2,$vanilla,$sam_no_hd,$skip,$qupto,$temp_dir,$non_bs_mm,$insertion_open,$insertion_extend,$deletion_open,$deletion_extend,$gzip,$bam,$samtools_path,$pbat);
 }
 
 
@@ -5750,7 +6427,14 @@ sub single_end_SAM_output{
   my $methcall          = $methylation_call_params->{$id}->{methylation_call};
   my $read_conversion   = $methylation_call_params->{$id}->{read_conversion};
   my $genome_conversion = $methylation_call_params->{$id}->{genome_conversion};
-  my $number_of_mismatches = $methylation_call_params->{$id}->{number_of_mismatches};	
+  my $number_of_mismatches;
+  if ($bowtie2){
+    $number_of_mismatches= $methylation_call_params->{$id}->{alignment_score};	
+  }
+  else{
+    $number_of_mismatches= $methylation_call_params->{$id}->{number_of_mismatches};
+  }
+
   ### This is a description of the bitwise FLAG field which needs to be set for the SAM file taken from: "The SAM Format Specification (v1.4-r985), September 7, 2011"
   ## FLAG: bitwise FLAG. Each bit is explained in the following table:
   ## Bit    Description                                                Comment                                Value
@@ -5870,10 +6554,76 @@ sub single_end_SAM_output{
 
   #####
 
-  # SAM format: QNAME, FLAG, RNAME, 1-based POS, MAPQ, CIGAR, RNEXT, PNEXT, TLEN, SEQ, QUAL, optional fields
-  print OUT join("\t",($id,$flag,$chr,$start,$mapq,$cigar,$rnext,$pnext,$tlen,$actual_seq,$qual,$NM_tag,$XX_tag,$XM_tag,$XR_tag,$XG_tag)),"\n";
-}
+  # Optionally calculating number of mismatches for Bowtie 2 alignments
 
+  if ($non_bs_mm) {
+    if ($bowtie2) {
+
+      $number_of_mismatches =~ s/-//; # removing the minus sign	
+	
+	### if Bowtie 2 was used we need to analyse the CIGAR string whether the read contained any indels to determine the number of mismatches
+	if ($cigar =~ /(D|I)/) {
+	  # warn "$cigar\n";
+	  
+	  # parsing CIGAR string
+	  my @len = split (/\D+/,$cigar); # storing the length per operation
+	  my @ops = split (/\d+/,$cigar); # storing the operation
+	  shift @ops;		# remove the empty first element
+	  die "CIGAR string contained a non-matching number of lengths and operations\n" unless (scalar @len == scalar @ops);
+	
+	  foreach (0..$#len) {
+	    if ($ops[$_] eq 'M') {
+	      # warn "skipping\n";
+	      next;		# irrelevant
+	    }
+	    elsif ($ops[$_] eq 'I') {	# insertion in the read sequence
+	      $number_of_mismatches -= $insertion_open;
+	      $number_of_mismatches -= $len[$_] * $insertion_extend;
+	      # warn "Insertion: Subtracting $ops[$_], length $len[$_], open: $insertion_open, extend: $insertion_extend\n";
+	    }
+	    elsif ($ops[$_] eq 'D') {	# deletion in the read sequence
+	      $number_of_mismatches -= $deletion_open;
+	      $number_of_mismatches -= $len[$_] * $deletion_extend;
+	      # warn "Deletion: Subtracting $ops[$_], length $len[$_], open: $deletion_open, extend: $deletion_extend\n";
+	    }
+	    elsif ($cigar =~ tr/[NSHPX=]//) {	# if these (for standard mapping) illegal characters exist we die
+	      die "The CIGAR string contained illegal CIGAR operations in addition to 'M', 'I' and 'D': $cigar\n";
+	    }
+	    else {
+	      die "The CIGAR string contained undefined CIGAR operations in addition to 'M', 'I' and 'D': $cigar\n";
+	    }
+	  }
+	  # warn "Alignment score $number_of_mismatches\n";
+	  # print "Mismatches $number_of_mismatches\n\n";
+	}
+      ### Now we have InDel corrected alignment scores
+
+      ### if the actual sequence contained Ns we need to adjust the number of mismatches. Ns receive a penalty of -1, but normal mismatches receive -6. This might still break if the
+      ### sequence contained more than 5 Ns, but this should occur close to never
+
+      my $seq_N_count = $number_of_mismatches % 6; # modulo 6 will return the integer rest after the division
+      # warn "N count: $seq_N_count\n";
+      $number_of_mismatches = int ($number_of_mismatches / 6) + $seq_N_count;
+      # warn "MM    $number_of_mismatches\n";
+    }
+  }
+
+  ####
+
+  my $XA_tag = "XA:Z:$number_of_mismatches";
+
+  #####
+
+  # SAM format: QNAME, FLAG, RNAME, 1-based POS, MAPQ, CIGAR, RNEXT, PNEXT, TLEN, SEQ, QUAL, optional fields
+  ### optionally print number of non-bisulfite mismatches
+  if ($non_bs_mm){
+    print OUT join("\t",($id,$flag,$chr,$start,$mapq,$cigar,$rnext,$pnext,$tlen,$actual_seq,$qual,$NM_tag,$XX_tag,$XM_tag,$XR_tag,$XG_tag,$XA_tag)),"\n";
+  }
+  else{ # default
+    # SAM format: QNAME, FLAG, RNAME, 1-based POS, MAPQ, CIGAR, RNEXT, PNEXT, TLEN, SEQ, QUAL, optional fields
+    print OUT join("\t",($id,$flag,$chr,$start,$mapq,$cigar,$rnext,$pnext,$tlen,$actual_seq,$qual,$NM_tag,$XX_tag,$XM_tag,$XR_tag,$XG_tag)),"\n";
+  }
+}
 
 sub paired_end_SAM_output{
   my ($id,$actual_seq_1,$actual_seq_2,$methylation_call_params,$qual_1,$qual_2) = @_;
@@ -5887,8 +6637,6 @@ sub paired_end_SAM_output{
   my $read_conversion_1       = $methylation_call_params->{$id}->{read_conversion_1};
   my $read_conversion_2       = $methylation_call_params->{$id}->{read_conversion_2};
   my $genome_conversion       = $methylation_call_params->{$id}->{genome_conversion};
-  my $number_of_mismatches_1  = $methylation_call_params->{$id}->{number_of_mismatches_1}; # only needed for custom allele-specific output, not the default!
-  my $number_of_mismatches_2  = $methylation_call_params->{$id}->{number_of_mismatches_2};
 
   my $id_1 = $id.'/1';
   my $id_2 = $id.'/2';
@@ -5914,6 +6662,26 @@ sub paired_end_SAM_output{
   else {
     die "Unexpected combination of read 1 and genome conversion: $read_conversion_1 / $genome_conversion\n";
   }
+
+  my $number_of_mismatches_1;
+  my $number_of_mismatches_2;
+
+  if ($bowtie2){ # Bowtie 2 reports always as read 1 then read 2, so this is fine
+    $number_of_mismatches_1  = $methylation_call_params->{$id}->{alignment_score_1}; # only needed for custom allele-specific output, not the default!
+    $number_of_mismatches_2  = $methylation_call_params->{$id}->{alignment_score_2};
+  }
+  else{ # Bowtie 1 reports always the leftmost read first. That means we have to reverse the strings if the first read aligned in reverse orientation
+    if ($index == 2 or $index == 3){ # CTOT or OB
+      $number_of_mismatches_1  = $methylation_call_params->{$id}->{number_of_mismatches_2}; # only needed for custom allele-specific output, not the default!
+      $number_of_mismatches_2  = $methylation_call_params->{$id}->{number_of_mismatches_1};
+    }
+    else{ # if the first read aligned in forward direction it is like for Bowtie 2
+      $number_of_mismatches_1  = $methylation_call_params->{$id}->{number_of_mismatches_1}; # only needed for custom allele-specific output, not the default!
+      $number_of_mismatches_2  = $methylation_call_params->{$id}->{number_of_mismatches_2};
+    }
+  }
+
+
 	
   ### we need to remove 2 bp of the genomic sequence as we were extracting read + 2bp long fragments to make a methylation call at the
   ### first or last position.
@@ -6208,9 +6976,121 @@ sub paired_end_SAM_output{
 
   #####
 
+  # Optionally calculating number of mismatches for Bowtie 2 alignments
+
+  if ($non_bs_mm) {
+    if ($bowtie2) {
+
+      $number_of_mismatches_1 =~ s/-//; # removing the minus sign	
+      $number_of_mismatches_2 =~ s/-//;
+
+      ### if Bowtie 2 was used we need to analyse the CIGAR strings whether the reads contained any indels to determine the number of mismatches
+
+      ### CIGAR 1
+      if ($cigar_1 =~ /(D|I)/) {
+	# warn "$cigar_1\n";
+
+	# parsing CIGAR string
+	my @len = split (/\D+/,$cigar_1); # storing the length per operation
+	my @ops = split (/\d+/,$cigar_1); # storing the operation
+	shift @ops;		# remove the empty first element
+	die "CIGAR string '$cigar_1' contained a non-matching number of lengths and operations\n" unless (scalar @len == scalar @ops);
+	
+	foreach (0..$#len) {
+	  if ($ops[$_] eq 'M') {
+	    # warn "skipping\n";
+	    next;		# irrelevant
+	  }
+	  elsif ($ops[$_] eq 'I') {	# insertion in the read sequence
+	    $number_of_mismatches_1 -= $insertion_open;
+	    $number_of_mismatches_1 -= $len[$_] * $insertion_extend;
+	    # warn "Insertion: Subtracting $ops[$_], length $len[$_], open: $insertion_open, extend: $insertion_extend\n";
+	  }
+	  elsif ($ops[$_] eq 'D') {	# deletion in the read sequence
+	    $number_of_mismatches_1 -= $deletion_open;
+	    $number_of_mismatches_1 -= $len[$_] * $deletion_extend;
+	    # warn "Deletion: Subtracting $ops[$_], length $len[$_], open: $deletion_open, extend: $deletion_extend\n";
+	  }
+	  elsif ($cigar_1 =~ tr/[NSHPX=]//) {	# if these (for standard mapping) illegal characters exist we die
+	    die "The CIGAR string contained illegal CIGAR operations in addition to 'M', 'I' and 'D': $cigar_1\n";
+	  }
+	  else {
+	    die "The CIGAR string contained undefined CIGAR operations in addition to 'M', 'I' and 'D': $cigar_1\n";
+	  }
+	}
+
+	# warn "Alignment score $number_of_mismatches_1\n";
+	# print "Mismatches $number_of_mismatches_1\n\n";
+      }
+
+      ### CIGAR 2
+      if ($cigar_2 =~ /(D|I)/) {
+	# warn "$cigar_2\n";
+
+	# parsing CIGAR string
+	my @len = split (/\D+/,$cigar_2); # storing the length per operation
+	my @ops = split (/\d+/,$cigar_2); # storing the operation
+	shift @ops;		# remove the empty first element
+	die "CIGAR string '$cigar_2' contained a non-matching number of lengths and operations\n" unless (scalar @len == scalar @ops);
+	
+	foreach (0..$#len) {
+	  if ($ops[$_] eq 'M') {
+	    # warn "skipping\n";
+	    next; #irrelevant
+	  }
+	  elsif ($ops[$_] eq 'I') {	# insertion in the read sequence
+	    $number_of_mismatches_2 -= $insertion_open;
+	    $number_of_mismatches_2 -= $len[$_] * $insertion_extend;
+	    # warn "Insertion: Subtracting $ops[$_], length $len[$_], open: $insertion_open, extend: $insertion_extend\n";
+	  }
+	  elsif ($ops[$_] eq 'D') {	# deletion in the read sequence
+	    $number_of_mismatches_2 -= $deletion_open;
+	    $number_of_mismatches_2 -= $len[$_] * $deletion_extend;
+	    # warn "Deletion: Subtracting $ops[$_], length $len[$_], open: $deletion_open, extend: $deletion_extend\n";
+	  }
+	  elsif ($cigar_2 =~ tr/[NSHPX=]//) {	# if these (for standard mapping) illegal characters exist we die
+	    die "The CIGAR string contained illegal CIGAR operations in addition to 'M', 'I' and 'D': $cigar_2\n";
+	  }
+	  else {
+	    die "The CIGAR string contained undefined CIGAR operations in addition to 'M', 'I' and 'D': $cigar_2\n";
+	  }
+	}
+      }
+
+      ### Now we have InDel corrected Alignment scores
+
+      ### if the actual sequence contained Ns we need to adjust the number of mismatches. Ns receive a penalty of -1, but normal mismatches receive -6. This might still break if the
+      ### sequence contained more than 5 Ns, but this should occur close to never
+
+      my $seq_1_N_count = $number_of_mismatches_1 % 6; # modulo 6 will return the integer rest after the division
+      my $seq_2_N_count = $number_of_mismatches_2 % 6;
+      #   warn "N count 1: $seq_1_N_count\n";
+      #   warn "N count 2: $seq_2_N_count\n";
+
+      $number_of_mismatches_1 = int ($number_of_mismatches_1 / 6) + $seq_1_N_count;
+      $number_of_mismatches_2 = int ($number_of_mismatches_2 / 6) + $seq_2_N_count;
+
+      # warn "MM1    $number_of_mismatches_1 \n";
+      # warn "MM2    $number_of_mismatches_2 \n";
+    }
+  }
+
+  ####
+
+  my $XA_tag = "XA:Z:$number_of_mismatches_1";
+  my $XB_tag = "XB:Z:$number_of_mismatches_2";
+
+
   # SAM format: QNAME, FLAG, RNAME, 1-based POS, MAPQ, CIGAR, RNEXT, PNEXT, TLEN, SEQ, QUAL, optional fields
-  print OUT join("\t", ($id_1, $flag_1, $chr, $start_read_1, $mapq, $cigar_1, $rnext, $pnext_1, $tlen_1, $actual_seq_1, $qual_1, $NM_tag_1, $XX_tag_1, $XM_tag_1,$XR_tag_1,$XG_tag)), "\n";
-  print OUT join("\t", ($id_2, $flag_2, $chr, $start_read_2, $mapq, $cigar_2, $rnext, $pnext_2, $tlen_2, $actual_seq_2, $qual_2, $NM_tag_2, $XX_tag_2, $XM_tag_2,$XR_tag_2,$XG_tag)), "\n";
+  ### optionally print number of non-bisulfite mismatches
+  if ($non_bs_mm){
+    print OUT join("\t", ($id_1, $flag_1, $chr, $start_read_1, $mapq, $cigar_1, $rnext, $pnext_1, $tlen_1, $actual_seq_1, $qual_1, $NM_tag_1, $XX_tag_1, $XM_tag_1,$XR_tag_1,$XG_tag,$XA_tag)), "\n";
+    print OUT join("\t", ($id_2, $flag_2, $chr, $start_read_2, $mapq, $cigar_2, $rnext, $pnext_2, $tlen_2, $actual_seq_2, $qual_2, $NM_tag_2, $XX_tag_2, $XM_tag_2,$XR_tag_2,$XG_tag,$XB_tag)), "\n";
+  }
+  else{ # default
+    print OUT join("\t", ($id_1, $flag_1, $chr, $start_read_1, $mapq, $cigar_1, $rnext, $pnext_1, $tlen_1, $actual_seq_1, $qual_1, $NM_tag_1, $XX_tag_1, $XM_tag_1,$XR_tag_1,$XG_tag)), "\n";
+    print OUT join("\t", ($id_2, $flag_2, $chr, $start_read_2, $mapq, $cigar_2, $rnext, $pnext_2, $tlen_2, $actual_seq_2, $qual_2, $NM_tag_2, $XX_tag_2, $XM_tag_2,$XR_tag_2,$XG_tag)), "\n";
+  }
 }
 
 sub revcomp{
@@ -6327,7 +7207,8 @@ Input:
 
 -f/--fasta               The query input files (specified as <mate1>,<mate2> or <singles> are FASTA
                          files (usually havin extension .fa, .mfa, .fna or similar). All quality values
-                         are assumed to be 40 on the Phred scale.
+                         are assumed to be 40 on the Phred scale. FASTA files are expected to contain both
+                         the read name and the sequence on a single line (and not spread over several lines).
 
 -s/--skip <int>          Skip (i.e. do not align) the first <int> reads or read pairs from the input.
 
@@ -6415,6 +7296,14 @@ Output:
                          or bottom (OB) strands in parallel and report these alignments. This is the recommended option
                          for sprand-specific libraries).
 
+--pbat                   This options may be used for PBAT-Seq libraries (Post-Bisulfite Adapter Tagging; Kobayashi et al.,
+                         PLoS Genetics, 2012). This is essentially the exact opposite of alignments in 'directional' mode,
+                         as it will only launch two alignment threads to the CTOT and CTOB strands instead of the normal OT
+                         and OB ones. Use this option only if you are certain that your libraries were constructed following
+                         a PBAT protocol (if you don't know what PBAT-Seq is you should not specify this option). The option
+                         --pbat works only for single-end and paired-end FastQ files for use with Bowtie1 (uncompressed
+                         temporary files only).
+
 --sam-no-hd              Suppress SAM header lines (starting with @). This might be useful when very large input files are
                          split up into several smaller files to run concurrently and the output files are to be merged.
 
@@ -6444,6 +7333,25 @@ Output:
 --temp_dir <dir>         Write temporary files to this directory instead of into the same directory as the input files. If
                          the specified folder does not exist, Bismark will attempt to create it first. The path to the
                          temporary folder can be either relative or absolute.
+
+--non_bs_mm              Optionally outputs an extra column specifying the number of non-bisulfite mismatches a read during the
+                         alignment step. This option is only available for SAM format. In Bowtie 2 context, this value is
+                         just the number of actual non-bisulfite mismatches and ignores potential insertions or deletions.
+                         The format for single-end reads and read 1 of paired-end reads is 'XA:Z:number of mismatches'
+                         and 'XB:Z:number of mismatches' for read 2 of paired-end reads.
+
+--gzip                   Temporary bisulfite conversion files will be written out in a GZIP compressed form to save disk
+                         space. This option is available for most alignment modes but is not available for paired-end FastA
+                         files. This option might be somewhat slower than writing out uncompressed files, but this awaits
+                         further testing.
+
+--bam                    The output will be written out in BAM format instead of the default SAM format. Bismark will
+                         attempt to use the path to Samtools that was specified with '--samtools_path', or, if it hasn't
+                         been specified, attempt to find Samtools in the PATH. If no installation of Samtools can be found,
+                         the SAM output will be compressed with GZIP instead (yielding a .sam.gz output file).
+
+--samtools_path          The path to your Samtools installation, e.g. /home/user/samtools/. Does not need to be specified
+                         explicitly if Samtools is in the PATH already.
 
 
 
@@ -6605,11 +7513,12 @@ Bismark SAM OUTPUT (default):
 (14) XM-tag (methylation call string)
 (15) XR-tag (read conversion state for the alignment)
 (16) XG-tag (genome conversion state for the alignment)
+(17) XA/XB-tag (non-bisulfite mismatches) (optional!)
 
 Each read of paired-end alignments is written out in a separate line in the above format.
 
 
-This script was last edited on 21 Aug 2012.
+Last edited on 21 April 2013.
 
 HOW_TO
 }

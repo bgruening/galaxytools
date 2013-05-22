@@ -12,8 +12,6 @@ import zipfile
 import subprocess
 import shutil
 
-# TODO: rar, capital-file-endings
-
 def unescape(cond_text):
     # Unescape if input has been escaped
     mapped_chars = { '>' :'__gt__', 
@@ -35,12 +33,13 @@ def unescape(cond_text):
 
 urls = unescape(sys.argv[1])
 out = open(sys.argv[2], 'wb')
+
 if len(sys.argv) > 3:
     allowed_extensions = [ ext.strip() for ext in unescape(sys.argv[3]).split('\n') ]
 else:
     allowed_extensions = ['.sdf', '.smi', '.inchi']
+
 for url in urls.split('\n'):
-    url = url.strip()
     url = url.strip()
     request = urllib2.Request( url )
     request.add_header('Accept-encoding', 'gzip')
@@ -62,23 +61,6 @@ for url in urls.split('\n'):
 
         zf = zipfile.ZipFile(temp.name, allowZip64=True)
         tmpdir = tempfile.mkdtemp( )
-        """ 
-        try:
-            req = urllib2.urlopen(url)
-            total_size = int(req.info().getheader('Content-Length').strip())
-            downloaded = 0
-            CHUNK = 256 * 10240
-            with open(temp.name, 'wb') as fp:
-                while True:
-                    chunk = req.read(CHUNK)
-                    downloaded += len(chunk)
-                    if not chunk: break
-                    fp.write(chunk)
-        except urllib2.HTTPError, e:
-            print "HTTP Error:",e.code , url
-        except urllib2.URLError, e:
-            print "URL Error:",e.reason , url
-        """
 
         for filename in zf.namelist():
             zf.extractall( tmpdir )
@@ -95,7 +77,6 @@ for url in urls.split('\n'):
             shutil.copyfileobj(open(filename, 'rb'), out)
         shutil.rmtree( tmpdir )
         zf.close()
-
     elif response.info().get('Content-Encoding') == 'rar' or os.path.splitext(url)[-1] in ['.rar']:
         temp = tempfile.NamedTemporaryFile(delete=False)
         temp.close()

@@ -1,6 +1,13 @@
 #!/usr/bin/env python
 
-import argparse, os, shutil, subprocess, sys, tempfile, fileinput
+import argparse
+import os
+import shutil
+import subprocess
+import sys
+import shlex
+import tempfile
+import fileinput
 import fileinput
 from glob import glob
 
@@ -22,6 +29,8 @@ def __main__():
     parser.add_argument( '--own-file', dest='own_file', help='' )
     parser.add_argument( '-D', '--indexes-path', dest='index_path', help='Indexes directory; location of .ebwt and .fa files.' )
     parser.add_argument( '-O', '--output', dest='output' )
+
+
     parser.add_argument( '--output-report-file', dest='output_report_file' )
     parser.add_argument( '--suppress-header', dest='suppress_header', action="store_true" )
 
@@ -95,7 +104,7 @@ def __main__():
     parser.add_argument( '--chunkmbs', type=int, default=512 )
 
     args = parser.parse_args()
-    
+
     # Create bismark index if necessary.
     index_dir = ""
     if args.own_file:
@@ -159,7 +168,7 @@ def __main__():
     # Build bismark command
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join( tmp_bismark_dir, 'results')
-    cmd = 'bismark %(args)s --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
+    cmd = 'bismark %(args)s --bam --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
 
     if args.fasta:
         # he query input files (specified as mate1,mate2 or singles) are FastA
@@ -238,7 +247,7 @@ def __main__():
 
     arguments.update( {'args': additional_opts, 'reads': reads} )
 
-    # Final command:
+    # Final bismark command:
     cmd = cmd % arguments
 
     # Run
@@ -249,26 +258,26 @@ def __main__():
         tmp_stderr = open( tmp_err, 'wb' )
         proc = subprocess.Popen( args=cmd, shell=True, cwd=".", stdout=tmp_stdout, stderr=tmp_stderr )
         returncode = proc.wait()
-        tmp_stderr.close()
-        # get stderr, allowing for case where it's very large
-        tmp_stderr = open( tmp_err, 'rb' )
-        stderr = ''
-        buffsize = 1048576
-        try:
-            while True:
-                stderr += tmp_stderr.read( buffsize )
-                if not stderr or len( stderr ) % buffsize != 0:
-                    break
-        except OverflowError:
-            pass
-        tmp_stdout.close()
-        tmp_stderr.close()
+
         if returncode != 0:
+            tmp_stderr.close()
+            # get stderr, allowing for case where it's very large
+            tmp_stderr = open( tmp_err, 'rb' )
+            stderr = ''
+            buffsize = 1048576
+            try:
+                while True:
+                    stderr += tmp_stderr.read( buffsize )
+                    if not stderr or len( stderr ) % buffsize != 0:
+                        break
+            except OverflowError:
+                pass
+
             raise Exception, stderr
 
         # TODO: look for errors in program output.
     except Exception, e:
-        stop_err( 'Error in bismark:\n' + str( e ) ) 
+        stop_err( 'Error in bismark:\n' + str( e ) )
 
     # collect and copy output files
     if args.output_report_file:
@@ -278,9 +287,6 @@ def __main__():
         output_report_file.close()
 
 
-    if args.output_stdout:
-        # copy the temporary saved stdout from bismark
-        shutil.move( tmp_out, args.output_stdout )
     if args.output_suppressed_reads:
         shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads.txt'))[0], args.output_suppressed_reads )
     if args.output_suppressed_reads_l:
@@ -295,7 +301,41 @@ def __main__():
     if args.output_unmapped_reads_r:
         shutil.move( glob(os.path.join( output_dir, '*unmapped_reads_2.txt'))[0], args.output_unmapped_reads_r )
 
-    shutil.move( glob( os.path.join( output_dir, '*.sam'))[0] , args.output)
+    try:
+        """
+            merge all bam files
+        """
+        tmp_out = tempfile.NamedTemporaryFile( dir=output_dir ).name
+        tmp_stdout = open( tmp_out, 'wb' )
+        tmp_err = tempfile.NamedTemporaryFile( dir=output_dir ).name
+        tmp_stderr = open( tmp_err, 'wb' )
+
+        tmp_res = tempfile.NamedTemporaryFile( dir= output_dir).name
+
+        cmd = 'samtools merge -f - %s ' % ( ' '.join( glob( os.path.join( output_dir, '*.bam') ) ) )
+
+        p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
+        proc = subprocess.Popen( ['samtools', 'sort', '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+        returncode = proc.wait()
+        tmp_stdout.close()
+        tmp_stderr.close()
+        if returncode != 0:
+            raise Exception, open( tmp_stderr.name ).read()
+
+        bam_path = "%s.bam" % tmp_res
+        if os.path.exists( bam_path ):
+            shutil.copy( bam_path, args.output )
+        else:
+            stop_err( 'BAM file no found:\n' + str( bam_path ) )
+
+    # TODO: look for errors in program output.
+    except Exception, e:
+        stop_err( 'Error in merging bam files:\n' + str( e ) )
+
+
+    if args.output_stdout:
+        # copy the temporary saved stdout from bismark
+        shutil.move( tmp_out, args.output_stdout )
 
     # Clean up temp dirs
     if args.own_file:
@@ -303,5 +343,7 @@ def __main__():
             shutil.rmtree( tmp_index_dir )
     if os.path.exists( tmp_bismark_dir ):
         shutil.rmtree( tmp_bismark_dir )
+    if os.path.exists( output_dir ):
+        shutil.rmtree( output_dir )
 
 if __name__=="__main__": __main__()

@@ -3,7 +3,6 @@ import openbabel
 openbabel.obErrorLog.StopLogging()
 import pybel
 import sys
-from cheminfolib import check_filetype
 import argparse
 """
 Based on a script from TJ O'Donnell
@@ -270,6 +269,7 @@ def __main__():
         non_fragment_file = pybel.Outputfile(options.oformat, options.non_fragment_file, overwrite=True)
 
     if not options.iformat:
+        from cheminfolib import check_filetype
         options.iformat = check_filetype(options.input_path)
 
     for mol in pybel.readfile( options.iformat, options.input_path ):
