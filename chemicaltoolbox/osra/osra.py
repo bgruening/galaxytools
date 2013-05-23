@@ -14,13 +14,14 @@ import subprocess
         > $outfile
 """
 
-if not os.path.exists(sys.argv[6]):
+if not os.path.exists(sys.argv[7]):
     # OSRA_DATA_FILES path is not set or the spelling file is not existent
     sys.argv.pop(7) # superatom.txt path
     sys.argv.pop(6) # -a
     sys.argv.pop(5) # speling.txt path
     sys.argv.pop(4) # -l
 
-subprocess.call(sys.argv[1:], stdout=sys.stdout)
+sys.argv[0] = 'osra'
+subprocess.call(sys.argv, stdout=sys.stdout)
 
 
