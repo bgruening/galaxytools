@@ -7,7 +7,11 @@ layout: default
 Getting Started
 ===============
 
-The following instructions are for Linux only.
+ChemicalToolBoX can be installed on all common unix systems.
+However, it is developed on Linux and I don't have access to OSX.
+If you want to help to enhance the documentation, please contact_ me.
+
+.. _contact: https://github.com/bgruening
 
 Prerequisites::
 
@@ -90,10 +94,5 @@ Toolshed
 .. _admin page: http://localhost:8080/admin
 .. _API: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
 
-VirtualBoX
-==========
-
-Dependencies
-============
 
 
