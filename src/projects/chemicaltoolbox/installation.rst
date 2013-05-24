@@ -11,43 +11,43 @@ The following instructions are for Linux only.
 
 Prerequisites::
 
-* Python 2.5 or above
-* standard C compiler
+* Python 2.6 or above
+* standard C and gfortran compiler
 * Autotools
 * CMake
 
+    - Debian based systems: apt-get install build-essential gfortran cmake mercurial
+    - Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial
+    - OSX (MacPorts_): port install gcc cmake automake mercurial
 
-1. Install Mercurial_ at the command prompt if you haven't yet::
+.. _macports: http://www.macports.org/
 
-	apt-get install mercurial
 
-.. _Mercurial: http://mercurial.selenic.com/
-
-2. Clone the latest `Galaxy platform`_::
+1. Clone the latest `Galaxy platform`_::
 
 	hg clone https://https://bitbucket.org/galaxy/galaxy-central/
 
 .. _Galaxy platform: http://wiki.galaxyproject.org/Admin/Get%20Galaxy
 
-3. Navigate to the galaxy-central folder and update it::
+2. Navigate to the galaxy-central folder and update it::
 	
 	cd ~/galaxy-central
 	hg pull
 	hg update
 
-4. Create folders for toolshed and dependencies::
+3. Create folders for toolshed and dependencies::
 
 	mkdir ~/shed_tools
 	mkdir ~/galaxy-central/tool_deps
 
-5. Open universe_wsgi.ini and change the dependencies directory::
+4. Open universe_wsgi.ini and change the dependencies directory::
 
 	gedit ~/galaxy-central/universe_wsgi.ini
 
 
-6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
+5. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
 
-7. (Re-)Start the galaxy daemon::
+6. (Re-)Start the galaxy daemon::
 
 	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
 	GALAXY_RUN_ALL=1 sh run.sh --daemon
