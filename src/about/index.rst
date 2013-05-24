@@ -9,9 +9,9 @@ layout: default
 - Tools_
 - References_
 
-.. _Installation: /projects/chemicaltoolbox/installation
-.. _Tools: /projects/chemicaltoolbox/tools
-.. _References: /projects/chemicaltoolbox/references
+.. _Installation: /galaxytools/projects/chemicaltoolbox/installation
+.. _Tools: /galaxytools/projects/chemicaltoolbox/tools
+.. _References: /galaxytools/projects/chemicaltoolbox/references
 
 
 Aliquam et quam non tellus lacinia adipiscing. Vivamus commodo, sem vitae p\
