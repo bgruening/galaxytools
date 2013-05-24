@@ -12,7 +12,7 @@ The following instructions are for Linux only.
 Prerequisites::
 
 * Python 2.6 or above
-* standard C and gfortran compiler
+* standard C, C++ and Fortran compiler
 * Autotools
 * CMake
 
