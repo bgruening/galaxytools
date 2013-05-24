@@ -70,14 +70,14 @@ Admin Account
 Toolshed
 ========
 
-1. Installation via webbrowser
+**Installation via webbrowser**
 
 - go to the `admin page`_
 - select *Search and browse tool sheds*
 - Galaxy test tool shed >> Computational chemistry >> chemicaltoolbox
 - install chemicaltoolbox
 
-2. Installtion via the shell
+**Installtion via the shell**
 
 - generate an API_ Key
 - execute the following code from your terminal
