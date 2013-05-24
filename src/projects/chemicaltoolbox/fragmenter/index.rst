@@ -23,14 +23,14 @@ Input Molecules
 
 |
 
-	.. image:: /galaxytools/img/fragmenter/Step1InputEdited.png
+.. image:: /galaxytools/img/fragmenter/Step1InputEdited.png
 
 Fragments
 ---------
 
 |
 
-	.. image:: /galaxytools/img/fragmenter/Step2FragmentsEdited.png
+.. image:: /galaxytools/img/fragmenter/Step2FragmentsEdited.png
 
 
 Merging of Fragments
@@ -38,6 +38,6 @@ Merging of Fragments
 
 |
 
-	.. image:: /galaxytools/img/fragmenter/Step3Merged9Mols.png
+.. image:: /galaxytools/img/fragmenter/Step3Merged9Mols.png
 
 .. _RECAP: http://pubs.acs.org/doi/abs/10.1021/ci970429i
