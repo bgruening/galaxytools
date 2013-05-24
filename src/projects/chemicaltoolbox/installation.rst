@@ -19,6 +19,7 @@ Prerequisites::
 * standard C, C++ and Fortran compiler
 * Autotools
 * CMake
+* Java Runtime Environment (JRE)
 
     - Debian based systems: apt-get install build-essential gfortran cmake mercurial
     - Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial
