@@ -10,6 +10,7 @@ import openbabel
 openbabel.obErrorLog.StopLogging()
 import pybel
 import math
+import numpy as np
 
 #TODO get rid of eval()
 
