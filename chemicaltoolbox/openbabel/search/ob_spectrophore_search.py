@@ -43,7 +43,7 @@ def Compute_Spectrophores_distance(target_spectrophore, args):
     outfile = open(args.output, 'w')
     for mol in open(args.library, 'r'):
         try:
-            distance = ((np.asarray( target_spectrophore ) - np.asarray( mol.split('\t')[ args.column - 1 ].strip().split(', ') ))**2).sum()
+            distance = ( ( np.asarray( target_spectrophore, dtype=float ) - np.asarray( mol.split('\t')[ args.column - 1 ].strip().split(', '), dtype=float) )**2).sum()
         except ValueError:
             distance = 0
         outfile.write( '%s\t%f\n' % (mol.strip(), distance ) )
