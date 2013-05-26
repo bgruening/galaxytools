@@ -28,6 +28,7 @@ def grep(pattern, file_obj):
 
 def check_filetype(filepath):
     mol = False
+    possible_inchi = True
     for line_counter, line in enumerate(open(filepath)):
         if line_counter > 10000:
             break
@@ -37,10 +38,12 @@ def check_filetype(filepath):
             return 'mol2'
         elif line.find('ligand id') != -1:
             return 'drf'
-        elif re.findall('^InChI=', line):
+        elif possible_inchi and re.findall('^InChI=', line):
             return 'inchi'
         elif re.findall('^M\s+END', line):
-                mol = True
+            mol = True
+        # first line is not an InChI, so it can't be an InChI file
+        possible_inchi = False
 
     if mol:
         # END can occures before $$$$, so and SDF file will 
