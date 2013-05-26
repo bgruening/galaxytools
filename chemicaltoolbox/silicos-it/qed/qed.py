@@ -16,17 +16,22 @@ import argparse
 
 def check_filetype(filepath):
     mol = False
-    for line in open(filepath):
+    possible_inchi = True
+    for line_counter, line in enumerate(open(filepath)):
+        if line_counter > 10000:
+            break
         if line.find('$$$$') != -1:
             return 'sdf'
         elif line.find('@<TRIPOS>MOLECULE') != -1:
             return 'mol2'
         elif line.find('ligand id') != -1:
             return 'drf'
-        elif re.findall('^InChI=', line):
+        elif possible_inchi and re.findall('^InChI=', line):
             return 'inchi'
         elif re.findall('^M\s+END', line):
             mol = True
+        # first line is not an InChI, so it can't be an InChI file
+        possible_inchi = False
 
     if mol:
         # END can occures before $$$$, so and SDF file will 
@@ -288,17 +293,22 @@ def default(mol, gerebtzoff = True):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', required=True, help='path to the input file name')
-    parser.add_argument("-m", "--method", dest="method", choices=['max', 'mean', 'unweighted'],
-                      default="mean",
-                      help="Specify the method you want to use.")
-
+    parser.add_argument('-i', '--input', 
+                required=True, 
+                help='path to the input file name')
+    parser.add_argument("-m", "--method", 
+                dest="method",
+                choices=['max', 'mean', 'unweighted'],
+                default="mean",
+                help="Specify the method you want to use.")
+    parser.add_argument("--iformat",
+                help="Input format. It must be supported by openbabel.")
     parser.add_argument('-o', '--outfile', type=argparse.FileType('w+'), 
-        default=sys.stdout, help="path to the result file, default it sdtout")
-
+                default=sys.stdout, 
+                help="path to the result file, default it sdtout")
     parser.add_argument("--header", dest="header", action="store_true",
-                    default=False,
-                    help="Write header line.")
+                default=False,
+                help="Write header line.")
 
 
     args = parser.parse_args()
@@ -315,15 +325,18 @@ if __name__ == "__main__":
         print "Error: ", ifile, " is not readable."
         sys.exit(1)
 
-    filetype = check_filetype(ifile)
+    if not args.iformat:
+        # try to guess the filetype
+        filetype = check_filetype( ifile )
+    else:
+        filetype = args.iformat # sdf or smi
 
 
     """
         We want to store the original SMILES in the output. So in case of a SMILES file iterate over the file and convert each line separate.
     """
-
     if filetype == 'sdf':
-        supplier = Chem.SDMolSupplier(ifile)
+        supplier = Chem.SDMolSupplier( ifile )
         # Process file
         if args.header:
             args.outfile.write("MW\tALOGP\tHBA\tHBD\tPSA\tROTB\tAROM\tALERTS\tLRo5\tQED\tNAME\n")
@@ -356,7 +369,7 @@ if __name__ == "__main__":
                 mol.GetProp("_Name"),
                 ))
     elif filetype == 'smi':
-        supplier = Chem.SmilesMolSupplier(ifile, " \t", 0, 1, False, True)
+        supplier = Chem.SmilesMolSupplier( ifile, " \t", 0, 1, False, True )
 
         # Process file
         if args.header:
@@ -397,9 +410,5 @@ if __name__ == "__main__":
                 title,
                 smiles
                 ))
-
     else:
-        print "Error: unknown file extension: ", extension
-        sys.exit(1)
-
-    sys.exit(0)
+        sys.exit("Error: unknown file-type: ", filetype)
