@@ -19,11 +19,12 @@ Prerequisites::
 * standard C, C++ and Fortran compiler
 * Autotools
 * CMake
-* Java Runtime Environment (JRE)
+* libcairo development files (used for PNG depictions)
+* Java Runtime Environment (JRE, used by OPSIN and NPLS)
 
-    - Debian based systems: apt-get install build-essential gfortran cmake mercurial
-    - Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial
-    - OSX (MacPorts_): port install gcc cmake automake mercurial
+    - Debian based systems: apt-get install build-essential gfortran cmake mercurial libcairo2-dev
+    - Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial libcairo2-devel
+    - OSX (MacPorts_): port install gcc cmake automake mercurial cairo-devel
 
 .. _macports: http://www.macports.org/
 
