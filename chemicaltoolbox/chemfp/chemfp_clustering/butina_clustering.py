@@ -6,19 +6,18 @@
 """
 
 import chemfp
-from chemfp import search
 import sys
 import os
 import tempfile
 import argparse
 import subprocess
+from chemfp import search
 
 
 def unix_sort(results):
     temp_unsorted = tempfile.NamedTemporaryFile(delete=False)
     for (i,indices) in enumerate( results.iter_indices() ):
         temp_unsorted.write('%s %s\n' % (len(indices), i))
-        print i, indices
     temp_unsorted.close()
     temp_sorted = tempfile.NamedTemporaryFile(delete=False)
     temp_sorted.close()
@@ -49,7 +48,7 @@ def butina( args ):
     temp_file = tempfile.NamedTemporaryFile()
     temp_link = "%s.%s" % (temp_file.name, 'fps')
     temp_file.close()
-    os.symlink(os.path.realpath(args.input_path), temp_link)
+    os.symlink(args.input_path, temp_link)
     #os.system('ln -s %s %s' % (args.input_path, temp_link) )
 
     out = args.output_path
@@ -58,7 +57,6 @@ def butina( args ):
     chemfp.set_num_threads( args.processors )
     results = search.threshold_tanimoto_search_symmetric(arena, threshold = args.tanimoto_threshold)
     results.reorder_all("move-closest-first")
-    print [r.get_indices() for r in results]
 
     # TODO: more memory efficient search?
     # Reorder so the centroid with the most hits comes first.
@@ -70,7 +68,7 @@ def butina( args ):
                       reverse=True)
     """
     sorted_ids = unix_sort(results)
-    
+
     # Determine the true/false singletons and the clusters
     true_singletons = []
     false_singletons = []
@@ -80,8 +78,7 @@ def butina( args ):
     #for (size, fp_idx, members) in results:
     for (size, fp_idx) in sorted_ids:
         members = results[fp_idx].get_indices()
-        print 'indices (s: %s, fp_idx:%s) -> %s' % (size, fp_idx, members)
-        print 'scores (s: %s, fp_idx:%s) -> %s' % (size, fp_idx,  results[fp_idx].get_scores())
+        #print arena.ids[ fp_idx ], [arena.ids[ m ] for m in members]
         if fp_idx in seen:
             # Can't use a centroid which is already assigned
             continue
@@ -89,7 +86,7 @@ def butina( args ):
 
         if size == 0:
             # The only fingerprint in the exclusion sphere is itself
-            true_singletons.append(fp_idx)
+            true_singletons.append( fp_idx )
             continue
 
         # Figure out which ones haven't yet been assigned
@@ -110,6 +107,7 @@ def butina( args ):
     out.write( "#%s true singletons\n" % len(true_singletons) )
     out.write( "#%s false singletons\n" % len(false_singletons) )
     out.write( "#clusters: %s\n" % len_cluster )
+
 
     # Sort so the cluster with the most compounds comes first,
     # then by alphabetically smallest id
