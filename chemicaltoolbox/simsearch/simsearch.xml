@@ -1,6 +1,5 @@
-<tool id="chemfp_simsearch" name="Similarity Search" version="0.1">
+<tool id="chemfp_simsearch" name="Similarity Search" version="0.1.1">
     <description>of fingerprint data sets</description>
-    <!--<parallelism method="multi" split_inputs="query" split_mode="to_size" split_size="10000" shared_inputs="targets,fastsearch" merge_outputs="outfile"></parallelism>-->
     <requirements>
         <requirement type="package" version="1.1p1">chemfp</requirement>
         <requirement type="package" version="2.3.2">openbabel</requirement>
@@ -8,7 +7,29 @@
     <command>
         #if $method_opts.method_opts_selector == "chemfp":
             ## TODO: remove all comment lines, in muti mode many comment lines will be appear, also in the middle of the result file, remove them
-            simsearch -k $method_opts.k --threshold $method_opts.threshold --query-format fps --target-format fps -q "${method_opts.query}" "${method_opts.targets}" -o "${outfile}"
+            #if int($method_opts.knn) == 0:
+                #set $k = 'all'
+            #else:
+                #set $k = int($method_opts.knn)
+            #end if
+            simsearch 
+                -k $k 
+                --threshold $method_opts.threshold 
+                --query-format fps 
+                $method_opts.counts
+                --target-format fps
+                -o "${outfile}"
+
+                ## build and search an in-memory data structure (faster for multiple queries)
+                --memory
+
+                #if $method_opts.query_opts.query_opts_selector == "normal":
+                    -q "${method_opts.query_opts.query}"
+                #else:
+                    --NxN
+                #end if
+
+                "${method_opts.query_opts.targets}" 
         #else:
             ## OpenBabel needs the original molecule file (molecule.'fileformat') next to the fastsearch index (molecule.fs). We use a composite datatype to accomplish that.
             ## Furthermore OpenBabel is really picky with fileextensions. We need to specify every datatype. I did not find a solution to specify the query-filetype.
@@ -30,10 +51,24 @@
               <option value="obabel">OpenBabel Fastsearch Index</option>
             </param>
             <when value="chemfp">
-                <param name="query" type='data' format="fps" label="query"/>
-                <param name="targets" type='data' format="fps" label="Target database"/>
-                <param name="k" type='text'  label="k nearest neighbor" value='all'/>
-                <param name="threshold" type='float' label="threshold" value='0.7'/>
+                <conditional name="query_opts">
+                    <param name="query_opts_selector" type="select" label="Query Mode">
+                      <option value="normal">Query molecules are stores in a separate file</option>
+                      <option value="nxn">Target molecules are also queries (NxN)</option>
+                    </param>
+                    <when value="normal">
+                        <param name='query' type='data' format="fps" label='Query molecules'/>
+                        <param name='targets' type='data' format="fps" label='Target molecules'/>
+                    </when>
+                    <when value="nxn">
+                        <param name='targets' type='data' format="fps" label='Target moleculs'/>
+                    </when>
+                </conditional>
+                <param name='knn' type='integer' value='0' label='select the k nearest neighbors' help='0 means all neighbors'>
+                   <validator type="in_range" min="0" />
+                </param>
+                <param name='threshold' type='float' label='threshold' value='0.7'/>
+                <param name="counts" type="boolean" label="report counts (-c)" truevalue="-c" falsevalue="" checked="false" />
             </when>
             <when value="obabel">
                 <param name="query" type='data' format="smi,mol,sdf,inchi" label="query"/>
