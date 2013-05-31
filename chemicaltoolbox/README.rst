@@ -113,15 +113,16 @@ ChemicalToolBoX can be installed on all common unix systems. However, it is deve
 
 Prerequisites::
 
-* Python 2.5 or above
+* Python 2.6 or above
 * standard C compiler, C++ and Fortran compiler
 * Autotools
 * CMake
-* libcairo development files (used for PNG depictions)
+* cairo development files (used for PNG depictions)
+* python development files
 * Java Runtime Environment (JRE, used by OPSIN and NPLS)
 
-- Debian based systems: apt-get install build-essential gfortran cmake mercurial libcairo2-dev
-- Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial libcairo2-devel
+- Debian based systems: apt-get install build-essential gfortran cmake mercurial libcairo2-dev python-dev
+- Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial libcairo2-devel python-devel
 - OS X (MacPorts_): port install gcc cmake automake mercurial cairo-devel
 
 .. _MacPorts: http://www.macports.org/
