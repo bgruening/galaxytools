@@ -164,10 +164,9 @@ Prerequisites::
 
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
-To enable some tools and improve the overall performance of NumPy_ you need to disable CPU throttling and install a Python package::
+To improve the overall performance of NumPy_ you need to disable CPU throttling::
 
 	cpufreq-selector -g performance
-	sudo apt-get install python-dev
 
 .. _NumPy: http://www.numpy.org/
 
