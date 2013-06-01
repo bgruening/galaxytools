@@ -12,6 +12,7 @@ import chemfp
 import scipy.cluster.hierarchy as hcluster
 import pylab
 import numpy
+import tempfile
 
 
 def distance_matrix(arena, tanimoto_threshold = 0.0):
@@ -63,8 +64,13 @@ https://chemfp.readthedocs.org
 
     args = parser.parse_args()
 
+    # make sure that the file ending is fps
+    temp_file = tempfile.NamedTemporaryFile()
+    temp_link = "%s.%s" % (temp_file.name, 'fps')
+    temp_file.close()
+    os.symlink(args.input_path, temp_link)
 
-    arena = chemfp.load_fingerprints( args.input_path )
+    arena = chemfp.load_fingerprints( temp_link )
     distances  = distance_matrix( arena, args.tanimoto_threshold )
     linkage = hcluster.linkage( distances, method="single", metric="euclidean" )
 
