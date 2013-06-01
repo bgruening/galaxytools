@@ -362,4 +362,4 @@ Contributing
 We encourage you to contribute to ChemicalToolBoX! Check out our `Trello board`_ or contact us via e-mail_.
 
 .. _Trello board: https://trello.com/b/t9Wr8lSY
-.. _e-mail: bjoern.gruening@gmail.com)|: 
+.. _e-mail: bjoern_dot_gruening@gmail.com
