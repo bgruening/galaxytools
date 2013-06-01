@@ -6,11 +6,9 @@ layout: default
 
 - Installation_
 - Tools_
-- References_
 
 .. _Installation: /galaxytools/projects/chemicaltoolbox/installation
 .. _Tools: /galaxytools/projects/chemicaltoolbox/tools
-.. _References: /galaxytools/projects/chemicaltoolbox/references
 
 
 ===========================
@@ -29,7 +27,7 @@ It can be downloaded and easily deployed locally or on a large scale cluster.
 Galaxy
 ======
 
-Galaxy_ is an open, web-based platform for data intensive research.
+`Galaxy <http://galaxyproject.org/>`_ is an open, web-based platform for data intensive research.
 All tools can be combined in workflows without any need of programming skills. 
 Furthermore the platform can be extended with more tools at any time.
 Each tool has its own information about what it does and how the input is supposed to look like.
@@ -38,18 +36,14 @@ Inputfiles, workflowsteps and results are stored in a history where you can view
 It is possible to share workflows and histories with other users or make the public available.
 Saved workflows can be used with new input files or just to rerun an analyses which ensures repeatability.
 
-.. _Galaxy: http://galaxyproject.org/
-
 Parallelisation
 ===============
 
-ChemicalToolBoX is capable of accelerating the computation time of resource-intensive processes.
-Large molecule files are automatically splitted in smaller chunks.
-Each chunk then is processed on a separate core and merged afterwards.
+ChemicalToolBoX is capable of accelerating the computation time of resource-intensive processes. 
+Large molecule files are automatically splitted in smaller chunks. Each chunk then is processed on a separate core and merged afterwards. 
 Everything stays the same for the user but computation time decreases.
 
-As the parallelisation is scalable the job will run on a predefined number of cores.
-The more cores the faster the processing.
+As the parallelisation is scalable the job will run on a predefined number of cores. The more cores the faster the processing.
 
 ===================
 Supported Filetypes
@@ -75,28 +69,33 @@ Supported Filetypes
 .. _SMILES: http://daylight.com/smiles/index.html
 .. _Daylight: http://daylight.com
 
-All filetypes are interchangable due to two easy converting options:
+All filetypes are interchangable due to three easy converting options:
 
 
-- the built-in conversion via the pencil icon
-	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/pencil.jpg
+- the built-in conversion via the pencil icon |pencilicon|
+
+	.. |pencilicon| image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/pencilicon.png
 	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/convert_pencil.jpg
 
-- the converter tools described in the Tools section
+- the Compound Converter tool described in the Tools section
+
+- the import conversion each tool automatically offers
+
+	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/internal_conversion.png
 
 
 
-===========
+
 Bug Tracker
 ===========
 Have a bug or a feature request? `Please write a new card`_. Before writing a new card, please search for existing issues.
 
 .. _Please write a new card: https://trello.com/b/t9Wr8lSY
 
-============
+
 Contributing
 ============
 We encourage you to contribute to ChemicalToolBoX! Check out our `Trello board`_ or contact us via e-mail_.
 
 .. _Trello board: https://trello.com/b/t9Wr8lSY
-.. _e-mail: bjoern.gruening@gmail.com)|: 
+.. _e-mail: (bjoern.gruening@gmail.com)|: 

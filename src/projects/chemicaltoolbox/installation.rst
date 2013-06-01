@@ -7,27 +7,26 @@ layout: default
 Getting Started
 ===============
 
-ChemicalToolBoX can be installed on all common unix systems.
-However, it is developed on Linux and I don't have access to OSX.
-If you want to help to enhance the documentation, please contact_ me.
+ChemicalToolBoX can be installed on all common unix systems. 
+However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
 
 .. _contact: https://github.com/bgruening
 
 Prerequisites::
 
 * Python 2.6 or above
-* standard C, C++ and Fortran compiler
+* standard C compiler, C++ and Fortran compiler
 * Autotools
 * CMake
-* libcairo development files (used for PNG depictions)
+* cairo development files (used for PNG depictions)
+* python development files
 * Java Runtime Environment (JRE, used by OPSIN and NPLS)
 
-    - Debian based systems: apt-get install build-essential gfortran cmake mercurial libcairo2-dev
-    - Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial libcairo2-devel
-    - OSX (MacPorts_): port install gcc cmake automake mercurial cairo-devel
+- Debian based systems: apt-get install build-essential gfortran cmake mercurial libcairo2-dev python-dev
+- Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial libcairo2-devel python-devel
+- OS X (MacPorts_): port install gcc cmake automake mercurial cairo-devel
 
-.. _macports: http://www.macports.org/
-
+.. _MacPorts: http://www.macports.org/
 
 1. Clone the latest `Galaxy platform`_::
 
@@ -46,55 +45,89 @@ Prerequisites::
 	mkdir ~/shed_tools
 	mkdir ~/galaxy-central/tool_deps
 
-4. Open universe_wsgi.ini and change the dependencies directory::
+4. Create configuration file::
 
-	gedit ~/galaxy-central/universe_wsgi.ini
+	cp ~/galaxy-central/universe_wsgi.ini.sample ~/galaxy-central/universe_wsgi.ini
 
+5. Open universe_wsgi.ini and change the dependencies directory::
 
-5. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
+	LINUX: gedit ~/galaxy-central/universe_wsgi.ini
+	OS X: open -a TextEdit ~/galaxy-central/universe_wsgi.ini
 
-6. (Re-)Start the galaxy daemon::
+6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
+
+7. Remove the hash in front of ``tool_config_file`` and ``tool_path``
+
+8. (Re-)Start the galaxy daemon::
 
 	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
 	GALAXY_RUN_ALL=1 sh run.sh --daemon
 
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
+To improve the overall performance of NumPy_ you need to disable CPU throttling::
+
+	cpufreq-selector -g performance
+
+.. _NumPy: http://www.numpy.org/
+
+
+=============
 Admin Account
 =============
 
-1. Register a new account
+- Register a new account
 
-2. Promote user to admin
+- Promote user to admin
 	- open universe_wsgi.ini
 	- search ``admin_users = None`` and change it to ``admin_users = YOUR_EMAIL_ADDRESS``
 
+
+========
 Toolshed
 ========
 
-**Installation via webbrowser**
+===========================
+Installation via webbrowser
+===========================
 
 - go to the `admin page`_
 - select *Search and browse tool sheds*
-- Galaxy test tool shed >> Computational chemistry >> chemicaltoolbox
+- Galaxy test tool shed > Computational chemistry > chemicaltoolbox
 - install chemicaltoolbox
 
-**Installtion via the shell**
-
-- generate an API_ Key
-- execute the following code from your terminal
-
-.. code-block:: console
-
-   $ ./scripts/api/install_tools.py --api  <Your Galaxy API Key> \
-    -l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ \
-    -o bgruening -r 7e98219aa915  --name chemicaltoolbox \
-    --tool-deps --repository-deps \
-    --panel-section-name ChemicalToolBoX
-
-
 .. _admin page: http://localhost:8080/admin
-.. _API: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
+
+
+================
+API Installation
+================
+
+- Generate an `API Key`_
+- Run the installation script::
+	
+	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY 
+	-l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening 
+	-r 2c9d1a52824d --name chemicaltoolbox --tool-deps --repository-deps 
+	--panel-section-name ChemicalToolBoX
+
+.. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
+
+========================
+JMol Editor Installation
+========================
+
+`JMol Editor`_ needs be run on a webserver, this is how to setup the server:
+
+.. _JMol Editor: http://wiki.jmol.org/index.php/Jmol_as_editor
+
+- copy the directory ``jmoleditor`` from /galaxytools/chemicaltoolbox/data_source/ into your Galaxy Root directory ::
+
+	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy-central/
+
+- launch the webserver ::
+
+	python -m SimpleHTTPServer &
 
 
 

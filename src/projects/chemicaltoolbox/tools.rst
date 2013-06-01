@@ -3,31 +3,25 @@ title: List of Tools
 layout: default
 ---
 
-
-+------------+------------+-----------+
-| Header 1   | Header 2   | Header 3  |
-+============+============+===========+
-| body row 1 | column 2   | column 3  |
-+------------+------------+-----------+
-| body row 2 | Cells may span columns.|
-+------------+------------+-----------+
-| body row 3 | Cells may  | - Cells   |
-+------------+ span rows. | - contain |
-| body row 4 |            | - blocks. |
-+------------+------------+-----------+
-
-
+=====
+Tools
+=====
 
 - Get Chemical Data
-	- *JMol Editor*
-	- *Online data*
-	- *PubChem download*
+	- JMol Editor
+		JMol_ is a viewer of molecular structures but the JMol Editor can be used to alter atom positions or identities and to add/remove atoms.
+
+.. _JMol: http://jmol.sourceforge.net/
+	- Online data
+		Upload data via FTP or HTTP and load them into your history. Supportes gz/gzip- and rar-files.
+	- PubChem download
+		Download all molecules from PubChem_ and store them as SMILES file.
+
+.. _PubChem: http://pubchem.ncbi.nlm.nih.gov/
 
 - Chemical Converters
-	- *InChI to SMI*
-		Converts an InChI file into a SMI file. This tool is also available for many other conversion pairs.
 	- Compound converter
-		Compound converter joins several `Open Babel command prompt converters`_ in an easy to use tool. It converts various chemistry and moleculare modeling data files. The output format can be specified as well as several parameters (isotopes, canonical form, dative bonds, etc).
+		Compound converter joins several `Open Babel command prompt converters`_ in an easy to use tool. It converts various chemistry and moleculare modeling data files. The output format can be specified as well as several parameters. Some parameters are available for all tools (e.g. protonation state & pH) others are specific for a given output format (e.g. exclude isotopes for conversion to canSMI).
 	- Molecule recognition
 		OSRA_ (Optical Structure Recognition Application) is a utility designed to convert graphical representations of chemical structures into SMILES or SDF. It generates the SMILES or SDF representation of any molecular structure image within a document which is parseable by ImageMagick.
 	- IUPAC name-to-structure
@@ -69,17 +63,20 @@ layout: default
 	- Molecules to fingerprints
 		Chemfp_ is a tool for fingerprint generation. It supports the FPS fingerprint file format using `Open Babel`_, OpenEye_ and RDKit_ .
 	- SDF to fingerprint
+		Read an input SDF file, extract the fingerprints and store them in a fps-file.
 	- Drug-likeness
-	- *gen3D*
+		Describes the similarity of a compound to known drugs. Comes with three applicable varieties (QED\ :sub:`w,mo`\ , QED\ :sub:`w,max`\ , QED\ :sub:`w,u` ).
+	- Descriptors by RDKit_
+		An open source cheminformatics and machine learning toolkit with a lot of overlap with OpenBabel. It therefor can be used to compare results with OpenBabel. The tool offers different descriptor and fingerprint calculations.
 	- Natural Product
+		Calculates the Natural Product(NP)-likeness of a molecule, i.e. the similarity of the molecule to the structure space covered by known natural products.
+	- |Shape-it (TM)|
+		|Shape-it (TM)| is a `silicos-it tool`_ that aligns a reference molecule against a set of database molecules using the shape of the molecules as the align criterion. It is based on the use of `gaussian volumes as descriptor for molecular shape`_ as it was introduced by Grant and Pickup.
 
-	- Shape-it |copy|
-		Shape-it |copy| is a `silicos-it tool`_ that aligns a reference molecule against a set of database molecules using the shape of the molecules as the align criterion. It is based on the use of `gaussian volumes as descriptor for molecular shape`_ as it was introduced by Grant and Pickup.
+		|Shape-it (TM)| is a program that is instructed by means of command line options. The program expects a single reference molecule (with three-dimensional coordinates) and a database file containing one or more molecules (with three-dimensional coordinates) that need to be shape-aligned onto the reference molecule. The tool returns all aligned database molecules and their respective shape overlap scores, or the top-best scoring molecules.
 
-		Shape-it |copy| is a program that is instructed by means of command line options. The program expects a single reference molecule (with three-dimensional coordinates) and a database file containing one or more molecules (with three-dimensional coordinates) that need to be shape-aligned onto the reference molecule. The tool returns all aligned database molecules and their respective shape overlap scores, or the top-best scoring molecules.
-
-	- Strip-it |copy|
-		Strip-it |copy| is a `program by silicos-it`_ that identifies and extracts predefined scaffolds from organic small molecules. The program is linked against the open source C++ library of Open Babel.
+	- |Strip-it (TM)|
+		|Strip-it (TM)| is a `program by silicos-it`_ that identifies and extracts predefined scaffolds from organic small molecules. The program is linked against the open source C++ library of Open Babel.
 
 		The program comes with a number of predefined molecular scaffolds for extraction. These scaffolds include, amongst others `molecular frameworks`_ as originally described by Bemis and Murcko, `molecular frameworks and the reduced molecular frameworks`_ as described by Ansgar Schuffenhauer and coworkers and `scaffold topologies`_ as described by Sara Pollock and coworkers.
 
@@ -99,16 +96,9 @@ layout: default
 	- Visualisation
 		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on Open Babel PNG_/SVG_ 2D depiction.
 
-
-
-.. |copy| raw:: html
-
-   &copy;
-
-
-.. |Spectrophores (TM)| unicode:: Spectrophores 
-.. |Strip-it (TM)| unicode:: Strip-it 
-.. |Shape-it (TM)| unicode:: Shape-it 
+.. |Spectrophores (TM)| unicode:: Spectrophores
+.. |Strip-it (TM)| unicode:: Strip-it
+.. |Shape-it (TM)| unicode:: Shape-it
    .. trademark sign
 
 .. _OPSIN: https://bitbucket.org/dan2097/opsin/overview
