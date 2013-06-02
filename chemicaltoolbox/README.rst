@@ -37,6 +37,7 @@ ChemicalToolBox is based on open-source software, web-accessible, freely availab
 It can be downloaded and easily deployed locally or on a large scale cluster.
 
 .. _About Galaxy:
+
 ======
 Galaxy
 ======
@@ -51,6 +52,7 @@ It is possible to share workflows and histories with other users or make the pub
 Saved workflows can be used with new input files or just to rerun an analyses which ensures repeatability.
 
 .. _Parallelisation:
+
 ===============
 Parallelisation
 ===============
@@ -64,6 +66,7 @@ As the parallelisation is scalable the job will run on a predefined number of co
 The more cores the faster the processing.
 
 .. _Supported Filetypes:
+
 ===================
 Supported Filetypes
 ===================
@@ -104,6 +107,7 @@ All filetypes are interchangable due to three easy converting options:
 	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/internal_conversion.png
 
 .. _Getting Started:
+
 Getting Started
 ===============
 .. _Installation:
@@ -111,7 +115,17 @@ Getting Started
 ChemicalToolBoX can be installed on all common Unix systems. 
 However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
 
+For any additional information, especially cluster configuration or general Galaxy_ questions, 
+please have a look at the Galaxy Wiki.
+
+- http://wiki.galaxyproject.org/
+
+- http://wiki.galaxyproject.org/Admin/
+
+- http://galaxyproject.org/search/web/
+
 .. _contact: https://github.com/bgruening
+.. _Galaxy: http://galaxyproject.org/
 
 Prerequisites::
 
@@ -168,7 +182,8 @@ After launching galaxy is accessible via the browser at ``http://localhost:8080/
 
 
 
-.. _Admin Account
+.. _Admin Account:
+
 =============
 Admin Account
 =============
@@ -180,7 +195,9 @@ Admin Account
 	- search ``admin_users = None`` and change it to ``admin_users = YOUR_EMAIL_ADDRESS``
 
 
-.. _Toolshed
+.. _Toolshed:
+
+========
 Toolshed
 ========
 
@@ -189,7 +206,6 @@ To improve the overall performance of NumPy_ you need to disable CPU throttling 
 	cpufreq-selector -g performance
 
 .. _NumPy: http://www.numpy.org/
-
 
 ===========================
 Installation via webbrowser
@@ -201,7 +217,6 @@ Installation via webbrowser
 - install chemicaltoolbox
 
 .. _admin page: http://localhost:8080/admin
-
 
 ================
 API Installation
@@ -233,7 +248,8 @@ JMol Editor Installation
 
 	python -m SimpleHTTPServer &
 
-.. _Tools
+.. _Tools:
+
 Tools
 =====
 
@@ -353,14 +369,16 @@ Tools
 .. _Confab: https://code.google.com/p/confab/
 .. _`natural Product likeness`: http://sourceforge.net/projects/np-likeness/
 
-.. _Bug Tracker
+.. _Bug Tracker:
+
 Bug Tracker
 ===========
 Have a bug or a feature request? `Please write a new card`_. Before writing a new card, please search for existing issues.
 
 .. _Please write a new card: https://trello.com/b/t9Wr8lSY
 
-.. _Contributing
+.. _Contributing:
+
 Contributing
 ============
 We encourage you to contribute to ChemicalToolBoX! Check out our `Trello board`_ or contact us via e-mail_.
