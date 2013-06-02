@@ -37,6 +37,7 @@ ChemicalToolBox is based on open-source software, web-accessible, freely availab
 It can be downloaded and easily deployed locally or on a large scale cluster.
 
 .. _About Galaxy:
+
 ======
 Galaxy
 ======
@@ -51,6 +52,7 @@ It is possible to share workflows and histories with other users or make the pub
 Saved workflows can be used with new input files or just to rerun an analyses which ensures repeatability.
 
 .. _Parallelisation:
+
 ===============
 Parallelisation
 ===============
@@ -64,27 +66,29 @@ As the parallelisation is scalable the job will run on a predefined number of co
 The more cores the faster the processing.
 
 .. _Supported Filetypes:
+
 ===================
 Supported Filetypes
 ===================
 
 - InChI_
 	International Chemical Identifier - developed by the IUPAC_. Representation of a chemical molecule as a string which can include information about the bond, tautomerism, isotope, charge and stereochemistry. Strings are generated following the InChI-algorithm.
-- MOL_ & MOL2_
-	Single chemical molecule. See SDF.
-- SDF_
+- MOL2_
+	 A Tripos_ Mol2 file can store a complete representation of a SYBYL molecule.
+- MOL_ & SDF_
 	Structure-data-file consisting of many MOL-files. Molecules are separated by four Dollar signs ($$$$). Allows the storing metainformation like molecular mass or uniqueID. Developed by MDL Information System (Accelrys_).
 - SMILES_
 	A line notation using ASCII strings to represent chemical molecules. Information about the charge, isotope or radical can be included besides the stereo information (CIP convention) and the normal bonds. The Simplified Molecular Input Line Entry Specification was developed by Daylight_ Chemical Information System Incorporation.
+- and others:
+	Special filetypes like the `Open Babel`_ Fastsearch_ index or the Pharmacophore type from `silicos-it` are also supported.
 
 .. _InChI: http://www.iupac.org/home/publications/e-resources/inchi.html
 .. _IUPAC: http://www.iupac.org
-
+.. _Tripos: http://www.tripos.com
 .. _MOL: http://en.wikipedia.org/wiki/Chemical_table_file
-.. _MOL2: http://openbabel.org/wiki/Sybyl_mol2
+.. _MOL2: http://www.tripos.com/mol2/mol2_format3.html
 .. _SDF: http://accelrys.com/products/informatics/cheminformatics/ctfile-formats/no-fee.php
 .. _Accelrys: http://accelrys.com
-
 .. _SMILES: http://daylight.com/smiles/index.html
 .. _Daylight: http://daylight.com
 
@@ -103,13 +107,25 @@ All filetypes are interchangable due to three easy converting options:
 	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/internal_conversion.png
 
 .. _Getting Started:
+
 Getting Started
 ===============
 .. _Installation:
 
-ChemicalToolBoX can be installed on all common unix systems. However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
+ChemicalToolBoX can be installed on all common Unix systems. 
+However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
+
+For any additional information, especially cluster configuration or general Galaxy_ questions, 
+please have a look at the Galaxy Wiki.
+
+- http://wiki.galaxyproject.org/
+
+- http://wiki.galaxyproject.org/Admin/
+
+- http://galaxyproject.org/search/web/
 
 .. _contact: https://github.com/bgruening
+.. _Galaxy: http://galaxyproject.org/
 
 Prerequisites::
 
@@ -129,7 +145,7 @@ Prerequisites::
 
 1. Clone the latest `Galaxy platform`_::
 
-	hg clone https://https://bitbucket.org/galaxy/galaxy-central/
+	hg clone https://bitbucket.org/galaxy/galaxy-central/
 
 .. _Galaxy platform: http://wiki.galaxyproject.org/Admin/Get%20Galaxy
 
@@ -164,15 +180,10 @@ Prerequisites::
 
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
-To improve the overall performance of NumPy_ you need to disable CPU throttling::
-
-	cpufreq-selector -g performance
-
-.. _NumPy: http://www.numpy.org/
 
 
+.. _Admin Account:
 
-.. _Admin Account
 =============
 Admin Account
 =============
@@ -184,9 +195,17 @@ Admin Account
 	- search ``admin_users = None`` and change it to ``admin_users = YOUR_EMAIL_ADDRESS``
 
 
-.. _Toolshed
+.. _Toolshed:
+
+========
 Toolshed
 ========
+
+To improve the overall performance of NumPy_ you need to disable CPU throttling during the installation::
+
+	cpufreq-selector -g performance
+
+.. _NumPy: http://www.numpy.org/
 
 ===========================
 Installation via webbrowser
@@ -198,7 +217,6 @@ Installation via webbrowser
 - install chemicaltoolbox
 
 .. _admin page: http://localhost:8080/admin
-
 
 ================
 API Installation
@@ -218,7 +236,7 @@ API Installation
 JMol Editor Installation
 ========================
 
-`JMol Editor`_ needs be run on a webserver, this is how to setup the server:
+`JMol Editor`_ needs be run on a separate webserver, this is how to setup the server:
 
 .. _JMol Editor: http://wiki.jmol.org/index.php/Jmol_as_editor
 
@@ -226,11 +244,12 @@ JMol Editor Installation
 
 	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy-central/
 
-- launch the webserver ::
+- launch the webserver from your galaxy-central root directory ::
 
 	python -m SimpleHTTPServer &
 
-.. _Tools
+.. _Tools:
+
 Tools
 =====
 
@@ -272,9 +291,9 @@ Tools
 
 		Molecules with similar three-dimensional properties and shape, and therefore also similar biological activities, always have similar |Spectrophores (TM)|. As a result this technique is a very powerful tool to investigate the similarity of molecules and can be applied as a screening tool for molecular databases, virtual screening, and database characterisations.
 	- Similarity search
-		Simsearch is a chemfp_ tool searching a FPS file for similar fingerprints.
+		Similarity searches using a variety of different fingerprints using either the chemfp_ FPS type or the `Open Babel` Fastsearch_ index.
 	- Substructure search
-		Substructure search is based on Open Babel FastSearch_. FastSearch uses molecular fingerprints to prepare and search an index of a multi-molecule datafile. It allows fast substructure and structural similarity searching. The indexing is a slow process (~30 minutes for a 250,000 molecule file). The subsequent seaching is much faster, a few seconds, and so can be done interactively.
+		Substructure search is based on Open Babel FastSearch_. FastSearch uses molecular fingerprints to prepare and search an index of a multi-molecule datafile.
 
 - Calculate / Modify
 	- Compute physico-chemical properties
@@ -290,12 +309,12 @@ Tools
 	- Molecules to fingerprints
 		Chemfp_ is a tool for fingerprint generation. It supports the FPS fingerprint file format using `Open Babel`_, OpenEye_ and RDKit_ .
 	- SDF to fingerprint
-		Read an input SDF file, extract the fingerprints and store them in a fps-file.
+		Read an input SD file (pubchem), extract the fingerprints and store them in a FPS-file.
 	- Drug-likeness
 		Describes the similarity of a compound to known drugs. Comes with three applicable varieties (QED\ :sub:`w,mo`\ , QED\ :sub:`w,max`\ , QED\ :sub:`w,u` ).
 	- Descriptors by RDKit_
 		An open source cheminformatics and machine learning toolkit with a lot of overlap with OpenBabel. It therefor can be used to compare results with OpenBabel. The tool offers different descriptor and fingerprint calculations.
-	- Natural Product
+	- `Natural Product likeness`_
 		Calculates the Natural Product(NP)-likeness of a molecule, i.e. the similarity of the molecule to the structure space covered by known natural products.
 	- |Shape-it (TM)|
 		|Shape-it (TM)| is a `silicos-it tool`_ that aligns a reference molecule against a set of database molecules using the shape of the molecules as the align criterion. It is based on the use of `gaussian volumes as descriptor for molecular shape`_ as it was introduced by Grant and Pickup.
@@ -309,19 +328,19 @@ Tools
 
 - Chemical Clustering
 	- NxN clustering
-		Generates hierarchical clusters and visualises clusters with dendrograms. Accepts fingerprints in FPS format as input.
+		Generates hierarchical clusters and visualises clusters with dendrograms. Powered by chemfp_.
 	- Taylor-Butina clustering
-		`Taylor-Butina clustering`_ is an unsupervised non-hierarchical clustering method which guarantees that every cluster contains molecules which are within a distance cutoff of the central molecule. Fingerprints in FPS format are needed as input.
+		`Taylor-Butina clustering`_ is an unsupervised non-hierarchical clustering method which guarantees that every cluster contains molecules which are within a distance cutoff of the central molecule. Powered by chemfp_.
 
 - Fragmentation
 	- Fragmenter
-		Splits a molecule on predefined spots, following the RECAP-rules.
+		Splits a molecule on predefined spots, e.g. the RECAP-rules.
 	- Merging
-		Merges small molecules together to larger compounds using  predefined reactions. The options *Molecule dependend iteration depth* and *Number of repeats* can be used to adjust the created number of compounds and the actual computation time.
+		Merges small molecules together to larger compounds using  predefined reactions. The options *iteration depth* and *number of repeats* can be used to adjust the created number of compounds and the actual computation time.
 
 - Visualisation
 	- Visualisation
-		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on Open Babel PNG_/SVG_ 2D depiction.
+		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on `Open Babel`_ PNG_/SVG_ 2D depiction.
 
 .. |Spectrophores (TM)| unicode:: Spectrophores U+2122
 .. |Strip-it (TM)| unicode:: Strip-it U+2122
@@ -338,7 +357,7 @@ Tools
 .. _obgrep: http://openbabel.org/wiki/Obgrep
 .. _FastSearch: http://openbabel.org/wiki/FastSearch
 .. _Silicos: http://www.silicos.be/technologies/spectrophore
-.. _Chemfp: https://chemfp.readthedocs.org/en/latest/
+.. _chemfp: http://chemfp.com/
 .. _Open Babel command prompt converters: http://openbabel.org/docs/2.3.0/FileFormats/Overview.html
 .. _Open Babel: http://openbabel.org/wiki/Main_Page
 .. _OpenEye: http://www.eyesopen.com/
@@ -348,15 +367,18 @@ Tools
 .. _SVG: http://openbabel.org/docs/dev/FileFormats/SVG_2D_depiction.html
 .. _OSRA: http://cactus.nci.nih.gov/osra/
 .. _Confab: https://code.google.com/p/confab/
+.. _`natural Product likeness`: http://sourceforge.net/projects/np-likeness/
 
-.. _Bug Tracker
+.. _Bug Tracker:
+
 Bug Tracker
 ===========
 Have a bug or a feature request? `Please write a new card`_. Before writing a new card, please search for existing issues.
 
 .. _Please write a new card: https://trello.com/b/t9Wr8lSY
 
-.. _Contributing
+.. _Contributing:
+
 Contributing
 ============
 We encourage you to contribute to ChemicalToolBoX! Check out our `Trello board`_ or contact us via e-mail_.
