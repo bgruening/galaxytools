@@ -145,7 +145,7 @@ Prerequisites::
 
 1. Clone the latest `Galaxy platform`_::
 
-	hg clone https://https://bitbucket.org/galaxy/galaxy-central/
+	hg clone https://bitbucket.org/galaxy/galaxy-central/
 
 .. _Galaxy platform: http://wiki.galaxyproject.org/Admin/Get%20Galaxy
 
