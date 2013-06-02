@@ -13,7 +13,6 @@ import argparse
 import subprocess
 from chemfp import search
 
-
 def unix_sort(results):
     temp_unsorted = tempfile.NamedTemporaryFile(delete=False)
     for (i,indices) in enumerate( results.iter_indices() ):
@@ -38,35 +37,18 @@ def unix_sort(results):
 
     os.remove(temp_sorted.name)
 
-
 def butina( args ):
     """
         Taylor-Butina clustering from the chemfp help.
     """
-
-    # make sure that the file ending is fps
-    temp_file = tempfile.NamedTemporaryFile()
-    temp_link = "%s.%s" % (temp_file.name, 'fps')
-    temp_file.close()
-    os.symlink(args.input_path, temp_link)
-    #os.system('ln -s %s %s' % (args.input_path, temp_link) )
-
     out = args.output_path
-    arena = chemfp.load_fingerprints( temp_link )
+    targets = chemfp.open( args.input_path, format='fps' )
+    arena = chemfp.load_fingerprints( targets )
 
     chemfp.set_num_threads( args.processors )
     results = search.threshold_tanimoto_search_symmetric(arena, threshold = args.tanimoto_threshold)
     results.reorder_all("move-closest-first")
 
-    # TODO: more memory efficient search?
-    # Reorder so the centroid with the most hits comes first.
-    # (That's why I do a reverse search.)
-    # Ignore the arbitrariness of breaking ties by fingerprint index
-    """
-    results = sorted( (  (len(indices), i, indices)
-                              for (i,indices) in enumerate(results.iter_indices()) ),
-                      reverse=True)
-    """
     sorted_ids = unix_sort(results)
 
     # Determine the true/false singletons and the clusters
@@ -108,7 +90,6 @@ def butina( args ):
     out.write( "#%s false singletons\n" % len(false_singletons) )
     out.write( "#clusters: %s\n" % len_cluster )
 
-
     # Sort so the cluster with the most compounds comes first,
     # then by alphabetically smallest id
     def cluster_sort_key(cluster):
@@ -126,7 +107,6 @@ def butina( args ):
         out.write("%s\t%s\n" % (arena.ids[idx], 0))
 
     out.close()
-    os.remove( temp_link )
 
 
 if __name__ == "__main__":
@@ -153,5 +133,3 @@ https://chemfp.readthedocs.org
 
     options = parser.parse_args()
     butina( options )
-
-

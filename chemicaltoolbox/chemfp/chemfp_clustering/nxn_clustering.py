@@ -12,8 +12,6 @@ import chemfp
 import scipy.cluster.hierarchy as hcluster
 import pylab
 import numpy
-import tempfile
-
 
 def distance_matrix(arena, tanimoto_threshold = 0.0):
     n = len(arena)
@@ -37,7 +35,6 @@ def distance_matrix(arena, tanimoto_threshold = 0.0):
 
     # Return the distance matrix using the similarity matrix
     return 1.0 - similarities
-
 
 
 if __name__ == "__main__":
@@ -64,19 +61,12 @@ https://chemfp.readthedocs.org
 
     args = parser.parse_args()
 
-    # make sure that the file ending is fps
-    temp_file = tempfile.NamedTemporaryFile()
-    temp_link = "%s.%s" % (temp_file.name, 'fps')
-    temp_file.close()
-    os.symlink(args.input_path, temp_link)
-
-    arena = chemfp.load_fingerprints( temp_link )
+    targets = chemfp.open( args.input_path, format='fps' )
+    arena = chemfp.load_fingerprints( targets )
     distances  = distance_matrix( arena, args.tanimoto_threshold )
     linkage = hcluster.linkage( distances, method="single", metric="euclidean" )
 
     hcluster.dendrogram(linkage, labels=arena.ids)
 
     pylab.savefig( args.output_path, format=args.oformat )
-
-
 
