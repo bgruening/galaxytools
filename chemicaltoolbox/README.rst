@@ -275,7 +275,7 @@ Tools
 	- Similarity search
 		Similarity searches using a variety of different fingerprints using either the chemfp_ FPS type or the `Open Babel` Fastsearch_ index.
 	- Substructure search
-		Substructure search is based on Open Babel FastSearch_. FastSearch uses molecular fingerprints to prepare and search an index of a multi-molecule datafile. It allows fast substructure and structural similarity searching. The indexing is a slow process (~30 minutes for a 250,000 molecule file). The subsequent seaching is much faster, a few seconds, and so can be done interactively.
+		Substructure search is based on Open Babel FastSearch_. FastSearch uses molecular fingerprints to prepare and search an index of a multi-molecule datafile.
 
 - Calculate / Modify
 	- Compute physico-chemical properties
@@ -291,12 +291,12 @@ Tools
 	- Molecules to fingerprints
 		Chemfp_ is a tool for fingerprint generation. It supports the FPS fingerprint file format using `Open Babel`_, OpenEye_ and RDKit_ .
 	- SDF to fingerprint
-		Read an input SDF file, extract the fingerprints and store them in a fps-file.
+		Read an input SD file (pubchem), extract the fingerprints and store them in a FPS-file.
 	- Drug-likeness
 		Describes the similarity of a compound to known drugs. Comes with three applicable varieties (QED\ :sub:`w,mo`\ , QED\ :sub:`w,max`\ , QED\ :sub:`w,u` ).
 	- Descriptors by RDKit_
 		An open source cheminformatics and machine learning toolkit with a lot of overlap with OpenBabel. It therefor can be used to compare results with OpenBabel. The tool offers different descriptor and fingerprint calculations.
-	- Natural Product
+	- `Natural Product likeness`_
 		Calculates the Natural Product(NP)-likeness of a molecule, i.e. the similarity of the molecule to the structure space covered by known natural products.
 	- |Shape-it (TM)|
 		|Shape-it (TM)| is a `silicos-it tool`_ that aligns a reference molecule against a set of database molecules using the shape of the molecules as the align criterion. It is based on the use of `gaussian volumes as descriptor for molecular shape`_ as it was introduced by Grant and Pickup.
@@ -310,9 +310,9 @@ Tools
 
 - Chemical Clustering
 	- NxN clustering
-		Generates hierarchical clusters and visualises clusters with dendrograms. Accepts fingerprints in FPS format as input.
+		Generates hierarchical clusters and visualises clusters with dendrograms. Powered by chemfp_.
 	- Taylor-Butina clustering
-		`Taylor-Butina clustering`_ is an unsupervised non-hierarchical clustering method which guarantees that every cluster contains molecules which are within a distance cutoff of the central molecule. Fingerprints in FPS format are needed as input.
+		`Taylor-Butina clustering`_ is an unsupervised non-hierarchical clustering method which guarantees that every cluster contains molecules which are within a distance cutoff of the central molecule. Powered by chemfp_.
 
 - Fragmentation
 	- Fragmenter
@@ -339,7 +339,7 @@ Tools
 .. _obgrep: http://openbabel.org/wiki/Obgrep
 .. _FastSearch: http://openbabel.org/wiki/FastSearch
 .. _Silicos: http://www.silicos.be/technologies/spectrophore
-.. _Chemfp: https://chemfp.readthedocs.org/en/latest/
+.. _chemfp: http://chemfp.com/
 .. _Open Babel command prompt converters: http://openbabel.org/docs/2.3.0/FileFormats/Overview.html
 .. _Open Babel: http://openbabel.org/wiki/Main_Page
 .. _OpenEye: http://www.eyesopen.com/
@@ -349,6 +349,7 @@ Tools
 .. _SVG: http://openbabel.org/docs/dev/FileFormats/SVG_2D_depiction.html
 .. _OSRA: http://cactus.nci.nih.gov/osra/
 .. _Confab: https://code.google.com/p/confab/
+.. _`natural Product likeness`: http://sourceforge.net/projects/np-likeness/
 
 .. _Bug Tracker
 Bug Tracker
