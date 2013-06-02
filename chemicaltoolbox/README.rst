@@ -108,7 +108,8 @@ Getting Started
 ===============
 .. _Installation:
 
-ChemicalToolBoX can be installed on all common unix systems. However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
+ChemicalToolBoX can be installed on all common Unix systems. 
+However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
 
 .. _contact: https://github.com/bgruening
 
@@ -165,12 +166,6 @@ Prerequisites::
 
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
-To improve the overall performance of NumPy_ you need to disable CPU throttling::
-
-	cpufreq-selector -g performance
-
-.. _NumPy: http://www.numpy.org/
-
 
 
 .. _Admin Account
@@ -188,6 +183,13 @@ Admin Account
 .. _Toolshed
 Toolshed
 ========
+
+To improve the overall performance of NumPy_ you need to disable CPU throttling during the installation::
+
+	cpufreq-selector -g performance
+
+.. _NumPy: http://www.numpy.org/
+
 
 ===========================
 Installation via webbrowser
