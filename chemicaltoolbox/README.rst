@@ -70,21 +70,22 @@ Supported Filetypes
 
 - InChI_
 	International Chemical Identifier - developed by the IUPAC_. Representation of a chemical molecule as a string which can include information about the bond, tautomerism, isotope, charge and stereochemistry. Strings are generated following the InChI-algorithm.
-- MOL_ & MOL2_
-	Single chemical molecule. See SDF.
-- SDF_
+- MOL2_
+	 A Tripos_ Mol2 file can store a complete representation of a SYBYL molecule.
+- MOL_ & SDF_
 	Structure-data-file consisting of many MOL-files. Molecules are separated by four Dollar signs ($$$$). Allows the storing metainformation like molecular mass or uniqueID. Developed by MDL Information System (Accelrys_).
 - SMILES_
 	A line notation using ASCII strings to represent chemical molecules. Information about the charge, isotope or radical can be included besides the stereo information (CIP convention) and the normal bonds. The Simplified Molecular Input Line Entry Specification was developed by Daylight_ Chemical Information System Incorporation.
+- and others:
+	Special filetypes like the `Open Babel`_ Fastsearch_ index or the Pharmacophore type from `silicos-it` are also supported.
 
 .. _InChI: http://www.iupac.org/home/publications/e-resources/inchi.html
 .. _IUPAC: http://www.iupac.org
-
+.. _Tripos: http://www.tripos.com
 .. _MOL: http://en.wikipedia.org/wiki/Chemical_table_file
-.. _MOL2: http://openbabel.org/wiki/Sybyl_mol2
+.. _MOL2: http://www.tripos.com/mol2/mol2_format3.html
 .. _SDF: http://accelrys.com/products/informatics/cheminformatics/ctfile-formats/no-fee.php
 .. _Accelrys: http://accelrys.com
-
 .. _SMILES: http://daylight.com/smiles/index.html
 .. _Daylight: http://daylight.com
 
@@ -272,7 +273,7 @@ Tools
 
 		Molecules with similar three-dimensional properties and shape, and therefore also similar biological activities, always have similar |Spectrophores (TM)|. As a result this technique is a very powerful tool to investigate the similarity of molecules and can be applied as a screening tool for molecular databases, virtual screening, and database characterisations.
 	- Similarity search
-		Simsearch is a chemfp_ tool searching a FPS file for similar fingerprints.
+		Similarity searches using a variety of different fingerprints using either the chemfp_ FPS type or the `Open Babel` Fastsearch_ index.
 	- Substructure search
 		Substructure search is based on Open Babel FastSearch_. FastSearch uses molecular fingerprints to prepare and search an index of a multi-molecule datafile. It allows fast substructure and structural similarity searching. The indexing is a slow process (~30 minutes for a 250,000 molecule file). The subsequent seaching is much faster, a few seconds, and so can be done interactively.
 
