@@ -221,7 +221,7 @@ API Installation
 JMol Editor Installation
 ========================
 
-`JMol Editor`_ needs be run on a webserver, this is how to setup the server:
+`JMol Editor`_ needs be run on a separate webserver, this is how to setup the server:
 
 .. _JMol Editor: http://wiki.jmol.org/index.php/Jmol_as_editor
 
@@ -229,7 +229,7 @@ JMol Editor Installation
 
 	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy-central/
 
-- launch the webserver ::
+- launch the webserver from your galaxy-central root directory ::
 
 	python -m SimpleHTTPServer &
 
