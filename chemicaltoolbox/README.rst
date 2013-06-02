@@ -316,13 +316,13 @@ Tools
 
 - Fragmentation
 	- Fragmenter
-		Splits a molecule on predefined spots, following the RECAP-rules.
+		Splits a molecule on predefined spots, e.g. the RECAP-rules.
 	- Merging
-		Merges small molecules together to larger compounds using  predefined reactions. The options *Molecule dependend iteration depth* and *Number of repeats* can be used to adjust the created number of compounds and the actual computation time.
+		Merges small molecules together to larger compounds using  predefined reactions. The options *iteration depth* and *number of repeats* can be used to adjust the created number of compounds and the actual computation time.
 
 - Visualisation
 	- Visualisation
-		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on Open Babel PNG_/SVG_ 2D depiction.
+		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on `Open Babel`_ PNG_/SVG_ 2D depiction.
 
 .. |Spectrophores (TM)| unicode:: Spectrophores U+2122
 .. |Strip-it (TM)| unicode:: Strip-it U+2122
