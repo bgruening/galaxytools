@@ -227,10 +227,16 @@ API Installation
 	
 	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY 
 	-l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening 
-	-r 2c9d1a52824d --name chemicaltoolbox --tool-deps --repository-deps 
+	-r c7499fbba43b --name chemicaltoolbox --tool-deps --repository-deps 
 	--panel-section-name ChemicalToolBoX
 
+The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
+`test tool shed`_ or with the following command::
+
+	hg identify http://bgruening@testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+
 .. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
+.. _`test tool shed`: http://testtoolshed.g2.bx.psu.edu/
 
 ========================
 JMol Editor Installation
