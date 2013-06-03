@@ -76,7 +76,7 @@ Supported Filetypes
 - MOL2_
 	 A Tripos_ Mol2 file can store a complete representation of a SYBYL molecule.
 - MOL_ & SDF_
-	Structure-data-file consisting of many MOL-files. Molecules are separated by four Dollar signs ($$$$). Allows the storing metainformation like molecular mass or uniqueID. Developed by MDL Information System (Accelrys_).
+	Structure-data-file that can consist of many molecules. Molecules are separated by four Dollar signs ($$$$). Allows the storing of metainformation like molecular mass or a unique identifier. Developed by MDL Information System (Accelrys_).
 - SMILES_
 	A line notation using ASCII strings to represent chemical molecules. Information about the charge, isotope or radical can be included besides the stereo information (CIP convention) and the normal bonds. The Simplified Molecular Input Line Entry Specification was developed by Daylight_ Chemical Information System Incorporation.
 - and others:
@@ -92,7 +92,7 @@ Supported Filetypes
 .. _SMILES: http://daylight.com/smiles/index.html
 .. _Daylight: http://daylight.com
 
-All filetypes are interchangable due to three easy converting options:
+All filetypes are interchangable due to three easy to use converting options:
 
 
 - the built-in conversion via the pencil icon |pencilicon|
@@ -102,7 +102,7 @@ All filetypes are interchangable due to three easy converting options:
 
 - the Compound Converter tool described in the Tools section
 
-- the import conversion each tool automatically offers
+- the automatic conversion each tool offers
 
 	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/internal_conversion.png
 
@@ -181,7 +181,6 @@ Prerequisites::
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
 
-
 .. _Admin Account:
 
 =============
@@ -227,7 +226,7 @@ API Installation
 	
 	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY 
 	-l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening 
-	-r c7499fbba43b --name chemicaltoolbox --tool-deps --repository-deps 
+	-r 8dc926145333 --name chemicaltoolbox --tool-deps --repository-deps 
 	--panel-section-name ChemicalToolBoX
 
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
@@ -261,27 +260,27 @@ Tools
 
 - Get Chemical Data
 	- JMol Editor
-		JMol_ is a viewer of molecular structures but the JMol Editor can be used to alter atom positions or identities and to add/remove atoms.
+		JMol_ Editor can be used to paint structures or alter atoms or identities from single molecules.
 
 .. _JMol: http://jmol.sourceforge.net/
 	- Online data
-		Upload data via FTP or HTTP and load them into your history. Supportes gz/gzip- and rar-files.
+		Upload data via FTP or HTTP and load them into your history. Supportes compressed-files.
 	- PubChem download
-		Download all molecules from PubChem_ and store them as SMILES file.
+		Download all molecules from PubChem_ and store them in a single large SMILES file.
 
 .. _PubChem: http://pubchem.ncbi.nlm.nih.gov/
 
 - Chemical Converters
 	- Compound converter
-		Compound converter joins several `Open Babel command prompt converters`_ in an easy to use tool. It converts various chemistry and moleculare modeling data files. The output format can be specified as well as several parameters. Some parameters are available for all tools (e.g. protonation state & pH) others are specific for a given output format (e.g. exclude isotopes for conversion to canSMI).
+		Compound converter joins several `Open Babel command prompt converters`_ in an easy to use tool. It converts various chemistry and moleculare modeling data files. The output format can be specified as well as several parameters. Some parameters are available for all tools (e.g. protonation state & pH) others are specific for a given output format (e.g. exclude isotopes for conversion to canonical SMILES).
 	- Molecule recognition
-		OSRA_ (Optical Structure Recognition Application) is a utility designed to convert graphical representations of chemical structures into SMILES or SDF. It generates the SMILES or SDF representation of any molecular structure image within a document which is parseable by ImageMagick.
+		OSRA_ (Optical Structure Recognition Application) is a utility designed to convert graphical representations of chemical structures into SMILES or SDF. It generates the SMILES or SDF representation of any molecular structure image within a document which is parseable by GraphicMagick.
 	- IUPAC name-to-structure
 		OPSIN_ is a IUPAC name-to-structure conversion tool offering high recall and precision on organic chemical nomenclature.
 
 - Filter / Sort
 	- (Multi) Compound search
-		Uses the Open Babel Obgrep_ to search for molecules inside multi-molecule files (e.g. SMI, SDF, etc.) or across multiple files.
+		Uses the Open Babel Obgrep_ to search for molecules inside multi-molecule files (e.g. SMI, SDF, etc.).
 	- Remove counterions and fragments
 		Parses a multiple molecules file and deletes any present counterions or fragments.
 	- Remove duplicated molecules
@@ -313,13 +312,13 @@ Tools
 	- Confab
 		Confab_ is a conformation generator. The algorithm starts with an input 3D structure which, after some initialisation steps, is used to generate multiple conformers which are filtered on-the-fly to identify diverse low energy conformers.
 	- Molecules to fingerprints
-		Chemfp_ is a tool for fingerprint generation. It supports the FPS fingerprint file format using `Open Babel`_, OpenEye_ and RDKit_ .
+		10 different fingerprints can be calculated from all common file formats using chemfp_. Chemfp supports the FPS fingerprint file format and is utilising `Open Babel`_, OpenEye_ and RDKit_.
 	- SDF to fingerprint
-		Read an input SD file (pubchem), extract the fingerprints and store them in a FPS-file.
+		Read an input SD file (PubChem), extract the fingerprints and store them in a FPS-file.
 	- Drug-likeness
-		Describes the similarity of a compound to known drugs. Comes with three applicable varieties (QED\ :sub:`w,mo`\ , QED\ :sub:`w,max`\ , QED\ :sub:`w,u` ).
+		Estimates the drug-likeness of molecules and reports a score. Comes with three applicable varieties (QED\ :sub:`w,mo`\ , QED\ :sub:`w,max`\ , QED\ :sub:`w,u` ).
 	- Descriptors by RDKit_
-		An open source cheminformatics and machine learning toolkit with a lot of overlap with OpenBabel. It therefor can be used to compare results with OpenBabel. The tool offers different descriptor and fingerprint calculations.
+		This tool calculates all available descriptors from RDKit_..
 	- `Natural Product likeness`_
 		Calculates the Natural Product(NP)-likeness of a molecule, i.e. the similarity of the molecule to the structure space covered by known natural products.
 	- |Shape-it (TM)|
