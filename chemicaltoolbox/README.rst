@@ -226,7 +226,7 @@ API Installation
 	
 	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY 
 	-l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening 
-	-r 8dc926145333 --name chemicaltoolbox --tool-deps --repository-deps 
+	-r c7499fbba43b --name chemicaltoolbox --tool-deps --repository-deps 
 	--panel-section-name ChemicalToolBoX
 
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
