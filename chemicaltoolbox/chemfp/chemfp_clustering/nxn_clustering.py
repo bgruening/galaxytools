@@ -47,14 +47,17 @@ https://chemfp.readthedocs.org
                     required=True,
                     help="Path to the input file.")
 
-    parser.add_argument("-o", "--output", dest="output_path",
-                    help="Path to the output file.")
+    parser.add_argument("-c", "--cluster", dest="cluster_image",
+                    help="Path to the output cluster image.")
+
+    parser.add_argument("-s", "--smatrix", dest="similarity_matrix",
+                    help="Path to the similarity matrix output file.")
 
     parser.add_argument("-t", "--threshold", dest="tanimoto_threshold", 
                     type=float, default=0.0,
                     help="Tanimoto threshold [0.0]")
 
-    parser.add_argument("--oformat", default='png', help="Output format (png, svg).")
+    parser.add_argument("--oformat", default='png', help="Output format (png, svg)")
 
     parser.add_argument('-p', '--processors', type=int, 
         default=4)
@@ -64,9 +67,14 @@ https://chemfp.readthedocs.org
     targets = chemfp.open( args.input_path, format='fps' )
     arena = chemfp.load_fingerprints( targets )
     distances  = distance_matrix( arena, args.tanimoto_threshold )
-    linkage = hcluster.linkage( distances, method="single", metric="euclidean" )
 
-    hcluster.dendrogram(linkage, labels=arena.ids)
+    if args.similarity_matrix:
+        distances.tofile( args.similarity_matrix )
 
-    pylab.savefig( args.output_path, format=args.oformat )
+    if args.cluster_image:
+        linkage = hcluster.linkage( distances, method="single", metric="euclidean" )
+
+        hcluster.dendrogram(linkage, labels=arena.ids)
+
+        pylab.savefig( args.cluster_image, format=args.oformat )
 
