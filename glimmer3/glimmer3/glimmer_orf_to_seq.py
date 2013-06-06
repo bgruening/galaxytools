@@ -25,7 +25,6 @@ def __main__():
 
     for line in glimmerfile:
         if line.startswith('>'):
-            print line[1:].strip()
             entry = sequences[ line[1:].strip() ]
         else:
             orf_start = int(line[8:17])
@@ -40,6 +39,7 @@ def __main__():
 
     orf2seq.close()
     glimmerfile.close()
+    sequence.close()
 
 if __name__ == "__main__" :
     __main__()
