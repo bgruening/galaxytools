@@ -1,7 +1,7 @@
 Galaxy wrapper for Augustus
-=====================================
+===========================
 
-This wrapper is copyright 2012 by Björn Grüning.
+This wrapper is copyright 2012-2013 by Björn Grüning.
 
 This is a wrapper for the command line tool of augustus.
 http://bioinf.uni-greifswald.de/augustus/
@@ -21,40 +21,38 @@ Gene Prediction with a Hidden-Markov Model and a new Intron Submodel.
 Bioinformatics, Vol. 19, Suppl. 2, pages ii215-ii225
 
 
-
-
 Installation
 ============
 
-Install or downlaod augustus from:
+The recommended installation is by means of the tool shed. If you need to install it manually here is a short introduction.
 
+Install or downlaod augustus from:
 http://bioinf.uni-greifswald.de/augustus/binaries/
 
-and follow the installation instructions or copy the binaries into your $PATH
+and follow the installation instructions or copy the binaries into your $PATH. To install the wrapper copy the augustus folder in the galaxy tools folder and modify the tools_conf.xml file to make the tool available to Galaxy.
 
-To install the wrapper copy the augustus folder in the galaxy tools
-folder and modify the tools_conf.xml file to make the tool available to Galaxy.
-For example:
+For example::
 
-<section name="Gene Prediction" id="gene_prediction">
+  <section name="Gene Prediction" id="gene_prediction">
     <tool file="gene_prediction/tools/augustus/augustus.xml" />
-</section>
+  </section>
 
 
-Set the AUGUSTUS_CONFIG_PATH to /path_to_augustus/augustus/config with
-    export AUGUSTUS_CONFIG_PATH=/path_to_augustus/augustus/config
-or modify the wrapper and use the following additional commandline switch:
-    --AUGUSTUS_CONFIG_PATH=/path_to_augustus/augustus/config
+Set the *AUGUSTUS_CONFIG_PATH* to /path_to_augustus/augustus/config with::
 
+  export AUGUSTUS_CONFIG_PATH=/path_to_augustus/augustus/config
 
+or modify the wrapper and use the following additional commandline switch::
+
+  --AUGUSTUS_CONFIG_PATH=/path_to_augustus/augustus/config
 
 
 History
 =======
 
-v0.1 - Initial public release
-v0.2 - Added tool_dependencies.xml file and update the augustus version (thanks to James Johnson)
-
+- v0.1: Initial public release
+- v0.2: Added tool_dependencies.xml file and update the augustus version (thanks to James Johnson)
+- v0.3: upgrade to augustus 2.7, added new organisms and new parameters, output additional sequence files
 
 Wrapper Licence (MIT/BSD style)
 ===============================
