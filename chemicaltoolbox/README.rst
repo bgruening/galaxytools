@@ -97,14 +97,14 @@ All filetypes are interchangable due to three easy to use converting options:
 
 - the built-in conversion via the pencil icon |pencilicon|
 
-	.. |pencilicon| image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/pencilicon.png
-	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/convert_pencil.jpg
+	.. |pencilicon| image:: https://github.com/bgruening/galaxytools/raw/master/chemicaltoolbox/pencil_icon.png
+	.. image:: https://github.com/bgruening/galaxytools/raw/master/chemicaltoolbox/convert_pencil.jpg
 
 - the Compound Converter tool described in the Tools section
 
 - the automatic conversion each tool offers
 
-	.. image:: http://github.com/sbleher/galaxytools/raw/master/chemicaltoolbox/readme/internal_conversion.png
+	.. image:: https://github.com/bgruening/galaxytools/raw/master/chemicaltoolbox/internal_conversion.png
 
 .. _Getting Started:
 
