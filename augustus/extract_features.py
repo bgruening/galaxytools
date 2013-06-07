@@ -47,16 +47,18 @@ HS08198	AUGUSTUS	start_codon	445	447	.	+	0	Parent=g2.t1
 
             if args.protein and line.startswith('protein sequence = ['):
                 if line.endswith(']'):
-                    line = line[20:-1]
-                    protein_seq = line
+                    protein_seq = line[20:-1]
+                    po.write( '>%s\n%s\n' % (gene_name, '\n'.join( textwrap.wrap( protein_seq, 80 ) ) ) )
+                    protein_seq = ''
                 else:
                     line = line[20:]
                     protein_seq = line
 
             if args.codingseq and line.startswith('coding sequence = ['):
                 if line.endswith(']'):
-                    line = line[19:-1]
-                    coding_seq = line
+                    coding_seq = line[19:-1]
+                    co.write( '>%s\n%s\n' % (gene_name, '\n'.join( textwrap.wrap( coding_seq, 80 ) ) ) )
+                    coding_seq = ''
                 else:
                     line = line[19:]
                     coding_seq = line
