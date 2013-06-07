@@ -1,48 +1,124 @@
-<tool id="glimmer3-main" name="Glimmer3" version="0.1">
-  <description>Predict ORFs in prokaryotic genomes (knowlegde-based)</description>
-  <command>
+<tool id="glimmer_knowlegde-based" name="Glimmer3" version="0.1">
+    <description>Predict ORFs in prokaryotic genomes (knowlegde-based)</description>
+    <requirements>
+        <requirement type="package" version="3.02b">glimmer</requirement>
+        <requirement type="package" version="1.61">biopython</requirement>
+        <requirement type="set_environment">GLIMMER_SCRIPT_PATH</requirement>
+    </requirements>
+    <command>
     #import tempfile, os
     #set $temp = tempfile.NamedTemporaryFile( delete=False )
     # $temp.close()
-    tigr-glimmer
-        glimmer3
-        -o$overlaplen
-        -g$genlen
-        -t$thresh
-        $linear
-        $seqInput
-        $icmInput
-        $temp 2>&#38;1;
-    mv $temp".predict" $prediction;
-    mv $temp".detail"  $detailed;
-    rm $temp
-  </command>
-  <inputs>
-    <param name="seqInput" type="data" format="fasta" label="Genome Sequence" help="Dataset missing? See TIP below"/>
-    <param name="icmInput" type="data"  label="Interpolated context model (ICM)" help="Dataset missing? See TIP below"/>
-    <param name="overlaplen" type="integer" value="50" label="Set maximum overlap length. Overlaps this short or shorter are ignored."/>
-    <param name="genlen" type="integer" value="90" label="Set minimum gene length."/>
-    <param name="thresh" type="integer" value="30" label="Set threshold score for calling as gene. If the in-frame score >= N, then the region is given a number and considered a potential gene."/>
-    <param name="linear" type="boolean" truevalue="-l" falsevalue="" checked="true" label="Assume linear rather than circular genome, i.e., no wraparound"/>
-  </inputs>
-  <outputs>
-    <data format="tabular" name="prediction" />
-    <data format="tabular" name="detailed" />
-  </outputs>
-  <tests>
-    <test>
-        <param name="seqInput" value='glimmer3/seqTest.fa'/>
-        <param name="icmInput" value='glimmer3/icmTest.icm'/>
-        <param name="overlaplen" value="50"/>
-        <param name="genlen"  value="90" />
-        <param name="thresh"  value="30"  />
-        <param name="linear" value="-l" />
-        <output name="output1" file='glimmer3/output1Test.dat' />
-        <output name="output2" file='glimmer3/output2Test.dat'/>
-    </test>
- </tests>
 
-<help>
+    glimmer3
+        --max_olap $max_olap
+        --gene_len $gene_len
+        --threshold $threshold
+        #if float( str($gc_percent) ) > 0.0:
+            --gc_percent $gc_percent
+        #end if
+
+        #if $stop_codon_opts.stop_codon_opts_selector == "gb":
+            --trans_table "${stop_codon_opts.genbank_gencode}"
+        #else:
+            --stop_codons "${stop_codon_opts.stop_codons}"
+        #end if
+
+        $linear
+        $no_indep
+        $extend
+        $seq_input
+        $icm_input
+        $temp 2>&#38;1;
+
+    ## convert prediction to FASTA sequences
+    \$GLIMMER_SCRIPT_PATH/glimmer_orf_to_seq.py $temp".predict" $seq_input $genes_output
+
+    #if $report:
+        mv $temp".predict" $prediction;
+    #else:
+        rm $temp".predict";
+    #end if
+
+    #if $detailed_report:
+        mv $temp".detail" $detailed;
+    #else:
+        rm $temp".detail";
+    #end if
+
+    rm $temp
+    </command>
+    <inputs>
+        <param name="seq_input" type="data" format="fasta" label="Genome Sequence" />
+        <param name="icm_input" type="data" format="data" label="Interpolated context model (ICM)" />
+
+        <param name="max_olap" type="integer" value="50" label="Set maximum overlap length" help="Overlaps this short or shorter are ignored." />
+        <param name="gene_len" type="integer" value="90" label="Set the minimum gene length to n nucleotides" hrlp="This does not include the bases in the stop codon."/>
+        <param name="threshold" type="integer" value="30" label="Set threshold score for calling as gene" help="If the in-frame score >= N, then the region is given a number and considered a potential gene." />
+        <param name="gc_percent" type="float" value="0.0" label="Set the GC percentage of the independent model, i.e., the model of intergenic sequence" help="If 0.0 specified, the GC percentage will be counted from the input file." />
+
+        <param name="linear" type="boolean" truevalue="--linear" falsevalue="" checked="true" label="Assume linear rather than circular genome, i.e., no wraparound" />
+        <param name="no_indep" type="boolean" truevalue="--no_indep" falsevalue="" checked="false" label="Don’t use the independent probability score column at all" help="Using this option will produce more short gene predictions." />
+        <param name="extend" type="boolean" truevalue="--extend" falsevalue="" checked="false" label="Also score orfs that extend off the end of the sequence(s)" />
+        <param name="start_codons" type="text" value="atg,gtg,ttg" label="Specify start codons as a comma-separated list" />
+
+        <conditional name="stop_codon_opts">
+            <param name="stop_codon_opts_selector" type="select" label="Specify start codons as">
+              <option value="gb" selected="True">Genbank translation table entry</option>
+              <option value="free_form">Comma-separated list</option>
+            </param>
+            <when value="gb">
+                <param name="genbank_gencode" type="select" label="Use Genbank translation table to specify stop codons">
+                    <option value="1" select="True">1. Standard</option>
+                    <option value="2">2. Vertebrate Mitochondrial</option>
+                    <option value="3">3. Yeast Mitochondrial</option>
+                    <option value="4">4. Mold, Protozoan, and Coelenterate Mitochondrial Code and the Mycoplasma/Spiroplasma Code</option>
+                    <option value="5">5. Invertebrate Mitochondrial</option>
+                    <option value="6">6. Ciliate, Dasycladacean and Hexamita Nuclear Code</option>
+                    <option value="9">9. Echinoderm Mitochondrial</option>
+                    <option value="10">10. Euplotid Nuclear</option>
+                    <option value="11">11. Bacteria and Archaea</option>
+                    <option value="12">12. Alternative Yeast Nuclear</option>
+                    <option value="13">13. Ascidian Mitochondrial</option>
+                    <option value="14">14. Flatworm Mitochondrial</option>
+                    <option value="15">15. Blepharisma Macronuclear</option>
+                    <option value="16">16. Chlorophycean Mitochondrial</option>
+                    <option value="21">21. Trematode Mitochondrial</option>
+                    <option value="22">22. Scenedesmus obliquus mitochondrial</option>
+                    <option value="23">23. Thraustochytrium Mitochondrial</option>
+                    <option value="24">24. Pterobranchia mitochondrial</option>
+                </param>
+            </when>
+            <when value="free_form">
+                <param name="stop_codons" type="text" value="tag,tga,taa" label="Specify stop codons as a comma-separated list" />
+            </when>
+        </conditional>
+
+        <param name="report" type="boolean" truevalue="" falsevalue="" checked="false" label="Report the classic glimmer table output"/>
+        <param name="detailed_report" type="boolean" truevalue="" falsevalue="" checked="false" label="Output a detailed gene prediction report as separate file"/>
+    </inputs>
+    <outputs>
+        <data name="genes_output" format="fasta" label="Glimmer3 on ${on_string} (Gene Prediction FASTA)" />
+        <data name="prediction" format="txt" label="Glimmer3 on ${on_string} (Gene Prediction table)">
+            <filter>report == True</filter>
+        </data>
+        <data name="detailed" format="txt" label="Glimmer3 on ${on_string} (detailed report)">
+            <filter>detailed_report == True</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="seqInput" value='glimmer3/seqTest.fa' />
+            <param name="icmInput" value='glimmer3/icmTest.icm' />
+            <param name="overlaplen" value="50" />
+            <param name="genlen"  value="90" />
+            <param name="thresh"  value="30" />
+            <param name="linear" value="-l" />
+            <output name="output1" file='glimmer3/output1Test.dat' />
+            <output name="output2" file='glimmer3/output2Test.dat' />
+        </test>
+    </tests>
+    <help>
 
 
 **What it does**
@@ -151,6 +227,6 @@
 A.L. Delcher, K.A. Bratke, E.C. Powers, and S.L. Salzberg. Identifying bacterial genes and endosymbiont DNA with Glimmer. Bioinformatics (Advance online version) (2007).
 
 
- </help>
+    </help>
 
 </tool>

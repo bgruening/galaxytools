@@ -1,7 +1,7 @@
 Galaxy wrapper for RepeatMasker
-=====================================
+===============================
 
-This wrapper is copyright 2012 by Björn Grüning.
+This wrapper is copyright 2012-2013 by Björn Grüning.
 
 This is a wrapper for the command line tool of Glimmer3.
 http://www.cbcb.umd.edu/software/glimmer/
@@ -9,7 +9,7 @@ http://www.cbcb.umd.edu/software/glimmer/
 Glimmer is a system for finding genes in microbial DNA, 
 especially the genomes of bacteria, archaea, and viruses. 
 Glimmer (Gene Locator and Interpolated Markov ModelER) uses interpolated 
-Markov models (IMMs) to identify the coding regions and distinguish them from noncoding DNA. 
+Markov models (IMMs) to identify the coding regions and distinguish them from noncoding DNA.
 
 A.L. Delcher, D. Harmon, S. Kasif, O. White, and S.L. Salzberg. Improved microbial gene identification with GLIMMER, Nucleic Acids Research 27:23 (1999), 4636-4641.
 S. Salzberg, A. Delcher, S. Kasif, and O. White. Microbial gene identification using interpolated Markov models, Nucleic Acids Research 26:2 (1998), 544-548.
@@ -20,14 +20,10 @@ A.L. Delcher, K.A. Bratke, E.C. Powers, and S.L. Salzberg. Identifying bacterial
 Installation
 ============
 
-To install Glimmer3, please download Glimmer3 from 
+Since version 0.2 the recommended installation procedure is via the Galaxy Tool Shed.
 
-http://www.cbcb.umd.edu/software/glimmer/glimmer302.tar.gz
-
-and follow the installation instructions. You can also use packages from your distribution like
-
-http://packages.debian.org/stable/science/tigr-glimmer
-
+To install Glimmer3 manually, please download Glimmer3 from http://www.cbcb.umd.edu/software/glimmer/glimmer302.tar.gz
+and follow the installation instructions. You can also use packages from your distribution like http://packages.debian.org/stable/science/tigr-glimmer
 
 To install the wrapper copy the glimmer3 folder in the galaxy tools
 folder and modify the tools_conf.xml file to make the tool available to Galaxy.
@@ -47,7 +43,8 @@ For example:
 History
 =======
 
-v0.1 - Initial public release
+- v0.1: Initial public release
+- v0.2: Add tool shed integration
 
 
 Wrapper Licence (MIT/BSD style)
