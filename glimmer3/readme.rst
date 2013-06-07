@@ -29,15 +29,9 @@ To install the wrapper copy the glimmer3 folder in the galaxy tools
 folder and modify the tools_conf.xml file to make the tool available to Galaxy.
 For example:
 
-<tool file="gene_prediction/tools/glimmer3/glimmer3-main-wrapper.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer_predict.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer_orf_to_seq.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer2gff.xml" />
-<tool file="gene_prediction/tools/glimmer3/gbktoorfWrapper.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer_acgt_content.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer3-build-icm-wrapper.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer3-extract-wrapper.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer3-long-orfs-wrapper.xml" />
+<tool file="gene_prediction/tools/glimmer3/glimmer_w_icm.xml" />
+<tool file="gene_prediction/tools/glimmer3/glimmer_wo_icm.xml" />
+<tool file="gene_prediction/tools/glimmer3/glimmer_build-icm.xml" />
 
 
 History

@@ -9,7 +9,7 @@ import sys, os
 import tempfile
 import subprocess
 import shutil
-from glimmer_orf_to_seq import glimmer2seq
+from glimmer2seq import glimmer2seq
 
 def main():
     genome_seq_file = sys.argv[1]
