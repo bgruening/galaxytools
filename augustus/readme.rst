@@ -3,8 +3,9 @@ Galaxy wrapper for Augustus
 
 This wrapper is copyright 2012-2013 by Björn Grüning.
 
-This is a wrapper for the command line tool of augustus.
-http://bioinf.uni-greifswald.de/augustus/
+This is a wrapper for the command line tool of Augustus_.
+
+.. _augustus: http://bioinf.uni-greifswald.de/augustus/
 
 AUGUSTUS is a program that predicts genes in eukaryotic genomic sequences.
 
@@ -24,10 +25,15 @@ Bioinformatics, Vol. 19, Suppl. 2, pages ii215-ii225
 Installation
 ============
 
-The recommended installation is by means of the tool shed. If you need to install it manually here is a short introduction.
+The recommended installation is by means of the toolshed_.
+If you need to install it manually here is a short introduction.
 
-Install or downlaod augustus from:
-http://bioinf.uni-greifswald.de/augustus/binaries/
+.. _toolshed: http://toolshed.g2.bx.psu.edu/view/bjoern-gruening/augustus
+
+
+Install or downlaod augustus from::
+
+    http://bioinf.uni-greifswald.de/augustus/binaries/
 
 and follow the installation instructions or copy the binaries into your $PATH. To install the wrapper copy the augustus folder in the galaxy tools folder and modify the tools_conf.xml file to make the tool available to Galaxy.
 
