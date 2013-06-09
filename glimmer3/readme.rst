@@ -1,4 +1,4 @@
-Galaxy wrapper for RepeatMasker
+Galaxy wrapper for Glimmer
 ===============================
 
 This wrapper is copyright 2012-2013 by Björn Grüning.
@@ -16,7 +16,7 @@ S. Salzberg, A. Delcher, S. Kasif, and O. White. Microbial gene identification u
 A.L. Delcher, K.A. Bratke, E.C. Powers, and S.L. Salzberg. Identifying bacterial genes and endosymbiont DNA with Glimmer. Bioinformatics (Advance online version) (2007). 
 
 
-
+============
 Installation
 ============
 
@@ -29,18 +29,18 @@ To install the wrapper copy the glimmer3 folder in the galaxy tools
 folder and modify the tools_conf.xml file to make the tool available to Galaxy.
 For example:
 
-<tool file="gene_prediction/tools/glimmer3/glimmer_w_icm.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer_wo_icm.xml" />
-<tool file="gene_prediction/tools/glimmer3/glimmer_build-icm.xml" />
+|<tool file="gene_prediction/tools/glimmer3/glimmer_w_icm.xml" />
+|<tool file="gene_prediction/tools/glimmer3/glimmer_wo_icm.xml" />
+|<tool file="gene_prediction/tools/glimmer3/glimmer_build-icm.xml" />
 
-
+=======
 History
 =======
 
 - v0.1: Initial public release
 - v0.2: Add tool shed integration
 
-
+===============================
 Wrapper Licence (MIT/BSD style)
 ===============================
 

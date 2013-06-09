@@ -67,7 +67,7 @@ def main():
     if outfile_ext_path.strip() != 'None':
         shutil.copyfile( os.path.join( tempdir, tag + ".detail" ), outfile_ext_path )
 
-    glimmer2seq( outfile_classic_glimmer, genome_seq_file, oufile_genes )
+    glimmer2seq( os.path.join( tempdir, tag + ".predict" ), genome_seq_file, oufile_genes )
 
 
 if __name__ == "__main__" :
