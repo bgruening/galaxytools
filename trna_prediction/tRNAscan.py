@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 
 """
-
     Converts tRNAScan output back to fasta-sequences.
-
 """
-
 import sys
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
@@ -16,7 +13,7 @@ def main(args):
     """
         Call from galaxy:
         tRNAscan.py $organism $mode $showPrimSecondOpt $disablePseudo $showCodons $tabular_output $inputfile $fasta_output
-        
+
             tRNAscan-SE $organism $mode $showPrimSecondOpt $disablePseudo $showCodons -d -Q -y -q -b -o $tabular_output $inputfile;
     """
     cmd = """tRNAscan-SE -Q -y -q -b %s""" % ' '.join( args[:-1] )
