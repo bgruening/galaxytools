@@ -312,10 +312,15 @@ def __main__():
 
         tmp_res = tempfile.NamedTemporaryFile( dir= output_dir).name
 
-        cmd = 'samtools merge -f - %s ' % ( ' '.join( glob( os.path.join( output_dir, '*.bam') ) ) )
+        bam_files = glob( os.path.join( output_dir, '*.bam') )
+        if len( bam_files ) > 1:
+            cmd = 'samtools merge -f - %s ' % ( ' '.join( bam_files ) )
 
-        p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
-        proc = subprocess.Popen( ['samtools', 'sort', '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+            p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
+            proc = subprocess.Popen( ['samtools', 'sort', '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+        else:
+            proc = subprocess.Popen( ['samtools', 'sort', bam_files[0], tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+
         returncode = proc.wait()
         tmp_stdout.close()
         tmp_stderr.close()
