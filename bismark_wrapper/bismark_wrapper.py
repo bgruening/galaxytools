@@ -16,6 +16,8 @@ def stop_err( msg ):
     sys.exit()
 
 def __main__():
+
+    print 'tempfile_location',tempfile.gettempdir()
     #Parse Command Line
     parser = argparse.ArgumentParser(description='Wrapper for the bismark bisulfite mapper.')
     parser.add_argument( '-p', '--num-threads', dest='num_threads',
@@ -166,7 +168,7 @@ def __main__():
         index_dir = os.path.dirname( args.index_path )
 
     # Build bismark command
-    tmp_bismark_dir = tempfile.mkdtemp()
+    tmp_bismark_dir = tempfile.mkdtemp( dir='/data/0/galaxy_db/tmp/' )
     output_dir = os.path.join( tmp_bismark_dir, 'results')
     cmd = 'bismark %(args)s --bam --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
 
@@ -249,7 +251,9 @@ def __main__():
 
     # Final bismark command:
     cmd = cmd % arguments
-
+    print 'bismark_cmd:', cmd
+    #sys.stderr.write( cmd )
+    #sys.exit(1)
     # Run
     try:
         tmp_out = tempfile.NamedTemporaryFile().name
