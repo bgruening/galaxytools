@@ -143,6 +143,14 @@ Prerequisites::
 
 .. _MacPorts: http://www.macports.org/
 
+0. Create a sand-boxed Python using virtualenv_ (not necessary but recommended)::
+
+	python ./virtualenv.py --no-site-packages galaxy_env
+	. ./galaxy_env/bin/activate
+
+.. _virtualenv: http://www.virtualenv.org/
+
+
 1. Clone the latest `Galaxy platform`_::
 
 	hg clone https://bitbucket.org/galaxy/galaxy-central/
@@ -178,6 +186,11 @@ Prerequisites::
 	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
 	GALAXY_RUN_ALL=1 sh run.sh --daemon
 
+   In deamon mode all logs will be written to main.log in your Galaxy Home directory. You can also use::
+   
+	run.sh   
+
+
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
 
@@ -206,20 +219,9 @@ To improve the overall performance of NumPy_ you need to disable CPU throttling 
 
 .. _NumPy: http://www.numpy.org/
 
-===========================
-Installation via webbrowser
-===========================
 
-- go to the `admin page`_
-- select *Search and browse tool sheds*
-- Galaxy test tool shed > Computational chemistry > chemicaltoolbox
-- install chemicaltoolbox
-
-.. _admin page: http://localhost:8080/admin
-
-================
-API Installation
-================
+API Installation (recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Generate an `API Key`_
 - Run the installation script::
@@ -236,6 +238,20 @@ The -r argument specifies the version of ChemicalToolBoX. You can get the latest
 
 .. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
 .. _`test tool shed`: http://testtoolshed.g2.bx.psu.edu/
+
+
+
+Installation via webbrowser
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+- go to the `admin page`_
+- select *Search and browse tool sheds*
+- Galaxy test tool shed > Computational chemistry > chemicaltoolbox
+- install chemicaltoolbox
+
+.. _admin page: http://localhost:8080/admin
+
+
 
 ========================
 JMol Editor Installation
