@@ -318,12 +318,12 @@ def __main__():
 
         bam_files = glob( os.path.join( output_dir, '*.bam') )
         if len( bam_files ) > 1:
-            cmd = 'samtools merge -f - %s ' % ( ' '.join( bam_files ) )
+            cmd = 'samtools merge -@ %s -f - %s ' % ( args.num_threads, ' '.join( bam_files ) )
 
             p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
-            proc = subprocess.Popen( ['samtools', 'sort', '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( ['samtools', 'sort', '-@', args.num_threads, '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
         else:
-            proc = subprocess.Popen( ['samtools', 'sort', bam_files[0], tmp_res], stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( ['samtools', 'sort', '-@', args.num_threads, bam_files[0], tmp_res], stdin=stdout, stdout=tmp_stdout, stderr=tmp_stderr )
 
         returncode = proc.wait()
         tmp_stdout.close()
