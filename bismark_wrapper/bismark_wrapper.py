@@ -323,7 +323,7 @@ def __main__():
             p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
             proc = subprocess.Popen( ['samtools', 'sort', '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
         else:
-            proc = subprocess.Popen( ['samtools', 'sort', bam_files[0], tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( ['samtools', 'sort', bam_files[0], tmp_res], stdout=tmp_stdout, stderr=tmp_stderr )
 
         returncode = proc.wait()
         tmp_stdout.close()
