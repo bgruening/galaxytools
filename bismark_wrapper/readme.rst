@@ -25,7 +25,7 @@ History
 - v0.7.8: update and add Tool Shed Integration
 - v0.7.11.1 change default output to BAM, from now on samtools are required
 - v0.7.11.2 added multi-threading to samtools (samtools > 0.1.19 is required)
-
+- v0.7.12 upgrade to bismark 0.7.12 and fix a major slowdown
 
 ===============================
 Wrapper Licence (MIT/BSD style)
