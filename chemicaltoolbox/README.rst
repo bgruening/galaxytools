@@ -163,6 +163,8 @@ Prerequisites::
 	cd ~/galaxy-central
 	hg pull
 	hg update
+   
+   This step is not necessary if you have a fresh checkout. Anyway, it is good to know ;)
 
 3. Create folders for toolshed and dependencies::
 
@@ -180,7 +182,7 @@ Prerequisites::
 
 6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
 
-7. Remove the hash in front of ``tool_config_file`` and ``tool_path``
+7. Remove the ``#`` in front of ``tool_config_file`` and ``tool_path``
 
 8. (Re-)Start the galaxy daemon::
 
