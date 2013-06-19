@@ -193,6 +193,7 @@ Prerequisites::
    
 	run.sh   
 
+   During the first startup Galaxy will prepare your database. That can take some time. Have a look at the log file if you want to know what happens.
 
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
