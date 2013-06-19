@@ -145,6 +145,7 @@ Prerequisites::
 
 0. Create a sand-boxed Python using virtualenv_ (not necessary but recommended)::
 
+        wget https://raw.github.com/pypa/virtualenv/master/virtualenv.py
 	python ./virtualenv.py --no-site-packages galaxy_env
 	. ./galaxy_env/bin/activate
 
