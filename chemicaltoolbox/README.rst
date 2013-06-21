@@ -143,6 +143,12 @@ Prerequisites::
 
 .. _MacPorts: http://www.macports.org/
 
+
+===================
+Galaxy installation
+===================
+
+
 0. Create a sand-boxed Python using virtualenv_ (not necessary but recommended)::
 
         wget https://raw.github.com/pypa/virtualenv/master/virtualenv.py
@@ -200,22 +206,24 @@ After launching galaxy is accessible via the browser at ``http://localhost:8080/
 
 .. _Admin Account:
 
-=============
-Admin Account
-=============
+=======================
+Tool Shed configuration
+=======================
 
 - Register a new account
 
 - Promote user to admin
 	- open universe_wsgi.ini
-	- search ``admin_users = None`` and change it to ``admin_users = YOUR_EMAIL_ADDRESS``
+	- search ``admin_users = None`` and change it to ``admin_users = EMAIL_ADDRESS`` (your Galaxy Username)
 
 
 .. _Toolshed:
 
-========
-Toolshed
-========
+
+============================
+ChemicalToolBoX installation
+============================
+
 
 To improve the overall performance of NumPy_ you need to disable CPU throttling during the installation::
 
@@ -224,8 +232,8 @@ To improve the overall performance of NumPy_ you need to disable CPU throttling 
 .. _NumPy: http://www.numpy.org/
 
 
-API Installation (recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Installation via Galaxy API (recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Generate an `API Key`_
 - Run the installation script::
@@ -238,7 +246,7 @@ API Installation (recommended)
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
 `test tool shed`_ or with the following command::
 
-	hg identify http://bgruening@testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+	hg identify http://testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
 
 .. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
 .. _`test tool shed`: http://testtoolshed.g2.bx.psu.edu/
