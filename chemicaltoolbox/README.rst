@@ -210,11 +210,17 @@ After launching galaxy is accessible via the browser at ``http://localhost:8080/
 Tool Shed configuration
 =======================
 
-- Register a new account
-
-- Promote user to admin
-	- open universe_wsgi.ini
+- Register a new user account in your Galaxy instance: Top Panel  → User → Register
+- Become an admin
+	- open ``universe_wsgi.ini`` in your favourite text editor (gedit universe_wsgi.ini)
 	- search ``admin_users = None`` and change it to ``admin_users = EMAIL_ADDRESS`` (your Galaxy Username)
+	- remove the ``#`` if needed
+- restart Galaxy
+
+::
+
+	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
+	GALAXY_RUN_ALL=1 sh run.sh --daemon
 
 
 .. _Toolshed:
