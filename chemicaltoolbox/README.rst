@@ -210,7 +210,7 @@ After launching galaxy is accessible via the browser at ``http://localhost:8080/
 Tool Shed configuration
 =======================
 
-- Register a new user account in your Galaxy instance: Top Panel  → User → Register
+- Register a new user account in your Galaxy instance: Top Panel → User → Register
 - Become an admin
 	- open ``universe_wsgi.ini`` in your favourite text editor (gedit universe_wsgi.ini)
 	- search ``admin_users = None`` and change it to ``admin_users = EMAIL_ADDRESS`` (your Galaxy Username)
@@ -253,6 +253,9 @@ The -r argument specifies the version of ChemicalToolBoX. You can get the latest
 `test tool shed`_ or with the following command::
 
 	hg identify http://testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+
+You can watch the installation status under: Top Panel → Admin → Manage installed tool shed repositories
+
 
 .. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
 .. _`test tool shed`: http://testtoolshed.g2.bx.psu.edu/
