@@ -186,7 +186,7 @@ Galaxy installation
 	LINUX: gedit ~/galaxy-central/universe_wsgi.ini
 	OS X: open -a TextEdit ~/galaxy-central/universe_wsgi.ini
 
-6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
+6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``, remove the ``#`` if needed
 
 7. Remove the ``#`` in front of ``tool_config_file`` and ``tool_path``
 
