@@ -168,7 +168,13 @@ def __main__():
         index_dir = os.path.dirname( args.index_path )
 
     # Build bismark command
-    tmp_bismark_dir = tempfile.mkdtemp( dir='/data/0/galaxy_db/tmp/' )
+    
+    """
+    Bismark requires a large amount of temporary disc space. If that is not available, for example on a cluster you can hardcode the
+    TMP to some larger space. It's not recommended but it works.
+    """
+    #tmp_bismark_dir = tempfile.mkdtemp( dir='/data/0/galaxy_db/tmp/' )
+    tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join( tmp_bismark_dir, 'results')
     cmd = 'bismark %(args)s --bam --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
 
@@ -264,6 +270,7 @@ def __main__():
         returncode = proc.wait()
 
         if returncode != 0:
+            tmp_stdout.close()
             tmp_stderr.close()
             # get stderr, allowing for case where it's very large
             tmp_stderr = open( tmp_err, 'rb' )
@@ -278,6 +285,9 @@ def __main__():
                 pass
 
             raise Exception, stderr
+
+        tmp_stdout.close()
+        tmp_stderr.close()
 
         # TODO: look for errors in program output.
     except Exception, e:
@@ -309,8 +319,8 @@ def __main__():
         """
             merge all bam files
         """
-        tmp_out = tempfile.NamedTemporaryFile( dir=output_dir ).name
-        tmp_stdout = open( tmp_out, 'wb' )
+        #tmp_out = tempfile.NamedTemporaryFile( dir=output_dir ).name
+        tmp_stdout = open( tmp_out, 'wab' )
         tmp_err = tempfile.NamedTemporaryFile( dir=output_dir ).name
         tmp_stderr = open( tmp_err, 'wb' )
 
@@ -321,9 +331,9 @@ def __main__():
             cmd = 'samtools merge -@ %s -f - %s ' % ( args.num_threads, ' '.join( bam_files ) )
 
             p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
-            proc = subprocess.Popen( ['samtools', 'sort', '-@', args.num_threads, '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( ['samtools', 'sort', '-@', str(args.num_threads), '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
         else:
-            proc = subprocess.Popen( ['samtools', 'sort', '-@', args.num_threads, bam_files[0], tmp_res], stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( ['samtools', 'sort', '-@', str(args.num_threads), bam_files[0], tmp_res], stdout=tmp_stdout, stderr=tmp_stderr )
 
         returncode = proc.wait()
         tmp_stdout.close()
