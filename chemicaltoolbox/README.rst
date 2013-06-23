@@ -143,6 +143,12 @@ Prerequisites::
 
 .. _MacPorts: http://www.macports.org/
 
+
+===================
+Galaxy installation
+===================
+
+
 0. Create a sand-boxed Python using virtualenv_ (not necessary but recommended)::
 
         wget https://raw.github.com/pypa/virtualenv/master/virtualenv.py
@@ -163,6 +169,8 @@ Prerequisites::
 	cd ~/galaxy-central
 	hg pull
 	hg update
+   
+   This step is not necessary if you have a fresh checkout. Anyway, it is good to know ;)
 
 3. Create folders for toolshed and dependencies::
 
@@ -178,9 +186,9 @@ Prerequisites::
 	LINUX: gedit ~/galaxy-central/universe_wsgi.ini
 	OS X: open -a TextEdit ~/galaxy-central/universe_wsgi.ini
 
-6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
+6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``, remove the ``#`` if needed
 
-7. Remove the hash in front of ``tool_config_file`` and ``tool_path``
+7. Remove the ``#`` in front of ``tool_config_file`` and ``tool_path``
 
 8. (Re-)Start the galaxy daemon::
 
@@ -191,28 +199,37 @@ Prerequisites::
    
 	run.sh   
 
+   During the first startup Galaxy will prepare your database. That can take some time. Have a look at the log file if you want to know what happens.
 
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
 
 .. _Admin Account:
 
-=============
-Admin Account
-=============
+=======================
+Tool Shed configuration
+=======================
 
-- Register a new account
+- Register a new user account in your Galaxy instance: Top Panel → User → Register
+- Become an admin
+	- open ``universe_wsgi.ini`` in your favourite text editor (gedit universe_wsgi.ini)
+	- search ``admin_users = None`` and change it to ``admin_users = EMAIL_ADDRESS`` (your Galaxy Username)
+	- remove the ``#`` if needed
+- restart Galaxy
 
-- Promote user to admin
-	- open universe_wsgi.ini
-	- search ``admin_users = None`` and change it to ``admin_users = YOUR_EMAIL_ADDRESS``
+::
+
+	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
+	GALAXY_RUN_ALL=1 sh run.sh --daemon
 
 
 .. _Toolshed:
 
-========
-Toolshed
-========
+
+============================
+ChemicalToolBoX installation
+============================
+
 
 To improve the overall performance of NumPy_ you need to disable CPU throttling during the installation::
 
@@ -221,8 +238,8 @@ To improve the overall performance of NumPy_ you need to disable CPU throttling 
 .. _NumPy: http://www.numpy.org/
 
 
-API Installation (recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Installation via Galaxy API (recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Generate an `API Key`_
 - Run the installation script::
@@ -235,7 +252,10 @@ API Installation (recommended)
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
 `test tool shed`_ or with the following command::
 
-	hg identify http://bgruening@testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+	hg identify http://testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+
+You can watch the installation status under: Top Panel → Admin → Manage installed tool shed repositories
+
 
 .. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
 .. _`test tool shed`: http://testtoolshed.g2.bx.psu.edu/
