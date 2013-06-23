@@ -230,6 +230,8 @@ Tool Shed configuration
 ChemicalToolBoX installation
 ============================
 
+ChemicalToolBoX will automatically download and compile all requirements, 
+like `Open Babel`_, RDKit_, chemfp_, numpy_ and so on, for you. It can take up to 2-3 hours.
 
 To improve the overall performance of NumPy_ you need to disable CPU throttling during the installation::
 
