@@ -1,9 +1,11 @@
+================================================
 Galaxy wrapper for InterProScan prediction tools
-=========================================
+================================================
 
-InterProScan is a tool that combines different protein signature recognition methods native to the InterPro member databases into one resource with look up of corresponding InterPro and GO annotation.
+InterProScan is a tool that combines different protein signature recognition methods native to the InterPro 
+member databases into one resource with look up of corresponding InterPro and GO annotation.
 
-This wrapper is copyright 2012 by
+This wrapper is copyright 2012-2013 by
 *  Bjoern Gruening, Pharmaceutical Bioinformatics, University of Freiburg
 *  Konrad Paszkiewicz, Exeter Sequencing Service, University of Exeter
 
@@ -15,7 +17,7 @@ http://www.ebi.ac.uk/interpro/
 Zdobnov E.M. and Apweiler R. "InterProScan - an integration platform for the signature-recognition methods in InterPro" Bioinformatics, 2001, 17(9): p. 847-8.
 
 
-
+============
 Installation
 ============
 
@@ -39,18 +41,30 @@ index_data.pl -f smart.HMMs -inx -v -bin -bforce
 index_data.pl -f superfamily.hmm -inx -v -bin -bforce
 index_data.pl -f TIGRFAMs_HMM.LIB -inx -v -bin -bforce
 
-<tool file="iprscan/interproscan.xml" />
+
+Add the tool definition to your tool_conf.xml file under Galaxy root.
+	<tool file="iprscan/interproscan.xml" />
+
+=============
+Input formats
+=============
+
+The standard interproscan input is either genomic or protein sequences. In the case of genomic sequences Interproscan will run an ORF 
+prediction tool. However this tends to lose the ORF information (e.g. start/end co-ordinates) from the header. As such the requirement here is to input ORF 
+sequences (e.g. from EMBOSS getorf) and to then replace any spaces in the FASTA header with underscores. This workaround generally preserves the relevant 
+positional information. 
 
 
-
+=======
 History
 =======
 
 interproscan:
-v0.1 - initial commit
+- v1.1: Initial public release
+- v1.2: Merge with Konrad Paszkiewicz repository
 
 
-
+===============================
 Wrapper Licence (MIT/BSD style)
 ===============================
 
