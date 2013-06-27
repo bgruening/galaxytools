@@ -231,11 +231,25 @@ ChemicalToolBoX installation
 ============================
 
 ChemicalToolBoX will automatically download and compile all requirements, 
-like `Open Babel`_, RDKit_, chemfp_, numpy_ and so on, for you. It can take up to 2-3 hours.
+like `Open Babel`_, RDKit_, chemfp_, numpy_ and so on. It can take up to 2-3 hours.
 
 To improve the overall performance of NumPy_ you need to disable CPU throttling during the installation::
 
-	cpufreq-selector -g performance
+	cpufreq-selector -g performance (debian/ubuntu)
+	   or
+	cpupower frequency-set -g performance (fedora/archlinux)
+	   or
+	service cpuspeed stop (RHEL/CentOS)
+
+If you have problems to deactivate it, please have a look at the documentation of your Operating System. 
+For example:
+
+Debian: http://wiki.debian.org/HowTo/CpuFrequencyScaling
+
+Archlinux: https://wiki.archlinux.org/index.php/CPU_Frequency_Scaling
+
+OS X: http://apple.stackexchange.com/questions/41045/how-can-i-disable-cpu-throttling-and-cpu-disabling
+
 
 .. _NumPy: http://www.numpy.org/
 
