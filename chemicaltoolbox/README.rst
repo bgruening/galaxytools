@@ -14,7 +14,7 @@ Contents
 	- Installation_
 	- `Admin Account`_
 
-- `ChemcialToolBoX installation`_
+- `ChemcialToolBoX Installation`_
 - Troubleshooting_
 - Tools_
 - `Bug Tracker`_
@@ -225,7 +225,7 @@ Tool Shed configuration
 	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
 	GALAXY_RUN_ALL=1 sh run.sh --daemon
 
-.. _ChemcialtoolboX installation:
+.. _ChemcialtoolboX Installation:
 
 ============================
 ChemicalToolBoX installation
