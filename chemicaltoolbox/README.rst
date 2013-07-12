@@ -13,7 +13,9 @@ Contents
 	- `Learn Galaxy`_
 	- Installation_
 	- `Admin Account`_
-- Toolshed_
+
+- `ChemcialToolBoX Installation`_
+- Troubleshooting_
 - Tools_
 - `Bug Tracker`_
 - Contributing_
@@ -110,6 +112,7 @@ All filetypes are interchangable due to three easy to use converting options:
 
 Getting Started
 ===============
+
 .. _Installation:
 
 ChemicalToolBoX can be installed on all common Unix systems. 
@@ -143,8 +146,15 @@ Prerequisites::
 
 .. _MacPorts: http://www.macports.org/
 
+
+===================
+Galaxy installation
+===================
+
+
 0. Create a sand-boxed Python using virtualenv_ (not necessary but recommended)::
 
+        wget https://raw.github.com/pypa/virtualenv/master/virtualenv.py
 	python ./virtualenv.py --no-site-packages galaxy_env
 	. ./galaxy_env/bin/activate
 
@@ -162,6 +172,8 @@ Prerequisites::
 	cd ~/galaxy-central
 	hg pull
 	hg update
+   
+   This step is not necessary if you have a fresh checkout. Anyway, it is good to know ;)
 
 3. Create folders for toolshed and dependencies::
 
@@ -177,9 +189,9 @@ Prerequisites::
 	LINUX: gedit ~/galaxy-central/universe_wsgi.ini
 	OS X: open -a TextEdit ~/galaxy-central/universe_wsgi.ini
 
-6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``
+6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``, remove the ``#`` if needed
 
-7. Remove the hash in front of ``tool_config_file`` and ``tool_path``
+7. Remove the ``#`` in front of ``tool_config_file`` and ``tool_path``
 
 8. (Re-)Start the galaxy daemon::
 
@@ -190,55 +202,77 @@ Prerequisites::
    
 	run.sh   
 
+   During the first startup Galaxy will prepare your database. That can take some time. Have a look at the log file if you want to know what happens.
 
 After launching galaxy is accessible via the browser at ``http://localhost:8080/``.
 
 
 .. _Admin Account:
 
-=============
-Admin Account
-=============
+=======================
+Tool Shed configuration
+=======================
 
-- Register a new account
+- Register a new user account in your Galaxy instance: Top Panel → User → Register
+- Become an admin
+	- open ``universe_wsgi.ini`` in your favourite text editor (gedit universe_wsgi.ini)
+	- search ``admin_users = None`` and change it to ``admin_users = EMAIL_ADDRESS`` (your Galaxy Username)
+	- remove the ``#`` if needed
+- restart Galaxy
 
-- Promote user to admin
-	- open universe_wsgi.ini
-	- search ``admin_users = None`` and change it to ``admin_users = YOUR_EMAIL_ADDRESS``
+::
 
+	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
+	GALAXY_RUN_ALL=1 sh run.sh --daemon
 
-.. _Toolshed:
+.. _ChemcialtoolboX Installation:
 
-========
-Toolshed
-========
+============================
+ChemicalToolBoX installation
+============================
+
+ChemicalToolBoX will automatically download and compile all requirements, 
+like `Open Babel`_, RDKit_, chemfp_, numpy_ and so on. It can take up to 2-3 hours.
 
 To improve the overall performance of NumPy_ you need to disable CPU throttling during the installation::
 
-	cpufreq-selector -g performance
+	cpufreq-selector -g performance (debian/ubuntu)
+	   or
+	cpupower frequency-set -g performance (fedora/archlinux)
+	   or
+	service cpuspeed stop (RHEL/CentOS)
+
+If you have problems to deactivate it, please have a look at the documentation of your Operating System. 
+For example:
+
+Debian: http://wiki.debian.org/HowTo/CpuFrequencyScaling
+
+Archlinux: https://wiki.archlinux.org/index.php/CPU_Frequency_Scaling
+
+OS X: http://apple.stackexchange.com/questions/41045/how-can-i-disable-cpu-throttling-and-cpu-disabling
+
 
 .. _NumPy: http://www.numpy.org/
 
 
-API Installation (recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Installation via Galaxy API (recommended)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 - Generate an `API Key`_
 - Run the installation script::
 	
-	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY 
-	-l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening 
-	-r c7499fbba43b --name chemicaltoolbox --tool-deps --repository-deps 
-	--panel-section-name ChemicalToolBoX
+	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening -r c7499fbba43b --name chemicaltoolbox --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
 
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
 `test tool shed`_ or with the following command::
 
-	hg identify http://bgruening@testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+	hg identify http://testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+
+You can watch the installation status under: Top Panel → Admin → Manage installed tool shed repositories
+
 
 .. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
 .. _`test tool shed`: http://testtoolshed.g2.bx.psu.edu/
-
 
 
 Installation via webbrowser
@@ -251,6 +285,26 @@ Installation via webbrowser
 
 .. _admin page: http://localhost:8080/admin
 
+
+
+.. _Troubleshooting:
+
+===============
+Troubleshooting
+===============
+
+If you have any trouble or the installation did not finish properly, do not hesitate to contact me. However, if the 
+installation fails during the Galaxy installation, you can have a look at the `Galaxy wiki`_. If the ChemicalToolBoX installation fails, 
+you can try to run::
+
+	python ./scripts/api/repair_tool_shed_repository.py --api YOUR_API_KEY -l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening -r c7499fbba43b --name chemicaltoolbox
+
+That will rerun all failed installation routines. Alternatively, you can navigate to the ChemicalToolBoX repository in 
+your browser and repair manually: 
+Top Panel → Admin → Manage installed tool shed repositories → chemicaltoolbox → Repository Actions → Repair repository
+
+
+.. _Galaxy wiki: http://wiki.galaxyproject.org/
 
 
 ========================

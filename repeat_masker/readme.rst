@@ -1,5 +1,6 @@
+===============================
 Galaxy wrapper for RepeatMasker
-=====================================
+===============================
 
 This wrapper is copyright 2013 by Björn Grüning.
 
@@ -15,7 +16,7 @@ Additional Information:
 Using RepeatMasker to identify repetitive elements in genomic sequences.
 http://www.ncbi.nlm.nih.gov/pubmed/19274634
 
-
+============
 Installation
 ============
 
@@ -27,16 +28,18 @@ To install the wrapper copy the file RepeatMasker.xml in the galaxy tools
 folder and modify the tools_conf.xml file to make the tool available to Galaxy.
 Add a line like the following:
 
-<tool file="RepeatMasker/RepeatMasker.xml" />
+Add the tool definition to your tool_conf.xml file under Galaxy root.
+	<tool file="RepeatMasker/RepeatMasker.xml" />
 
-
+=======
 History
 =======
 
-v0.1 - Initial public release
-v0.1.1 - patch from Simon Guest, to create empty files if no repeat is found
+- v1.1: Initial public release
+- v0.1.1: patch from Simon Guest, to create empty files if no repeat is found
+- v0.1.2: remove trailing semicolon, redirect all output to stdout
 
-
+===============================
 Wrapper Licence (MIT/BSD style)
 ===============================
 
