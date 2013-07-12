@@ -278,7 +278,8 @@ def __main__():
                 pass
 
             raise Exception, stderr
-
+        tmp_stdout.close()
+        tmp_stderr.close()
         # TODO: look for errors in program output.
     except Exception, e:
         stop_err( 'Error in bismark:\n' + str( e ) )
@@ -309,8 +310,8 @@ def __main__():
         """
             merge all bam files
         """
-        tmp_out = tempfile.NamedTemporaryFile( dir=output_dir ).name
-        tmp_stdout = open( tmp_out, 'wb' )
+        #tmp_out = tempfile.NamedTemporaryFile( dir=output_dir ).name
+        tmp_stdout = open( tmp_out, 'wab' )
         tmp_err = tempfile.NamedTemporaryFile( dir=output_dir ).name
         tmp_stderr = open( tmp_err, 'wb' )
 
@@ -321,9 +322,9 @@ def __main__():
             cmd = 'samtools merge -@ %s -f - %s ' % ( args.num_threads, ' '.join( bam_files ) )
 
             p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
-            proc = subprocess.Popen( ['samtools', 'sort', '-@', args.num_threads, '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( ['samtools', 'sort', '-@', str(args.num_threads), '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
         else:
-            proc = subprocess.Popen( ['samtools', 'sort', '-@', args.num_threads, bam_files[0], tmp_res], stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( ['samtools', 'sort', '-@', str(args.num_threads), bam_files[0], tmp_res], stdout=tmp_stdout, stderr=tmp_stderr )
 
         returncode = proc.wait()
         tmp_stdout.close()
