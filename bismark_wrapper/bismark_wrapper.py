@@ -285,7 +285,6 @@ def __main__():
                 pass
 
             raise Exception, stderr
-
         tmp_stdout.close()
         tmp_stderr.close()
 
