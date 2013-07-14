@@ -12,12 +12,12 @@ kdepairs <- function(x, n=25, density=TRUE, contour=TRUE, ...) {
     y <- data.frame(x)
     fun.lower <-function(x, y, col = par("col"), bg = NA, pch = par("pch"), cex = 1, col.smooth = "darkgreen", span = 2/3, iter = 3, ...) 
     {
-        par(new = TRUE)    #par(usr = c(usr[1:2], 0, 1.5) )
-        smoothScatter(x, y,colramp=colorRampPalette(topo.colors(100)), bg = bg)
-        ok <- is.finite(x) & is.finite(y)
-        if (any(ok)) 
-            lines(stats::lowess(x[ok], y[ok], f = span, iter = iter),col = col.smooth, ...)
-            abline(lm(y[ok]~x[ok]), col="red")
+        par(new = TRUE) #par(usr = c(usr[1:2], 0, 1.5) )
+        smoothScatter(x, y,colramp=colorRampPalette(topo.colors(100)), bg = bg, nrpoints = 0, add = TRUE)
+        #ok <- is.finite(x) & is.finite(y)
+        #if (any(ok)) 
+            #lines(stats::lowess(x[ok], y[ok], f = span, iter = iter),col = col.smooth, ...)
+            #abline(lm(y[ok]~x[ok]), col="red")
         }
 
     #fun.lower <- function(x1, x2, ...) {
