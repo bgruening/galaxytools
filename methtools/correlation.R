@@ -23,7 +23,7 @@ kdepairs <- function(x, n=25, density=TRUE, contour=TRUE, ...) {
             if (density || contour)
                 d <- kde2d(x1, x2, n=n)
             if (density)
-                palette( rev(rich.colors(512)) )
+                palette( rich.colors(512) )
                 #image(d, col=rainbow(1000, s = 1, v = 1, start = 0, end = max(1, n - 1)/n, alpha = 1), add=TRUE)
                 image(d, col=palette(), add=TRUE)
                 #image(d, col=1 + 31*d$z, add=TRUE)
