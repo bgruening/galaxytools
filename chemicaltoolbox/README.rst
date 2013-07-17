@@ -452,7 +452,7 @@ Bug Tracker
 ===========
 Have a bug or a feature request? `Please write a new card`_. Before writing a new card, please search for existing issues.
 
-.. _Please write a new card: https://trello.com/b/t9Wr8lSY
+.. _Please write a new card: https://trello.com/b/t9Wr8lSY/chemicaltoolbox
 
 .. _Contributing:
 
@@ -460,5 +460,5 @@ Contributing
 ============
 We encourage you to contribute to ChemicalToolBoX! Check out our `Trello board`_ or contact us via e-mail_.
 
-.. _Trello board: https://trello.com/b/t9Wr8lSY
+.. _Trello board: https://trello.com/b/t9Wr8lSY/chemicaltoolbox
 .. _e-mail: bjoern_dot_gruening@gmail.com
