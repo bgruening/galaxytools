@@ -17,6 +17,7 @@ Contents
 - `ChemcialToolBoX Installation`_
 - Troubleshooting_
 - Tools_
+- Workflows_
 - `Bug Tracker`_
 - Contributing_
 
@@ -132,13 +133,15 @@ please have a look at the Galaxy Wiki.
 
 Prerequisites::
 
-* Python 2.6 or above
+* Python 2.6 or 2.7
 * standard C compiler, C++ and Fortran compiler
 * Autotools
 * CMake
 * cairo development files (used for PNG depictions)
 * python development files
 * Java Runtime Environment (JRE, used by OPSIN and NPLS)
+
+To install all of the prerequisites you can run the following command, depending on your OS:
 
 - Debian based systems: apt-get install build-essential gfortran cmake mercurial libcairo2-dev python-dev
 - Fedora: yum install make automake gcc gcc-c++ gcc-gfortran cmake mercurial libcairo2-devel python-devel
@@ -417,6 +420,20 @@ Tools
 	- Visualisation
 		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on `Open Babel`_ PNG_/SVG_ 2D depiction.
 
+
+
+.. _Workflows:
+
+Workflows
+=========
+
+Example workflows are located in the `Tool Shed`:
+
+- todo
+
+
+
+
 .. |Spectrophores (TM)| unicode:: Spectrophores U+2122
 .. |Strip-it (TM)| unicode:: Strip-it U+2122
 .. |Shape-it (TM)| unicode:: Shape-it U+2122
@@ -450,7 +467,7 @@ Bug Tracker
 ===========
 Have a bug or a feature request? `Please write a new card`_. Before writing a new card, please search for existing issues.
 
-.. _Please write a new card: https://trello.com/b/t9Wr8lSY
+.. _Please write a new card: https://trello.com/b/t9Wr8lSY/chemicaltoolbox
 
 .. _Contributing:
 
@@ -458,5 +475,5 @@ Contributing
 ============
 We encourage you to contribute to ChemicalToolBoX! Check out our `Trello board`_ or contact us via e-mail_.
 
-.. _Trello board: https://trello.com/b/t9Wr8lSY
+.. _Trello board: https://trello.com/b/t9Wr8lSY/chemicaltoolbox
 .. _e-mail: bjoern_dot_gruening@gmail.com
