@@ -17,6 +17,7 @@ Contents
 - `ChemcialToolBoX Installation`_
 - Troubleshooting_
 - Tools_
+- Workflows_
 - `Bug Tracker`_
 - Contributing_
 
@@ -418,6 +419,20 @@ Tools
 - Visualisation
 	- Visualisation
 		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on `Open Babel`_ PNG_/SVG_ 2D depiction.
+
+
+
+.. _Workflows:
+
+Workflows
+=========
+
+Example workflows are located in the `Tool Shed`:
+
+- todo
+
+
+
 
 .. |Spectrophores (TM)| unicode:: Spectrophores U+2122
 .. |Strip-it (TM)| unicode:: Strip-it U+2122
