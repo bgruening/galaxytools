@@ -318,7 +318,12 @@ JMol Editor Installation
 
 .. _JMol Editor: http://wiki.jmol.org/index.php/Jmol_as_editor
 
-- copy the directory ``jmoleditor`` from /galaxytools/chemicaltoolbox/data_source/ into your Galaxy Root directory ::
+
+- download JMol Editor from::
+
+	wget https://github.com/bgruening/download_store/raw/master/jmoleditor.tar.gz
+
+- copy the directory ``jmoleditor`` into your Galaxy Root directory ::
 
 	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy-central/
 
