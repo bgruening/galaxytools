@@ -22,7 +22,7 @@ Availability
 ************
 
 This workflow is available on the main Galaxy Tool Shed:
-http://testtoolshed.g2.bx.psu.edu/view/bgruening/glimmer_gene_calling_workflow
+http://toolshed.g2.bx.psu.edu/view/bgruening/glimmer_gene_calling_workflow
 
 Development is being done here:
 https://github.com/bgruening/galaxytools/workflows/glimmer3/

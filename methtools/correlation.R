@@ -12,38 +12,9 @@ kdepairs <- function(x, n=25, density=TRUE, contour=TRUE, ...) {
     y <- data.frame(x)
     fun.lower <-function(x, y, col = par("col"), bg = NA, pch = par("pch"), cex = 1, col.smooth = "darkgreen", span = 2/3, iter = 3, ...) 
     {
-        par(new = TRUE) #par(usr = c(usr[1:2], 0, 1.5) )
+        par(new = TRUE)
         smoothScatter(x, y,colramp=colorRampPalette(topo.colors(100)), bg = bg, nrpoints = 0, add = TRUE)
-        #ok <- is.finite(x) & is.finite(y)
-        #if (any(ok)) 
-            #lines(stats::lowess(x[ok], y[ok], f = span, iter = iter),col = col.smooth, ...)
-            #abline(lm(y[ok]~x[ok]), col="red")
         }
-
-    #fun.lower <- function(x1, x2, ...) {
-    #    if (is.factor(x1)) {
-    #        x1 <- as.integer(x1)
-    #    }
-    #    if (is.factor(x2)) {
-    #        x1 <- as.integer(x2)
-    #    }
-    #    OK <- length(unique(x1))>2 && length(unique(x2))>2
-    #    if (!density && !contour)
-    #        n <- 0
-    #    if (n>0 && OK) {
-    #        if (density || contour)
-    #            d <- kde2d(x1, x2, n=n)
-    #        if (density)
-    #            palette( rich.colors(512) )
-    #            #image(d, col=rainbow(1000, s = 1, v = 1, start = 0, end = max(1, n - 1)/n, alpha = 1), add=TRUE)
-    #            image(d, col=palette(), add=TRUE)
-    #            #image(d, col=1 + 31*d$z, add=TRUE)
-    #        if (contour)
-    #            # parameter hier: http://www.inside-r.org/r-doc/graphics/contour
-    #            graphics:::contour(d,add=TRUE, nlevels = 15, labcex = 0.6, drawlabels=FALSE, lwd=0)
-    #    } else points(x1, x2)
-    #}
-
     fun.upper <- function(x1, x2, ...) {
         if (is.factor(x1)) {
             x1 <- as.integer(x1)
@@ -51,7 +22,6 @@ kdepairs <- function(x, n=25, density=TRUE, contour=TRUE, ...) {
         if (is.factor(x2)) {
             x1 <- as.integer(x2)
         }
-        #points(x1,x2, col="lightgrey")
         lines(lowess(x1,x2), col="darkgreen", lty=1)
         COR <- cor(x1, x2)
         text(mean(range(x1,na.rm=TRUE)), mean(range(x2,na.rm=TRUE)), 
@@ -66,15 +36,6 @@ kdepairs <- function(x, n=25, density=TRUE, contour=TRUE, ...) {
         y <- h$counts; y <- y/max(y)
         rect(breaks[-nB], 0, breaks[-1], y, col="blue", ...)
     }
-    #panel.hist <- function(x, ...) {
-    #    usr <- par("usr"); on.exit(par(usr))
-    #    par(usr = c(usr[1:2], 0, 1.5) )
-    #    h <- hist(x, plot = FALSE)
-    #    breaks <- h$breaks; nB <- length(breaks)
-    #    y <- h$counts; y <- y/max(y)
-    #    rect(breaks[-nB], 0, breaks[-1], y, col="gold", ...)
-    #    box()
-    #}
     pairs2(y, lower.panel=fun.lower, upper.panel=fun.upper, diag.panel=panel.hist)
     invisible(NULL)
 }
@@ -215,7 +176,6 @@ is_header <- as.logical(args[3])
 is_svg <- as.logical(args[4])
 
 
-#mydat<-read.table("/home/bag/Downloads/correltion_test/combined.out")
 mydat<-read.table(infile, header = is_header, sep="\t")
 if (is_svg) {
     #library(RSvgDevice)  
