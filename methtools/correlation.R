@@ -220,7 +220,7 @@ mydat<-read.table(infile, header = is_header, sep="\t")
 if (is_svg) {
     #library(RSvgDevice)  
     #devSVG(file=outfile,  width = 7, height = 7, onefile=TRUE)
-    svg(outfile, width = 7, height = 7, pointsize = 11)
+    postscript(outfile, width = 7, height = 7, pointsize = 11)
 }else {
     png(outfile, pointsize = 4, width=2000, height=2000, res=600)
 }
