@@ -6,18 +6,18 @@ This wrapper is copyright 2012-2013 by Björn Grüning.
 
 This is a wrapper for the command line tool of Glimmer3_.
 
-.. _Glimmer: http://www.cbcb.umd.edu/software/glimmer/
+.. _Glimmer3: http://www.cbcb.umd.edu/software/glimmer/
 
 Glimmer is a system for finding genes in microbial DNA, 
 especially the genomes of bacteria, archaea, and viruses. 
 Glimmer (Gene Locator and Interpolated Markov ModelER) uses interpolated 
 Markov models (IMMs) to identify the coding regions and distinguish them from noncoding DNA.
 
-S. Salzberg, A. Delcher, S. Kasif, and O. White. Microbial gene identification using interpolated Markov models, Nucleic Acids Research 26:2 (1998), 544-548.
+| S. Salzberg, A. Delcher, S. Kasif, and O. White. Microbial gene identification using interpolated Markov models, Nucleic Acids Research 26:2 (1998), 544-548.
 
-A.L. Delcher, D. Harmon, S. Kasif, O. White, and S.L. Salzberg. Improved microbial gene identification with GLIMMER, Nucleic Acids Research 27:23 (1999), 4636-4641.
+| A.L. Delcher, D. Harmon, S. Kasif, O. White, and S.L. Salzberg. Improved microbial gene identification with GLIMMER, Nucleic Acids Research 27:23 (1999), 4636-4641.
 
-A.L. Delcher, K.A. Bratke, E.C. Powers, and S.L. Salzberg. Identifying bacterial genes and endosymbiont DNA with Glimmer. Bioinformatics (Advance online version) (2007). 
+| A.L. Delcher, K.A. Bratke, E.C. Powers, and S.L. Salzberg. Identifying bacterial genes and endosymbiont DNA with Glimmer. Bioinformatics (Advance online version) (2007). 
 
 
 ============
