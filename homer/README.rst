@@ -1,7 +1,7 @@
-Galaxy datatypes for HOMER tools
-================================
+HOMER tools for Galaxy
+======================
 
-These HOMER datatypes are copyright 2013 by Björn Grüning.
+These HOMER suite is copyright 2013 by Björn Grüning.
 
 See the licence text below.
 
@@ -9,21 +9,41 @@ See the licence text below.
 History
 =======
 
-======= ======================================================================
+======= ======================
 Version Changes
-------- ----------------------------------------------------------------------
-v0.0.1  - First release.
-======= ======================================================================
+------- ----------------------
+v0.0.1  
+======= ======================
 
 
 Installation
 ============
 
-Doing this automatically via the Galaxy Tool Shed is probably simplest.
+HOMER is bundled with many additional data and it seems not easy to me to split the HOMER source and the data
+into different packages. That means that we can't install the HOMER program from the Tool Shed. 
+What means we are loosing reproducibility. 
+
+To solve that issue I would recommend to install HOMER manually following
+the instructions from the HOMER website:
+
+    http://biowhat.ucsd.edu/homer/introduction/install.html
+
+Installing the required 3rd Party Software is _not_ necessary. We will install it through the Galaxy Tool Shed.
+
+If you install every update of HOMER and/or its data files into a new folder from scratch, 
+you can preserve reproducibility. The HOMER wrapper will locate every single HOMER installation mentioned in 
+a config file (homer.loc) and will use only one specific version (and its data). With that trick we are flexible without changing
+to much in HOMER and reproducible at the same time.
+
+    1. install HOMER manually in a special folder and download all required data files
+    2. install the HOMER wrappers from the Tool Shed
+    3. edit the GALXY_ROOT/tool-data/homer.loc file and point to your different HOMER installations
+    4. edit the GALXY_ROOT/tool-data/homer_available_genomes.loc file and add genome identifiers (e.g. hg19, mm9)
 
 
-Manual Installation
-===================
+
+Manual Installation of the HOMER datatype
+=========================================
 
 Normally you would install this via the Galaxy ToolShed, which would move
 the provided homer.py file into a suitable location and process the
