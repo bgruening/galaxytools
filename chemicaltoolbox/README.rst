@@ -304,6 +304,16 @@ That will rerun all failed installation routines. Alternatively, you can navigat
 your browser and repair manually: 
 Top Panel → Admin → Manage installed tool shed repositories → chemicaltoolbox → Repository Actions → Repair repository
 
+------
+
+
+On slow computers and during the compilation of large software libraries, like openbabel or boost, 
+the Tool Shed can run into a timeout and kills the installation.
+That problem is known and should be fixed in the near future.
+
+If you encouter a timeout or 'hung' during the installation you can increase the ``threadpool_kill_thread_limit`` in your universe_wsgi.ini file.
+
+
 
 .. _Galaxy wiki: http://wiki.galaxyproject.org/
 
