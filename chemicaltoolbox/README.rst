@@ -198,9 +198,8 @@ Galaxy installation
 
 8. (Re-)Start the galaxy daemon::
 
-	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
-	GALAXY_RUN_ALL=1 sh run.sh --daemon
-
+	sh run.sh --reload
+	
    In deamon mode all logs will be written to main.log in your Galaxy Home directory. You can also use::
    
 	run.sh   
@@ -225,8 +224,7 @@ Tool Shed configuration
 
 ::
 
-	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
-	GALAXY_RUN_ALL=1 sh run.sh --daemon
+	sh run.sh --reload
 
 .. _ChemcialtoolboX Installation:
 
