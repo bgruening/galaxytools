@@ -198,9 +198,8 @@ Galaxy installation
 
 8. (Re-)Start the galaxy daemon::
 
-	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
-	GALAXY_RUN_ALL=1 sh run.sh --daemon
-
+	sh run.sh --reload
+	
    In deamon mode all logs will be written to main.log in your Galaxy Home directory. You can also use::
    
 	run.sh   
@@ -225,8 +224,7 @@ Tool Shed configuration
 
 ::
 
-	GALAXY_RUN_ALL=1 sh run.sh --stop-daemon
-	GALAXY_RUN_ALL=1 sh run.sh --daemon
+	sh run.sh --reload
 
 .. _ChemcialtoolboX Installation:
 
@@ -305,6 +303,16 @@ you can try to run::
 That will rerun all failed installation routines. Alternatively, you can navigate to the ChemicalToolBoX repository in 
 your browser and repair manually: 
 Top Panel → Admin → Manage installed tool shed repositories → chemicaltoolbox → Repository Actions → Repair repository
+
+------
+
+
+On slow computers and during the compilation of large software libraries, like openbabel or boost, 
+the Tool Shed can run into a timeout and kills the installation.
+That problem is known and should be fixed in the near future.
+
+If you encouter a timeout or 'hung' during the installation you can increase the ``threadpool_kill_thread_limit`` in your universe_wsgi.ini file.
+
 
 
 .. _Galaxy wiki: http://wiki.galaxyproject.org/
