@@ -5,9 +5,19 @@
 """
 
 import os, sys
-import psycopg2
-import pybel
-import openbabel
+
+try:
+    from galaxy import eggs
+    eggs.require('psycopg2')
+except:
+    print 'psycopg2 is not available. It is currently used in the pgchem wrappers, that are not shipped with default CTB'
+
+try:
+    import pybel
+    import openbabel
+except:
+    print 'OpenBabel could not be found. A few functions are not available without OpenBabel.'
+
 from multiprocessing import Pool
 import glob, tempfile, re
 import subprocess
