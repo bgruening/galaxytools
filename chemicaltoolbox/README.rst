@@ -267,7 +267,7 @@ Installation via Galaxy API (recommended)
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
 `test tool shed`_ or with the following command::
 
-	hg identify http://testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+	hg identify http://toolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
 
 You can watch the installation status under: Top Panel → Admin → Manage installed tool shed repositories
 
