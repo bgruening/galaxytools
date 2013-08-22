@@ -1,4 +1,4 @@
-This is package is a Galaxy workflow for gene prediction using Glimmer3.
+This package is a Galaxy workflow for gene prediction using Glimmer3.
 
 It uses the Glimmer3 tool (Delcher et al. 2007) trained on a known set of
 genes to generate gene predictions on a new genome, and then calls EMBOSS
