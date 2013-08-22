@@ -6,7 +6,8 @@ InterProScan is a tool that combines different protein signature recognition met
 member databases into one resource with look up of corresponding InterPro and GO annotation.
 
 This wrapper is copyright 2013 by:
- *  Bjoern Gruening
+ * Bjoern Gruening
+ * Konrad Paszkiewicz
 
 
 This prepository contains wrapper for the InterProScan_ command line tool.
@@ -33,10 +34,6 @@ Input formats
 
 The standard interproscan input is either genomic or protein sequences. 
 In the case of genomic sequences Interproscan will run an ORF prediction tool. 
-However this tends to lose the ORF information (e.g. start/end co-ordinates) from the header. 
-As such the requirement here is to input ORF sequences (e.g. from EMBOSS getorf) and to then 
-replace any spaces in the FASTA header with underscores. This workaround generally preserves the relevant 
-positional information.
 
 
 =======
@@ -45,7 +42,7 @@ History
 
 interproscan:
 
- - v1.0: Initial public release of version 5.0
+ - v5.0: Initial public release of version 5.0
 
 
 ===============================
