@@ -262,12 +262,12 @@ Installation via Galaxy API (recommended)
 - Generate an `API Key`_
 - Run the installation script::
 	
-	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening -r 4133dbf7ff4d --name chemicaltoolbox --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
+	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r 4a9be0fb9e30 --name chemicaltoolbox --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
 
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
 `test tool shed`_ or with the following command::
 
-	hg identify http://testtoolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+	hg identify http://toolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
 
 You can watch the installation status under: Top Panel → Admin → Manage installed tool shed repositories
 
@@ -298,7 +298,7 @@ If you have any trouble or the installation did not finish properly, do not hesi
 installation fails during the Galaxy installation, you can have a look at the `Galaxy wiki`_. If the ChemicalToolBoX installation fails, 
 you can try to run::
 
-	python ./scripts/api/repair_tool_shed_repository.py --api YOUR_API_KEY -l http://localhost:8080 --url http://testtoolshed.g2.bx.psu.edu/ -o bgruening -r c7499fbba43b --name chemicaltoolbox
+	python ./scripts/api/repair_tool_shed_repository.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r 4a9be0fb9e30 --name chemicaltoolbox
 
 That will rerun all failed installation routines. Alternatively, you can navigate to the ChemicalToolBoX repository in 
 your browser and repair manually: 
