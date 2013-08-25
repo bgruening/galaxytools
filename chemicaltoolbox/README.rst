@@ -430,9 +430,11 @@ Tools
 		Merges small molecules together to larger compounds using  predefined reactions. The options *iteration depth* and *number of repeats* can be used to adjust the created number of compounds and the actual computation time.
 
 - Visualisation
-	- Visualisation
+	- Depiction
 		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on `Open Babel`_ PNG_/SVG_ 2D depiction.
-
+	- More to come ...
+		We are working on several ideas how to improve the visualision of small and large libraries in Galaxy. If
+		you are interested and want to discuss it further please contact me (e-mail_).
 
 
 .. _Workflows:
