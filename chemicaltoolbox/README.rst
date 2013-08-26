@@ -442,9 +442,15 @@ Tools
 Workflows
 =========
 
-Example workflows are located in the `Tool Shed`:
+An example workflow is located in the `Tool Shed`::
 
-- todo
+	 http://toolshed.g2.bx.psu.edu/view/bgruening/chemicaltoolbox_merging_chemical_databases_workflow 
+
+You can install the workflow with the API::
+
+	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r e1bc8415f875 --name chemicaltoolbox_merging_chemical_databases_workflow --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
+
+or as described above via webbrowser.
 
 
 
