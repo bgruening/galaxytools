@@ -1,6 +1,6 @@
-==================================================
-Galaxy wrapper for various file manipulation tools
-==================================================
+===================================================
+Galaxy wrappers for various file manipulation tools
+===================================================
 
 This wrapper is copyright 2013 by Björn Grüning.
 
