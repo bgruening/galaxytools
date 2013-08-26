@@ -15,7 +15,7 @@ This prepository contains wrapper for the InterProScan_ command line tool.
 .. _InterProScan: http://www.ebi.ac.uk/interpro/
 
 
-Zdobnov E.M. and Apweiler R. "InterProScan - an integration platform for the signature-recognition methods in InterPro" Bioinformatics, 2001, 17(9): p. 847-8.
+Quevillon E., Silventoinen V., Pillai S., Harte N., Mulder N., Apweiler R., Lopez R. (2005). InterProScan: protein domains identifier. Nucleic Acids Res. 33 (Web Server issue): W116-W120
 
 
 ============
