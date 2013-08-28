@@ -262,7 +262,7 @@ Installation via Galaxy API (recommended)
 - Generate an `API Key`_
 - Run the installation script::
 	
-	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r 4a9be0fb9e30 --name chemicaltoolbox --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
+	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r 30ae0e5218b4 --name chemicaltoolbox --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
 
 The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
 `test tool shed`_ or with the following command::
@@ -298,7 +298,7 @@ If you have any trouble or the installation did not finish properly, do not hesi
 installation fails during the Galaxy installation, you can have a look at the `Galaxy wiki`_. If the ChemicalToolBoX installation fails, 
 you can try to run::
 
-	python ./scripts/api/repair_tool_shed_repository.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r 4a9be0fb9e30 --name chemicaltoolbox
+	python ./scripts/api/repair_tool_shed_repository.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r 30ae0e5218b4 --name chemicaltoolbox
 
 That will rerun all failed installation routines. Alternatively, you can navigate to the ChemicalToolBoX repository in 
 your browser and repair manually: 
@@ -430,9 +430,11 @@ Tools
 		Merges small molecules together to larger compounds using  predefined reactions. The options *iteration depth* and *number of repeats* can be used to adjust the created number of compounds and the actual computation time.
 
 - Visualisation
-	- Visualisation
+	- Depiction
 		Creates an .svg or .png image of a small set of molecules (few hundreds). Based on `Open Babel`_ PNG_/SVG_ 2D depiction.
-
+	- More to come ...
+		We are working on several ideas how to improve the visualision of small and large libraries in Galaxy. If
+		you are interested and want to discuss it further please contact me (e-mail_).
 
 
 .. _Workflows:
@@ -440,9 +442,15 @@ Tools
 Workflows
 =========
 
-Example workflows are located in the `Tool Shed`:
+An example workflow is located in the `Tool Shed`::
 
-- todo
+	 http://toolshed.g2.bx.psu.edu/view/bgruening/chemicaltoolbox_merging_chemical_databases_workflow 
+
+You can install the workflow with the API::
+
+	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r e1bc8415f875 --name chemicaltoolbox_merging_chemical_databases_workflow --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
+
+or as described above via webbrowser.
 
 
 

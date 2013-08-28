@@ -1,51 +1,27 @@
-================================================
-Galaxy wrapper for InterProScan prediction tools
-================================================
+Galaxy wrapper for statistical hypothesis testing with scipy
+============================================================
 
-InterProScan is a tool that combines different protein signature recognition methods native to the InterPro 
-member databases into one resource with look up of corresponding InterPro and GO annotation.
-
-This wrapper is copyright 2013 by:
- * Bjoern Gruening
- * Konrad Paszkiewicz
+This wrapper is copyright 2013 by Björn Grüning.
 
 
-This prepository contains wrapper for the InterProScan_ command line tool.
-
-.. _InterProScan: http://www.ebi.ac.uk/interpro/
-
-
-Quevillon E., Silventoinen V., Pillai S., Harte N., Mulder N., Apweiler R., Lopez R. (2005). InterProScan: protein domains identifier. Nucleic Acids Res. 33 (Web Server issue): W116-W120
 
 
 ============
 Installation
 ============
 
-Please download install InterProScan according to:
-
-https://code.google.com/p/interproscan/wiki/i5RC7HowToObtainingACopy
-
-
-
-=============
-Input formats
-=============
-
-The standard interproscan input is either genomic or protein sequences. 
-In the case of genomic sequences Interproscan will run an ORF prediction tool. 
 
 
 =======
 History
 =======
 
-interproscan:
 
- - v5.0: Initial public release of version 5.0
+  - v0.1: no release yet
 
 
-===============================
+
+
 Wrapper Licence (MIT/BSD style)
 ===============================
 
