@@ -3,11 +3,10 @@
     <parallelism method="multi" split_inputs="seqdb" split_mode="to_size" split_size="100" shared_inputs="" merge_outputs="outfile,multiple_alignment_output"></parallelism>
     <requirements>
         <requirement type="package" version="1.1rc4">infernal</requirement>
+        <requirement type="package" version="8.21">gnu_coreutils</requirement>
     </requirements>
     <command>
-        ##TODO reformat the tabular-output: 
-        ## -"Each line consists of 18 space-delimited fields followed by a free text target sequence description, as follows:"
-        ## remove line that starts with #
+        temp_tabular_output=\$(mktemp);
 
         cmsearch 
             --cpu 12
@@ -20,8 +19,8 @@
             $max
             $nohmm
             $mid
-            $bitscore_thresholds
-            --tblout $outfile
+            ##$bitscore_thresholds
+            --tblout \$temp_tabular_output
             $g
             #if $A:
                 $A $multiple_alignment_output
@@ -29,13 +28,13 @@
 
             #if $inclusion_thresholds_opts.inclusion_thresholds_selector == "--incE":
                 --incE $inclusion_thresholds_opts.incE
-            #else:
+            #elif $inclusion_thresholds_opts.inclusion_thresholds_selector == "--incT":
                 --incT $inclusion_thresholds_opts.incT
             #end if
 
             #if $reporting_thresholds_opts.reporting_thresholds_selector == "-E":
                 -E $reporting_thresholds_opts.E
-            #else:
+            #elif $reporting_thresholds_opts.reporting_thresholds_selector == "-T":
                 -T $reporting_thresholds_opts.T
             #end if
 
@@ -46,14 +45,17 @@
             #end if
 
             $seqdb
-
-
             2>&#38;1
+            ;
+
+            ## 1. replace all lines starting # (comment lines)
+            ## 2. replace the first 18 spaces with tabs, 18th field is a free text field (can contain spaces)
+            sed -e 's/#.*$//' -e '/^$/d' -e 's/ /\t/g' -e 's/\t/ /18g' \$temp_tabular_output > $outfile
+
     </command>
         <inputs>
 
             <param name="seqdb" type="data" format="fasta" label="Sequence database"/>
-
             <conditional name="cm_opts">
                 <param name="cm_opts_selector" type="select" label="Subject covariance models">
                   <option value="db" selected="True">Locally installed covariance models</option>
@@ -103,23 +105,25 @@
 
 
             <!-- Options for model-specific score thresholding -->
-
+            <!--
             <param name="bitscore_thresholds" type="select" label="Bit score thresholds" help="Curated CM databases may define specific bit score thresholds for each CM, superseding any thresholding based on statistical significance alone.">
                 <option value="" selected="true">None</option>
-                <option value="--cut_ga">GA (gathering) bit scores</option>
-                <option value="--cut_nc">NC (noise cutoff) bit score</option>
-                <option value="--cut_tc">TC (trusted cutoff) bit score</option>
+                <option value=" - -cut_ga">GA (gathering) bit scores</option>
+                <option value=" - -cut_nc">NC (noise cutoff) bit score</option>
+                <option value=" - -cut_tc">TC (trusted cutoff) bit score</option>
             </param>
-
+            -->
             <!-- Options for inclusion thresholds -->
 
 
             <conditional name="inclusion_thresholds_opts">
                 <param name="inclusion_thresholds_selector" type="select" label="Inclusion thresholds"
                 help="Inclusion thresholds are stricter than reporting thresholds. Inclusion thresholds control which hits are considered to be reliable enough to be included in an output alignment or in a possible subsequent search round, or marked as significant (”!”) as opposed to questionable (”?”) in hit output.">
-                    <option value="--incE" selected="true">Use E-value</option>
+                    <option value="" selected="true">default</option>
+                    <option value="--incE">Use E-value</option>
                     <option value="--incT">Use bit score</option>
                 </param>
+                <when />
                 <when value="--incE">
                     <param name="incE" type="float" value="0.01" size="5" label="Use E-value" help="of &lt;= X as the hit inclusion threshold.">
                         <sanitizer>
@@ -140,15 +144,16 @@
                 </when>
             </conditional>
 
-
             <!-- Options controlling reporting thresholds -->
 
             <conditional name="reporting_thresholds_opts">
                 <param name="reporting_thresholds_selector" type="select" label="reporting thresholds"
                 help="Reporting thresholds control which hits are reported in output files">
-                    <option value="-E" selected="true">Use E-value</option>
+                    <option value="" selected="true">default</option>
+                    <option value="-E">Use E-value</option>
                     <option value="-T">Use bit score</option>
                 </param>
+                <when />
                 <when value="-E">
                     <param name="E" type="float" value="10.0" size="5" label="Use E-value" help="of &lt;= X as the hit reporting threshold. The default is 10.0, meaning that on average, about 10 false positives will be reported per query, so you can see the top of the noise and decide for yourself if it’s really noise.">
                         <sanitizer>
@@ -172,7 +177,6 @@
             <param name="A" truevalue="-A" falsevalue="" checked="False" type="boolean" 
                 label="Save a multiple alignment of all significant hits" help="... those satisfying inclusion thresholds"/>
 
-
         </inputs>
     <outputs>
 
@@ -186,83 +190,62 @@
     </requirements>
     <help>
 
+
 **What it does**
 
-Options for model-specific score thresholding
----------------------------------------------
+Infernal is used to search sequence databases for homologs of structural RNA sequences, and to make
+sequence- and structure-based RNA sequence alignments. Infernal needs a profile from a structurally
+annotated multiple sequence alignment of an RNA family with a position-specific scoring system for substitutions, 
+insertions, and deletions. Positions in the profile that are basepaired in the consensus secondary
+structure of the alignment are modeled as dependent on one another, allowing Infernal’s scoring system to
+consider the secondary structure, in addition to the primary sequence, of the family being modeled. Infernal
+profiles are probabilistic models called “covariance models”, a specialized type of stochastic context-free
+grammar (SCFG) (Lari and Young, 1990).
+
+Compared to other alignment and database search tools based only on sequence comparison, Infernal
+aims to be significantly more accurate and more able to detect remote homologs because it models sequence 
+and structure.
 
 
-  - GA thresholds are generally considered to be the reliable curated thresholds defining family membership; for example, in Rfam, these thresholds define what gets included in Rfam Full alignments based on searches with Rfam Seed models.
-  - NC thresholds are generally considered to be the score of the highest-scoring known false positive.
-  - TC thresholds are generally considered to be the score of the lowest-scoring known true positive that is above all known false positives.
-
-
--g Turn on the glocal alignment algorithm, global with respect to the query model and local with
-respect to the target database. By default, the local alignment algorithm is used which is
-local with respect to both the target sequence and the model. In local mode, the alignment to
-span two or more subsequences if necessary (e.g. if the structures of the query model and
-target sequence are only partially shared), allowing certain large insertions and deletions
-in the structure to be penalized differently than normal indels. Local mode performs better
-on empirical benchmarks and is significantly more sensitive for remote homology detection.
-Empirically, glocal searches return many fewer hits than local searches, so glocal may be
-desired for some applications. With -g, all models must be calibrated, even those with zero
-basepairs.
-
+Output format
+-------------
 
 (1) target name: The name of the target sequence or profile.
 (2) accession: The accession of the target sequence or profile, or ’-’ if none.
 (3) query name: The name of the query sequence or profile.
 (4) accession: The accession of the query sequence or profile, or ’-’ if none.
-(5) mdl (model): Which type of model was used to compute the final score. Either ’cm’ or ’hmm’. A CM
-is used to compute the final hit scores unless the model has zero basepairs or the --hmmonly option
-is used, in which case a HMM will be used.
-(6) mdl from (model coord): The start of the alignment of this hit with respect to the profile (CM or
-HMM), numbered 1..N for a profile of N consensus positions.
-(7) mdl to (model coord): The end of the alignment of this hit with respect to the profile (CM or HMM),
-numbered 1..N for a profile of N consensus positions.
-(8) seq from (ali coord): The start of the alignment of this hit with respect to the sequence, numbered
-1..L for a sequence of L residues.
-(9) seq to (ali coord): The end of the alignment of this hit with respect to the sequence, numbered
-1..L for a sequence of L residues.
-(10) strand: The strand on which the hit occurs on the sequence. ’+’ if the hit is on the top (Watson)
-strand, ’-’ if the hit is on the bottom (Crick) strand. If on the top strand, the “seq from” value will be less
-than or equal to the “seq to” value, else it will be greater than or equal to it.
-(11) trunc: Indicates if this is predicted to be a truncated CM hit or not. This will be “no” if it is a CM hit
-that is not predicted to be truncated by the end of the sequence, “5’ ” or “3’ ” if the hit is predicted to
-have one or more 5’ or 3’ residues missing due to a artificial truncation of the sequence, or “5’&3”’ if
-the hit is predicted to have one or more 5’ residues missing and one or more 3’ residues missing. If
-the hit is an HMM hit, this will always be ’-’.
-(12) pass: Indicates what “pass” of the pipeline the hit was detected on. This is probably only useful for
-testing and debugging. Non-truncated hits are found on the first pass, truncated hits are found on
-successive passes.
+(5) mdl (model): Which type of model was used to compute the final score. Either ’cm’ or ’hmm’. A CM is used to compute the final hit scores unless the model has zero basepairs or the --hmmonly option is used, in which case a HMM will be used.
+(6) mdl from (model coord): The start of the alignment of this hit with respect to the profile (CM or HMM), numbered 1..N for a profile of N consensus positions.
+(7) mdl to (model coord): The end of the alignment of this hit with respect to the profile (CM or HMM), numbered 1..N for a profile of N consensus positions.
+(8) seq from (ali coord): The start of the alignment of this hit with respect to the sequence, numbered 1..L for a sequence of L residues.
+(9) seq to (ali coord): The end of the alignment of this hit with respect to the sequence, numbered 1..L for a sequence of L residues.
+(10) strand: The strand on which the hit occurs on the sequence. ’+’ if the hit is on the top (Watson) strand, ’-’ if the hit is on the bottom (Crick) strand. If on the top strand, the “seq from” value will be less than or equal to the “seq to” value, else it will be greater than or equal to it. 
+(11) trunc: Indicates if this is predicted to be a truncated CM hit or not. This will be “no” if it is a CM hit that is not predicted to be truncated by the end of the sequence, “5’ ” or “3’ ” if the hit is predicted to have one or more 5’ or 3’ residues missing due to a artificial truncation of the sequence, or “5’&amp;3”’ if the hit is predicted to have one or more 5’ residues missing and one or more 3’ residues missing. If the hit is an HMM hit, this will always be ’-’.
+(12) pass: Indicates what “pass” of the pipeline the hit was detected on. This is probably only useful for testing and debugging. Non-truncated hits are found on the first pass, truncated hits are found on successive passes.
 (13) gc: Fraction of G and C nucleotides in the hit.
-(14) bias: The biased-composition correction: the bit score difference contributed by the null3 model for
-CM hits, or the null2 model for HMM hits. High bias scores may be a red flag for a false positive.
-It is difficult to correct for all possible ways in which a nonrandom but nonhomologous biological
-sequences can appear to be similar, such as short-period tandem repeats, so there are cases where
-the bias correction is not strong enough (creating false positives).
-1 The tblout format is deliberately space-delimited (rather than tab-delimited) and justified into aligned columns, so these files
-are suitable both for automated parsing and for human examination. Tab-delimited data files are difficult for humans to examine and
-spot check. For this reason, we think tab-delimited files are a minor evil in the world. Although we occasionally receive shrieks of
-outrage about this, we stubbornly feel that space-delimited files are just as trivial to parse as tab-delimited files.
-63(15) score: The score (in bits) for this target/query comparison. It includes the biased-composition cor-
-rection (the “null3” model for CM hits, or the “null2” model for HMM hits).
-(16) E-value: The expectation value (statistical significance) of the target. This is a per query E-value;
-i.e. calculated as the expected number of false positives achieving this comparison’s score for a single
-query against the search space Z. For cmsearch Z is defined as the total number of nucleotides in the
-target dataset multiplied by 2 because both strands are searched. For cmscan Z is the total number of
-nucleotides in the query sequence multiplied by 2 because both strands are searched and multiplied
-by the number of models in the target database. If you search with multiple queries and if you want
-to control the overall false positive rate of that search rather than the false positive rate per query, you
-will want to multiply this per-query E-value by how many queries you’re doing.
-(17) inc: Indicates whether or not this hit achieves the inclusion threshold: ’!’ if it does, ’?’ if it does not
-(and rather only achieves the reporting threshold). By default, the inclusion threshold is an E-value of
-0.01 and the reporting threshold is an E-value of 10.0, but these can be changed with command line
-options as described in the manual pages.
+(14) bias: The biased-composition correction: the bit score difference contributed by the null3 model for CM hits, or the null2 model for HMM hits. High bias scores may be a red flag for a false positive. It is difficult to correct for all possible ways in which a nonrandom but nonhomologous biological sequences can appear to be similar, such as short-period tandem repeats, so there are cases where the bias correction is not strong enough (creating false positives).
+(15) score: The score (in bits) for this target/query comparison. It includes the biased-composition cor-rection (the “null3” model for CM hits, or the “null2” model for HMM hits).
+(16) E-value: The expectation value (statistical significance) of the target. This is a per query E-value; i.e. calculated as the expected number of false positives achieving this comparison’s score for a single query against the search space Z. For cmsearch Z is defined as the total number of nucleotides in the target dataset multiplied by 2 because both strands are searched. For cmscan Z is the total number of nucleotides in the query sequence multiplied by 2 because both strands are searched and multiplied by the number of models in the target database. If you search with multiple queries and if you want to control the overall false positive rate of that search rather than the false positive rate per query, you will want to multiply this per-query E-value by how many queries you’re doing.
+(17) inc: Indicates whether or not this hit achieves the inclusion threshold: ’!’ if it does, ’?’ if it does not (and rather only achieves the reporting threshold). By default, the inclusion threshold is an E-value of 0.01 and the reporting threshold is an E-value of 10.0, but these can be changed with command line options as described in the manual pages.
 (18) description of target: The remainder of the line is the target’s description line, as free text.
 
 
+For further questions please refere to the Infernal Userguide_.
 
+.. _Userguide: http://selab.janelia.org/software/infernal/Userguide.pdf
+
+
+How do I cite Infernal?
+-----------------------
+
+The Infernal 1.0 paper (Nawrocki et al., 2009) is the best paper to reference. 
+If you’re writing for an enlightened (url-friendly) journal, you may want to cite the webpage
+http://infernal.janelia.org/ because it is kept up-to-date. We hope to publish a paper related to
+Infernal version 1.1 soon.
+
+**Galaxy Wrapper Author**::
+
+    *  Bjoern Gruening, University of Freiburg
 
     </help>
 </tool>
