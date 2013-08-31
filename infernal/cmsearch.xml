@@ -1,10 +1,7 @@
-<tool id="interproscan" name="Interproscan functional predictions of ORFs"  version="5.0.0">
-    <description>Interproscan functional predictions of ORFs</description>
+<tool id="infernal_cmsearch" name="Search covariance model(s)" version="1.1.0">
+    <description>against a sequence database (cmsearch)</description>
     <requirements>
-        <requirement type="package">signalp</requirement>
-        <requirement type="package">phobius</requirement>
-        <requirement type="package">tmhmm</requirement>
-        <requirement type="set_environment">INTERPROSCAN_SCRIPT_PATH</requirement>
+        <requirement type="package" version="1.1rc4">infernal</requirement>
     </requirements>
     <command>
         cmsearch --tblout
@@ -25,18 +22,36 @@
                 $A $multiple_alignment_output
             #end if
 
-            2>&#38;1
 
-            $cmfile
+            #if $inclusion_thresholds_opts.inclusion_thresholds_selector == "--incE":
+                --incE $inclusion_thresholds_opts.incE
+            #else:
+                --incT $inclusion_thresholds_opts.incT
+            #end if
+
+            #if $reporting_thresholds_opts.reporting_thresholds_selector == "-E":
+                -E $reporting_thresholds_opts.E
+            #else:
+                -T $reporting_thresholds_opts.T
+            #end if
+
+            #if $cm_opts.cm_opts_selector == "db":
+                $cm_opts.database.fields.path
+            #else:
+                $cm_opts.cmfile
+            #end if
+
             $seqdb
 
+
+            2>&#38;1
     </command>
         <inputs>
 
             <param name="seqdb" type="data" format="fasta,embl,genbank" label="Sequence database"/>
 
-            <conditional name="db_opts">
-                <param name="db_opts_selector" type="select" label="Subject covariance models">
+            <conditional name="cm_opts">
+                <param name="cm_opts_selector" type="select" label="Subject covariance models">
                   <option value="db" selected="True">Locally installed covariance models</option>
                   <option value="histdb">Covariance model from your history</option>
                 </param>
@@ -48,20 +63,14 @@
                           <column name="path" index="2"/>
                         </options>
                     </param>
-                    <param name="histdb" type="hidden" value="" />
-                    <param name="subject" type="hidden" value="" /> 
                 </when>
                 <when value="histdb">
-                    <param name="database" type="hidden" value="" />
-                    <param name="cmfile" type="data" format="fasta" label="Covariance models"/>
-                    <param name="subject" type="hidden" value="" />
+                    <param name="cmfile" type="data" format="fasta" label="Covariance models file from the history."/>
                 </when>
             </conditional>
 
-
             <param name="g" truevalue="-g" falsevalue="" checked="False" type="boolean" 
-                label="Turn on the glocal alignment algorithm ..." help="... global with respect to the query 
-                model and local with respect to the target database."/>
+                label="Turn on the glocal alignment algorithm" help="... global with respect to the query model and local with respect to the target database."/>
 
             <param name="bottomonly" truevalue="--bottomonly" falsevalue="" checked="False" type="boolean" 
                 label="Only search the bottom (Crick) strand of target sequences" help="in the sequence database"/>
@@ -91,8 +100,7 @@
 
             <!-- Options for model-specific score thresholding -->
 
-            <param name="bitscore_thresholds" type="select" label="Bit score thresholds" help="Curated CM databases may define specific 
-            bit score thresholds for each CM, superseding any thresholding based on statistical significance alone.">
+            <param name="bitscore_thresholds" type="select" label="Bit score thresholds" help="Curated CM databases may define specific bit score thresholds for each CM, superseding any thresholding based on statistical significance alone.">
                 <option value="" selected="true">None</option>
                 <option value="--cut_ga">GA (gathering) bit scores</option>
                 <option value="--cut_nc">NC (noise cutoff) bit score</option>
@@ -101,49 +109,61 @@
 
             <!-- Options for inclusion thresholds -->
 
-            <param name="seqtype" type="select" label="Type of the input sequences" help="Inclusion thresholds are stricter than reporting thresholds. 
-                Inclusion thresholds control which hits are considered to be reliable enough to be included in an output alignment or in a 
-                possible subsequent search round, or marked as significant (”!”) as opposed to questionable (”?”) in hit output.">
-                <option value="--incE" selected="true">Protein</option>
-                <option value="--incT">DNA / RNA</option>
-            </param>
+
+            <conditional name="inclusion_thresholds_opts">
+                <param name="inclusion_thresholds_selector" type="select" label="Inclusion thresholds"
+                help="Inclusion thresholds are stricter than reporting thresholds. Inclusion thresholds control which hits are considered to be reliable enough to be included in an output alignment or in a possible subsequent search round, or marked as significant (”!”) as opposed to questionable (”?”) in hit output.">
+                    <option value="--incE" selected="true">Use E-value</option>
+                    <option value="--incT">Use bit score</option>
+                </param>
+                <when value="--incE">
+                    <param name="incE" type="float" value="0.01" size="5" label="Use E-value" help="of &lt;= X as the hit inclusion threshold.">
+                        <sanitizer>
+                            <valid initial="string.printable">
+                                <remove value="&apos;"/>
+                            </valid>
+                        </sanitizer>
+                    </param>
+                </when>
+                <when value="--incT">
+                    <param name="incT" type="integer" size="5" value="0" label="Use bit score" help="of >= X as the hit inclusion threshold.">
+                        <sanitizer>
+                            <valid initial="string.printable">
+                                <remove value="&apos;"/>
+                            </valid>
+                        </sanitizer>
+                    </param>
+                </when>
+            </conditional>
 
 
---incE <x> Use an E-value of <= <x> as the hit inclusion threshold. The default is 0.01, meaning that
-on average, about 1 false positive would be expected in every 100 searches with different
-query sequences.
---incT <x> Instead of using E-values for setting the inclusion threshold, instead use a bit score of >=
-<x> as the hit inclusion threshold. By default this option is unset.
+            <!-- Options controlling reporting thresholds -->
 
-
-
-
-<!-- Options controlling reporting thresholds -->
-Reporting thresholds control which hits are reported in output files (the main output and --tblout) Hits are ranked by
-statistical significance (E-value). By default, all hits with an E-value <= 10 are reported. The following options allow you
-to change the default E-value reporting thresholds, or to use bit score thresholds instead.
--E <x> In the per-target output, report target sequences with an E-value of <= <x>. The default is
-10.0, meaning that on average, about 10 false positives will be reported per query, so you
-can see the top of the noise and decide for yourself if it’s really noise.
--T <x> Instead of thresholding per-CM output on E-value, report target sequences with a bit score
-of >= <x>.
-
-	<conditional name="">
-		<param name="choice" type="select" label="Options controlling reporting thresholds">
-			<option value="line" selected="true">entire line</option>
-			<option value="column">specific column</option>
-		</param>
-
-		<when value="line">
-		</when>
-
-		<when value="column">
-    			<param name="column" label="in column" type="data_column" data_ref="input" accept_default="true" />
-		</when>
-	</conditional>
-
-
-
+            <conditional name="reporting_thresholds_opts">
+                <param name="reporting_thresholds_selector" type="select" label="reporting thresholds"
+                help="Reporting thresholds control which hits are reported in output files">
+                    <option value="-E" selected="true">Use E-value</option>
+                    <option value="-T">Use bit score</option>
+                </param>
+                <when value="-E">
+                    <param name="E" type="float" value="10.0" size="5" label="Use E-value" help="of &lt;= X as the hit reporting threshold. The default is 10.0, meaning that on average, about 10 false positives will be reported per query, so you can see the top of the noise and decide for yourself if it’s really noise.">
+                        <sanitizer>
+                            <valid initial="string.printable">
+                                <remove value="&apos;"/>
+                            </valid>
+                        </sanitizer>
+                    </param>
+                </when>
+                <when value="-T">
+                    <param name="T" type="integer" size="5" value="0" label="Use bit score" help="of >= X as the hit reporting threshold.">
+                        <sanitizer>
+                            <valid initial="string.printable">
+                                <remove value="&apos;"/>
+                            </valid>
+                        </sanitizer>
+                    </param>
+                </when>
+            </conditional>
 
             <param name="A" truevalue="-A" falsevalue="" checked="False" type="boolean" 
                 label="Save a multiple alignment of all significant hits ..." help="... those satisfying inclusion thresholds"/>
