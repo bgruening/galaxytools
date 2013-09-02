@@ -47,7 +47,7 @@ print('----------------')
 pdf(opt$plots)
 
 if (opt$samples=="all_vs_all"){
-
+  # all versus all
   for (i in seq(1, length(l), by=1)) {
     k=i+1
     if(k<=length(l)){
@@ -74,7 +74,8 @@ if (opt$samples=="all_vs_all"){
         res <- results(dds)
         rownames(res)<-tagnames
         resSorted <- res[order(res$padj),];
-        write.csv( as.data.frame(resSorted), file = opt$outputfile )
+        #column.names=FALSE
+        write.csv( as.data.frame(resSorted), file = opt$outputfile, sep="\t")
       }
     }
   }
@@ -116,6 +117,7 @@ print(samplecolumns)
   res <- results(dds)
   rownames(res)<-tagnames
   resSorted <- res[order(res$padj),];
-  write.csv(as.data.frame(resSorted), file = opt$outputfile)  
+  #column.names=FALSE
+  write.csv( as.data.frame(resSorted), file = opt$outputfile, sep="\t")
 }
 dev.off()
