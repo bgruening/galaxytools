@@ -16,7 +16,8 @@ The tools are:
   * sort - sort files
   * join - join two files, based on common key field.
   * cut  - keep/discard fields from a file
-  * uniq - keep unique/duplicated lines in a file
+  * unsorted_uniq - keep unique/duplicated lines in a file
+  * sorted_uniq - keep unique/duplicated lines in a file
   * head - keep the first X lines in a file.
   * tail - keep the last X lines in a file.
 
@@ -61,39 +62,8 @@ That being said, if you do find some vulnerability in these tools, please let me
 Installation
 ============
 
-## GNU coreutils
- wget http://ftp.gnu.org/gnu/coreutils/coreutils-8.19.tar.xz
- tar -xJf coreutils-8.19.tar.xz
- cd coreutils-8.19
- ./configure --prefix=/INSTALL/PATH
- make
- sudo make install
+Should be done with the Galaxy `Tool Shed`_.
 
-
-## AWK
- wget http://ftp.gnu.org/gnu/gawk/gawk-4.0.1.tar.gz
- tar -xf gawk-4.0.1.tar.gz
- cd gawk-4.0.1
- ./configure --prefix=/INSTALL/PATH
- make
- sudo make install
-
-## SED
- wget ftp://ftp.gnu.org/gnu/sed/sed-4.2.tar.gz
- wget http://cancan.cshl.edu/labmembers/gordon/files/sed-4.2-sandbox.patch
- tar -xf sed-4.2.tar.gz
- patch -p0 < sed-4.2-sandbox.patch
- cd sed-4.2
- ./configure --prefix=/INSTALL/PATH
- make
- sudo make install
-
-## Grep
- wget ftp://ftp.gnu.org/gnu/grep/grep-2.14.tar.xz
- tar -xJf grep-2.14.tar.xz
- cd grep-2.14
- ./configure --enable-perl-regexp --prefix=/INSTALL/PATH
- make
- sudo make install
+.. _`Tool Shed`: http://wiki.galaxyproject.org/Tool%20Shed
 
 
