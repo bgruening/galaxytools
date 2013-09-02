@@ -36,5 +36,5 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
-NOTE: This is the licence for the Galaxy BLAST datatypes **only**. BLAST+
+NOTE: This is the licence for the EDeN wrappers **only**. EDeN
 and associated data files are available and licenced separately.
