@@ -21,6 +21,7 @@ History
 =======
 
 - v0.1: Initial public release
+- the uniq.xml and the sort_rows tools are moved to the unix tools
 
 
 ===============================
