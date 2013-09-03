@@ -1,4 +1,4 @@
-<tool id="bg_eden_test" name="EDeN Test" version="0.1">
+<tool id="bg_eden_feature" name="EDeN Converter" version="0.1">
     <description></description>
     <requirements>
         <requirement type="package" version="2.3.2">openbabel</requirement>
@@ -14,23 +14,24 @@
         #set $temp_gspan = $temp_gspan.name
 
         #if $file_type_opts.file_type_opts_selector == 'sdf':
-            obabel -i sdf -o sdf $infile | \$EDEN_SCRIPT_PATH/mol2gspan.py --infile - --outfile $temp_gspan;
-            $file_type_opts.file_type_opts_selector = 'GRAPH'
+            obabel -i sdf -o sdf $infile | \$EDEN_SCRIPT_PATH/mol2gspan.py --infile - --outfile $temp_gspan
+            #set $file_type = 'GRAPH'
         #elif $file_type_opts.file_type_opts_selector == 'smi':
-            obabel -i smi -o sdf $infile | \$EDEN_SCRIPT_PATH/mol2gspan.py --infile - --outfile $temp_gspan;
-            $file_type_opts.file_type_opts_selector = 'GRAPH'
+            obabel -i smi -o sdf $infile | \$EDEN_SCRIPT_PATH/mol2gspan.py --infile - --outfile $temp_gspan
+            #set $file_type = 'GRAPH'
         #else:
-            $temp_gspan = $infile
+            #set $temp_gspan = $infile
+            #set $file_type = $file_type_opts.file_type_opts_selector
         #end if
         ;
 
         EDeN --action FEATURE
 
-        --input_data_file_name $infile
-        --model_file_name $output
+        --input_data_file_name $temp_gspan
+        --model_file_name $outfile
 
         ## if we have an molecule datatype the file_type is set to GRAPH, after convertion to the gSpan Graph format
-        --file_type $file_type_opts.file_type_opts_selector
+        --file_type $file_type
 
         --binary_file_type ## create a binary sparse vector as output
         --kernel_type $kernel_type
@@ -40,7 +41,7 @@
         $min_kernel
 
         --hash_bit_size $hash_bit_size
-        --radius $kernel
+        --radius $radius
         --distance $distance
         --vertex_degree_threshold $vertex_degree_threshold
 
@@ -67,14 +68,14 @@
 
         #if $smooth_opts.smooth_opts_selector == 'smooth':
             --smooth
-            --smooth_param $smooth_opts.smooth_param
+            --smooth_param $smooth_opts.smoother_param
 
-            $smooth_opts.row_index_file_name
-            $smooth_opts.col_index_file_name
+            --row_index_file_name $row_index_file_name
+            --col_index_file_name $col_index_file_name
             --num_hash_functions $smooth_opts.num_hash_functions
             --num_repeat_hash_functions $smooth_opts.num_repeat_hash_functions
             --max_size_bin $smooth_opts.max_size_bin
-            --eccess_neighbour_size_factor $smooth_opts.eccess_neighbor_size_factor
+            --eccess_neighbour_size_factor $smooth_opts.eccess_neighbour_size_factor
             --num_nearest_neighbours $smooth_opts.num_nearest_neighbours
             $smooth_opts.shared_neighborhood
             $smooth_opts.no_neighborhood_cache
@@ -82,12 +83,13 @@
         #end if
 
         ;
-        rm $temp
+        rm $temp_gspan
 
 
     </command>
     <inputs>
-        <param format="gspan" name="infile" type="data" label="Input Graph" help=""/>
+        <param format="smi,gspan,inchi,sdf,mol,mol2,txt" name="infile" type="data" label="Input file" 
+            help="File can contain molecule data types (SMILES, InChI, SDF) or Graph datatypes (gSpan, sparse vector, sequence)."/>
 
         <conditional name="file_type_opts">
             <param name="file_type_opts_selector" type="select" display="radio" label="Type of Input file">
@@ -129,8 +131,8 @@
 
         <conditional name="smooth_opts">
             <param name="smooth_opts_selector" type="select" label="Adds rescaled features from nearest neighbors (--smooth)">
-              <option value="smooth" selected="True">Enable smooth</option>
-              <option value="non_smooth">Disable smooth</option>
+              <option value="non_smooth" selected="True">Disable smooth</option>
+              <option value="smooth">Enable smooth</option>
             </param>
             <when value="non_smooth" />
             <when value="smooth">
@@ -162,7 +164,7 @@
                     <validator type="in_range" min="1" />
                 </param>
 
-                <param name="row_index_file_name" type="text" size="30" label="Row indieces of your input file that should be converted" 
+                <param name="row_index" type="text" size="30" label="Row indieces of your input file that should be converted" 
                     help="Specify a subset of your dataset by providing the row indieces that should be taken into account.">
                     <sanitizer>
                         <valid initial="string.digits">
@@ -171,8 +173,9 @@
                             <add value=" " />
                         </valid>
                     </sanitizer>
+                    <validator type="empty_field" message="You need to specify row indieces"/>
                 </param>
-                <param name="col_index_file_name" type="text" size="30" label="Column indieces of your input file that should be converted" 
+                <param name="col_index" type="text" size="30" label="Column indieces of your input file that should be converted" 
                     help="Specify a subset of your dataset by providing the column indieces that should be taken into account.">
                     <sanitizer>
                         <valid initial="string.digits">
@@ -181,6 +184,7 @@
                             <add value=" " />
                         </valid>
                     </sanitizer>
+                    <validator type="empty_field" message="You need to specify column indieces"/>
                 </param>
 
             </when>
@@ -210,22 +214,40 @@
 
     </inputs>
     <configfiles>
-        <configfile name="row_index">
-            #for $element in str($row_index_file_name).split(','):
-                #set $element = $element.strip().split('-')
-                #if len($element) == 2:
-                    #for $index in range( int($element[0]), int($elemtn[1]) ):
-                        $index
-                    #end for
-                #else:
-                    $element
-                #end if
-            #end for
-        </configfile>
-        <configfile name="col_index">
-            $col_index_file_name
-        </configfile>
-    <configfiles>
+<!-- The strange indentation is necessary, otherwise we get line breaks or white space in our file -->
+<configfile name="row_index_file_name">#if $smooth_opts.smooth_opts_selector == 'smooth':
+                #for $element in str( $smooth_opts.row_index ).split(','):
+                    #set $element = $element.strip().split('-')
+                    #if len($element) == 2:
+                        #for $index in range( int($element[0]), int($element[1]) ):
+                            ## the following writes the value at the beginning of each line
+                            ## #echo $index# inserts a line break automatically, but do not write it
+                            ## to the beginning of the line
+                            #echo '%s\n' % $index
+                        #end for
+                    #else:
+                        #echo '%s\n' % $element[0]
+                    #end if
+                #end for
+            #end if
+</configfile>
+<configfile name="col_index_file_name">#if $smooth_opts.smooth_opts_selector == 'smooth':
+                #for $element in str( $smooth_opts.col_index ).split(','):
+                    #set $element = $element.strip().split('-')
+                    #if len($element) == 2:
+                        #for $index in range( int($element[0]), int($element[1]) ):
+                            ## the following writes the value at the beginning of each line
+                            ## #echo $index# inserts a line break automatically, but do not write it
+                            ## to the beginning of the line
+                            #echo '%s\n' % $index
+                        #end for
+                    #else:
+                        #echo '%s\n' % $element[0]
+                    #end if
+                #end for
+            #end if
+</configfile>
+    </configfiles>
     <outputs>
         <data format="eden_sparse_vector" name="outfile" label="Sparse vector from ${on_string}"/>
     </outputs>
