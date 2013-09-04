@@ -1,3 +1,7 @@
+## Setup R error handling to go to stderr
+options( show.error.messages=F, error = function () { cat( geterrmessage(), file=stderr() ); q( "no", 1, F ) } )
+Sys.setlocale("LC_MESSAGES", "en_US.UTF-8")
+
 library('getopt');
 options(stringAsfactors = FALSE, useFancyQuotes = FALSE)
 args <- commandArgs(trailingOnly = TRUE)
@@ -8,9 +12,10 @@ spec = matrix(c(
   'verbose', 'v', 2, "integer",
   'help' , 'h', 0, "logical",
   'outputfile' , 'o', 1, "character",
-  'plots' , 'p', 1, "character",
+  'plots' , 'p', 2, "character",
   'input' , 'i', 1, "character",
-  'samples', 's', 1, "character"
+  'samples', 's', 1, "character",
+  'factors', 'f', 2, "character"
 ), byrow=TRUE, ncol=4);
 opt = getopt(spec);
 
@@ -41,7 +46,9 @@ l <- unique(c(conditions))
 
 library( "DESeq2" )
 
-pdf(opt$plots)
+if ( !is.null(opt$plots) ) {
+    pdf(opt$plots)
+}
 if (opt$samples=="all_vs_all"){
   # all versus all
   for (i in seq(1, length(l), by=1)) {
@@ -54,7 +61,7 @@ if (opt$samples=="all_vs_all"){
         sampleNames <- names(htseqCountTable[currentColmuns])
 
 	currentPairTable <- htseqCountTable[currentColmuns]
-	ncondition1cols <- length(which(conditions %in% c(l[[i]])))        
+	ncondition1cols <- length(which(conditions %in% c(l[[i]])))
 	ncondition2cols <- length(which(conditions %in% c(l[[i]])))
 
 	ntabcols <- length(currentPairTable)
@@ -68,9 +75,10 @@ if (opt$samples=="all_vs_all"){
 
         dds <- DESeq(dds)
         sizeFactors(dds)
-        plotDispEsts(dds)
-        plotMA(dds)
-        
+        if ( !is.null(opt$plots) ) {
+            plotDispEsts(dds)
+            plotMA(dds)
+        }
         res <- results(dds)
 	resCols <- colnames(res)
 
@@ -109,8 +117,10 @@ if (opt$samples=="all_vs_all"){
 
   dds <- DESeq(dds)
   sizeFactors(dds)
-  plotDispEsts(dds)
-  plotMA(dds)
+    if ( !is.null(opt$plots) ) {
+        plotDispEsts(dds)
+        plotMA(dds)
+    }
   
   res <- results(dds)
   resCols <- colnames(res)
