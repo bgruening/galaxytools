@@ -125,10 +125,12 @@ if (opt$samples=="all_vs_all"){
                     else
                         factors[[length(factors) + 1]] <- "no"
                 }
-		# only add factor if factor is applied to the selected samples
-		if((length(unique(factors))) >= 2){
-	                pdata[[currentFactor[1]]]<-factor(factors)
-		}
+                # only add factor if factor is applied to the selected samples
+                if((length(unique(factors))) >= 2){
+                        pdata[[currentFactor[1]]]<-factor(factors)
+                }else{
+                    write("Input-Error 01: You can only apply factors to selected samples.", stderr())
+                }
             }
         }
     }
