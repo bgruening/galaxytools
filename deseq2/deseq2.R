@@ -10,7 +10,8 @@ spec = matrix(c(
   'outputfile' , 'o', 1, "character",
   'plots' , 'p', 1, "character",
   'input' , 'i', 1, "character",
-  'samples', 's', 1, "character"
+  'samples', 's', 1, "character",
+  'factors', 'f', 2, "character"
 ), byrow=TRUE, ncol=4);
 opt = getopt(spec);
 
@@ -23,7 +24,8 @@ if ( !is.null(opt$help) ) {
 }
 
 trim <- function (x) gsub("^\\s+|\\s+$", "", x)
-opt$samples<-trim(opt$samples)
+opt$samples <- trim(opt$samples)
+opt$factors <- trim(opt$factors)
 
 
 htseqCountTable = read.table(opt$input, sep="\t", comment="", as.is=T)
@@ -32,7 +34,6 @@ colnames(htseqCountTable) <- htseqCountTable[2,]
 names(htseqCountTable)<-colnames(htseqCountTable)
 conditions <- htseqCountTable[1,]
 conditions <- unlist(conditions[,-1])
-attr(htseqCountTable,"conditions") <- conditions
 tagnames <- htseqCountTable[-(1:2), 1]
 htseqCountTable <- htseqCountTable[-(1:2),-1]
 htseqCountTable[,1] <- gsub(",", ".", htseqCountTable[,1])
@@ -85,42 +86,67 @@ if (opt$samples=="all_vs_all"){
   }
 }else{
 
-  sampleSets<-unlist(strsplit(opt$samples, " "))
-  samplesControl <- {}
-  samplesExperiment <- {}
-  samplesControl<-unlist(strsplit(sampleSets[1], ","))
-  samplesExperiment<-unlist(strsplit(sampleSets[2], ","))
+	sampleSets <- unlist(strsplit(opt$samples, " "))
+	samplesControl <- {}
+	samplesExperiment <- {}
+	samplesControl <- unlist(strsplit(sampleSets[1], ","))
+	samplesExperiment <- unlist(strsplit(sampleSets[2], ","))
 
-  # the minus one is needed because we get column indizes including the first column
-  sampleColumns <- c()
-  for (i in samplesControl) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
-  for (i in samplesExperiment) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
-  
-  htseqSubCountTable <- htseqCountTable[,sampleColumns]
+	# the minus one is needed because we get column indizes including the first column
+	sampleColumns <- c()
+	for (i in samplesControl) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
+	for (i in samplesExperiment) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
+	htseqSubCountTable <- htseqCountTable[,sampleColumns]
+	
+	ntabcols <- length(htseqSubCountTable)
+	htseqSubCountTable <- as.integer(unlist(htseqSubCountTable))
+	htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
+	colnames(htseqSubCountTable) <- names(htseqCountTable)[sampleColumns]
 
-  ntabcols <- length(htseqSubCountTable)
-  htseqSubCountTable <- as.integer(unlist(htseqSubCountTable))
-  htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
-  colnames(htseqSubCountTable) <- names(htseqCountTable)[sampleColumns]
+	pdata = data.frame(condition=factor(conditions[sampleColumns]), row.names=colnames(htseqSubCountTable))
 
-  pdata = data.frame(condition=factor(conditions[sampleColumns]),row.names=colnames(htseqSubCountTable))
-  print(pdata)
-  dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = ~ condition)
+	if(length(opt$factors) != 0){
+		factorSets <- unlist(strsplit(opt$factors, " "))
+		for (factorSet in factorSets) {
+			currentFactor <- unlist(strsplit(factorSet, ":"))
+			for (factor in currentFactor[2]) {
+				factoredCols <- unlist(strsplit(factor, ","))
+				factoredCols <- as.numeric(factoredCols)
+				factors <- c()
+				for (i in sampleColumns){
+					j=i+1
+					if(j %in% factoredCols)
+						factors[[length(factors) + 1]] <- "yes"
+					else
+						factors[[length(factors) + 1]] <- "no"	
+				}
+	
+				pdata[[currentFactor[1]]]<-factor(factors)
+			}
+		}	
+	}
 
-  dds <- DESeq(dds)
-  sizeFactors(dds)
-  plotDispEsts(dds)
-  plotMA(dds)
-  
-  res <- results(dds)
-  resCols <- colnames(res)
+	print(pdata)
 
-  cond <- c(rep(paste(unique(conditions[sampleColumns]),collapse="_"), nrow(res)))
-  res[, "condition"] <- cond
-  res[, "geneIds"] <- tagnames
+	form <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
+	dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = form)
 
-  resSorted <- res[order(res$padj),]
-  write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+	print(design(dds))
+
+	dds <- DESeq(dds)
+	sizeFactors(dds)
+	plotDispEsts(dds)
+	plotMA(dds)
+
+	res <- results(dds)
+	resCols <- colnames(res)
+
+	cond <- c(rep(paste(unique(conditions[sampleColumns]),collapse="_"), nrow(res)))
+	res[, "condition"] <- cond
+	res[, "geneIds"] <- tagnames
+
+	resSorted <- res[order(res$padj),]
+	write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
 }
 dev.off()
 
