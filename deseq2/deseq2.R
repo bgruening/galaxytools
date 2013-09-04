@@ -110,7 +110,7 @@ if (opt$samples=="all_vs_all"){
 
     pdata = data.frame(condition=factor(conditions[sampleColumns]), row.names=colnames(htseqSubCountTable))
 
-    if(length(opt$factors) != 0){
+    if(!is.null(opt$factors)){
         factorSets <- unlist(strsplit(opt$factors, " "))
         for (factorSet in factorSets) {
             currentFactor <- unlist(strsplit(factorSet, ":"))
@@ -125,13 +125,15 @@ if (opt$samples=="all_vs_all"){
                     else
                         factors[[length(factors) + 1]] <- "no"
                 }
-                pdata[[currentFactor[1]]]<-factor(factors)
+		# only add factor if factor is applied to the selected samples
+		if((length(unique(factors))) >= 2){
+	                pdata[[currentFactor[1]]]<-factor(factors)
+		}
             }
         }
     }
 
     form <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
-    print(form)
     dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = form)
 
     dds <- DESeq(dds)
