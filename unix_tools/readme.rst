@@ -79,6 +79,8 @@ TODO
 - also shuf will get a major improved performance with large files http://git.savannah.gnu.org/gitweb/?p=coreutils.git;a=commit;h=20d7bce0f7e57d9a98f0ee811e31c757e9fedfff
   we can remove the random feature from sort and use shuf instead
 - move some advanced settings under a conditional, for example the cut tools offers to cut bytes
+- cut wrapper has some output conditional magic for interval files, that needs to be checked
+- comm wrapper, see the Galaxy default one
 
 
 
