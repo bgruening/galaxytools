@@ -81,6 +81,7 @@ TODO
 - move some advanced settings under a conditional, for example the cut tools offers to cut bytes
 - cut wrapper has some output conditional magic for interval files, that needs to be checked
 - comm wrapper, see the Galaxy default one
+- evaluate the join wrappers against the Galaxy ones, maybe we should drop them
 
 
 
