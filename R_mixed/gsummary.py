@@ -1,16 +1,12 @@
 #!/usr/bin/env python
 
-import sys, re, tempfile
+import sys
+import re
+import tempfile
 #from rpy import *
 import rpy2.robjects as robjects
 r = robjects.r
 from rpy2.robjects.vectors import DataFrame
-
-# Older py compatibility
-try:
-    set()
-except:
-    from sets import Set as set
 
 assert sys.version_info[:2] >= ( 2, 4 )
 
