@@ -16,7 +16,8 @@ spec = matrix(c(
   'plots' , 'p', 2, "character",
   'input' , 'i', 1, "character",
   'samples', 's', 1, "character",
-  'factors', 'f', 2, "character"
+  'factors', 'f', 2, "character",
+  'fittype', 't', 2, "character"
 ), byrow=TRUE, ncol=4);
 opt = getopt(spec);
 
@@ -27,6 +28,9 @@ if ( !is.null(opt$help) ) {
   cat(getopt(spec, usage=TRUE));
   q(status=1);
 }
+
+if( is.null(opt$fittype))
+	opt$fittype = "parametric"
 
 trim <- function (x) gsub("^\\s+|\\s+$", "", x)
 opt$samples <- trim(opt$samples)
@@ -68,15 +72,12 @@ if (opt$samples=="all_vs_all"){
             colnames(currentPairTable) <- sampleNames
 
         pdata = data.frame(condition=factor(conditions[currentColmuns]),row.names=colnames(currentPairTable))
+        print(pdata)
 
         dds = DESeqDataSetFromMatrix(countData = currentPairTable,  colData = pdata, design = ~ condition)
 
-        dds <- DESeq(dds)
+        dds <- DESeq(dds, fitType= opt$fittype)
         sizeFactors(dds)
-        if ( !is.null(opt$plots) ) {
-            plotDispEsts(dds)
-            plotMA(dds)
-        }
         res <- results(dds)
         resCols <- colnames(res)
 
@@ -86,6 +87,22 @@ if (opt$samples=="all_vs_all"){
         
         resSorted <- res[order(res$padj),]
         write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
+        
+        if ( !is.null(opt$plots) ) {
+            plotDispEsts(dds)
+            plotMA(dds)
+            
+			library("RColorBrewer")
+			library("gplots")
+			select <- order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:30]
+			hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
+			
+			rld <- rlogTransformation(dds, blind=TRUE)
+			vsd <- varianceStabilizingTransformation(dds, blind=TRUE)
+			distsRL <- dist(t(assay(rld)))
+			mat <- as.matrix(distsRL)
+			heatmap.2(mat, trace="none", col = rev(hmcol), main = "Sample-to-sample distances")            
+        }        
       }
     }
   }
@@ -108,7 +125,7 @@ if (opt$samples=="all_vs_all"){
     htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
     colnames(htseqSubCountTable) <- names(htseqCountTable)[sampleColumns]
 
-    pdata = data.frame(condition=factor(conditions[sampleColumns]), row.names=colnames(htseqSubCountTable))
+    pdata = data.frame(row.names=colnames(htseqSubCountTable))
 
     if(!is.null(opt$factors)){
         factorSets <- unlist(strsplit(opt$factors, " "))
@@ -134,17 +151,14 @@ if (opt$samples=="all_vs_all"){
             }
         }
     }
-print(pdata)
-    form <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
-    dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = form)
+    pdata$condition<-factor(conditions[sampleColumns])
+    print(pdata)
 
-    dds <- DESeq(dds)
+    designFormula <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
+    dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = designFormula)
+
+    dds <- DESeq(dds, fitType= opt$fittype)
     sizeFactors(dds)
-    if ( !is.null(opt$plots) ) {
-        plotDispEsts(dds)
-        plotMA(dds)
-    }
-
     res <- results(dds)
     resCols <- colnames(res)
 
@@ -154,6 +168,22 @@ print(pdata)
 
     resSorted <- res[order(res$padj),]
     write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+
+    if ( !is.null(opt$plots) ) {
+        plotDispEsts(dds)
+        plotMA(dds)
+
+		library("RColorBrewer")
+		library("gplots")
+		select <- order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:30]
+		hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
+        
+		rld <- rlogTransformation(dds, blind=TRUE)
+		vsd <- varianceStabilizingTransformation(dds, blind=TRUE)
+		distsRL <- dist(t(assay(rld)))
+		mat <- as.matrix(distsRL)
+		heatmap.2(mat, trace="none", col = rev(hmcol), main = "Sample-to-sample distances")
+    }    
 }
 dev.off()
 
