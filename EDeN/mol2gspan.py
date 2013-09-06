@@ -5,7 +5,7 @@ import argparse
 
 def main(args ):
 
-    begin = True
+    begin = False
     iid = 0
     graph_counter = 1
 
@@ -25,13 +25,14 @@ def main(args ):
                 # connection or coordinate/atom table
                 if len(line.split()) >= 4 and begin:
                     # coordinate/atom table
-                    if line.split()[3].isalpha():
-                        args.outfile.write( 'v %s %s \n' % (iid, line.split()[3]) )
-                        iid += 1
-                    else:
-                        #connection table
-                        id, node, edge, trash = line.split(None, 3)
-                        args.outfile.write( 'e %s %s %s\n' % ( int(id) - 1 , int(node) -1, edge ) )
+                    if not line.startswith('M'):
+                        if line.split()[3].isalpha() or line.split()[3] == '*':
+                            args.outfile.write( 'v %s %s \n' % (iid, line.split()[3]) )
+                            iid += 1
+                        else:
+                            #connection table
+                            id, node, edge, trash = line.split(None, 3)
+                            args.outfile.write( 'e %s %s %s\n' % ( int(id) - 1 , int(node) -1, edge ) )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

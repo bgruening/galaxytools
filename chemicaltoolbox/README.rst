@@ -450,7 +450,11 @@ You can install the workflow with the API::
 
 	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r e1bc8415f875 --name chemicaltoolbox_merging_chemical_databases_workflow --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
 
-or as described above via webbrowser.
+or as described above via webbrowser. You have now successfully installed the workflow, 
+to import it to all your users you need to go to the admin panel, choose the worklow and import it.
+For more information have a look at the Galaxy wiki::
+
+	http://wiki.galaxyproject.org/ToolShedWorkflowSharing#Finding_workflows_in_tool_shed_repositories
 
 
 
