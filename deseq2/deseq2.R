@@ -132,7 +132,7 @@ if (opt$samples=="all_vs_all"){
             }
         }
     }
-
+print(pdata)
     form <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
     dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = form)
 
