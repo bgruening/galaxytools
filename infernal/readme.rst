@@ -32,15 +32,13 @@ Please download install Infernal and the tool wrappers with the Galaxy Tool Shed
 Miscellaneous
 =============
 
-Included in that repository is a CM datatype for INFERNAL 1.1. If you need that datatype in an additionl package,
-I can source it out as separate package. Please contact me in that case.
+Included in that repository is a CM datatype for INFERNAL 1.1 and TOCKHOLM .
+If you need that datatype in an additionl package, I can source it out as separate package. Please contact me in that case.
 
 
 =======
 History
 =======
-
-interproscan:
 
  - v1.1.0: Initial public release
 

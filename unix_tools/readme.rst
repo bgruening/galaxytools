@@ -88,8 +88,8 @@ TODO
 License
 -------
 
-Copyright (c) 2009-2013   A. Gordon  (gordon <at> cshl.edu)
-Copyright (c) 2013   B. Gruening  (bjoern dot gruening <at> gmail dot com)
+  * Copyright (c) 2009-2013   A. Gordon  (gordon <at> cshl.edu)
+  * Copyright (c) 2013   B. Gruening  (bjoern dot gruening <at> gmail dot com)
 
 
 Permission is hereby granted, free of charge, to any person obtaining 
