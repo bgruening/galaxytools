@@ -63,7 +63,6 @@
         <inputs>
 
             <param name="seqdb" type="data" format="fasta" label="Sequence database"/>
-
             <conditional name="cm_opts">
                 <param name="cm_opts_selector" type="select" label="Subject covariance models">
                   <option value="db" selected="True">Locally installed covariance models</option>
@@ -79,7 +78,7 @@
                     </param>
                 </when>
                 <when value="histdb">
-                    <param name="cmfile" type="data" format="cm" label="Covariance models file from the history."/>
+                    <param name="cmfile" type="data" format="txt" label="Covariance models file from the history."/>
                 </when>
             </conditional>
 
@@ -199,18 +198,139 @@
 
 **What it does**
 
-Infernal is used to search sequence databases for homologs of structural RNA sequences, and to make
-sequence- and structure-based RNA sequence alignments. Infernal needs a profile from a structurally
-annotated multiple sequence alignment of an RNA family with a position-specific scoring system for substitutions, 
-insertions, and deletions. Positions in the profile that are basepaired in the consensus secondary
-structure of the alignment are modeled as dependent on one another, allowing Infernal’s scoring system to
-consider the secondary structure, in addition to the primary sequence, of the family being modeled. Infernal
-profiles are probabilistic models called “covariance models”, a specialized type of stochastic context-free
-grammar (SCFG) (Lari and Young, 1990).
+cmalign aligns the RNA sequences in <seqfile> to the covariance model (CM) in <cmfile>. The new alignment is
+output to stdout in Stockholm format, but can be redirected to a file <f> with the -o <f> option.
+Either <cmfile> or <seqfile> (but not both) may be ’-’ (dash), which means reading this input from stdin rather than a
+file.
+The sequence file <seqfile> must be in FASTA or Genbank format.
+cmalign uses an HMM banding technique to accelerate alignment by default as described below for the --hbanded
+option. HMM banding can be turned off with the --nonbanded option.
+By default, cmalign computes the alignment with maximum expected accuracy that is consistent with constraints
+(bands) derived from an HMM, using a banded version of the Durbin/Holmes optimal accuracy algorithm. This be-
+havior can be changed with the --cyk or --sample options.
+cmalign takes special care to correctly align truncated sequences, where some nucleotides from the beginning (5’)
+and/or end (3’) of the actual full length biological sequence are not present in the input sequence (see DL Kolbe and
+SR Eddy, Bioinformatics, 25:1236-1243, 2009). This behavior is on by default, but can be turned off with --notrunc. In
+previous versions of cmalign the --sub option was required to appropriately handle truncated sequences. The --sub
+option is still available in this version, but the new default method for handling truncated sequences should be as good
+or superior to the sub method in nearly all cases.
+The --mapali <s> option allows inclusion of the fixed training alignment used to build the CM from file <s> within the
+output alignment of cmalign.
+It is possible to merge two or more alignments created by the same CM using the Easel miniapp esl-alimerge (included
+in the easel/miniapps/ subdirectory of Infernal). Previous versions of cmalign included options to merge alignments
+but they were deprecated upon development of esl-alimerge, which is significantly more memory efficient.
+By default, cmalign will output the alignment to stdout. The alignment can be redirected to an output file <f> with the
+-o <f> option. With -o, information on each aligned sequence, including score and model alignment boundaries will be
+printed to stdout (more on this below).
+The output alignment will be in Stockholm format by default. This can be changed to Pfam, aligned FASTA (AFA), A2M,
+Clustal, or Phylip format using the --outformat <s> option, where <s> is the name of the desired format. As a special
+case, if the output alignment is large (more than 10,000 sequences or more than 10,000,000 total nucleotides) than the
+output format will be Pfam format, with each sequence appearing on a single line, for reasons of memory efficiency. For
+alignments larger than this, using --ileaved will force interleaved Stockholm format, but the user should be aware that
+this may require a lot of memory. --ileaved will only work for alignments up to 100,000 sequences or 100,000,000 total
+nucleotides.
+If the output alignment format is Stockholm or Pfam, the output alignment will be annotated with posterior probabilities
+which estimate the confidence level of each aligned nucleotide. This annotation appears as lines beginning with ”#=GR
+<seq name> PP”, one per sequence, each immediately below the corresponding aligned sequence ”<seq name>”.
+Characters in PP lines have 12 possible values: ”0-9”, ”*”, or ”.”. If ”.”, the position corresponds to a gap in the sequence.
+A value of ”0” indicates a posterior probability of between 0.0 and 0.05, ”1” indicates between 0.05 and 0.15, ”2”
+indicates between 0.15 and 0.25 and so on up to ”9” which indicates between 0.85 and 0.95. A value of ”*” indicates
+a posterior probability of between 0.95 and 1.0. Higher posterior probabilities correspond to greater confidence that
+the aligned nucleotide belongs where it appears in the alignment. With --nonbanded, the calculation of the posterior
+probabilities considers all possible alignments of the target sequence to the CM. Without --nonbanded (i.e. in default
+mode), the calculation considers only possible alignments within the HMM bands. Further, the posterior probabilities
+are conditional on the truncation mode of the alignment. For example, if the sequence alignment is truncated 5’, a PP
+value of ”9” indicates between 0.85 and 0.95 of all 5’ truncated alignments include the given nucleotide at the given
+position. The posterior annotation can be turned off with the --noprob option. If --small is enabled, posterior annotation
+must also be turned off using --noprob.
+The tabular output that is printed to stdout if the -o option is used includes one line per sequence and twelve fields
+per line: ”idx”: the index of the sequence in the input file, ”seq name”: the sequence name; ”length”: the length of the
+sequence; ”cm from” and ”cm to”: the model start and end positions of the alignment; ”trunc”: ”no” if the sequence is
+not truncated, ”5’” if the beginning of the sequence truncated 5’, ”3’” if the end of the sequence is truncated, and ”5’&3’”
+if both the beginning and the end are truncated; ”bit sc”: the bit score of the alignment, ”avg pp” the average posterior
+probability of all aligned nucleotides in the alignment; ”band calc”, ”alignment” and ”total”: the time in seconds required
+for calculating HMM bands, computing the alignment, and complete processing of the sequence, respectively; ”mem
+(Mb)”: the size in Mb of all dynamic programming matrices required for aligning the sequence. This tabular data can be
+saved to file <f> with the --sfile <f> option.
 
-Compared to other alignment and database search tools based only on sequence comparison, Infernal
-aims to be significantly more accurate and more able to detect remote homologs because it models sequence 
-and structure.
+
+Options for controlling the alignment algorithm
+--optacc Align sequences using the Durbin/Holmes optimal accuracy algorithm. This is the default.
+The optimal accuracy alignment will be constrained by HMM bands for acceleration unless
+the --nonbanded option is enabled. The optimal accuracy algorithm determines the align-
+ment that maximizes the posterior probabilities of the aligned nucleotides within it. The
+posterior probabilites are determined using (possibly HMM banded) variants of the Inside
+and Outside algorithms.
+--cyk Do not use the Durbin/Holmes optimal accuracy alignment to align the sequences, instead
+use the CYK algorithm which determines the optimally scoring (maximum likelihood) align-
+ment of the sequence to the model, given the HMM bands (unless --nonbanded is also
+enabled).
+--sample Sample an alignment from the posterior distribution of alignments. The posterior distribution
+is determined using an HMM banded (unless --nonbanded) variant of the Inside algorithm.
+--seed <n> Seed the random number generator with <n>, an integer >= 0. This option can only be
+used in combination with --sample. If <n> is nonzero, stochastic sampling of alignments
+will be reproducible; the same command will give the same results. If <n> is 0, the random
+number generator is seeded arbitrarily, and stochastic samplings may vary from run to run
+of the same command. The default seed is 181.
+--notrunc Turn off truncated alignment algorithms. All sequences in the input file will be assumed to be
+full length, unless --sub is also used, in which case the program can still handle truncated
+sequences but will use an alternative strategy for their alignment.
+--sub Turn on the sub model construction and alignment procedure. For each sequence, an HMM
+is first used to predict the model start and end consensus columns, and a new sub CM is
+constructed that only models consensus columns from start to end. The sequence is then
+aligned to this sub CM. Sub alignment is an older method than the default one for aligning
+sequences that are possibly truncated. By default, cmalign uses special DP algorithms to
+handle truncated sequences which should be more accurate than the sub method in most
+cases. --sub is still included as an option mainly for testing against this default truncated
+sequence handling. This ”sub CM” procedure is not the same as the ”sub CMs” described
+by Weinberg and Ruzzo.
+
+
+Other options
+--mapali <f> Reads the alignment from file <f> used to build the model aligns it as a single object to
+the CM; e.g. the alignment in <f> is held fixed. This allows you to align sequences to a
+model with cmalign and view them in the context of an existing trusted multiple alignment.
+<f> must be the alignment file that the CM was built from. The program verifies that the
+checksum of the file matches that of the file used to construct the CM. A similar option to
+this one was called --withali in previous versions of cmalign.
+--mapstr Must be used in combination with --mapali <f>. Propogate structural information for any
+pseudoknots that exist in <f> to the output alignment. A similar option to this one was called
+--withstr in previous versions of cmalign.
+--informat <s> Assert that the input <seqfile> is in format <s>. Do not run Babelfish format autodec-
+tion. This increases the reliability of the program somewhat, because the Babelfish can
+make mistakes; particularly recommended for unattended, high-throughput runs of Infernal.
+Acceptable formats are: FASTA, GENBANK, and DDBJ. <s> is case-insensitive.
+--outformat <s> Specify the output alignment format as <s>. Acceptable formats are: Pfam, AFA, A2M,
+Clustal, and Phylip. AFA is aligned fasta. Only Pfam and Stockholm alignment formats
+will include consensus structure annotation and posterior probability annotation of aligned
+residues.
+--dnaout Output the alignments as DNA sequence alignments, instead of RNA ones.
+--noprob Do not annotate the output alignment with posterior probabilities.
+--matchonly Only include match columns in the output alignment, do not include any insertions relative
+to the consensus model. This option may be useful when creating very large alignments
+that require a lot of memory and disk space, most of which is necessary only to deal with
+insert columns that are gaps in most sequences.
+--ileaved Output the alignment in interleaved Stockholm format of a fixed width that may be more con-
+venient for examination. This was the default output alignment format of previous versions
+of cmalign. Note that cmalign requires more memory when this option is used. For this
+reason, --ileaved will only work for alignments of up to 100,000 sequences or a total of
+100,000,000 aligned nucleotides.
+--regress <s> Save an additional copy of the output alignment with no author information to file <s>.
+--verbose Output additional information in the tabular scores output (output to stdout if -o is used, or
+to <f> if --sfile <f> is used). These are mainly useful for testing and debugging.
+--cpu <n> Specify that <n> parallel CPU workers be used. If <n> is set as ”0”, then the program will
+be run in serial mode, without using threads. You can also control this number by setting an
+environment variable, INFERNAL NCPU. This option will only be available if the machine on
+which Infernal was built is capable of using POSIX threading (see the Installation section of
+the user guide for more information).
+--mpi Run as an MPI parallel program. This option will only be available if Infernal has been
+configured and built with the ”--enable-mpi” flag (see the Installation section of the user
+guide for more information).
+
+
+
+
+
 
 
 Output format
