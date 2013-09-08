@@ -13,7 +13,7 @@ from multiprocessing import Pool
 import tempfile
 import shutil
 
-def main(output, processors = 10):
+def main(output, processors = 4):
     output_handle = open(output,'w+')
 
     td = tempfile.mkdtemp()
