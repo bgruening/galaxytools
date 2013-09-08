@@ -29,7 +29,7 @@ def main(output, processors = 4):
     result.get()
 
     for filename in os.listdir(td):
-        path = os.path.join(td, filename)
+        path = os.path.join(td, filename)  + '.smi'
         shutil.copyfileobj(open(path, 'rb'), output_handle)
 
     output_handle.close()
@@ -38,9 +38,9 @@ def main(output, processors = 4):
 def fetch_convert(args):
     (filename, td) = args
 
-    tmp_name = os.path.join( tempfile.gettempdir(), filename)
+    tmp_name = os.path.join( td, filename)
     subprocess.call( ['wget', '-O', tmp_name, os.path.join('ftp://ftp.ncbi.nih.gov/pubchem/Compound/CURRENT-Full/SDF/', filename)] )
-    output = os.path.join(td, filename)
+    output = os.path.join(td, filename) + '.smi'
     subprocess.call(["obabel", "-isdf", tmp_name, "-ocan", '-O', output])
     os.remove(tmp_name)
 
