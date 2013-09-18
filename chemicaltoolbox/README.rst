@@ -314,6 +314,14 @@ That problem is known and should be fixed in the near future.
 If you encouter a timeout or 'hung' during the installation you can increase the ``threadpool_kill_thread_limit`` in your universe_wsgi.ini file.
 
 
+------
+
+**Database locking errors**
+
+Please note that Galaxy per default uses a SQLite database. Sqlite is not intended for production use. 
+With multiple users or complex components, like that workflow, you will see database locking errors. 
+We highly recommend to use PostgreSQL for any kind of production system.
+
 
 .. _Galaxy wiki: http://wiki.galaxyproject.org/
 
@@ -456,6 +464,9 @@ For more information have a look at the Galaxy wiki::
 
 	http://wiki.galaxyproject.org/ToolShedWorkflowSharing#Finding_workflows_in_tool_shed_repositories
 
+Please **note** that Galaxy per default uses a SQLite database. Sqlite is not intended for production use. 
+With multiple users or complex components, like that workflow, you will see database locking errors. 
+We highly recommend to use PostgreSQL for any kind of production system.
 
 
 
