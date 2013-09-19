@@ -89,8 +89,8 @@ if (opt$samples=="all_vs_all"){
         write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
         
         if ( !is.null(opt$plots) ) {
-            plotDispEsts(dds)
-            plotMA(dds)
+            plotDispEsts(dds, main="Dispersion estimate plot")
+            plotMA(dds, main="MA-plot")
             
 			library("RColorBrewer")
 			library("gplots")
@@ -170,8 +170,8 @@ if (opt$samples=="all_vs_all"){
     write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
 
     if ( !is.null(opt$plots) ) {
-        plotDispEsts(dds)
-        plotMA(dds)
+            plotDispEsts(dds, main="Dispersion estimate plot")
+            plotMA(dds, main="MA-plot")
 
 		library("RColorBrewer")
 		library("gplots")
@@ -186,4 +186,4 @@ if (opt$samples=="all_vs_all"){
     }    
 }
 dev.off()
-
+sessionInfo()
