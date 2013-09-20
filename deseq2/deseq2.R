@@ -10,23 +10,24 @@ args <- commandArgs(trailingOnly = TRUE)
 #get options, using the spec as defined by the enclosed list.
 #we read the options from the default: commandArgs(TRUE).
 spec = matrix(c(
-  'verbose', 'v', 2, "integer",
-  'help' , 'h', 0, "logical",
-  'outputfile' , 'o', 1, "character",
-  'plots' , 'p', 2, "character",
-  'input' , 'i', 1, "character",
-  'samples', 's', 1, "character",
-  'factors', 'f', 2, "character",
-  'fittype', 't', 2, "character"
+	'verbose', 'v', 2, "integer",
+	'help' , 'h', 0, "logical",
+	'outfile' , 'o', 1, "character",
+	'outfilefiltered' , 'f', 1, "character",
+	'plots' , 'p', 2, "character",
+	'input' , 'i', 1, "character",
+	'samples', 's', 1, "character",
+	'factors', 'm', 2, "character",
+	'fittype', 't', 2, "character",
+	'threshold', 'c', 2, "double"
 ), byrow=TRUE, ncol=4);
 opt = getopt(spec);
-
 
 # if help was asked for print a friendly message
 # and exit with a non-zero error code
 if ( !is.null(opt$help) ) {
-  cat(getopt(spec, usage=TRUE));
-  q(status=1);
+	cat(getopt(spec, usage=TRUE));
+	q(status=1);
 }
 
 if( is.null(opt$fittype))
@@ -42,7 +43,7 @@ colnames(htseqCountTable) <- htseqCountTable[2,]
 names(htseqCountTable)<-colnames(htseqCountTable)
 conditions <- htseqCountTable[1,]
 conditions <- unlist(conditions[,-1])
-tagnames <- htseqCountTable[-(1:2), 1]
+featurenames <- htseqCountTable[-(1:2), 1]
 htseqCountTable <- htseqCountTable[-(1:2),-1]
 htseqCountTable[,1] <- gsub(",", ".", htseqCountTable[,1])
 
@@ -51,139 +52,151 @@ l <- unique(c(conditions))
 library( "DESeq2" )
 
 if ( !is.null(opt$plots) ) {
-    pdf(opt$plots)
+	pdf(opt$plots)
 }
-if (opt$samples=="all_vs_all"){
-  # all versus all
-  for (i in seq(1, length(l), by=1)) {
-    k=i+1
-    if(k<=length(l)){
-      for (j in seq(k, length(l), by=1)) {
-        currentColmuns <- which(conditions %in% c(l[[i]], l[[j]]))
-            sampleNames <- names(htseqCountTable[currentColmuns])
 
-        currentPairTable <- htseqCountTable[currentColmuns]
-        ncondition1cols <- length(which(conditions %in% c(l[[i]])))
-        ncondition2cols <- length(which(conditions %in% c(l[[i]])))
+## The following function takes deseq data object, computes, writes and plots the results.
+computeAndWriteResults <- function(dds, sampleCols, outputcsv, featurenames_filtered) {
+	dds <- DESeq(dds, fitType= opt$fittype)
+	sizeFactors(dds)
+	res <- results(dds)
+	resCols <- colnames(res)
+	cond <- c(rep(paste(unique(conditions[sampleCols]),collapse="_"), nrow(res)))
+	res[, "condition"] <- cond
+	
+	if(missing(featurenames_filtered)){
+		res[, "geneIds"] <- featurenames
+		title_prefix = "Complete: "
+	}else{
+		res[, "geneIds"] <- featurenames_filtered
+		title_prefix = "Filtered: "
+	}
 
-        ntabcols <- length(currentPairTable)
-            currentPairTable <- as.integer(unlist(currentPairTable))
-        currentPairTable <- matrix(unlist(currentPairTable), ncol = ntabcols, byrow = FALSE)
-            colnames(currentPairTable) <- sampleNames
-
-        pdata = data.frame(condition=factor(conditions[currentColmuns]),row.names=colnames(currentPairTable))
-        print(pdata)
-
-        dds = DESeqDataSetFromMatrix(countData = currentPairTable,  colData = pdata, design = ~ condition)
-
-        dds <- DESeq(dds, fitType= opt$fittype)
-        sizeFactors(dds)
-        res <- results(dds)
-        resCols <- colnames(res)
-
-        cond <- c(rep(paste(unique(conditions[currentColmuns]),collapse="_"), nrow(res)))
-        res[, "condition"] <- cond
-        res[, "geneIds"] <- tagnames
-        
-        resSorted <- res[order(res$padj),]
-        write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
-        
-        if ( !is.null(opt$plots) ) {
-            plotDispEsts(dds)
-            plotMA(dds)
-            
-			library("RColorBrewer")
-			library("gplots")
-			select <- order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:30]
-			hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
-			
-			rld <- rlogTransformation(dds, blind=TRUE)
-			vsd <- varianceStabilizingTransformation(dds, blind=TRUE)
-			distsRL <- dist(t(assay(rld)))
-			mat <- as.matrix(distsRL)
-			heatmap.2(mat, trace="none", col = rev(hmcol), main = "Sample-to-sample distances")            
-        }        
-      }
-    }
-  }
-}else{
-
-    sampleSets <- unlist(strsplit(opt$samples, " "))
-    samplesControl <- {}
-    samplesExperiment <- {}
-    samplesControl <- unlist(strsplit(sampleSets[1], ","))
-    samplesExperiment <- unlist(strsplit(sampleSets[2], ","))
-
-    # the minus one is needed because we get column indizes including the first column
-    sampleColumns <- c()
-    for (i in samplesControl) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
-    for (i in samplesExperiment) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
-    htseqSubCountTable <- htseqCountTable[,sampleColumns]
-
-    ntabcols <- length(htseqSubCountTable)
-    htseqSubCountTable <- as.integer(unlist(htseqSubCountTable))
-    htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
-    colnames(htseqSubCountTable) <- names(htseqCountTable)[sampleColumns]
-
-    pdata = data.frame(row.names=colnames(htseqSubCountTable))
-
-    if(!is.null(opt$factors)){
-        factorSets <- unlist(strsplit(opt$factors, " "))
-        for (factorSet in factorSets) {
-            currentFactor <- unlist(strsplit(factorSet, ":"))
-            for (factor in currentFactor[2]) {
-                factoredCols <- unlist(strsplit(factor, ","))
-                factoredCols <- as.numeric(factoredCols)
-                factors <- c()
-                for (i in sampleColumns){
-                    j=i+1
-                    if(j %in% factoredCols)
-                        factors[[length(factors) + 1]] <- "yes"
-                    else
-                        factors[[length(factors) + 1]] <- "no"
-                }
-                # only add factor if factor is applied to the selected samples
-                if((length(unique(factors))) >= 2){
-                        pdata[[currentFactor[1]]]<-factor(factors)
-                }else{
-                    write("Input-Error 01: You can only apply factors to selected samples.", stderr())
-                }
-            }
-        }
-    }
-    pdata$condition<-factor(conditions[sampleColumns])
-    print(pdata)
-
-    designFormula <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
-    dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = designFormula)
-
-    dds <- DESeq(dds, fitType= opt$fittype)
-    sizeFactors(dds)
-    res <- results(dds)
-    resCols <- colnames(res)
-
-    cond <- c(rep(paste(unique(conditions[sampleColumns]),collapse="_"), nrow(res)))
-    res[, "condition"] <- cond
-    res[, "geneIds"] <- tagnames
-
-    resSorted <- res[order(res$padj),]
-    write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = opt$outputfile, sep="\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
-
-    if ( !is.null(opt$plots) ) {
-        plotDispEsts(dds)
-        plotMA(dds)
+	sum(res$padj < .1, na.rm=TRUE)
+	
+	resSorted <- res[order(res$padj),]
+	write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
+	
+	if ( !is.null(opt$plots) ) {
+		plotDispEsts(dds, main= paste(title_prefix, "Dispersion estimate plot"))
+		plotMA(dds, main= paste(title_prefix, "MA-plot"))
 
 		library("RColorBrewer")
 		library("gplots")
 		select <- order(rowMeans(counts(dds,normalized=TRUE)),decreasing=TRUE)[1:30]
 		hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
-        
+
 		rld <- rlogTransformation(dds, blind=TRUE)
 		vsd <- varianceStabilizingTransformation(dds, blind=TRUE)
 		distsRL <- dist(t(assay(rld)))
 		mat <- as.matrix(distsRL)
-		heatmap.2(mat, trace="none", col = rev(hmcol), main = "Sample-to-sample distances")
-    }    
+		heatmap.2(mat, trace="none", col = rev(hmcol), main = paste(title_prefix, "Sample-to-sample distances"))
+	}
+	return(res)
+}
+
+## This functions filters out the genes with low counts and plots p-value distribution
+independentFilter <- function(deseqRes, countTable, sampleColumns, designFormula){
+	use = (deseqRes$baseMean > quantile(deseqRes$baseMean, probs = opt$threshold) & (!is.na(deseqRes$pvalue)))
+	ddsFilt <- DESeqDataSetFromMatrix(countData = countTable[use, ], colData = pdata, design = designFormula)
+	computeAndWriteResults(ddsFilt, sampleColumns, opt$outfilefiltered, featurenames[use])
+	
+	## p-value distribution
+	h1 <- hist(deseqRes$pvalue[!use], breaks=50, plot=FALSE)
+	h2 <- hist(deseqRes$pvalue[use], breaks=50, plot=FALSE)
+	colori <- c(`filtered out`="khaki", `complete`="powderblue")
+	barplot(height = rbind(h1$counts, h2$counts), beside = FALSE,
+			col = colori, space = 0, main = "Distribution of p-values", ylab="frequency")
+	text(x = c(0, length(h1$counts)), y = 0, label = paste(c(0,1)), adj = c(0.5,1.7), xpd=NA)
+	legend("topright", fill=rev(colori), legend=rev(names(colori)))	
+}
+
+
+if (opt$samples=="all_vs_all"){
+	# all versus all
+	for (i in seq(1, length(l), by=1)) {
+		k=i+1
+		if(k<=length(l)){
+			for (j in seq(k, length(l), by=1)) {
+				currentColmuns <- which(conditions %in% c(l[[i]], l[[j]]))
+				sampleNames <- names(htseqCountTable[currentColmuns])
+
+				currentPairTable <- htseqCountTable[currentColmuns]
+				ncondition1cols <- length(which(conditions %in% c(l[[i]])))
+				ncondition2cols <- length(which(conditions %in% c(l[[i]])))
+
+				ntabcols <- length(currentPairTable)
+				currentPairTable <- as.integer(unlist(currentPairTable))
+				currentPairTable <- matrix(unlist(currentPairTable), ncol = ntabcols, byrow = FALSE)
+				colnames(currentPairTable) <- sampleNames
+
+				pdata = data.frame(condition=factor(conditions[currentColmuns]),row.names=colnames(currentPairTable))
+				print(pdata)
+
+				designFormula <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
+				print(designFormula)
+				dds = DESeqDataSetFromMatrix(countData = currentPairTable,  colData = pdata, design = ~ condition)
+				deseqres <- computeAndWriteResults(dds, currentColmuns, opt$outfile)
+
+				independentFilter(deseqres, currentPairTable, currentColmuns, designFormula)
+			}
+		}
+	}
+}else{
+	# user defined analysis
+	sampleSets <- unlist(strsplit(opt$samples, " "))
+	samplesControl <- {}
+	samplesExperiment <- {}
+	samplesControl <- unlist(strsplit(sampleSets[1], ","))
+	samplesExperiment <- unlist(strsplit(sampleSets[2], ","))
+
+	# the minus one is needed because we get column indizes including the first column
+	sampleColumns <- c()
+	for (i in samplesControl) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
+	for (i in samplesExperiment) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
+	htseqSubCountTable <- htseqCountTable[,sampleColumns]
+	print(sampleColumns)
+	ntabcols <- length(htseqSubCountTable)
+	htseqSubCountTable <- as.integer(unlist(htseqSubCountTable))
+	htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
+	colnames(htseqSubCountTable) <- names(htseqCountTable)[sampleColumns]
+
+	pdata = data.frame(row.names=colnames(htseqSubCountTable))
+
+	if(!is.null(opt$factors)){
+		factorSets <- unlist(strsplit(opt$factors, " "))
+		for (factorSet in factorSets) {
+			currentFactor <- unlist(strsplit(factorSet, ":"))
+			for (factor in currentFactor[2]) {
+				factoredCols <- unlist(strsplit(factor, ","))
+				factoredCols <- as.numeric(factoredCols)
+				factors <- c()
+				for (i in sampleColumns){
+#					if(i %in% factoredCols)
+					if((i+1) %in% factoredCols)
+						factors[[length(factors) + 1]] <- "yes"
+					else
+						factors[[length(factors) + 1]] <- "no"
+				}
+				# only add factor if factor is applied to the selected samples
+				if((length(unique(factors))) >= 2){
+					pdata[[currentFactor[1]]]<-factor(factors)
+				}else{
+					write("Input-Error 01: You can only apply factors to selected samples.", stderr())
+				}
+			}
+		}
+	}
+	pdata$condition<-factor(conditions[sampleColumns])
+	print(pdata)
+
+	designFormula <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
+	print(designFormula)
+	dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = designFormula)
+	deseqres <- computeAndWriteResults(dds, sampleColumns, opt$outfile)
+
+	## independent filtering
+	independentFilter(deseqres, htseqSubCountTable, sampleColumns, designFormula)
 }
 dev.off()
-
+sessionInfo()
