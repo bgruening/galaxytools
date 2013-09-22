@@ -19,7 +19,8 @@ spec = matrix(c(
 	'samples', 's', 1, "character",
 	'factors', 'm', 2, "character",
 	'fittype', 't', 2, "character",
-	'threshold', 'c', 2, "double"
+	'threshold', 'c', 2, "double",
+	'organism', 'g', 2, "character"
 ), byrow=TRUE, ncol=4);
 opt = getopt(spec);
 
@@ -50,6 +51,7 @@ htseqCountTable[,1] <- gsub(",", ".", htseqCountTable[,1])
 l <- unique(c(conditions))
 
 library( "DESeq2" )
+library('biomaRt')
 
 if ( !is.null(opt$plots) ) {
 	pdf(opt$plots)
@@ -62,20 +64,47 @@ computeAndWriteResults <- function(dds, sampleCols, outputcsv, featurenames_filt
 	res <- results(dds)
 	resCols <- colnames(res)
 	cond <- c(rep(paste(unique(conditions[sampleCols]),collapse="_"), nrow(res)))
-	res[, "condition"] <- cond
-	
 	if(missing(featurenames_filtered)){
 		res[, "geneIds"] <- featurenames
+#		rownames(res) <- featurenames
 		title_prefix = "Complete: "
 	}else{
 		res[, "geneIds"] <- featurenames_filtered
+#		rownames(res) <- featurenames
 		title_prefix = "Filtered: "
 	}
+	print(sum(res$padj < .1, na.rm=TRUE))
+	print(opt$organism)
+	if(opt$organism != "other"){
+		dataset = ""
+		if(opt$organism == "mouse")
+			dataset = "mmusculus_gene_ensembl"
+		if(opt$organism == "human")
+			dataset = "hsapiens_gene_ensembl"
+		if(opt$organism == "fly")
+			dataset = "dmelanogaster_gene_ensembl"
+		ensembldb = useMart("ensembl",dataset=dataset)
 
-	sum(res$padj < .1, na.rm=TRUE)
+		annot <- getBM(attributes = c("ensembl_gene_id", "external_gene_id","description"),
+					filters = "ensembl_gene_id",
+					values=res[, "geneIds"],
+					mart=ensembldb)
+
+		res <- merge(res, annot,
+					by.x = "geneIds",
+					by.y = "ensembl_gene_id",
+					all.x=TRUE)
+		
+		resCols <- colnames(res)
+		res[, "condition"] <- cond
+		resSorted <- res[order(res$padj),]
+		write.table(as.data.frame(resSorted[,c("condition", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)					
+	}else{
+		res[, "condition"] <- cond
+		resSorted <- res[order(res$padj),]
+		write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
+	}
 	
-	resSorted <- res[order(res$padj),]
-	write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
 	
 	if ( !is.null(opt$plots) ) {
 		plotDispEsts(dds, main= paste(title_prefix, "Dispersion estimate plot"))
@@ -97,7 +126,8 @@ computeAndWriteResults <- function(dds, sampleCols, outputcsv, featurenames_filt
 
 ## This functions filters out the genes with low counts and plots p-value distribution
 independentFilter <- function(deseqRes, countTable, sampleColumns, designFormula){
-	use = (deseqRes$baseMean > quantile(deseqRes$baseMean, probs = opt$threshold) & (!is.na(deseqRes$pvalue)))
+#	use = (deseqRes$baseMean > quantile(deseqRes$baseMean, probs = opt$threshold) & (!is.na(deseqRes$pvalue)))
+	use = (deseqRes$baseMean > opt$threshold & !is.na(deseqRes$pvalue))
 	ddsFilt <- DESeqDataSetFromMatrix(countData = countTable[use, ], colData = pdata, design = designFormula)
 	computeAndWriteResults(ddsFilt, sampleColumns, opt$outfilefiltered, featurenames[use])
 	
@@ -110,7 +140,6 @@ independentFilter <- function(deseqRes, countTable, sampleColumns, designFormula
 	text(x = c(0, length(h1$counts)), y = 0, label = paste(c(0,1)), adj = c(0.5,1.7), xpd=NA)
 	legend("topright", fill=rev(colori), legend=rev(names(colori)))	
 }
-
 
 if (opt$samples=="all_vs_all"){
 	# all versus all
@@ -152,10 +181,9 @@ if (opt$samples=="all_vs_all"){
 
 	# the minus one is needed because we get column indizes including the first column
 	sampleColumns <- c()
-	for (i in samplesControl) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
-	for (i in samplesExperiment) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
+	for (i in sort(as.numeric(c(samplesControl, samplesExperiment)), decreasing=FALSE)) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
+#	for (i in samplesExperiment) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
 	htseqSubCountTable <- htseqCountTable[,sampleColumns]
-	print(sampleColumns)
 	ntabcols <- length(htseqSubCountTable)
 	htseqSubCountTable <- as.integer(unlist(htseqSubCountTable))
 	htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
@@ -193,7 +221,8 @@ if (opt$samples=="all_vs_all"){
 	designFormula <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
 	print(designFormula)
 	dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = designFormula)
-	deseqres <- computeAndWriteResults(dds, sampleColumns, opt$outfile)
+
+	deseqres <- computeAndWriteResults(dds, sampleColumns, opt$outfile) 
 
 	## independent filtering
 	independentFilter(deseqres, htseqSubCountTable, sampleColumns, designFormula)
