@@ -16,7 +16,6 @@ spec = matrix(c(
 	'outfilefiltered' , 'f', 1, "character",
 	'plots' , 'p', 2, "character",
 	'input' , 'i', 1, "character",
-	'samples', 's', 1, "character",
 	'factors', 'm', 2, "character",
 	'fittype', 't', 2, "character",
 	'threshold', 'c', 2, "double",
@@ -50,7 +49,8 @@ htseqCountTable[,1] <- gsub(",", ".", htseqCountTable[,1])
 
 l <- unique(c(conditions))
 
-library( "DESeq2" )
+library('rjson')
+library('DESeq2')
 library('biomaRt')
 
 if ( !is.null(opt$plots) ) {
@@ -96,15 +96,12 @@ computeAndWriteResults <- function(dds, sampleCols, outputcsv, featurenames_filt
 					all.x=TRUE)
 		
 		resCols <- colnames(res)
-		res[, "condition"] <- cond
 		resSorted <- res[order(res$padj),]
-		write.table(as.data.frame(resSorted[,c("condition", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)					
+		write.table(as.data.frame(resSorted[,c(resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)					
 	}else{
-		res[, "condition"] <- cond
 		resSorted <- res[order(res$padj),]
-		write.table(as.data.frame(resSorted[,c("condition", "geneIds", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
+		write.table(as.data.frame(resSorted[,c("geneIds", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
 	}
-	
 	
 	if ( !is.null(opt$plots) ) {
 		plotDispEsts(dds, main= paste(title_prefix, "Dispersion estimate plot"))
@@ -128,7 +125,7 @@ computeAndWriteResults <- function(dds, sampleCols, outputcsv, featurenames_filt
 independentFilter <- function(deseqRes, countTable, sampleColumns, designFormula){
 #	use = (deseqRes$baseMean > quantile(deseqRes$baseMean, probs = opt$threshold) & (!is.na(deseqRes$pvalue)))
 	use = (deseqRes$baseMean > opt$threshold & !is.na(deseqRes$pvalue))
-	ddsFilt <- DESeqDataSetFromMatrix(countData = countTable[use, ], colData = pdata, design = designFormula)
+	ddsFilt <- DESeqDataSetFromMatrix(countData = countTable[use, ], colData = sampleTable, design = designFormula)
 	computeAndWriteResults(ddsFilt, sampleColumns, opt$outfilefiltered, featurenames[use])
 	
 	## p-value distribution
@@ -141,91 +138,51 @@ independentFilter <- function(deseqRes, countTable, sampleColumns, designFormula
 	legend("topright", fill=rev(colori), legend=rev(names(colori)))	
 }
 
-if (opt$samples=="all_vs_all"){
-	# all versus all
-	for (i in seq(1, length(l), by=1)) {
-		k=i+1
-		if(k<=length(l)){
-			for (j in seq(k, length(l), by=1)) {
-				currentColmuns <- which(conditions %in% c(l[[i]], l[[j]]))
-				sampleNames <- names(htseqCountTable[currentColmuns])
+parser <- newJSONParser()
+parser$addData( opt$factors )
+factorsList <- parser$getObject()
 
-				currentPairTable <- htseqCountTable[currentColmuns]
-				ncondition1cols <- length(which(conditions %in% c(l[[i]])))
-				ncondition2cols <- length(which(conditions %in% c(l[[i]])))
+sampleColumns <- c()
 
-				ntabcols <- length(currentPairTable)
-				currentPairTable <- as.integer(unlist(currentPairTable))
-				currentPairTable <- matrix(unlist(currentPairTable), ncol = ntabcols, byrow = FALSE)
-				colnames(currentPairTable) <- sampleNames
-
-				pdata = data.frame(condition=factor(conditions[currentColmuns]),row.names=colnames(currentPairTable))
-				print(pdata)
-
-				designFormula <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
-				print(designFormula)
-				dds = DESeqDataSetFromMatrix(countData = currentPairTable,  colData = pdata, design = ~ condition)
-				deseqres <- computeAndWriteResults(dds, currentColmuns, opt$outfile)
-
-				independentFilter(deseqres, currentPairTable, currentColmuns, designFormula)
-			}
-		}
-	}
-}else{
-	# user defined analysis
-	sampleSets <- unlist(strsplit(opt$samples, " "))
-	samplesControl <- {}
-	samplesExperiment <- {}
-	samplesControl <- unlist(strsplit(sampleSets[1], ","))
-	samplesExperiment <- unlist(strsplit(sampleSets[2], ","))
-
-	# the minus one is needed because we get column indizes including the first column
-	sampleColumns <- c()
-	for (i in sort(as.numeric(c(samplesControl, samplesExperiment)), decreasing=FALSE)) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
-#	for (i in samplesExperiment) sampleColumns[[length(sampleColumns) + 1]] <- as.integer(i) - 1
-	htseqSubCountTable <- htseqCountTable[,sampleColumns]
-	ntabcols <- length(htseqSubCountTable)
-	htseqSubCountTable <- as.integer(unlist(htseqSubCountTable))
-	htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
-	colnames(htseqSubCountTable) <- names(htseqCountTable)[sampleColumns]
-
-	pdata = data.frame(row.names=colnames(htseqSubCountTable))
-
-	if(!is.null(opt$factors)){
-		factorSets <- unlist(strsplit(opt$factors, " "))
-		for (factorSet in factorSets) {
-			currentFactor <- unlist(strsplit(factorSet, ":"))
-			for (factor in currentFactor[2]) {
-				factoredCols <- unlist(strsplit(factor, ","))
-				factoredCols <- as.numeric(factoredCols)
-				factors <- c()
-				for (i in sampleColumns){
-#					if(i %in% factoredCols)
-					if((i+1) %in% factoredCols)
-						factors[[length(factors) + 1]] <- "yes"
-					else
-						factors[[length(factors) + 1]] <- "no"
-				}
-				# only add factor if factor is applied to the selected samples
-				if((length(unique(factors))) >= 2){
-					pdata[[currentFactor[1]]]<-factor(factors)
-				}else{
-					write("Input-Error 01: You can only apply factors to selected samples.", stderr())
-				}
-			}
-		}
-	}
-	pdata$condition<-factor(conditions[sampleColumns])
-	print(pdata)
-
-	designFormula <- as.formula(paste("", paste(names(pdata), collapse=" + "), sep=" ~ "))
-	print(designFormula)
-	dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = pdata, design = designFormula)
-
-	deseqres <- computeAndWriteResults(dds, sampleColumns, opt$outfile) 
-
-	## independent filtering
-	independentFilter(deseqres, htseqSubCountTable, sampleColumns, designFormula)
+for (j in 2:length(factorsList[[1]])){
+    for (k in 1:length(names(factorsList[[1]][[j]]))){
+        for (l in 1:length(factorsList[[1]][[j]][[k]])){
+            sampleColumns[[length(sampleColumns) + 1]] <- as.integer(factorsList[[1]][[j]][[k]][l]) - 1
+        }
+    }
 }
+
+sampleColumns<-sort(unique(sampleColumns))
+htseqSubCountTable <- htseqCountTable[,sampleColumns]
+ntabcols <- length(htseqSubCountTable)
+htseqSubCountTable <- as.integer(unlist(htseqSubCountTable))
+htseqSubCountTable <- matrix(unlist(htseqSubCountTable), ncol = ntabcols, byrow = FALSE)
+colnames(htseqSubCountTable) <- names(htseqCountTable)[sampleColumns]
+sampleTable = data.frame(row.names=colnames(htseqSubCountTable))
+ 
+for(i in 1:length(factorsList)){
+    factorName<-factorsList[[i]][[1]]
+    for (j in 2:length(factorsList[[i]])){
+        effected_cols <- c()
+        for (k in 1:length(names(factorsList[[i]][[j]]))){
+            for (l in 1:length(factorsList[[i]][[j]][[k]])){
+                if(colnames(htseqCountTable)[factorsList[[i]][[j]][[k]][l]-1] %in% rownames(sampleTable)){
+                    sampleTable[colnames(htseqCountTable)[factorsList[[i]][[j]][[k]][l]-1],factorName] <- names(factorsList[[i]][[j]])[k]
+                }
+            }
+        }
+    }
+}
+sampleTable[is.na(sampleTable)] <- "undefined"
+sampleTable
+
+factorNames <- c(names(sampleTable)[-1], names(sampleTable)[1])
+designFormula <- as.formula(paste("", paste(factorNames, collapse=" + "), sep=" ~ "))
+dds = DESeqDataSetFromMatrix(countData = htseqSubCountTable,  colData = sampleTable, design = designFormula)
+deseqres <- computeAndWriteResults(dds, sampleColumns, opt$outfile) 
+
+## independent filtering
+independentFilter(deseqres, htseqSubCountTable, sampleColumns, designFormula)
+
 dev.off()
 sessionInfo()
