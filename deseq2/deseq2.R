@@ -18,8 +18,8 @@ spec = matrix(c(
 	'input' , 'i', 1, "character",
 	'factors', 'm', 2, "character",
 	'fittype', 't', 2, "character",
-	'threshold', 'c', 2, "double",
-	'organism', 'g', 2, "character"
+	'threshold', 'c', 2, "double"
+#	'organism', 'g', 2, "character"
 ), byrow=TRUE, ncol=4);
 opt = getopt(spec);
 
@@ -51,7 +51,7 @@ l <- unique(c(conditions))
 
 library('rjson')
 library('DESeq2')
-library('biomaRt')
+#library('biomaRt')
 
 if ( !is.null(opt$plots) ) {
 	pdf(opt$plots)
@@ -75,33 +75,33 @@ computeAndWriteResults <- function(dds, sampleCols, outputcsv, featurenames_filt
 	}
 	print(sum(res$padj < .1, na.rm=TRUE))
 	print(opt$organism)
-	if(opt$organism != "other"){
-		dataset = ""
-		if(opt$organism == "mouse")
-			dataset = "mmusculus_gene_ensembl"
-		if(opt$organism == "human")
-			dataset = "hsapiens_gene_ensembl"
-		if(opt$organism == "fly")
-			dataset = "dmelanogaster_gene_ensembl"
-		ensembldb = useMart("ensembl",dataset=dataset)
+#	if(opt$organism != "other"){
+#		dataset = ""
+#		if(opt$organism == "mouse")
+#			dataset = "mmusculus_gene_ensembl"
+#		if(opt$organism == "human")
+#			dataset = "hsapiens_gene_ensembl"
+#		if(opt$organism == "fly")
+#			dataset = "dmelanogaster_gene_ensembl"
+#		ensembldb = useMart("ensembl",dataset=dataset)
+#
+#		annot <- getBM(attributes = c("ensembl_gene_id", "external_gene_id","description"),
+#					filters = "ensembl_gene_id",
+#					values=res[, "geneIds"],
+#					mart=ensembldb)
 
-		annot <- getBM(attributes = c("ensembl_gene_id", "external_gene_id","description"),
-					filters = "ensembl_gene_id",
-					values=res[, "geneIds"],
-					mart=ensembldb)
-
-		res <- merge(res, annot,
-					by.x = "geneIds",
-					by.y = "ensembl_gene_id",
-					all.x=TRUE)
+#		res <- merge(res, annot,
+#					by.x = "geneIds",
+#					by.y = "ensembl_gene_id",
+#					all.x=TRUE)
 		
-		resCols <- colnames(res)
-		resSorted <- res[order(res$padj),]
-		write.table(as.data.frame(resSorted[,c(resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)					
-	}else{
+#		resCols <- colnames(res)
+#		resSorted <- res[order(res$padj),]
+#		write.table(as.data.frame(resSorted[,c(resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)					
+#	}else{
 		resSorted <- res[order(res$padj),]
 		write.table(as.data.frame(resSorted[,c("geneIds", resCols)]), file = outputcsv, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
-	}
+#	}
 	
 	if ( !is.null(opt$plots) ) {
 		plotDispEsts(dds, main= paste(title_prefix, "Dispersion estimate plot"))
