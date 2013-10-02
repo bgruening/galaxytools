@@ -29,7 +29,7 @@ def main(output, processors = 4):
     result.get()
 
     for filename in os.listdir(td):
-        path = os.path.join(td, filename)  + '.smi'
+        path = os.path.join(td, filename)
         shutil.copyfileobj(open(path, 'rb'), output_handle)
 
     output_handle.close()
