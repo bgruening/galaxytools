@@ -21,7 +21,9 @@ Currently these wrapper is tested with version 1.1 and the modified version of a
 
 Install or downlaod antiSMASH from:
 
-http://antismash.secondarymetabolites.org/download.html
+
+https://bitbucket.org/antismash/antismash2/downloads/antismash-2.0.2.x86_64.tar.bz2
+
 
 ... and follow the instructions.
 Please replace the antismash.py file with the one inlcuded in that repository.
