@@ -1,17 +1,18 @@
-These are Galaxy wrappers for common unix text-processing tools
-===============================================================
+Galaxy wrappers for common unix text-processing tools
+=====================================================
 
 The initial work was done by Assaf Gordon and Greg Hannon's lab ( http://hannonlab.cshl.edu ) 
 in Cold Spring Harbor Laboratory ( http://www.cshl.edu ).
 
 
-The tools are:
+Tools:
 
 * awk - The AWK programmning language ( http://www.gnu.org/software/gawk/ )
 * sed - Stream Editor ( http://sed.sf.net )
 * grep - Search files ( http://www.gnu.org/software/grep/ )
 * sort_columns - Sorting every line according to there columns
 * GNU Coreutils programs ( http://www.gnu.org/software/coreutils/ ):
+
   * sort - sort files
   * join - join two files, based on common key field.
   * cut  - keep/discard fields from a file
@@ -37,7 +38,7 @@ Requirements
 3. SED version 4.2 *with* a special patch
 4. Grep with PCRE support
 
-These will be installed automatically with the Galaxy Tool Shed.
+These will be installed automatically with the Galaxy `Tool Shed`_.
 
 
 -------------------
@@ -50,14 +51,21 @@ or reading/writing arbitrary files with awk's redirection and sed's "r/w" comman
 These commands are DISABLED using the "--sandbox" parameter to awk and sed.
 
 User trying to run an awk program similar to:
+
  BEGIN { system("ls") }
+
 Will get an error (in Galaxy) saying:
+
  fatal: 'system' function not allowed in sandbox mode.
 
 User trying to run a SED program similar to:
+
  1els
+
 will get an error (in Galaxy) saying:
+
  sed: -e expression #1, char 2: e/r/w commands disabled in sandbox mode
+
 
 That being said, if you do find some vulnerability in these tools, please let me know and I'll try fix them.
 
@@ -65,7 +73,7 @@ That being said, if you do find some vulnerability in these tools, please let me
 Installation
 ------------
 
-Should be done with the Galaxy `Tool Shed`_.
+Should be done via the Galaxy `Tool Shed`_.
 
 .. _`Tool Shed`: http://wiki.galaxyproject.org/Tool%20Shed
 
@@ -88,8 +96,8 @@ TODO
 License
 -------
 
-  * Copyright (c) 2009-2013   A. Gordon  (gordon <at> cshl.edu)
-  * Copyright (c) 2013   B. Gruening  (bjoern dot gruening <at> gmail dot com)
+* Copyright (c) 2009-2013   A. Gordon  (gordon <at> cshl dot edu)
+* Copyright (c) 2013   B. Gruening  (bjoern dot gruening <at> gmail dot com)
 
 
 Permission is hereby granted, free of charge, to any person obtaining 
