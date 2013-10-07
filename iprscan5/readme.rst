@@ -12,7 +12,7 @@ This wrapper is copyright 2013 by:
 
 This prepository contains wrapper for the InterProScan_ command line tool.
 
-.. _InterProScan: http://www.ebi.ac.uk/interpro/
+.. _InterProScan: http://www.ebi.ac.uk/interpro/interproscan.html
 
 
 Quevillon E., Silventoinen V., Pillai S., Harte N., Mulder N., Apweiler R., Lopez R. (2005). InterProScan: protein domains identifier. Nucleic Acids Res. 33 (Web Server issue): W116-W120
@@ -24,7 +24,7 @@ Installation
 
 Please download install InterProScan according to:
 
-https://code.google.com/p/interproscan/wiki/i5RC7HowToObtainingACopy
+https://code.google.com/p/interproscan/wiki/HowToDownload
 
 
 
