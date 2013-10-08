@@ -27,13 +27,27 @@ Please download install InterProScan according to:
 https://code.google.com/p/interproscan/wiki/HowToDownload
 
 
+========
+Citation
+========
+
+If you use this Galaxy tool in work leading to a scientific
+publication, in addition to citing the invididual underlying tools, please cite:
+
+Peter Cock, Bjoern Gruening, Konrad Paszkiewicz and Leighton Pritchard (2013).
+Galaxy tools and workflows for sequence analysis with applications
+in molecular plant pathology. PeerJ 1:e167
+http://dx.doi.org/10.7717/peerj.167
+
+Full reference information is included in the help text.
+
 
 =============
 Input formats
 =============
 
 The standard interproscan input is either genomic or protein sequences. 
-In the case of genomic sequences Interproscan will run an ORF prediction tool. 
+In the case of genomic sequences Interproscan will run an ORF prediction tool.
 
 
 =======
