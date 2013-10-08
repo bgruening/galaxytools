@@ -1,26 +1,29 @@
 <tool id="segemehl" name="segemehl" version="0.1">
     <description>suffix arrays based short read aligner</description>
     <requirements>
-        <requirement type="binary">segemehl.x</requirement>
+        <requirement type="package" version="0.1.6">segemehl</requirement>
     </requirements>
     <command>
-        ## prepare segemehl index
-        #set index_path = ''
-        #set db_path = ''
-        #set index_path = $reference_genome.fields.index
-        #set db_path = $reference_genome.fields.db
-        
+        ## prepare segemehl index if no reference genome is supplied
+        temp_index = `mktemp`;
+        #if $refGenomeSource.genomeSource == "history":
+            segemehl.x -x $temp_index -d $refGenomeSource.own_reference_genome;
+        #else:
+            $temp_index = ${refGenomeSource.index.fields.index_path}
+        #end if
+
+
         ## execute segemehl
         segemehl.x
         
         ## number of threads
         -t 4
-        
+
         ## db file path
-        -d $db_path
-        ## index file path
-        -i $index_path
-        
+        -d ${refGenomeSource.index.fields.db_path}
+
+        -i $temp_index
+
         ## check for single/pair-end
         #if str( $library.type ) == "single":
             #set $query_list = list()
@@ -31,17 +34,26 @@
             -q "#echo ' '.join( $query_list )#"
         #else
             ## prepare inputs
-            -q $library.first_strand_query
-            -p $library.second_strand_query
+            
+            #set $mate1 = list()
+            #set $mate2 = list()
+            #for $mate_pair in $library.mate_list:
+                $mate1.append( str($mate_pair.first_strand_query) )
+                $mate2.append( str($mate_pair.second_strand_query) )
+            #end for
+
+            -q #echo ','.join($mate1)
+            -p #echo ','.join($mate2)
+
             -I $library.maxinsertsize
         #end if
         -m $minsize
         -A $accuracy
         -H $hitstrategy
-        #if str( $prime5.strip() ):
+        #if str( $prime5 ).strip():
             -P $prime5
         #end if
-        #if str( $prime3.strip() ):
+        #if str( $prime3 ).strip():
             -Q $prime3
         #end if
         $polyA
@@ -58,28 +70,51 @@
            description="Execution halted." />
     </stdio>
     <inputs>
-        <param name="reference_genome" type="select" label="Select a reference genome" help="If your genome of interest is not listed, contact the Galaxy team">
-            <options from_data_table="segemehl_indexes">
+
+        <conditional name="refGenomeSource">
+          <param name="genomeSource" type="select" label="Will you select a reference genome from your history or use a built-in index?" help="Built-ins were indexed using default options">
+            <option value="indexed">Use a built-in index</option>
+            <option value="history">Use one from the history</option>
+          </param>
+          <when value="indexed">
+            <param name="index" type="select" label="Select a reference genome" help="If your genome of interest is not listed, contact your Galaxy admin">
+              <options from_data_table="segemehl_indexes">
+                <column name="value" index="0"/>
+                <column name="dbkey" index="1"/>
+                <column name="name" index="2"/>
+                <column name="db_path" index="3"/>
+                <column name="index_path" index="4"/>
                 <filter type="sort_by" column="2"/>
                 <validator type="no_options" message="No indexes are available for the selected input dataset"/>
-            </options>
-        </param>
+              </options>
+            </param>
+          </when>  <!-- build-in -->
+          <when value="history">
+            <param name="own_reference_genome" type="data" format="fasta" metadata_name="dbkey" label="Select the reference genome" />
+          </when>  <!-- history -->
+        </conditional>  <!-- refGenomeSource -->
+
+
         <conditional name="library">
-            <param name="type" type="select" label="Sequencing type">
+            <param name="type" type="select" label="Is this library paired-end?">
                 <option value="single">Single-end</option>
                 <option value="paired">Paired-end</option>
             </param>
             <when value="single">
                 <repeat name="reads" title="FASTQ/FASTA files">
-                    <param name="input_query" type="data" format="fasta" label="Reads fasta/fastq file" />
+                    <param name="input_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads fasta/fastq file" />
                 </repeat>
             </when>
             <when value="paired">
-                <param name="first_strand_query" type="data" format="fasta" label="Reads from first strand" />
-                <param name="second_strand_query" type="data" format="fasta" label="Reads from second strand" />
+                <repeat name="mate_list" title="Paired End Pairs" min="1">
+                    <param name="first_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads from first strand" />
+                    <param name="second_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads from second strand" />
+                </repeat>
                 <param name="maxinsertsize" type="integer" value="5000" label="Maximum size of the inserts (paired end) (default:5000)" />
             </when>
         </conditional>
+
+
         <param name="minsize" type="integer" value="12" size="5" label="Minimum size of queries (default:12)">
             <validator type="in_range" min="1"/>
         </param>
@@ -104,66 +139,13 @@
 
 **What it does** 
 
-`DESeq` is a tool for differential expression testing of RNA-Seq data.
+Segemelt is a short read mapper with gaps.
 
-
-**Inputs**
-
-`DESeq` requires three input files to run:
-
-1. Annotation file in GFF3, containing the necessary information about the transcripts that are to be quantified.
-2. The BAM alignment files grouped into replicate groups, each containing several replicates. BAM files store the read alignments in a compressed format. They can be generated using the `SAM-to-BAM` tool in the NGS: SAM Tools section. (The script will also work with only two groups containing only a single replicate each. However, this analysis has less statistical power and is  therefor not recommended.)
-
-**Output**
-
-`DESeq` generates a text file containing the gene name and the p-value.
-
-------
-
-**Licenses**
-
-If **DESeq** is used to obtain results for scientific publications it
-should be cited as [1]_.
-
-**References** 
-
-.. [1] Anders, S and Huber, W (2010): `Differential expression analysis for sequence count data`_. 
-
-.. _Differential expression analysis for sequence count data: http://dx.doi.org/10.1186/gb-2010-11-10-r106
-
-------
-
-.. class:: infomark
-
-**About formats**
-
-
-**GFF3 format** General Feature Format is a format for describing genes
-and other features associated with DNA, RNA and protein
-sequences. GFF3 lines have nine tab-separated fields:
-
-1. seqid - The name of a chromosome or scaffold.
-2. source - The program that generated this feature.
-3. type - The name of this type of feature. Some examples of standard feature types are "gene", "CDS", "protein", "mRNA", and "exon". 
-4. start - The starting position of the feature in the sequence. The first base is numbered 1.
-5. stop - The ending position of the feature (inclusive).
-6. score - A score between 0 and 1000. If there is no score value, enter ".".
-7. strand - Valid entries include '+', '-', or '.' (for don't know/care).
-8. phase - If the feature is a coding exon, frame should be a number between 0-2 that represents the reading frame of the first base. If the feature is not a coding exon, the value should be '.'.
-9. attributes - All lines with the same group are linked together into a single item.
-
-For more information see http://www.sequenceontology.org/gff3.shtml
-
-**SAM/BAM format** The Sequence Alignment/Map (SAM) format is a
-tab-limited text format that stores large nucleotide sequence
-alignments. BAM is the binary version of a SAM file that allows for
-fast and intensive data processing. The format specification and the
-description of SAMtools can be found on
-http://samtools.sourceforge.net/.
-
-------
-
-DESeq-hts Wrapper Version 0.3 (Feb 2012)
+segemehl is a software to map short sequencer reads to reference genomes. 
+Unlike other methods, segemehl is able to detect not only mismatches but also insertions and deletions. 
+Furthermore, segemehl is not limited to a specific read length and is able to mapprimer- or polyadenylation contaminated reads correctly. 
+segemehl implements a matching strategy based on enhanced suffix arrays (ESA). Segemehl now supports the SAM format, 
+reads gziped queries to save both disk and memory space and allows bisulfite sequencing mapping and split read mapping.
 
     </help>
 </tool>
