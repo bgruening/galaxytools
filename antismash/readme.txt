@@ -44,6 +44,14 @@ For example:
 </section>
 
 
+external Data
+=============
+
+The antismash.loc file contains the path to a PFAM database.
+For any other tool that also uses a PFAM database *.log file, you can sync or link both *.loc files.
+
+
+
 History
 =======
 
