@@ -37,7 +37,7 @@ out = open(sys.argv[2], 'wb')
 if len(sys.argv) > 3:
     allowed_extensions = [ ext.strip() for ext in unescape(sys.argv[3]).split('\n') ]
 else:
-    allowed_extensions = ['.sdf', '.smi', '.inchi']
+    allowed_extensions = ['.sdf', '.smi', '.inchi', '.mol']
 
 for url in urls.split('\n'):
     url = url.strip()
