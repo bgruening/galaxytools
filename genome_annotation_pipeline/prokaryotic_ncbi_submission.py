@@ -12,18 +12,19 @@ __license__ = 'GLP3+'
     http://www.ncbi.nlm.nih.gov/WebSub/index.cgi?tool=genbank
     TODO: include t-RNA results
 """
-import os, sys
-import csv
+import os
+import sys
+import re
+import shutil
+import subprocess
+import zipfile
 from Bio.Blast import NCBIXML
 from Bio import SeqIO
-import re, shutil
-from collections import defaultdict
-from glimmer_orf_to_seq import glimmer2sequence as g2seq
-from change_glimmer3_prediction_output import change_glimmer3_prediction_output
-import subprocess
-from RemoveVectorContamination import *
-import zipfile
+
 from utils import change_according_reviewer
+from utils import change_glimmer3_prediction_output
+from RemoveVectorContamination import remove_vector_contamination
+from glimmer_orf_to_seq import glimmer2sequence as g2seq
 
 def glimmer_prediction(fasta_dir, glimmer_trainingset = "./glimmer3_strepto.icm", translation_table = 11):
     for root, dirs, files in os.walk( fasta_dir ):
@@ -31,7 +32,7 @@ def glimmer_prediction(fasta_dir, glimmer_trainingset = "./glimmer3_strepto.icm"
             if os.path.splitext(filename)[-1] in ['.fasta','.fa']:
                 path = os.path.join(root, filename)
                 #com = "glimmerhmm %s %s -o %s -g -f" % (path, glimmer_trainingset, os.path.splitext( path )[0] + '.glimmerhmm')
-                com = "tigr-glimmer glimmer3 -o50 -g90 -t30 -l --trans_table %s %s %s %s 2> /dev/null" % (translation_table, path, glimmer_trainingset, os.path.splitext( path )[0] + '.glimmer')
+                com = "glimmer3 -o50 -g90 -t30 -l --trans_table %s %s %s %s 2> /dev/null" % (translation_table, path, glimmer_trainingset, os.path.splitext( path )[0] + '.glimmer')
                 #com = "tigr-glimmer glimmer3 -o0 -g90 -t30 -l --trans_table %s %s %s %s 2> /dev/null" % (translation_table, path, glimmer_trainingset, os.path.splitext( path )[0] + '.glimmer')
                 subprocess.call( com, shell=True, stdout=subprocess.PIPE )
                 # Glimmer3 will generate two file one is called _base_.predict the other _base_.detail
@@ -60,7 +61,7 @@ def get_glimmer_mapping(path):
     return mapping
 
 
-def run_blast(data_dir, blastdb = '/media/mydata/uniprot/blastdb/uniprot_sprot.blastdb'):
+def run_blast(data_dir, blastdb):
     for root, dirs, files in os.walk( data_dir ):
         for filename in files:
             if filename.endswith('_predicted.fasta'):
@@ -172,7 +173,6 @@ def parse_blastxml(input_path, glimmer_mapping, feature_table, annotation_count_
                         hit_def = change_according_reviewer(alignment.hit_def, note_line = True)
                         if hit_def.split('|')[:-1] != []:
                             hit_def = hit_def.split('|')[-1].split()[0]
-                            print '#################################debug-bag: -- in if', hit_def
                         else:
                             hit_def = accession
                         """
@@ -255,12 +255,12 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Creates a NCBI FeatureTable.')
 
     parser.add_argument("-u", "--univec", dest="univec_path",
-                      default="/media/mydata/univec/tue6071_stupl",
-                      help="Path to the UniVex BLAST Database. It is used for contamination checking.")
+                        required=True,
+                        help="Path to the UniVex BLAST Database. It is used for contamination checking.")
 
     parser.add_argument("--blastdb", dest="blastdb_path",
-                      default="/media/mydata/uniprot/blastdb/uniprot_sprot.blastdb",
-                      help="Path to the SwissProt BLAST Database. It is used for annotating proteins.")
+                        required=True,
+                        help="Path to the SwissProt BLAST Database. It is used for annotating proteins.")
     parser.add_argument("--glimmer-trainingset", dest="glimmer_trainingset",
                       default="./glimmer3_strepto.icm",
                       help="Path to th glimmer trainingset.")
