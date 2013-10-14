@@ -40,7 +40,6 @@ def augustus_prediction(fasta_dir, trainingset = "aspergillus_nidulans"):
                             --outfile=%s \
                             %s \
                             """ % (trainingset, os.path.splitext( path )[0] + '.gff3', path,)
-                #print com
                 subprocess.call( com, shell=True, stdout=subprocess.PIPE )
 
 
