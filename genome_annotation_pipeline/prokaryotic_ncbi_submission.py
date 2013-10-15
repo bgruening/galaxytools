@@ -411,8 +411,8 @@ if __name__ == '__main__':
         zipper(tmp_path, options.compressed_results)
 
     # clean temp data files
-    #shutil.rmtree(options.data_dir)
-    #shutil.rmtree(tmp_path)
+    shutil.rmtree(options.data_dir)
+    shutil.rmtree(tmp_path)
 
     """
     ./NCBI_annotation_prokaryotes.py -d ./temp/ --scaffold viridochromogens_part.fasta --locus-tag VIR --sequence-description "[organism=Streptomyces viridochromogenes Tue494] [strain=Tue494] [gcode=11]"

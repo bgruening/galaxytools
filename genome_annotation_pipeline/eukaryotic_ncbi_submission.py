@@ -207,7 +207,7 @@ def run_blast(data_dir, blastdb = '/media/mydata/uniprot/blastdb/uniprot_sprot.b
                 subprocess.call( com, shell=True, stdout=subprocess.PIPE )
 
 
-def run(data_dir, feature_table_path, locus_tag):
+def run(data_dir, feature_table_path, locus_tag, min_coverage, min_ident):
     feature_table = open(feature_table_path, 'w+')
     gene_counter = 0
     annotation_count_with_putative_function = 0
@@ -231,7 +231,7 @@ def run(data_dir, feature_table_path, locus_tag):
         if open(blastxml_file).read().strip() == '':
             continue
         augustus_mapping = get_augustus_mapping( blastxml_file.replace('.blastxml', '.gff3') )
-        gene_counter, annotation_count_with_putative_function = parse_blastxml(blastxml_file, augustus_mapping, feature_table, annotation_count_with_putative_function, gene_counter, locus_tag)
+        gene_counter, annotation_count_with_putative_function = parse_blastxml(blastxml_file, augustus_mapping, feature_table, annotation_count_with_putative_function, gene_counter, locus_tag, min_coverage, min_ident)
 
     print 'From %s total genes %s are annotated.' % (gene_counter, annotation_count_with_putative_function)
 
@@ -285,7 +285,7 @@ def check_short_introns(cds):
     return False
 
 
-def parse_blastxml(input_path, augustus_mapping, feature_table, annotation_count_with_putative_function, gene_counter, locus_tag):
+def parse_blastxml(input_path, augustus_mapping, feature_table, annotation_count_with_putative_function, gene_counter, locus_tag, min_coverage, min_ident):
 
     #print input_path, augustus_mapping, feature_table, annotation_count_with_putative_function, gene_counter, locus_tag
     # extract the sequence name
@@ -319,16 +319,14 @@ def parse_blastxml(input_path, augustus_mapping, feature_table, annotation_count
                 for hsp in alignment.hsps:
                     nident = hsp.identities
                     ident = (100*float(nident)/float(hsp.align_length))
-                    query_start = hsp.query_start
-                    query_end = hsp.query_end
                     """
                         Coverage: 'c8-c7+1 >= 0.5*c23'
                     """
                     coverage = False
-                    if int(query_end) - int(query_start) + 1 >= 0.5 * query_length:
+                    if int(hsp.query_end) - int(hsp.query_start) + 1 >= min_coverage * query_length:
                         coverage = True
                     # only annotate hits with an identity over 50% and a coverage over 50%
-                    if ident > 50.0 and coverage:
+                    if ident > min_ident and coverage:
                         feature_table_text[ hsp.bits ] = ""
                         hsp_has_annotation = True
 
@@ -550,6 +548,14 @@ if __name__ == '__main__':
     parser.add_argument("--translation-table", dest="translation_table", type=int,
                       default = 1,
                       help="""The ncbi translation table number. See http://www.ncbi.nlm.nih.gov/Taxonomy/Utils/wprintgc.cgi for more information.""")
+
+    parser.add_argument("--minimal-coverage", dest="min_coverage",
+                      default = 0.5, type=float,
+                      help="""Minimal coverage of a BLAST hit to include the annotation in the output.""")
+    parser.add_argument("--minimal-identity", dest="min_ident",
+                      default = 0.5, type=float,
+                      help="""Minimal identity of a BLAST hit to include the annotation in the output.""")
+
     parser.add_argument("--discrepancy_report", dest="discrepancy_report",
                       default = False,
                       help="""Path to the Discrepancy Report Output File.""")
@@ -598,7 +604,7 @@ if __name__ == '__main__':
     gff2sequence( options.data_dir, options.translation_table)
 
     run_blast( options.data_dir, blastdb = options.blastdb_path)
-    run( options.data_dir, options.feature_table, options.locus_tag + '_' )
+    run( options.data_dir, options.feature_table, options.locus_tag + '_', options.min_coverage, options.min_ident )
 
     #./BlastXML_to_NCBIFeatureTable.py -d ./split --scaffold Glarea-losoyensis_scaffold.fasta -f submission/Youssar_Glarea-lozoyensis.tbl
     # use tbl2asn to create a full submission out of the feature table, the sequence and the 'submission template'
@@ -635,7 +641,7 @@ if __name__ == '__main__':
         zipper(tmp_path, options.compressed_results)
 
     # clean temp data files
-    #shutil.rmtree(options.data_dir)
-    #shutil.rmtree(tmp_path)
+    shutil.rmtree(options.data_dir)
+    shutil.rmtree(tmp_path)
 
 
