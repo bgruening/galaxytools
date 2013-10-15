@@ -4,6 +4,7 @@
     antiSMASH 2.0 output plugin to write all cluster proteins to a file (*_genecluster_proteins.fa)
 """
 import logging
+import textwrap
 from os import path
 from antismash import utils
 
@@ -33,6 +34,4 @@ def write(seq_records, options):
                     qual = feature.qualifiers
                     fasta_header = '>%s:%s %s #%s - %s\n' % (qual['locus_tag'][0], qual['protein_id'][0], clustertype, clusternr, qual['product'][0])
                     handle.write( fasta_header )
-                    handle.write( '%s\n' % qual['translation'][0] )
-
-
+                    handle.write( '%s\n' % '\n'.join( textwrap.wrap(qual['translation'][0], 60) ) )
