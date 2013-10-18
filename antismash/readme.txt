@@ -1,7 +1,7 @@
 Galaxy wrapper for AntiSmash
 =====================================
 
-This wrapper is copyright 2012 by Björn Grüning.
+This wrapper is copyright 2012-2013 by Björn Grüning.
 
 This is a wrapper for the command line tool of antiSMASH.
 
@@ -17,38 +17,22 @@ antiSMASH: Rapid identification, annotation and analysis of secondary metabolite
 Installation
 ============
 
-Currently these wrapper is tested with version 1.1 and the modified version of antismash.py included in that repository.
+Galaxy should be able to automatically install the dependencies, i.e. the
+'package_hmmer_3_0' or 'package_blast_plus_2_2_28' repository.
 
-Install or downlaod antiSMASH from:
+You must tell Galaxy about any system level Pfam databases using the configuration
+file antismash.loc.
 
+You can download the Pfam provided databases as compressed archives from here:
 
-https://bitbucket.org/antismash/antismash2/downloads/antismash-2.0.2.x86_64.tar.bz2
-
-
-... and follow the instructions.
-Please replace the antismash.py file with the one inlcuded in that repository.
-Edit the following lines in multi_antiSMASH_wrapper.py and antiSMASH_wrapper.py and adopt it to your installation.
-
-blastdbpath = '/home/galaxy/bin/antismash-1.1.0/db'
-pfamdbpath = '/home/galaxy/bin/antismash-1.1.0/db'
-antismash_path = '/home/galaxy/bin/antismash-1.1.0/antismash.py'
+* ftp://ftp.sanger.ac.uk/pub/databases/Pfam/current_release/
 
 
-To install the wrapper copy the antiSMASH folder in the galaxy tools
-folder and modify the tools_conf.xml file to make the tool available to Galaxy.
-For example:
-
-<section name="PKS-NRPS prediction" id="pks-nrps_prediction">
-    <tool file="pks-nrps/tools/antiSMASH/antiSMASH.xml" />
-    <tool file="pks-nrps/tools/antiSMASH/multi_antiSMASH.xml" />
-</section>
-
-
-external Data
+External Data
 =============
 
-The antismash.loc file contains the path to a PFAM database.
-For any other tool that also uses a PFAM database *.log file, you can sync or link both *.loc files.
+The antismash.loc file contains the path to a Pfam database.
+For any other tool that also uses a Pfam database *.log file, you can sync or link both *.loc files.
 
 
 
@@ -58,24 +42,24 @@ History
 v0.1 - Initial public release
 
 
-Wrapper Licence (MIT/BSD style)
-===============================
+Licence (MIT)
+=============
 
-Permission to use, copy, modify, and distribute this software and its
-documentation with or without modifications and for any purpose and
-without fee is hereby granted, provided that any copyright notices
-appear in all copies and that both those copyright notices and this
-permission notice appear in supporting documentation, and that the
-names of the contributors or copyright holders not be used in
-advertising or publicity pertaining to distribution of the software
-without specific prior permission.
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
 
-THE CONTRIBUTORS AND COPYRIGHT HOLDERS OF THIS SOFTWARE DISCLAIM ALL
-WARRANTIES WITH REGARD TO THIS SOFTWARE, INCLUDING ALL IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS, IN NO EVENT SHALL THE
-CONTRIBUTORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY SPECIAL, INDIRECT
-OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS
-OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE
-OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE
-OR PERFORMANCE OF THIS SOFTWARE.
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
 
