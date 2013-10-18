@@ -194,7 +194,7 @@ def get_organism(accession):
     return accession.split('OS=')[-1].split('GN=')[0]
 
 
-def run_blast(data_dir, blastdb = '/media/mydata/uniprot/blastdb/uniprot_sprot.blastdb'):
+def run_blast(data_dir, blastdb = '/media/mydata/uniprot/blastdb/uniprot_sprot.blastdb', threads = 8):
     for root, dirs, files in os.walk( data_dir ):
         for filename in files:
             if filename.endswith('_predicted.fasta'):
@@ -203,7 +203,7 @@ def run_blast(data_dir, blastdb = '/media/mydata/uniprot/blastdb/uniprot_sprot.b
                 if open(predicted_proteins).read().strip() == '':
                     continue
                 #com = "blastp -query %s -db %s -task blastp -evalue 0.001 -out %s -outfmt 5 -num_threads 10 -seg no -max_target_seqs 1" % (predicted_proteins, blastdb, blastxml_file)
-                com = "blastx -query %s -db %s -evalue 0.001 -out %s -outfmt 5 -num_threads 8" % (predicted_proteins, blastdb, blastxml_file)
+                com = "blastx -query %s -db %s -evalue 0.001 -out %s -outfmt 5 -num_threads %s" % (predicted_proteins, blastdb, blastxml_file, threads)
                 subprocess.call( com, shell=True, stdout=subprocess.PIPE )
 
 
@@ -495,6 +495,10 @@ if __name__ == '__main__':
                       default="/media/mydata/univec/tue6071_stupl",
                       help="Path to the UniVex BLAST Database. It is used for contamination checking.")
 
+    parser.add_argument("--num-threads", dest="num_threads",
+                      default=8, type=int,
+                      help="Number of threads to use for similarity searching.")
+
     parser.add_argument("--blastdb", dest="blastdb_path",
                       default="/media/mydata/uniprot/blastdb/uniprot_sprot.blastdb",
                       help="Path to the SwissProt BLAST Database. It is used for annotating proteins.")
@@ -603,7 +607,7 @@ if __name__ == '__main__':
     augustus_prediction( options.data_dir, options.trainingset)
     gff2sequence( options.data_dir, options.translation_table)
 
-    run_blast( options.data_dir, blastdb = options.blastdb_path)
+    run_blast( options.data_dir, blastdb = options.blastdb_path, threads = options.num_threads)
     run( options.data_dir, options.feature_table, options.locus_tag + '_', options.min_coverage, options.min_ident )
 
     #./BlastXML_to_NCBIFeatureTable.py -d ./split --scaffold Glarea-losoyensis_scaffold.fasta -f submission/Youssar_Glarea-lozoyensis.tbl
