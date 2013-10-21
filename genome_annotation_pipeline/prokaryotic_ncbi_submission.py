@@ -61,7 +61,7 @@ def get_glimmer_mapping(path):
     return mapping
 
 
-def run_blast(data_dir, blastdb):
+def run_blast(data_dir, blastdb, threads = 8):
     for root, dirs, files in os.walk( data_dir ):
         for filename in files:
             if filename.endswith('_predicted.fasta'):
@@ -70,7 +70,7 @@ def run_blast(data_dir, blastdb):
                 if open(predicted_proteins).read().strip() == '':
                     continue
                 #com = "blastp -query %s -db %s -task blastp -evalue 0.001 -out %s -outfmt 5 -num_threads 3 -seg no" % (predicted_proteins, blastdb, blastxml_file)
-                com = "blastx -query %s -db %s -evalue 0.001 -out %s -outfmt 5 -num_threads 8" % (predicted_proteins, blastdb, blastxml_file)
+                com = "blastx -query %s -db %s -evalue 0.001 -out %s -outfmt 5 -num_threads %s" % (predicted_proteins, blastdb, blastxml_file, threads)
                 subprocess.call( com, shell=True, stdout=subprocess.PIPE )
 
 
@@ -255,12 +255,17 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Creates a NCBI FeatureTable.')
 
     parser.add_argument("-u", "--univec", dest="univec_path",
-                        required=True,
-                        help="Path to the UniVex BLAST Database. It is used for contamination checking.")
+                      default="/media/mydata/univec/tue6071_stupl",
+                      help="Path to the UniVex BLAST Database. It is used for contamination checking.")
 
     parser.add_argument("--blastdb", dest="blastdb_path",
                         required=True,
                         help="Path to the SwissProt BLAST Database. It is used for annotating proteins.")
+
+    parser.add_argument("--num-threads", dest="num_threads",
+                      default=8, type=int,
+                      help="Number of threads to use for similarity searching.")
+
     parser.add_argument("--glimmer-trainingset", dest="glimmer_trainingset",
                       default="./glimmer3_strepto.icm",
                       help="Path to th glimmer trainingset.")
@@ -369,7 +374,7 @@ if __name__ == '__main__':
     glimmer_prediction( options.data_dir, options.glimmer_trainingset, options.translation_table)
     glimmer2sequence( options.data_dir, options.translation_table)
 
-    run_blast( options.data_dir, blastdb = options.blastdb_path)
+    run_blast( options.data_dir, blastdb = options.blastdb_path, threads = options.num_threads )
     run( options.data_dir, options.feature_table, options.locus_tag + '_', options.min_coverage, options.min_ident)
 
 
@@ -411,8 +416,8 @@ if __name__ == '__main__':
         zipper(tmp_path, options.compressed_results)
 
     # clean temp data files
-    #shutil.rmtree(options.data_dir)
-    #shutil.rmtree(tmp_path)
+    shutil.rmtree(options.data_dir)
+    shutil.rmtree(tmp_path)
 
     """
     ./NCBI_annotation_prokaryotes.py -d ./temp/ --scaffold viridochromogens_part.fasta --locus-tag VIR --sequence-description "[organism=Streptomyces viridochromogenes Tue494] [strain=Tue494] [gcode=11]"

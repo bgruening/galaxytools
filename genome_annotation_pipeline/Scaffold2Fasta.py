@@ -20,7 +20,6 @@ from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
 from Bio.Alphabet import IUPAC
 import sys, re, os
-import subprocess
 import argparse
 
 def run(ifile, cleand_sequence_file, agp_file = 'scaffold.agp', locus_tag = 'XYX', sequence_description = ''):
@@ -195,7 +194,7 @@ if __name__ == '__main__':
 
     options = parser.parse_args()
 
-    run_test( testdir = '/media/data/phabi/PhaBiProjects/galaxy/ncbi_submission/scaffold_tests' )
+    run_test( testdir = '/usr/local/galaxy/galaxy-dist/tools/test/genome_annotation_pipeline/scaffold_tests' )
 
     run(options.input_sequence, options.output_sequence, options.agp_file, options.locus_tag, options.seq_description)
 
