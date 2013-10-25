@@ -6,49 +6,62 @@
         <requirement type="package" version="0.1.19 ">samtools</requirement>
         <requirement type="R-module">ggplot2</requirement>
         <requirement type="R-module">ape</requirement>
+        <requirement type="set_environment">BLOCKCLUST_DATA_PATH</requirement>
     </requirements>
     <!--<version_command> -version</version_command>-->
     <command>
-        #set $blockclust_data_path = \$BLOCKCLUST_DATA_PATH
-
-        #if str($mode.operation) == "pre":
+        #if str($tool_mode.operation) == "pre":
             #set $outputdir = $tags_bed.extra_files_path
-            BlockClustPipeLine.pl -m PRE -bam $mode.reads_bam -tbed $tags_bed;
+            BlockClustPipeLine.pl -m PRE -bam $tool_mode.reads_bam -tbed $tags_bed;
         #end if
 
-        #if str($mode.operation) == "clust":
+        #if str($tool_mode.operation) == "clust":
             #set $outputdir = $clusters.extra_files_path
             #set $accept_bed=list()
             #set $reject_bed=list()
             ## prepare annotations
-            #if str($mode.reference) == "hg19":
-                $accept_bed.append("$blockclust_data_path/annotations/hg19/hg19.accept.bed")
-                $reject_bed.append("$blockclust_data_path/annotations/hg19/hg19.reject.bed")
-            #elif str($mode.reference) == "mm10":
-                $accept_bed.append("$blockclust_data_path/annotations/mm10/mm10.accept.bed")
-                $reject_bed.append("$blockclust_data_path/annotations/mm10/mm10.reject.bed")
-            #elif str($mode.reference) == "dm3":
-                $accept_bed.append("$blockclust_data_path/annotations/dm3/dm3.accept.bed")
-                $reject_bed.append("$blockclust_data_path/annotations/dm3/dm3.reject.bed")
+            #if str($tool_mode.reference) == "hg19":
+                $accept_bed.append("\$BLOCKCLUST_DATA_PATH/annotations/hg19/hg19.accept.bed")
+                $reject_bed.append("\$BLOCKCLUST_DATA_PATH/annotations/hg19/hg19.reject.bed")
+            #elif str($tool_mode.reference) == "mm10":
+                $accept_bed.append("\$BLOCKCLUST_DATA_PATH/annotations/mm10/mm10.accept.bed")
+                $reject_bed.append("\$BLOCKCLUST_DATA_PATH/annotations/mm10/mm10.reject.bed")
+            #elif str($tool_mode.reference) == "dm3":
+                $accept_bed.append("\$BLOCKCLUST_DATA_PATH/annotations/dm3/dm3.accept.bed")
+                $reject_bed.append("\$BLOCKCLUST_DATA_PATH/annotations/dm3/dm3.reject.bed")
             #end if
-            BlockClustPipeLine.pl -m TEST -f SEQUENCE -c $blockclust_data_path/blockclust.config
-            -t $mode.input_bbo
+            BlockClustPipeLine.pl -m TEST -f SEQUENCE -c \$BLOCKCLUST_DATA_PATH/blockclust.config
+            -t $tool_mode.input_bbo
             -a #echo ''.join( $accept_bed )
             -r #echo ''.join( $reject_bed )
-            -o $outputdir;
+            -o $outputdir
+            #if str($tool_mode.pred.enable_pred) == "yes":
+                -p
+                -pm $tool_mode.pred.pred_mode
+                -md \$BLOCKCLUST_DATA_PATH/models
+                -x 3;
+                #if str($tool_mode.pred.pred_mode) == "nearest_neighbour":
+                    cp #echo os.path.join($outputdir,'nearest_neighbour_predictions.txt')# $nearest_neighbour_pred_bed;
+                #elif str($tool_mode.pred.pred_mode) == "model_based":
+                    cp #echo os.path.join($outputdir,'model_based_predictions.txt')# $model_based_pred_bed;
+                #end if
+            #else:
+                ;
+            #end if
+
             cp #echo os.path.join($outputdir, 'mcl_clusters','all_clusters.bed')# $clusters;
             cp #echo os.path.join($outputdir, 'hclust_tree.pdf')# $hclust_plot;
             cp #echo os.path.join($outputdir, 'discretized.gspan.tab')# $sim_tab_out;
         #end if
     
-        #if str($mode.operation) == "post":
+        #if str($tool_mode.operation) == "post":
             #set $outputdir = $clusters_bed.extra_files_path
-            BlockClustPipeLine.pl -m POST -cbed $mode.clusters_bed -cm $mode.cmsearch_out -tab $mode.sim_tab_in -o $outputdir -rfam $blockclust_data_path/rfam_map.txt;
+            BlockClustPipeLine.pl -m POST -cbed $tool_mode.clusters_bed -cm $tool_mode.cmsearch_out -tab $tool_mode.sim_tab_in -o $outputdir;
             cp #echo os.path.join($outputdir, 'cluster_distribution.pdf')# $cluster_dist;
         #end if
     </command>
     <inputs>
-        <conditional name="mode">
+        <conditional name="tool_mode">
             <param name="operation" type="select" label="Select mode of operation">
                 <option value="pre">Pre-processing </option>
                 <option value="clust">Clustering</option>
@@ -64,6 +77,18 @@
                     <option value="mm10">Mouse (mm10)</option>
                     <option value="dm3">Fly (dm3)</option>
                 </param>
+                <conditional name="pred">
+                    <param name="enable_pred" type="select" label="Would you like to perform classification?">
+                        <option value="no">No</option>
+                        <option value="yes">Yes</option>
+                    </param>
+                    <when value="yes">
+                        <param name="pred_mode" type="select" label="Mode of classification">
+                            <option value="model_based">Model based</option>
+                            <option value="nearest_neighbour">Nearest neighbour</option>
+                        </param>
+                    </when>
+                </conditional>
             </when>
             <when value="post">
                 <param name="cmsearch_out" type="data" format="tabular" label="Output of cmsearch tool" />
@@ -75,22 +100,40 @@
 
     <outputs>
         <data format="bed" name="tags_bed" label="BlockClust: BAM to BED on ${on_string}">
-            <filter> mode["operation"]=="pre"</filter>
+            <filter> tool_mode["operation"]=="pre"</filter>
         </data>
         <data format="pdf" name="hclust_plot" label="BlockClust: Hierarchical clustering plot on ${on_string}" >
-            <filter> mode["operation"]=="clust"</filter>
+            <filter> tool_mode["operation"]=="clust"</filter>
         </data>
         <data format="bed" name="clusters" label="BlockClust: Clustering BED on ${on_string}">
-            <filter> mode["operation"]=="clust"</filter>
+            <filter> tool_mode["operation"]=="clust"</filter>
+        </data>
+        <data format="bed" name="model_based_pred_bed" label="BlockClust: Model based prediction BED on ${on_string}">
+            <filter>
+            ((
+                tool_mode["operation"] == 'clust' and 
+                tool_mode["pred"]["enable_pred"] == "yes" and
+                tool_mode["pred"]["pred_mode"] == "model_based"
+             ))
+             </filter>
+        </data>
+        <data format="bed" name="nearest_neighbour_pred_bed" label="BlockClust: Nearest neighbour prediction BED on ${on_string}">
+            <filter>
+            ((
+                tool_mode["operation"] == 'clust' and 
+                tool_mode["pred"]["enable_pred"] == "yes" and
+                tool_mode["pred"]["pred_mode"] == "nearest_neighbour"
+             ))
+             </filter>
         </data>
         <data format="tabular" name="sim_tab_out" label="BlockClust: Pairwise similarities on ${on_string}">
-            <filter> mode["operation"]=="clust"</filter>
+            <filter> tool_mode["operation"]=="clust"</filter>
         </data>
         <data format="tabular" name="analysis" label="BlockClust: Cluster analysis on ${on_string}" >
-            <filter> mode["operation"]=="post"</filter>
+            <filter> tool_mode["operation"]=="post"</filter>
         </data>
         <data format="pdf" name="cluster_dist" label="BlockClust: Cluster distribution on ${on_string}" >
-            <filter> mode["operation"]=="post"</filter>
+            <filter> tool_mode["operation"]=="post"</filter>
         </data>
     </outputs>
     <help>
@@ -120,7 +163,6 @@ should be cited as [1]_.
 
 .. [1] 
 
-------
 
     </help>
 </tool>
