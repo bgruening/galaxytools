@@ -261,7 +261,7 @@ Installation via webbrowser
 
 - go to the `admin page`_
 - select *Search and browse tool sheds*
-- Galaxy test tool shed > Computational chemistry > chemicaltoolbox
+- Galaxy tool shed > Computational chemistry > chemicaltoolbox
 - install chemicaltoolbox
 
 .. _admin page: http://localhost:8080/admin
