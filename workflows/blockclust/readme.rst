@@ -1,3 +1,5 @@
+
+
 This package is a Galaxy workflow for BlockClust pipeline.
 
 
@@ -16,12 +18,8 @@ Saved workflows can be used with new input files or just to rerun an analyses wh
 
 
 
-.. _Getting Started:
-
 Getting Started
 ===============
-
-.. _Installation:
 
 ChemicalToolBoX can be installed on all common Unix systems. 
 However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
@@ -117,8 +115,6 @@ After launching galaxy is accessible via the browser at ``http://localhost:8080/
 
 
 
-.. _Admin Account:
-
 =======================
 Tool Shed configuration
 =======================
@@ -134,18 +130,17 @@ Tool Shed configuration
 
 	sh run.sh --reload
 
-.. _ChemcialtoolboX Installation:
 
-============================
-ChemicalToolBoX installation
-============================
+=======================
+BlockClust installation
+=======================
 
-ChemicalToolBoX will automatically download and compile all requirements, 
-like `Open Babel`_, RDKit_, chemfp_, numpy_ and so on. It can take up to 2-3 hours.
+BlockClust will automatically download and compile all requirements, 
+like EDeN, samtools and so on. It can take up to 1-2 hours.
 
 
 Installation via Galaxy API (recommended)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+=========================================
 
 - Generate an `API Key`_
 - Run the installation script::
@@ -165,7 +160,7 @@ You can watch the installation status under: Top Panel → Admin → Manage inst
 
 
 Installation via webbrowser
-~~~~~~~~~~~~~~~~~~~~~~~~~~~
+===========================
 
 - go to the `admin page`_
 - select *Search and browse tool sheds*
@@ -175,8 +170,6 @@ Installation via webbrowser
 .. _admin page: http://localhost:8080/admin
 
 
-
-.. _Troubleshooting:
 
 ===============
 Troubleshooting
@@ -237,8 +230,6 @@ We highly recommend to use PostgreSQL for any kind of production system.
 
 
 
-
-
 Sample Data
 ===========
 
@@ -280,19 +271,6 @@ please cite:
 
 P. Videm  at al...
 
-For Glimmer3 please cite:
-
-Delcher, A.L., Bratke, K.A., Powers, E.C., and Salzberg, S.L. (2007)
-Identifying bacterial genes and endosymbiont DNA with Glimmer.
-Bioinformatics 23(6), 673-679.
-http://dx.doi.org/10.1093/bioinformatics/btm009
-
-For EMBOSS please cite:
-
-Rice, P., Longden, I. and Bleasby, A. (2000)
-EMBOSS: The European Molecular Biology Open Software Suite
-Trends in Genetics 16(6), 276-277.
-http://dx.doi.org/10.1016/S0168-9525(00)02024-2
 
 
 Additional References
