@@ -1,9 +1,14 @@
 #!/usr/bin/env python
 
+"""
+    Converts a SD-file to a GSPAN file.
+"""
+
+
 import os, sys
 import argparse
 
-def main(args ):
+def main( args ):
 
     begin = False
     iid = 0

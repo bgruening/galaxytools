@@ -1,93 +1,42 @@
-<tool id="bg_eden_feature" name="EDeN Converter" version="0.1">
-    <description></description>
-    <requirements>
-        <requirement type="package" version="2.3.2">openbabel</requirement>
-        <requirement type="set_environment">EDEN_SCRIPT_PATH</requirement>
-    </requirements>
+<tool id="bg_eden_feature" name="EDeN Converters" version="0.1">
+    <description>to produce sparce vectors</description>
     <macros>
         <import>eden_macros.xml</import>
     </macros>
+    <expand macro="requirements" />
     <command>
-
-        ## pre-processing step if we have a molecule type we need to convert it to the gSpan format at first
-
-        #import tempfile, os
-        #set $temp_gspan = tempfile.NamedTemporaryFile( delete=False )
-        #silent $temp_gspan.close()
-        #set $temp_gspan = $temp_gspan.name
-
-        #if $file_type_opts.file_type_opts_selector == 'sdf':
-            obabel -i sdf -o sdf $infile ---errorlevel 1 | python \$EDEN_SCRIPT_PATH/mol2gspan.py --infile - --outfile $temp_gspan
-            #set $file_type = 'GRAPH'
-        #elif $file_type_opts.file_type_opts_selector == 'smi':
-            obabel -i smi -o sdf $infile ---errorlevel 1 | python \$EDEN_SCRIPT_PATH/mol2gspan.py --infile - --outfile $temp_gspan
-            #set $file_type = 'GRAPH'
-        #else:
-            #set $temp_gspan = $infile
-            #set $file_type = $file_type_opts.file_type_opts_selector
-        #end if
-        ;
+        tmp_dir=`mktemp -d -u`;
 
         EDeN --action FEATURE
 
-        --input_data_file_name $temp_gspan
+        --output_directory_path \$tmp_dir
+
+        --input_data_file_name $infile
         --model_file_name $outfile
 
-        ## if we have an molecule datatype the file_type is set to GRAPH, after convertion to the gSpan Graph format
-        --file_type $file_type
+        --file_type $file_type_opts.file_type_opts_selector
 
         --binary_file_type ## create a binary sparse vector as output
 
-
-        $no_normalization
-        $min_kernel
-
-        --hash_bit_size $hash_bit_size
-        --radius $radius
-        --distance $distance
-        --vertex_degree_threshold $vertex_degree_threshold
-
-        $no_normalization
-        $min_kernel
+        @normalization_kernel_hash_radius_dist_vertex@
 
         --kernel_type $kernel_type_opts.kernel_type_opts_selector
         --graph_type $graph_type
 
         #if $file_type_opts.file_type_opts_selector == 'SEQUENCE':
-
             --sequence_degree $sequence_degree
             $sequence_token
             $sequence_multi_line
             $sequence_pairwise_interaction
-
         #end if
 
-        #if $kernel_type_opts.kernel_type_opts_selector in ['DDK','NSDDK','SK']:
-            --tree_lambda $kernel_type_opts.tree_lambda
-            --radius_two $kernel_type_opts.radius_two
-        #end if
+        @kernel_type_options@
 
-        ### Adds rescaled features from nearest neighbors ###
-
-        #if $smooth_opts.smooth_opts_selector == 'smooth':
-            --smooth
-            --smooth_param $smooth_opts.smoother_param
-
-            --row_index_file_name $row_index_file_name
-            --col_index_file_name $col_index_file_name
-            --num_hash_functions $smooth_opts.num_hash_functions
-            --num_repeat_hash_functions $smooth_opts.num_repeat_hash_functions
-            --max_size_bin $smooth_opts.max_size_bin
-            --eccess_neighbour_size_factor $smooth_opts.eccess_neighbour_size_factor
-            --num_nearest_neighbours $smooth_opts.num_nearest_neighbours
-            $smooth_opts.shared_neighborhood
-            $smooth_opts.no_neighborhood_cache
-            $smooth_opts.no_minhash_cache
-        #end if
+        @input_smooth_conditional@
 
         ;
-        rm $temp_gspan
-
+        cp \$tmp_dir/feature $outfile;
+        rm \$tmp_dir -rf;
 
     </command>
     <stdio>
@@ -97,16 +46,14 @@
            description="An error occured with your Job." />
     </stdio>
     <inputs>
-        <param format="smi,gspan,inchi,sdf,mol,mol2,txt" name="infile" type="data" label="Input file" 
-            help="File can contain molecule data types (SMILES, InChI, SDF) or Graph datatypes (gSpan, sparse vector, sequence)."/>
+        <param format="gspan,txt" name="infile" type="data" label="Input file" 
+            help="File can contain Graph datatypes (gSpan, sparse vector, sequence)."/>
 
         <conditional name="file_type_opts">
             <param name="file_type_opts_selector" type="select" label="Type of Input file">
                 <option value="GRAPH">Graph</option>
                 <option value="SPARSE_VECTOR">sparse vector</option>
                 <option value="SEQUENCE">Sequence</option>
-                <option value="sdf">SDF</option>
-                <option value="smi">SMILES</option>
             </param>
             <when value="GRAPH" />
             <when value="SPARSE_VECTOR" />
@@ -122,70 +69,13 @@
             <when value="smi" />
         </conditional>
 
-        <conditional name="kernel_type_opts">
-            <param name="kernel_type_opts_selector" type="select" label="Type of the Kernel">
-                <option value="NSPDK">NSPDK</option>
-                <option value="WDK">WDK</option>
-                <option value="PBK">PBK</option>
-                <option value="USPK">USPK</option>
-                <option value="DDK">DDK</option>
-                <option value="NSDDK">ANSDDK</option>
-                <option value="SK">SK [NSPDK]</option>
-            </param>
-            <when value="NSPDK" />
-            <when value="WDK" />
-            <when value="PBK" />
-            <when value="USPK" />
-            <when value="SK">
-                <param name="radius_two" type="integer" value="2" label="Radius Two" help="">
-                    <validator type="in_range" min="1" />
-                </param>
-                <param name="tree_lambda" type="float" value="1.2" label="Tree lambda" help="">
-                    <validator type="in_range" min="0.0" />
-                </param>
-            </when>
-            <when value="DDK">
-                <param name="radius_two" type="integer" value="2" label="Radius Two" help="">
-                    <validator type="in_range" min="1" />
-                </param>
-                <param name="tree_lambda" type="float" value="1.2" label="Tree lambda" help="">
-                    <validator type="in_range" min="0.0" />
-                </param>
-            </when>
-            <when value="NSDDK">
-                <param name="radius_two" type="integer" value="2" label="Radius Two" help="">
-                    <validator type="in_range" min="1" />
-                </param>
-                <param name="tree_lambda" type="float" value="1.2" label="Tree lambda" help="">
-                    <validator type="in_range" min="0.0" />
-                </param>
-            </when>
-        </conditional>
+        <expand macro="kernel_type_options" />
 
-
-        <param name="graph_type" type="select" display="radio" label="Type of Graph">
-            <option value="DIRECTED">directed</option>
-            <option value="UNDIRECTED">undirected</option>
-        </param>
+        <expand macro="graph_types" />
 
         <expand macro="input_smooth_conditional" />
 
-        <param name="no_normalization" type="boolean" label="Skip normalization" truevalue="--no_normalization" falsevalue="" checked="false" />
-        <param name="min_kernel" type="boolean" label="Use min kernel" truevalue="--min_kernel" falsevalue="" checked="false" />
-
-        <param name="hash_bit_size" type="integer" value="15" label="Bit size of the used hashing function" help="">
-            <validator type="in_range" min="1" />
-        </param>
-        <param name="radius" type="integer" value="2" label="Radius that defines a neighborhood" help="">
-            <validator type="in_range" min="1" />
-        </param>
-        <param name="distance" type="integer" value="5" label="Distance that defines a neighborhood" help="">
-            <validator type="in_range" min="1" />
-        </param>
-        <param name="vertex_degree_threshold" type="integer" value="7" label="Vertex degree threshold" help="">
-            <validator type="in_range" min="1" />
-        </param>
-
+        <expand macro="normalization_kernel_hash_radius_dist_vertex" />
 
     </inputs>
     <configfiles>
@@ -224,7 +114,7 @@
 </configfile>
     </configfiles>
     <outputs>
-        <data format="eden_sparse_vector" name="outfile" label="Sparse vector from ${on_string}"/>
+        <data format="sparsevector" name="outfile" label="Sparse Vector from ${on_string}"/>
     </outputs>
     <tests>
         <test>
@@ -242,7 +132,7 @@ The linear model is induced using the accelerated stochastic gradient descent te
 When the target information is 0, a self-training algorithm is used to impute a positive or negative class to the unsupervised instances.
 If the target information is imbalanced a minority class resampling technique is used to rebalance the training set.
 
-This tool is part of the EDeN (Explicit Decomposition with Neighborhoods) suite, developed by Fabrizio Costa.
+@references@
 
     </help>
 </tool>
