@@ -24,7 +24,7 @@ class Gspan( Binary ):
 
 class SparseVector( Binary ):
     """Class describing an SparseVector file"""
-    file_ext = "sparse"
+    file_ext = "sparsevector"
 
     def set_peek( self, dataset, is_multi_byte=False ):
         if not dataset.dataset.purged:
