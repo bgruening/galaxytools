@@ -139,6 +139,7 @@ Prerequisites::
 * CMake
 * cairo development files (used for PNG depictions)
 * python development files
+* libblas and liblapack development files
 * Java Runtime Environment (JRE, used by OPSIN and NPLS)
 
 To install all of the prerequisites you can run the following command, depending on your OS:
