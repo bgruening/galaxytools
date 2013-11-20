@@ -308,15 +308,15 @@ We highly recommend to use PostgreSQL for any kind of production system.
 
 
 ========================
-JMol Editor Installation
+Jmol Editor Installation
 ========================
 
-`JMol Editor`_ needs be run on a separate webserver, this is how to setup the server:
+`Jmol Editor`_ needs be run on a separate webserver, this is how to setup the server:
 
-.. _JMol Editor: http://wiki.jmol.org/index.php/Jmol_as_editor
+.. _Jmol Editor: http://wiki.jmol.org/index.php/Jmol_as_editor
 
 
-- download JMol Editor from::
+- download Jmol Editor from::
 
 	wget https://github.com/bgruening/download_store/raw/master/jmoleditor.tar.gz
 
@@ -334,10 +334,10 @@ Tools
 =====
 
 - Get Chemical Data
-	- JMol Editor
-		JMol_ Editor can be used to paint structures or alter atoms or identities from single molecules.
+	- Jmol Editor
+		Jmol_ Editor can be used to paint structures or alter atoms or identities from single molecules.
 
-.. _JMol: http://jmol.sourceforge.net/
+.. _Jmol: http://jmol.sourceforge.net/
 	- Online data
 		Upload data via FTP or HTTP and load them into your history. Supportes compressed-files.
 	- PubChem download
