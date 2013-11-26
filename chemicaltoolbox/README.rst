@@ -268,6 +268,16 @@ Installation via webbrowser
 .. _admin page: http://localhost:8080/admin
 
 
+Addiational Notes
+~~~~~~~~~~~~~~~~~
+
+You can also configure CTB to use system installed binaries, but you will loose some degree of reproducibility.
+Nevertheless, if you want to do this the recommended depencency versions are specified in a file called
+``tool_dependencies.xml``, located in each subfolder.
+
+
+
+
 
 .. _Troubleshooting:
 
