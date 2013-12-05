@@ -59,7 +59,7 @@ History
 - v0.1: Initial public release
 - v0.2: Added tool_dependencies.xml file and update the augustus version (thanks to James Johnson)
 - v0.3: upgrade to augustus 2.7, added new organisms and new parameters, output additional sequence files
-
+- v0.3.1: added parallelism and changed the output parameters from boolean to a select box
 
 Licence (MIT)
 =============
