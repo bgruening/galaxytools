@@ -1,0 +1,99 @@
+diff -rup sed-4.2/sed/compile.c sed-4.2-patch/sed/compile.c
+--- sed-4.2/sed/compile.c	2009-04-30 04:42:20.000000000 -0400
++++ sed-4.2-patch/sed/compile.c	2010-02-11 22:24:55.000000000 -0500
+@@ -155,7 +155,8 @@ static const char errors[] =
+   "delimiter character is not a single-byte character\0"
+   "expected newer version of sed\0"
+   "invalid usage of line address 0\0"
+-  "unknown command: `%c'";
++  "unknown command: `%c'\0"
++  "e/r/w commands disabled in sandbox mode";
+ 
+ #define BAD_BANG (errors)
+ #define BAD_COMMA (BAD_BANG + sizeof(N_("multiple `!'s")))
+@@ -182,7 +183,8 @@ static const char errors[] =
+ #define ANCIENT_VERSION (BAD_DELIM + sizeof(N_("delimiter character is not a single-byte character")))
+ #define INVALID_LINE_0 (ANCIENT_VERSION + sizeof(N_("expected newer version of sed")))
+ #define UNKNOWN_CMD (INVALID_LINE_0 + sizeof(N_("invalid usage of line address 0")))
+-#define END_ERRORS (UNKNOWN_CMD + sizeof(N_("unknown command: `%c'")))
++#define DISALLOWED_CMD (UNKNOWN_CMD + sizeof(N_("unknown command: `%c'")))
++#define END_ERRORS (UNKNOWN_CMD + sizeof(N_("e/r/w commands disabled in sandbox mode")));
+ 
+ static struct output *file_read = NULL;
+ static struct output *file_write = NULL;
+@@ -355,6 +357,9 @@ read_filename()
+   struct buffer *b;
+   int ch;
+ 
++  if (sandbox)
++  	bad_prog(_(DISALLOWED_CMD));
++
+   b = init_buffer();
+   ch = in_nonblank();
+   while (ch != EOF && ch != '\n')
+@@ -1159,6 +1164,9 @@ compile_program(vector)
+ 	  break;
+ 
+ 	case 'e':
++	  if (sandbox)
++	  	bad_prog(_(DISALLOWED_CMD));
++
+ 	  ch = in_nonblank();
+ 	  if (ch == EOF || ch == '\n')
+ 	    {
+Only in sed-4.2-patch/sed: compile.c.orig
+diff -rup sed-4.2/sed/sed.c sed-4.2-patch/sed/sed.c
+--- sed-4.2/sed/sed.c	2009-04-27 06:09:43.000000000 -0400
++++ sed-4.2-patch/sed/sed.c	2010-02-11 22:26:49.000000000 -0500
+@@ -74,6 +74,9 @@ bool separate_files = false;
+ /* If set, follow symlinks when processing in place */
+ bool follow_symlinks = false;
+ 
++/* If set, opearate in 'sandbox' mode */
++bool sandbox = false;
++
+ /* How do we edit files in-place? (we don't if NULL) */
+ char *in_place_extension = NULL;
+ 
+@@ -150,6 +153,8 @@ Usage: %s [OPTION]... {script-only-if-no
+ #ifdef REG_PERL
+   fprintf(out, PERL_HELP);
+ #endif
++  fprintf(out, _("      --sandbox\n\
++                 operate in sandbox mode.\n"));
+   fprintf(out, _("  -s, --separate\n\
+                  consider files as separate rather than as a single continuous\n\
+                  long stream.\n"));
+@@ -194,6 +199,7 @@ main(argc, argv)
+     {"quiet", 0, NULL, 'n'},
+     {"posix", 0, NULL, 'p'},
+     {"silent", 0, NULL, 'n'},
++    {"sandbox", 0, NULL, 'o'},
+     {"separate", 0, NULL, 's'},
+     {"unbuffered", 0, NULL, 'u'},
+     {"version", 0, NULL, 'v'},
+@@ -304,6 +310,10 @@ main(argc, argv)
+ 	  break;
+ #endif
+ 
++	case 'o':
++	  sandbox = true;
++	  break;
++
+ 	case 's':
+ 	  separate_files = true;
+ 	  break;
+Only in sed-4.2-patch/sed: sed.c.orig
+diff -rup sed-4.2/sed/sed.h sed-4.2-patch/sed/sed.h
+--- sed-4.2/sed/sed.h	2009-04-27 06:14:51.000000000 -0400
++++ sed-4.2-patch/sed/sed.h	2010-02-11 22:24:55.000000000 -0500
+@@ -242,6 +242,9 @@ extern bool use_extended_syntax_p;
+ extern int mb_cur_max;
+ extern bool is_utf8;
+ 
++/* If set, operate in 'sandbox' mode - disable e/r/w commands */
++extern bool sandbox;
++
+ #ifdef HAVE_MBRTOWC
+ #ifdef HAVE_BTOWC
+ #define MBRTOWC(pwc, s, n, ps) \
