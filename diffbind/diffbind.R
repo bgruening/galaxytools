@@ -10,13 +10,14 @@ args <- commandArgs(trailingOnly = TRUE)
 #get options, using the spec as defined by the enclosed list.
 #we read the options from the default: commandArgs(TRUE).
 spec = matrix(c(
-	'verbose', 'v', 2, "integer",
-	'help' , 'h', 0, "logical",
-	'outfile' , 'o', 1, "character",
-	'plots' , 'p', 2, "character",
-	'infile' , 'i', 1, "character",
-    'format', 'f', 1, 'character',
+    'verbose', 'v', 2, "integer",
+    'help' , 'h', 0, "logical",
+    'outfile' , 'o', 1, "character",
+    'plots' , 'p', 2, "character",
+    'infile' , 'i', 1, "character",
+    'format', 'f', 1, 'character'
 ), byrow=TRUE, ncol=4);
+
 opt = getopt(spec);
 
 # if help was asked for print a friendly message
@@ -27,9 +28,9 @@ if ( !is.null(opt$help) ) {
 }
 
 
-library(DiffBind)
+library('DiffBind')
 # used to save to BED, GFF or WIG format
-library(rtracklayer)
+library('rtracklayer')
 
 if ( !is.null(opt$plots) ) {
 	pdf(opt$plots)
