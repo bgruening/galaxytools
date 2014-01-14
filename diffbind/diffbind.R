@@ -23,8 +23,8 @@ opt = getopt(spec);
 # if help was asked for print a friendly message
 # and exit with a non-zero error code
 if ( !is.null(opt$help) ) {
-	cat(getopt(spec, usage=TRUE));
-	q(status=1);
+    cat(getopt(spec, usage=TRUE));
+    q(status=1);
 }
 
 
@@ -33,11 +33,11 @@ library('DiffBind')
 library('rtracklayer')
 
 if ( !is.null(opt$plots) ) {
-	pdf(opt$plots)
+    pdf(opt$plots)
 }
 
 
-sample = dba(sampleSheet=opt$infile)
+sample = dba(sampleSheet=opt$infile, peakFormat='bed')
 sample_count = dba.count(sample)
 sample_contrast = dba.contrast(sample_count, categories=DBA_CONDITION)
 sample_analyze = dba.analyze(sample_contrast)
