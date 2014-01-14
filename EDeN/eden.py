@@ -1,11 +1,11 @@
 """
-EDeN filetypes
+    EDeN filetypes
 """
 
-from galaxy.datatypes.data import Binary
+from galaxy.datatypes.tabular import Tabular
 
 
-class Gspan( Binary ):
+class Gspan( Tabular ):
     """Class describing an gSpan file"""
     file_ext = "gspan"
 
@@ -20,9 +20,9 @@ class Gspan( Binary ):
         try:
             return dataset.peek
         except:
-            return "Binary gSpan file (%s)" % ( data.nice_size( dataset.get_size() ) )
+            return "Tabular gSpan file (%s)" % ( data.nice_size( dataset.get_size() ) )
 
-class SparseVector( Binary ):
+class SparseVector( Tabular ):
     """Class describing an SparseVector file"""
     file_ext = "sparsevector"
 
@@ -37,4 +37,4 @@ class SparseVector( Binary ):
         try:
             return dataset.peek
         except:
-            return "Binary SparseVector file (%s)" % ( data.nice_size( dataset.get_size() ) )
+            return "Tabular SparseVector file (%s)" % ( data.nice_size( dataset.get_size() ) )
