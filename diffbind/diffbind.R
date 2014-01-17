@@ -27,9 +27,7 @@ if ( !is.null(opt$help) ) {
     q(status=1);
 }
 
-
 library('DiffBind')
-# used to save to BED, GFF or WIG format
 
 if ( !is.null(opt$plots) ) {
     pdf(opt$plots)
