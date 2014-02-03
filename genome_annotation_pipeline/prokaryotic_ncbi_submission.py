@@ -144,7 +144,14 @@ def parse_blastxml(input_path, glimmer_mapping, feature_table, annotation_count_
                     if ident > min_ident and coverage:
                         feature_table_text[ hsp.bits ] = ""
                         hsp_has_annotation = True
-                        accession = alignment.hit_def.split('OS=')[0].strip()
+
+                        """
+                        Hit_def changed: It now looks like: 
+                        'RecName: Full=Erythronolide synthase, modules 3 and 4; Short=PKS; AltName: Full=6-deoxyerythronolide B synthase II; AltName: Full=DEBS 2; AltName: Full=ORF 2'
+                        """
+                        accession = filter(lambda token: token.startswith('RecName:'), map(str.strip, alignment.hit_def.split(';')))[0].split('Full=')[-1]
+
+
                         assert change_according_reviewer('Pimelyl-[acyl-carrier protein] methyl ester esterase', note_line = False) == 'Pimelyl-[acyl-carrier protein] methyl ester esterase'
                         assert change_according_reviewer('putative D-malate dehydrogenase [decarboxylating] [gnl|PBUF|STVIR_0046:1-352] [gnl|PBUF|STVIR_0046: raw, aa len= 352]', note_line = False) == 'D-malate dehydrogenase'
                         accession = change_according_reviewer(accession, note_line = False)
