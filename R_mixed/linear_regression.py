@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from galaxy import eggs
 import sys, string
 import rpy2.robjects as robjects
 import rpy2.rlike.container as rlc
