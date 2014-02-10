@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-from galaxy import eggs
 import sys, string
 #from rpy import *
 import rpy2.robjects as robjects
