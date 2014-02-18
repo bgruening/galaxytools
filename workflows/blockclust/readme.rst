@@ -21,7 +21,7 @@ Saved workflows can be used with new input files or just to rerun an analyses wh
 Getting Started
 ===============
 
-ChemicalToolBoX can be installed on all common Unix systems. 
+BlockClust can be installed on all common Unix systems. 
 However, it is developed on Linux and I don't have access to OS X. You are welcome to help improving this documentation, just contact_ me.
 
 For any additional information, especially cluster configuration or general Galaxy_ questions, 
@@ -233,33 +233,6 @@ We highly recommend to use PostgreSQL for any kind of production system.
 Sample Data
 ===========
 
-As an example, we will use the first public assembly of the 2011 Shiga-toxin
-producing *Escherichia coli* O104:H4 outbreak in Germany. This was part of the
-open-source crowd-sourcing analysis described in Rohde et al. (2011) and here:
-https://github.com/ehec-outbreak-crowdsourced/BGI-data-analysis/wiki
-
-You can upload this assembly directly into Galaxy using the "Upload File" tool
-with either of these URLs - Galaxy should recognise this is a FASTA file with
-3,057 sequences:
-
-* http://static.xbase.ac.uk/files/results/nick/TY2482/TY2482.fasta.txt
-* https://github.com/ehec-outbreak-crowdsourced/BGI-data-analysis/blob/master/strains/TY2482/seqProject/BGI/assemblies/NickLoman/TY2482.fasta.txt
-
-This FASTA file ``TY2482.fasta.txt`` was the initial TY-2482 strain assembled
-by Nick Loman from 5 runs of Ion Torrent data released by the BGI, using the
-MIRA 3.2 assembler. It was initially released via his blog,
-http://pathogenomics.bham.ac.uk/blog/2011/06/ehec-genome-assembly/
-
-We will also need a training set of known *E. coli* genes, for example the
-model strain *Escherichia coli* str. K-12 substr. MG1655 which is well
-annotated. You can upload the NCBI FASTA file ``NC_000913.ffn`` of the
-gene nucleotide sequences directly into Galaxy via this URL, which Galaxy
-should recognise as a FASTA file with 4,321 sequences:
-
-* ftp://ftp.ncbi.nlm.nih.gov/genomes/Bacteria/Escherichia_coli_K_12_substr__MG1655_uid57779/NC_000913.ffn
-
-Then run the workflow, which should produce 2,333 predicted genes for the
-TY2482 assembly (two FASTA files, nucleotide and protein sequences).
 
 
 Citation
@@ -276,10 +249,6 @@ P. Videm  at al...
 Additional References
 =====================
 
-Rohde, H., Qin, J., Cui, Y., Li, D., Loman, N.J., et al. (2011)
-Open-source genomic analysis of shiga-toxin-producing E. coli O104:H4.
-New England Journal of Medicine 365, 718-724.
-http://dx.doi.org/10.1056/NEJMoa1107643
 
 
 Availability

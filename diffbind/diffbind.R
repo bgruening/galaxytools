@@ -23,28 +23,27 @@ opt = getopt(spec);
 # if help was asked for print a friendly message
 # and exit with a non-zero error code
 if ( !is.null(opt$help) ) {
-	cat(getopt(spec, usage=TRUE));
-	q(status=1);
+    cat(getopt(spec, usage=TRUE));
+    q(status=1);
 }
-
 
 library('DiffBind')
-# used to save to BED, GFF or WIG format
-library('rtracklayer')
 
 if ( !is.null(opt$plots) ) {
-	pdf(opt$plots)
+    pdf(opt$plots)
 }
 
 
-sample = dba(sampleSheet=opt$infile)
+sample = dba(sampleSheet=opt$infile, peakFormat='bed')
 sample_count = dba.count(sample)
-sample_contrast = dba.contrast(sample_count, categories=DBA_CONDITION)
+sample_contrast = dba.contrast(sample_count, categories=DBA_CONDITION, minMembers=2)
 sample_analyze = dba.analyze(sample_contrast)
 diff_bind = dba.report(sample_analyze)
+orvals = dba.plotHeatmap(sample_analyze, contrast=1, correlations=FALSE)
 
+resSorted <- diff_bind[order(diff_bind$FDR),]
+write.table(as.data.frame(resSorted), file = opt$outfile, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
 
-export(diff_bind, opt$outfile, format=opt$format)
 
 dev.off()
 sessionInfo()
