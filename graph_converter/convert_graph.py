@@ -10,36 +10,86 @@ from xgmml_networkx import XGMMLParserHelper, XGMMLWriter
 #supported graph_types
 graph_types = ["gml", "yaml", "gspan", "xgmml", "gexf", "graphml", "json", "pajek"]
 
-#completely supported types by networkx
-complete_supported_types = ["gml", "gexf", "yaml", "graphml", "pajek"]
+func_dic_read= {'gml': nx.read_gml, 'yaml':nx.read_yaml, 'gexf': nx.read_gexf,
+    'graphml': nx.read_graphml, 'pajek': nx.read_pajek}
+    
+func_dic_write= {'gml': nx.write_gml, 'yaml':nx.write_yaml, 'gexf': nx.write_gexf,
+    'graphml': nx.write_graphml, 'pajek': nx.write_pajek}
 
+#completely supported types by networkx
+completely_supported_types = ["gml", "gexf", "yaml", "graphml", "pajek"]
+
+def read_gspan(infile):
+    G = nx.Graph()
+    idoffset=0
+    old_id_start=0
+    for line in infile:
+        line_split=line.split(" ")
+        if line[0] == "v":
+            G.add_node(idoffset, label=line_split[2].strip())
+            idoffset+=1
+        elif line[0] == "e":
+            G.add_edge(old_id_start+int(line_split[1]), old_id_start+int(line_split[2]), label=line_split[3].strip())
+        elif line[0] == "t":
+        # its a new subgraph
+            idoffset*=1
+            old_id_start=idoffset
+    #print(nx.is_connected(G))
+    return G
+    
+
+def write_gspan(graph, outfile):
+    # get all subgraphs only works with undirected
+    subgraphs=nx.connected_components(graph.to_undirected())
+    id_count=1
+    node_count=0
+    #get labels
+    label_dic=nx.get_node_attributes(graph,'label')
+    for s in subgraphs:
+        node_count_tree=0
+        node_dict={}
+        outfile.write("t # id "+str(id_count)+"\n")
+        # for every node in subgraph
+        for v in sorted(s):
+        # node id restart from 0 for every sub graph
+            node_dict[v]=node_count_tree
+            outfile.write("v "+str(node_count_tree)+" "+label_dic[v]+" \n")
+            node_count_tree+=1
+            node_count+=1
+            
+        # all edges adjacent to a node of s
+        edges=nx.edges(graph, s)
+        for e in sorted(edges):
+            outfile.write("e "+str(node_dict[e[0]])+" "+str(node_dict[e[1]])+" "+graph[e[0]][e[1]]['label']+"\n")
+            
+        id_count+=1
+def read_json(file):
+    return nx.Graph()
+    
 def main( args ):
 
     if args.informat not in graph_types:
         print "EXCEPTION COMPUTER EXPLODING"
-    elif args.informat in complete_supported_types:
-        function="nx.read_"+args.informat
-        function(args.infile)
-    """
-    if args.informat == "gml":
-        graph=nx.read_gml(args.infile)  
-    elif args.informat == "gexf":
-        graph=nx.read_gexf(args.infile)
-    elif args.informat == "yaml":
-        graph=nx.read_yaml(args.infile)
+    # everything networkx can do by itself ;)
+    elif args.informat in completely_supported_types:
+        function = func_dic_read[args.informat]
+        graph = function(args.infile)
+    elif args.informat == "gspan":
+        graph = read_gspan(args.infile)
+    elif args.informat == "json":
+        graph = read_json(args.infile)
     elif args.informat == "xgmml":
         xgmml=XGMMLParserHelper()
         xgmml.parseFile(args.infile)
         graph=xgmml.graph()
-        print(graph)
-    # everything networkx can do by itself ;)
-    """
-    if args.outformat == "gml":
-        nx.write_gml(graph, args.outfile)
-    elif args.outformat == "gexf":
-        nx.write_gexf(graph, args.outfile)
-    elif args.outformat == "yaml":
-        nx.write_yaml(graph, args.outfile)
+
+
+
+    if args.outformat in completely_supported_types:
+        function = func_dic_write[args.outformat]
+        function(graph, args.outfile)
+    elif args.outformat == "gspan":
+        write_gspan(graph, args.outfile)
     elif args.outformat == "xgmml":  
     #xgmml=XGMMLParserHelper(graph)
     #xgmml.parseFile(open(sys.argv[1]))
