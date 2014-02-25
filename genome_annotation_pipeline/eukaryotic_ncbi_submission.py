@@ -333,7 +333,9 @@ def parse_blastxml(input_path, augustus_mapping, feature_table, annotation_count
                         Hit_def changed: It now looks like: 
                         'RecName: Full=Erythronolide synthase, modules 3 and 4; Short=PKS; AltName: Full=6-deoxyerythronolide B synthase II; AltName: Full=DEBS 2; AltName: Full=ORF 2'
                         """
-                        accession = filter(lambda token: token.startswith('RecName:'), map(str.strip, alignment.hit_def.split(';')))[0].split('Full=')[-1]
+                        print alignment.hit_def
+                        accession = alignment.hit_def.encode('utf8')
+                        accession = filter(lambda token: token.startswith('RecName:'), map(str.strip, accession.split(';')))[0].split('Full=')[-1]
                         accession = change_according_reviewer(accession, note_line = False)
 
                         feature_table_text[ hsp.bits ] += '%i\t%i\tgene\n' % (gene_start, gene_end)
