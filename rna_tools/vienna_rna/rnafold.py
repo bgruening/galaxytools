@@ -10,7 +10,7 @@ parser.add_argument('-i', '--input', help='Input file name')
 parser.add_argument('-o1','--output1', help='tabular output file')
 parser.add_argument('-o2', '--output2', help='images output tarball')
 parser.add_argument('-p', '--partitionFunction', action='store_true', help='partition function')
-parser.add_argument('-m', '--mea', help='mean ensemble accuracy')
+parser.add_argument('-m', '--mea', type=float, help='mean ensemble accuracy')
 parser.add_argument('-s', '--parameters', help='arguments')
 args=parser.parse_args()
 
@@ -19,8 +19,8 @@ myinput = open(args.input)
 specialParameters=""
 if args.partitionFunction:
     specialParameters += ' --partfunc=1'
-if args.mea != 'no':
-    specialParameters += ' --MEA=' + args.mea
+if args.mea:
+    specialParameters += ' --MEA=%s' % args.mea
 
 args.parameters = specialParameters + args.parameters
 
@@ -45,7 +45,7 @@ p = subprocess.check_output(shlex.split('RNAfold '+args.parameters), stdin=myinp
 # 9/11th tab: last string
 lines=p.split('\n')
 o=lines[0]
-if args.mea != 'no':
+if args.mea:
     for x in range(1, len(lines)):
         if x % 7 == 6:
             #idx1a=lines[x].rfind("ensemble")
