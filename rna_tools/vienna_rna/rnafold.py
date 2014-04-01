@@ -9,7 +9,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--input', help='Input file name')
 parser.add_argument('-o1','--output1', help='tabular output file')
 parser.add_argument('-o2', '--output2', help='images output tarball')
-parser.add_argument('-p', '--partitionFunction', help='partition function')
+parser.add_argument('-p', '--partitionFunction', action='store_true', help='partition function')
 parser.add_argument('-m', '--mea', help='mean ensemble accuracy')
 parser.add_argument('-s', '--parameters', help='arguments')
 args=parser.parse_args()
@@ -17,7 +17,7 @@ args=parser.parse_args()
 myinput = open(args.input)
 
 specialParameters=""
-if args.partitionFunction == '1':
+if args.partitionFunction:
     specialParameters += ' --partfunc=1'
 if args.mea != 'no':
     specialParameters += ' --MEA=' + args.mea
@@ -73,7 +73,7 @@ if args.mea != 'no':
             o+='\t'+lines[x]
         if x % 7 == 0:
             o+='\n'+lines[x]
-elif args.partitionFunction == '1':
+elif args.partitionFunction:
     for x in range(1, len(lines)):
         if x % 6 == 5:
             #idx1a=lines[x].rfind("ensemble")
