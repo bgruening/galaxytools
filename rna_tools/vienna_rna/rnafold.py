@@ -18,16 +18,15 @@ myinput = open(args.input)
 
 specialParameters=""
 if args.partitionFunction == '1':
-	specialParameters += ' --partfunc=1'
+    specialParameters += ' --partfunc=1'
 if args.mea != 'no':
-	specialParameters += ' --MEA=' + args.mea
+    specialParameters += ' --MEA=' + args.mea
 
 args.parameters = specialParameters + args.parameters
 
 print args.parameters
 
 p = subprocess.check_output(shlex.split('RNAfold '+args.parameters), stdin=myinput)
-	
 
 # process output into a tab-seperated file
 # when no partition function is calculated only the first four columns are added
@@ -47,67 +46,67 @@ p = subprocess.check_output(shlex.split('RNAfold '+args.parameters), stdin=myinp
 lines=p.split('\n')
 o=lines[0]
 if args.mea != 'no':
-	for x in range(1, len(lines)):
-		if x % 7 == 6:
-			#idx1a=lines[x].rfind("ensemble")
-			#idx1b=lines[x].rfind(";")
-			#idx2=lines[x].rfind("diversity")
-			#o+='\t'+lines[x][idx1a+9:idx1b]+'\t'+lines[x][idx2+10:]
-			o+='\t'+lines[x]
-		if x % 7 == 5:
-			idx2=lines[x].rfind('}')
-			idx1=lines[x].rfind('{')+1
-			o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
-		if x % 7 == 4:
-			idx2=lines[x].rfind('}')
-			idx1=lines[x].rfind('{')+1
-			o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
-		if x % 7 == 3:
-			idx2=lines[x].rfind(']')
-			idx1=lines[x].rfind('[')+1
-			o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
-		if x % 7 == 2:
-			idx2=lines[x].rfind(')')
-			idx1=lines[x].rfind('(')+1
-			o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
-		if x % 7 == 1:
-			o+='\t'+lines[x]
-		if x % 7 == 0:
-			o+='\n'+lines[x]
+    for x in range(1, len(lines)):
+        if x % 7 == 6:
+            #idx1a=lines[x].rfind("ensemble")
+            #idx1b=lines[x].rfind(";")
+            #idx2=lines[x].rfind("diversity")
+            #o+='\t'+lines[x][idx1a+9:idx1b]+'\t'+lines[x][idx2+10:]
+            o+='\t'+lines[x]
+        if x % 7 == 5:
+            idx2=lines[x].rfind('}')
+            idx1=lines[x].rfind('{')+1
+            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+        if x % 7 == 4:
+            idx2=lines[x].rfind('}')
+            idx1=lines[x].rfind('{')+1
+            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+        if x % 7 == 3:
+            idx2=lines[x].rfind(']')
+            idx1=lines[x].rfind('[')+1
+            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+        if x % 7 == 2:
+            idx2=lines[x].rfind(')')
+            idx1=lines[x].rfind('(')+1
+            o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
+        if x % 7 == 1:
+            o+='\t'+lines[x]
+        if x % 7 == 0:
+            o+='\n'+lines[x]
 elif args.partitionFunction == '1':
-	for x in range(1, len(lines)):
-		if x % 6 == 5:
-			#idx1a=lines[x].rfind("ensemble")
-			#idx1b=lines[x].rfind(";")
-			#idx2=lines[x].rfind("diversity")
-			#o+='\t'+lines[x][idx1a+9:idx1b]+'\t'+lines[x][idx2+10:]
-			o+='\t'+lines[x]
-		if x % 6 == 4:
-			idx2=lines[x].rfind('}')
-			idx1=lines[x].rfind('{')+1
-			o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
-		if x % 6 == 3:
-			idx2=lines[x].rfind(']')
-			idx1=lines[x].rfind('[')+1
-			o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
-		if x % 6 == 2:
-			idx2=lines[x].rfind(')')
-			idx1=lines[x].rfind('(')+1
-			o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
-		if x % 6 == 1:
-			o+='\t'+lines[x]
-		if x % 6 == 0:
-			o+='\n'+lines[x]
+    for x in range(1, len(lines)):
+        if x % 6 == 5:
+            #idx1a=lines[x].rfind("ensemble")
+            #idx1b=lines[x].rfind(";")
+            #idx2=lines[x].rfind("diversity")
+            #o+='\t'+lines[x][idx1a+9:idx1b]+'\t'+lines[x][idx2+10:]
+            o+='\t'+lines[x]
+        if x % 6 == 4:
+            idx2=lines[x].rfind('}')
+            idx1=lines[x].rfind('{')+1
+            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+        if x % 6 == 3:
+            idx2=lines[x].rfind(']')
+            idx1=lines[x].rfind('[')+1
+            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+        if x % 6 == 2:
+            idx2=lines[x].rfind(')')
+            idx1=lines[x].rfind('(')+1
+            o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
+        if x % 6 == 1:
+            o+='\t'+lines[x]
+        if x % 6 == 0:
+            o+='\n'+lines[x]
 else:
-	for x in range(1, len(lines)):
-		if x % 3 == 2:
-			idx2=lines[x].rfind(')')
-			idx1=lines[x].rfind('(')+1
-			o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
-		if x % 3 == 1:
-			o+='\t'+lines[x]
-		if x % 3 == 0:
-			o+='\n'+lines[x]
+    for x in range(1, len(lines)):
+        if x % 3 == 2:
+            idx2=lines[x].rfind(')')
+            idx1=lines[x].rfind('(')+1
+            o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
+        if x % 3 == 1:
+            o+='\t'+lines[x]
+        if x % 3 == 0:
+            o+='\n'+lines[x]
 out=open(args.output1,'w')
 out.write(o)
 out.close()
