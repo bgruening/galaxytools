@@ -17,6 +17,8 @@ import zipfile
 import gzip
 
 
+PUBCHEM_URL = "ftp://ftp.ncbi.nlm.nih.gov/pubchem/Bioassay/CSV/Data/"
+
 def main(output, processors = 4, white_list = ['Active','Inconclusive', 'Inactive']):
     """
         Starting multiple processes to download and extract PubChem Assay data.
@@ -24,7 +26,7 @@ def main(output, processors = 4, white_list = ['Active','Inconclusive', 'Inactiv
     td = tempfile.mkdtemp()
     ftp = ftplib.FTP('ftp.ncbi.nih.gov')
     ftp.login()
-    ftp.cwd('/pubchem/Bioassay/Concise/CSV/Data/')
+    ftp.cwd( PUBCHEM_URL )
     filelist = ftp.nlst()
 
     pool = Pool(processes = processors)
@@ -43,7 +45,7 @@ def main(output, processors = 4, white_list = ['Active','Inconclusive', 'Inactiv
 def fetch_convert(args):
     (filename, td, white_list) = args
     tmp_name = os.path.join( td, filename)
-    urllib.urlretrieve(os.path.join('ftp://ftp.ncbi.nih.gov/pubchem/Bioassay/Concise/CSV/Data/', filename), tmp_name)
+    urllib.urlretrieve(os.path.join(PUBCHEM_URL, filename), tmp_name)
 
     temp_dir = tempfile.mkdtemp()
     with zipfile.ZipFile(tmp_name, "r") as z:
@@ -53,15 +55,19 @@ def fetch_convert(args):
     with open(output, 'w+') as out_handle:
         for root, dirs, files in os.walk( temp_dir ):
             for filename in files:
+                # filename encodes the assay_id, it looks like 1.csv.gz
+                # extract the assay id and insert it as column one
+                assay_id = filename.split('.', 1)
                 gzfile_path = os.path.join( root, filename )
                 with gzip.open(gzfile_path, 'rb') as gzfile:
                     gzfile.readline() # skip first line
                     for line in gzfile:
                         cols = line.split(',')
                         PUBCHEM_ACTIVITY_OUTCOME = cols[2]
+                        cols = line.pop(4) # removing the URL column
+                        cols.insert(0, assay_id) # insert assay_id as first column
                         if PUBCHEM_ACTIVITY_OUTCOME in white_list:
                             out_handle.write( '%s' % line.replace(',', '\t') )
-
     os.remove(tmp_name)
 
 
