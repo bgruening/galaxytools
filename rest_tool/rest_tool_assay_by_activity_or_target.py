@@ -1,10 +1,7 @@
 #!/usr/bin/env python
-# Aufruf convert_graph.py --aid list of ids --aid-from-file file
 
 import sys, os
 import argparse
-
-
 import readfile
 
 def main(args):
@@ -25,11 +22,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--activity', type=str,
         help="Activities you are looking for")
-    parser.add_argument('--targettype', type=str,
+    parser.add_argument('--target-type', dest="target_type", type=str,
         help="The target identifier type")
-    parser.add_argument('--targetid', type=str,
+    parser.add_argument('--target-id', dest="target_id", type=str,
         help="The specific target")
-    parser.add_argument('--outfile', type=argparse.FileType('w'),
+    parser.add_argument('--outfile', type=argparse.FileType('w'), required=True,
         help="Specify output file")
     if len(sys.argv) < 2:
         print "Too few arguments..."
