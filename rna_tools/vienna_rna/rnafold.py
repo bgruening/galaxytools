@@ -50,21 +50,21 @@ if args.mea:
         if x % 7 == 6:
             o+='\t'+lines[x]
         if x % 7 == 5:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('{').rstrip('}')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 7 == 4:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('{').rstrip('}')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 7 == 3:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('[').rstrip(']')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 7 == 2:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('(').rstrip(')')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 7 == 1:
             o+='\t'+lines[x]
         if x % 7 == 0:
@@ -74,17 +74,17 @@ elif args.partitionFunction:
         if x % 6 == 5:
             o+='\t'+lines[x]
         if x % 6 == 4:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('{').rstrip('}')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 6 == 3:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('[').rstrip(']')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 6 == 2:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('(').rstrip(')')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 6 == 1:
             o+='\t'+lines[x]
         if x % 6 == 0:
@@ -92,9 +92,9 @@ elif args.partitionFunction:
 else:
     for x in range(1, len(lines)):
         if x % 3 == 2:
-            st=lines[x].split(' ',1)[1]
+            [seq,st]=lines[x].split(' ',1)
             st=st.strip().lstrip('(').rstrip(')')
-            o+='\t'+st
+            o+='\t' + seq + '\t' + st
         if x % 3 == 1:
             o+='\t'+lines[x]
         if x % 3 == 0:
