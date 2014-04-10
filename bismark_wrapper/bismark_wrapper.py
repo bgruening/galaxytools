@@ -344,7 +344,7 @@ def __main__():
 
         if os.path.exists( bam_path ):
 	    if args.sort_bam:
-                cmd = 'samtools sort -@ %s %s %s' % (args.num_threads, args.bam_path, args.output) 
+                cmd = 'samtools sort -@ %s %s %s' % (args.num_threads, bam_path, args.output) 
 	    else:
                 shutil.copy( bam_path, args.output )
         else:
