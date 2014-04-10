@@ -224,7 +224,7 @@ def __main__():
 
     # alignment options
     if args.bowtie2:
-        additional_opts += ' -p %s --bowtie2 ' % args.num_threads
+        additional_opts += ' -p %s --bowtie2 ' % (int(args.num_threads/2)) #divides by 2 here since bismark will spawn 2 (original top and original bottom) jobs with -p threads each
         if args.seed_mismatches:
             additional_opts += ' -N %s ' % args.seed_mismatches
         if args.seed_len:
