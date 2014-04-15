@@ -27,10 +27,10 @@ def __main__():
     # input options
     parser.add_argument( '--bismark_path', dest='bismark_path', help='Path to the bismark perl scripts' )
 
-    parser.add_argument( '--infile', help='Input file in SAM format.' )
+    parser.add_argument( '--infile', help='Input file in SAM or BAM format.' )
     parser.add_argument( '--single-end', dest='single_end', action="store_true" )
     parser.add_argument( '--paired-end', dest='paired_end', action="store_true" )
-
+    
     parser.add_argument( '--report-file', dest='report_file' )
     parser.add_argument( '--comprehensive', action="store_true" )
     parser.add_argument( '--merge-non-cpg', dest='merge_non_cpg', action="store_true" )
@@ -93,9 +93,15 @@ def __main__():
     if args.report_file:
         additional_opts += ' --report '
 
-
-    # Final command:
-    cmd = cmd % (output_dir, additional_opts, args.infile)
+    #detect BAM file, use samtools view if it is a bam file
+    f = open (args.infile, 'rb')
+    sig = f.read(4)
+    f.close()
+    if sig == '\x1f\x8b\x08\x04' :
+	cmd = cmd % (output_dir, additional_opts, '-')	
+	cmd = 'samtools view %s | %s' % (args.infile, cmd )
+    else :
+        cmd = cmd % (output_dir, additional_opts, args.infile)
 
     # Run
     try:
