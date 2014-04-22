@@ -22,6 +22,7 @@ History
 =======
 
 - v0.1: Initial public release
+- v0.2: Using a more flexible converions approach that do not need to interconvert it to SDF
 
 
 =============

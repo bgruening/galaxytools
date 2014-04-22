@@ -44,69 +44,61 @@ p = subprocess.check_output(shlex.split('RNAfold '+args.parameters), stdin=myinp
 #10th tab: energy
 # 9/11th tab: last string
 lines=p.split('\n')
-o=lines[0]
+o=lines[0].replace('\t',' ')
 if args.mea:
     for x in range(1, len(lines)):
         if x % 7 == 6:
-            #idx1a=lines[x].rfind("ensemble")
-            #idx1b=lines[x].rfind(";")
-            #idx2=lines[x].rfind("diversity")
-            #o+='\t'+lines[x][idx1a+9:idx1b]+'\t'+lines[x][idx2+10:]
             o+='\t'+lines[x]
         if x % 7 == 5:
-            idx2=lines[x].rfind('}')
-            idx1=lines[x].rfind('{')+1
-            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('{').rstrip('}')
+            o+='\t' + seq + '\t' + st
         if x % 7 == 4:
-            idx2=lines[x].rfind('}')
-            idx1=lines[x].rfind('{')+1
-            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('{').rstrip('}')
+            o+='\t' + seq + '\t' + st
         if x % 7 == 3:
-            idx2=lines[x].rfind(']')
-            idx1=lines[x].rfind('[')+1
-            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('[').rstrip(']')
+            o+='\t' + seq + '\t' + st
         if x % 7 == 2:
-            idx2=lines[x].rfind(')')
-            idx1=lines[x].rfind('(')+1
-            o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('(').rstrip(')')
+            o+='\t' + seq + '\t' + st
         if x % 7 == 1:
             o+='\t'+lines[x]
         if x % 7 == 0:
-            o+='\n'+lines[x]
+            o+='\n'+lines[x].replace('\t',' ')
 elif args.partitionFunction:
     for x in range(1, len(lines)):
         if x % 6 == 5:
-            #idx1a=lines[x].rfind("ensemble")
-            #idx1b=lines[x].rfind(";")
-            #idx2=lines[x].rfind("diversity")
-            #o+='\t'+lines[x][idx1a+9:idx1b]+'\t'+lines[x][idx2+10:]
             o+='\t'+lines[x]
         if x % 6 == 4:
-            idx2=lines[x].rfind('}')
-            idx1=lines[x].rfind('{')+1
-            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('{').rstrip('}')
+            o+='\t' + seq + '\t' + st
         if x % 6 == 3:
-            idx2=lines[x].rfind(']')
-            idx1=lines[x].rfind('[')+1
-            o+='\t'+lines[x][:idx1-2]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('[').rstrip(']')
+            o+='\t' + seq + '\t' + st
         if x % 6 == 2:
-            idx2=lines[x].rfind(')')
-            idx1=lines[x].rfind('(')+1
-            o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('(').rstrip(')')
+            o+='\t' + seq + '\t' + st
         if x % 6 == 1:
             o+='\t'+lines[x]
         if x % 6 == 0:
-            o+='\n'+lines[x]
+            o+='\n'+lines[x].replace('\t',' ')
 else:
     for x in range(1, len(lines)):
         if x % 3 == 2:
-            idx2=lines[x].rfind(')')
-            idx1=lines[x].rfind('(')+1
-            o+='\t'+lines[x][:-9]+'\t'+lines[x][idx1:idx2]
+            [seq,st]=lines[x].split(' ',1)
+            st=st.strip().lstrip('(').rstrip(')')
+            o+='\t' + seq + '\t' + st
         if x % 3 == 1:
             o+='\t'+lines[x]
         if x % 3 == 0:
-            o+='\n'+lines[x]
+            o+='\n'+lines[x].replace('\t',' ')
 out=open(args.output1,'w')
 out.write(o)
 out.close()

@@ -3,6 +3,7 @@
 """
 
 from galaxy.datatypes.tabular import Tabular
+from galaxy.datatypes import data
 
 
 class Gspan( Tabular ):
