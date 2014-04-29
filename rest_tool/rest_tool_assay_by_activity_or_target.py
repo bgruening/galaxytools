@@ -9,7 +9,7 @@ def main(args):
     url="http://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/"
     if args.activity is None:
         #target
-        url+="target/"+args.targettype+"/"+args.targetid
+        url+= "target/%s/%s" % ( args.targettype, args.targetid )
     else:
         url+="activity/"+args.activity
     url+="/aids/txt"

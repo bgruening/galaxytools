@@ -6,7 +6,7 @@ import argparse
 import readfile
 
 txt_output=["cids", "aids", "sids", "synonyms" ]
-csv_output=["assaysummary"]
+csv_output=["assaysummary", "property"]
 check_for_id_type=["cids", "aids", "sids"]
 
 def main(args):
@@ -23,6 +23,8 @@ def main(args):
         idlist=readfile.getListFromFile(args.id_file)
         idstring=",".join(idlist)
     url+=idstring+"/"+args.operation+"/"
+    if args.operation == "property":
+        url+=args.property_value+"/"
     if args.operation in csv_output:
         url+="csv"
     elif args.operation in txt_output:

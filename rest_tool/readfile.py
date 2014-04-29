@@ -17,3 +17,7 @@ def getresult(url):
     else:
         return connection.read().rstrip()
         
+def store_result(url, outfile):
+    data=getresult(url)
+    outfile.write(data)
+    outfile.close()
