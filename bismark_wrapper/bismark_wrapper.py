@@ -43,6 +43,7 @@ def __main__():
         help='The forward reads file in Sanger FASTQ or FASTA format.' )
     parser.add_argument( '-2', '--mate2', dest='mate2',
         help='The reverse reads file in Sanger FASTQ or FASTA format.' )
+    parser.add_argument( '--sort-bam', dest='sort_bam', action="store_true" )
 
     parser.add_argument( '--output-unmapped-reads', dest='output_unmapped_reads',
         help='Additional output file with unmapped reads (single-end).' )
@@ -176,10 +177,10 @@ def __main__():
     #tmp_bismark_dir = tempfile.mkdtemp( dir='/data/0/galaxy_db/tmp/' )
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join( tmp_bismark_dir, 'results')
-    cmd = 'bismark %(args)s --bam --temp_dir %(tmp_bismark_dir)s -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
+    cmd = 'bismark %(args)s --bam --temp_dir %(tmp_bismark_dir)s --gzip -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
 
     if args.fasta:
-        # he query input files (specified as mate1,mate2 or singles) are FastA
+        # the query input files (specified as mate1,mate2 or singles) are FastA
         cmd = '%s %s' % (cmd, '--fasta')
     elif args.fastq:
         cmd = '%s %s' % (cmd, '--fastq')
@@ -223,7 +224,7 @@ def __main__():
 
     # alignment options
     if args.bowtie2:
-        additional_opts += ' -p %s --bowtie2 ' % args.num_threads
+        additional_opts += ' -p %s --bowtie2 ' % (int(args.num_threads/2)) #divides by 2 here since bismark will spawn 2 (original top and original bottom) jobs with -p threads each
         if args.seed_mismatches:
             additional_opts += ' -N %s ' % args.seed_mismatches
         if args.seed_len:
@@ -327,24 +328,29 @@ def __main__():
 
         bam_files = glob( os.path.join( output_dir, '*.bam') )
         if len( bam_files ) > 1:
-            cmd = 'samtools merge -@ %s -f - %s ' % ( args.num_threads, ' '.join( bam_files ) )
+            cmd = 'samtools merge -@ %s -f %s %s ' % ( args.num_threads, tmp_res, ' '.join( bam_files ) )
 
-            p1 = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
-            proc = subprocess.Popen( ['samtools', 'sort', '-@', str(args.num_threads), '-', tmp_res], stdin=p1.stdout, stdout=tmp_stdout, stderr=tmp_stderr )
+            proc = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
+
+            returncode = proc.wait()
+            tmp_stdout.close()
+            tmp_stderr.close()
+            if returncode != 0:
+                raise Exception, open( tmp_stderr.name ).read()
         else:
-            proc = subprocess.Popen( ['samtools', 'sort', '-@', str(args.num_threads), bam_files[0], tmp_res], stdout=tmp_stdout, stderr=tmp_stderr )
+	    tmp_res = bam_files[0]
 
-        returncode = proc.wait()
-        tmp_stdout.close()
-        tmp_stderr.close()
-        if returncode != 0:
-            raise Exception, open( tmp_stderr.name ).read()
+        bam_path = "%s" % tmp_res
 
-        bam_path = "%s.bam" % tmp_res
         if os.path.exists( bam_path ):
-            shutil.copy( bam_path, args.output )
+	    if args.sort_bam:
+                cmd = 'samtools sort -@ %s %s %s' % (args.num_threads, bam_path, args.output) 
+	    else:
+                shutil.copy( bam_path, args.output )
         else:
             stop_err( 'BAM file no found:\n' + str( bam_path ) )
+		
+
 
     # TODO: look for errors in program output.
     except Exception, e:
