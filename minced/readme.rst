@@ -1,16 +1,19 @@
-Galaxy wrapper for CRISPR RECOGNITION TOOL
-==========================================
+Galaxy wrapper for minced
+=========================
 
-This wrapper is copyright 2012-2013 by Björn Grüning and Omer Alkhnbashi
+This wrapper is copyright 2014 by Björn Grüning and Omer Alkhnbashi
 
-This is a wrapper for the command line tool of CRT.
+MinCED - Mining CRISPRs in Environmental Datasets
 
-CRISPR Recognition Tool - a tool for automatic detection of clustered regularly interspaced palindromic repeats
+MinCED is a program to find Clustered Regularly Interspaced Short Palindromic
+Repeats (CRISPRs) in full genomes or environmental datasets such as metagenomes,
+in which sequence size can be anywhere from 100 to 800 bp. MinCED runs from the
+command-line and was derived from CRT (http://www.room220.com/crt/):
+  Charles Bland et al., CRISPR Recognition Tool (CRT): a tool for automatic
+  detection of clustered regularly interspaced palindromic repeats, BMC
+  Bioinformatics 8, no. 1 (2007): 209.
 
-http://www.room220.com/crt/
-
-For the underlying tool, please cite `Bland C, Ramsey TL, Sabree F, Lowe M, Brown K, Kyrpides NC, Hugenholtz P:
-CRISPR Recognition Tool (CRT): a tool for automatic detection of clustered regularly interspaced palindromic repeats. BMC Bioinformatics. 2007 Jun 18;8(1):209`
+https://github.com/ctSkennerton/minced
 
 
 Installation
