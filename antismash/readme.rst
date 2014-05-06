@@ -1,7 +1,7 @@
 Galaxy wrapper for AntiSmash
 =====================================
 
-This wrapper is copyright 2012-2013 by Björn Grüning.
+This wrapper is copyright 2012-2014 by Björn Grüning.
 
 This is a wrapper for the command line tool of antiSMASH.
 
