@@ -167,13 +167,13 @@ Galaxy installation
 
 1. Clone the latest `Galaxy platform`_::
 
-	hg clone https://bitbucket.org/galaxy/galaxy-central/
+	hg clone https://bitbucket.org/galaxy/galaxy-dist/
 
 .. _Galaxy platform: http://wiki.galaxyproject.org/Admin/Get%20Galaxy
 
 2. Navigate to the galaxy-central folder and update it::
 	
-	cd ~/galaxy-central
+	cd ~/galaxy-dist
 	hg pull
 	hg update
    
