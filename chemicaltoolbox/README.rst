@@ -171,7 +171,7 @@ Galaxy installation
 
 .. _Galaxy platform: http://wiki.galaxyproject.org/Admin/Get%20Galaxy
 
-2. Navigate to the galaxy-central folder and update it::
+2. Navigate to the galaxy-dist folder and update it::
 	
 	cd ~/galaxy-dist
 	hg pull
@@ -182,16 +182,16 @@ Galaxy installation
 3. Create folders for toolshed and dependencies::
 
 	mkdir ~/shed_tools
-	mkdir ~/galaxy-central/tool_deps
+	mkdir ~/galaxy-dist/tool_deps
 
 4. Create configuration file::
 
-	cp ~/galaxy-central/universe_wsgi.ini.sample ~/galaxy-central/universe_wsgi.ini
+	cp ~/galaxy-dist/universe_wsgi.ini.sample ~/galaxy-dist/universe_wsgi.ini
 
 5. Open universe_wsgi.ini and change the dependencies directory::
 
-	LINUX: gedit ~/galaxy-central/universe_wsgi.ini
-	OS X: open -a TextEdit ~/galaxy-central/universe_wsgi.ini
+	LINUX: gedit ~/galaxy-dist/universe_wsgi.ini
+	OS X: open -a TextEdit ~/galaxy-dist/universe_wsgi.ini
 
 6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``, remove the ``#`` if needed
 
@@ -332,9 +332,9 @@ Jmol Editor Installation
 
 - copy the directory ``jmoleditor`` into your Galaxy Root directory ::
 
-	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy-central/
+	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy-dist/
 
-- launch the webserver from your galaxy-central root directory ::
+- launch the webserver from your galaxy-dist root directory ::
 
 	python -m SimpleHTTPServer &
 
