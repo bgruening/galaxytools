@@ -4,26 +4,20 @@ import sys, os
 import argparse
 
 import readfile
+import rest_tool_functions
+#dictionary for the output format
 
-#dicitionary for the output format
-
-dict_output={"cids" :"txt", "aids" : "txt", "sids" : "txt", "description": "xml", "summary" : "xml", "record" : "csv", "classification": "xml", "targets" : "txt", "xrefs" : "txt", "synonyms" : "txt", "property": "csv", "doseresponse" : "csv" }
+dict_output={"cids" :"xml", "aids" : "xml", "sids" : "xml", "description": "xml", "summary" : "xml", "record" : "csv", "classification": "xml", "targets" : "txt", "xrefs" : "txt", "synonyms" : "txt", "property": "csv", "doseresponse" : "csv" }
 
 #alles andere ist xml
 check_for_id_type=["cids", "aids", "sids"]
 
+dic_key_value_type={"assay": "AID", "compound" : "CID", "substance": "SID" }
+dic_key_value_operation={"aids": "AID", "cids" : "CID", "sids": "SID" }
+
 post_id_types=["inchi", "sdf", "smiles"]
 
 id_dict={"compound": "cid", "assay": "aid", "substance" : "sid" }
-
-def getListString(args):
-    if args.id_type_ff == "file":
-        #build comma list
-        list_string=",".join(getListFromFile(open(args.id_value,"r")))
-    else:
-        print (args.id_value)
-        list_string=args.id_value.strip().replace("__cr____cn__", ",")
-    return list_string
 
     
 def main(args):
@@ -32,7 +26,7 @@ def main(args):
     # check if we are post then skip this part otherwise put the ids in the url
     if not args.id_type in post_id_types:
         if args.id_type ==id_dict[args.type]:
-            url+=getListString(args)+"/"
+            url+=readfile.getListString(args)+"/"
         else:
             url+=args.id_value+"/"
 
@@ -40,22 +34,38 @@ def main(args):
     if args.operation == "target" or args.operation == "property" or args.operation == "xrefs":
         url+=args.operation_value+"/"
     
+    create_dict_tsv=False
     if args.operation == "xrefs":
         if "," in args.operation_value:
             url+="xml"
         else:
             url+="txt"
     else:
-        url+=dict_output[args.operation]
+        if args.operation in check_for_id_type:
+            # dont create dictionary if they are the same
+            if dic_key_value_type[args.type] == dic_key_value_operation[args.operation]:
+                url+="txt"
+            else:
+                url+="xml"
+                create_dict_tsv=True
+        else:
+            url+=dict_output[args.operation]
     if args.operation in check_for_id_type and args.id_type not in post_id_types:
             url+="?%s_type=%s" % (args.operation, args.ids_operation_type)
     print(url)
+
     if args.id_type in post_id_types:
         postfile=open(args.id_value,"r")
         post_value=postfile.read()
         post_dict={args.id_type : post_value}
         print(post_dict)
         readfile.store_result_post(url, post_dict, args.outfile)
+    # check if have to create a tsv file
+    elif create_dict_tsv == True:
+        key=dic_key_value_type[args.type]
+        value=dic_key_value_operation[args.operation]
+        dic=rest_tool_functions.get_dict_key_value(url, key, value)
+        rest_tool_functions.write_to_sf(dic, args.outfile, "\t")
     else:
         readfile.store_result_get(url, args.outfile)
 if __name__ == "__main__":

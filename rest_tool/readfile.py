@@ -16,7 +16,16 @@ def getresult(url):
         return ""
     else:
         return connection.read().rstrip()
-        
+
+def getListString(args):
+    if args.id_type_ff == "file":
+        #build comma list
+        list_string=",".join(getListFromFile(open(args.id_value,"r")))
+    else:
+        print (args.id_value)
+        list_string=args.id_value.strip().replace("__cr____cn__", ",")
+    return list_string
+
 def store_result_get(url, outfile):
     data=getresult(url)
     outfile.write(data)
