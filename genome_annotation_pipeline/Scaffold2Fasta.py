@@ -194,7 +194,7 @@ if __name__ == '__main__':
 
     options = parser.parse_args()
 
-    run_test( testdir = '/usr/local/galaxy/galaxy-dist/tools/test/genome_annotation_pipeline/scaffold_tests' )
+    #run_test( testdir = '/usr/local/galaxy/galaxy-dist/tools/test/genome_annotation_pipeline/scaffold_tests' )
 
     run(options.input_sequence, options.output_sequence, options.agp_file, options.locus_tag, options.seq_description)
 
