@@ -176,6 +176,7 @@ def __main__():
     """
     #tmp_bismark_dir = tempfile.mkdtemp( dir='/data/0/galaxy_db/tmp/' )
     tmp_bismark_dir = tempfile.mkdtemp()
+    #tmp_bismark_dir = tempfile.mkdtemp( dir='/var/tmp.large/' )
     output_dir = os.path.join( tmp_bismark_dir, 'results')
     cmd = 'bismark %(args)s --bam --temp_dir %(tmp_bismark_dir)s --gzip -o %(output_dir)s --quiet %(genome_folder)s %(reads)s'
 
