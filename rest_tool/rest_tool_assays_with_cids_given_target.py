@@ -5,23 +5,15 @@ import sys, os
 import argparse
 import readfile
 
-#get every aid as a list
-#returns a dictionary with aid as key and as value the list of cids
-def getAllAssayIDs():
-    url="http://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/type/all/aids/TXT"
-    data=readfile.getresult(url)
-    aidlist=readfile.getListFromString(data)
-    return aidlist
-
-
 def getIDofLine(line):
     arr=line.split(">")
     if len(arr) > 1:
-        aid=arr[1].split("<")[0]
+        aid = arr[1].split("<")[0]
         return aid
     else:
         return "-1"
-        
+
+
 #get xml of all aids with cids for an activity
 def getAllCidsForAssayActivity(activity):
     url="http://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/activity/"+activity+"/aids/txt?list_return=listkey"

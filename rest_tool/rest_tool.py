@@ -2,7 +2,6 @@
 
 import sys, os
 import argparse
-
 import readfile
 
 txt_output=["cids", "aids", "sids", "synonyms" ]
@@ -33,7 +32,7 @@ def main(args):
         url+="xml"
     if args.operation in check_for_id_type and not args.id_type is None:
         url+="?"+args.operation+"_type="+args.id_type
-    print(url)
+    print('The constructed REST URL is: %s' % url)
     data=readfile.getresult(url)
     outfile=args.outfile
     outfile.write(data)
