@@ -1,13 +1,24 @@
 #!/usr/bin/env python
 
 import io
-import urllib2, urllib, httplib
-def getListFromFile(file):
+import urllib2
+import urllib
+import httplib
+
+def getListFromFile( infile ):
     idlist=[]
-    for line in file:
-        if int(line):
-            idlist.append(line.strip())
+    for line in infile:
+        line = line.strip()
+        if line.isdigit():
+            idlist.append( line )
     return idlist
+
+def getListString( args ):
+    if args.id_type_ff == "file":
+        list_string = ",".join( getListFromFile(open(args.id_value, "r")) )
+    else:
+        list_string = args.id_value.strip().replace("__cr____cn__", ",")
+    return list_string
 
 def getresult(url):
     try:
@@ -17,17 +28,8 @@ def getresult(url):
     else:
         return connection.read().rstrip()
 
-def getListString(args):
-    if args.id_type_ff == "file":
-        #build comma list
-        list_string=",".join(getListFromFile(open(args.id_value,"r")))
-    else:
-        print (args.id_value)
-        list_string=args.id_value.strip().replace("__cr____cn__", ",")
-    return list_string
-
 def store_result_get(url, outfile):
-    data=getresult(url)
+    data = getresult(url)
     outfile.write(data)
     outfile.close()
 
