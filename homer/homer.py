@@ -34,7 +34,7 @@ class TagDirectory( Html ):
         rval = ['<html><head><title>HOMER database files</title></head>']
         rval.append('<body>')
         rval.append('<p/>CuffDiff Outputs:<p/><ul>')
-        for fname in os.listdir(dataset.extra_files_path):
+        for fname in os.listdir(dataset.files_path):
             sfname = os.path.split(fname)[-1]
             rval.append( '<li><a href="%s" type="text/html">%s</a>' % ( sfname, sfname ) )
         rval.append( '</ul></body></html>' )
