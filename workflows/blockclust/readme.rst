@@ -139,51 +139,22 @@ BlockClust will automatically download and compile all requirements,
 like EDeN, samtools and so on. It can take up to 1-2 hours.
 
 
-Installation via Galaxy API (recommended)
-=========================================
-
-- Generate an `API Key`_
-- Run the installation script::
-	
-	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o rnateam -r e9b2400cc569 --name blockclust_workflow --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
-
-The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
-`test tool shed`_ or with the following command::
-
-	hg identify http://toolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
-
-You can watch the installation status under: Top Panel → Admin → Manage installed tool shed repositories
-
-
-.. _API Key: http://wiki.galaxyproject.org/Admin/API#Generate_the_Admin_Account_API_Key
-.. _`test tool shed`: http://testtoolshed.g2.bx.psu.edu/
-
-
 Installation via webbrowser
 ===========================
 
 - go to the `admin page`_
 - select *Search and browse tool sheds*
 - Galaxy test tool shed > Sequence Analysis  > blockclust_workflow
-- install chemicaltoolbox
+- install
 
 .. _admin page: http://localhost:8080/admin
-
 
 
 ===============
 Troubleshooting
 ===============
-
-If you have any trouble or the installation did not finish properly, do not hesitate to contact me. However, if the 
-installation fails during the Galaxy installation, you can have a look at the `Galaxy wiki`_. If the ChemicalToolBoX installation fails, 
-you can try to run::
-
-	python ./scripts/api/repair_tool_shed_repository.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o rnateam -r e9b2400cc569 --name blockclust_workflow
-
-That will rerun all failed installation routines. Alternatively, you can navigate to the ChemicalToolBoX repository in 
-your browser and repair manually: 
-Top Panel → Admin → Manage installed tool shed repositories → chemicaltoolbox → Repository Actions → Repair repository
+You can navigate to the blockclust_workflow repository in your browser and repair manually: 
+Top Panel → Admin → Manage installed tool shed repositories → blockclust_workflow → Repository Actions → Repair repository
 
 ------
 
@@ -210,16 +181,11 @@ We highly recommend to use PostgreSQL for any kind of production system.
 Workflows
 =========
 
-An example workflow is located in the `Tool Shed`::
+The BlockClust workflow is located in the `Tool Shed`::
 
-	  http://testtoolshed.g2.bx.psu.edu/view/rnateam/blockclust_workflow
+	  http://toolshed.g2.bx.psu.edu/view/rnateam/blockclust_workflow
 
-You can install the workflow with the API::
-
-	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o rnateam -r e9b2400cc569 --name blockclust_workflow --tool-deps --repository-deps --panel-section-name BlockClust
-
-or as described above via webbrowser. You have now successfully installed the workflow, 
-to import it to all your users you need to go to the admin panel, choose the worklow and import it.
+To import successfully installed the workflow to all your users you need to go to the admin panel, choose the worklow and import it.
 For more information have a look at the Galaxy wiki::
 
 	http://wiki.galaxyproject.org/ToolShedWorkflowSharing#Finding_workflows_in_tool_shed_repositories
@@ -242,7 +208,7 @@ If you use this workflow directly, or a derivative of it, or the associated
 wrappers for Galaxy, in work leading to a scientific publication,
 please cite:
 
-P. Videm  at al...
+Pavankumar Videm, Dominic Rose, Fabrizio Costa, and Rolf Backofen. "BlockClust: efficient clustering and classification of non-coding RNAs from short read RNA-seq profiles." Bioinformatics 30, no. 12 (2014): i274-i282.
 
 
 
@@ -256,7 +222,7 @@ Availability
 
 This workflow is available on the main Galaxy Tool Shed:
 
- http://testtoolshed.g2.bx.psu.edu/view/rnateam/blockclust_workflow 
+ http://toolshed.g2.bx.psu.edu/view/rnateam/blockclust_workflow 
 
 Development is being done on github:
 
@@ -270,7 +236,6 @@ These dependencies should be resolved automatically via the Galaxy Tool Shed:
 
 * http://testtoolshed.g2.bx.psu.edu/view/iuc/package_samtools_0_1_19 
 * http://testtoolshed.g2.bx.psu.edu/view/iuc/package_r_3_0_1
-* http://testtoolshed.g2.bx.psu.edu/view/rnateam/package_segemehl_0_1_6 
 * http://testtoolshed.g2.bx.psu.edu/view/iuc/msa_datatypes 
 * http://testtoolshed.g2.bx.psu.edu/view/iuc/package_infernal_1_1rc4 
 * http://testtoolshed.g2.bx.psu.edu/view/rnateam/blockbuster 
