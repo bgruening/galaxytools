@@ -1,5 +1,5 @@
 <tool id="blockclust" name="BlockClust" version="1.0.0">
-    <description>Non-coding RNA clustering from deep sequencing read profiles</description>
+    <description>efficient clustering and classification of non-coding RNAs from short read RNA-seq profiles</description>
     <requirements>
         <requirement type="package" version="1.0">blockclust</requirement>
         <requirement type="package" version="1.1">eden</requirement>
@@ -10,12 +10,10 @@
     </requirements>
     <version_command>echo '1.0'</version_command>
     <command>
-
         #if str($tool_mode.operation) == "pre":
-            #set $outputdir = $tags_bed.extra_files_path
             BlockClustPipeLine.pl -m PRE -bam $tool_mode.reads_bam -tbed $tags_bed
         #elif str($tool_mode.operation) == "clust":
-            #set $outputdir = $clusters.extra_files_path
+            #set $outputdir = $clusters.files_path
             #set $accept_bed=list()
             #set $reject_bed=list()
             ## prepare annotations
@@ -67,17 +65,14 @@
             cp #echo os.path.join($outputdir, 'hclust_tree.pdf')# $hclust_plot;
             cp #echo os.path.join($outputdir, 'discretized.gspan.tab')# $sim_tab_out
         #elif str($tool_mode.operation) == "post":
-            #set $outputdir = $clusters_bed.extra_files_path
-            BlockClustPipeLine.pl -m POST -cbed $tool_mode.clusters_bed -cm $tool_mode.cmsearch_out -tab $tool_mode.sim_tab_in -o $outputdir;
-            cp #echo os.path.join($outputdir, 'cluster_distribution.pdf')# $cluster_dist;
-            cp #echo os.path.join($outputdir, 'hclust_tree_clusters.pdf')# $cluster_hclust
+            BlockClustPipeLine.pl -m POST -cbed $tool_mode.clusters_bed -cm $tool_mode.cmsearch_out -tab $tool_mode.sim_tab_in -rfam \$BLOCKCLUST_DATA_PATH/rfam_map.txt -o ./;
         #end if
     </command>
     <inputs>
         <conditional name="tool_mode">
             <param name="operation" type="select" label="Select mode of operation">
                 <option value="pre">Pre-processing </option>
-                <option value="clust">Clustering</option>
+                <option value="clust">Clustering and classification</option>
                 <option value="post">Post-processing</option>
             </param>
             <when value="pre">
@@ -123,10 +118,10 @@
         <data format="pdf" name="hclust_plot" label="BlockClust: Hierarchical clustering plot on ${on_string}" >
             <filter> tool_mode["operation"]=="clust"</filter>
         </data>
-        <data format="bed" name="clusters" label="BlockClust: Clustering BED on ${on_string}">
+        <data format="bed" name="clusters" label="BlockClust: BED of predicted clusters on ${on_string}">
             <filter> tool_mode["operation"]=="clust"</filter>
         </data>
-        <data format="bed" name="model_based_pred_bed" label="BlockClust: Model based prediction BED on ${on_string}">
+        <data format="bed" name="model_based_pred_bed" label="BlockClust: Model based predictions BED on ${on_string}">
             <filter>
             ((
                 tool_mode["operation"] == 'clust' and 
@@ -135,7 +130,7 @@
              ))
              </filter>
         </data>
-        <data format="bed" name="nearest_neighbour_pred_bed" label="BlockClust: Nearest neighbour prediction BED on ${on_string}">
+        <data format="bed" name="nearest_neighbour_pred_bed" label="BlockClust: Nearest neighbor predictions BED on ${on_string}">
             <filter>
             ((
                 tool_mode["operation"] == 'clust' and 
@@ -147,10 +142,10 @@
         <data format="tabular" name="sim_tab_out" label="BlockClust: Pairwise similarities on ${on_string}">
             <filter> tool_mode["operation"]=="clust"</filter>
         </data>
-        <data format="pdf" name="cluster_dist" label="BlockClust: Cluster distribution on ${on_string}" >
+        <data format="pdf" name="cluster_dist" from_work_dir="cluster_distribution.pdf" label="BlockClust: Cluster distribution on ${on_string}" >
             <filter> tool_mode["operation"]=="post"</filter>
         </data>
-        <data format="pdf" name="cluster_hclust" label="BlockClust: Hierarchical clustering plot of cluster centroids on ${on_string}" >
+        <data format="pdf" name="cluster_hclust" from_work_dir="hclust_tree_clusters.pdf" label="BlockClust: Hierarchical clustering plot of cluster centroids on ${on_string}" >
             <filter> tool_mode["operation"]=="post"</filter>
         </data>
     </outputs>
@@ -160,26 +155,58 @@
 
 **What it does** 
 
-Clusters the read profiles (i.e., blockgroups) from the blockbuster tool.
+BlockClust is an efficient approach to detect transcripts with similar 
+processing patterns. We propose a novel way to encode expression profiles
+in compact discrete structures, which can then be processed using 
+fast graph-kernel techniques. BlockClust allows both clustering and 
+classification of small non-coding RNAs.
+
+BlockClust runs in three operating modes: 
+
+1) Pre-processing - converts given mapped reads (BAM) into BED file of tags
+
+2) Clustering and classification - of given input blockgroups (output of blockbuster tool) as explained in the original paper.
+
+3) Post-processing - plots for overview of predicted clusters.
+
+For a thorough analysis of your data, we suggest you to use complete blockclust workflow, which contains all three modes of operation.
 
 **Inputs**
 
-BlockClust needs output of tool blockbuster as input 
+BlockClust input files are dependent on the mode of operation:
 
-**Output**
+1. Pre-processing mode:
+    * Binary Sequence Alignment Map (BAM) file
 
-BlockClust produces a fasta file containing clusters.
+2. Clustering and classification:
+    * A blockgroups file generated by blockbuster tool
+    * Select reference genome
+
+3. Post-processing:
+    * Output of cmsearch, searched clusters generated by BlockClust against Rfam
+    * BED file containing clusters generated by BlockClust
+    * Pairwise similarities of blockgroups generated by BlockClust
+
+**Outputs**
+
+1. Pre-processing mode:
+    * BED file of tags with expressions
+
+2. Clustering and classification:
+    * Hierarchical clustering plot of all input blockgroups by their similarity
+    * Pairwise similarities of all input blockgroups
+    * BED file containing predicted clusters
+    * BED file containing prediction of blockgroups by pre-compiled SVM binary classification model.
+
+3. Post-processing:
+    * Plot of distribution of ncRNA families per predicted cluster (overview of cluster precissions). The annotation of ncRNA families are retrieved by searching cluster instances against Rfam database.
+    * Hierarchical clustering made out of centroids of each BlockClust predicted cluster
 
 ------
 
-**Licenses**
-
-If **BlockClust** is used to obtain results for scientific publications it
-should be cited as [1]_.
-
 **References** 
 
-.. [1] 
+Pavankumar Videm, Dominic Rose, Fabrizio Costa, and Rolf Backofen. "BlockClust: efficient clustering and classification of non-coding RNAs from short read RNA-seq profiles." Bioinformatics 30, no. 12 (2014): i274-i282.
 
 
     </help>

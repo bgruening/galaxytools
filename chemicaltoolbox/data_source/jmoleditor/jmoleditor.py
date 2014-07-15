@@ -51,7 +51,7 @@ def __main__():
         job_params[ 'output_data' ] =  [ dict( out_data_name = 'output',
                                                ext = 'data',
                                                file_name = filename,
-                                               extra_files_path = None ) ]
+                                               files_path = None ) ]
         job_params[ 'job_config' ] = dict( GALAXY_ROOT_DIR=GALAXY_ROOT_DIR, GALAXY_DATATYPES_CONF_FILE=GALAXY_DATATYPES_CONF_FILE, TOOL_PROVIDED_JOB_METADATA_FILE = TOOL_PROVIDED_JOB_METADATA_FILE )
     else:
         enhanced_handling = True
