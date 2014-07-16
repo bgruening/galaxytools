@@ -321,8 +321,8 @@ def __main__():
         """
         #tmp_out = tempfile.NamedTemporaryFile( dir=output_dir ).name
         tmp_stdout = open( tmp_out, 'wab' )
-        tmp_err = tempfile.NamedTemporaryFile( dir=output_dir ).name
-        tmp_stderr = open( tmp_err, 'wb' )
+        #tmp_err = tempfile.NamedTemporaryFile( dir=output_dir ).name
+        tmp_stderr = open( tmp_err, 'wab' )
 
         tmp_res = tempfile.NamedTemporaryFile( dir= output_dir).name
 
@@ -338,18 +338,22 @@ def __main__():
             if returncode != 0:
                 raise Exception, open( tmp_stderr.name ).read()
         else:
-	    tmp_res = bam_files[0]
+            tmp_res = bam_files[0]
 
         bam_path = "%s" % tmp_res
 
         if os.path.exists( bam_path ):
-	    if args.sort_bam:
-                cmd = 'samtools sort -@ %s %s %s' % (args.num_threads, bam_path, args.output) 
-	    else:
+            print '## BAM path', bam_path, args.output
+            if args.sort_bam:
+                cmd = 'samtools sort -@ %s %s %s' % (args.num_threads, bam_path, args.output)
+                proc = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
+                returncode = proc.wait()
+                if returncode != 0:
+                    raise Exception("Error during '%s'" % cmd)
+            else:
                 shutil.copy( bam_path, args.output )
         else:
             stop_err( 'BAM file no found:\n' + str( bam_path ) )
-		
 
 
     # TODO: look for errors in program output.
