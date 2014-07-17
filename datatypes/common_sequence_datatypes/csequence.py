@@ -12,8 +12,15 @@ log = logging.getLogger(__name__)
 
 def count_genbank_sequences( filename ):
     """
+    This is not a perfect definition, but should suffice for general usage. It fails to detect any
+    errors that would result in parsing errors like incomplete files.
     """
-    return 0
+    count = 0
+    with open( filename ) as gbk:
+        for line in gbk:
+            if line[0:5] == 'LOCUS':
+                count += 1
+    return count
 
 class GenBank( data.Text ):
     """
