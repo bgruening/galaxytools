@@ -4,10 +4,8 @@ Classes for all common sequence formats
 
 from galaxy.datatypes.data import get_file_peek
 from galaxy.datatypes import data
-from galaxy.datatypes.xml import GenericXml
 from galaxy.datatypes.metadata import MetadataElement
 
-import os
 import logging
 
 log = logging.getLogger(__name__)
@@ -19,7 +17,7 @@ def count_genbank_sequences( filename ):
 
 class GenBank( data.Text ):
     """
-        abstract class for most of the molecule files
+        abstract class for most of the sequence files
     """
     file_ext = "genbank"
 
@@ -28,10 +26,10 @@ class GenBank( data.Text ):
     def set_peek( self, dataset, is_multi_byte=False ):
         if not dataset.dataset.purged:
             dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
-            if (dataset.metadata.number_of_molecules == 1):
+            if (dataset.metadata.number_of_sequences == 1):
                 dataset.blurb = "1 sequence"
             else:
-                dataset.blurb = "%s sequences" % dataset.metadata.number_of_molecules
+                dataset.blurb = "%s sequences" % dataset.metadata.number_of_sequences
             dataset.peek = data.get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
         else:
             dataset.peek = 'file does not exist'
@@ -41,11 +39,12 @@ class GenBank( data.Text ):
         return 'text/plain'
 
     def sniff( self, filename ):
-        pass
+        header = open(filename).read(5)
+        return header == 'LOCUS'
 
     def set_meta( self, dataset, **kwd ):
         """
-        Set the number of molecules in dataset.
+        Set the number of sequences in dataset.
         """
         dataset.metadata.number_of_sequences = count_genbank_sequences( dataset.file_name )
 
