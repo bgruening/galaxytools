@@ -10,17 +10,6 @@ import logging
 
 log = logging.getLogger(__name__)
 
-def count_genbank_sequences( filename ):
-    """
-    This is not a perfect definition, but should suffice for general usage. It fails to detect any
-    errors that would result in parsing errors like incomplete files.
-    """
-    count = 0
-    with open( filename ) as gbk:
-        for line in gbk:
-            if line[0:5] == 'LOCUS':
-                count += 1
-    return count
 
 class GenBank( data.Text ):
     """
@@ -53,7 +42,7 @@ class GenBank( data.Text ):
         """
         Set the number of sequences in dataset.
         """
-        dataset.metadata.number_of_sequences = count_genbank_sequences( dataset.file_name )
+        dataset.metadata.number_of_sequences = self._count_genbank_sequences( dataset.file_name )
 
     def split( cls, input_datasets, subdir_generator_function, split_params):
         """
@@ -61,3 +50,15 @@ class GenBank( data.Text ):
         """
         pass
     split = classmethod(split)
+
+    def _count_genbank_sequences( filename ):
+        """
+        This is not a perfect definition, but should suffice for general usage. It fails to detect any
+        errors that would result in parsing errors like incomplete files.
+        """
+        count = 0
+        with open( filename ) as gbk:
+            for line in gbk:
+                if line[0:5] == 'LOCUS':
+                    count += 1
+        return count
