@@ -6,7 +6,7 @@ That repository should be a starting point to collect all Multiple Sequence Alig
 file formats. 
 Development will happen in https://github.com/bgruening/galaxytools. Feel free to contribute.
 
-Copyright 2013 by:
+Copyright 2013-2014 by:
 
 * Bjoern Gruening
 
@@ -36,6 +36,7 @@ History
 =======
 
 - v1.1.0: Initial public release
+- v1.2.0: Split every datatype into it's own repository and link in the msa.py file
 
 
 
