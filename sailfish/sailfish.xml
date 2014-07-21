@@ -12,26 +12,67 @@
     </stdio>
     <command>
 <![CDATA[
-        sailfish quant -i $index_dir 
-            #if $single_or_paired-single_or_paired_opts == 'single':
-                -l "TYPE=SE"
-                -r $single_or_paired_opts.input_singles
+
+        #if $refTranscriptSource.genomeSource == "history":
+            sailfish index 
+                --transcripts $refTranscriptSource.ownFile
+                --kmerSize $kmer_size
+                --out ./index_dir
+                --threads "\${GALAXY_SLOTS:-4}"
+            #set $index_path = './index_dir'
+        #else:
+            #set $index_path = ${refTranscriptSource.index.fields.path}
+        #end if
+
+        ;
+
+        sailfish quant 
+            --index $index_path 
+            #if $single_or_paired.single_or_paired_opts == 'single':
+                --libtype "TYPE=SE:STRAND=$single_or_paired.strandedness"
+                --unmated_reads $single_or_paired_opts.input_singles
             #else:
-                -1 $single_or_paired_opts.input_mate1
-                -2 $single_or_paired_opts.input_mate2
+                --mates1 $single_or_paired_opts.input_mate1
+                --mates2 $single_or_paired_opts.input_mate2
                 #if $single_or_paired_opts.orientation == "same":
-                    -l "TYPE=PE:O=>>"
+                    --libtype "TYPE=PE:STRAND=$single_or_paired.strandedness:O=>>"
                 #elif $single_or_paired_opts.orientation == "away":
-                    -l "TYPE=PE:O=<>"
+                    --libtype "TYPE=PE:STRAND=$single_or_paired.strandedness:O=<>"
                 #else:
-                    -l "TYPE=PE:O=><"
+                    --libtype "TYPE=PE:STRAND=$single_or_paired.strandedness:O=><"
                 #end if
             #end if
--o <quant_dir>
-
+            --out ./
+            $no_bias_correct
+            --iterations $iterations
+            --delta $delta
+            --threads "\${GALAXY_SLOTS:-4}"
+            $polya
+            --min_abundance $min_abundance
 ]]>
     </command>
     <inputs>
+
+        <conditional name="refTranscriptSource">
+          <param name="TranscriptSource" type="select" label="Select a reference transcriptome from your history or use a built-in index?" help="Built-ins were indexed using default options">
+            <option value="indexed">Use a built-in index</option>
+            <option value="history">Use one from the history</option>
+          </param>
+          <when value="indexed">
+            <param name="index" type="select" label="Select a reference transcriptome" help="If your transcriptome of interest is not listed, contact your Galaxy admin">
+              <options from_data_table="sailfish_indexes">
+                <filter type="sort_by" column="2"/>
+                <validator type="no_options" message="No indexes are available for the selected input dataset"/>
+              </options>
+            </param>
+          </when>  <!-- build-in -->
+          <when value="history">
+                <param name="ownFile" type="data" format="fasta" metadata_name="dbkey" label="Select the reference transcriptome" />
+                <param name="kmer_size" value="" type="integer" value="21" max="32" label="The size of the k-mer on which the index is built"
+                    help="There is a tradeoff here between the distinctiveness of the k-mers and their robustness to errors.  The shorter the k-mers, the more robust they will be to errors in the reads, but the longer the k-mers, the more distinct they will be.  We generally recommend using a k-mer size of at least 20. (--kmerSize)"/>
+          </when>  <!-- history -->
+        </conditional>  <!-- refTranscriptSource -->
+
         <conditional name="single_or_paired">
             <param name="single_or_paired_opts" type="select" label="Is this library mate-paired?">
               <option value="single">Single-end</option>
@@ -39,6 +80,11 @@
             </param>
             <when value="single">
                 <param name="input_singles" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="FASTQ/FASTA file" help="FASTQ file." />
+                <param name="strandedness" type="select" label="Specify the strandedness of the reads">
+                  <option value="S">Sense strand</option>
+                  <option value="A">Antisense strand</option>
+                  <option value="U">unknown strandedness</option>
+                </param>
             </when>
             <when value="paired">
                 <param name="input_mate1" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Mate pair 1" help="FASTQ file." />
@@ -48,13 +94,34 @@
                     <option value="away">Mates are oriented away from each other</option>
                     <option value="toward" selected="True">Mates are oriented toward each other</option>
                 </param>
+                <param name="strandedness" type="select" label="Specify the strandedness of the reads">
+                  <option value="S">Sense strand</option>
+                  <option value="A">Antisense strand</option>
+                  <option value="U">unknown strandedness</option>
+                  <option value="AS">mate 1 is from antisense and mate 2 from sense strand</option>
+                  <option value="SA">mate 1 is from sense strand and mate 2 from antisense</option>
+                </param>
             </when>
         </conditional>
 
+        <param name="no_bias_correct" type="boolean" truevalue="--no_bias_correct" falsevalue="" checked="False" 
+                    label="No bias correction is performed" help=" (--no_bias_correct)"/>
+        <param name="iterations" type="integer" value="0" label="The maximum number of iterations of the EM step to carry out"
+            help="The optimization algorithm that computes the transcript estimates will terminate when either the convergence critera specified by the `-d / --delta` option (below) is met, or when this number of iterations has been performed. (-n / --iterations)"/>
+        <param name="delta" type="float" value="0" label="The maximum allowable delta between consecutive iterations of the optimization procedure"
+            help="If the maximum relative change in any transcripts' abundance is less than this value between two consecutive iterations of the optimization, then the procedure will be considered to have converged and the optimization will terminate. (-d / --delta)"/>
+
+        <param name="polya" type="boolean" truevalue="--polya" falsevalue="" checked="False" 
+                    label="Do not count polyA/polyT k-mers" help=" (--polya)"/>
+
+        <param name="min_abundance" type="integer" value="0" label="The minimum abundance of any transcript"
+            help="Set to 0 the abundance of any transcripts with a computed K-mers Per Kilobase per Million mapped k-mers (KPKM) lower than the provided value. (-m / --min_abundance)"/>
 
     </inputs>
     <outputs>
-        <data name="output1" format="tabular" label="${blast_type.value} $query.name vs @ON_DB_SUBJECT@">
+        <data name="output_quant" format="tabular" from_work_dir="quant.sf" label="${tool.name} on ${on_string} (Quantification)" />
+        <data name="output_bias_corrected_quant" format="tabular" from_work_dir="quant_bias_corrected.sf" label="${tool.name} on ${on_string} (Bias corrected Quantification)">
+            <filter>no_bias_correct == '--no_bias_correct'</filter>
         </data>
     </outputs>
     <tests>
@@ -63,15 +130,42 @@
 <![CDATA[
 **What it does**
 
+Sailfish is a tool for transcript quantification from RNA-seq data.  It
+requires a set of target transcripts (either from a reference or _de-novo_
+assembly) to quantify.  All you need to run Sailfish is a fasta file containing
+your reference transcripts and a (set of) fasta/fastq file(s) containing your
+reads.  Sailfish runs in two phases; indexing and quantification.  The indexing
+step is independent of the reads, and only need to be run one for a particular
+set of reference transcripts and choice of k (the k-mer size). The
+quantification step, obviously, is specific to the set of RNA-seq reads and is
+thus run more frequently.
 
-The first option >> denotes that the mates are oriented in the same direction --- e.g. if the 5' end of mate 1 is 
-upstream from the 3' end, then the 5' end of mate 2 is upstream from its 3' end and vice-versa.
+When the quantification step is finished, you will get at least one 
+file from the Sailfish quantification step.  This file contains a number of columns (which are listed
+in the last of the header lines beginning with '#').  Specifically, the columns
+are (1) Transcript ID, (2) Transcript Length, (3) Transcripts per Million
+(TPM), (4) Reads Per Kilobase per Million mapped reads (RPKM), (5) K-mers
+Per Kilobase per Million mapped k-mers (KPKM), (6) Estimated number of k-mers
+(an estimate of the number of k-mers drawn from this transcript given the
+transcript's relative abundance and length) and (7) Estimated number of reads 
+(an estimate of the number of reads drawn from this transcript given the 
+transcript's relative abnundance and length).  The first two columns are
+self-explanatory, the next four are measures of transcript abundance and the
+final is a commonly used input for differential expression tools.  The
+Transcripts per Million quantification number is computed as described in [1],
+and is meant as an estimate of the number of transcripts, per million observed
+transcripts, originating from each isoform.  Its benefit over the K/RPKM measure
+is that it is independent of the mean expressed transcript length (i.e. if the
+mean expressed transcript length varies between samples, for example, this
+alone can affect differential analysis based on the K/RPKM.)  The RPKM is a
+classic measure of relative transcript abundance, and is an estimate of the
+number of reads per kilobase of transcript (per million mapped reads)
+originating from each transcript. The KPKM should closely track the RPKM, but
+is defined for very short features which are larger than the chosen k-mer
+length but may be shorter than the read length. Typically, you should prefer 
+the KPKM measure to the RPKM measure, since the k-mer is the most natural 
+unit of coverage for Sailfish.
 
-The second option &lt;&gt; denotes that the mates are oriented away from each other. This implies that start 
-of mate1 is closer to start of mate 2 than the end of mate 2, etc.
-
-The third option &gt;&lt; is, perhaps, the most common relative orientation. It denotes that the mates are 
-oriented toward each other, so that the start of mate 1 is farther from the start of mate 2 than it is from the end of mate 2 and vice-versa.
 
 -------
 
