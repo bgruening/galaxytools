@@ -24,7 +24,7 @@ class Json( Text ):
             json.load( open(filename) )
             return True
         except:
-            return True
+            return False
 
     def set_meta( self, dataset, **kwd ):
         """
