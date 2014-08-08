@@ -24,13 +24,13 @@ class Json( Text ):
             json.load( open(filename) )
             return True
         except:
-            return True
+            return False
 
-    def set_meta( self, dataset, **kwd ):
-        """
+    def display_peek( self, dataset ):
+        try:
+            return dataset.peek
+        except:
+            return "JSON file (%s)" % ( data.nice_size( dataset.get_size() ) )
 
-        Set the number of models in dataset.
-        """
-        pass
 
 
