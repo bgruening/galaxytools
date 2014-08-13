@@ -246,12 +246,7 @@ Installation via Galaxy API (recommended)
 - Generate an `API Key`_
 - Run the installation script::
 	
-	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening -r 30ae0e5218b4 --name chemicaltoolbox --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
-
-The -r argument specifies the version of ChemicalToolBoX. You can get the latest revsion number from the 
-`test tool shed`_ or with the following command::
-
-	hg identify http://toolshed.g2.bx.psu.edu/repos/bgruening/chemicaltoolbox
+	python ./scripts/api/install_tool_shed_repositories.py --api YOUR_API_KEY -l http://localhost:8080 --url http://toolshed.g2.bx.psu.edu/ -o bgruening --name chemicaltoolbox --tool-deps --repository-deps --panel-section-name ChemicalToolBoX
 
 You can watch the installation status under: Top Panel → Admin → Manage installed tool shed repositories
 
