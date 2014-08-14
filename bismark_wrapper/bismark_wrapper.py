@@ -17,7 +17,6 @@ def stop_err( msg ):
 
 def __main__():
 
-    print 'tempfile_location',tempfile.gettempdir()
     #Parse Command Line
     parser = argparse.ArgumentParser(description='Wrapper for the bismark bisulfite mapper.')
     parser.add_argument( '-p', '--num-threads', dest='num_threads',
@@ -258,9 +257,6 @@ def __main__():
 
     # Final bismark command:
     cmd = cmd % arguments
-    print 'bismark_cmd:', cmd
-    #sys.stderr.write( cmd )
-    #sys.exit(1)
     # Run
     try:
         tmp_out = tempfile.NamedTemporaryFile().name
@@ -343,15 +339,15 @@ def __main__():
         bam_path = "%s" % tmp_res
 
         if os.path.exists( bam_path ):
-            print '## BAM path', bam_path, args.output
             if args.sort_bam:
-                cmd = 'samtools sort -@ %s %s %s' % (args.num_threads, bam_path, args.output)
-                proc = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
+                cmd = 'samtools sort -@ %s %s sorted_bam' % (args.num_threads, bam_path)
+                proc = subprocess.Popen( args=shlex.split( cmd ) )
                 returncode = proc.wait()
                 if returncode != 0:
                     raise Exception("Error during '%s'" % cmd)
+                shutil.move( 'sorted_bam.bam', args.output )
             else:
-                shutil.copy( bam_path, args.output )
+                shutil.move( bam_path, args.output )
         else:
             stop_err( 'BAM file no found:\n' + str( bam_path ) )
 
