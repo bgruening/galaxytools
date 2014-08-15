@@ -9,25 +9,60 @@
     <command>
 <![CDATA[
         vt @BINARY@
-            -o "${ outfile }"
+            #if str($output_format) == 'bcf':
+                -o normalised.bcf
+            #else:
+                -o normalised.vcf
+            #end if
             ##-q  do not print options and summary []
-            -w  window size for local sorting of variants [10000]
-            -I  $intervals_file
+            -w $window
+
+            #if str( $intervals_file ) != 'None':
+                -I  "${intervals_file}"
+            #end if
+
             ##-i  intervals []
-            -r  $reference_genome
+
+            #if $reference_source.reference_source_selector != "history":
+                -r "${reference_source.reference_genome.fields.path}"
+            #else:
+                -r "${reference_source.reference_genome}"
+            #end if
+
             "${ infile }"
+
+        &&
+
+        #if str($output_format) == 'bcf':
+            mv normalised.bcf "${ outfile }";
+        #else:
+            mv normalised.vcf "${ outfile }";
+        #end if
+
 ]]>
     </command>
     <expand macro="stdio" />
     <inputs>
         <param name="infile" type="data" format="vcf" label="VCF file to be normalised" />
 
-        <param name="reference_genome" type="select" label="Using reference genome">
-              <options from_data_table="fasta_indexes">
-                <filter type="data_meta" ref="infile" key="dbkey" column="1" />
-                <validator type="no_options" message="No reference genome is available for the build associated with the selected input dataset" />
-              </options>
-        </param>
+
+        <conditional name="reference_source">
+            <param name="reference_source_selector" type="select" label="Choose the source for the reference list">
+                <option value="cached" selected="True">Locally cached</option>
+                <option value="history">History</option>
+            </param>
+            <when value="cached">
+                <param name="reference_genome" type="select" label="Using reference genome">
+                    <options from_data_table="fasta_indexes">
+                        <filter type="data_meta" ref="infile" key="dbkey" column="1" />
+                        <validator type="no_options" message="No reference genome is available for the build associated with the selected input dataset" />
+                    </options>
+                </param>
+          </when>
+          <when value="history">
+                <param name="reference_genome" type="data" format="fasta" label="Using reference file" />
+          </when>
+        </conditional>
 
         <param name="intervals_file" type="data" format="bed" optional="True" label="File containing list of intervals" />
         <param name="window" type="integer" value="10000" size="10" label="Window size for local sorting of variants" 
@@ -35,9 +70,18 @@
             <validator type="in_range" min="0"/>
         </param>
 
+        <param name="output_format" type="select" label="Choose the output format" help="">
+            <option value="bcf">BCF</option>
+            <option value="vcf" selected="true">VCF</option>
+        </param>
+
     </inputs>
     <outputs>
-        <data name="outfile" format="vcf" label="${tool.name} on ${on_string}" />
+        <data name="outfile" format="vcf" label="${tool.name} on ${on_string}">
+            <change_format>
+                <when input="output_format" value="bcf" format="bcf" />
+            </change_format>
+        </data>
     </outputs>
     <tests>
         <test>
