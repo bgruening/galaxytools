@@ -1,0 +1,121 @@
+<tool id="ctb_simsearch" name="Similarity Search" version="0.1.1">
+    <description>of fingerprint data sets</description>
+    <requirements>
+        <requirement type="package" version="1.1p1">chemfp</requirement>
+        <requirement type="package" version="2.3.2">openbabel</requirement>
+    </requirements>
+    <command>
+        #if $method_opts.method_opts_selector == "chemfp":
+            simsearch 
+                #if int($method_opts.knn) == 0:
+                    #set $k = 'all'
+                    ## count is only available if k nearest neighbor search is disabled
+                    $method_opts.counts
+                #else:
+                    #set $k = int($method_opts.knn)
+                #end if
+
+                -k $k 
+
+                --threshold $method_opts.threshold
+                --query-format fps
+                --target-format fps
+                -o "${outfile}"
+
+                ## build and search an in-memory data structure (faster for multiple queries)
+                --memory
+
+                #if $method_opts.query_opts.query_opts_selector == "normal":
+                    -q "${method_opts.query_opts.query}"
+                #else:
+                    --NxN
+                #end if
+
+                "${method_opts.query_opts.targets}" 
+        #else:
+            ## OpenBabel needs the original molecule file (molecule.'fileformat') next to the fastsearch index (molecule.fs). We use a composite datatype to accomplish that.
+            ## Furthermore OpenBabel is really picky with file extensions. We need to specify every datatype. I did not find a solution to specify the query-filetype.
+            ## A workaround is to create a symlink with a proper file-extension.
+            #import tempfile
+            #set $temp_file = tempfile.NamedTemporaryFile()
+            #set $temp_link = "%s.%s" % ($temp_file.name, $method_opts.query.ext)
+            $temp_file.close()
+            ln -s $method_opts.query $temp_link;
+            obabel -i fs "${os.path.join($method_opts.fastsearch.files_path,'molecule.fs')}" -S "${temp_link}" -at${method_opts.threshold} -O "${outfile}" -osmi -aa 2>&#38;1;
+            rm $temp_link
+        #end if
+    </command>
+    <inputs>
+
+        <conditional name="method_opts">
+            <param name="method_opts_selector" type="select" label="Subject database/sequences">
+              <option value="chemfp">Chemfp fingerprint file</option>
+              <option value="obabel">OpenBabel Fastsearch Index</option>
+            </param>
+            <when value="chemfp">
+                <conditional name="query_opts">
+                    <param name="query_opts_selector" type="select" label="Query Mode">
+                      <option value="normal">Query molecules are stores in a separate file</option>
+                      <option value="nxn">Target molecules are also queries (NxN)</option>
+                    </param>
+                    <when value="normal">
+                        <param name='query' type='data' format="fps" label='Query molecules'/>
+                        <param name='targets' type='data' format="fps" label='Target molecules'/>
+                    </when>
+                    <when value="nxn">
+                        <param name='targets' type='data' format="fps" label='Target moleculs'/>
+                    </when>
+                </conditional>
+                <param name='knn' type='integer' value='0' label='select the k nearest neighbors' help='0 means all neighbors'>
+                   <validator type="in_range" min="0" />
+                </param>
+                <param name='threshold' type='float' value='0.7' label='threshold' />
+                <param name="counts" type="boolean" truevalue="-c" falsevalue="" checked="false" label="report counts (-c)" help="Is ignored if k nearest neighbor search is enabled" />
+            </when>
+            <when value="obabel">
+                <param name="query" type='data' format="smi,mol,sdf,inchi" label="query"/>
+                <param name="fastsearch" type='data' format="obfs" label="OpenBabel Fastsearch Index"/>
+                <param name="threshold" type='float' label="threshold" value='0.7'/>
+            </when>
+        </conditional>
+
+    </inputs>
+    <outputs>
+        <data name="outfile" format="tabular" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="targets" ftype="fps" value="targets.fps"/>
+            <param name="query" ftype="fps" value="q.fps"/>
+            <param name="k" value='4'/>
+            <param name="th" value='0.7'/>
+            <output name="outfile" ftype="tabular" file="simsearch_on_tragets_and_q.tabular"/>
+        </test>
+    </tests>
+    <help>
+
+
+.. class:: infomark
+
+**What this tool does**
+
+Similarity searches using a variety of different fingerprints using either the chemfp_ FPS type or the Open Babel FastSearch_ index.
+
+.. _chemfp: http://chemfp.com/
+.. _FastSearch: http://openbabel.org/wiki/FastSearch
+
+-----
+
+.. class:: infomark
+
+**Cite**
+
+| The chemfp_ project
+| 
+| N M O'Boyle, M Banck, C A James, C Morley, T Vandermeersch and G R Hutchison - `Open Babel: An open chemical toolbox`_
+
+.. _`Open Babel: An open chemical toolbox`: http://www.jcheminf.com/content/3/1/33
+
+
+    </help>
+</tool>
