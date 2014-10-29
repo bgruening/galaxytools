@@ -1,0 +1,337 @@
+<tool id="bg_sortmerna" name="Filter with SortMeRNA" version="1.9.0">
+    <description>Fast and accurate filtering of ribosomal RNAs in metatranscriptomic data</description>
+    <requirements>
+        <requirement type='package' version="1.9">sortmerna</requirement>
+    </requirements>
+    <stdio>
+        <regex match="This program builds a Burst trie on an input rRNA database"
+            source="both"
+            level="fatal"
+            description="Buildtrie program failed to execute." />
+        <regex match="The database name"
+            source="both"
+            level="fatal"
+            description="The database ${databases} has not been preprocessed using buildtrie before using SortMeRNA." />
+    </stdio>
+  <command interpreter="python">
+    sortmerna.py
+    --sortmerna "
+        $strand_search
+        #if str( $read_family.read_family_selector ) == 'other':
+                --I $input_reads -r $read_family.ratio_parameter
+        #else:
+            $read_family.read_family_selector $input_reads
+        #end if
+
+        #if str( $sequencing_type.sequencing_type_selector ) == 'paired':
+            $sequencing_type.paired_type
+        #end if
+
+        #if $outputs_selected:
+            #if 'accept' in $outputs_selected.value:
+                --accept accept_file
+            #end if
+            #if 'other' in $outputs_selected.value:
+                --other other_file
+            #end if
+        #end if
+
+        $log
+        -a \${GALAXY_SLOTS:-4}
+        "
+        #if str( $databases_type.databases_selector ) == 'history':
+            --buildtrie
+            #for $db in $databases_type.input_databases
+                $db.database_name
+            #end for
+        #else:
+            ## databases path is not directly accessible, must match by hand with LOC file contents
+            ${' '.join([dict([(x[0], x[2]) for x in $databases_type.input_databases.input.options.tool_data_table.data])[y]
+                       for y in  $databases_type.input_databases.value])}
+        #end if
+    </command>
+    <inputs>
+    <conditional name="read_family">
+        <param name="read_family_selector" type="select" format="text" label="Sequencing technology of querying sequences (reads)"
+            help="The Illumina platform is more common for large scale metatranscriptomic projects requiring a high throughput.">
+                <option value="--I">Illumina Solexa</option>
+                <option value="--454">454 Roche</option>
+                <option value="other">Other</option>
+        </param>
+            <when value="other">
+                <param name="ratio_parameter" type="float" value="1"  min="0" max="1"
+                    label="Ratio parameter (the number of hits on the read / read length)"
+                    help="The ratio parameter for SortMeRNA has been set to r=0.25 for Illumina Solexa reads and to r=0.15 for 454 Roche reads.
+                         For other read types, if the sequencing technology produces high quality reads with a low substitution error rate 
+                         (0.1 substitutions per 100 bases, such as Illumina), then the ratio parameter can be set to r=[0.23,0.27].
+                         If the sequencing technology has a high indel error rate (1-2 indels per 100 bases, such as 454 or Ion Torrent),
+                         then the ratio parameter can be set to r=[0.13,0.17]."/>
+            </when>
+    </conditional>
+    <param format="fasta,fastq" name="input_reads" type="data" label="Querying sequences (reads)" help=""/>
+    <conditional name="sequencing_type">
+        <param name="sequencing_type_selector" type="select" label="Sequencing type">
+            <option value="not_paired">Reads are not paired</option>
+            <option value="paired">Reads are paired</option>
+        </param>
+            <when value="paired">
+                <param name="paired_type" type="select" display="radio" label="If one read of a pair is accepted and the other not, output both reads"
+                    help="SortMeRNA does not use the pairing information for filtering RNA,
+                        however if one read of a pair is accepted and the other is not,
+                        the resulting output may break apart the pair into two separate files.
+                        The purpose of 'Reads are paired' option is to preserve the pairing of the reads.">
+                    <option value="--paired-in">to accepted file</option>
+                    <option value="--paired-out">to rejected file</option>
+                </param>
+            </when>
+    </conditional>
+
+    <param name="strand_search" type="select" label="Which strands to search" display="radio">
+        <option value="">Search both strands</option>
+        <option value="-F">Search only the forward strand</option>
+        <option value="-R">Search only the reverse-complementary strand</option>
+    </param>
+
+    <conditional name="databases_type">
+        <param name="databases_selector" type="select" label="Databases to query"
+            help="Public rRNA databases provided with SortMeRNA have been indexed.
+               On the contrary, personal databases must be indexed each time SortMeRNA is launched.
+               Please be patient, this may take some time depending on the size of the given database.">
+            <option value="cached" selected="true">Public ribosomal databases</option>
+            <option value="history">Databases from your history</option>
+        </param>
+        <when value="cached">
+            <param name="input_databases" label="rRNA database" type="select" display="checkboxes" multiple="true">
+                <options from_data_table="rRNA_databases" />
+                <validator type="no_options" message="Select at least one database"/>
+            </param>
+        </when>
+        <when value="history">
+            <repeat name="input_databases" title="Database" min="1">
+                <param name="database_name" type="data" format="fasta" label="rRNA database"
+                    help="Your database will be indexed first, which may take up to several minutes."/>
+            </repeat>
+        </when>
+    </conditional>
+
+    <!-- Outputs -->
+    <param name="outputs_selected" type="select" display="checkboxes" multiple="true" label="Output options">
+        <option value="accept" selected="True">Reads matching to at least one database</option>
+        <option value="other">Reads not found in any database</option>
+    </param>
+    <param  name="log" type="boolean" checked="False" truevalue="--log log_file" falsevalue="" label="Statistics file"
+            help="Generates statistics for the rRNA content of reads, as well as rRNA subunit distribution.">
+    </param>
+
+    </inputs>
+    <outputs>
+        <data format="input" format_source="input_reads" name="output_accept" from_work_dir="accept_file.dat"
+            label="Matching reads on ${on_string} (${input_reads.datatype.file_ext})">
+            <filter>outputs_selected and 'accept' in outputs_selected</filter>
+        </data>
+        <data format="input" format_source="input_reads" name="output_other" from_work_dir="other_file.dat"
+            label="Reads not found on ${on_string} (${input_reads.datatype.file_ext})">
+            <filter>outputs_selected and 'other' in outputs_selected</filter>
+        </data>
+        <data format="txt" name="output_log" label="${tool.name} statistics (txt)" from_work_dir="log_file.log">
+            <filter>log</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="read_family_selector" value="I" />
+            <param name="input_reads" value="sortmerna_wrapper_in1.fastq" />
+            <param name="sequencing_type_selector" value ="not_paired" />
+            <param name="strand_search" value="" />
+            <param name="databases_selector" value="cached" />
+            <param name="input_databases" value="rfam-5.8s,rfam-5s" />
+            <param name="outputs_selected" value="accept,other" />
+            <param name="log" value="" />
+            <param name="options_type_selector" value="less" />
+            <output name="output_accept" file="sortmerna_wrapper_accept1.fastq" />
+            <output name="output_other" file="sortmerna_wrapper_other1.fastq" />
+        </test>
+    </tests>
+  <help>
+**Overview**
+
+SortMeRNA_ is a software designed to rapidly filter ribosomal RNA fragments
+from metatransriptomic data produced by next-generation sequencers.
+It is capable of handling large RNA databases and sorting out all fragments
+matching to the database with high accuracy and specificity.
+
+.. _SortMeRNA: http://bioinfo.lifl.fr/RNA/sortmerna/
+
+If you use this tool, please cite Kopylova E., Noé L. and Touzet H.,
+`"SortMeRNA: Fast and accurate filtering of ribosomal RNAs in metatranscriptomic data"`__,
+Bioinformatics (2012), doi: 10.1093/bioinformatics/bts611.
+
+.. __: http://bioinformatics.oxfordjournals.org/content/28/24/3211
+
+------
+
+**Input**
+
+The input is one file of reads in FASTA or FASTQ format and any number of rRNA databases to search against.
+If the user has two foward-reverse paired-sequencing reads files, they may use
+the script "merge_paired_reads.sh" to interleave the reads into one file, preserving their order.
+
+If the sequencing type for the reads is paired-ended, the user has two options under
+"Sequencing type" to filter the reads and preserve their order in the file.
+For a further example of each option, please refer to Section 4.2.3 in the `SortMeRNA User Manual`_.
+
+.. _sortmerna user manual: http://bioinfo.lifl.fr/RNA/sortmerna/code/SortMeRNA-user-manual-v1.7.pdf
+
+------
+
+**Output**
+
+The output will follow the same format (FASTA or FASTQ) as the reads.
+
+In the standalone version of SortMeRNA, the user may output the matching reads in a separate file per database (--bydbs option). This option will be made available in a future version of Galaxy.
+
+------
+
+**rRNA databases**
+
+SortMeRNA is distributed with 8 representative rRNA databases, which were
+all constructed from the SILVA SSU,LSU (version 111) and the RFAM 5/5.8S
+(version 11.0) databases using the tool UCLUST.
+
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| Representative database  | id % | avergage id% | # seq | Origin                 |  # seq | filtered to remove |
++==========================+======+==============+=======+========================+========+====================+
+| SILVA 16S bacteria       |   85 |         91.6 |  8174 | SILVA SSU Ref NR v.111 | 244077 | 23s                |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| SILVA 16S archaea        |   95 |         96.7 |  3845 | SILVA SSU Ref NR v.111 |  10919 | 23s                |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| SILVA 18S eukarya        |   95 |         96.7 |  4512 | SILVA SSU Ref NR v.111 |  31862 | 26s,28s,23s        |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+|                                                                                                               |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| SILVA 23S bacteria       |   98 |         99.4 |  3055 | SILVA LSU Ref v.111    |  19580 | 16s,26s,28s        |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| SILVA 23s archaea        |   98 |         99.5 |   164 | SILVA LSU Ref v.111    |    405 | 16s,26s,28s        |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| SILVA 28S eukarya        |   98 |         99.1 |  4578 | SILVA LSU Ref v.111    |   9321 | 18s                |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+|                                                                                                               |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| Rfam 5S archaea/bacteria |   98 |         99.2 | 59513 | RFAM                   | 116760 |                    |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+| Rfam 5.8S eukarya        |   98 |         98.9 | 13034 | RFAM                   | 225185 |                    |
++--------------------------+------+--------------+-------+------------------------+--------+--------------------+
+
+
+id % :
+    members of the cluster must have identity at least 'id %' identity with the representative sequence
+
+average id % :
+    average identity of a cluster member to the representative sequence
+
+The user may also choose to  use their own rRNA databases.
+
+.. class:: warningmark
+
+Note that your personal databases are indexed each time, and that
+this may take some time depending on the size of the given database.
+
+------
+
+**SortMeRNA parameter list**
+
+The standalone, command-line version of SortMeRNA uses the following parameters.
+
+For indexing (buildtrie):
+
+This program builds a Burst trie on an input rRNA database file in fasta format
+and stores the material in binary files under the folder '/automata'::
+
+    ./buildtrie --db [path to rrnas database file name {.fasta}]  {OPTIONS}
+
+The list of OPTIONS can be left blank, the default values will be used::
+
+    -L  length of the sliding window (the seed)
+        (default: 18)
+
+    -F  search only the forward strand
+    -R  search only the reverse-complementary strand
+        (default: both strands are searched)
+
+    -h  help
+
+
+
+
+For sorting (sortmerna):
+
+To run SortMeRNA, type in any order after 'sortmerna'::
+
+        --I      [illumina reads file name {fasta/fastq}]
+
+        --454    [roche 454 reads file name {fasta/fastq}]
+
+        -n       number of databases to use (must precede --db)
+
+        --db     [rrnas database name(s)]
+
+                 One database,
+                 ex 1. -n 1 --db /path1/database1.fasta
+
+                 Multiple databases,
+                 ex 2. -n 2 --db /path2/database2.fasta /path3/database3.fasta
+
+        {OPTIONS}
+
+The list of OPTIONS can be left blank, the default values will be used::
+
+        --accept      [accepted reads file name]
+        --other       [rejected reads file name]
+                      (default: no output file is created)
+
+        --bydbs       output the accepted reads by database
+                      (default: concatenated file of reads)
+
+        --log         [overall statistics file name]
+                      (default: no statistics file created)
+
+        --paired-in   put both paired-end reads into --accept file
+        --paired-out  put both paired-end reads into --other file
+                      (default: if one read is accepted and the other is not,
+                      separate the reads into --accept and --other files)
+
+        -r            ratio of the number of hits on the read / read length
+                      (default Illumina: 0.25, Roche 454: 0.15)
+
+        -F            search only the forward strand
+        -R            search only the reverse-complementary strand
+                      (default: both strands are searched)
+
+        -a            number of threads to use
+                      (default: 1)
+
+        -m            (m x 4096 bytes) for loading the reads into memory
+                      ex. '-m 4' means 4*4096 = 16384 bytes will be allocated for the reads
+                      note: maximum -m is 1020039
+                      (default: m = 262144 = 1GB)
+
+        -v            verbose
+                      (default: deactivated)
+
+        -h            help
+
+        --version     version number
+
+------
+
+**Bibliography**
+
+[1] Quast C, Pruesse E, Yilmaz P, Gerken J, Schweer T, Yarza P, Peplies J, Glöckner FO (2013) The SILVA ribosomal RNA gene database project: improved data processing and web-based tools, Nucleic Acids Research, 41 (D1): D590-D596.
+
+[2] Rfam 11.0: 10 years of RNA families. S.W. Burge, J. Daub, R. Eberhardt, J. Tate, L. Barquist, E.P. Nawrocki, S.R. Eddy, P.P. Gardner, A. Bateman. Nucleic Acids Research (2012),  doi: 10.1093/nar/gks1005
+
+[3] Edgar, R.C. (2010) Search and clustering orders of magnitude faster than BLAST, Bioinformatics 26(19), 2460-2461, doi: 10.1093/bioinformatics/btq461
+
+[4] Loman, N. J. and Misra, Raju V and Dallman, Timothy J and Constantinidou, Chrystala and Gharbia, Saheer E and Wain, John and Pallen, Mark J., Performance comparison of benchtop high-throughput sequencing platforms (2012), Nature Biotechnology, 30 (5). pp. 434-439
+  </help>
+</tool>
