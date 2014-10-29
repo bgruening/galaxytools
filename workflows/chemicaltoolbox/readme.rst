@@ -17,7 +17,7 @@ If you use this workflow directly, or a derivative of it, or the associated
 chemicaltoolbox wrappers for Galaxy, in work leading to a scientific publication,
 please cite:
 
-Grüning, B. et al. (2013)
+Grüning, B. et al. (2014)
 ChemicalToolBoX, a new Galaxy for cheminformatics (Submitted).
 
 
