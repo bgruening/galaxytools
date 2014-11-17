@@ -2,10 +2,11 @@ Galaxy wrapper using R and RPy2
 ===============================
 
 These wrappers are based on RPy1 versions included in Galaxy-Main and
-ported by John Chilton to RPy2. Please see the following Mail from
-galaxy-dev:
+ported by John Chilton and Björn Grüning to RPy2 and Galaxy tool dependencies.
+Please see the following Mail from galaxy-dev:
 
   http://lists.bx.psu.edu/pipermail/galaxy-dev/2013-May/014694.html
+
 
 Missing ports to RPy2:
 
@@ -17,25 +18,15 @@ Missing ports to RPy2:
 
 ToDo:
 
-- add tool_dependencies.xml to RPy2 and R-3.0
 - testing
 - porting of missing tools
-
-
-============
-Installation
-============
-
 
 
 =======
 History
 =======
 
-
   - v0.1: no release yet
-
-
 
 
 Wrapper Licence (MIT/BSD style)
