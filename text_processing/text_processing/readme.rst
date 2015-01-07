@@ -35,7 +35,7 @@ Few improvements over the standard tools:
 Requirements
 ------------
 
-1. Coreutils vesion 8.19 or later.
+1. Coreutils vesion 8.22 or later.
 2. AWK version 4.0.1 or later.
 3. SED version 4.2 *with* a special patch
 4. Grep with PCRE support
@@ -84,9 +84,7 @@ Should be done via the Galaxy `Tool Shed`_.
 TODO
 ----
 
-- unit-tests
-- uniqu will get a new --group funciton with the 8.22 release, its currently commended out
-- also shuf will get a major improved performance with large files http://git.savannah.gnu.org/gitweb/?p=coreutils.git;a=commit;h=20d7bce0f7e57d9a98f0ee811e31c757e9fedfff
+- add shuf 
   we can remove the random feature from sort and use shuf instead
 - move some advanced settings under a conditional, for example the cut tools offers to cut bytes
 - cut wrapper has some output conditional magic for interval files, that needs to be checked
@@ -99,7 +97,7 @@ License
 -------
 
 * Copyright (c) 2009-2013   A. Gordon  (gordon <at> cshl dot edu)
-* Copyright (c) 2013   B. Gruening  (bjoern dot gruening <at> gmail dot com)
+* Copyright (c) 2013-2015   B. Gruening  (bjoern dot gruening <at> gmail dot com)
 
 
 Permission is hereby granted, free of charge, to any person obtaining 
