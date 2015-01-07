@@ -2,7 +2,9 @@ Galaxy wrappers for common unix text-processing tools
 =====================================================
 
 The initial work was done by Assaf Gordon and Greg Hannon's lab ( http://hannonlab.cshl.edu ) 
-in Cold Spring Harbor Laboratory ( http://www.cshl.edu ).
+in Cold Spring Harbor Laboratory ( http://www.cshl.edu ). In late 2013 maintainence and 
+further development was taken over by Bjoern Gruening. Feel free to contribute any general purpose
+text manipulation tool to this repository.
 
 
 Tools:
