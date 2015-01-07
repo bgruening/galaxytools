@@ -1,0 +1,281 @@
+#!/usr/bin/env perl
+##
+## Sort-header - wrapper for GNU sort with header-line support
+##
+## Copyright(C) A. Gordon
+## license AGPLv3+
+##
+use strict;
+use warnings;
+use Data::Dumper;
+use IO::Handle;
+use Getopt::Long qw(:config bundling no_ignore_case_always);
+
+## Forward declarations
+sub add_standard_sort_param(@);
+sub add_standard_sort_param_value(@);
+sub forbidden_sort_param(@);
+sub show_help();
+sub show_version();
+sub show_examples();
+sub parse_commandline_options();
+sub reassign_input_output();
+sub process_header_lines();
+sub run_sort();
+sub read_line_non_buffered();
+
+
+##
+## Runtime options
+##
+my $PROGRAM="sort-header";
+my $VERSION=0.4;
+
+my $check_only=undef;
+my $input_file=undef;
+my $output_file=undef;
+my $field_separator=undef;
+my $header_lines =1 ;
+my $debug=undef;
+my $sort_exit_code=1; #by default, assume some error
+
+my @sort_options;
+
+##
+## Program Start
+##
+parse_commandline_options();
+reassign_input_output();
+process_header_lines();
+run_sort();
+exit($sort_exit_code);
+##
+## Program End
+##
+
+sub show_examples()
+{
+print<<EOF;
+Sorting a file with a header line:
+
+\$ cat input.txt
+Fruit	Color	Price
+Banana	Yellow	4.1
+Avocado	Green	8.0
+Apple	Red	3.0
+Melon	Green	6.1
+
+# By default, 'sort-header' assumes 1 header line
+# (no need to use --header in this case).
+
+\$ sort-header -k3,3nr input.txt
+Fruit	Color	Price
+Avocado	Green	8.0
+Melon	Green	6.1
+Banana	Yellow	4.1
+Apple	Red	3.0
+
+EOF
+	exit(0);
+}
+
+sub show_help()
+{
+print<<EOF;
+${PROGRAM}: Wrapper for GNU sort, allowing sorting files with header lines.
+
+Usage: $PROGRAM [HEADER-OPTIONS] [GNU sort Options] [INPUT-FILE]
+
+HEADER-OPTIONS: the following options are supported by '${PROGRAM}':
+
+   --header N    =  Treat the first N lines as header lines.
+                    These line will NOT be sorted. They will be passed
+		    directly to the output file. (default: 1)
+
+   --version     =  Print ${PROGRAM}'s version.
+
+   --debugheader =  Print debug messages (relating to ${PROGRAM}'s operation).
+
+   --help        =  Show this help screen.
+
+   --examples    =  Show usage examples.
+
+GNU sort options:
+   Most of the standard GNU sort options are supported and passed to GNU sort.
+   The following options can not be used with '${PROGRAM}':
+
+   -m --merge           => ${PROGRAM} can only sort one file, not merge multiple files.
+   -c -C --check        => Currently not supported
+   --files0-from        => Currently not supported
+   -z --zero-terminated => Currently not supported
+
+INPUT-FILE:
+   If INPUT-FILE is not specified, $PROGRAM will use STDIN (just like GNU sort).
+
+EOF
+	exit(0);
+}
+
+sub show_version()
+{
+print<<EOF;
+$PROGRAM $VERSION
+Copyright (C) 2010 A. Gordon (gordon\@cshl.edu)
+License AGPLv3+: Affero GPL version 3 or later (http://www.gnu.org/licenses/agpl.html)
+
+To see the GNU's sort version, run:
+	sort --version
+EOF
+	exit(0);
+}
+
+sub parse_commandline_options()
+{
+	my $rc = GetOptions(
+		"ignore-leading-blanks|b" => \&add_standard_sort_param,
+		"dictionary-order|d" => \&add_standard_sort_param,
+		"ignore-case|f" => \&add_standard_sort_param,
+		"general-numeric-sort|g" => \&add_standard_sort_param,
+		"ignore-nonprinting|i" => \&add_standard_sort_param,
+		"month-sort|M" => \&add_standard_sort_param,
+		"human-numeric-sort|h" => \&add_standard_sort_param,
+		"numeric-sort|n" => \&add_standard_sort_param,
+		"random-source=s" => \&add_standard_sort_param_value,
+		"random-sort|R" => \&add_standard_sort_param,
+		"reverse|r" => \&add_standard_sort_param,
+		"sort=s" => \&add_standard_sort_param_value,
+		"version-sort|V" => \&add_standard_sort_param,
+
+		"check|c" => \&forbidden_sort_param,
+		"C" => \&forbidden_sort_param,
+		"compress-program=s" => \&add_standard_sort_param_value,
+		"debug" => \&add_standard_sort_param,
+
+		"files0-from=s" => \&forbidden_sort_param,
+
+		"key|k=s" => \&add_standard_sort_param_value,
+		"merge|m" => \&forbidden_sort_param,
+		"batch-size=i" => \&forbidden_sort_param,
+
+		"parallel=i" => \&add_standard_sort_param_value,
+
+		"output|o=s" => \$output_file,
+
+		"stable|s" => \&add_standard_sort_param,
+		"buffer-size|S=s" => \&add_standard_sort_param_value,
+
+		"field-separator|t=s" => \&add_standard_sort_param_value,
+		"temporary-directory|T=s" => \&add_standard_sort_param_value,
+		"unique|u" => \&add_standard_sort_param,
+
+		"zero-terminated|z" => \&forbidden_sort_param,
+
+		"help" => \&show_help,
+		"version" => \&show_version,
+		"examples" => \&show_examples,
+
+		"header=i" => \$header_lines,
+		"debugheader" => \$debug,
+		);
+
+	exit 1 unless $rc;
+
+	my @INPUT_FILES = @ARGV;
+
+	die "$PROGRAM: error: invalid number of header lines ($header_lines)\n" unless $header_lines>=0;
+	die "$PROGRAM: error: Multiple input files specified. This program can sort only a signle file.\n" if (scalar(@INPUT_FILES)>1);
+	$input_file = shift @INPUT_FILES if scalar(@INPUT_FILES)==1;
+
+	if ($debug) {
+		warn "$PROGRAM: number of header lines = $header_lines\n";
+		warn "$PROGRAM: PASS-to-Sort options:\n", Dumper(\@sort_options), "\n";
+	}
+}
+
+sub reassign_input_output()
+{
+	if ($output_file) {
+		warn "$PROGRAM: Re-assigning STDOUT to '$output_file'\n" if $debug;
+		open OUTPUT, '>', $output_file or die "$PROGRAM: Error: failed to create output file '$output_file': $!\n";
+		STDOUT->fdopen(\*OUTPUT, 'w') or die "$PROGRAM: Error: failed to reassign STDOUT to '$output_file': $!\n";
+	}
+
+
+	if ($input_file) {
+		warn "$PROGRAM: Re-assigning STDIN to '$input_file'\n" if $debug;
+		open INPUT, '<', $input_file or die "$PROGRAM: Error: failed to open input file '$input_file': $!\n";
+		STDIN->fdopen(\*INPUT, 'r') or die "$PROGRAM: Error: failed to reassign STDIN to '$input_file': $!\n";
+	}
+}
+
+sub process_header_lines()
+{
+	warn "$PROGRAM: Reading $header_lines header lines...\n" if $debug;
+	for (my $i=0; $i<$header_lines; $i++) {
+		my $line = read_line_non_buffered();
+		exit unless defined $line;
+		print $line;
+	}
+}
+
+sub run_sort()
+{
+	warn "$PROGRAM: Running GNU sort...\n" if $debug;
+	system('sort', @sort_options);
+	if ($? == -1) {
+		die "$PROGRAM: Error: failed to execute 'sort': $!\n";
+	}
+	elsif ($? & 127) {
+		my $signal = ($? & 127);
+		kill 2, $$ if $signal == 2; ##if sort was interrupted (CTRL-C) - just pass it on and commit suicide
+		die "$PROGRAM: Error: 'sort' child-process died with signal $signal\n";
+	}
+	else {
+		$sort_exit_code = ($? >> 8);
+	}
+}
+
+
+sub add_standard_sort_param(@)
+{
+	my ($obj)=  @_;
+	add_standard_sort_param_value($obj, undef);
+}
+
+sub add_standard_sort_param_value(@)
+{
+	my ($obj,$value)=  @_;
+
+	my $option = "" . $obj ; #stringify the optino object, get the option name.
+
+	if (length($option)==1) {
+		$option = "-" . $option ;
+	} else {
+		$option = "--" . $option ;
+	}
+	push @sort_options, $option ;
+	push @sort_options, $value if $value;
+}
+
+sub forbidden_sort_param(@)
+{
+	my ($obj,$value)=  @_;
+	my $option = "" . $obj ; #stringify the optino object, get the option name.
+
+	die "$PROGRAM: Error: option '$option' can not be used with this program. If you must use it, run GNU sort directly. see --help for more details.\n";
+}
+
+sub read_line_non_buffered()
+{
+	my $line = '';
+	while ( 1 ) {
+		my $c;
+		my $rc = sysread STDIN, $c, 1;
+		die "$PROGRAM: STDIN Read error: $!" unless defined $rc;
+		return $line if $rc==0 && $line;
+		return undef if $rc==0 && (!$line);
+		$line .= $c ;
+		return $line if ( $c eq "\n");
+	}
+}
+
