@@ -30,7 +30,7 @@ def blocks(iterable):
 
 IMPORTANT_INFO = {
     'trna': re.compile(r'tRNA-(?P<codon>[A-Za-z]{3})\((?P<anticodon>[A-Za-z]{3})\)'),
-    'trna-alt': re.compile(r'tRNA-\?\((?P<codon>[^\)]+)\)\((?P<anticodon>[A-Za-z]{3,})\)'),
+    'trna-alt': re.compile(r'tRNA-\?\((?P<codon>[^\)]+)\)\((?P<anticodon>[A-Za-z]{2,})\)'),
     'bases': re.compile(r'(?P<bases>[0-9]+) bases, %GC = (?P<gc>[0-9.]+)'),
     'sequence': re.compile(r'Sequence (?P<complement>[c]{0,1})\[(?P<start>\d+),(?P<end>\d+)\]'),
     'possible_pseudogene': re.compile(r'(?P<pseudo>Possible Pseudogene)'),
