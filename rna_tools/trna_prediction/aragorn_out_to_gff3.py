@@ -78,44 +78,67 @@ possible_blocks = [line for line in blocks(stdin_data)]
 
 seqid = None
 print '##gff-version-3'
-for block in possible_blocks:
+# We're off to a GREAT start, if I'm accessing by index you just know that I'm going to do terrible
+# awful things
+for block_idx in range(len(possible_blocks)):
+    block = possible_blocks[block_idx]
     data = None
     fasta_defline = None
-    if start_pattern(block[0]):
-        if block[0].startswith('Searching for') or 'nucleotides in sequence' in block[-1]:
-            try:
-                fasta_defline = block[-2].strip()
-            except:
-                pass
-        else:
-            data = important_info(block)
 
-            # I am not proud of any of this.
-            if len(data.keys()) == 0:
-                data = important_info_tmrna(block)
-                if len(data.keys()) == 0:
-                    data = {}
-                else:
-                    data['type'] = 'tmrna'
-            else:
-                data['type'] = 'trna'
+    if block[0].startswith('Searching for') or 'nucleotides in sequence' in block[-1]:
+        # Try and get a sequence ID out of it
+        try:
+            fasta_defline = block[-2].strip()
+        except:
+            # Failing that, ignore it.
+            pass
     else:
-        if 'nucleotides in sequence' in block[-1]:
-            try:
-                fasta_defline = block[-2].strip()
-            except:
-                pass
-        pass
+        # They DUPLICATE results in multiple places, including a fasta version
+        # in the 'full report'.
+        possible_ugliness = [x for x in block if x.startswith('>t')]
+        if len(possible_ugliness) > 0:
+            continue
 
+        # However, if it didn't have one of those all important pieces of
+        # information, then it's either a different important piece of
+        # information, or complete junk
+        data = important_info(block)
+
+        # I am not proud of any of this. We essentially say "if that block
+        # didn't come up with useful info, then try making it a tmrna"
+        if len(data.keys()) == 0:
+            data = important_info_tmrna(block)
+            # And if that fails, just none it.
+            if len(data.keys()) == 0:
+                data = None
+            else:
+                # But if it didn't, confirm that we're a tmRNA
+                data['type'] = 'tmRNA'
+        else:
+            # If we did have keys, and didn't pass through any of the tmRNA
+            # checks, we're tRNA
+            data['type'] = 'tRNA'
+
+    # If we got a sequence ID in this block, set the defline
+    if 'nucleotides in sequence' in block[-1]:
+        try:
+            fasta_defline = block[-2].strip()
+        except:
+            pass
+
+    # if a defline is available, try and extract the fasta header ID
     if fasta_defline is not None:
         try:
             seqid = fasta_defline[0:fasta_defline.index(' ')]
         except:
             seqid = fasta_defline
 
-    if data is not None and len(data.keys()) > 0:
+    # If there's data
+    if data is not None and len(data.keys()) > 1:
 
-        if data['type'] == 'trna':
+        # Deal with our flags/notes.
+        if data['type'] == 'tRNA':
+            # Are these acceptable GFF3 tags?
             notes = {
                 'Codon': data['codon'],
                 'Anticodon': data['anticodon'],
