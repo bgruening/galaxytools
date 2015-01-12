@@ -52,7 +52,7 @@ def important_info(block):
 
 IMPORTANT_INFO_TMRNA = {
     'tag_peptide': re.compile(r'Tag peptide:\s+(?P<pep>[A-Z*]*)'),
-    'location': re.compile(r'Location \[(?P<start>\d+),(?P<end>\d+)\]'),
+    'location': re.compile(r'Location (?P<complement>[c]{0,1})\[(?P<start>\d+),(?P<end>\d+)\]'),
 }
 INFO_GROUPS_TMRNA = ('start', 'end', 'pep')
 
