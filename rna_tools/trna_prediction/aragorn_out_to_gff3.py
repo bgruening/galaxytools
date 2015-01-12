@@ -147,10 +147,10 @@ for block_idx in range(len(possible_blocks)):
                 notes['Note'] = 'Possible pseudogene'
         else:
             notes = {
-                'Note': '"Tag peptide: ' + data['pep'] + '"'
+                'Note': 'Tag peptide: ' + data['pep'] + ''
             }
 
-        notestr = ';'.join(['%s=%s' % (k,v) for k,v in notes.iteritems()])
+        notestr = ';'.join(['%s="%s"' % (k,v) for k,v in notes.iteritems()])
 
         print '\t'.join([
             seqid,
