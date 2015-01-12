@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import re
-import sys
 
 def start_pattern(string):
     return re.match(r'^[0-9]+\.$', string) \
@@ -20,7 +19,7 @@ def blocks(iterable):
         else:
             run_of_blanklines = 0
 
-        if start_pattern(line) or run_of_blanklines > 3 or 'Mean G+C' in line:
+        if start_pattern(line) or run_of_blanklines > 2 or 'Mean G+C' in line:
             if accumulator:
                 yield accumulator
                 accumulator = [line]
@@ -31,7 +30,7 @@ def blocks(iterable):
 
 IMPORTANT_INFO = {
     'trna': re.compile(r'tRNA-(?P<codon>[A-Za-z]{3})\((?P<anticodon>[A-Za-z]{3})\)'),
-    'trna-pseudo': re.compile(r'tRNA-\?\((?P<codon>[^\)]+)\)\((?P<anticodon>[A-Za-z]{3,})\)'),
+    'trna-alt': re.compile(r'tRNA-\?\((?P<codon>[^\)]+)\)\((?P<anticodon>[A-Za-z]{3,})\)'),
     'bases': re.compile(r'(?P<bases>[0-9]+) bases, %GC = (?P<gc>[0-9.]+)'),
     'sequence': re.compile(r'Sequence (?P<complement>[c]{0,1})\[(?P<start>\d+),(?P<end>\d+)\]'),
     'possible_pseudogene': re.compile(r'(?P<pseudo>Possible Pseudogene)'),
@@ -51,9 +50,31 @@ def important_info(block):
                         pass
     return info
 
+IMPORTANT_INFO_TMRNA = {
+    'tag_peptide': re.compile(r'Tag peptide:\s+(?P<pep>[A-Z*]*)'),
+    'location': re.compile(r'Location \[(?P<start>\d+),(?P<end>\d+)\]'),
+}
+INFO_GROUPS_TMRNA = ('start', 'end', 'pep')
 
-input_raw = open(sys.argv[1],'r').readlines()
-possible_blocks = [line for line in blocks(input_raw)]
+def important_info_tmrna(block):
+    info = {}
+    for line in block:
+        for matcher in IMPORTANT_INFO_TMRNA:
+            matches = IMPORTANT_INFO_TMRNA[matcher].search(line)
+            if matches:
+                for group in INFO_GROUPS_TMRNA:
+                    try:
+                        info[group] = matches.group(group)
+                    except:
+                        pass
+    return info
+
+import fileinput
+stdin_data = []
+for line in fileinput.input():
+    stdin_data.append(line)
+
+possible_blocks = [line for line in blocks(stdin_data)]
 
 seqid = None
 print '##gff-version-3'
@@ -68,6 +89,16 @@ for block in possible_blocks:
                 pass
         else:
             data = important_info(block)
+
+            # I am not proud of any of this.
+            if len(data.keys()) == 0:
+                data = important_info_tmrna(block)
+                if len(data.keys()) == 0:
+                    data = {}
+                else:
+                    data['type'] = 'tmrna'
+            else:
+                data['type'] = 'trna'
     else:
         if 'nucleotides in sequence' in block[-1]:
             try:
@@ -77,22 +108,31 @@ for block in possible_blocks:
         pass
 
     if fasta_defline is not None:
-        seqid = fasta_defline[0:fasta_defline.index(' ')]
+        try:
+            seqid = fasta_defline[0:fasta_defline.index(' ')]
+        except:
+            seqid = fasta_defline
 
-    if data is not None:
-        notes = {
-            'Codon': data['codon'],
-            'Anticodon': data['anticodon'],
-        }
-        if 'pseudo' in data:
-            notes['Note'] = 'Possible pseudogene'
+    if data is not None and len(data.keys()) > 0:
+
+        if data['type'] == 'trna':
+            notes = {
+                'Codon': data['codon'],
+                'Anticodon': data['anticodon'],
+            }
+            if 'pseudo' in data:
+                notes['Note'] = 'Possible pseudogene'
+        else:
+            notes = {
+                'Note': '"Tag peptide: ' + data['pep'] + '"'
+            }
 
         notestr = ';'.join(['%s=%s' % (k,v) for k,v in notes.iteritems()])
 
         print '\t'.join([
             seqid,
             'aragorn',
-            'tRNA',  #TODO: tmRNA?
+            data['type'],
             data['start'],
             data['end'],
             '.',
