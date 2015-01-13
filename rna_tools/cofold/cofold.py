@@ -8,20 +8,12 @@ import subprocess
 parser = argparse.ArgumentParser()
 parser.add_argument('-i', '--input', help='Input file name')
 parser.add_argument('-o1','--output1', help='tabular output file')
-parser.add_argument('-p', '--partitionFunction', action='store_true', help='partition function')
-parser.add_argument('-m', '--mea', type=float, help='mean ensemble accuracy')
 parser.add_argument('-s', '--parameters', help='arguments')
 args=parser.parse_args()
 
 myinput = open(args.input)
 
-specialParameters=""
-if args.partitionFunction:
-    specialParameters += ' --partfunc=1'
-if args.mea:
-    specialParameters += ' --MEA=%s' % args.mea
-
-parameters = specialParameters + args.parameters
+parameters = args.parameters
 
 # we assume that the param files are located next to the python dir
 script_dir = os.path.dirname(os.path.realpath(__file__))
