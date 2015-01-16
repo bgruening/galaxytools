@@ -1,0 +1,208 @@
+<tool id="rbc_mirdeep2_mapper" name="MiRDeep2 Mapper" version="2.0.0">
+    <macros>
+        <macro name="map_params">
+            <conditional name="refGenomeSource">
+                <param name="genomeSource" type="select" label="Will you select a reference genome from your history or use a built-in index?" help="Map to genome. (-p)">
+                    <option value="indexed">Use a built-in index</option>
+                    <option value="history">Use one from the history</option>
+                </param>
+                <when value="indexed">
+                    <param name="index" type="select" label="Select a reference genome" help="If your genome of interest is not listed, contact your Galaxy admin.">
+                        <options from_data_table="bowtie_indexes">
+                        <filter type="sort_by" column="2"/>
+                            <validator type="no_options" message="No indexes are available for the selected input dataset"/>
+                        </options>
+                    </param>
+                </when> <!-- build-in -->
+                <when value="history">
+                    <param name="ownFile" type="data" format="fasta" metadata_name="dbkey" label="Select the reference genome" />
+                </when> <!-- history -->
+            </conditional> <!-- refGenomeSource -->
+            <param name="map_mismatch" type="boolean" truevalue="-q" falsevalue="" checked="false" label="Map with one mismatch in the seed (mapping takes longer)" help="(-q)"/>
+            <param name="map_threshold" value="5" type="integer" optional="false" label="A read is allowed to map up to this number of positions in the genome" help="Map threshold. (-r)">
+                <validator type="in_range" min="1" message="Minimum value is 1"/>
+            </param>
+        </macro>
+    </macros>
+    <description>
+<![CDATA[
+process and map reads to a reference genome
+]]>
+    </description>
+    <requirements>
+        <requirement type="package" version="2.0">mirdeep2_mapper</requirement>
+        <requirement type="package" version="0.12.7">bowtie</requirement>
+        <requirement type="package" version="5.18.1">perl</requirement>
+    </requirements>
+
+    <command>
+<![CDATA[
+
+        #if $operation.collapse_map == "collapse_and_map" or $operation.collapse_map == "only_map"
+            #if $operation.refGenomeSource.genomeSource == "history"
+                bowtie-build $operation.refGenomeSource.ownFile custom_bowtie_indices &&
+            #end if
+        #end if
+        mapper.pl 
+    
+        $reads
+        
+        #if $reads.extension.startswith("fasta")
+            -c
+        #else if $reads.extension.startswith("fastq")
+            -e -h
+        #end if
+
+        $remove_non_canon
+        
+        $convert_rna_dna
+
+        #if $clip_adapter.clip == "true"
+            -k $clip_adapter.adapter_seq
+        #end if
+
+        -l $discard_short_reads
+
+        #if $operation.collapse_map == "collapse_and_map" or $operation.collapse_map == "only_collapse"
+            -m -s $output_reads_collapsed
+        #end if
+        
+        #if $operation.collapse_map == "collapse_and_map" or $operation.collapse_map == "only_map"
+            -p 
+            
+            #if $operation.refGenomeSource.genomeSource == "history"
+                custom_bowtie_indices
+            #else
+                $index
+            #end if
+
+            $operation.map_mismatch
+
+            -r $operation.map_threshold
+            
+            -t $output_mapping
+        #end if
+
+        -v -n
+]]>
+    </command>
+    <stdio>
+        <!-- Anything other than zero is an error -->
+        <exit_code range="1:" />
+        <exit_code range=":-1" />
+        <!-- In case the return code has not been set propery check stderr too -->
+        <regex match="Error:" />
+        <regex match="Exception:" />
+    </stdio>
+    <inputs>
+        <param format="fastq, fasta" name="reads" type="data" optional="false" label="Deep sequencing reads" help="Reads in fastq or fasta format"/>
+        <param name="remove_non_canon" type="boolean" truevalue="-j" falsevalue="" checked="false" label="Remove reads with non-standard nucleotides" help="Remove all entries that have a sequence that contains letters other than a,c,g,t,u,n,A,C,G,T,U,N. (-j)"/>
+        <param name="convert_rna_dna" type="boolean" truevalue="-i" falsevalue="" checked="false" label="Convert RNA to DNA alphabet (to map against genome)" help="(-i)"/>
+
+        <conditional name="clip_adapter">
+            <param name="clip" type="select" label="Clip 3' Adapter Sequence" help="(-k)">
+                <option value="false">Don't Clip</option>
+                <option value="true">Clip Sequence</option>
+            </param>
+            <when value="true">
+                <param name="adapter_seq" value="" type="text" optional="false" label="Sequence to clip" help="Adapter Sequence can only contain a,c,g,t,u,n,A,C,G,T,U,N">
+                    <validator type="regex" message="Adapter can ONLY contain a,c,g,t,u,n,A,C,G,T,U,N">^[ACGTUacgtu]+$</validator>
+                </param>
+            </when>
+            <when value="false"/>
+        </conditional>
+        
+        <param name="discard_short_reads" value="18" type="integer" optional="false" label="Discard reads shorter than this length" help="Set to 0 to keep all reads. (-l)">
+            <validator type="in_range" min="0" message="Minimum value is 0"/>
+        </param>
+        
+        <conditional name="operation">
+            <param name="collapse_map" type="select" label="Collapse reads and/or Map" help="(-m) and/or (-p)">
+                <option value="collapse_and_map">Collapse reads and Map</option>
+                <option value="only_map">Map</option>
+                <option value="only_collapse">Collapse</option>
+            </param>
+            <when value="collapse_and_map">
+                <expand macro="map_params"/>
+            </when>
+            <when value="only_map">
+                <expand macro="map_params"/>
+            </when>
+            <when value="only_collapse"/>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="fasta" name="output_reads_collapsed" label="Collapsed reads of ${tool.name} on ${on_string}">
+            <filter>
+            (
+            operation['collapse_map'] == "collapse_and_map" or
+            operation['collapse_map'] == "only_collapse"
+            )
+            </filter>
+        </data>
+        <data format="tabular" name="output_mapping" label="Mapping output of ${tool.name} on ${on_string} in ARF format">
+            <filter>
+            (
+            operation['collapse_map'] == "collapse_and_map" or
+            operation['collapse_map'] == "only_map"
+            )
+            </filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="reads" value="reads.fa"/>
+            <param name="remove_non_canon" value="True"/>
+            <param name="clip" value="true"/>
+            <param name="adapter_seq" value="TCGTATGCCGTCTTCTGCTTGT"/>
+            <param name="discard_short_reads" value="18"/>
+            <param name="collapse_map" value="collapse_and_map"/>
+            <param name="genomeSource" value="history"/>
+            <param name="ownFile" value="cel_cluster.fa"/>
+            <output name="output_reads_collapsed">
+                <assert_contents>
+                    <has_text text=">seq_349713_x268"/>
+                    <has_text text="TCACCGGGTGTANATCAGCTAA"/>
+                    <has_text text=">seq_354255_x214"/>
+                    <has_text text="TAACCGGGTGAACACTTGCAGT"/>
+                    <has_text text=">seq_357284_x187"/>
+                </assert_contents>
+            </output>
+            <output name="output_mapping">
+                <assert_contents>
+                    <has_text_matching expression="seq_149538_x90904.*"/>
+                    <has_text_matching expression="seq_373036_x24.*"/>
+                    <has_text_matching expression="seq_376197_x7.*"/>
+                    <has_text_matching expression="seq_378200_x1.*"/>
+                    <has_text_matching expression="seq_378247_x1.*"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What MiRDeep2 Mapper does**
+
+The mapper module is designed as a tool to process deep sequencing reads and/or map them to the reference genome. 
+The module works in sequence space, and can process or map data that is in sequence fasta format. 
+A number of the functions of the mapper module are implemented specifically with Solexa/Illumina data in mind.
+
+**Example**
+
+Processing reads and mapping them to a genome.
+
+The -c option designates that the input file is a fasta file. The -j options removes entries with
+non-canonical letters (letters other than a,c,g,t,u,n,A,C,G,T,U,N). The -k option clips adapters. The -l option discards reads shorter than 18 nts.
+The -m option collapses the reads. The -p option maps the processed reads against the previously indexed genome (cel_cluster). The -s option
+designates the name of the output file of processed reads and the -t option designates the name of the output file of the genome mappings. Last,
+-v gives verbose output to the screen.
+
+    ``mapper.pl reads.fa -c -j -k TCGTATGCCGTCTTCTGCTTGT  -l 18 -m -p cel_cluster -s reads_collapsed.fa -t reads_collapsed_vs_genome.arf -v``
+
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/nar/gkr688</citation>
+        <citation type="doi">10.1002/0471250953.bi1210s36</citation>
+    </citations>
+</tool>
