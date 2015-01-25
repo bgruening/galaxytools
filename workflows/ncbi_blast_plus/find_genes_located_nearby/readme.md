@@ -1,6 +1,16 @@
 Galaxy workflow for the identification of candidate genes clusters
 ------------------------------------------------------------------
 
+This approach screens two proteins against all nucleotide sequence from the
+NCBI nt database within hours on our cluster, leading to all organisms with an inter-
+esting gene structure for further investigation. As usual in Galaxy workflows every
+parameter, including the proximity distance, can be changed and additional steps
+can be easily added. For example additional filtering to refine the initial BLAST
+hits, or inclusion of a third query sequence.
+
+![Workflow Image](https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/find_genes_located_nearby.png)
+
+
 Sample Data
 ===========
 
@@ -10,10 +20,13 @@ that are part of a gene cluster, responsible for metabolite producion.
 You can upload both sequences directly into Galaxy using the "Upload File" tool
 with either of these URLs - Galaxy should recognise this is FASTA files.
 
+ * https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658548.fasta
+ * https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658557.fasta
 
-http://www.ncbi.nlm.nih.gov/protein/739806622 (cytochrome P450)
-
-```
+In addition you can find both sequences at the NCBI server:
+ * http://www.ncbi.nlm.nih.gov/protein/739806622 (cytochrome P450)
+ 
+```text
 >gi|739806622|ref|WP_037658557.1| cytochrome P450 [Streptomyces aurantiacus]
 MQRTCPFSVPPVYTKFREESPITQVVLPDGGKAWLVTKYDDVRAVMANPKLSSDRRAPDFPVVVPGQNAA
 LAKHAPFMIILDGAEHAAARRPVISEFSVRRVAAMKPRIQEIVDGFIDDMLKMPKPVDLNQVFSLPVPSL
@@ -23,7 +36,7 @@ RLALDDVEIGGVLIRKGEAVIASTFAANRDPAVFDDPEELDFGRDARHHVAFGYGPHQCLGQNLGRLELQ
 VVFDTLFRRLPELRLAVPEEELSFKSDALVYGLYELPVTW
 ```
 
-http://www.ncbi.nlm.nih.gov/protein/739806613 (beta-ACP synthase)
+ * http://www.ncbi.nlm.nih.gov/protein/739806613 (beta-ACP synthase)
 
 ```
 >gi|739806613|ref|WP_037658548.1| beta-ACP synthase [Streptomyces aurantiacus]
@@ -35,6 +48,7 @@ PDGAEMAEAITVALDEARMNPTAIDYINAHGSGTKQNDRHETAAFKRSLGEHAYRTPVSSIKSMVGHSLG
 AIGSIEIAASILAIQHDVVPPTANLHTPDPQCDLDYVPLNAREQIVDAVLTVGSGFGGFQSAMVLAQPER
 NAA
 ```
+
 
 Citation
 ========
