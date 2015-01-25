@@ -60,8 +60,8 @@ please cite:
 Peter J. A. Cock, John M. Chilton, Björn Grüning, James E. Johnson, Nicola Soranzo
 NCBI BLAST+ integrated into Galaxy
 
-http://biorxiv.org/content/early/2015/01/21/014043
-http://dx.doi.org/10.1101/014043
+ * http://biorxiv.org/content/early/2015/01/21/014043
+ * http://dx.doi.org/10.1101/014043
 
 
 Availability
