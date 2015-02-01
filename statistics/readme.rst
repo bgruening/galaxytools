@@ -1,29 +1,37 @@
 Galaxy wrapper for statistical hypothesis testing with scipy
 ============================================================
 
-This wrapper is copyright 2013 by Björn Grüning.
+Computes a large number of probability distributions as well as a statistical functions of any kind.
+For more informations have a look at the `SciPy site`_.
 
-
+.. _`SciPy site`: http://docs.scipy.org/doc/scipy/reference/stats.html
 
 
 ============
 Installation
 ============
 
+Should be done via the Galaxy `Tool Shed`_.
+Install the following repository: https://toolshed.g2.bx.psu.edu/view/bgruening/statistical_hypothesis_testing
+
+.. _`Tool Shed`: http://wiki.galaxyproject.org/Tool%20Shed
 
 
 =======
 History
 =======
 
-
   - v0.1: no release yet
+  - v0.2: add a lot more statistics
 
 
 
 
 Wrapper Licence (MIT/BSD style)
 ===============================
+
+  * Copyright (c) 2013-2014     B. Gruening  (bjoern dot gruening <at> gmail dot com)
+  * Copyright (c) 2015          Hui Li lihui900116 <at> gmail dot com
 
 Permission to use, copy, modify, and distribute this software and its
 documentation with or without modifications and for any purpose and
