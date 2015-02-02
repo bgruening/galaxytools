@@ -142,7 +142,7 @@ $(document).ready(function() {
         ajaxUrl = "${h.url_for( controller='/datasets', action='index')}/" + hdaId + "/display?to_ext=" + hdaExt;
 
 
-    %if hda.ext == 'eps':
+    %if hda.ext == 'rna_eps':
     $.ajax( ajaxUrl, {
         success: function(psImg) {
             var psjson=parse_ps(psImg);
