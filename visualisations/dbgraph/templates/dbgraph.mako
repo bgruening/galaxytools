@@ -45,7 +45,6 @@
 }
 .chart2 div {
     font: 10px sans-serif;
-    background-color: red;
     text-align: right;
     padding: 3px;
     margin: 1px;
@@ -67,7 +66,7 @@ text {
 
 svg {
     font: 10px sans-serif;
-    background-color: red;
+    background-color: rgb(200,200,200);
 }
 
 </style>
@@ -155,7 +154,7 @@ $(document).ready(function() {
         console.log(os.length);
         console.log(ps.length);
 
-        var margin = {top: 80, right: 80, bottom: 10, left: 80},
+        var margin = {top: 40, right: 40, bottom: 10, left: 40},
             width = 700,
             height = 600;
 
@@ -171,11 +170,18 @@ $(document).ready(function() {
 
         var svg = d3.select("body").append("svg")
             .attr("width", width)
-            .attr("height", height);
-        svg.append("rect")
-            .attr("width", width)
             .attr("height", height)
-            .attr("style", "fill:rgb(217,217,100)");
+            .attr("style", "stroke-width:2")
+            .attr("border", 3);
+        var borderPath = svg.append("rect")
+            .attr("x", 0)
+            .attr("y", 0)
+            .attr("height", height)
+            .attr("width", width)
+            .style("stroke", "black")
+            .style("fill", "none")
+            .style("stroke-width", "3");
+
 
 
         force
