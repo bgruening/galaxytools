@@ -1,0 +1,180 @@
+<tool id="bg_diamond" name="Diamond" version="0.1.6.0">
+    <description>alignment tool for short sequences against a protein database</description>
+    <requirements>
+        <requirement type="package" version="0.6.13">diamond</requirement>
+    </requirements>
+    <command>
+<![CDATA[
+
+    #if $ref_db_source.db_source == "history":
+        ln -s $ref_db_source.reference_database ./database.dmnd
+    #else:
+        ln -s ${ref_db_source.index.fields.db_path} ./database.dmnd
+    #end if
+
+    &&
+
+    diamond
+        $method.method_select
+        --threads "\${GALAXY_SLOTS:-12}"
+        --db ./database
+        --query $query
+        --out $blast_output
+        ##--sam $sam_output
+        --compress 0
+        --tmpdir ./
+
+        #if str($hit_filter.hit_filter_select) == 'max':
+            --max-target-seqs $hit_filter.max
+        #else:
+            --top $hit_filter.percentage
+        #end if
+
+        #if str($filter_score.filter_score_select) == 'evalue':
+            --evalue $filter_score.evalue
+        #else:
+            --evalue $filter_score.bitscore
+        #end if
+
+        --id $identity
+        $sensitive
+        --gapopen $method.gapopen
+        --gapextend $method.gapextend
+        --matrix $matrix
+        $seg
+        $salltitles
+
+]]>
+    </command>
+    <inputs>
+
+        <param name="query" type="data" format="fasta" label="Input query file in FASTA format" />
+
+        <conditional name="ref_db_source">
+          <param name="db_source" type="select" label="Will you select a reference genome from your history or use a built-in index?" help="Built-ins were indexed using default options">
+            <option value="indexed">Use a built-in index</option>
+            <option value="history">Use one from the history</option>
+          </param>
+          <when value="indexed">
+            <param name="index" type="select" label="Select a reference genome" help="If your genome of interest is not listed, contact your Galaxy admin">
+              <options from_data_table="diamond_database">
+                <filter type="sort_by" column="2"/>
+                <validator type="no_options" message="No indexes are available for the selected input dataset"/>
+              </options>
+            </param>
+          </when>  <!-- build-in -->
+          <when value="history">
+            <param name="reference_database" type="data" format="diamond_database" label="Select the reference database" />
+          </when>  <!-- history -->
+        </conditional>
+
+        <conditional name="method">
+            <param name="method_select" type="select" label="What do you want to align" help="(--blastp/--blastx)">
+                <option value="blastp">Align amino acid query sequences (blastp)</option>
+                <option value="blastx">Align DNA query sequences (blastx)</option>
+            </param>
+            <when value="blastp">
+                <param name="gapopen" type="integer" value="11" label="Gap open panalty" help="(--gapopen)" />
+                <param name="gapextend" type="integer" value="1" label="Gap extend panalty" help="(--gapextend)" />
+            </when>
+            <when value="blastx">
+                <param name="gapopen" type="integer" value="-1" label="Gap open panalty" help="(--gapopen)" />
+                <param name="gapextend" type="integer" value="-1" label="Gap extend panalty" help="(--gapextend)" />
+            </when>
+        </conditional>
+
+        <param name="matrix" type="select" label="Select scoring matrix" help="(--matrix)">
+            <option value="BLOSUM45">BLOSUM45</option>
+            <option value="BLOSUM50">BLOSUM50</option>
+            <option value="BLOSUM62" selected="True">BLOSUM62</option>
+            <option value="BLOSUM80">BLOSUM80</option>
+            <option value="BLOSUM90">BLOSUM90</option>
+            <option value="PAM250">PAM250</option>
+            <option value="PAM70">PAM70</option>
+            <option value="PAM30">PAM30</option>
+        </param>
+
+        <conditional name="filter_score">
+            <param name="filter_score_select" type="select" label="Filter by score" help="(--evalue/--min-score)">
+                <option value="evalue">Maximum e-value to report alignments</option>
+                <option value="bit">Minimum bit score to report alignments</option>
+            </param>
+            <when value="evalue">
+                <param name="evalue" type="float" value="0.001" label="Filter by evalue" help="(--evalue)" />
+            </when>
+            <when value="bit">
+                <param name="bitscore" type="integer" value="0" label="Filter by bit score" help="(--min-score)" />
+            </when>
+        </conditional>
+
+        <conditional name="hit_filter">
+            <param name="hit_filter_select" type="select" label="Restrict number of hits by" help="(--max-target-seqs/--top)">
+                <option value="max">Maximum number of target sequences</option>
+                <option value="percentage">Percentage of top alignment score</option>
+            </param>
+            <when value="max">
+                <param name="max" type="integer" value="25" label="How many hits?" help="(--max-target-seqs)" />
+            </when>
+            <when value="percentage">
+                <param name="percentage" type="integer" value="0" label="How many percentage" help="(--top)" />
+            </when>
+        </conditional>
+
+        <param name="identity" type="integer" value="0" label="minimum identity to report an alignment" help="in percentage (--id)" />
+        <param name="salltitles" type="boolean" truevalue="--salltitles" falsevalue="" checked="false"
+            label="Print subject titles into the blast tabular format" help="(--salltitles)"/>
+        <param name="seg" type="boolean" truevalue="--seg yes" falsevalue="--seg no" checked="true"
+            label="Enable SEG masking of queries" help="(--seg)"/>
+        <param name="sensitive" type="boolean" truevalue="--sensitive" falsevalue="" checked="false"
+            label="Enable sensitive mode" help="(--sensitive)"/>
+    </inputs>
+    <outputs>
+        <!--data format="sam" name="sam_output"/-->
+        <data format="tabular" name="blast_output"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="method" value="blastp"/>
+            <param name="query" value="protein.fasta" ftype="fasta"/>
+            <param name="reference_database" value="diamond_makedb_result1.dmnd" ftype="diamond_database"/>
+            <param name="db_source" value="history"/>
+            <output name="blast_output" file="diamond_result1.tabular" ftpye="tabular"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+.. class:: infomark
+
+**What it does**
+
+DIAMOND_ is a new alignment tool for aligning short DNA sequencing reads to a protein reference database such as NCBI-NR.
+On Illumina reads of length 100-150bp, in fast mode, DIAMOND is about 20,000 times faster than BLASTX, while reporting
+about 80-90% of all matches that BLASTX finds, with an e-value of at most 1e-5. In sensitive mode, DIAMOND ist about 2,500
+times faster than BLASTX, finding more than 94% of all matches.
+
+.. _DIAMOND: http://ab.inf.uni-tuebingen.de/software/diamond/
+
+
+Supported values for gap open and gap extend parameters depending on the selected scoring matrix.
+
+========  ============================================
+Matrix    Supported values for (gap open)/(gap extend)
+========  ============================================
+BLOSUM45  (10-13)/3; (12-16)/2; (16-19)/1
+BLOSUM50  (9-13)/3; (12-16)/2; (15-19)/1
+BLOSUM62  (6-11)/2; (9-13)/1
+BLOSUM80  (6-9)/2; 13/2; 25/2; (9-11)/1
+BLOSUM90  (6-9)/2; (9-11)/1
+PAM250    (11-15)/3; (13-17)/2; (17-21)/1
+PAM70     (6-8)/2; (9-11)/1
+PAM30     (5-7)/2; (8-10)/1
+========  ============================================
+
+
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1038/nmeth.3176</citation>
+    </citations>
+</tool>
