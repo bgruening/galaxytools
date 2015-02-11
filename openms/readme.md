@@ -15,7 +15,7 @@ Installation
 ============
 
 Galaxy should be able to automatically install the dependencies, i.e.
-`package_openms_2_0` or `package_qt_4_8` repository.
+'package_openms_2_0' or 'package_qt_4_8' repository.
 
 The wrappers are included in https://testtoolshed.g2.bx.psu.edu/view/bgruening/openms.
 
@@ -58,7 +58,7 @@ Generating OpenMS wrappers
     -d OpenMS -g proteomics \
     -b version log debug test no_progress threads \
      in_type exe executable myrimatch_executable \
-     omssa_executable pepnovo_executable model_directory\
+     omssa_executable pepnovo_executable \
      xtandem_executable \
     -l ListOfNeededTools.txt
     ```
@@ -75,7 +75,6 @@ An example file is located under https://gist.github.com/bgruening/421f97d36c274
     sed -i '10 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
     sed -i '10 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
     sed -i '10 a\-pepnovo_executable pepnovo' wrappers/PepNovoAdapter.xml
-    sed -i '11 a\-model_directory .' wrappers/PepNovoAdapter.xml
     sed -i '10 a\-xtandem_executable xtandem' wrappers/XTandemAdapter.xml
     ```
 
