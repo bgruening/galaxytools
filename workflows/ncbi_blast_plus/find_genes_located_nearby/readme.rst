@@ -37,7 +37,7 @@ In addition you can find both sequences at the NCBI server:
 
 
  * http://www.ncbi.nlm.nih.gov/protein/739806613 (beta-ACP synthase)
-  ::
+   ::
   
      >gi|739806613|ref|WP_037658548.1| beta-ACP synthase [Streptomyces aurantiacus]
      MSGRRVVVTGMEVLAPGGVGTDNFWSLLSEGRTATRGITFFDPAQFRSRVAAEIDFDPYAHGLTPQEVRR
