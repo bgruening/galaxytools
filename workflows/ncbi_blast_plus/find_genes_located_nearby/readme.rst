@@ -8,7 +8,7 @@ parameter, including the proximity distance, can be changed and additional steps
 can be easily added. For example additional filtering to refine the initial BLAST
 hits, or inclusion of a third query sequence.
 
-![Workflow Image](https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/find_genes_located_nearby.png)
+.. image:: https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/find_genes_located_nearby.png
 
 
 Sample Data
@@ -20,34 +20,33 @@ that are part of a gene cluster, responsible for metabolite producion.
 You can upload both sequences directly into Galaxy using the "Upload File" tool
 with either of these URLs - Galaxy should recognise this is FASTA files.
 
- * https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658548.fasta
- * https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658557.fasta
+ * `WP_037658548.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658548.fasta>`_
+ * `WP_037658557.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658557.fasta>`_
 
 In addition you can find both sequences at the NCBI server:
  * http://www.ncbi.nlm.nih.gov/protein/739806622 (cytochrome P450)
- 
-```text
->gi|739806622|ref|WP_037658557.1| cytochrome P450 [Streptomyces aurantiacus]
-MQRTCPFSVPPVYTKFREESPITQVVLPDGGKAWLVTKYDDVRAVMANPKLSSDRRAPDFPVVVPGQNAA
-LAKHAPFMIILDGAEHAAARRPVISEFSVRRVAAMKPRIQEIVDGFIDDMLKMPKPVDLNQVFSLPVPSL
-VVSEILGMPYEGHEYFMELAEILLRRTTDEQGRIAVSVELRKYMDKLVEEKIENPGDDLLSRQIELQRQQ
-GGIDRPQLASLCLLVLLAGHETTANMINLGVFSMLTKPELLAEIKADPSKTPKAVDELLRFYTIPDFGAH
-RLALDDVEIGGVLIRKGEAVIASTFAANRDPAVFDDPEELDFGRDARHHVAFGYGPHQCLGQNLGRLELQ
-VVFDTLFRRLPELRLAVPEEELSFKSDALVYGLYELPVTW
-```
+  .. code-block::
+  
+   >gi|739806622|ref|WP_037658557.1| cytochrome P450 [Streptomyces aurantiacus]
+   MQRTCPFSVPPVYTKFREESPITQVVLPDGGKAWLVTKYDDVRAVMANPKLSSDRRAPDFPVVVPGQNAA
+   LAKHAPFMIILDGAEHAAARRPVISEFSVRRVAAMKPRIQEIVDGFIDDMLKMPKPVDLNQVFSLPVPSL
+   VVSEILGMPYEGHEYFMELAEILLRRTTDEQGRIAVSVELRKYMDKLVEEKIENPGDDLLSRQIELQRQQ
+   GGIDRPQLASLCLLVLLAGHETTANMINLGVFSMLTKPELLAEIKADPSKTPKAVDELLRFYTIPDFGAH
+   RLALDDVEIGGVLIRKGEAVIASTFAANRDPAVFDDPEELDFGRDARHHVAFGYGPHQCLGQNLGRLELQ
+   VVFDTLFRRLPELRLAVPEEELSFKSDALVYGLYELPVTW
+
 
  * http://www.ncbi.nlm.nih.gov/protein/739806613 (beta-ACP synthase)
-
-```
->gi|739806613|ref|WP_037658548.1| beta-ACP synthase [Streptomyces aurantiacus]
-MSGRRVVVTGMEVLAPGGVGTDNFWSLLSEGRTATRGITFFDPAQFRSRVAAEIDFDPYAHGLTPQEVRR
-MDRAAQFAVVAARGAVADSGLDTDTLDPYRIGVTIGSAVGATMSLDEDYRVVSDAGRLDLVDHTYADPFF
-YNYFVPSSFATEVARLVGAQGPSSVVSAGCTSGLDSVGYAVELIREGTADVMVAGATDAPISPITMACFD
-AIKATTPRHDDPEHASRPFDDTRNGFVLGEGTAVFVLEELESARRRGARIYAEIAGYATRSNAYHMTGLR
-PDGAEMAEAITVALDEARMNPTAIDYINAHGSGTKQNDRHETAAFKRSLGEHAYRTPVSSIKSMVGHSLG
-AIGSIEIAASILAIQHDVVPPTANLHTPDPQCDLDYVPLNAREQIVDAVLTVGSGFGGFQSAMVLAQPER
-NAA
-```
+  .. code-block::
+  
+   >gi|739806613|ref|WP_037658548.1| beta-ACP synthase [Streptomyces aurantiacus]
+   MSGRRVVVTGMEVLAPGGVGTDNFWSLLSEGRTATRGITFFDPAQFRSRVAAEIDFDPYAHGLTPQEVRR
+   MDRAAQFAVVAARGAVADSGLDTDTLDPYRIGVTIGSAVGATMSLDEDYRVVSDAGRLDLVDHTYADPFF
+   YNYFVPSSFATEVARLVGAQGPSSVVSAGCTSGLDSVGYAVELIREGTADVMVAGATDAPISPITMACFD
+   AIKATTPRHDDPEHASRPFDDTRNGFVLGEGTAVFVLEELESARRRGARIYAEIAGYATRSNAYHMTGLR
+   PDGAEMAEAITVALDEARMNPTAIDYINAHGSGTKQNDRHETAAFKRSLGEHAYRTPVSSIKSMVGHSLG
+   AIGSIEIAASILAIQHDVVPPTANLHTPDPQCDLDYVPLNAREQIVDAVLTVGSGFGGFQSAMVLAQPER
+   NAA
 
 
 Citation
@@ -60,8 +59,8 @@ please cite:
 Peter J. A. Cock, John M. Chilton, Björn Grüning, James E. Johnson, Nicola Soranzo
 NCBI BLAST+ integrated into Galaxy
 
- * http://biorxiv.org/content/early/2015/01/21/014043
- * http://dx.doi.org/10.1101/014043
+* http://biorxiv.org/content/early/2015/01/21/014043
+* http://dx.doi.org/10.1101/014043
 
 
 Availability
