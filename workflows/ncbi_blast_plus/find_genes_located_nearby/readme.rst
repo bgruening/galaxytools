@@ -20,8 +20,8 @@ that are part of a gene cluster, responsible for metabolite producion.
 You can upload both sequences directly into Galaxy using the "Upload File" tool
 with either of these URLs - Galaxy should recognise this is FASTA files.
 
- * `WP_037658548.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658548.fasta>`_
- * `WP_037658557.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658557.fasta>`_
+* `WP_037658548.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658548.fasta>`_
+* `WP_037658557.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_genes_located_nearby/WP_037658557.fasta>`_
 
 In addition you can find both sequences at the NCBI server:
  * http://www.ncbi.nlm.nih.gov/protein/739806622 (cytochrome P450)
