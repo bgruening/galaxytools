@@ -73,7 +73,7 @@ http://toolshed.g2.bx.psu.edu/view/bgruening/find_genes_located_nearby_workflow
 
 Development is being done on github:
 
-https://github.com/bgruening/galaxytools/workflows/ncbi_blast_plus/
+https://github.com/bgruening/galaxytools/tree/master/workflows/ncbi_blast_plus/find_genes_located_nearby
 
 
 Dependencies
