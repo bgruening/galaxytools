@@ -4,20 +4,30 @@ General mapping tool for Galaxy
 This wrapper is copyright 2012 by Björn Grüning.
 
 Installation
-============
+------------
+
 You need to specify a *.cfg file next to your mapping file. 
 The cfg file needs to have the exact same name as the mapping file, plus '.cfg'.
 You can find example cfg files in the examples directory. 
 Once you have created a cfg file include the full path to your mapping file into to tool-data/mapping.loc file and restart galaxy. 
 
+ToDo
+----
+
+* use tool data tables
+* consider migrating to ini files
+* enhance documentation
+* data manager
+
+
 History
-=======
+-------
 
 v0.1 - Initial public release
 
 
 Wrapper Licence (MIT/BSD style)
-===============================
+-------------------------------
 
 Permission to use, copy, modify, and distribute this software and its
 documentation with or without modifications and for any purpose and
