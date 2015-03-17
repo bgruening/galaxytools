@@ -19,12 +19,14 @@ which are part of the β-globin cluster.
 You can upload all sequences directly into Galaxy using the "Upload tool"
 with either of these URLs - Galaxy should recognise this is FASTA files.
 
-Query sequences.
+Query sequences:
+
 * `P61920.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_three_genes_located_nearby/P61920.fasta>`_
 * `P61921.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_three_genes_located_nearby/P61921.fasta>`_
 * `Q6LDH1.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_three_genes_located_nearby/Q6LDH1.fasta>`_
 
 Genome sequence:
+
 * http://hgdownload.cse.ucsc.edu/goldenPath/rn6/bigZips/rn6.fa.gz
 
 
