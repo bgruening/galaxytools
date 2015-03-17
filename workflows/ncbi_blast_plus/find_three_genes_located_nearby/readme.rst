@@ -25,7 +25,7 @@ Query sequences.
 * `Q6LDH1.fasta <https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/ncbi_blast_plus/find_three_genes_located_nearby/Q6LDH1.fasta>`_
 
 Genome sequence:
-* http://hgdownload.cse.ucsc.edu/goldenPath/rn6/bigZips/rn6.fa
+* http://hgdownload.cse.ucsc.edu/goldenPath/rn6/bigZips/rn6.fa.gz
 
 
 In addition you can find the query sequences at the UniProt server:
