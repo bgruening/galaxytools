@@ -33,7 +33,7 @@ def simple_pattern_search(sequence, pattern, outfile, strand='+'):
     """
     bed_template = '%s\t%s\t%s\t%s\t%s\t%s\n'
     for match in re.finditer( str(pattern), str(sequence.seq) ):
-        outfile.write(bed_template % (sequence.id,  match.start(), match.end(), sequence.name, '', strand))
+        outfile.write(bed_template % (sequence.id,  match.start(), match.end(), sequence.description, '', strand))
 
 
 def complex_pattern_search(sequence, pattern, outfile, strand='+'):
@@ -45,7 +45,7 @@ def complex_pattern_search(sequence, pattern, outfile, strand='+'):
     matches = nt_search(str(sequence.seq), pattern)
     bed_template = '%s\t%s\t%s\t%s\t%s\t%s\n'
     for match in matches[1:]:
-        outfile.write(bed_template % (sequence.id, match, match+l, sequence.name, '', strand) )
+        outfile.write(bed_template % (sequence.id, match, match+l, sequence.description, '', strand) )
 
 
 if __name__ == "__main__":
