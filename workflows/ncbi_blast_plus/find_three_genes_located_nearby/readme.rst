@@ -61,7 +61,7 @@ In addition you can find the query sequences at the UniProt server:
 Running this workflow with the given inputs gave the following results.
 
 ===== ========= ==========
-chrom start     end       
+chrom     start        end       
 ----- --------- ----------
  chr1 169005092 169005184
  chr1 169004698 169004988
@@ -87,7 +87,7 @@ chrom start     end
  chr1 168952738 168952893
  chr1 168945810 168946055
  chr1 168945619 168945717
-===== ========= =========
+===== ========= ==========
 
 
 Citation
