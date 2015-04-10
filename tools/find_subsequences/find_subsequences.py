@@ -10,7 +10,7 @@ from Bio.Alphabet import generic_dna
 
 choices = ['embl', 'fasta', 'fastq-sanger', 'fastq', 'fastq-solexa', 'fastq-illumina', 'genbank', 'gb']
 
-def find_pattern(seqs, pattern, outfile_path):
+def find_pattern(seqs, pattern, outfile_path, strand):
     """
     Finds all occurrences of a pattern in the a given sequence.
     Outputs sequence ID, start and end postion of the pattern.
@@ -23,8 +23,10 @@ def find_pattern(seqs, pattern, outfile_path):
 
     with open(outfile_path, 'w+') as outfile:
         for seq in seqs:
-            search_func(seq, pattern, outfile)
-            search_func(seq, rev_compl, outfile, '-')
+            if strand in ['both', 'forward']:
+                search_func(seq, pattern, outfile)
+            if strand in ['both', 'reverse']:
+                search_func(seq, rev_compl, outfile, '-')
 
 
 def simple_pattern_search(sequence, pattern, outfile, strand='+'):
@@ -50,12 +52,13 @@ def complex_pattern_search(sequence, pattern, outfile, strand='+'):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input' , required=True)
-    parser.add_argument('-o', '--output' , required=True)
-    parser.add_argument('-p', '--pattern' , required=True)
+    parser.add_argument('-i', '--input', required=True)
+    parser.add_argument('-o', '--output', required=True)
+    parser.add_argument('-p', '--pattern', required=True)
+    parser.add_argument('--strand', choices=['both', 'forward', 'reverse'], default='both')
     parser.add_argument('-f', '--format', default="fasta", choices=choices)
     args = parser.parse_args()
 
     with open(args.input) as handle:
-        find_pattern( SeqIO.parse(handle, args.format), args.pattern, args.output )
+        find_pattern( SeqIO.parse(handle, args.format), args.pattern, args.output, args.strand )
 
