@@ -1,16 +1,39 @@
-<tool id="trim_galore" name="Trim Galore" version="0.2.8.2">
-    <!-- Wrapper compatible with Trim Galore version 0.2.8 -->
+<tool id="trim_galore" name="Trim Galore" version="0.3.7.0">
+    <!-- Wrapper compatible with Trim Galore version 0.3.7 -->
     <description>adaptive quality and adapter trimmer</description>
     <version_command interpreter="perl">trim_galore --version</version_command>
     <requirements>
         <requirement type="package" version="1.8">cutadapt</requirement>
     </requirements>
+    <macros>
+        <macro name="paired_adapter_trimming">
+            <param name="trim1" type="boolean" truevalue="--trim1" falsevalue="" checked="False" label="Trims 1 bp off every read from its 3' end." help="" />
+            <param name="adapter" type="text" value="AGATCGGAAGAGC" label="Adapter sequence to be trimmed off read 1">
+                <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
+            </param>
+            <param name="adapter2" type="text" optional="True" value="" label="Adapter sequence to be trimmed off read 2">
+                <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
+            </param>
+
+            <param name="three_prime_clip_R1" type="integer" value="" optional="True" label="Remove N bp from the 3' end of read 1">
+                <help>Instructs Trim Galore to remove N bp from the 3' end of read 1 after adapter/quality trimming has been performed. 
+                    This may remove some unwanted bias from the 3' end that is not directly related to adapter sequence or basecall quality.
+                    (--three_prime_clip_R1)</help>
+            </param>
+            <param name="three_prime_clip_R2" type="integer" value="" optional="True" label="Remove N bp from the 3' end of read 1">
+                <help>Instructs Trim Galore to remove N bp from the 3' end of read 2 after
+                    adapter/quality trimming has been performed. This may remove some unwanted bias from
+                    the 3' end that is not directly related to adapter sequence or basecall quality. (--three_prime_clip_R2)</help>
+            </param>
+        </macro>
+    </macros>
     <command>
 <![CDATA[
 
         ## trim_galore removes .fastq and .fq file extensions of input files.
-        ## That is essential if Galaxy provides links to files (these can have real extensions), but that behaviour is causing an inconsitency in output filenaming.
-        ## Fix: link every file to $TMP without file extension
+        ## This is essential if Galaxy provides links to files (with real extensions)
+        ## but that behaviour is causing an inconsitency in output filenaming.
+        ## We work around this by linking every file to cwd without file extension
 
         #if $singlePaired.sPaired == "single":
             ln -s "${singlePaired.input_singles}" ./input_singles;
@@ -31,10 +54,7 @@
 
             ## default 20
             --quality $params.quality
-            ## default 'AGATCGGAAGAGC'
-            #if $params.adapter.strip() != '':
-                --adapter $params.adapter
-            #end if
+
             ## default 1
             --stringency $params.stringency
 
@@ -73,6 +93,16 @@
             --no_report_file
         #end if
 
+
+        ## default 'AGATCGGAAGAGC'
+        #if $singlePaired.adapter.strip() != '':
+           --adapter $singlePaired.adapter
+        #end if
+
+        #if $singlePaired.three_prime_clip_R1:
+            --three_prime_clip_R1 $singlePaired.three_prime_clip_R1
+        #end if
+
         #if $singlePaired.sPaired == "single":
             ## input sequence
             ./input_singles
@@ -80,8 +110,13 @@
             --paired
 
             $singlePaired.trim1
-            #if $singlePaired.adapter2.strip() != '':
+
+            #if $singlePaired.adapter2 and $singlePaired.adapter2.strip() != '':
                 --adapter2 $singlePaired.adapter2
+            #end if
+
+            #if $singlePaired.three_prime_clip_R2:
+                --three_prime_clip_R2 $singlePaired.three_prime_clip_R2
             #end if
 
             ## input sequences
@@ -109,22 +144,24 @@
             </param>
             <when value="single">
                 <param name="input_singles" type="data" format="fastqsanger" label="Reads in FASTQ format" />
+                <param name="adapter" type="text" value="AGATCGGAAGAGC" label="Adapter sequence to be trimmed">
+                    <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
+                </param>
+                <param name="three_prime_clip_R1" type="integer" value="" optional="True" label="Remove N bp from the 3' end">
+                    <help>Instructs Trim Galore to remove N bp from the 3' end of read 1 after adapter/quality trimming has been performed. 
+                        This may remove some unwanted bias from the 3' end that is not directly related to adapter sequence or basecall quality.
+                        (--three_prime_clip_R1)</help>
+                </param>
             </when>
             <when value="paired">
                 <param name="input_mate1" type="data" format="fastqsanger" label="Reads in FASTQ format" />
                 <param name="input_mate2" type="data" format="fastqsanger" label="Reads in FASTQ format" />
-                <param name="trim1" type="boolean" truevalue="--trim1" falsevalue="" checked="False" label="Trims 1 bp off every read from its 3' end." help="" />
-                <param name="adapter2" type="text" value="" label="Optional adapter sequence to be trimmed off read 2">
-                    <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
-                </param>
+                <expand macro="paired_adapter_trimming" />
             </when>
             <when value="paired_collection">
                 <param name="input_mate_pairs" format="fastqsanger" type="data_collection" collection_type="paired" 
                     label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
-                <param name="trim1" type="boolean" truevalue="--trim1" falsevalue="" checked="False" label="Trims 1 bp off every read from its 3' end." help="" />
-                <param name="adapter2" type="text" value="" label="Optional adapter sequence to be trimmed off read 2">
-                    <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
-                </param>
+                <expand macro="paired_adapter_trimming" />
             </when>
         </conditional>
 
@@ -138,9 +175,6 @@
             <when value="custom">
                 <param name="quality" type="integer" value="20" label="Trim low-quality ends from reads in addition to adapter removal"
                     help="For more information please see below." />
-                <param name="adapter" type="text" value="AGATCGGAAGAGC" label="Adapter sequence to be trimmed">
-                    <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
-                </param>
                 <param name="stringency" type="integer" value="1" label="Overlap with adapter sequence required to trim a sequence" />
                 <param name="error_rate" type="float" value="0.1" label="Maximum allowed error rate" />
                 <param name="min_length" type="integer" value="20" label="Discard reads that became shorter than length INT" />
@@ -303,10 +337,10 @@
 
 **What it does**
 
-TrimGalore!_ is a wrapper script that makes use of the publically available
+TrimGalore_ is a wrapper script that makes use of the publically available
 adapter trimming tool Cutadapt.
 
-.. _TrimGalore!: http://www.bioinformatics.babraham.ac.uk/projects/trim_galore/
+.. _TrimGalore: http://www.bioinformatics.babraham.ac.uk/projects/trim_galore/
 
 
 It is developed by Felix Krueger at the Babraham Institute.
