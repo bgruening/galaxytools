@@ -3,7 +3,7 @@
     <description>adaptive quality and adapter trimmer</description>
     <version_command interpreter="perl">trim_galore --version</version_command>
     <requirements>
-        <requirement type="package" version="1.1">cutadapt</requirement>
+        <requirement type="package" version="1.8">cutadapt</requirement>
     </requirements>
     <command>
 <![CDATA[
@@ -18,11 +18,14 @@
             ln -s "${singlePaired.input_mate1}" ./input_mate1;
             ln -s "${singlePaired.input_mate2}" ./input_mate2;
         #else:
-            ln -s "${singlePaired.input_mate1.forward}" ./input_mate1;
-            ln -s "${singlePaired.input_mate1.reverse}" ./input_mate2;
+            ln -s "${singlePaired.input_mate_pairs.forward}" ./input_mate1;
+            ln -s "${singlePaired.input_mate_pairs.reverse}" ./input_mate2;
         #end if
 
         perl $__tool_directory__/trim_galore
+
+        ## we only support fastqsanger
+        --phred33
 
         #if $params.settingsType == "custom":
 
@@ -66,40 +69,19 @@
         --output_dir ./
         --suppress_warn
 
+        #if $params.settingsType == "custom" and not $params.report:
+            --no_report_file
+        #end if
 
         #if $singlePaired.sPaired == "single":
-
-            #if $singlePaired.input_singles.ext == "fastqillumina":
-                --phred64
-            #elif $singlePaired.input_singles.ext == "fastqsanger":
-                --phred33
-            #end if
-
-            #if $params.settingsType == "custom":
-                #if not $params.report:
-                    --no_report_file
-                #end if
-            #end if
-
             ## input sequence
             ./input_singles
         #else:
             --paired
-            #if $singlePaired.input_mate1.ext == "fastqillumina":
-                --phred64
-            #elif $singlePaired.input_mate1.ext == "fastqsanger":
-                --phred33
-            #end if
 
             $singlePaired.trim1
             #if $singlePaired.adapter2.strip() != '':
                 --adapter2 $singlePaired.adapter2
-            #end if
-
-            #if $params.settingsType == "custom":
-                #if not $params.report:
-                    --no_report_file
-                #end if
             #end if
 
             ## input sequences
@@ -110,37 +92,14 @@
 
         &&
 
-        ##  Trim Galore! run is finished. Move the result files to the proper place
-
-        #if str( $singlePaired.sPaired ) == "single":
-            mv ./input_singles_trimmed.fq $trimmed_reads_single;
-
-            #if $params.settingsType == "custom":
-                #if $params.report:
-                    mv ./input_singles_trimming_report.txt $report_file;
-                #end if
-            #end if
-        #elif str( $singlePaired.sPaired ) == "paired":
-            mv ./input_mate1_val_1.fq $trimmed_reads_pair1;
-            mv ./input_mate2_val_2.fq $trimmed_reads_pair2;
-
-            #if $params.settingsType == "custom":
-                #if $params.retain_unpaired.settingsType == "retain_unpaired_output":
-                    mv ./input_mate1_unpaired_1.fq $unpaired_reads_1;
-                    mv ./input_mate2_unpaired_2.fq $unpaired_reads_2;
-                #end if
-
-                #if $params.report:
-                    mv ./input_mate1_trimming_report.txt $report_file;
-                #end if
-
-            #end if
+        ##  Trim Galore! run is finished. Move the report files to the proper place
+        #if $params.settingsType == "custom" and $params.report:
+            cat ./*_trimming_report.txt > $report_file;
         #end if
 
 ]]>
     </command>
     <inputs>
-
         <!-- Input Parameters -->
         <conditional name="singlePaired">
             <param name="sPaired" type="select" label="Is this library paired- or single-end?">
@@ -149,22 +108,22 @@
                 <option value="paired_collection">Paired Collection</option>
             </param>
             <when value="single">
-                <param name="input_singles" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="FASTQ/FASTA file" help="FASTQ or FASTA files." />
+                <param name="input_singles" type="data" format="fastqsanger" label="Reads in FASTQ format" />
             </when>
             <when value="paired">
-                <param name="input_mate1" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="FASTQ/FASTA file" help="FASTQ or FASTA files." />
-                <param name="input_mate2" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="FASTQ/FASTA file" help="FASTQ or FASTA files." />
+                <param name="input_mate1" type="data" format="fastqsanger" label="Reads in FASTQ format" />
+                <param name="input_mate2" type="data" format="fastqsanger" label="Reads in FASTQ format" />
                 <param name="trim1" type="boolean" truevalue="--trim1" falsevalue="" checked="False" label="Trims 1 bp off every read from its 3' end." help="" />
                 <param name="adapter2" type="text" value="" label="Optional adapter sequence to be trimmed off read 2">
                     <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
                 </param>
             </when>
             <when value="paired_collection">
-                <param name="input_mate1" format="fastqsanger" type="data_collection" collection_type="paired" label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
-                <param name="iset_stats" type="text" optional="True" size="10" label="Enter mean, standerd deviation, max, and min for insert lengths." help="-I; This parameter is only used for paired reads. Only mean is required while sd, max, and min will be inferred. Examples: both &quot;250&quot; and &quot;250,25&quot; will work while &quot;250,,10&quot; will not. See below for details.">
-                    <sanitizer invalid_char="">
-                        <valid initial="string.digits"><add value=","/> </valid>
-                    </sanitizer>
+                <param name="input_mate_pairs" format="fastqsanger" type="data_collection" collection_type="paired" 
+                    label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
+                <param name="trim1" type="boolean" truevalue="--trim1" falsevalue="" checked="False" label="Trims 1 bp off every read from its 3' end." help="" />
+                <param name="adapter2" type="text" value="" label="Optional adapter sequence to be trimmed off read 2">
+                    <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
                 </param>
             </when>
         </conditional>
@@ -177,7 +136,8 @@
             <when value="default" />
             <!-- Full/advanced params. -->
             <when value="custom">
-                <param name="quality" type="integer" value="20" label="Trim low-quality ends from reads in addition to adapter removal." help="For more information please see below." />
+                <param name="quality" type="integer" value="20" label="Trim low-quality ends from reads in addition to adapter removal"
+                    help="For more information please see below." />
                 <param name="adapter" type="text" value="AGATCGGAAGAGC" label="Adapter sequence to be trimmed">
                     <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
                 </param>
@@ -214,104 +174,130 @@
             <when value="default" />
             <!-- Full/advanced params. -->
             <when value="custom">
-                <param name="rrbs" type="boolean" truevalue="--rrbs" falsevalue="" checked="True" label="Specifies that the input file was an MspI digested RRBS sample" />
-                <param name="non_directional" type="boolean" truevalue="--non_directional" falsevalue="" checked="False" label="Selecting this option for non-directional RRBS libraries" />
+                <param name="rrbs" type="boolean" truevalue="--rrbs" falsevalue="" checked="True"
+                    label="Specifies that the input file was an MspI digested RRBS sample" />
+                <param name="non_directional" type="boolean" truevalue="--non_directional" falsevalue="" checked="False"
+                    label="Selecting this option for non-directional RRBS libraries" />
             </when>  <!-- full -->
-      </conditional>  <!-- params -->
+        </conditional>  <!-- params -->
 
     </inputs>
     <outputs>
 
-        <data format="fastq" name="trimmed_reads_single" label="${tool.name} on ${on_string}: trimmed reads">
+        <data format="fastqsanger" name="trimmed_reads_single" from_work_dir="input_singles_trimmed.fq" label="${tool.name} on ${on_string}: trimmed reads">
           <filter>singlePaired['sPaired'] == "single"</filter>
-          <actions>
-                <action type="format">
-                  <option type="from_param" name="singlePaired.input_singles" param_attribute="ext" />
-                </action>
-          </actions>
         </data>
 
-        <data format="fastq" name="trimmed_reads_pair1" label="${tool.name} on ${on_string}: trimmed reads pair 1">
-            <filter>singlePaired['sPaired'] == "paired" or singlePaired['sPaired'] == "paired_collection"</filter>
-            <actions>
-                <action type="format">
-                    <option type="from_param" name="singlePaired.input_mate1" param_attribute="ext" />
-                </action>
-          </actions>
-        </data>
+        <collection name="trimmed_reads_paired_collection" type="paired" label="${tool.name} on ${on_string}: trimmed reads">
+            <filter>singlePaired['sPaired'] == "paired_collection"</filter>
+            <data name="forward" format="fastqsanger" from_work_dir="input_mate1_val_1.fq" />
+            <data name="reverse" format="fastqsanger" from_work_dir="input_mate2_val_2.fq" />
+        </collection>
 
-        <data format="fastq" name="trimmed_reads_pair2" label="${tool.name} on ${on_string}: trimmed reads pair 2">
-            <filter>singlePaired['sPaired'] == "paired" or singlePaired['sPaired'] == "paired_collection"</filter>
-            <actions>
-                <action type="format">
-                    <option type="from_param" name="singlePaired.input_mate1" param_attribute="ext" />
-                </action>
-            </actions>
-        </data>
-
-        <data format="fastq" name="unpaired_reads_1" label="${tool.name} on ${on_string}: unpaired reads (1)">
-          <filter>
+        <collection name="trimmed_reads_unpaired_collection" type="paired" label="${tool.name} on ${on_string}: unpaired reads">
+            <filter>
             ((
-              params['settingsType'] == "custom" and
-              params['retain_unpaired']['settingsType'] == "retain_unpaired_output"
+                params['settingsType'] == "custom" and
+                params['retain_unpaired']['settingsType'] == "retain_unpaired_output" and
+                singlePaired['sPaired'] == "paired_collection"
             ))
-          </filter>
-          <actions>
-                <action type="format">
-                  <option type="from_param" name="singlePaired.input_mate1" param_attribute="ext" />
-                </action>
-          </actions>
+            </filter>
+            <data name="forward" format="fastqsanger" from_work_dir="input_mate1_unpaired_1.fq" />
+            <data name="reverse" format="fastqsanger" from_work_dir="input_mate2_unpaired_2.fq" />
+        </collection>
+
+
+        <data format="fastqsanger" name="trimmed_reads_pair1" from_work_dir="input_mate1_val_1.fq"
+            label="${tool.name} on ${on_string}: trimmed reads pair 1">
+            <filter>singlePaired['sPaired'] == "paired"</filter>
         </data>
 
-        <data format="fastq" name="unpaired_reads_2" label="${tool.name} on ${on_string}: unpaired reads (2)">
-          <filter>
+        <data format="fastqsanger" name="trimmed_reads_pair2" from_work_dir="input_mate2_val_2.fq"
+            label="${tool.name} on ${on_string}: trimmed reads pair 2">
+            <filter>singlePaired['sPaired'] == "paired"</filter>
+        </data>
+
+        <data format="fastqsanger" name="unpaired_reads_1" from_work_dir="input_mate1_val_1.fq"
+            label="${tool.name} on ${on_string}: unpaired reads (1)">
+            <filter>
             ((
-              params['settingsType'] == "custom" and
-              params['retain_unpaired']['settingsType'] == "retain_unpaired_output"
+                params['settingsType'] == "custom" and
+                params['retain_unpaired']['settingsType'] == "retain_unpaired_output" and
+                singlePaired['sPaired'] == "paired"
             ))
-          </filter>
-          <actions>
-                <action type="format">
-                  <option type="from_param" name="singlePaired.input_mate1" param_attribute="ext" />
-                </action>
-          </actions>
+            </filter>
+        </data>
+
+        <data format="fastqsanger" name="unpaired_reads_2" from_work_dir="input_mate2_val_2.fq"
+            label="${tool.name} on ${on_string}: unpaired reads (2)">
+            <filter>
+            ((
+                params['settingsType'] == "custom" and
+                params['retain_unpaired']['settingsType'] == "retain_unpaired_output" and
+                singlePaired['sPaired'] == "paired"
+            ))
+            </filter>
         </data>
 
         <data format="txt" name="report_file" label="${tool.name} on ${on_string}: report file">
-          <filter>
+            <filter>
             ((
               params['settingsType'] == "custom" and
               params['report'] == True
             ))
-          </filter>
+            </filter>
         </data>
 
     </outputs>
     <tests>
-
         <test>
-          <!-- Trim entire sequences; keep empty reads -->
-          <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
-          <param name="sPaired" value="single" />
-          <param name="settingsType" value="custom" />
-          <param name="report" value="true" />
-          <output name="trimmed_reads_single" file="sanger_full_range_results1.fastqsanger" />
-          <output name="report_file" file="sanger_full_range_report_results1.txt" ftype="txt" lines_diff="2" />
-        </test>
-        <test>
-          <!-- Trim entire sequences; keep empty reads -->
-          <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
-          <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
-          <param name="sPaired" value="paired" />
-          <param name="settingsType" value="custom" />
-          <param name="report" value="true" />
-          <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastqsanger" />
-          <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastqsanger" />
-          <output name="report_file" file="paired_example_results2.txt" ftype="txt" lines_diff="3" />
+            <!-- Trim entire sequences; keep empty reads -->
+            <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
+            <param name="sPaired" value="single" />
+            <param name="settingsType" value="custom" />
+            <param name="report" value="true" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results1.fastqsanger" ftype="fastqsanger"/>
+            <output name="report_file" file="sanger_full_range_report_results1.txt" ftype="txt" lines_diff="2" />
         </test>
 
+        <test>
+            <!-- Trim entire sequences; keep empty reads -->
+            <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
+            <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
+            <param name="sPaired" value="paired" />
+            <param name="settingsType" value="custom" />
+            <param name="report" value="true" />
+            <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastqsanger" ftype="fastqsanger"/>
+            <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastqsanger" ftype="fastqsanger"/>
+            <output name="report_file" file="paired_example_results2.txt" ftype="txt" lines_diff="8" />
+        </test>
+
+        <test>
+            <!-- Trim entire sequences; keep empty reads -->
+            <param name="input_mate_pairs">
+                <collection type="paired">
+                    <element name="forward" value="bwa-mem-fastq1.fq" />
+                    <element name="reverse" value="bwa-mem-fastq2.fq" />
+                </collection>
+            </param>
+            <param name="sPaired" value="paired_collection" />
+            <param name="settingsType" value="custom" />
+            <param name="report" value="true" />
+            <param name="retain_unpaired" value="retain_unpaired_output" />
+
+            <output name="report_file" file="paired_collection_example_results3.txt" ftype="txt" lines_diff="8" />
+
+            <output_collection name="trimmed_reads_paired_collection" type="paired">
+                <element name="forward" file="paired_collection_example_pair1_results3.fastqsanger" ftype="fastqsanger"/>
+                <element name="reverse" file="paired_collection_example_pair2_results3.fastqsanger" ftype="fastqsanger"/>
+            </output_collection>
+
+            <output_collection name="trimmed_reads_unpaired_collection" type="paired">
+                <element name="forward" file="paired_collection_example_unpair1_results3.fastqsanger" ftype="fastqsanger"/>
+                <element name="reverse" file="paired_collection_example_unpair2_results3.fastqsanger" ftype="fastqsanger"/>
+            </output_collection>
+        </test>
     </tests>
-
     <help>
 <![CDATA[
 
@@ -327,5 +313,5 @@ It is developed by Felix Krueger at the Babraham Institute.
 
 
 ]]>
-  </help>
+    </help>
 </tool>
