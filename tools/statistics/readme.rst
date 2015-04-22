@@ -30,8 +30,10 @@ History
 Wrapper Licence (MIT/BSD style)
 ===============================
 
-  * Copyright (c) 2013-2014     B. Gruening  (bjoern dot gruening <at> gmail dot com)
-  * Copyright (c) 2015          Hui Li lihui900116 <at> gmail dot com
+Copyright (c) 2013-2015
+
+ * Björn Gruening (bjoern dot gruening <at> gmail dot com)
+ * Hui Li (lihui900116 <at> gmail dot com)
 
 Permission to use, copy, modify, and distribute this software and its
 documentation with or without modifications and for any purpose and
