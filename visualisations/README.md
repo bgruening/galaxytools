@@ -2,8 +2,7 @@ Galaxy Visualizations
 =====================
 
 Galaxy supports interactive visualization through the [Galaxy Visualization Registry](https://wiki.galaxyproject.org/VisualizationsRegistry).
-If you want to use a visualization 
-[enable visualization plugins in Galaxy](https://wiki.galaxyproject.org/VisualizationsRegistry#Enabling_visualization_plugins_on_your_Galaxy_installation]
+If you want to use a visualization [enable visualization plugins in Galaxy](https://wiki.galaxyproject.org/VisualizationsRegistry#Enabling_visualization_plugins_on_your_Galaxy_installation)
 copy one of the folders here into your `visualization_plugins_directory`.
 
 Highlights
