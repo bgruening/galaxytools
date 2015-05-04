@@ -9,4 +9,4 @@ Highlights
 ----------
 
   * [NGL](http://nar.oxfordjournals.org/content/early/2015/04/28/nar.gkv402.abstract) WebGL protein viewer by Alexander Rose
-
+![NGL Galaxy plugin](https://lh4.googleusercontent.com/-lahn5k6SUsM/VUeMQ50_ChI/AAAAAAAAAtw/l0vmm3kgpKs/w945-h529-no/protein_viewer.png)
