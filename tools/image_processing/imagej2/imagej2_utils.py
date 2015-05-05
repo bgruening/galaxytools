@@ -6,9 +6,6 @@ import subprocess
 import sys
 import tempfile
 
-from bioformats import log4j
-from bioformats import omexml
-
 def cleanup_before_exit( tmp_dir ):
     """
     Remove temporary files and directories prior to tool exit.
@@ -82,14 +79,11 @@ def get_max_heap_size_value( max_heap_size_type, max_heap_size ):
     of the memory allocation pool used by the JVM.  The value must be
     determined to be a multiple of 1024 or it will be ignored.
     """
-    legal_modulo_values = [ 0, 256, 512 ]
     if max_heap_size_type == 'default':
         return None
-    if max_heap_size % 1024 not in legal_modulo_values:
-        return None
-    if max_heap_size_type == 'kilobytes':
-        return '%sk' % str( max_heap_size )
     if max_heap_size_type == 'megabytes':
+        if max_heap_size % 1024 not in [ 0, 256, 512 ]:
+            return None
         return '%sm' % str( max_heap_size )
 
 def get_temp_dir( prefix='tmp-imagej-' ):
