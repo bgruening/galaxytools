@@ -1,15 +1,9 @@
 #!/usr/bin/env python
 # Galaxy wrapper for use with Imagej2 via bioformats and javabridge by Greg Von Kuster
-
 """
 A wrapper script for running ImageJ2 commands via bioformats and javabridge.
 """
-
-import javabridge
 import optparse
-import os
-import shutil
-
 import imagej2_utils
 
 if __name__=="__main__":
