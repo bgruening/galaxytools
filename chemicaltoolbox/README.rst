@@ -489,6 +489,13 @@ We highly recommend to use PostgreSQL for any kind of production system.
 
 .. _Bug Tracker:
 
+
+Publications using CTB
+======================
+
+ * `The Purchasable Chemical Space: a Detailed Picture <http://pubs.acs.org/doi/abs/10.1021/acs.jcim.5b00116>`_
+
+
 Bug Tracker
 ===========
 Have a bug or a feature request? `Please write a new card`_. Before writing a new card, please search for existing issues.
