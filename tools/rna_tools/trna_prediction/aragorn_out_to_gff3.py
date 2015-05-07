@@ -18,7 +18,8 @@ print '##gff-version 3'
 for line in sys.stdin:
     if line.startswith('>'):
         genome_id = line[1:].strip()
-        genome_id = genome_id[0:genome_id.index(' ')]
+        if ' ' in genome_id:
+            genome_id = genome_id[0:genome_id.index(' ')]
     else:
         data = line.split()
         if len(data) == 5:
