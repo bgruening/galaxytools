@@ -67,6 +67,8 @@ aragorn:
     - v0.1: Initial public release
     - v0.2: added options, upgrade to 1.2.36, tool-dependency
     - v0.3: add unit tests, documentation improvements
+    - v0.4: added gff3 parser
+    - v0.5: improved gff3 parser, now handles introns and full gene model
 
 
 
