@@ -10,6 +10,7 @@ stdin_data = []
 KEY_ORDER = ('parent', 'source', 'type', 'start', 'end', 'score', 'strand',
              '8', 'quals')
 
+
 def output_line(gff3):
     print '\t'.join(str(gff3[x]) for x in KEY_ORDER)
 
@@ -17,6 +18,7 @@ print '##gff-version 3'
 for line in sys.stdin:
     if line.startswith('>'):
         genome_id = line[1:].strip()
+        genome_id = genome_id[0:genome_id.index(' ')]
     else:
         data = line.split()
         if len(data) == 5:
