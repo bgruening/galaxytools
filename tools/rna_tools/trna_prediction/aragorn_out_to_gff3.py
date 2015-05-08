@@ -40,25 +40,25 @@ for line in sys.stdin:
             if not full_gene_model:
                 gff3.update({
                     'type': 'tRNA',
-                    'quals': 'ID=tRNA{};Name={}'.format(*data),
+                    'quals': 'ID=tRNA{0}.{1};Name={2}'.format(genome_id, *data),
                 })
                 output_line(gff3)
             else:
                 gff3.update({
                     'type': 'gene',
-                    'quals': 'ID=gene{};Name={}-gene'.format(*data),
+                    'quals': 'ID=gene{0}.{1};Name={2}-gene'.format(genome_id, *data),
                 })
                 output_line(gff3)
                 gff3.update({
                     'type': 'tRNA',
-                    'quals': 'ID=tRNA{0};Parent=gene{0};Name={1}'.format(*data),
+                    'quals': 'ID=tRNA{0}.{1};Parent=gene{0}.{1};Name={2}'.format(genome_id, *data),
                 })
                 output_line(gff3)
 
                 # If no introns
                 if ')i(' not in data[4]:
                     gff3['type'] = 'exon'
-                    gff3['quals'] = 'Parent=tRNA{0}'.format(*data)
+                    gff3['quals'] = 'Parent=tRNA{0}.{1}'.format(genome_id, *data)
                     output_line(gff3)
                 else:
                     intron_location = data[4][data[4].rindex('(') + 1:-1].split(',')
@@ -71,7 +71,7 @@ for line in sys.stdin:
                     # EXON
                     gff3.update({
                         'type': 'exon',
-                        'quals': 'Parent=tRNA{0}'.format(*data),
+                        'quals': 'Parent=tRNA{0}.{1}'.format(genome_id, *data),
                     })
                     if strand == '+':
                         gff3['end'] = gff3['start'] + intron_start - 2
@@ -83,7 +83,7 @@ for line in sys.stdin:
                     # INTRON
                     gff3.update({
                         'type': 'intron',
-                        'quals': 'Parent=tRNA{0}'.format(*data),
+                        'quals': 'Parent=tRNA{0}.{1}'.format(genome_id, *data),
                     })
                     if strand == '+':
                         gff3['start'] = gff3['end'] + 1
@@ -97,7 +97,7 @@ for line in sys.stdin:
                     # EXON
                     gff3.update({
                         'type': 'exon',
-                        'quals': 'Parent=tRNA{0}'.format(*data),
+                        'quals': 'Parent=tRNA{0}.{1}'.format(genome_id, *data),
                     })
                     if strand == '+':
                         gff3['start'] = gff3['end'] + 1
