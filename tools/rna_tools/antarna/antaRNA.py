@@ -682,26 +682,36 @@ def getPKStructure(sequence, temperature, mode = "A"):
 	structure = "".join(pks[0].split("\n")[2].split(" ")[-1:])
 	return structure
 	
-def init_RNAfold(temperature, paramFile = ""):
+def init_RNAfold(version, temperature, paramFile = ""):
 	"""
 		Initialization RNAfold listener
 	"""
-	#p2p = "/home/rk/Software/ViennaRNA/ViennaRNA-1.8.5/Progs/RNAfold"
-	p2p = "RNAfold"
-	
+	p2p = ""
 	t = "-T " + str(temperature)
 	P = ""
 	if paramFile != "":
 		P = "-P " + paramFile
-	p = subprocess.Popen( ([p2p, '--noPS', '-d 2', t, P]),
-				#shell = True,
-				stdin = subprocess.PIPE,
-				stdout = subprocess.PIPE,
-				stderr = subprocess.PIPE,
-				close_fds = True)
-	return p
-
-
+	if version == 185:
+		p2p = "/home/rk/Software/ViennaRNA/ViennaRNA-1.8.5/Progs/RNAfold"
+		p = subprocess.Popen( ([p2p, '--noPS', '-d 2', t, P]),
+					shell = True,
+					stdin = subprocess.PIPE,
+					stdout = subprocess.PIPE,
+					stderr = subprocess.PIPE,
+					close_fds = True)
+		return p
+	elif version == 213:
+		p2p = "RNAfold"
+		p = subprocess.Popen( ([p2p, '--noPS', '-d 2', t, P]),
+					#shell = True,
+					stdin = subprocess.PIPE,
+					stdout = subprocess.PIPE,
+					stderr = subprocess.PIPE,
+					close_fds = True)
+		return p
+	else:
+		exit(0)
+		
 def consult_RNAfold(seq, p):
 	"""
 		Consults RNAfold listener
@@ -1132,7 +1142,7 @@ def runColony(s, SC, objective_to_target_distance, GC, alpha, beta, evaporation_
 		Execution function of a single ant colony finding one solution sequence
 	"""
 	retString = ""
-	retString2 = ""
+	retString2 = []
 	BPstack, LP = getBPStack(s, SC)
    
 	rGC = reachableGC(SC)
@@ -1158,7 +1168,7 @@ def runColony(s, SC, objective_to_target_distance, GC, alpha, beta, evaporation_
 		#### 
 		# INITIALIZATION OF THE RNA TOOLs
 		#
-		RNAfold = init_RNAfold(temperature, paramFile)
+		RNAfold = init_RNAfold(213, temperature, paramFile)
 		#RNAdistance = init_RNAdistance()
 		RNAfold_pattern = re.compile('.+\n([.()]+)\s.+')
 		#RNAdist_pattern = re.compile('.*\s([\d]+)')
@@ -1350,8 +1360,9 @@ def runColony(s, SC, objective_to_target_distance, GC, alpha, beta, evaporation_
 		retString += "|dseq:" + str(getSequenceEditDistance(SC, sequence))
 		retString += "|L:" + str(len(sequence))
 		retString += "|Time:" + str(duration)
-		retString2 += "\n" + struct + "\n"
-		retString2 += sequence
+		
+		retString2.append(struct)
+		retString2.append(sequence)
     
 		# CLOSING THE PIPES TO THE PROGRAMS
 		RNAfold.communicate()
@@ -1385,8 +1396,10 @@ def findSequence(structure, Cseq, tGC, colonies, name, alpha, beta, evaporation_
 	seq_correction_term = float(seq_correction_term)
 	colonies = int(colonies)
 	file_id = str(file_id)
-	verbose = verbose
-	output_verbose = output_verbose
+	tmp_verbose = verbose
+	tmp_output_verbose = output_verbose
+	verbose = tmp_output_verbose # Due to later change, this is a twistaround and a switching of purpose
+	output_verbose = tmp_verbose # Due to later change, this is a twistaround and a switching of purpose
 	correction_terms = struct_correction_term, GC_correction_term, seq_correction_term
 	temperature = float(temperature)
 	print_to_STDOUT = (file_id == "STDOUT")
@@ -1429,9 +1442,9 @@ def findSequence(structure, Cseq, tGC, colonies, name, alpha, beta, evaporation_
 		# Post-Processing the output of a ant colony procedure
 		line = ">" + name + str(col)
 		if output_verbose:
-			line += "|Cstr:" + structure + "|Cseq:" + sequenceconstraint + "|Alpha:" + str(alpha) + "|Beta:" + str(beta) + "|tGC:" +  str(GC)  + "|ER:" + str(evaporation_rate) + "|Struct_CT:" + str(struct_correction_term) + "|GC_CT:" + str(GC_correction_term) + "|Seq_CT:" + str(seq_correction_term) + output_v + output_w  
+			line += "|Cstr:" + structure + "|Cseq:" + sequenceconstraint + "|Alpha:" + str(alpha) + "|Beta:" + str(beta) + "|tGC:" +  str(GC)  + "|ER:" + str(evaporation_rate) + "|Struct_CT:" + str(struct_correction_term) + "|GC_CT:" + str(GC_correction_term) + "|Seq_CT:" + str(seq_correction_term) + output_v + "\n" + "\n".join(output_w)  
 		else:
-			line += output_w
+			line += "\n" + output_w[1]
 		if return_mod == False:
 			if print_to_STDOUT:
 				print line
@@ -1469,6 +1482,9 @@ def execute(args):
 	alpha = args.alpha
 	beta = args.beta
 	tGC = args.tGC
+	if tGC < 0 or tGC > 1:
+		print "Error: Chosen tGC not in range [0,1]"
+		exit(1)
 	evaporation_rate = args.ER
 	struct_correction_term = args.Cstrweight
 	GC_correction_term = args.Cgcweight
@@ -1523,10 +1539,6 @@ def exe():
 
 	argument_parser = argparse.ArgumentParser(
 	description = """
-	Ant Colony Optimized RNA Sequence Design
-	""",
-	
-	epilog = """   
     
 	#########################################################################
 	#       antaRNA - ant assembled RNA                                     #
@@ -1545,6 +1557,9 @@ def exe():
     
     - For questions and remarks please feel free to contact us at http://www.bioinf.uni-freiburg.de/
 
+	""",
+	
+	epilog = """   
 	Example calls:
 		python antaRNA.py --Cstr "...(((...)))..." --tGC 0.5 -n 2
 		python antaRNA.py --Cstr ".........AAA(((...)))AAA........." --tGC 0.5 -n 10 --output_file /path/to/antaRNA_TESTRUN -ov
@@ -1560,7 +1575,7 @@ def exe():
 	# mandatorys
 	argument_parser.add_argument("-Cstr", "--Cstr", help="Structure constraint using RNA dotbracket notation with fuzzy block constraint. \n(TYPE: %(type)s)\n\n", type=str, required=True)
 	argument_parser.add_argument("-tGC", "--tGC", help="Objective target GC content in [0,1].\n(TYPE: %(type)s)\n\n", type=float, required=True)
-	argument_parser.add_argument("-n", "--noOfColonies", help="Number of sequences which shall be produced. \n(TYPE: %(type)s)\n\n\n\n", type=int, required=True)
+	argument_parser.add_argument("-n", "--noOfColonies", help="Number of sequences which shall be produced. \n(TYPE: %(type)s)\n\n\n\n", type=int,  default=1)
 	argument_parser.add_argument("-GU", "--useGUBasePair", help="Allowing GU base pairs. \n\n", action="store_true")
 	
 	argument_parser.add_argument("-s", "--seed", help = "Provides a seed value for the used pseudo random number generator.\n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=str, default="none")
@@ -1584,14 +1599,14 @@ def exe():
 	argument_parser.add_argument("-Cseq", "--Cseq", help="Sequence constraint using RNA nucleotide alphabet {A,C,G,U} and wild-card \"N\". \n(TYPE: %(type)s)\n\n", type=str, default = "")  
 	argument_parser.add_argument("-l", "--level", help="Sets the level of allowed influence of sequence constraint on the structure constraint [0:no influence; 3:extensive influence].\n(TYPE: %(type)s)\n\n", type=int, default = 1)
 	argument_parser.add_argument("--name", help="Defines a name which is used in the sequence output. \n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=str, default="antaRNA_")
-	argument_parser.add_argument("-a", "--alpha", help="Sets alpha, probability weight for terrain path influence. [0,1]\n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=float, default=1.0)
-	argument_parser.add_argument("-b", "--beta", help="Sets beta, probability weight for terrain pheromone influence. [0,1] \n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=float, default=1.0)
+	argument_parser.add_argument("-a", "--alpha", help="Sets alpha, probability weight for terrain pheromone influence. [0,1] \n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=float, default=1.0)
+	argument_parser.add_argument("-b", "--beta", help="Sets beta, probability weight for terrain path influence. [0,1]\n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=float, default=1.0)
 	argument_parser.add_argument("-er", "--ER", help="Pheromone evaporation rate. \n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=float, default=0.2)
 	argument_parser.add_argument("-Cstrw", "--Cstrweight", help="Structure constraint quality weighting factor. [0,1]\n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=float, default=0.5)
 	argument_parser.add_argument("-Cgcw", "--Cgcweight", help="GC content constraint quality weighting factor. [0,1]\n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n", type=float, default=5.0)
 	argument_parser.add_argument("-Cseqw", "--Cseqweight", help="Sequence constraint quality weighting factor. [0,1]\n(DEFAULT: %(default)s, TYPE: %(type)s)\n\n\n", type=float, default=1.0)
-	argument_parser.add_argument("-v", "--verbose", help="Displayes intermediate output.\n\n", action="store_true") 
-	argument_parser.add_argument("-ov", "--output_verbose", help="Prints additional output to the headers of the produced sequences.\n\n", action="store_false")
+	argument_parser.add_argument("-ov", "--output_verbose", help="Displayes intermediate output.\n\n", action="store_true") 
+	argument_parser.add_argument("-v", "--verbose", help="Prints additional features and stats to the headers of the produced sequences. Also adds the structure of the sequence.\n\n", action="store_true")
 	
 	args = argument_parser.parse_args()
 
