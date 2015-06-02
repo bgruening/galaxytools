@@ -69,12 +69,44 @@ svg {
     background-color: rgb(200,200,200);
 }
 
+#dbgraph_sequence, #dbgraph_dotbracket {
+	width:700px;font-family: courier;
+}
+
 </style>
 
 <body>
 <h1>Secondary Structure<h1>
 
+<input type="text" title="sequence"   id="dbgraph_sequence"   readonly /><br />
+<input type="text" title="dotbracket" id="dbgraph_dotbracket" readonly /><br />
+
 <script type="text/javascript">
+
+function os_to_dotbracket(os,sequence_length)
+{
+	var dotbracket = [];
+	for(var i = 0; i < sequence_length; i++)
+	{
+		dotbracket.push('.');
+	}
+	
+	for(var i = 0; i < os.length; i++)
+	{
+		if(os[i].source < os[i].target)
+		{
+			dotbracket[os[i]['source']] = '(';
+			dotbracket[os[i]['target']] = ')';
+		}
+		else
+		{
+			dotbracket[os[i]['target']] = '(';
+			dotbracket[os[i]['source']] = ')';
+		}
+	}
+	
+	return dotbracket.join('');
+}
 
 function parse_ps(img) {
     var maindic={},
@@ -143,14 +175,15 @@ $(document).ready(function() {
 
     %if hda.ext == 'rna_eps':
     $.ajax( ajaxUrl, {
-        success: function(psImg) {
+        success: function(psImg)
+        {
             var psjson=parse_ps(psImg);
 
         var bpm=JSON.parse(psjson);
 
         var os=bpm["optimal-structure"];
         var ps=bpm["primary-structure"];
-    
+       
         console.log(os.length);
         console.log(ps.length);
 
@@ -165,9 +198,10 @@ $(document).ready(function() {
     
         var isequence=bpm.sequence.split("");
         var seq=isequence.map(function (d){return {"name":d}});
-
         
-
+        $("#dbgraph_sequence").attr('value',bpm.sequence);
+        $("#dbgraph_dotbracket").attr('value',os_to_dotbracket(os,bpm.sequence.length));
+        
         var svg = d3.select("body").append("svg")
             .attr("width", width)
             .attr("height", height)
@@ -248,8 +282,5 @@ $(document).ready(function() {
 
 </script>
 
-
-  
 </body>
 </html>
-
