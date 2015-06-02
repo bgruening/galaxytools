@@ -10,6 +10,31 @@ stdin_data = []
 KEY_ORDER = ('parent', 'source', 'type', 'start', 'end', 'score', 'strand',
              '8', 'quals')
 
+# Table of amino acids
+aa_table = {
+    'Ala' : 'A',
+    'Arg' : 'R',
+    'Asn' : 'N',
+    'Asp' : 'D',
+    'Cys' : 'C',
+    'Gln' : 'Q',
+    'Glu' : 'E',
+    'Gly' : 'G',
+    'His' : 'H',
+    'Ile' : 'I',
+    'Leu' : 'L',
+    'Lys' : 'K',
+    'Met' : 'M',
+    'Phe' : 'F',
+    'Pro' : 'P',
+    'Ser' : 'S',
+    'Thr' : 'T',
+    'Trp' : 'W',
+    'Tyr' : 'Y',
+    'Val' : 'V',
+    'Pyl' : 'O',
+    'seC' : 'U',
+    '???' : 'X' }
 
 def output_line(gff3):
     print '\t'.join(str(gff3[x]) for x in KEY_ORDER)
@@ -37,21 +62,26 @@ for line in sys.stdin:
                 '8': '.',
             }
 
+            aa_long = data[1][5:]
+            aa_short = aa_table[aa_long]
+            anticodon = data[4][1:data[4].index(")")].upper().replace("T", "U")
+            name = 'trn{}-{}'.format(aa_short, anticodon)
+
             if not full_gene_model:
                 gff3.update({
                     'type': 'tRNA',
-                    'quals': 'ID=tRNA{0}.{1};Name={2}'.format(genome_id, *data),
+                    'quals': 'ID=tRNA{0}.{1};Name={name};product={2}'.format(genome_id, *data, name = name),
                 })
                 output_line(gff3)
             else:
                 gff3.update({
                     'type': 'gene',
-                    'quals': 'ID=gene{0}.{1};Name={2}-gene'.format(genome_id, *data),
+                    'quals': 'ID=gene{0}.{1};Name={name};product={2}'.format(genome_id, *data, name = name),
                 })
                 output_line(gff3)
                 gff3.update({
                     'type': 'tRNA',
-                    'quals': 'ID=tRNA{0}.{1};Parent=gene{0}.{1};Name={2}'.format(genome_id, *data),
+                    'quals': 'ID=tRNA{0}.{1};Parent=gene{0}.{1};Name={name};product={2}'.format(genome_id, *data, name = name),
                 })
                 output_line(gff3)
 
