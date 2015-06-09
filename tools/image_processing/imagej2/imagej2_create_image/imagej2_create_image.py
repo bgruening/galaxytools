@@ -35,7 +35,7 @@ if __name__=="__main__":
     tmp_err = tempfile.NamedTemporaryFile().name
     tmp_stderr = open( tmp_err, 'wb' )
     # Build the command line.
-    cmd = imagej2_base_utils.get_base_command( memory_size, jython_script=args.jython_script )
+    cmd = imagej2_base_utils.get_base_command_imagej2( memory_size, jython_script=args.jython_script )
     if cmd is None:
         imagej2_base_utils.stop_err( "ImageJ not found!" )
     cmd += ' %s %d %d %d %s %s' % ( args.image_title, args.width, args.height, args.depth, args.image_type, tmp_image_path )
