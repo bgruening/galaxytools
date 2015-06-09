@@ -1,7 +1,7 @@
 <%
     # Use root for resource loading.
-    root                      = h.url_for( '/' )
-    app_root                  = root + "plugins/visualizations/drawrnajs/static/"
+    root     = h.url_for( '/' )
+    app_root = root + "plugins/visualizations/drawrnajs/static/"
 %>
 <!DOCTYPE HTML>
 <%
@@ -17,12 +17,10 @@
 <script type="text/javascript" src="../../../../../static/scripts/libs/jquery/jquery.migrate.js"></script>
 
 
-<meta charset="UTF-8">
-<link type="text/css" rel="stylesheet" href="http://workmen.biojs.net/github/bene200/drawrnajs/master/style/style.css">
-<link type="text/css" rel="stylesheet" href="http://workmen.biojs.net/github/bene200/drawrnajs/master/style/spectrum.css">
+${h.stylesheet_link( app_root + "drawrnajs/spectrum.css" )}
+${h.stylesheet_link( app_root + "drawrnajs/style.css" )}
 
-<script src="https://wzrd.in/bundle/drawrnajs@0.3.4"></script>
-
+${h.javascript_link( app_root + 'drawrnajs/drawrnajs@0.3.4' )}
 
 <!--
 example page:
@@ -64,202 +62,14 @@ http://workmen.biojs.net/demo/drawrnajs/simple
 	</div>
 
 
+${h.javascript_link( app_root + 'function.os_to_dotbracket.min.js' )}
+${h.javascript_link( app_root + 'function.parse_ps.min.js' )}
+${h.javascript_link( app_root + 'function.redraw.min.js' )}
+${h.javascript_link( app_root + 'function.draw_sequence_selector.min.js' )}
+${h.javascript_link( app_root + 'function.get_fasta_index.min.js' )}
+
 
 <script type="text/javascript">
-///@todo make it static in a separate .js file and run grunt over it
-function os_to_dotbracket(os,sequence_length)
-{
-	var dotbracket = [];
-	for(var i = 0; i < sequence_length; i++)
-	{
-		dotbracket.push('.');
-	}
-	
-	for(var i = 0; i < os.length; i++)
-	{
-		if(os[i].source < os[i].target)
-		{
-			dotbracket[os[i]['source']] = '(';
-			dotbracket[os[i]['target']] = ')';
-		}
-		else
-		{
-			dotbracket[os[i]['target']] = '(';
-			dotbracket[os[i]['source']] = ')';
-		}
-	}
-	
-	return dotbracket.join('');
-}
-
-///@note this function is taken from:
-///@url https://github.com/bgruening/galaxytools/tree/master/visualisations/dbgraph
-function parse_ps(img)
-{
-	var maindic={},
-		seqfound=false,
-		sequence="",
-		bpp=[],
-		mlp=[];
-		ps=[];
-	var keys=["source","target","value"];
-	
-	var dic= img.split("\n");
-	for (var i=0;i<dic.length ; i++)
-	{
-		f=dic[i];
-		if (seqfound){
-			sequence=f.substring(0,f.length-1);
-			seqfound=false;
-		}
-		if (f.search("/sequence") != -1){
-			seqfound=true;
-			//console.log(f);
-		}
-		if (f.search(" ubox") != -1 && i>15){
-			var a=f.split(" ")[0];
-			b=f.split(" ")[1];
-			c=f.split(" ")[2];
-			var row = {};
-			row[keys[0]]=a;
-			row[keys[1]]=b;
-			row[keys[2]]=c;
-			bpp.push(row);
-		}
-		if (f.search(" lbox") != -1 && i>15){
-			a=f.split(" ")[0]-1;
-			b=f.split(" ")[1]-1;
-			var row = {};
-			row[keys[0]]=parseInt(a);
-			row[keys[1]]=parseInt(b);
-			row[keys[2]]=1;
-			mlp.push(row);
-		}
-	}
-	console.log("source: " + mlp[0]["source"]);
-	console.log("target: " + mlp[0]["target"]);
-	for (var i=1; i < sequence.length; i++){
-			var row = {};
-			row["source"]=i-1;
-			row["target"]=i;
-			row["value"]=1;
-			ps.push(row);
-		}
-	maindic["base-pairing-probabilities"]=bpp;
-	maindic["optimal-structure"]=mlp;
-	maindic["sequence"]=sequence;
-	maindic["primary-structure"]=ps;
-	
-	return JSON.stringify(maindic);
-}
-
-function redraw(sequence,structure)
-{
-	var rna = require("drawrnajs");
-	var app = rna.vis;
-	
-	while(structure.length < sequence.length)
-	{
-		structure += '.';
-	}
-	
-	document.getElementById('SEQ_BOX').value = sequence;
-	document.getElementById('DOTBR_BOX').value = structure;
-	
-	//init colors
-	$("#acolor").spectrum({ color: "#64F73F" });
-	$("#ccolor").spectrum({ color: "#FFB340" });
-	$("#gcolor").spectrum({ color: "#EB413C" });
-	$("#ucolor").spectrum({ color: "#3C88EE" });
-	$("#selcolor").spectrum({color: "#F6F6F6"});
-
-	//init alert box
-	document.getElementById('ALERT').value = "";
-
-	var input = rna.io.getInputSequences();
-	var struct = rna.t.transformDotBracket(input[0], input[1]);
-
-	var cy = document.getElementById('cy');
-	cy.style.width = "60%";
-
-	app({graph: struct, el: cy, doc: document, win: window});
-
-	var runButton = document.getElementById('PERFORM_VIS');
-	runButton.readOnly = true;
-	runButton.addEventListener('click', function(){ 
-		document.getElementById('ALERT').value = "";
-		var input = rna.io.getInputSequences();
-		if(rna.io.checkConditions(input)){
-			struct = rna.t.transformDotBracket(input[0], input[1]);
-			app({graph: struct, el: cy, doc: document, win: window});
-		}
-	}, false);
-}
-
-function draw_sequence_selector(sequence_index)
-{
-	var keys = Object.keys(sequence_index);
-	var n = keys.length;
-	
-	///@todo use $().data()
-	var select = $('<select class="textbox" onchange="redraw(idx[Object.keys(idx)[$(this).val()]],\'\');" />');
-	
-	for(var i = 0; i < 2; i++)
-	{
-		var option = $('<option />');
-		option.attr('value',i);
-		option.text((i+1)+'. '+keys[i]);
-		
-		select.append(option);
-	}
-	
-	$( ".input" ).prepend(select);
-}
-
-function get_fasta_index(fasta_content)
-{
-	// Gaurentees that the last sequence will be parsed even if no "\n" is the last char
-	if(fasta_content[fasta_content.length-1] != "\n")
-	{
-		fasta_content = fasta_content + "\n";
-	}
-	
-	idx = {};
-	
-	var state = 2;
-	var name = '';
-	
-	for(var i = 0; i < fasta_content.length; i++)
-	{
-		var val = fasta_content[i];
-		if(state == 2)
-		{
-			if(val == ">")
-			{
-				name = '';
-				state = 1;
-			}
-			else if(val != "\t" && val != ' ' && val != "\n")
-			{
-				idx[name] += val;
-			}
-		}
-		else if(state == 1)
-		{
-			if(val == "\n")
-			{
-				idx[name] = '';
-				state = 2;
-			}
-			else
-			{
-				name += val;
-			}
-		}
-	}
-	
-	return idx;
-}
 
 $(document).ready(function()
 {
