@@ -3,6 +3,11 @@ import shutil
 import sys
 import tempfile
 
+FIJI_JAR_DIR = os.environ.get( 'FIJI_JAR_DIR', None )
+FIJI_OSX_JAVA3D_DIR = os.environ.get( 'FIJI_OSX_JAVA3D_DIR', None )
+FIJI_PLUGIN_DIR = os.environ.get( 'FIJI_PLUGIN_DIR', None )
+FIJI_ROOT_DIR = os.environ.get( 'FIJI_ROOT_DIR', None )
+
 BUFF_SIZE = 1048576
 
 def cleanup_before_exit( tmp_dir ):
@@ -12,7 +17,18 @@ def cleanup_before_exit( tmp_dir ):
     if tmp_dir and os.path.exists( tmp_dir ):
         shutil.rmtree( tmp_dir )
 
-def get_base_command( memory_size=None, macro=None, jython_script=None ):
+def get_base_cmd_bunwarpj( jvm_memory ):
+    if FIJI_JAR_DIR is not None and FIJI_PLUGIN_DIR is not None:
+        if jvm_memory in [ None, 'None' ]:
+            jvm_memory_str = ''
+        else:
+            jvm_memory_str = '-Xmx%s' % jvm_memory
+        bunwarpj_base_cmd = "java %s -cp %s/ij-1.49k.jar:%s/bUnwarpJ_-2.6.1.jar bunwarpj.bUnwarpJ_" % \
+            ( jvm_memory_str, FIJI_JAR_DIR, FIJI_PLUGIN_DIR )
+        return bunwarpj_base_cmd
+    return None
+
+def get_base_command_imagej2( memory_size=None, macro=None, jython_script=None ):
     imagej2_executable = get_imagej2_executable()
     if imagej2_executable:
         cmd = '%s --headless -DXincgc' % imagej2_executable
