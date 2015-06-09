@@ -1,23 +1,4 @@
-Galaxy wrapper for statistical hypothesis testing with scipy
-============================================================
-
-This wrapper is copyright 2013 by Björn Grüning.
-
-
-
-
-============
-Installation
-============
-
-
-
-=======
-History
-=======
-
-
-  - v0.1: no release yet
+This tool is not further developed, if you are interested in it and want to use it in Galaxy please get in touch.
 
 
 
