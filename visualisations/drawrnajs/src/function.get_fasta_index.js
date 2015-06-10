@@ -24,14 +24,14 @@ function get_fasta_index(fasta_content)
 			}
 			else if(val != "\t" && val != ' ' && val != "\n")
 			{
-				idx[name] += val;
+				idx[name]['sequence'] += val;
 			}
 		}
 		else if(state == 1)
 		{
 			if(val == "\n")
 			{
-				idx[name] = '';
+				idx[name] = {'sequence':'','structure':''};
 				state = 2;
 			}
 			else

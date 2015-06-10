@@ -67,6 +67,7 @@ ${h.javascript_link( app_root + 'function.parse_ps.min.js' )}
 ${h.javascript_link( app_root + 'function.redraw.min.js' )}
 ${h.javascript_link( app_root + 'function.draw_sequence_selector.min.js' )}
 ${h.javascript_link( app_root + 'function.get_fasta_index.min.js' )}
+${h.javascript_link( app_root + 'function.get_dotbracket_index.min.js' )}
 
 
 <script type="text/javascript">
@@ -99,7 +100,18 @@ $(document).ready(function()
 				var idx = get_fasta_index(fasta_file);
 				draw_sequence_selector(idx);
 				
-				redraw(idx[Object.keys(idx)[0]],'');
+				redraw(idx[Object.keys(idx)[0]]['sequence'],'');
+			}
+		});
+	%elif hda.ext == 'dot-bracket':
+		$.ajax(ajaxUrl,
+		{
+			success: function(dotbracket_file)
+			{
+				var idx = get_dotbracket_index(dotbracket_file);
+				draw_sequence_selector(idx);
+				
+				redraw(idx[Object.keys(idx)[0]]['sequence'],idx[Object.keys(idx)[0]]['structure']);
 			}
 		});
 	%endif
