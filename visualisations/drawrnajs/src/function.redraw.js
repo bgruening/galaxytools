@@ -32,7 +32,8 @@ function redraw(sequence,structure)
 
     var runButton = document.getElementById('PERFORM_VIS');
     runButton.readOnly = true;
-    runButton.addEventListener('click', function(){ 
+    runButton.addEventListener('click', function()
+    { 
         document.getElementById('ALERT').value = "";
         var input = rna.io.getInputSequences();
         if(rna.io.checkConditions(input)){
