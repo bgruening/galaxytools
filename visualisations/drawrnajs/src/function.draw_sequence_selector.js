@@ -5,7 +5,13 @@ function draw_sequence_selector(sequence_index)
     var n = keys.length;
     
     ///@todo use $().data()
-    var select = $('<select class="textbox" onchange="redraw(idx[Object.keys(idx)[$(this).val()]][\'sequence\'],idx[Object.keys(idx)[$(this).val()]][\'structure\']);" />');
+    var select = $('<select class="textbox" onchange="' +
+                        'var sid=$(this).val();' +
+                        'var skeys=Object.keys(idx);' +
+                        'var skey=skeys[sid];' +
+                        'var sob=idx[skey];' +
+                        'redraw(sob[\'sequence\'],sob[\'structure\']);' +
+                    '" />');
     
     for(var i = 0; i < n; i++)
     {
