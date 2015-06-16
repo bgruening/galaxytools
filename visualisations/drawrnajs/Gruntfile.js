@@ -16,7 +16,8 @@ module.exports = function(grunt)
 					'static/function.redraw.min.js': 'src/function.redraw.js',
 					'static/function.draw_sequence_selector.min.js': 'src/function.draw_sequence_selector.js',
 					'static/function.get_fasta_index.min.js': 'src/function.get_fasta_index.js',
-					'static/function.get_dotbracket_index.min.js': 'src/function.get_dotbracket_index.js'
+					'static/function.get_dotbracket_index.min.js': 'src/function.get_dotbracket_index.js',
+					'static/function.get_connectivitytable_index.min.js': 'src/function.get_connectivitytable_index.js'
 				}
 			}
 		},
