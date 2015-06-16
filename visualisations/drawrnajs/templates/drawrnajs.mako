@@ -68,6 +68,7 @@ ${h.javascript_link( app_root + 'function.redraw.min.js' )}
 ${h.javascript_link( app_root + 'function.draw_sequence_selector.min.js' )}
 ${h.javascript_link( app_root + 'function.get_fasta_index.min.js' )}
 ${h.javascript_link( app_root + 'function.get_dotbracket_index.min.js' )}
+${h.javascript_link( app_root + 'function.get_connectivitytable_index.min.js' )}
 
 
 <script type="text/javascript">
@@ -110,6 +111,17 @@ $(document).ready(function()
             success: function(dotbracket_file)
             {
                 var idx = get_dotbracket_index(dotbracket_file);
+                draw_sequence_selector(idx);
+                
+                redraw(idx[Object.keys(idx)[0]]['sequence'],idx[Object.keys(idx)[0]]['structure']);
+            }
+        });
+    %elif hda.ext == 'ct':
+        $.ajax(ajaxUrl,
+        {
+            success: function(connectivitytable_file)
+            {
+                var idx = get_connectivitytable_index(connectivitytable_file);
                 draw_sequence_selector(idx);
                 
                 redraw(idx[Object.keys(idx)[0]]['sequence'],idx[Object.keys(idx)[0]]['structure']);
