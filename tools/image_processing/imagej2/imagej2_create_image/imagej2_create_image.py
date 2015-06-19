@@ -1,8 +1,4 @@
 #!/usr/bin/env python
-# Galaxy wrapper for use with Imagej2 by Greg Von Kuster
-"""
-A wrapper script for running ImageJ2 Jython scripts.
-"""
 import argparse
 import shutil
 import subprocess
