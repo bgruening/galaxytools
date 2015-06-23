@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 import argparse
-import os
-import shutil
 import subprocess
 import tempfile
 import imagej2_base_utils
@@ -12,8 +10,8 @@ parser.add_argument( '--source_image', dest='source_image', help='Source image' 
 parser.add_argument( '--source_image_format', dest='source_image_format', help='Source image format' )
 parser.add_argument( '--target_image', dest='target_image', help='Target image' )
 parser.add_argument( '--target_image_format', dest='target_image_format', help='Target image format' )
-parser.add_argument( '--source_raw_transformation', dest='source_raw_transformation', default=None, help='Direct source transformation matrix' )
-parser.add_argument( '--target_raw_transformation', dest='target_raw_transformation', default=None, help='Inverse target transformation matrix' )
+parser.add_argument( '--source_raw_transformation', dest='source_raw_transformation', help='Direct source transformation matrix' )
+parser.add_argument( '--target_raw_transformation', dest='target_raw_transformation', help='Inverse target transformation matrix' )
 parser.add_argument( '--max_heap_size_type', dest='max_heap_size_type', help='Type (default or megabytes) of max_heap_size value' )
 parser.add_argument( '--max_heap_size', dest='max_heap_size', help='Maximum size of the memory allocation pool used by the JVM.' )
 parser.add_argument( '--output', dest='output', help='Warping index' )
