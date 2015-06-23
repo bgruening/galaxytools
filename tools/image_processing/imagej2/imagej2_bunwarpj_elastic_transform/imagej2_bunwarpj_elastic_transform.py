@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 import argparse
-import os
 import shutil
 import subprocess
 import tempfile
@@ -12,7 +11,7 @@ parser.add_argument( '--source_image', dest='source_image', help='Source image' 
 parser.add_argument( '--source_image_format', dest='source_image_format', help='Source image format' )
 parser.add_argument( '--target_image', dest='target_image', help='Target image' )
 parser.add_argument( '--target_image_format', dest='target_image_format', help='Target image format' )
-parser.add_argument( '--elastic_transformation', dest='elastic_transformation', default=None, help='Elastic transformation as saved by bUnwarpJ in elastic format' )
+parser.add_argument( '--elastic_transformation', dest='elastic_transformation', help='Elastic transformation as saved by bUnwarpJ in elastic format' )
 parser.add_argument( '--source_out', help='Output source image' )
 parser.add_argument( '--source_out_datatype', help='Output registered source image format' )
 parser.add_argument( '--jython_script', dest='jython_script', help='Path to the Jython script' )
@@ -37,7 +36,7 @@ tmp_stdout = open( tmp_out, 'wb' )
 tmp_err = tempfile.NamedTemporaryFile().name
 tmp_stderr = open( tmp_err, 'wb' )
 
-# Build the command line to align the two images.
+# Build the command line to apply the transformation.
 cmd = imagej2_base_utils.get_base_cmd_bunwarpj( memory_size )
 if cmd is None:
     imagej2_base_utils.stop_err( "bUnwarpJ not found!" )
