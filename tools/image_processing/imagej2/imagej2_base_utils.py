@@ -95,7 +95,7 @@ def get_max_heap_size_value( max_heap_size_type, max_heap_size ):
     if max_heap_size_type == 'default':
         return None
     if max_heap_size_type == 'megabytes':
-        if max_heap_size % 1024 not in [ 0, 256, 512 ]:
+        if int( max_heap_size ) % 1024 not in [ 0, 256, 512 ]:
             return None
         return '%sm' % str( max_heap_size )
     if max_heap_size_type == 'gigabytes':
