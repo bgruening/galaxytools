@@ -6,7 +6,7 @@ Galaxy Tool wrappers
 This repository contains a variety of different tools that can be installed and used inside the Galaxy. Many tools are already included in the [Galaxy Tool Shed](https://toolshed.g2.bx.psu.edu/), others needs some more [love](https://github.com/bgruening/galaxytools/issues).
 
 
-Wraping tools for use in Galaxy is easy! If you want to start please see the [Galaxy wiki](https://wiki.galaxyproject.org/Admin/Tools/AddToolTutorial) or get in contact. If you want to contribute to this repository please see our [contributing guidelines](CONTRIBUTING.md) and our list of [issues](https://github.com/bgruening/galaxytools/issues).
+Wrapping tools for use in Galaxy is easy! If you want to start please see the [Galaxy wiki](https://wiki.galaxyproject.org/Admin/Tools/AddToolTutorial) or get in contact. If you want to contribute to this repository please see our [contributing guidelines](CONTRIBUTING.md) and our list of [issues](https://github.com/bgruening/galaxytools/issues).
 
 
 Highlights

@@ -1,13 +1,21 @@
+Galaxy workflow for merging of chemical libraries using the chemicaltoolbox
+---------------------------------------------------------------------------
+
 This package is a Galaxy workflow for merging of chemical libraries using the chemicaltoolbox.
 
-To learn more about the chemicaltoolbox and all the integrated tools, 
-please have a look at https://github.com/bgruening/galaxytools/tree/master/chemicaltoolbox.
+
+.. image:: https://raw.githubusercontent.com/bgruening/galaxytools/master/workflows/chemicaltoolbox/merging_chemical_databases/large_compound_databases.png
+
+
+To learn more about the chemicaltoolbox and all the integrated tools, please have a look at our `readme file <https://github.com/bgruening/galaxytools/blob/master/chemicaltoolbox/README.rst>`_
+
+
 
 
 Sample Data
 ===========
 
-The workflow will fetch the sample data from online resources, like PubChem, DrugBank.
+The workflow will fetch the sample data from online resources, like `PubChem <https://pubchem.ncbi.nlm.nih.gov/>`_, `DrugBank <http://www.drugbank.ca/>`_.
 
 
 Citation

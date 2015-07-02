@@ -11,6 +11,7 @@ inclusion.
 * Make sure you have git [installed](https://help.github.com/articles/set-up-git)
 * Fork the repository on [GitHub](https://github.com/bgruening/galaxytools/fork)
 * Make the desired modifications - consider using a [feature branch](https://github.com/Kunena/Kunena-Forum/wiki/Create-a-new-branch-with-git-and-manage-branches).
+* Try to stick to the [IUC standards](http://galaxy-iuc-standards.readthedocs.org/en/latest/) whenever you can
 * Make sure you have added the necessary tests for your changes and they pass.
 * Open a [pull request](https://help.github.com/articles/using-pull-requests)
   with these changes.
