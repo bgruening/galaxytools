@@ -1,8 +1,8 @@
 Galaxy wrappers for common unix text-processing tools
 =====================================================
 
-The initial work was done by Assaf Gordon and Greg Hannon's lab ( http://hannonlab.cshl.edu ) 
-in Cold Spring Harbor Laboratory ( http://www.cshl.edu ). In late 2013 maintainence and 
+The initial work was done by Assaf Gordon and Greg Hannon's lab ( http://hannonlab.cshl.edu )
+in Cold Spring Harbor Laboratory ( http://www.cshl.edu ). In late 2013 maintainence and
 further development was taken over by Bjoern Gruening. Feel free to contribute any general purpose
 text manipulation tool to this repository.
 
@@ -58,19 +58,19 @@ These commands are DISABLED using the "--sandbox" parameter to awk and sed.
 
 User trying to run an awk program similar to::
 
- BEGIN { system("ls") }
+  BEGIN { system("ls") }
 
 Will get an error (in Galaxy) saying::
 
- fatal: 'system' function not allowed in sandbox mode.
+  fatal: 'system' function not allowed in sandbox mode.
 
 User trying to run a SED program similar to::
 
- 1els
+  1els
 
 will get an error (in Galaxy) saying::
 
- sed: -e expression #1, char 2: e/r/w commands disabled in sandbox mode
+  sed: -e expression #1, char 2: e/r/w commands disabled in sandbox mode
 
 That being said, if you do find some vulnerability in these tools, please let me know and I'll try fix them.
 
@@ -103,22 +103,21 @@ License
   * Copyright (c) 2013-2015   B. Gruening  (bjoern dot gruening <at> gmail dot com)
 
 
-Permission is hereby granted, free of charge, to any person obtaining 
-a copy of this software and associated documentation files (the 
-"Software"), to deal in the Software without restriction, including 
-without limitation the rights to use, copy, modify, merge, publish, 
-distribute, sublicense, and/or sell copies of the Software, and to 
-permit persons to whom the Software is furnished to do so, subject to 
+Permission is hereby granted, free of charge, to any person obtaining
+a copy of this software and associated documentation files (the
+"Software"), to deal in the Software without restriction, including
+without limitation the rights to use, copy, modify, merge, publish,
+distribute, sublicense, and/or sell copies of the Software, and to
+permit persons to whom the Software is furnished to do so, subject to
 the following conditions:
 
-The above copyright notice and this permission notice shall be 
+The above copyright notice and this permission notice shall be
 included in all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, 
-EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF 
-MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. 
-IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY 
-CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, 
-TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE 
-SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE. 
-
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
