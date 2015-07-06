@@ -1,11 +1,7 @@
 import sys
 from ij import IJ
 from ij import ImagePlus
-
-def handle_error( error_log, msg ):
-    elh = open( error_log, 'wb' )
-    elh.write( msg )
-    elh.close()
+import jython_utils
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
@@ -62,14 +58,14 @@ elif noise == 'remove_nans':
         # we'll be able to write tool validators rather than having to stop the job in
         # an error state.
         msg = "Remove NaNs requires a 32-bit image, the selected image is %d-bit" % bit_depth
-        handle_error( error_log, msg )
+        jython_utils.handle_error( error_log, msg )
         error = True
 elif noise == 'rof_denoise':
     if image_type == ImagePlus.GRAY32:
         IJ.run( image_plus_copy, "ROF Denoise", "" )
     else:
         msg = "ROF Denoise requires an image of type 32-bit grayscale, the selected image is %d-bit" % ( bit_depth )
-        handle_error( error_log, msg )
+        jython_utils.handle_error( error_log, msg )
         error = True
 elif noise == 'randomj':
     if randomj == 'randomj_binomial':

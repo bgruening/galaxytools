@@ -31,14 +31,14 @@ def get_base_cmd_bunwarpj( jvm_memory ):
 def get_base_command_imagej2( memory_size=None, macro=None, jython_script=None ):
     imagej2_executable = get_imagej2_executable()
     if imagej2_executable:
-        cmd = '%s --headless -DXincgc' % imagej2_executable
+        cmd = '%s --ij2 --headless --debug' % imagej2_executable
         if memory_size is not None:
             memory_size_cmd = ' -DXms=%s -DXmx=%s' % ( memory_size, memory_size )
             cmd += memory_size_cmd
         if macro is not None:
             cmd += ' --macro %s' % os.path.abspath( macro )
         if jython_script is not None:
-            cmd += ' --jython -u %s' % os.path.abspath( jython_script )
+            cmd += ' --jython %s' % os.path.abspath( jython_script )
         return cmd
     return None
 
@@ -109,7 +109,7 @@ def get_platform_info_dict():
     platform_dict[ 'architecture' ] = machine.lower()
     return platform_dict
 
-def get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout ):
+def get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout, include_stdout=False ):
     tmp_stderr.close()
     """
     Return a stderr string of reasonable size.
@@ -126,8 +126,21 @@ def get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout ):
     except OverflowError:
         pass
     tmp_stderr.close()
+    if include_stdout:
+        tmp_stdout = open( tmp_out, 'rb' )
+        stdout_str = ''
+        buffsize = BUFF_SIZE
+        try:
+            while True:
+                stdout_str += tmp_stdout.read( buffsize )
+                if not stdout_str or len( stdout_str ) % buffsize != 0:
+                    break
+        except OverflowError:
+            pass
     tmp_stdout.close()
-    return str( stderr_str )
+    if include_stdout:
+        return 'STDOUT\n%s\n\nSTDERR\n%s\n' % ( stdout_str, stderr_str )
+    return stderr_str
 
 def get_temp_dir( prefix='tmp-imagej-', dir=None ):
     """

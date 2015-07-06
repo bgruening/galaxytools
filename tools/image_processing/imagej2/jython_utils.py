@@ -1,6 +1,9 @@
 import imagej2_base_utils
 from ij import IJ
 
+IMAGE_PLUS_IMAGE_TYPE_FIELD_VALUES = { '0':'GRAY8', '1':'GRAY16', '2':'GRAY32',
+                                       '3':'COLOR_256', '4':'COLOR_RGB' }
+
 def convert_before_saving_as_tiff( image_plus ):
     # The bUnwarpJ plug-in produces TIFF image stacks consisting of 3
     # slices which can be viewed in ImageJ.  The 3 slices are: 1) the
@@ -22,3 +25,13 @@ def convert_before_saving_as_tiff( image_plus ):
     tmp_out_png_path = imagej2_base_utils.get_temporary_image_path( tmp_dir, 'png' )
     IJ.saveAs( image_plus, 'png', tmp_out_png_path )
     return IJ.openImage( tmp_out_png_path )
+
+def get_display_image_type( image_type ):
+    return IMAGE_PLUS_IMAGE_TYPE_FIELD_VALUES.get( str( image_type ), None )
+
+def handle_error( error_log, msg ):
+    # Java writes a lot of stuff to stderr, so the received error_log 
+    # will log actual errors.
+    elh = open( error_log, 'wb' )
+    elh.write( msg )
+    elh.close()
