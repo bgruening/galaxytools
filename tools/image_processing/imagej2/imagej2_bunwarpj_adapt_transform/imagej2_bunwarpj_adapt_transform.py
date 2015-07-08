@@ -64,7 +64,7 @@ cmd += ' %2.f' % image_size_factor
 proc = subprocess.Popen( args=cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, shell=True )
 rc = proc.wait()
 if rc != 0:
-    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout )
+    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
     imagej2_base_utils.stop_err( error_message )
 
 imagej2_base_utils.cleanup_before_exit( tmp_dir )

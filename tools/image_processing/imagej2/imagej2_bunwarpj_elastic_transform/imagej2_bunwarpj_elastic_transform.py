@@ -51,7 +51,7 @@ cmd += ' %s' % tmp_source_out_tiff_path
 proc = subprocess.Popen( args=cmd, stderr=tmp_stderr, stdout=tmp_stdout, shell=True )
 rc = proc.wait()
 if rc != 0:
-    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout )
+    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
     imagej2_base_utils.stop_err( error_message )
 
 # Convert the registered image to the specified output format.
@@ -70,7 +70,7 @@ cmd += ' %s %s %s' % ( tmp_source_out_tiff_path,
 proc = subprocess.Popen( args=cmd, stderr=tmp_stderr, stdout=tmp_stdout, shell=True )
 rc = proc.wait()
 if rc != 0:
-    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout )
+    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
     imagej2_base_utils.stop_err( error_message )
 
 # Save the Registered Source Image to the defined output.
