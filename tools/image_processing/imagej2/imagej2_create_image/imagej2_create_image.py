@@ -38,7 +38,7 @@ if __name__=="__main__":
     proc = subprocess.Popen( args=cmd, stderr=tmp_stderr, stdout=tmp_stdout, shell=True )
     rc = proc.wait()
     if rc != 0:
-        error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout )
+        error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
         imagej2_base_utils.stop_err( error_message )
     shutil.move( tmp_image_path, args.out_fname )
     imagej2_base_utils.cleanup_before_exit( tmp_dir )

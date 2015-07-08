@@ -127,7 +127,7 @@ if save_transformation:
 proc = subprocess.Popen( args=cmd, stderr=tmp_stderr, stdout=tmp_stdout, shell=True )
 rc = proc.wait()
 if rc != 0:
-    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout )
+    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
     imagej2_base_utils.stop_err( error_message )
 
 # bUnwarpJ produces tiff image stacks consisting of 3 slices which can be viewed in ImageJ.
@@ -165,7 +165,7 @@ else:
 proc = subprocess.Popen( args=cmd, stderr=tmp_stderr, stdout=tmp_stdout, shell=True )
 rc = proc.wait()
 if rc != 0:
-    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout )
+    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
     imagej2_base_utils.stop_err( error_message )
 
 # Save the Registered Source Image to the output dataset.
