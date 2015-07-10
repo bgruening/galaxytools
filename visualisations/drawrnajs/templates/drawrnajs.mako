@@ -20,7 +20,7 @@
 ${h.stylesheet_link( app_root + "drawrnajs/spectrum.css" )}
 ${h.stylesheet_link( app_root + "drawrnajs/style.css" )}
 
-${h.javascript_link( app_root + 'drawrnajs/drawrnajs@0.3.4' )}
+${h.javascript_link( app_root + 'drawrnajs/drawrnajs@0.3.4.min.js' )}
 
 <!--
 example page:
