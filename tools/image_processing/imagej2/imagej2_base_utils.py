@@ -30,17 +30,17 @@ def get_base_cmd_bunwarpj( jvm_memory ):
 
 def get_base_command_imagej2( memory_size=None, macro=None, jython_script=None ):
     imagej2_executable = get_imagej2_executable()
-    if imagej2_executable:
-        cmd = '%s --ij2 --headless --debug' % imagej2_executable
-        if memory_size is not None:
-            memory_size_cmd = ' -DXms=%s -DXmx=%s' % ( memory_size, memory_size )
-            cmd += memory_size_cmd
-        if macro is not None:
-            cmd += ' --macro %s' % os.path.abspath( macro )
-        if jython_script is not None:
-            cmd += ' --jython %s' % os.path.abspath( jython_script )
-        return cmd
-    return None
+    if imagej2_executable is None:
+        return None
+    cmd = '%s --ij2 --headless --debug' % imagej2_executable
+    if memory_size is not None:
+        memory_size_cmd = ' -DXms=%s -DXmx=%s' % ( memory_size, memory_size )
+        cmd += memory_size_cmd
+    if macro is not None:
+        cmd += ' --macro %s' % os.path.abspath( macro )
+    if jython_script is not None:
+        cmd += ' --jython %s' % os.path.abspath( jython_script )
+    return cmd
 
 def get_file_extension( image_format ):
     """
@@ -163,6 +163,15 @@ def get_temporary_image_path( tmp_dir, image_format ):
     """
     file_extension = get_file_extension( image_format )
     return get_tempfilename( tmp_dir, file_extension )
+
+def handle_none_type( val, val_type='float' ):
+    if val is None:
+        return ' None'
+    else:
+        if val_type == 'float':
+            return ' %.1f' % val
+        elif val_type == 'int':
+            return ' %d' % val
 
 def stop_err( msg ):
     sys.stderr.write( msg )
