@@ -6,15 +6,6 @@ import subprocess
 import tempfile
 import imagej2_base_utils
 
-def handle_none_type( val, val_type='float' ):
-    if val is None:
-        return ' None'
-    else:
-        if val_type == 'float':
-            return ' %.1f' % val
-        elif val_type == 'int':
-            return ' %d' % val
-
 if __name__=="__main__":
     # Parse Command Line.
     parser = argparse.ArgumentParser()
@@ -38,7 +29,7 @@ if __name__=="__main__":
     parser.add_argument( '--jython_script', dest='jython_script', help='Path to the Jython script' )
     parser.add_argument( '--max_heap_size_type', dest='max_heap_size_type', help='Type (default or megabytes) of max_heap_size value' )
     parser.add_argument( '--max_heap_size', dest='max_heap_size', help='Maximum size of the memory allocation pool used by the JVM.' )
-    parser.add_argument( '--output', help='Path to the output file' )
+    parser.add_argument( '--output', dest='output', help='Path to the output file' )
     args = parser.parse_args()
 
     tmp_dir = imagej2_base_utils.get_temp_dir()
@@ -65,19 +56,19 @@ if __name__=="__main__":
     cmd += ' %s' % tmp_input_path
     cmd += ' %s' % args.input_datatype
     cmd += ' %s ' % args.noise
-    cmd += handle_none_type( args.standard_deviation )
-    cmd += handle_none_type( args.radius )
-    cmd += handle_none_type( args.threshold )
+    cmd += imagej2_base_utils.handle_none_type( args.standard_deviation )
+    cmd += imagej2_base_utils.handle_none_type( args.radius )
+    cmd += imagej2_base_utils.handle_none_type( args.threshold )
     cmd += ' %s' % args.which_outliers
     cmd += ' %s' % args.randomj
-    cmd += handle_none_type( args.trials )
-    cmd += handle_none_type( args.probability )
-    cmd += handle_none_type( args.lammbda )
-    cmd += handle_none_type( args.order, val_type='int' )
-    cmd += handle_none_type( args.mean )
-    cmd += handle_none_type( args.sigma )
-    cmd += handle_none_type( args.min )
-    cmd += handle_none_type( args.max )
+    cmd += imagej2_base_utils.handle_none_type( args.trials )
+    cmd += imagej2_base_utils.handle_none_type( args.probability )
+    cmd += imagej2_base_utils.handle_none_type( args.lammbda )
+    cmd += imagej2_base_utils.handle_none_type( args.order, val_type='int' )
+    cmd += imagej2_base_utils.handle_none_type( args.mean )
+    cmd += imagej2_base_utils.handle_none_type( args.sigma )
+    cmd += imagej2_base_utils.handle_none_type( args.min )
+    cmd += imagej2_base_utils.handle_none_type( args.max )
     cmd += ' %s' % args.insertion
     cmd += ' %s' % tmp_output_path
 
@@ -86,7 +77,7 @@ if __name__=="__main__":
 
     # Handle execution errors.
     if rc != 0:
-        error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_stdout )
+        error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
         imagej2_base_utils.stop_err( error_message )
     # Handle processing errors.
     if os.path.getsize( error_log ) > 0:

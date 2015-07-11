@@ -12,7 +12,7 @@ parser.add_argument( '--input_datatype', dest='input_datatype', help='Datatype o
 parser.add_argument( '--jython_script', dest='jython_script', help='Path to the Jython script' )
 parser.add_argument( '--max_heap_size_type', dest='max_heap_size_type', help='Type (default or megabytes) of max_heap_size value' )
 parser.add_argument( '--max_heap_size', dest='max_heap_size', help='Maximum size of the memory allocation pool used by the JVM.' )
-parser.add_argument( '--output', help='Path to the output file' )
+parser.add_argument( '--output', dest='output', help='Path to the output file' )
 parser.add_argument( '--output_datatype', dest='output_datatype', help='Datatype of the output image' )
 args = parser.parse_args()
 
@@ -44,7 +44,7 @@ proc = subprocess.Popen( args=cmd, stderr=tmp_stderr, stdout=tmp_stdout, shell=T
 rc = proc.wait()
 # Handle execution errors.
 if rc != 0:
-    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout, include_stdout=True )
+    error_message = imagej2_base_utils.get_stderr_exception( tmp_err, tmp_stderr, tmp_out, tmp_stdout )
     imagej2_base_utils.stop_err( error_message )
 # Handle processing errors.
 if os.path.getsize( error_log ) > 0:
