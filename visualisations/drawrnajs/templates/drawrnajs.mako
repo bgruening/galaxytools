@@ -20,7 +20,7 @@
 ${h.stylesheet_link( app_root + "drawrnajs/spectrum.css" )}
 ${h.stylesheet_link( app_root + "drawrnajs/style.css" )}
 
-${h.javascript_link( app_root + 'drawrnajs/drawrnajs@0.3.4.min.js' )}
+${h.javascript_link( app_root + 'drawrnajs/drawrnajs.0.3.5.min.js' )}
 
 <!--
 example page:
@@ -105,7 +105,7 @@ $(document).ready(function()
                 redraw(sequence,'.'.repeat(sequence.length));
             }
         });
-    %elif hda.ext == 'dot-bracket':
+    %elif hda.ext == 'dot-bracket' or hda.ext == 'dbn':
         $.ajax(ajaxUrl,
         {
             success: function(dotbracket_file)

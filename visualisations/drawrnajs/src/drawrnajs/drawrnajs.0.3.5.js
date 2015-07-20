@@ -23227,7 +23227,7 @@ var cytoscape;
 
 },{}],2:[function(require,module,exports){
 /*!
- * jQuery JavaScript Library v2.1.4
+ * jQuery JavaScript Library v2.1.3
  * http://jquery.com/
  *
  * Includes Sizzle.js
@@ -23237,7 +23237,7 @@ var cytoscape;
  * Released under the MIT license
  * http://jquery.org/license
  *
- * Date: 2015-04-28T16:01Z
+ * Date: 2014-12-18T15:11Z
  */
 
 (function( global, factory ) {
@@ -23295,7 +23295,7 @@ var
 	// Use the correct document accordingly with window argument (sandbox)
 	document = window.document,
 
-	version = "2.1.4",
+	version = "2.1.3",
 
 	// Define a local copy of jQuery
 	jQuery = function( selector, context ) {
@@ -23759,12 +23759,7 @@ jQuery.each("Boolean Number String Function Array Date RegExp Object Error".spli
 });
 
 function isArraylike( obj ) {
-
-	// Support: iOS 8.2 (not reproducible in simulator)
-	// `in` check used to prevent JIT error (gh-2145)
-	// hasOwn isn't used here due to false negatives
-	// regarding Nodelist length in IE
-	var length = "length" in obj && obj.length,
+	var length = obj.length,
 		type = jQuery.type( obj );
 
 	if ( type === "function" || jQuery.isWindow( obj ) ) {
@@ -34830,7 +34825,7 @@ t.transformDotBracket = function(seq, dotbr){
 }
 
 t.toCytoscapeElements = function(graph){
-	//Create a JSON structure from a graph object built by the 
+	//Create a JSON structure from a graph object built by the
 	//transformDotBracket function
 	//The JSON structure fits the requirements of CytoscapeJS
 	var elements = [];
@@ -34867,7 +34862,7 @@ t.toCytoscapeElements = function(graph){
 			group: 'edges',
 			data: {
 				id: links[i].source + "to" + links[i].target,
-				source: links[i].source.toString(), 
+				source: links[i].source.toString(),
     			target: links[i].target.toString(),
     			label: links[i].type ,
     			weight: t.getWeight(links[i].type)
@@ -34901,7 +34896,7 @@ t.getColor = function(element){
 		}
 		else if (element === "hbond"){
 			col = "#3A9AD9";
-		} 
+		}
 		else if(element === "violation") {
 			col = "red";
 		}
@@ -34921,7 +34916,7 @@ t.getColor = function(element){
 		}
 		else if (element === "hbond"){
 			col = "#3A9AD9";
-		} 
+		}
 		else if(element === "violation") {
 			col = "red";
 		}
@@ -34931,7 +34926,7 @@ t.getColor = function(element){
 
 t.getWeight = function(type) {
 	//Get weight for a certain bond type
-	var weight; 
+	var weight;
 	if(type=== "hbond" || type === "violation"){
     	weight = 4;
     } else {
@@ -34966,7 +34961,7 @@ t.getCoords = function(seq, dotbr, links){
 		centers[i].x = x + 65 * vy;
 		centers[i].y = y - 65 * vx;
 		var j = t.getPartner(i, links);
-		
+
 		if(j > i){
 			t.drawLoop(i, j, 	x + (65 * vx / 2.0), y
 								+ (65 * vy / 2.0), dirAngle,
@@ -35027,7 +35022,7 @@ t.drawLoop = function(i, j, x, y, dirAngle, coords, centers, angles, seq, links)
 			coords[j].y = (y + 65 * Math.sin(dirAngle + normalAngle) / 2.0);
 			t.drawLoop(i + 1, j - 1, x + 40 * Math.cos(dirAngle), y + 40 * Math.sin(dirAngle), dirAngle, coords,
 					centers, angles, seq, links);
-	} 
+	}
 	else {
 		//multi loop now
 		var k = i;
@@ -35076,22 +35071,22 @@ t.drawLoop = function(i, j, x, y, dirAngle, coords, centers, angles, seq, links)
 				// Base cannot be paired twice, so next base is at
 				// "unpaired base distance"
 				+ 1.0 * angleIncrementML;
-			
+
 		var currUnpaired = [];
 		var currInterval = {el1: 0, el2: baseAngle-1.0 * angleIncrementML};
 		var intervals = [];
-			
+
 		for (k = basesMultiLoop.length - 1; k >= 0; k--) {
 			l = basesMultiLoop[k];
 			centers[l] = mlCenter;
 			var isPaired = (t.getPartner(i, links) != -1);
-			var isPaired3 = isPaired && (t.getPartner(i) < l);
+			var isPaired3 = isPaired && (t.getPartner(i, links) < l);
 			var isPaired5 = isPaired && !isPaired3;
 			if (isPaired3) {
 				baseAngle = t.correctHysteresis(baseAngle+angleIncrementBP/2.)-angleIncrementBP/2.;
 				currInterval.el1 = baseAngle;
 				intervals.push({el1: currUnpaired, el2: currInterval });
-				currInterval = { el1: -1., el2: -1. };  
+				currInterval = { el1: -1.0, el2: -1.0 };
 				currUnpaired = [];
 			}
 			else if (isPaired5)
@@ -35104,7 +35099,7 @@ t.drawLoop = function(i, j, x, y, dirAngle, coords, centers, angles, seq, links)
 			}
 			angles[l] = baseAngle;
 			if (isPaired3)
-			{ 
+			{
 				baseAngle += angleIncrementBP;
 			}
 			else {
@@ -35117,20 +35112,20 @@ t.drawLoop = function(i, j, x, y, dirAngle, coords, centers, angles, seq, links)
 		for(var z = 0; z < intervals.length; z++){
 			var mina = intervals[z].el2.el1;
 			var maxa = t.normalizeAngle(intervals[z].el2.el2, mina);
-			
+
 			for (var n = 0; n < intervals[z].el1.length; n++){
 				var ratio = (1. + n)/(1. + intervals[z].el1.length);
 				var b = intervals[z].el1[n];
 				angles[b] = mina + (1.-ratio)*(maxa-mina);
 			}
 		}
-				
+
 		for (k = basesMultiLoop.length - 1; k >= 0; k--) {
 			l = basesMultiLoop[k];
 			coords[l].x = mlCenter.x + multiLoopRadius * Math.cos(angles[l]);
 			coords[l].y = mlCenter.y + multiLoopRadius * Math.sin(angles[l]);
-		}	
-			
+		}
+
 		var newAngle;
 		var m, n;
 		for (k = 0; k < helices.length; k++) {
@@ -35181,32 +35176,32 @@ t.objFun  = function(n1, n2, r, bpdist, multidist) {
 }
 
 t.correctHysteresis  = function(angle){
-	var hystAttr = [ 0., Math.PI/4., Math.PI/2., 3.*Math.PI/4., Math.PI, 5.*(Math.PI)/4., 3.*(Math.PI)/2, 7.*(Math.PI)/4.];
-	var result = t.normalizeAngle(angle);
+	var hystAttr = [ 0.0, Math.PI/4.0, Math.PI/2.0, 3.0*Math.PI/4.0, Math.PI, 5.0*(Math.PI)/4.0, 3.0*(Math.PI)/2.0, 7.0*(Math.PI)/4.0];
+	var result = t.normalizeAngleSec(angle);
 	for (var i = 0; i < hystAttr.length; i++){
 		var att = hystAttr[i];
-		if (Math.abs(t.normalizeAngle(att-result,-Math.PI)) < .15){
+		if (Math.abs(t.normalizeAngle(att-result,-Math.PI)) < 0.15){
 			result = att;
 		}
 	}
 	return result;
 }
 
-t.normalizeAngle  = function(angle){
-	return t.normalizeAngle(angle,0.);
+t.normalizeAngleSec  = function(angle){
+	return t.normalizeAngle(angle,0.0);
 }
-	
+
 t.normalizeAngle  = function(angle,fromVal) {
-	var toVal = fromVal +2.*Math.PI;
+	var toVal = fromVal +2.0*Math.PI;
 	var result = angle;
 	while(result<fromVal){
-		result += 2.*Math.PI;
+		result += 2.0*Math.PI;
 	}
 	while(result >= toVal)
 	{
-		result -= 2.*Math.PI;
+		result -= 2.0*Math.PI;
 	}
-	return result;		
+	return result;
 }
 
 t.graphToStrings  = function(graph){
@@ -35225,7 +35220,7 @@ t.graphToStrings  = function(graph){
 		else if(partner > i){
 			dotbr[i] = "(";
 			dotbr[partner] = ")";
-		} 
+		}
 		else {
 			continue;
 		}
@@ -35238,8 +35233,10 @@ t.isWatsonCrick = function(nucOne, nucTwo){
 	var watsonCrick = false;
 	if(nucOne === "G" && nucTwo === "C" ||
 		nucOne === "C" && nucTwo === "G" ||
-		nucOne === "A" && nucTwo === "U" || 
-		nucOne === "U" && nucTwo === "A") {
+		nucOne === "A" && nucTwo === "U" ||
+		nucOne === "U" && nucTwo === "A" ||
+		nucOne === "A" && nucTwo === "T" ||
+		nucOne === "T" && nucTwo === "A") {
 		watsonCrick = true;
 	}
 	return watsonCrick;
