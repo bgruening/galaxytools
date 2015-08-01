@@ -1,0 +1,176 @@
+<tool id="mea" name="MEA" version="0.6.4.0">
+    <description>Predict MEA structures and compare structures of RNAs</description>
+    <requirements>
+        <requirement type="package" version="2.22.6">gengetopt</requirement>
+        <requirement type="package" version="0.6.4">mea</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range=":-1"/>
+        <exit_code range="1:" />
+    </stdio>
+    <version_command>mea --version</version_command>
+    <command><![CDATA[
+        mea
+        #if str($predict_mode.predict_selector) == "predict":
+            $predict_mode.dotplot
+            #if str($predict_mode.mea_parameters.mea_parameters_selector) == "no_default"
+                --alpha $predict_mode.mea_parameters.alpha
+                --beta $predict_mode.mea_parameters.beta
+                --gamma $predict_mode.mea_parameters.gamma
+                --delta $predict_mode.mea_parameters.delta
+            #end if
+        #else
+            --structure `cat $predict_mode.structure`
+        #end if
+        #if str($compare_mode.compare_selector) == 'compare':
+            --reference `cat $compare_mode.reference`
+            $compare_mode.slide_rule
+            $compare_mode.conflict_rule
+        #end if
+        > $stdout
+    ]]></command>
+    <inputs>
+        <conditional name="predict_mode">
+            <param name="predict_selector" type="select" label="Predict MEA structure">
+                <option value="predict">Predict MEA structure</option>
+                <option value="compare">Specify structure (for comparison)</option>
+            </param>
+            <when value="predict">
+                <param name="dotplot" type="data" format="rna_eps" label="Dotplot" optional="False"
+                    help="Dotplot file (RNA base pair probabilities)"/>
+                <conditional name="mea_parameters">
+                    <param name="mea_parameters_selector" type="boolean" label="Use default parameters"
+                       truevalue="default" falsevalue="no_default" checked="True"
+                       help="The default parameters assign a base pair weight
+                            of 0.5 and penalize long base pairs." />
+                    <when value="default" />
+                    <when value="no_default">
+                    <param name="alpha" label="Alpha value" type="float"
+                            optional="False" value="0.012"
+                            help="Slope of base pair distance penalty. (--alpha)"/>
+                    <param name="beta" label="Beta value" type="float"
+                            optional="False" value="315"
+                            help="Turning point of base pair distance penalty. (--beta)" />
+                    <param name="gamma" label="Gamma value" type="float"
+                            optional="False" value="0.5"
+                            help="Base pair weight factor. (--gamma)" />
+                    <param name="delta" label="Delta value" type="float"
+                            optional="False" value="0.003"
+                            help="Minimum penalty factor for base pairs. (--delta)" />
+                    </when>
+                </conditional>
+            </when>
+            <when value="compare">
+                <param name="structure" format="txt" type="data" label="Structure" optional="False"
+                    help="(Predicted) RNA secondary structure for comparison to a reference structure. (--structure)" />
+            </when>
+        </conditional>
+        <conditional name="compare_mode">
+            <param name="compare_selector" type="select" label="Compare to a reference structure"
+                help="Whether to compare the predicted (or specified) structure to a reference structure.">
+                <option value="dont_compare">Do not compare</option>
+                <option value="compare">Compare to reference structure</option>
+            </param>
+            <when value="dont_compare" />
+            <when value="compare">
+                <param name="reference"
+                       optional="false"
+                       format="txt" type="data"
+                       label="Reference"
+                       help="Reference structure in dot-bracket format"/>
+                <param name="slide_rule" label="Slide Rule" type="boolean"
+                       optional="False" checked="True" falsevalue="--no-slide-rule" truevalue="" help="Use slide rule. (--no-slide-rule)" />
+                <param name="conflict_rule" label="Conflict Rule" type="boolean"
+                       optional="False" checked="True" falsevalue="--no-conflict-rule" truevalue="" help="Use onflict rule. (--no-conflict-rule)"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="txt" name="stdout" label="${tool.name} on ${on_string}" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="mea_parameter_selector" value="default" />
+            <param name="predict_selector" value="predict" />
+            <param name="compare_selector"  value="compare" />
+            <param name="dotplot" value="test_dp.ps" />
+            <param name="reference" value="test_reference.txt" />
+            <output name="stdout" file="test_predict.out" />
+        </test>
+        <test>
+            <param name="mea_parameter_selector" value="default" />
+            <param name="predict_selector" value="compare" />
+            <param name="compare_selector" value="compare" />
+            <param name="structure" value="test_structure.txt" />
+            <param name="reference" value="test_reference.txt" />
+            <output name="stdout" file="test_compare.out" />
+        </test>
+    </tests>
+    <help><![CDATA[
+=====
+MEA
+=====
+
+`MEA <http://www.bioinf.uni-leipzig.de/Software/mea/>`_ predicts RNA maximum expected accuracy structures from RNA base pair probabilities and optionally compares them to a reference structure. In a special mode it skips the prediction and compares a
+given structure to the reference.  For the prediction, MEA allows to
+penalize long base pairs, using parameters alpha, beta, gamma, and
+delta. For the comparison of secondary structures, several measures
+are computed from the confusion matrix of the RNA base pairs.
+
+------
+Inputs
+------
+
+The tool accepts dot plot files as generated by RNAfold -p.
+
+For (predicted) structure and reference, the tool accepts
+dot-bracket structures with pseudoknots (supporting bracket pairs
+(),{},[],<>,Aa,Bb,...)
+
+-------
+Outputs
+-------
+
+If predicting a structure, the tool outputs the sequence and the
+predicted dot bracket strucuture with computed score in parenthesis
+following the structure. This mimicks the output of the Vienna
+tools.
+
+The result of structure comparison is reported as a line of numbers
+
+TP FP FN TN SENS PPV F1 MCC
+
+where 
+
+* TP   = # true positives
+
+* FP   = # false positives
+
+* FN   = # false negatives
+
+* TN   = # true negatives
+
+* SENS = TP/(TP+FN) 'Sensitivity'http://www.bioinf.uni-leipzig.de/Software/mea/
+
+* PPV  = TP/(TP+FP) 'Positive Predictive Value'
+
+* F1   = PPV*SENS / (PPV+SENS), if PPV+SENS!=0; 0, otherwise   'F1-score'
+
+* MCC  = (TP*TN - FP*FN) / sqrt( (TP+FP)*(TP+FN)*(TN+FP)*(TN+FN) ) 'Mathews correlation coefficient'
+
+
+Special rules for prediction evaluation:
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+* Slide rule: tolerate shift of one base pair end by one base. This
+  rule directly affects the number of true positives.  
+* Conflict rule: predicted base pairs are false only if they
+  conflict with the reference; two base pair conflict if and only if
+  they share one end This rule directly affects the number of false
+  positives.
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1007/978-3-319-02624-4_1</citation>
+    </citations>
+</tool>
