@@ -1,7 +1,7 @@
-<tool id="bg_sortmerna" name="Filter with SortMeRNA" version="1.9.0">
+<tool id="bg_sortmerna" name="Filter with SortMeRNA" version="2.0.0">
     <description>Fast and accurate filtering of ribosomal RNAs in metatranscriptomic data</description>
     <requirements>
-        <requirement type='package' version="1.9">sortmerna</requirement>
+        <requirement type='package' version="2.0">sortmerna</requirement>
     </requirements>
     <stdio>
         <regex match="This program builds a Burst trie on an input rRNA database"
@@ -18,145 +18,169 @@
 sortmerna --version 2>&1|grep 'SortMeRNA version'
 ]]>
     </version_command>
-    <command interpreter="python">
+    <command>
 <![CDATA[
-    sortmerna.py
-    --sortmerna "
-        $strand_search
-        #if str( $read_family.read_family_selector ) == 'other':
-            --I $input_reads -r $read_family.ratio_parameter
-        #else:
-            $read_family.read_family_selector $input_reads
+    #set $ref = ''
+    #set $sep=''
+    #if str( $databases_type.databases_selector ) == 'history':
+        #for $db in $databases_type.input_databases
+            #set $ref += $sep + str($db.database_name) + ',' + $os.path.splitext($os.path.basename(str($db.database_name)))[0]
+            #set $sep = ':'
+        #end for
+        indexdb_rna --ref $ref
+    #else:
+        ## databases path is not directly accessible, must match by hand with LOC file contents
+        #set $data_table = dict([(_[0], _[2]) for _ in $databases_type.input_databases.input.options.tool_data_table.data])
+        #for $db in $databases_type.input_databases.value
+            #set $ref += $sep + $data_table[$db] + ',' + $os.path.splitext($data_table[$db])[0]
+            #set $sep = ':'
+        #end for
+    #end if
+    &&
+    sortmerna --ref $ref --reads $input_reads --aligned aligned
+    #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
+        $sequencing_type.paired_type
+    #end if
+    $strand_search
+    $aligned_fastx.aligned_fastx_selector
+    #if $aligned_fastx.aligned_fastx_selector == '--fastx'
+        #if $aligned_fastx.other
+            --other other_file
         #end if
-
-        #if str( $sequencing_type.sequencing_type_selector ) == 'paired':
-            $sequencing_type.paired_type
-        #end if
-
-        #if $outputs_selected:
-            #if 'accept' in $outputs_selected.value:
-                --accept accept_file
-            #end if
-            #if 'other' in $outputs_selected.value:
-                --other other_file
-            #end if
-        #end if
-
-        $log
-        -a \${GALAXY_SLOTS:-4}
-        "
-        #if str( $databases_type.databases_selector ) == 'history':
-            --buildtrie
-            #for $db in $databases_type.input_databases
-                $db.database_name
-            #end for
-        #else:
-            ## databases path is not directly accessible, must match by hand with LOC file contents
-            ${' '.join([dict([(x[0], x[2]) for x in $databases_type.input_databases.input.options.tool_data_table.data])[y]
-                       for y in $databases_type.input_databases.value])}
-        #end if
+    #end if
+    $aligned_sam.aligned_sam_selector
+    #if $aligned_sam.aligned_sam_selector == '--sam'
+        $aligned_sam.sq
+    #end if
+    $aligned_blast
+    $log
+    -a \${GALAXY_SLOTS:-1}
 ]]>
     </command>
     <inputs>
-    <conditional name="read_family">
-        <param name="read_family_selector" type="select" format="text" label="Sequencing technology of querying sequences (reads)"
-            help="The Illumina platform is more common for large scale metatranscriptomic projects requiring a high throughput.">
-            <option value="--I">Illumina Solexa</option>
-            <option value="--454">454 Roche</option>
-            <option value="other">Other</option>
-        </param>
-        <when value="other">
-            <param name="ratio_parameter" type="float" value="1" min="0" max="1"
-                label="Ratio parameter (the number of hits on the read / read length)"
-                help="The ratio parameter for SortMeRNA has been set to r=0.25 for Illumina Solexa reads and to r=0.15 for 454 Roche reads.
-                    For other read types, if the sequencing technology produces high quality reads with a low substitution error rate
-                    (0.1 substitutions per 100 bases, such as Illumina), then the ratio parameter can be set to r=[0.23,0.27].
-                    If the sequencing technology has a high indel error rate (1-2 indels per 100 bases, such as 454 or Ion Torrent),
-                    then the ratio parameter can be set to r=[0.13,0.17] (-r)."/>
-        </when>
-    </conditional>
-    <param format="fasta,fastq" name="input_reads" type="data" label="Querying sequences (reads)" help=""/>
-    <conditional name="sequencing_type">
-        <param name="sequencing_type_selector" type="select" label="Sequencing type">
-            <option value="not_paired">Reads are not paired</option>
-            <option value="paired">Reads are paired</option>
-        </param>
-        <when value="paired">
-            <param name="paired_type" type="select" display="radio" label="If one read of a pair is accepted and the other not, output both reads"
-                help="SortMeRNA does not use the pairing information for filtering RNA,
-                    however if one read of a pair is accepted and the other is not,
-                    the resulting output may break apart the pair into two separate files.
-                    The purpose of 'Reads are paired' option is to preserve the pairing of the reads.">
-                <option value="--paired-in">to accepted file (--paired-in)</option>
-                <option value="--paired-out">to rejected file (--paired-out)</option>
+        <param format="fasta,fastq" name="input_reads" type="data" label="Querying sequences" help="In FASTA or FASTQ format (--reads)"/>
+        <conditional name="sequencing_type">
+            <param name="sequencing_type_selector" type="select" label="Sequencing type">
+                <option value="not_paired">Reads are not paired</option>
+                <option value="paired">Reads are paired</option>
             </param>
-        </when>
-    </conditional>
+            <when value="paired">
+                <param name="paired_type" type="select" display="radio" label="If one of the paired-end reads aligns and the other one does not">
+                    <option value="">leave the reads split between aligned and rejected files</option>
+                    <option value="--paired-in">output both reads to aligned file (--paired-in)</option>
+                    <option value="--paired-out">output both reads to rejected file (--paired-out)</option>
+                </param>
+            </when>
+        </conditional>
 
-    <param name="strand_search" type="select" label="Which strands to search" display="radio">
-        <option value="">Search both strands</option>
-        <option value="-F">Search only the forward strand (-F)</option>
-        <option value="-R">Search only the reverse-complementary strand (-R)</option>
-    </param>
-
-    <conditional name="databases_type">
-        <param name="databases_selector" type="select" label="Databases to query"
-            help="Public rRNA databases provided with SortMeRNA have been indexed.
-                On the contrary, personal databases must be indexed each time SortMeRNA is launched.
-                Please be patient, this may take some time depending on the size of the given database.">
-            <option value="cached" selected="true">Public ribosomal databases</option>
-            <option value="history">Databases from your history</option>
+        <param name="strand_search" type="select" label="Which strands to search" display="radio">
+            <option value="">Search both strands</option>
+            <option value="-F">Search only the forward strand (-F)</option>
+            <option value="-R">Search only the reverse-complementary strand (-R)</option>
         </param>
-        <when value="cached">
-            <param name="input_databases" label="rRNA database" type="select" display="checkboxes" multiple="true">
-                <options from_data_table="rRNA_databases" />
-                <validator type="no_options" message="Select at least one database"/>
+
+        <conditional name="databases_type">
+            <param name="databases_selector" type="select" label="Databases to query"
+                help="Public rRNA databases provided with SortMeRNA have been indexed.
+                    On the contrary, personal databases must be indexed each time SortMeRNA is launched.
+                    Please be patient, this may take some time depending on the size of the given database.">
+                <option value="cached" selected="true">Public ribosomal databases</option>
+                <option value="history">Databases from your history</option>
             </param>
-        </when>
-        <when value="history">
-            <repeat name="input_databases" title="Database" min="1">
-                <param name="database_name" type="data" format="fasta" label="rRNA database"
-                    help="Your database will be indexed first, which may take up to several minutes."/>
-            </repeat>
-        </when>
-    </conditional>
+            <when value="cached">
+                <param name="input_databases" label="rRNA database" type="select" display="checkboxes" multiple="true">
+                    <options from_data_table="rRNA_databases" />
+                    <validator type="no_options" message="Select at least one database"/>
+                </param>
+            </when>
+            <when value="history">
+                <repeat name="input_databases" title="Database" min="1">
+                    <param name="database_name" type="data" format="fasta" label="rRNA database"
+                        help="Your database will be indexed first, which may take up to several minutes."/>
+                </repeat>
+            </when>
+        </conditional>
 
-    <!-- Outputs -->
-    <param name="outputs_selected" type="select" display="checkboxes" multiple="true" label="Output options">
-        <option value="accept" selected="True">Reads matching to at least one database</option>
-        <option value="other">Reads not found in any database</option>
-    </param>
-    <param name="log" type="boolean" checked="False" truevalue="--log log_file" falsevalue="" label="Statistics file"
-           help="Generates statistics for the rRNA content of reads, as well as rRNA subunit distribution. (--log)">
-    </param>
-
+        <!-- Outputs -->
+        <conditional name="aligned_fastx">
+            <param name="aligned_fastx_selector" type="select" label="Include aligned reads in FASTA/FASTQ format">
+                <option value="--fastx">Yes (--fastx)</option>
+                <option value="">No</option>
+            </param>
+            <when value="--fastx">
+                <param name="other" type="boolean" label="Include rejected reads file" help="(--other)" />
+            </when>
+            <when value="" />
+        </conditional>
+        <conditional name="aligned_sam">
+            <param name="aligned_sam_selector" type="select" label="Include alignments in SAM format">
+                <option value="--sam">Yes (--sam)</option>
+                <option value="">No</option>
+            </param>
+            <when value="--sam">
+                <param name="sq" type="boolean" truevalue="--SQ" falsevalue="" label="Add SQ tags to the SAM file" help="(--SQ)" />
+            </when>
+            <when value="" />
+        </conditional>
+        <param name="aligned_blast" type="select" label="Include alignments in BLAST-like format">
+            <option value="--blast 0">pairwise (--blast 0)</option>
+            <option value="--blast 1">tabular BLAST -m 8 format (--blast 1)</option>
+            <option value="--blast 2">tabular + column for CIGAR (--blast 2)</option>
+            <option value="--blast 3">tabular + columns for CIGAR and query coverage (--blast 3)</option>
+            <option value="" selected="true">No</option>
+        </param>
+        <param name="log" type="boolean" checked="False" truevalue="--log" falsevalue="" label="Generate statistics file"
+               help="Generates statistics for the rRNA content of reads, as well as rRNA subunit distribution. (--log)">
+        </param>
     </inputs>
     <outputs>
-        <data format_source="input_reads" name="output_accept" from_work_dir="accept_file.dat"
-            label="Matching reads on ${on_string} (${input_reads.datatype.file_ext})">
-            <filter>outputs_selected and 'accept' in outputs_selected</filter>
+        <data format_source="input_reads" name="output_fastx" from_work_dir="aligned.dat"
+            label="Aligned reads on ${on_string} (${input_reads.datatype.file_ext})">
+            <filter>aligned_fastx.aligned_fastx_selector</filter>
         </data>
         <data format_source="input_reads" name="output_other" from_work_dir="other_file.dat"
-            label="Reads not found on ${on_string} (${input_reads.datatype.file_ext})">
-            <filter>outputs_selected and 'other' in outputs_selected</filter>
+            label="Rejected reads on ${on_string} (${input_reads.datatype.file_ext})">
+            <filter>aligned_fastx.aligned_fastx_selector and aligned_fastx.other</filter>
         </data>
-        <data format="txt" name="output_log" label="${tool.name} statistics (txt)" from_work_dir="log_file.log">
+        <data format="sam" name="output_sam" from_work_dir="aligned.sam"
+            label="Alignments on ${on_string} (SAM)">
+            <filter>aligned_sam.aligned_sam_selector</filter>
+        </data>
+        <data format="tabular" name="output_blast" from_work_dir="aligned.blast"
+            label="Alignments on ${on_string} (SAM)">
+            <filter>aligned_blast</filter>
+            <change_format>
+                <when input="aligned_blast" value="--blast 0" format="txt" />
+            </change_format>
+        </data>
+        <data format="txt" name="output_log" label="${tool.name} statistics (txt)" from_work_dir="aligned.log">
             <filter>log</filter>
         </data>
     </outputs>
     <tests>
         <test>
-            <param name="read_family_selector" value="I" />
-            <param name="input_reads" value="sortmerna_wrapper_in1.fastq" />
+            <param name="input_reads" value="read_small.fastq" />
             <param name="sequencing_type_selector" value="not_paired" />
             <param name="strand_search" value="" />
-            <param name="databases_selector" value="cached" />
-            <param name="input_databases" value="rfam-5.8s,rfam-5s" />
-            <param name="outputs_selected" value="accept,other" />
+            <param name="databases_selector" value="history" />
+            <param name="database_name" value="ref_small.fasta" />
+            <param name="other" value="True" />
             <param name="log" value="" />
-            <param name="options_type_selector" value="less" />
-            <output name="output_accept" file="sortmerna_wrapper_accept1.fastq" />
+            <output name="output_fastx" file="sortmerna_wrapper_accept1.fastq" />
             <output name="output_other" file="sortmerna_wrapper_other1.fastq" />
+            <output name="output_sam" file="sortmerna_wrapper_sam1.sam" lines_diff="2" />
+        </test>
+        <test>
+            <param name="input_reads" value="read_small.fasta" />
+            <param name="sequencing_type_selector" value="not_paired" />
+            <param name="strand_search" value="" />
+            <param name="databases_selector" value="history" />
+            <param name="database_name" value="ref_small.fasta" />
+            <param name="other" value="True" />
+            <param name="log" value="" />
+            <output name="output_fastx" file="sortmerna_wrapper_accept2.fasta" />
+            <output name="output_other" file="sortmerna_wrapper_other2.fasta" />
+            <output name="output_sam" file="sortmerna_wrapper_sam2.sam" lines_diff="2" />
         </test>
     </tests>
     <help>
