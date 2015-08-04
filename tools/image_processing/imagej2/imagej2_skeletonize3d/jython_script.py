@@ -25,7 +25,7 @@ input_image_plus_copy.setProcessor( "iCopy", image_processor_copy )
 try:
     if image_type not in VALID_IMAGE_TYPES:
         # Convert the image to binary grayscale.
-        IJ.run( input_image_plus_copy, "Make Binary","" )
+        IJ.run( input_image_plus_copy, "Make Binary","iterations=1 count=1 edm=Overwrite do=Nothing" )
     # Run the command.
     IJ.run( input_image_plus_copy, "Skeletonize (2D/3D)", "" )
     # Save the ImagePlus object as a new image.
