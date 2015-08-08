@@ -4,6 +4,9 @@ from ij import IJ
 IMAGE_PLUS_IMAGE_TYPE_FIELD_VALUES = { '0':'GRAY8', '1':'GRAY16', '2':'GRAY32',
                                        '3':'COLOR_256', '4':'COLOR_RGB' }
 
+def asbool( val ):
+    return val.lower() in [ 'yes', 'true' ]
+
 def convert_before_saving_as_tiff( image_plus ):
     # The bUnwarpJ plug-in produces TIFF image stacks consisting of 3
     # slices which can be viewed in ImageJ.  The 3 slices are: 1) the
