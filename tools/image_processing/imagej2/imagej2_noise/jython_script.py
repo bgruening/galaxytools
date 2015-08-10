@@ -33,11 +33,9 @@ image_plus = IJ.openImage( input )
 bit_depth = image_plus.getBitDepth()
 image_type = image_plus.getType()
 # Create an ImagePlus object for the image.
-image_plus_copy = image_plus.createImagePlus()
+image_plus_copy = image_plus.duplicate()
 # Make a copy of the image.
-image_processor_copy = image_plus.getProcessor().duplicate()
-# Set the ImageProcessor on the duplicate ImagePlus object.
-image_plus_copy.setProcessor( "image copy", image_processor_copy )
+image_processor_copy = image_plus_copy.getProcessor()
 
 # Perform the analysis on the ImagePlus object.
 if noise == 'add_noise':
