@@ -14,8 +14,6 @@ parser.add_argument( '--prune_ends', dest='prune_ends', default='no', help='Prun
 parser.add_argument( '--calculate_largest_shortest_path', dest='calculate_largest_shortest_path', default='no', help='Calculate largest shortest path' )
 parser.add_argument( '--show_detailed_info', dest='show_detailed_info', default='no', help='Show detailed info' )
 parser.add_argument( '--jython_script', dest='jython_script', help='Path to the Jython script' )
-parser.add_argument( '--max_heap_size_type', dest='max_heap_size_type', help='Type (default or megabytes) of max_heap_size value' )
-parser.add_argument( '--max_heap_size', dest='max_heap_size', help='Maximum size of the memory allocation pool used by the JVM.' )
 parser.add_argument( '--output', dest='output', help='Path to the output file' )
 args = parser.parse_args()
 
@@ -24,8 +22,6 @@ tmp_dir = imagej2_base_utils.get_temp_dir()
 # work for some features.  The following creates a symlink with an appropriate file
 # extension that points to the Galaxy dataset.  This symlink is used by ImageJ.
 tmp_input_path = imagej2_base_utils.get_input_image_path( tmp_dir, args.input, args.input_datatype )
-# Set the size of the memory allocation pool used by the JVM.
-memory_size = imagej2_base_utils.get_max_heap_size_value( args.max_heap_size_type, args.max_heap_size )
 
 # Define command response buffers.
 tmp_out = tempfile.NamedTemporaryFile().name
@@ -36,7 +32,7 @@ tmp_stderr = open( tmp_err, 'wb' )
 error_log = tempfile.NamedTemporaryFile( delete=False ).name
 
 # Build the command line.
-cmd = imagej2_base_utils.get_base_command_imagej2( memory_size, jython_script=args.jython_script )
+cmd = imagej2_base_utils.get_base_command_imagej2( None, jython_script=args.jython_script )
 if cmd is None:
     imagej2_base_utils.stop_err( "ImageJ not found!" )
 cmd += ' %s' % error_log

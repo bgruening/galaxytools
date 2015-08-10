@@ -12,8 +12,6 @@ parser.add_argument( '--target_image', dest='target_image', help='Target image' 
 parser.add_argument( '--target_image_format', dest='target_image_format', help='Target image format' )
 parser.add_argument( '--source_transformation', dest='source_transformation', help='Direct source transformation matrix' )
 parser.add_argument( '--target_transformation', dest='target_transformation', help='Inverse target transformation matrix' )
-parser.add_argument( '--max_heap_size_type', dest='max_heap_size_type', help='Type (default or megabytes) of max_heap_size value' )
-parser.add_argument( '--max_heap_size', dest='max_heap_size', help='Maximum size of the memory allocation pool used by the JVM.' )
 parser.add_argument( '--output', dest='output', help='Warping index' )
 
 args = parser.parse_args()
@@ -27,9 +25,6 @@ target_transformation_path = imagej2_base_utils.get_input_image_path( tmp_dir, a
 # we'll use a temporary output file from which we'll read only the last line.
 tmp_output_path = imagej2_base_utils.get_input_image_path( tmp_dir, args.output, 'txt' )
 
-# Set the size of the memory allocation pool used by the JVM.
-memory_size = imagej2_base_utils.get_max_heap_size_value( args.max_heap_size_type, args.max_heap_size )
-
 # Define command response buffers.
 tmp_out = tempfile.NamedTemporaryFile().name
 tmp_stdout = open( tmp_out, 'wb' )
@@ -37,7 +32,7 @@ tmp_err = tempfile.NamedTemporaryFile().name
 tmp_stderr = open( tmp_err, 'wb' )
 
 # Build the command line to calculate the warping index.
-cmd = imagej2_base_utils.get_base_cmd_bunwarpj( memory_size )
+cmd = imagej2_base_utils.get_base_cmd_bunwarpj( None )
 if cmd is None:
     imagej2_base_utils.stop_err( "bUnwarpJ not found!" )
 cmd += ' -compare_elastic'
