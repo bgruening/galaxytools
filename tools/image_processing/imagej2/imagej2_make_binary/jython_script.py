@@ -16,13 +16,10 @@ output_datatype = sys.argv[ -1 ]
 
 # Open the input image file.
 input_image_plus = IJ.openImage( input )
-bit_depth = input_image_plus.getBitDepth()
-image_type = input_image_plus.getType()
 
 # Create a copy of the image.
-input_image_plus_copy = input_image_plus.createImagePlus()
-image_processor_copy = input_image_plus.getProcessor().duplicate()
-input_image_plus_copy.setProcessor( "iCopy", image_processor_copy )
+input_image_plus_copy = input_image_plus.duplicate()
+image_processor_copy = input_image_plus_copy.getProcessor()
 
 try:
     options = [ "iterations=&iterations" "count=&count" ]
