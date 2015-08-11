@@ -86,21 +86,6 @@ def get_input_image_path( tmp_dir, input_file, image_format ):
     os.symlink( input_file, image_path )
     return image_path
 
-def get_max_heap_size_value( max_heap_size_type, max_heap_size ):
-    """
-    Return a string that can be used by the javabridge to set the size
-    of the memory allocation pool used by the JVM.  The value must be
-    determined to be a multiple of 1024 or it will be ignored.
-    """
-    if max_heap_size_type == 'default':
-        return None
-    if max_heap_size_type == 'megabytes':
-        if int( max_heap_size ) % 1024 not in [ 0, 256, 512 ]:
-            return None
-        return '%sm' % str( max_heap_size )
-    if max_heap_size_type == 'gigabytes':
-        return '%sg' % str( max_heap_size )
-
 def get_platform_info_dict():
     '''Return a dict with information about the current platform.'''
     platform_dict = {}
