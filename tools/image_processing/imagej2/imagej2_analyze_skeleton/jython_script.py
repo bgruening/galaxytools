@@ -2,7 +2,6 @@ import jython_utils
 import math
 import sys
 from ij import IJ
-from ij import ImagePlus
 from skeleton_analysis import AnalyzeSkeleton_
 
 BASIC_NAMES = [ 'Branches', 'Junctions', 'End-point Voxels',
