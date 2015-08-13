@@ -157,6 +157,7 @@ def handle_none_type( val, val_type='float' ):
             return ' %.1f' % val
         elif val_type == 'int':
             return ' %d' % val
+    return ' %s' % val
 
 def stop_err( msg ):
     sys.stderr.write( msg )
