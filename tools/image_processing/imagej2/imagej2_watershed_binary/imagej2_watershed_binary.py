@@ -9,6 +9,7 @@ import imagej2_base_utils
 parser = argparse.ArgumentParser()
 parser.add_argument( '--input', dest='input', help='Path to the input file' )
 parser.add_argument( '--input_datatype', dest='input_datatype', help='Datatype of the input image' )
+parser.add_argument( '--black_background', dest='black_background', help='Black background' )
 parser.add_argument( '--jython_script', dest='jython_script', help='Path to the Jython script' )
 parser.add_argument( '--output', dest='output', help='Path to the output file' )
 parser.add_argument( '--output_datatype', dest='output_datatype', help='Datatype of the output image' )
@@ -33,6 +34,7 @@ if cmd is None:
     imagej2_base_utils.stop_err( "ImageJ not found!" )
 cmd += ' %s' % error_log
 cmd += ' %s' % tmp_input_path
+cmd += ' %s' % args.black_background
 cmd += ' %s' % tmp_output_path
 cmd += ' %s' % args.output_datatype
 # Run the command.

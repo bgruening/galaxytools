@@ -9,6 +9,7 @@ import imagej2_base_utils
 parser = argparse.ArgumentParser()
 parser.add_argument( '--input', dest='input', help='Path to the input file' )
 parser.add_argument( '--input_datatype', dest='input_datatype', help='Datatype of the input image' )
+parser.add_argument( '--black_background', dest='black_background', help='Black background' )
 parser.add_argument( '--prune_cycle_method', dest='prune_cycle_method', default='none', help='Prune cycle method' )
 parser.add_argument( '--prune_ends', dest='prune_ends', default='no', help='Prune ends' )
 parser.add_argument( '--calculate_largest_shortest_path', dest='calculate_largest_shortest_path', default='no', help='Calculate largest shortest path' )
@@ -37,6 +38,7 @@ if cmd is None:
     imagej2_base_utils.stop_err( "ImageJ not found!" )
 cmd += ' %s' % error_log
 cmd += ' %s' % tmp_input_path
+cmd += ' %s' % args.black_background
 cmd += ' %s' % args.prune_cycle_method
 cmd += ' %s' % args.prune_ends
 cmd += ' %s' % args.calculate_largest_shortest_path
