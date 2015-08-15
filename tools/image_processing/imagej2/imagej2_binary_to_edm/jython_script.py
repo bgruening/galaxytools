@@ -1,6 +1,9 @@
 import jython_utils
 import sys
 from ij import IJ
+from ij import ImagePlus
+from ij.plugin.filter import Analyzer
+from ij.plugin.filter import EDM
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
@@ -31,9 +34,13 @@ try:
         options.append( "pad" )
     IJ.run( input_image_plus_copy, "Options...", " ".join( options ) )
 
-    # Run the command.
-    IJ.run( input_image_plus_copy, "Make Binary", "" )
+    # Convert image to binary if necessary.
+    if not image_processor_copy.isBinary():
+        # Convert the image to binary grayscale.
+        IJ.run( input_image_plus_copy, "Make Binary", "" )
 
+    # Run the command.
+    IJ.run( input_image_plus_copy, "Distance Map", "" )
     # Save the ImagePlus object as a new image.
     IJ.saveAs( input_image_plus_copy, output_datatype, tmp_output_path )
 except Exception, e:
