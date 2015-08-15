@@ -9,6 +9,7 @@ import imagej2_base_utils
 parser = argparse.ArgumentParser()
 parser.add_argument( '--input', dest='input', help='Path to the input file' )
 parser.add_argument( '--input_datatype', dest='input_datatype', help='Datatype of the input image' )
+parser.add_argument( '--black_background', dest='black_background', help='Black background' )
 parser.add_argument( '--size', dest='size', help='Size (pixel^2)' )
 parser.add_argument( '--circularity_min', dest='circularity_min', type=float, help='Circularity minimum' )
 parser.add_argument( '--circularity_max', dest='circularity_max', type=float, help='Circularity maximum' )
@@ -47,6 +48,7 @@ if cmd is None:
     imagej2_base_utils.stop_err( "ImageJ not found!" )
 cmd += ' %s' % error_log
 cmd += ' %s' % tmp_input_path
+cmd += ' %s' % args.black_background
 cmd += ' %s' % args.size
 cmd += ' %.3f' % args.circularity_min
 cmd += ' %.3f' % args.circularity_max

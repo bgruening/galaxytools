@@ -21,15 +21,12 @@ input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
 
 try:
-    # Set options.
-    options = [ 'edm=Overwrite' ]
-    options.append( 'iterations=%d' % iterations )
-    options.append( 'count=%d' % count )
-    if black_background:
-        options.append( "black" )
-    if pad_edges_when_eroding:
-        options.append( "pad" )
-    IJ.run( input_image_plus_copy, "Options...", " ".join( options ) )
+    # Set binary options.
+    options = jython_utils.get_binary_options( black_background=black_background,
+                                               iterations=iterations,
+                                               count=count,
+                                               pad_edges_when_eroding=pad_edges_when_eroding )
+    IJ.run( input_image_plus_copy, "Options...", options )
 
     # Run the command.
     IJ.run( input_image_plus_copy, "Make Binary", "" )

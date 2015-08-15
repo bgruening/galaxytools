@@ -5,7 +5,7 @@ IMAGE_PLUS_IMAGE_TYPE_FIELD_VALUES = { '0':'GRAY8', '1':'GRAY16', '2':'GRAY32',
                                        '3':'COLOR_256', '4':'COLOR_RGB' }
 
 def asbool( val ):
-    return val.lower() in [ 'yes', 'true' ]
+    return str( val ).lower() in [ 'yes', 'true' ]
 
 def convert_before_saving_as_tiff( image_plus ):
     # The bUnwarpJ plug-in produces TIFF image stacks consisting of 3
@@ -28,6 +28,14 @@ def convert_before_saving_as_tiff( image_plus ):
     tmp_out_png_path = imagej2_base_utils.get_temporary_image_path( tmp_dir, 'png' )
     IJ.saveAs( image_plus, 'png', tmp_out_png_path )
     return IJ.openImage( tmp_out_png_path )
+
+def get_binary_options( black_background, iterations=1, count=1, pad_edges_when_eroding='no' ):
+    options = [ 'edm=Overwrite', 'iterations=%d' % iterations, 'count=%d' % count ]
+    if asbool( pad_edges_when_eroding ):
+        options.append( 'pad' )
+    if asbool( black_background ):
+        options.append( "black" )
+    return " ".join( options )
 
 def get_display_image_type( image_type ):
     return IMAGE_PLUS_IMAGE_TYPE_FIELD_VALUES.get( str( image_type ), None )
