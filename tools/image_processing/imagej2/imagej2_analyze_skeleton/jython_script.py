@@ -2,7 +2,6 @@ import jython_utils
 import math
 import sys
 from ij import IJ
-from ij import ImagePlus
 from skeleton_analysis import AnalyzeSkeleton_
 
 BASIC_NAMES = [ 'Branches', 'Junctions', 'End-point Voxels',
@@ -10,10 +9,6 @@ BASIC_NAMES = [ 'Branches', 'Junctions', 'End-point Voxels',
                 'Triple Points', 'Quadruple Points', 'Maximum Branch Length' ]
 DETAIL_NAMES = [ 'Skeleton ID', 'Branch length', 'V1 x', 'V1 y', 'V1 z', 'V2 x',
                  'V2 y', 'V2 z', 'Euclidean distance' ]
-VALID_IMAGE_TYPES = [ ImagePlus.GRAY8 ]
-
-def asbool( val ):
-    return val == 'yes'
 
 def get_euclidean_distance( vertex1, vertex2 ):
     x1, y1, z1 = get_points( vertex1 )
@@ -55,7 +50,7 @@ def save( result, output, show_detailed_info, calculate_largest_shortest_path, s
         outf.write( '%d%s' % ( result.getJunctions()[ index ], sep ) )
         outf.write( '%d%s' % ( result.getEndPoints()[ index ], sep ) )
         outf.write( '%d%s' % ( result.getJunctionVoxels()[ index ], sep ) )
-        outf.write( '%d%s' % ( len( result.getListOfSlabVoxels() ), sep ) )
+        outf.write( '%d%s' % ( result.getSlabs()[ index ], sep ) )
         outf.write( '%.3f%s' % ( result.getAverageBranchLength()[ index ], sep ) )
         outf.write( '%d%s' % ( result.getTriples()[ index ], sep ) )
         outf.write( '%d%s' % ( result.getQuadruples()[ index ], sep ) )
@@ -101,31 +96,34 @@ def save( result, output, show_detailed_info, calculate_largest_shortest_path, s
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[ -7 ]
-input = sys.argv[ -6 ]
+error_log = sys.argv[ -8 ]
+input = sys.argv[ -7 ]
+black_background = jython_utils.asbool( sys.argv[ -6 ] )
 prune_cycle_method = sys.argv[ -5 ]
-prune_ends = asbool( sys.argv[ -4 ] )
-calculate_largest_shortest_path = asbool( sys.argv[ -3 ] )
+prune_ends = jython_utils.asbool( sys.argv[ -4 ] )
+calculate_largest_shortest_path = jython_utils.asbool( sys.argv[ -3 ] )
 if calculate_largest_shortest_path:
     BASIC_NAMES.extend( [ 'Longest Shortest Path', 'spx', 'spy', 'spz' ] )
     DETAIL_NAMES.extend( [ ' ', ' ', ' ', ' ' ] )
-show_detailed_info = asbool( sys.argv[ -2 ] )
+show_detailed_info = jython_utils.asbool( sys.argv[ -2 ] )
 output = sys.argv[ -1 ]
 
 # Open the input image file.
 input_image_plus = IJ.openImage( input )
-bit_depth = input_image_plus.getBitDepth()
-image_type = input_image_plus.getType()
 
 # Create a copy of the image.
-input_image_plus_copy = input_image_plus.createImagePlus()
-image_processor_copy = input_image_plus.getProcessor().duplicate()
-input_image_plus_copy.setProcessor( "iCopy", image_processor_copy )
+input_image_plus_copy = input_image_plus.duplicate()
+image_processor_copy = input_image_plus_copy.getProcessor()
 
 try:
-    if image_type not in VALID_IMAGE_TYPES:
-        # Convert the image to binary grayscale.
-        IJ.run( input_image_plus_copy, "Make Binary","" )
+    # Set binary options.
+    options = jython_utils.get_binary_options( black_background=black_background )
+    IJ.run( input_image_plus_copy, "Options...", options )
+
+    # Convert image to binary if necessary.
+    if not image_processor_copy.isBinary():
+        IJ.run( input_image_plus_copy, "Make Binary", "" )
+
     # Run AnalyzeSkeleton
     analyze_skeleton = AnalyzeSkeleton_()
     analyze_skeleton.setup( "", input_image_plus_copy )
