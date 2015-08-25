@@ -32,7 +32,9 @@ Galaxy ImageJ2 tool wrappers generate a command line that calls a Python script,
 
 `ImageJ2 --ij2 --headless --jython ~jython_script.py arg1, arg2, ...`
 
-Each tool execution starts the ImageJ2 application within a Java virtual machine (JVM).  When ImageJ2 is finished processing the Jython script, the results are either written to a file or returned to the calling Galaxy process.  The JVM is shut down, and the Galaxy job terminates.
+Each tool execution starts the ImageJ2 application within a Java virtual machine (JVM).  When ImageJ2 is finished processing the Jython script, the results are either written to a file or returned to the calling Galaxy process.  The JVM is shut down, and the Galaxy job terminates.  This approach provides the ability to run ImageJ2 tools from Galaxy on any supported HPC environment.
+
+Of course, eliminating the ImageJ2 GUI restricts us to wrapping only those ImageJ2 plugins that do not require any GUI components (i.e., the ImageJ2 window manager).  Plugins are written by an open community, so not all of them are written in such a way that they can be executed from the command line and produce useful results.  For example, some plugins create one or more images that can only be accessed via calls to the ImageJ2 window manager, and running in headless mode eliminates the window manager as well as other GUI components.
 
 Those familiar with ImageJ2 will find differences with this general pattern for executing ImageJ2 tools within Galaxy.  ImageJ2 accounts for user defined global preferences which are available to tools throughout the session, and an image can be uploaded and run through any number of available tools, saving only the final image.  While Galaxy currently does not account for user preferences defined in ImageJ2, enhancements to the Galaxy framework are planned that will accomodate these kinds of settings (e.g., binary image options).  Also, since Galaxy initiates a new ImageJ2 session with each tool execution, initial images are uploaded to ImageJ2 and resulting images are saved for each tool execution.
 
@@ -41,7 +43,7 @@ The Galaxy ImageJ2 tools currently fall into 3 general categories, binary image 
 Galaxy Binary Image Tools
 =========================
 
-These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Process -> Binary menu.  The current tool set consists of the following.
+These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Process → Binary menu.  The current tool set consists of the following.
 
 * **Convert to binary** - Converts an image into a binary (black and white) image.
 * **Adjust threshold** - Sets lower and upper threshold values, segmenting grayscale images into
@@ -49,7 +51,7 @@ features of interest and background.
 * **Watershed segmentation** - Automatically separates or cuts apart particles that touch.
 * **Analyze particles** - Analyzes the particles in a segmented binary image, providing information about
 each particle in the image.
-* **Skeletonize images** - Uses the Skeletonize3D plugin to find the centerlines (”skeleton”) of objects in the input image.  Skeletonize3d is a plugin written by Ignacio Arganda-Carreras that offers several advantages over the legacy skeletonization algorithm of ImageJ available in the Process -> Binary -> Skeletonize menu item.  Skeletonize works only with binary 2D images.  Skeletonize3D works with 8-bit 2D images and stacks, expecting the image to be binary. If not, Skeletonize3D considers all pixel values above 0 to be white (255).  While Skeletonize↑ relies on Black background value, the output of Skeletonize3D always has a value of 255 at the skeleton and 0 at background pixels, independently of the Black background option.
+* **Skeletonize images** - Uses the Skeletonize3D plugin to find the centerlines (”skeleton”) of objects in the input image.  Skeletonize3d is a plugin written by Ignacio Arganda-Carreras that offers several advantages over the legacy skeletonization algorithm of ImageJ available in the Process → Binary → Skeletonize menu item.  Skeletonize works only with binary 2D images.  Skeletonize3D works with 8-bit 2D images and stacks, expecting the image to be binary. If not, Skeletonize3D considers all pixel values above 0 to be white (255).  While Skeletonize↑ relies on Black background value, the output of Skeletonize3D always has a value of 255 at the skeleton and 0 at background pixels, independently of the Black background option.
 * **Analyze skeleton** - Tags all pixel/voxels in a skeleton image and then counts all its junctions,
 triple and quadruple points and branches, and measures their average and maximum length.
 * **Convert binary image to EDM** - Converts a binary image into a 8-bit grayscale Euclidean Distance Map (EDM). Each foreground (nonzero) pixel in the binary image is assigned a value equal to its distance from the nearest background (zero) pixel.
