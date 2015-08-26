@@ -38,12 +38,18 @@ Of course, eliminating the ImageJ2 GUI restricts us to wrapping only those Image
 
 Those familiar with ImageJ2 will find differences with this general pattern for executing ImageJ2 tools within Galaxy.  ImageJ2 accounts for user defined global preferences which are available to tools throughout the session, and an image can be uploaded and run through any number of available tools, saving only the final image.  While Galaxy currently does not account for user preferences defined in ImageJ2, enhancements to the Galaxy framework are planned that will accomodate these kinds of settings (e.g., binary image options).  Also, since Galaxy initiates a new ImageJ2 session with each tool execution, initial images are uploaded to ImageJ2 and resulting images are saved for each tool execution.
 
-The Galaxy ImageJ2 tools currently fall into 3 general categories, binary image tools, and BunwarpJ plugin tools and a few "other" tools (e.g., Add or remove noise).  Additional tools will be added at a steady pace, and these miscellaneous other tools will fall into more defined categories.
+The Galaxy ImageJ2 tools currently fall into 4 general categories; Filters and Effects, Binary Image Tools, BunwarpJ Plugin Tools and a few "Other" tools.  Additional tools will be added at a steady pace, and these miscellaneous other tools will fall into more defined categories.
 
-Galaxy Binary Image Tools
-=========================
+Filters and Effects
+===================
+These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Process menu.
 
-These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Process → Binary menu.  The current tool set consists of the following.
+* **Add shadow effect** - Produces a shadow effect, with light appearing to come from the selected direction (East, North, Northeast, Northwest, South, Southeast, Southwest and West).
+* **Add or remove noise** - Adds specified noise to or removes noise from images.
+
+Binary Image Tools
+==================
+These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Process → Binary menu.
 
 * **Convert to binary** - Converts an image into a binary (black and white) image.
 * **Adjust threshold** - Sets lower and upper threshold values, segmenting grayscale images into
@@ -64,8 +70,8 @@ The interpretation of binary images is not universal. While some software packag
 
 In ImageJ, the **Black background** global preference setting defines not only how new binary images will be created, but also how previously created images are interpreted. This means objects will be inferred on a image-per-image basis.  As such, inverting the LUT (i.e., pixels with a value of zero are white and pixels with a value 255 are black) of a binary image without updating the black background option may lead to unexpected results.  This issue can currently be avoided by properly selecting the **Black background** option available on all Galaxy binary image tools.
 
-Galaxy BunwarpJ Plugin Tools
-============================
+BunwarpJ Plugin Tools
+=====================
 These Galaxy tools wrap the bUnwarpJ plugin [http://fiji.sc/BUnwarpJ](http://fiji.sc/BUnwarpJ).
 
 * **Adapt an elastic transformation** - Adapts an elastic transformation to a new image size by transforming the
@@ -91,7 +97,6 @@ Other Tools
 ===========
 * **Create new image** - Creates a new image of a selected type, size, depth and format.
 * **Convert image format** - Converts the format of an input image file, producing an output image.
-* **Add or remove noise** - Adds noise to or removes noise from images.
 
 Licence
 =======
