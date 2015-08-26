@@ -170,31 +170,30 @@ Galaxy installation
 
 1. Clone the latest `Galaxy platform`_::
 
-	hg clone https://bitbucket.org/galaxy/galaxy-dist/
+	git clone https://github.com/galaxyproject/galaxy.git
 
 .. _Galaxy platform: http://wiki.galaxyproject.org/Admin/Get%20Galaxy
 
-2. Navigate to the galaxy-dist folder and update it::
+2. Navigate to the galaxy folder and update it::
 	
-	cd ~/galaxy-dist
-	hg pull
-	hg update
-   
+	cd ~/galaxy
+	git pull
+
    This step is not necessary if you have a fresh checkout. Anyway, it is good to know ;)
 
 3. Create folders for toolshed and dependencies::
 
 	mkdir ~/shed_tools
-	mkdir ~/galaxy-dist/tool_deps
+	mkdir ~/galaxy/tool_deps
 
 4. Create configuration file::
 
-	cp ~/galaxy-dist/universe_wsgi.ini.sample ~/galaxy-dist/universe_wsgi.ini
+	cp ~/galaxy/config/galaxy.ini.sample ~/galaxy/config/galaxy.ini
 
-5. Open universe_wsgi.ini and change the dependencies directory::
+5. Open config/galaxy.ini and change the dependencies directory::
 
-	LINUX: gedit ~/galaxy-dist/universe_wsgi.ini
-	OS X: open -a TextEdit ~/galaxy-dist/universe_wsgi.ini
+	LINUX: gedit ~/galaxy/config/galaxy.ini
+	OS X: open -a TextEdit ~/galaxy/config/galaxy.ini
 
 6. Search for ``tool_dependency_dir = None`` and change it to ``tool_dependency_dir = ./tool_deps``, remove the ``#`` if needed
 
@@ -221,7 +220,7 @@ Tool Shed configuration
 
 - Register a new user account in your Galaxy instance: Top Panel → User → Register
 - Become an admin
-	- open ``universe_wsgi.ini`` in your favourite text editor (gedit universe_wsgi.ini)
+	- open ``config/galaxy.ini`` in your favourite text editor (gedit config/galaxy.ini)
 	- search ``admin_users = None`` and change it to ``admin_users = EMAIL_ADDRESS`` (your Galaxy Username)
 	- remove the ``#`` if needed
 - restart Galaxy
@@ -300,7 +299,7 @@ On slow computers and during the compilation of large software libraries, like o
 the Tool Shed can run into a timeout and kills the installation.
 That problem is known and should be fixed in the near future.
 
-If you encouter a timeout or 'hung' during the installation you can increase the ``threadpool_kill_thread_limit`` in your universe_wsgi.ini file.
+If you encouter a timeout or 'hung' during the installation you can increase the ``threadpool_kill_thread_limit`` in your `config/galaxy.ini` file.
 
 
 ------
@@ -330,9 +329,9 @@ Jmol Editor Installation
 
 - copy the directory ``jmoleditor`` into your Galaxy Root directory ::
 
-	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy-dist/
+	cp -a ~/galaxytools/chemicaltoolbox/data_source/jmoleditor/ ~/galaxy/
 
-- launch the webserver from your galaxy-dist root directory ::
+- launch the webserver from your galaxy root directory ::
 
 	python -m SimpleHTTPServer &
 
@@ -509,4 +508,4 @@ Contributing
 We encourage you to contribute to ChemicalToolBoX! Check out our `Trello board`_ or contact us via e-mail_.
 
 .. _Trello board: https://trello.com/b/t9Wr8lSY/chemicaltoolbox
-.. _e-mail: bjoern_dot_gruening@gmail.com
+.. _e-mail: bjoern.gruening@gmail.com

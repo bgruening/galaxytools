@@ -13,7 +13,7 @@ parser.add_argument( '--threshold_min', dest='threshold_min', type=float, help='
 parser.add_argument( '--threshold_max', dest='threshold_max', type=float, help='Maximum threshold value' )
 parser.add_argument( '--method', dest='method', help='Threshold method' )
 parser.add_argument( '--display', dest='display', help='Display mode' )
-parser.add_argument( '--dark_background', dest='dark_background', help='Dark background' )
+parser.add_argument( '--black_background', dest='black_background', help='Black background' )
 parser.add_argument( '--stack_histogram', dest='stack_histogram', help='Stack histogram' )
 parser.add_argument( '--jython_script', dest='jython_script', help='Path to the Jython script' )
 parser.add_argument( '--output', dest='output', help='Path to the output file' )
@@ -43,7 +43,7 @@ cmd += ' %.3f' % args.threshold_min
 cmd += ' %.3f' % args.threshold_max
 cmd += ' %s' % args.method
 cmd += ' %s' % args.display
-cmd += ' %s' % args.dark_background
+cmd += ' %s' % args.black_background
 cmd += ' %s' % args.stack_histogram
 cmd += ' %s' % tmp_output_path
 cmd += ' %s' % args.output_datatype
