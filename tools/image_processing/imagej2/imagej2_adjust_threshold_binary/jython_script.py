@@ -1,7 +1,6 @@
 import jython_utils
 import sys
 from ij import IJ
-from ij import ImagePlus
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
@@ -11,8 +10,9 @@ threshold_min = float( sys.argv[ -8 ] )
 threshold_max = float( sys.argv[ -7 ] )
 method = sys.argv[ -6 ]
 display = sys.argv[ -5 ]
-dark_background = sys.argv[ -4 ]
-stack_histogram = sys.argv[ -3 ]
+black_background = jython_utils.asbool( sys.argv[ -4 ] )
+# TODO: this is not being used.
+stack_histogram = jython_utils.asbool( sys.argv[ -3 ] )
 tmp_output_path = sys.argv[ -2 ]
 output_datatype = sys.argv[ -1 ]
 
@@ -29,7 +29,7 @@ try:
         # Convert the image to binary grayscale.
         IJ.run( input_image_plus_copy, "Make Binary","iterations=1 count=1 edm=Overwrite do=Nothing" )
     # Set the options.
-    if jython_utils.asbool( dark_background ):
+    if black_background:
         method_str = "%s dark" % method
     else:
         method_str = method

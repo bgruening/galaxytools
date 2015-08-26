@@ -2,7 +2,6 @@ import jython_utils
 import math
 import sys
 from ij import IJ
-from ij import ImagePlus
 from skeleton_analysis import AnalyzeSkeleton_
 
 BASIC_NAMES = [ 'Branches', 'Junctions', 'End-point Voxels',
@@ -97,8 +96,9 @@ def save( result, output, show_detailed_info, calculate_largest_shortest_path, s
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[ -7 ]
-input = sys.argv[ -6 ]
+error_log = sys.argv[ -8 ]
+input = sys.argv[ -7 ]
+black_background = jython_utils.asbool( sys.argv[ -6 ] )
 prune_cycle_method = sys.argv[ -5 ]
 prune_ends = jython_utils.asbool( sys.argv[ -4 ] )
 calculate_largest_shortest_path = jython_utils.asbool( sys.argv[ -3 ] )
@@ -116,9 +116,14 @@ input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
 
 try:
+    # Set binary options.
+    options = jython_utils.get_binary_options( black_background=black_background )
+    IJ.run( input_image_plus_copy, "Options...", options )
+
+    # Convert image to binary if necessary.
     if not image_processor_copy.isBinary():
-        # Convert the image to binary grayscale.
-        IJ.run( input_image_plus_copy, "Make Binary","iterations=1 count=1 edm=Overwrite do=Nothing" )
+        IJ.run( input_image_plus_copy, "Make Binary", "" )
+
     # Run AnalyzeSkeleton
     analyze_skeleton = AnalyzeSkeleton_()
     analyze_skeleton.setup( "", input_image_plus_copy )
