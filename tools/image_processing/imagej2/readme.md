@@ -44,6 +44,9 @@ Filters and Effects
 ===================
 These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Process menu.
 
+* **Smooth** - Blurs the image by replacing each pixel with the average of its 3x3 neighborhood.
+* **Sharpen** - Increases contrast and accentuates detail in the image, but may also accentuate noise.
+* **Find Edges** - Uses a Sobel edge detector to highlight sharp changes in intensity in the active image.
 * **Add shadow effect** - Produces a shadow effect, with light appearing to come from the selected direction (East, North, Northeast, Northwest, South, Southeast, Southwest and West).
 * **Add or remove noise** - Adds specified noise to or removes noise from images.
 
