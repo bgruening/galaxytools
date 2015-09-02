@@ -154,7 +154,7 @@ def handle_none_type( val, val_type='float' ):
         return ' None'
     else:
         if val_type == 'float':
-            return ' %.1f' % val
+            return ' %.3f' % val
         elif val_type == 'int':
             return ' %d' % val
     return ' %s' % val
