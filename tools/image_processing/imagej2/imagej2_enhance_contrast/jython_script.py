@@ -18,6 +18,7 @@ input_image_plus = IJ.openImage( input )
 # Create a copy of the image.
 input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
+bit_depth = image_processor_copy.getBitDepth()
 
 # Set the options
 options = []
@@ -27,8 +28,9 @@ if equalize_histogram:
 else:
     if saturated_pixels not in [ None, 'None' ]:
         # Fiji allows only a single decimal place for this value.
-        options.append( 'saturated=%.1f' % float( saturated_pixels ) )
-    if normalize:
+        options.append( 'saturated=%.3f' % float( saturated_pixels ) )
+    # Normalization of RGB images is not supported.
+    if bit_depth != 24 and normalize:
         options.append( 'normalize' )
 try:
     # Run the command.
