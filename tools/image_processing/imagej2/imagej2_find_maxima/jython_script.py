@@ -24,12 +24,14 @@ input_image_plus = IJ.openImage( input )
 # Create a copy of the image.
 input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
+bit_depth = image_processor_copy.getBitDepth()
 analyzer = Analyzer( input_image_plus_copy )
 
 try:
     # Set the conversion options.
     options = []
-    if scale_when_converting or weighted_rgb_conversions:
+    # The following 2 options are applicable only to RGB images.
+    if bit_depth == 24:
         if scale_when_converting:
             option.append( "scale" )
         if weighted_rgb_conversions:
