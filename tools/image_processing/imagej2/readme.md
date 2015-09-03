@@ -1,4 +1,4 @@
-Galaxy wrappers for ImaageJ2 tools
+Galaxy wrappers for ImageJ2 tools
 ==================================
 
 ImageJ2 is a new version of ImageJ for the next generation of multidimensional image data, with a focus on scientific imaging. Its central goal is to broaden the paradigm of ImageJ beyond the limitations of ImageJ 1.x, to support the next generation of multidimensional scientific imaging.
@@ -38,7 +38,13 @@ Of course, eliminating the ImageJ2 GUI restricts us to wrapping only those Image
 
 Those familiar with ImageJ2 will find differences with this general pattern for executing ImageJ2 tools within Galaxy.  ImageJ2 accounts for user defined global preferences which are available to tools throughout the session, and an image can be uploaded and run through any number of available tools, saving only the final image.  While Galaxy currently does not account for user preferences defined in ImageJ2, enhancements to the Galaxy framework are planned that will accomodate these kinds of settings (e.g., binary image options).  Also, since Galaxy initiates a new ImageJ2 session with each tool execution, initial images are uploaded to ImageJ2 and resulting images are saved for each tool execution.
 
-The Galaxy ImageJ2 tools currently fall into 4 general categories; Filters and Effects, Binary Image Tools, BunwarpJ Plugin Tools and a few "Other" tools.  Additional tools will be added at a steady pace, and these miscellaneous other tools will fall into more defined categories.
+The Galaxy ImageJ2 tools currently fall into the following categories.  Additional tools will be added at a steady pace.
+
+Working with Pixels
+===================
+These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Process → Math menu.
+
+* **Operate on pixels** - Applies a mathematical expression (add, subtract, multiply, etc.) to each pixel in the image.  When the resulting pixel value overflows/underflows the legal range of the image's data type, the value is reset to the maximum/minimum value.
 
 Filters and Effects
 ===================
