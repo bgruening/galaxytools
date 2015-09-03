@@ -48,6 +48,8 @@ These Galaxy tools wrap the ImageJ2 plugins that are available in the ImageJ2 Pr
 * **Sharpen** - Increases contrast and accentuates detail in the image, but may also accentuate noise.
 * **Find Edges** - Uses a Sobel edge detector to highlight sharp changes in intensity in the active image.
 * **Add shadow effect** - Produces a shadow effect, with light appearing to come from the selected direction (East, North, Northeast, Northwest, South, Southeast, Southwest and West).
+* **Find Maxima** - Determines the local maxima in an image and creates a binary (mask-like) image of the same size with the maxima (or one segmented particle per maximum) marked.
+* **Enhance contrast** - Enhances image contrast by using either normalization (contrast stretching) or histogram equalization.
 * **Add or remove noise** - Adds specified noise to or removes noise from images.
 
 Binary Image Tools
