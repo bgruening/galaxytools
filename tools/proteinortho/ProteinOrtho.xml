@@ -1,0 +1,194 @@
+<tool id="proteinortho" name="ProteinOrtho" version="5.11.0">
+    <description>detect orthologous genes within different species</description>
+    <requirements>
+        <requirement type="package" version="5.11">proteinortho</requirement>
+        <requirement type="package" version="2.2.30">blast+</requirement>
+        <requirement type="package" version="5.18.1">perl</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+        <exit_code range=":-1" />
+        <regex match="Error:" />
+        <regex match="Exception:" />
+    </stdio>
+    <version_command>Proteinortho with PoFF version 5.11</version_command>
+    <command><![CDATA[
+        #for $counter, $file in enumerate($fasta_input):
+          ln -s "${file}" "${counter}.fasta"
+          &&
+        #end for
+        #if $synteny.compute_synteny:
+            #for $counter, $file in enumerate($synteny.synteny_input):
+                ln -s "${file}" "${counter}.gff" ## 1.gff ... 2.gff
+                &&
+            #end for
+        #end if
+
+        proteinortho5.pl
+            $blast_type
+            $compute_singles
+            $compute_selfblast
+            -e=$evalue_cutoff
+            #if $advanced_options.options:
+                -identity=$advanced_options.identity
+                -cov=$advanced_options.coverage
+                -conn=$advanced_options.connectivity
+                -sim=$advanced_options.similarity
+            #end if
+            #if $synteny.synteny_select == '-synteny':
+                $synteny.synteny_dups
+                -synteny
+                #for $counter, $filename in enumerate($synteny.synteny_input):
+                    "${counter}.gff"
+                #end for
+            #end if
+
+            #for $counter, $filename in enumerate($fasta_input):
+                "${counter}.fasta"
+            #end for
+    ]]></command>
+    <inputs>
+        <param name="fasta_input" multiple="True" type="data" format="fasta" label="Gene sequences" min_equals="2"
+            help="All your gene sequences in FASTA format either represented as amino acids or as nucleotides.
+            Add at least two files and each sequence ID in your FASTA files must be unique. Consider renaming the IDs otherwise."/>
+        <param name="blast_type" type="select" label="Sequence type" 
+            help="Is your input a nucleotide- or an amino acid sequence.">
+            <option value="-p=blastp+">Amino acid sequence</option>
+            <option value="-p=blastn+">Nucleotide sequence</option>
+        </param>
+        <param name="evalue_cutoff" type="float" value="1e-05" label="Set expectation value cutoff (e-value for blast)"/>
+        <param name="compute_singles" type="boolean" checked="false"
+            truevalue="-singles" falsevalue=""
+            label="Compute singles?"
+            help="Report genes without orthologs in table output (genes without any hit)" />
+        <param name="compute_selfblast" type="boolean" checked="false"
+            truevalue="-selfblast" falsevalue=""
+            label="Use selfblast?"
+            help="Apply selfblast to directly paralogs; normally these are inferred indirectly from orthology data to other species (experimental!)" />
+        <conditional name="synteny">
+            <param name="synteny_select" type="select" label="Compute Synteny?" 
+                help="Activate PoFF extension to separate similar sequences using synteny (requires a GFF file for each FASTA file).
+                When the analysis is done you will find an additional file in your history, namely test.poff.
+                This file is equivalent to the standard ProteinOrtho file but can be considered more accurate as synteny was involved for its construction.">
+                <option value="">No</option>
+                <option value="-synteny">Yes</option>
+            </param>
+            <when value="-synteny">
+                <param name="synteny_input" multiple="True" type="data" format="gff"
+                    label="GFF file of each FASTA file"/>
+                <param name="synteny_dups" type="boolean" checked="false" truevalue="-dups=3" falsevalue=""
+                    label="Reduce noise?"
+                    help="Yes: Reduce noise in the predictions by detecting multiple copies of genomic areas.
+                        No: come closer to one-to-one orthology relations by preferring synthetically conserved copies in the presence of two very similar paralogs. (-dups)"/>
+            </when>
+            <when value=""/>
+        </conditional>
+        <conditional name="advanced_options">
+            <param name="options" type="select" label="Advanced options">
+                <option value="">Hide advanced options</option>
+                <option value="yes">Display advanced options</option>
+            </param>
+            <when value="yes">
+                <param name="identity" type="integer" value="25" label="Identity"
+                    help="Minimum percent identity of best blast alignments. (-identity)"/>
+                <param name="coverage" type="integer" value="50" label="Coverage"
+                    help="Minimum coverage of best blast alignments in percent. (-cov)"/>
+                <param name="connectivity" type="float" value="0.1"
+                    label="Connectivity" 
+                    help="Minimum algebraic connectivity of orthologous groups during clustering. (-conn)"/>
+                <param name="similarity" type="float" value="0.95" min="0.0" max="1.0"
+                    label="Minimum similarity for additional hits" help="(-sim)"/>
+            </when>
+            <when value=""/>
+        </conditional>
+    </inputs>
+    <outputs>
+            <data name="outfile" format="tabular" from_work_dir="myproject.proteinortho" label="${tool.name} on ${on_string} (.proteinortho)" />
+            <data name="outfile_2" format="tabular" from_work_dir="myproject.poff" label="${tool.name} on ${on_string} (.poff)"> 
+                <filter>synteny['synteny_select'] == '-synteny'</filter>
+            </data> 
+    </outputs>
+    <tests>
+        <test>
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" />
+            <param name="evalue_cutoff" value="1e-05" />
+            <output name="outfile" file="test_1.proteinortho" ftype="tabular"/>
+        </test>
+        <test>
+            <param name="compute_selfblast" value="-selfblast" />
+            <param name="compute_singles" value="-singles" />
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" />
+            <param name="evalue_cutoff" value="1e-05" />
+            <output name="outfile" file="test_2.proteinortho" ftype="tabular"/>
+        </test>
+        <test>
+            <param name="compute_synteny" value="-synteny" />
+            <param name="compute_selfblast" value="-selfblast" />
+            <param name="compute_singles" value="-singles" />
+            <param name="synteny_input" value="C.gff,E.gff,L.gff,M.gff" />
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" />
+            <param name="evalue_cutoff" value="1e-05" />
+            <output name="outfile_2" file="test_3.poff" ftype="tabular"/>
+            <output name="outfile" file="test_3.proteinortho" ftype="tabular"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+Proteinortho is a tool to detect orthologous genes within different species. For doing so, it compares similarities of given gene sequences and clusters them to find significant groups. The algorithm was designed to handle large-scale data and can be applied to hundreds of species at one.
+
+To enhance the prediction accuracy, the relative order of genes (synteny) can be used as additional feature for the discrimination of orthologs. The corresponding extension, namely PoFF (manuscript in preparation), is already build in Proteinortho.
+
+**Settings**
+
+Basic options of ProteinOrtho::
+
+    Option    Default value    Description
+    -evalue     1e-05           E-value for blast
+    -blast      blastp          blast program to use: blastn → sequences are given as nucleotides blastp → sequences are given as amino acids
+    -synteny    -               activate PoFF extension to separate similar sequences using synteny (requires a GFF file for each FASTA file)
+    -selfblast  -               apply selfblast to directly paralogs; normally these are inferred indirectly from orthology data to other species (experimental!)
+    -singles    -               Also report genes without orthologs in table output
+
+Advanced options of ProteinOrtho::
+
+    Option    Default value    Description
+    -identity       25          min. percent identity of best blast alignments
+    -coverage       50          min. coverage of best blast alignments in percent
+    -connectivity   0.1         min. algebraic connectivity of orthologous groups during clustering
+    -similarity     0.95        min. similarity for additional hits
+
+
+**Output**
+
+The tab-separated output generated looks like this::
+
+    Species    Genes    Alg.-Conn.    M.faa    L.faa    C.faa        E.faa
+    4            4        1           M_10     L_10     C_10         E_10
+    4            4        1           M_11     L_11     C_11         E_11
+    4            4        1           M_14     L_14     C_14         E_14
+    ...
+    4            5        0.2         M_19     L_19     C_22,C_63    E_19
+    ...
+
+The **first line** starting with #is a comment line indicating the meaning of each column for each of the following lines which represent an orthologous group each. The very **first column** indicates the number of species covered by this group. The **second column** indicates the number of genes included in the group. Often, this number will equal the number of species, meaning that there is a single ortholog in each species. If the number of genes is bigger than the number of species, there are co-orthologs present. 
+
+The **third column** gives rise to the algebraic connectivity of the respective group. Basically, this indicates how densely the genes are connected in the orthology graph that was used for clustering. A connectivity of 1 indicates a perfect dense cluster with each gene similar to each other gene. By default, Proteinortho splits each group into two more dense subgroups when the connectivity is below 0.1. 
+
+In the **second last line** of the example above, there is a group with three paralogs in species C (C.faa). They are separated by a comma (,) indicating that they are co-orthologous the genes in the other species.
+
+**Explanation "synteny" (PoFF extension)**
+
+The PoFF extension allows you to use the relative order of genes (synteny) as an additional criterion to disentangle complex co-orthology relations.
+You can use it to either come closer to one-to-one orthology relations by preferring synthetically conserved copies in the presence of two very similar paralogs (default), or just to reduce noise in the predictions by detecting multiple copies of genomic areas.
+
+Please note that you need additional data to include synteny, namely the gene positions in **GFF3 format**. As Proteinortho is primarily made for proteins, it will only accept GFF entries of type CDS (column #3 in the GFF-file). The attributes column (#9) must contain Name=GENE IDENTIFIER where GENE IDENTIFIER corresponds to the respective identifier in the FASTA format. It may not contain a semicolon (;)!
+
+Of course, this only makes sense if species are sufficiently similar. You won't gain much when comparing e.g. bacteria with fungi.
+
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1186/1471-2105-12-124</citation>
+    </citations>
+</tool>
