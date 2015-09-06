@@ -1,0 +1,185 @@
+<tool id="pileometh" name="PileOMeth" version="0.1.4">
+    <description>A tool for processing bisulfite sequencing alignments</description>
+    <requirements>
+            <requirement type="package" version="0.1.4">pileometh</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+    </stdio>
+    <version_command>PileOMeth version 0.1.4-5</version_command>
+    
+    <command><![CDATA[
+        PileOMeth
+        $main_task.task
+
+        #if $main_task.task=="extract":
+            -o output
+            $main_task.mergeContext
+        #end if
+        
+        #if $advanced_options.options=="yes":
+            #if $advanced_options.mbias_regionString:
+                -r $advanced_options.mbias_regionString
+            #end if
+            $advanced_options.keepDupes
+            $advanced_options.keepSingleton
+            -q $advanced_options.min_MAPQ
+            -p $advanced_options.min_Phred
+            -D $advanced_options.max_pbdepth
+            $advanced_options.CHG
+            $advanced_options.CHH
+        #end if
+        
+        $input_refFASTA
+        $input_sortedAlignBAM
+        
+        #if $main_task.task=="mbias":
+            out_mbias
+        #end if
+    ]]></command>
+    <inputs>
+        <param name="input_refFASTA" multiple="False" type="data" format="fasta" label="Reference.fasta"/>
+        <param name="input_sortedAlignBAM" multiple="False" type="data" format="bam" label="sorted_alignments.bam"/>
+        <conditional name="main_task">
+            <param name="task" type="select" label="What do you want to do?" >
+                 <option value="extract">Extract methylation metrics from an alignment file in BAM/CRAM
+             format. </option>
+                 <option value="mbias">Determine the position-dependent methylation bias in a dataset, producing diagnostic SVG images.</option>
+            </param>
+            <when value="extract">
+                <param name="mergeContext" type="boolean" checked="false" truevalue="--mergeContext" falsevalue=""
+                label="Merge per-Cytosine metrics from CpG and CHG contexts into per-CPG or per-CHG metrics" />
+            </when>
+        </conditional>
+        <conditional name="advanced_options">
+            <param name="options" type="select" label="Advanced options">
+                <option value="">Hide advanced options</option>
+                <option value="yes">Display advanced options</option>
+            </param>
+            <when value="yes">
+                <param name="mbias_regionString" type="text" size="50" value="" label="Region string in which to extract methylation"/>
+                <param name="keepDupes" type="boolean" checked="false" truevalue="--keepDupes" falsevalue=""
+            label="By default, any alignment marked as a duplicate is ignored. This option causes them to be incorporated" />
+                <param name="keepSingleton" type="boolean" checked="false" truevalue=" --keepSingleton" falsevalue=""
+        label="By default, if only one read in a pair aligns (a singleton) then it's ignored.
+" />
+                <param name="min_MAPQ" type="integer" size="2" value="10" label="Minimum MAPQ threshold to include an alignment (default 10)"/>
+                <param name="min_Phred" type="integer" size="2" value="5" label="Minimum Phred threshold to include a base (default 5). This must be >0."/>
+                <param name="max_pbdepth" type="integer" size="4" value="2000" label="Maximum per-base depth (default 2000)"/>
+
+                <param name="CHG" type="boolean" checked="false" truevalue="--CHG" falsevalue=""
+            label="Additional output file with CHG methylation metrics" />
+                <param name="CHH" type="boolean" checked="false" truevalue="--CHH" falsevalue=""
+            label="Additional output file with CHH methylation metrics" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+            <data  name="outFileExtractCpG" format="bedgraph" from_work_dir="output_CpG.bedGraph" 
+                label="${tool.name} on ${on_string} (--extract default file)">
+                <filter>main_task['task']  == "extract"</filter>
+            </data>
+            <data  name="outFileExtractCHG" format="bedgraph" from_work_dir="output_CHG.bedGraph" 
+                label="${tool.name} on ${on_string} (--CHG file)">
+                <filter>main_task['task'] == 'extract'</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHG'] == "--CHG"</filter>
+            </data>
+            <data  name="outFileExtractCHH" format="bedgraph" from_work_dir="output_CHH.bedGraph" 
+                label="${tool.name} on ${on_string} (--CHH file)">
+                <filter>main_task['task']  == 'extract'</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHH'] == "--CHH" </filter>
+            </data>
+            <data  name="outFileMbiasCpG" format="svg" from_work_dir="out_mbias_OT.svg"
+                label="${tool.name} on ${on_string} (--mbias default file)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="task" value="extract" />
+            <param name="min_MAPQ" value="2" />
+            <param name="input_refFASTA" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <param name="mergeContext" value=""/>
+            <param name="options" value="yes"/>
+            <output name="outFileExtractCpG" file="test_1.bedGraph" ftype="bedgraph" compare="diff"/>
+        </test>
+        <test>
+            <param name="task" value="mbias" />
+            <param name="min_MAPQ" value="2" />
+            <param name="options" value="yes"/>
+            <param name="input_refFASTA" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <output name="outFileMbiasCpG" file="test_2_output.svg" ftype="svg" compare="diff"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+PileOMeth (using a PILEup to extract METHylation metrics) will process a coordinate-sorted and indexed BAM or CRAM file containing some form of BS-seq alignments and extract per-base methylation metrics from them. PileOMeth requires an indexed fasta file containing the reference genome as well.
+
+By default, PileOMeth will only calculate metrics for Cytosines in a CpG context, but metrics for those in CHG and CHH contexts are supported as well.
+
+**Methylation context**
+
+PileOMeth groups all Cytosines into one of three sequence contexts: CpG, CHG, and CHH. Here, H is the IUPAC ambiguity code for any nucleotide other than G. If an N is encountered in the reference sequence, then the context will be assigned to CHG or CHH, as appropriate (e.g., CNG would be categorized as in a CHG context and CNC as in a CHH context). If a Cytosine is close enough to the end of a chromosome/contig such that its context can't be inferred, then it is categorized as CHH (e.g., a Cytosine as the last base of a chromosome is considered as being in a CHH context).
+
+
+**Output information**
+
+If no methylation can be found, the output will be empty.
+
+Otherwise a variant of bedGraph that's similar to the "coverage" file is produced.  In short, each line consists of 6 tab separated columns:
+
+1. The chromosome/contig/scaffold name
+2. The start coordinate
+3. The end coordinate
+4. The methylation percentage rounded to an integer
+5. The number of alignments/pairs reporting methylated bases
+6. The number of alignments/pairs reporting unmethylated bases
+
+All coordinates are 0-based half open, which conforms to the bedGraph definition. When paired-end reads are aligned, it can often occur that their alignments overlap. In such cases, PileOMeth will not count both reads of the pair in its output, as doing so would lead to incorrect downstream statistical results.
+
+An example of the output is below::
+
+#track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
+#1   25115   25116   100 3   0
+#1   29336   29337   50  1   1
+
+Note the header line, which starts with "track". The "description" field is used as a label in programs such as IGV. Each of the subsequent lines describe single Cytosines, the 25116th and 29337th base on chromosome 1, respectively. The first position has 3 alignments (or pairs of alignments) indicating methylation and 0 indicating unmethylation (100% methylation) and the second position has 1 alignment each supporting methylation and unmethylation (50% methylation).
+
+**Per-CpG/CHG metrics**
+
+In many circumstances, it's desireable for metrics from individual Cytosines in a CpG to be merged, producing per-CpG metrics rather than per-Cytosine metrics. This can be accomplished with the **Merge per-Cytosine** parameter. If this is used, then this output::
+
+#track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
+#1   25114   25115   100 2   1
+#1   25115   25116   100 3   0
+
+is changed to this::
+
+#track type="bedGraph" description="SRR1182519.sorted merged CpG methylation levels"
+#1   25114   25116   100 5   1
+
+This also works for CHG-level metrics. If bedGraph files containing per-Cytosine metrics already exist, they can be converted to instead contain per-CpG/CHG metrics with PileOMeth mergeContext.
+
+**Methylation bias plotting and correction**
+
+In an ideal experiment, we expect that the probability of observing a methylated C is constant across the length of any given read. In practice, however, there are often increases/decreases in observed methylation rate at the ends of reads and/or more global changes. These are termed methylation bias and including such regions in the extracted methylation metrics will result in noisier and less accurate data. For this reason, users are strongly encouraged to make a methylation bias plot.
+
+That command will create a methylation bias (mbias for short) plot for each of the strands for which there are valid alignments. The resulting mbias graphs are in SVG format and can be viewed in most modern web browsers:
+
+.. image:: https://camo.githubusercontent.com/183fbff126aa036fef1c0df6f215f60855be6a28/68747470733a2f2f7261776769742e636f6d2f64707279616e37392f50696c654f4d6574682f6d61737465722f6578616d706c655f4f542e737667
+
+
+If you have paired-end data, both reads in the pair will be shown separately, as is the case above. The program will suggest regions for inclusion ("--OT 2,0,0,98" above) and mark them on the plot, if applicable. The format of this output is described in PileOMeth extract -h. These suggestions should not be accepted blindly; users are strongly encouraged to have a look for themselves and tweak the actual bounds as appropriate. The lines indicate the average methylation percentage at a given position and the shaded regions the 99.9% confidence interval around it. This is useful in gauging how many methylation calls a given position has relative to its neighbors. Note the spike in methylation at the end of read #2 and the corresponding dip at the beginning of read #1. This is common and these regions can be ignored with the suggested trimming bounds. Note also that the numbers refer to the first and last base that should be included during methylation extraction, not the last and first base to ignore!.
+
+-----
+
+**PileOMeth** is a Free and Open Source Software, see more details on the PileOMeth_ Website.
+
+.. _PileOMeth: https://github.com/dpryan79/PileOMeth
+    ]]></help>
+</tool>
