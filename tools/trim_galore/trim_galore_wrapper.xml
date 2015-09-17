@@ -1,20 +1,36 @@
-<tool id="trim_galore" name="Trim Galore!" version="0.3.7.0">
-    <!-- Wrapper compatible with Trim Galore! version 0.3.7 -->
+<tool id="trim_galore" name="Trim Galore!" version="0.4.0">
+    <!-- Wrapper compatible with Trim Galore! version 0.4 -->
     <description>adaptive quality and adapter trimmer</description>
-    <version_command interpreter="perl">trim_galore --version</version_command>
-    <requirements>
-        <requirement type="package" version="1.8">cutadapt</requirement>
-    </requirements>
     <macros>
+        <macro name="adapter_trimming">
+            <conditional name="trimming">
+                <param name="trimming_select" type="select" label="Trimming reads?">
+                    <option value="">Automatic detection</option>
+                    <option value="--illumina">Illumina universal</option>
+                    <option value="--nextera">Nextera transposase</option>
+                    <option value="--small_rna">Illumina small RNA adapters</option>
+                    <option value="user">User defined adapter trimming</option>
+                </param>
+                <when value="auto"/>
+                <when value="--illumina"/>
+                <when value="--nextera"/>
+                <when value="--small_rna"/>
+                <when value="user">
+                    <param name="adapter" type="text" value="AGATCGGAAGAGC" label="Adapter sequence to be trimmed off">
+                        <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
+                    </param>
+                    <yield/>
+                </when>
+            </conditional>
+        </macro>
         <macro name="paired_adapter_trimming">
-            <param name="trim1" type="boolean" truevalue="--trim1" falsevalue="" checked="False" label="Trims 1 bp off every read from its 3' end." help="" />
-            <param name="adapter" type="text" value="AGATCGGAAGAGC" label="Adapter sequence to be trimmed off read 1">
-                <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
-            </param>
-            <param name="adapter2" type="text" optional="True" value="" label="Adapter sequence to be trimmed off read 2">
-                <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
-            </param>
 
+            <expand macro="adapter_trimming">
+                <param name="adapter2" type="text" optional="True" value="" label="Adapter sequence to be trimmed off read 2">
+                    <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
+                </param>
+            </expand>
+            <param name="trim1" type="boolean" truevalue="--trim1" falsevalue="" checked="False" label="Trims 1 bp off every read from its 3' end." help="" />
             <param name="three_prime_clip_R1" type="integer" value="" optional="True" label="Remove N bp from the 3' end of read 1">
                 <help>Instructs Trim Galore! to remove N bp from the 3' end of read 1 after adapter/quality trimming has been performed.
                     This may remove some unwanted bias from the 3' end that is not directly related to adapter sequence or basecall quality.
@@ -27,6 +43,10 @@
             </param>
         </macro>
     </macros>
+    <requirements>
+        <requirement type="package" version="1.8">cutadapt</requirement>
+    </requirements>
+    <version_command interpreter="perl">trim_galore --version</version_command>
     <command>
 <![CDATA[
 
@@ -64,15 +84,15 @@
             ## default 20
             --length $params.min_length
 
-            #if int($params.clip_R1) > 0:
+            #if $params.clip_R1:
                 --clip_R1 $params.clip_R1
             #end if
 
-            #if int($params.clip_R2) > 0:
+            #if $params.clip_R2:
                 --clip_R2 $params.clip_R2
             #end if
 
-            #if $params.retain_unpaired.settingsType == "retain_unpaired_output":
+            #if $params.retain_unpaired.retain_unpaired_select == "retain_unpaired_output":
                 --retain_unpaired
                 --length_1 $params.retain_unpaired.length_1
                 --length_2 $params.retain_unpaired.length_2
@@ -93,11 +113,15 @@
             --no_report_file
         #end if
 
-
-        ## default 'AGATCGGAAGAGC'
-        #if $singlePaired.adapter.strip() != '':
-           --adapter $singlePaired.adapter
+        #if $singlePaired.trimming.trimming_select == 'user':
+            ## default 'AGATCGGAAGAGC'
+            #if $singlePaired.trimming.adapter.strip() != '':
+               --adapter $singlePaired.trimming.adapter
+            #end if
+        #else:
+            $singlePaired.trimming.trimming_select
         #end if
+
 
         #if $singlePaired.three_prime_clip_R1:
             --three_prime_clip_R1 $singlePaired.three_prime_clip_R1
@@ -111,8 +135,10 @@
 
             $singlePaired.trim1
 
-            #if $singlePaired.adapter2 and $singlePaired.adapter2.strip() != '':
-                --adapter2 $singlePaired.adapter2
+            #if $singlePaired.trimming.trimming_select == 'user':
+                #if $singlePaired.trimming.adapter2 and $singlePaired.trimming.adapter2.strip() != '':
+                    --adapter2 $singlePaired.trimming.adapter2
+                #end if
             #end if
 
             #if $singlePaired.three_prime_clip_R2:
@@ -143,9 +169,8 @@
             </param>
             <when value="single">
                 <param name="input_singles" type="data" format="fastqsanger" label="Reads in FASTQ format" />
-                <param name="adapter" type="text" value="AGATCGGAAGAGC" label="Adapter sequence to be trimmed">
-                    <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
-                </param>
+                <expand macro="adapter_trimming"/>
+
                 <param name="three_prime_clip_R1" type="integer" value="" optional="True" label="Remove N bp from the 3' end">
                     <help>Instructs Trim Galore! to remove N bp from the 3' end of read 1 after adapter/quality trimming has been performed.
                         This may remove some unwanted bias from the 3' end that is not directly related to adapter sequence or basecall quality.
@@ -178,13 +203,13 @@
                 <param name="error_rate" type="float" value="0.1" label="Maximum allowed error rate" />
                 <param name="min_length" type="integer" value="20" label="Discard reads that became shorter than length INT" />
 
-                <param name="clip_R1" type="integer" value="0" label="Instructs Trim Galore! to remove INT bp from the 5' end of read 1" />
-                <param name="clip_R2" type="integer" value="0" label="Instructs Trim Galore! to remove INT bp from the 5' end of read 2" />
+                <param name="clip_R1" type="integer" optional="True" min="0" label="Instructs Trim Galore! to remove INT bp from the 5' end of read 1" />
+                <param name="clip_R2" type="integer" optional="True" min="0" label="Instructs Trim Galore! to remove INT bp from the 5' end of read 2" />
 
                 <param name="report" type="boolean" truevalue="true" falsevalue="false" checked="False" label="Generate a report file" help="" />
 
                 <conditional name="retain_unpaired">
-                    <param name="settingsType" type="select" label="specify if you would like to retain unpaired reads">
+                    <param name="retain_unpaired_select" type="select" label="specify if you would like to retain unpaired reads">
                       <option value="no_output">Do not output unpaired reads</option>
                       <option value="retain_unpaired_output">Output unpaired reads</option>
                     </param>
@@ -216,29 +241,23 @@
 
     </inputs>
     <outputs>
-
         <data format="fastqsanger" name="trimmed_reads_single" from_work_dir="input_singles_trimmed.fq" label="${tool.name} on ${on_string}: trimmed reads">
-          <filter>singlePaired['sPaired'] == "single"</filter>
+            <filter>singlePaired['sPaired'] == "single"</filter>
         </data>
 
-        <collection name="trimmed_reads_paired_collection" type="paired" label="${tool.name} on ${on_string}: trimmed reads">
-            <filter>singlePaired['sPaired'] == "paired_collection"</filter>
+        <collection name="trimmed_reads_paired_collection" type="paired" label="${tool.name} on ${on_string}: paired reads">
             <data name="forward" format="fastqsanger" from_work_dir="input_mate1_val_1.fq" />
             <data name="reverse" format="fastqsanger" from_work_dir="input_mate2_val_2.fq" />
+            <filter>singlePaired['sPaired'] == "paired_collection"</filter>
         </collection>
 
         <collection name="trimmed_reads_unpaired_collection" type="paired" label="${tool.name} on ${on_string}: unpaired reads">
-            <filter>
-            ((
-                params['settingsType'] == "custom" and
-                params['retain_unpaired']['settingsType'] == "retain_unpaired_output" and
-                singlePaired['sPaired'] == "paired_collection"
-            ))
-            </filter>
             <data name="forward" format="fastqsanger" from_work_dir="input_mate1_unpaired_1.fq" />
             <data name="reverse" format="fastqsanger" from_work_dir="input_mate2_unpaired_2.fq" />
+            <filter>params['settingsType'] == "custom"</filter>
+            <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
+            <filter>singlePaired['sPaired'] == "paired_collection"</filter>
         </collection>
-
 
         <data format="fastqsanger" name="trimmed_reads_pair1" from_work_dir="input_mate1_val_1.fq"
             label="${tool.name} on ${on_string}: trimmed reads pair 1">
@@ -252,39 +271,25 @@
 
         <data format="fastqsanger" name="unpaired_reads_1" from_work_dir="input_mate1_val_1.fq"
             label="${tool.name} on ${on_string}: unpaired reads (1)">
-            <filter>
-            ((
-                params['settingsType'] == "custom" and
-                params['retain_unpaired']['settingsType'] == "retain_unpaired_output" and
-                singlePaired['sPaired'] == "paired"
-            ))
-            </filter>
+            <filter>params['settingsType'] == "custom"</filter>
+            <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
+            <filter>singlePaired['sPaired'] == "paired"</filter>
         </data>
 
         <data format="fastqsanger" name="unpaired_reads_2" from_work_dir="input_mate2_val_2.fq"
             label="${tool.name} on ${on_string}: unpaired reads (2)">
-            <filter>
-            ((
-                params['settingsType'] == "custom" and
-                params['retain_unpaired']['settingsType'] == "retain_unpaired_output" and
-                singlePaired['sPaired'] == "paired"
-            ))
-            </filter>
+            <filter>params['settingsType'] == "custom"</filter>
+            <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
+            <filter>singlePaired['sPaired'] == "paired"</filter>
         </data>
-
         <data format="txt" name="report_file" label="${tool.name} on ${on_string}: report file">
-            <filter>
-            ((
-              params['settingsType'] == "custom" and
-              params['report'] == True
-            ))
-            </filter>
+            <filter>params['settingsType'] == "custom"</filter>
+            <filter>params['report'] == True</filter>
         </data>
 
     </outputs>
     <tests>
         <test>
-            <!-- Trim entire sequences; keep empty reads -->
             <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
             <param name="sPaired" value="single" />
             <param name="settingsType" value="custom" />
@@ -294,7 +299,20 @@
         </test>
 
         <test>
-            <!-- Trim entire sequences; keep empty reads -->
+            <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
+            <param name="sPaired" value="single" />
+            <param name="trimming_select" value="--illumina" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results2.fastqsanger" ftype="fastqsanger"/>
+        </test>
+
+        <test>
+            <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
+            <param name="sPaired" value="single" />
+            <param name="adapter" value="AAAGAGC" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results3.fastqsanger" ftype="fastqsanger"/>
+        </test>
+
+        <test>
             <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
             <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
             <param name="sPaired" value="paired" />
@@ -306,17 +324,17 @@
         </test>
 
         <test>
-            <!-- Trim entire sequences; keep empty reads -->
             <param name="input_mate_pairs">
                 <collection type="paired">
-                    <element name="forward" value="bwa-mem-fastq1.fq" />
-                    <element name="reverse" value="bwa-mem-fastq2.fq" />
+                    <element name="forward" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
+                    <element name="reverse" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
                 </collection>
             </param>
+
             <param name="sPaired" value="paired_collection" />
             <param name="settingsType" value="custom" />
             <param name="report" value="true" />
-            <param name="retain_unpaired" value="retain_unpaired_output" />
+            <param name="retain_unpaired_select" value="retain_unpaired_output" />
 
             <output name="report_file" file="paired_collection_example_results3.txt" ftype="txt" lines_diff="8" />
 
@@ -329,6 +347,7 @@
                 <element name="forward" file="paired_collection_example_unpair1_results3.fastqsanger" ftype="fastqsanger"/>
                 <element name="reverse" file="paired_collection_example_unpair2_results3.fastqsanger" ftype="fastqsanger"/>
             </output_collection>
+
         </test>
     </tests>
     <help>
@@ -349,4 +368,5 @@
 It is developed by Felix Krueger at the Babraham Institute.
 ]]>
     </help>
+    <citations></citations>
 </tool>

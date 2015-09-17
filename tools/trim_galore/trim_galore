@@ -23,33 +23,146 @@ use Cwd;
 ## along with this program. If not, see <http://www.gnu.org/licenses/>.
 
 
+## this script is taking in FastQ sequences and trims them using Cutadapt
 
-## this script is taking in FastQ sequences and trims them with Cutadapt
+## last modified on 01 May 2015
 
-## last modified on 16 July 2014
-
-
-
-########################################################################
-
-# change these paths if needed
-
-my $path_to_cutadapt = 'cutadapt';
-my $path_to_fastqc = 'fastqc';
-
-########################################################################
-
-my $trimmer_version = '0.3.7';
 my $DOWARN = 1; # print on screen warning and text by default
 BEGIN { $SIG{'__WARN__'} = sub { warn $_[0] if $DOWARN } };
 
-my ($cutoff,$adapter,$stringency,$rrbs,$length_cutoff,$keep,$fastqc,$non_directional,$phred_encoding,$fastqc_args,$trim,$gzip,$validate,$retain,$length_read_1,$length_read_2,$a2,$error_rate,$output_dir,$no_report_file,$dont_gzip,$clip_r1,$clip_r2,$three_prime_clip_r1,$three_prime_clip_r2) = process_commandline();
+my $trimmer_version = '0.4.0';
+
+
+my ($cutoff,$adapter,$stringency,$rrbs,$length_cutoff,$keep,$fastqc,$non_directional,$phred_encoding,$fastqc_args,$trim,$gzip,$validate,$retain,$length_read_1,$length_read_2,$a2,$error_rate,$output_dir,$no_report_file,$dont_gzip,$clip_r1,$clip_r2,$three_prime_clip_r1,$three_prime_clip_r2,$nextera,$small_rna,$path_to_cutadapt,$illumina) = process_commandline();
 
 my @filenames = @ARGV;
-
-
 die "\nPlease provide the filename(s) of one or more FastQ file(s) to launch Trim Galore!\n
 USAGE:  'trim_galore [options] <filename(s)>'    or    'trim_galore --help'    for more options\n\n" unless (@filenames);
+file_sanity_check($filenames[0]);
+
+
+########################################################################
+
+my $path_to_fastqc = 'fastqc';
+
+# Before we start let's have quick look if Cutadapt seems to be working with the path information provided
+# To change the path to Cutadapt use --path_to_cutadapt /full/path/to/the/Cutadapt/executable
+
+if(defined $path_to_cutadapt){
+  warn "Path to Cutadapt set as: '$path_to_cutadapt' (user defined)\n";
+  # we'll simply use this
+}
+else{
+  $path_to_cutadapt = 'cutadapt'; # default, assuming it is in the PATH
+  warn "Path to Cutadapt set as: '$path_to_cutadapt' (default)\n";
+}
+my $cutadapt_version;
+my $return = system "$path_to_cutadapt --version"; #>/dev/null 2>&1";
+if ($return == -1){
+  die "Failed to execute Cutadapt porperly. Please install Cutadapt first and make sure it is in the PATH, or specify the path to the Cutadapt executable using --path_to_cutadapt /path/to/cutadapt\n\n";
+}
+else{
+  warn "Cutadapt seems to be working fine (tested command '$path_to_cutadapt --version')\n";
+  $cutadapt_version = `$path_to_cutadapt --version`;
+  chomp $cutadapt_version;
+  # warn "Cutadapt version: $cutadapt_version\n";
+}
+
+
+########################################################################
+
+sub autodetect_adapter_type{
+  warn "\n\nAUTO-DETECTING ADAPTER TYPE\n===========================\n";
+  warn "Attempting to auto-detect adapter type from the first 1 million sequences of the first file (>> $ARGV[0] <<)\n\n";
+
+  if ($ARGV[0] =~ /gz$/){
+    open (AUTODETECT,"zcat $ARGV[0] |") or die "Failed to read from file $ARGV[0]\n";
+  }
+  else{
+    open (AUTODETECT,$ARGV[0]) or die "Failed to read from file $ARGV[0]\n";
+  }
+
+  my %adapters;
+
+  $adapters{'Illumina'} -> {seq}  = 'AGATCGGAAGAGC';
+  $adapters{'Illumina'} -> {count}= 0;
+  $adapters{'Illumina'} -> {name}= 'Illumina TruSeq, Sanger iPCR; auto-detected';
+
+  $adapters{'Nextera'}  -> {seq}  = 'CTGTCTCTTATA';
+  $adapters{'Nextera'}  -> {count}= 0;
+  $adapters{'Nextera'}  -> {name}= 'Nextera Transposase sequence; auto-detected';
+
+  $adapters{'smallRNA'} -> {seq}  = 'ATGGAATTCTCG';
+  $adapters{'smallRNA'} -> {count}= 0;
+  $adapters{'smallRNA'} -> {name}= 'Illumina small RNA adapter; auto-detected';
+
+
+  # we will read the first 1 million sequences, or until the end of the file whatever comes first, and then use the adapter that for trimming which was found to occcur most often
+  my $count = 0;
+  while (1){
+
+    my $line1 = <AUTODETECT>;
+    my $line2 = <AUTODETECT>;
+    my $line3 = <AUTODETECT>;
+    my $line4 = <AUTODETECT>;
+    last unless ($line4);
+    $count++;
+    last if ($count == 1000000);
+
+    chomp $line2;
+    $adapters{'Illumina'}->{count}++ unless (index($line2,'AGATCGGAAGAGC')== -1);
+    $adapters{'Nextera'} ->{count}++ unless (index($line2,'CTGTCTCTTATA') == -1);
+    $adapters{'smallRNA'}->{count}++ unless (index($line2,'ATGGAATTCTCG') == -1);
+
+  }
+
+  my $highest;
+  my $second;
+  my $seq;
+  my $adapter_name;
+
+  warn "Found perfect matches for the following adapter sequences:\nAdapter type\tCount\tSequence\tSequences analysed\tPercentage\n";
+  foreach my $adapter (sort {$adapters{$b}->{count}<=>$adapters{$a}->{count}} keys %adapters){
+
+    my $percentage = sprintf("%.2f",$adapters{$adapter}->{count}/$count*100);
+
+    warn "$adapter\t$adapters{$adapter}->{count}\t$adapters{$adapter}->{seq}\t$count\t$percentage\n";
+
+    unless (defined $highest){
+      $highest = $adapter;
+      $seq = $adapters{$adapter}->{seq};
+      $adapter_name = $adapters{$adapter}->{name};
+      next;
+    }
+    unless (defined $second){
+      $second = $adapter;
+    }
+  }
+
+
+  # using the highest occurrence as adapter to look out for
+  if ($adapters{$highest}->{count} == $adapters{$second}->{count}){
+    warn "Unable to auto-detect most prominent adapter from the first specified file (count $highest: $adapters{$highest}->{count}, count $second: $adapters{$second}->{second})\n";
+
+    if ($adapters{$highest}->{count} == 0){
+      warn "Defaulting to Illumina universal adapter ( AGATCGGAAGAGC ). Specify -a SEQUENCE to avoid this behavior).\n\n";
+      $adapter_name = 'Illumina TruSeq, Sanger iPCR; default (inconclusive auto-detection)';
+      $seq = 'AGATCGGAAGAGC';
+    }
+    else{
+      warn "Using $highest adapter for trimming (count: $adapters{$highest}->{count}). Second best hit was $second (count: $adapters{$second}->{count})\n\n";
+    }
+  }
+  else{
+    warn "Using $highest adapter for trimming (count: $adapters{$highest}->{count}). Second best hit was $second (count: $adapters{$second}->{count})\n\n";
+  }
+
+  close AUTODETECT;
+
+  return ($seq,$adapter_name);
+
+}
+
 
 
 ### SETTING DEFAULTS UNLESS THEY WERE SPECIFIED
@@ -57,9 +170,23 @@ unless (defined $cutoff){
   $cutoff = 20;
 }
 my $phred_score_cutoff = $cutoff; # only relevant for report
-
+my $adapter_name = '';
 unless (defined $adapter){
-  $adapter = 'AGATCGGAAGAGC';
+  if ($nextera){
+    $adapter = 'CTGTCTCTTATA';
+    $adapter_name = 'Nextera Transposase sequence; user defined';
+  }
+  elsif($small_rna){
+    $adapter = 'ATGGAATTCTCG';
+    $adapter_name = 'Illumina small RNA adapter; user defined';
+  }
+  elsif($illumina){
+    $adapter = 'AGATCGGAAGAGC';
+    $adapter_name = 'Illumina TruSeq, Sanger iPCR; user defined';
+  }
+  else{ # default
+    ($adapter,$adapter_name) = autodetect_adapter_type();
+  }
 }
 unless (defined $a2){ # optional adapter for the second read in a pair. Only works for --paired trimming
   $a2 = '';
@@ -115,14 +242,17 @@ sub trim{
   warn "Trim Galore version: $trimmer_version\n";
   print REPORT "Trim Galore version: $trimmer_version\n";
 
+  warn "Cutadapt version: $cutadapt_version\n";
+  print REPORT "Cutadapt version: $cutadapt_version\n";
+
   warn "Quality Phred score cutoff: $phred_score_cutoff\n";
   print REPORT "Quality Phred score cutoff: $phred_score_cutoff\n";
 
   warn "Quality encoding type selected: ASCII+$phred_encoding\n";
   print REPORT "Quality encoding type selected: ASCII+$phred_encoding\n";
 
-  warn "Adapter sequence: '$adapter'\n";
-  print REPORT "Adapter sequence: '$adapter'\n";
+  warn "Adapter sequence: '$adapter' ($adapter_name)\n";
+  print REPORT "Adapter sequence: '$adapter' ($adapter_name)\n";
 
   if ($error_rate == 0.1){
     warn "Maximum trimming error rate: $error_rate (default)\n";
@@ -339,7 +469,7 @@ sub trim{
       if ( scalar(@filenames)%2 == 0){ # this is read 1 of a pair
 	warn "\n  >>> Now performing adapter trimming for the adapter sequence: '$adapter' from file $temp <<< \n";
 	sleep (3);
-	$pid = open (\*WRITER, \*TRIM, \*ERROR,"$path_to_cutadapt -f fastq -e $error_rate -O $stringency -a $adapter $output_dir$temp") or die "Failed to launch Cutadapt: $!\n";
+	$pid = open3 (\*WRITER, \*TRIM, \*ERROR,"$path_to_cutadapt -f fastq -e $error_rate -O $stringency -a $adapter $output_dir$temp") or die "Failed to launch Cutadapt: $!\n";
       }
       else{                            # this is read 2 of a pair
 	warn "\n  >>> Now performing adapter trimming for the adapter sequence: '$a2' from file $temp <<< \n";
@@ -619,8 +749,6 @@ sub trim{
       warn "Unable to determine percentage of reads that were shortened because 0 lines were processed\n\n";
       print REPORT "Unable to determine percentage of reads that were shortened because 0 lines were processed\n\n";
     }
-    warn "Sequences were truncated to a varying degree because of deteriorating qualities (Phred score quality cutoff: $cutoff):\t$quality_trimmed ($percentage_shortened%)\n";
-    print REPORT "Sequences were truncated to a varying degree because of deteriorating qualities (Phred score quality cutoff: $cutoff):\t$quality_trimmed ($percentage_shortened%)\n";
   }
 
   my $percentage_too_short;
@@ -991,6 +1119,33 @@ sub validate_paired_end_files{
   }
 }
 
+
+sub file_sanity_check{
+
+  my $file = shift;
+  open (SANITY,$file) or die "Failed to read from file '$file' to perform sanity check\n";
+
+  # just processing a single FastQ entry
+  my $id    = <SANITY>;
+  my $seq   = <SANITY>;
+  my $three = <SANITY>;
+  my $qual  = <SANITY>;
+
+  unless ($id and $seq and $three and $qual){
+    warn "Input file '$file' seems to be completely empty. Consider respecifying!\n\n";
+  }
+  return;
+  chomp $seq;
+
+  # testing if the file is a colorspace file in which case we bail
+  if ($seq =~ /\d+/){
+    die "File seems to be in SOLiD colorspace format which is not supported by Trim Galore (sequence is: '$seq')! Please use Cutadapt on colorspace files separately and check its documentation!\n\n";
+  }
+
+  close SANITY;
+}
+
+
 sub process_commandline{
   my $help;
   my $quality;
@@ -1022,6 +1177,10 @@ sub process_commandline{
   my $clip_r2;
   my $three_prime_clip_r1;
   my $three_prime_clip_r2;
+  my $nextera;
+  my $small_rna;
+  my $illumina;
+  my $path_to_cutadapt;
 
   my $command_line = GetOptions ('help|man' => \$help,
 				 'q|quality=i' => \$quality,
@@ -1053,6 +1212,10 @@ sub process_commandline{
 				 'clip_R2=i' => \$clip_r2,
 				 'three_prime_clip_R1=i' => \$three_prime_clip_r1,
 				 'three_prime_clip_R2=i' => \$three_prime_clip_r2,
+				 'illumina' => \$illumina,
+				 'nextera' => \$nextera,
+				 'small_rna' => \$small_rna,
+				 'path_to_cutadapt=s' => \$path_to_cutadapt,
 				);
 
   ### EXIT ON ERROR if there were errors with any of the supplied options
@@ -1069,6 +1232,7 @@ sub process_commandline{
 
 
 
+
   if ($version){
     print << "VERSION";
 
@@ -1076,7 +1240,7 @@ sub process_commandline{
                                (powered by Cutadapt)
                                   version $trimmer_version
 
-                             Last update: 15 04 2014
+                             Last update: 06 05 2015
 
 VERSION
     exit;
@@ -1106,7 +1270,7 @@ VERSION
   unless ($phred33 or $phred64){
     warn "No quality encoding type selected. Assuming that the data provided uses Sanger encoded Phred scores (default)\n\n";
     $phred_encoding = 33;
-    sleep (3);
+    sleep (1);
   }
 
   ### NON-DIRECTIONAL RRBS
@@ -1137,11 +1301,25 @@ VERSION
     $error_rate = 0.1; # (default)
   }
 
+  if ($nextera and $small_rna or $nextera and $illumina or $illumina and $small_rna ){
+    die "You can't use several different adapter types at the same time. Make your choice or consider using -a and -a2\n\n";
+  }
+
   if (defined $adapter){
     unless ($adapter =~ /^[ACTGNXactgnx]+$/){
       die "Adapter sequence must contain DNA characters only (A,C,T,G or N)!\n";
     }
     $adapter = uc$adapter;
+
+    if ($illumina){
+      die "You can't supply an adapter sequence AND use the Illumina universal adapter sequence. Make your choice.\n\n";
+    }
+     if ($nextera){
+      die "You can't supply an adapter sequence AND use the Nextera transposase adapter sequence. Make your choice.\n\n";
+    }
+    if ($small_rna){
+      die "You can't supply an adapter sequence AND use the Illumina small RNA adapter sequence. Make your choice.\n\n";
+    }
   }
 
   if (defined $adapter2){
@@ -1244,7 +1422,7 @@ VERSION
   }
 
 
-  return ($quality,$adapter,$stringency,$rrbs,$length_cutoff,$keep,$fastqc,$non_directional,$phred_encoding,$fastqc_args,$trim,$gzip,$validate,$retain,$length_read_1,$length_read_2,$adapter2,$error_rate,$output_dir,$no_report_file,$dont_gzip,$clip_r1,$clip_r2,$three_prime_clip_r1,$three_prime_clip_r2);
+  return ($quality,$adapter,$stringency,$rrbs,$length_cutoff,$keep,$fastqc,$non_directional,$phred_encoding,$fastqc_args,$trim,$gzip,$validate,$retain,$length_read_1,$length_read_2,$adapter2,$error_rate,$output_dir,$no_report_file,$dont_gzip,$clip_r1,$clip_r2,$three_prime_clip_r1,$three_prime_clip_r2,$nextera,$small_rna,$path_to_cutadapt,$illumina);
 }
 
 
@@ -1284,11 +1462,23 @@ trim_galore [options] <filename(s)>
                         automatically invoke FastQC, so --fastqc does not have to be specified
                         separately.
 
--a/--adapter <STRING>   Adapter sequence to be trimmed. If not specified explicitely, the first 13
-                        bp of the Illumina adapter 'AGATCGGAAGAGC' will be used by default.
+-a/--adapter <STRING>   Adapter sequence to be trimmed. If not specified explicitly, Trim Galore will
+                        try to auto-detect whether the Illumina universal, Nextera transposase or Illumina
+                        small RNA adapter sequence was used. Also see '--illumina', '--nextera' and
+                        '--small_rna'. If no adapter can be detected within the first 1 million sequences
+                        of the first file specified Trim Galore defaults to '--illumina'.
 
 -a2/--adapter2 <STRING> Optional adapter sequence to be trimmed off read 2 of paired-end files. This
                         option requires '--paired' to be specified as well.
+
+--illumina              Adapter sequence to be trimmed is the first 13bp of the Illumina universal adapter
+                        'AGATCGGAAGAGC' instead of the default auto-detection of adapter sequence.
+
+--nextera               Adapter sequence to be trimmed is the first 12bp of the Nextera adapter
+                        'CTGTCTCTTATA' instead of the default auto-detection of adapter sequence.
+
+--small_rna             Adapter sequence to be trimmed is the first 12bp of the Illumina Small RNA Adapter
+                        'ATGGAATTCTCG' instead of the default auto-detection of adapter sequence.
 
 
 --stringency <INT>      Overlap with adapter sequence required to trim a sequence. Defaults to a
@@ -1331,15 +1521,19 @@ trim_galore [options] <filename(s)>
                         methylation. Please refer to the M-bias plot section in the Bismark User Guide for
                         some examples. Default: OFF.
 
---three_prime_clip_R1 <int>  Instructs Trim Galore to remove <int> bp from the 3' end of read 1 (or single-end
+--three_prime_clip_R1 <int>     Instructs Trim Galore to remove <int> bp from the 3' end of read 1 (or single-end
                         reads) AFTER adapter/quality trimming has been performed. This may remove some unwanted
                         bias from the 3' end that is not directly related to adapter sequence or basecall quality.
                         Default: OFF.
 
---three_prime_clip_R2 <int>  Instructs Trim Galore to remove <int> bp from the 3' end of read 2 AFTER
+--three_prime_clip_R2 <int>     Instructs Trim Galore to remove <int> bp from the 3' end of read 2 AFTER
                         adapter/quality trimming has been performed. This may remove some unwanted bias from
                         the 3' end that is not directly related to adapter sequence or basecall quality.
                         Default: OFF.
+
+--path_to_cutadapt </path/to/cutadapt>     You may use this option to specify a path to the Cutadapt executable,
+                        e.g. /my/home/cutadapt-1.7.1/bin/cutadapt. Else it is assumed that Cutadapt is in
+                        the PATH.
 
 
 RRBS-specific options (MspI digested material):
@@ -1408,7 +1602,7 @@ Paired-end specific options:
                         Default: 35 bp.
 
 
-Last modified on 16 July 2014.
+Last modified on 06 May 2015.
 
 HELP
   exit;
