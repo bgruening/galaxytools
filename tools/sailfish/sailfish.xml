@@ -1,57 +1,65 @@
-<tool id="sailfish" name="Sailfish" version="0.7.3.0">
+<tool id="sailfish" name="Sailfish" version="0.7.6.0">
     <description>transcript quantification from RNA-seq data</description>
-    <version_command>sailfish -version</version_command>
     <requirements>
-        <requirement type="package" version="0.7.3">sailfish</requirement>
+        <requirement type="package" version="0.7.6">sailfish</requirement>
     </requirements>
+    <macros>
+        <xml name="strandedness">
+            <param name="strandedness" type="select" label="Specify the strandedness of the reads">
+                <option value="U" selected="True">Not stranded</option>
+                <option value="SF">read 1 (or single-end read) comes from the forward strand</option>
+                <option value="SR">read 1 (or single-end read) comes from the reverse strand</option>
+            </param>
+        </xml>
+    </macros>
     <stdio>
         <exit_code range="1:" />
         <exit_code range=":-1" />
         <regex match="Error:" />
         <regex match="Exception:" />
     </stdio>
+    <version_command>sailfish -version</version_command>
     <command>
 <![CDATA[
 
-        #if $refTranscriptSource.genomeSource == "history":
+        #if $refTranscriptSource.TranscriptSource == "history":
             sailfish index
                 --transcripts $refTranscriptSource.ownFile
-                --kmerSize $kmer_size
+                --kmerSize $refTranscriptSource.kmerSize
                 --out ./index_dir
                 --threads "\${GALAXY_SLOTS:-4}"
             #set $index_path = './index_dir'
         #else:
-            #set $index_path = ${refTranscriptSource.index.fields.path}
+            #set $index_path = $refTranscriptSource.index.fields.path
         #end if
 
-        ;
+        &&
+
+        #if $single_or_paired.single_or_paired_opts == 'single':
+            ln -s $single_or_paired.input_singles ./single.$single_or_paired.input_singles.ext &&
+        #else:
+            ln -s $single_or_paired.input_mate1 ./mate1.$single_or_paired.input_mate1.ext &&
+            ln -s $single_or_paired.input_mate2 ./mate2.$single_or_paired.input_mate2.ext &&
+        #end if
+
 
         #if $geneMap:
-            ln -s "$geneMap" ./geneMap.$geneMap.ext;
+            ln -s "$geneMap" ./geneMap.$geneMap.ext &&
         #end if
 
         sailfish quant
             --index $index_path
             #if $single_or_paired.single_or_paired_opts == 'single':
-                --libtype "TYPE=SE:STRAND=$single_or_paired.strandedness"
-                --unmated_reads $single_or_paired_opts.input_singles
+                --libType "${single_or_paired.orientation}${single_or_paired.strandedness}"
+                --unmated_reads ./single.$single_or_paired.input_singles.ext
             #else:
-                --mates1 $single_or_paired_opts.input_mate1
-                --mates2 $single_or_paired_opts.input_mate2
-                #if $single_or_paired_opts.orientation == "same":
-                    --libtype "TYPE=PE:STRAND=$single_or_paired.strandedness:O=>>"
-                #elif $single_or_paired_opts.orientation == "away":
-                    --libtype "TYPE=PE:STRAND=$single_or_paired.strandedness:O=<>"
-                #else:
-                    --libtype "TYPE=PE:STRAND=$single_or_paired.strandedness:O=><"
-                #end if
+                --mates1 ./mate1.$single_or_paired.input_mate1.ext
+                --mates2 ./mate2.$single_or_paired.input_mate2.ext
+                --libType "${single_or_paired.orientation}${single_or_paired.strandedness}"
             #end if
-            --output ./
-            $bias_correct
-            ##--iterations $iterations
-            ##--delta $delta
+            --output ./ 
+            $biasCorrect
             --threads "\${GALAXY_SLOTS:-4}"
-            ##$polya
 
             #if $fldMean:
                 --fldMean $fldMean
@@ -73,98 +81,93 @@
             $useVBOpt
             $allowOrphans
 
+            $unsmoothedFLD
+            --maxFragLen ${maxFragLen}
+            --txpAggregationKey "${txpAggregationKey}"
+
 ]]>
     </command>
     <inputs>
         <conditional name="refTranscriptSource">
-          <param name="TranscriptSource" type="select" label="Select a reference transcriptome from your history or use a built-in index?" help="Built-ins were indexed using default options">
-            <option value="indexed">Use a built-in index</option>
-            <option value="history">Use one from the history</option>
-          </param>
-          <when value="indexed">
-            <param name="index" type="select" label="Select a reference transcriptome" help="If your transcriptome of interest is not listed, contact your Galaxy admin">
-              <options from_data_table="sailfish_indexes">
-                <filter type="sort_by" column="2"/>
-                <validator type="no_options" message="No indexes are available for the selected input dataset"/>
-              </options>
+            <param name="TranscriptSource" type="select" label="Select a reference transcriptome from your history or use a built-in index?" help="Built-ins were indexed using default options">
+                <option value="indexed">Use a built-in index</option>
+                <option value="history" selected="True">Use one from the history</option>
             </param>
-          </when>  <!-- build-in -->
-          <when value="history">
+            <when value="indexed">
+                <param name="index" type="select" label="Select a reference transcriptome" help="If your transcriptome of interest is not listed, contact your Galaxy admin">
+                    <options from_data_table="sailfish_indexes">
+                        <filter type="sort_by" column="2"/>
+                        <validator type="no_options" message="No indexes are available for the selected input dataset"/>
+                    </options>
+                </param>
+            </when>  <!-- build-in -->
+            <when value="history">
                 <param name="ownFile" type="data" format="fasta" metadata_name="dbkey" label="Select the reference transcriptome" />
-                <param name="kmer_size" type="integer" value="21" max="32" label="The size of the k-mer on which the index is built"
+                <param argument="kmerSize" type="integer" value="21" max="32" label="The size of the k-mer on which the index is built"
                     help="There is a tradeoff here between the distinctiveness of the k-mers and their robustness to errors. 
                         The shorter the k-mers, the more robust they will be to errors in the reads, but the longer the k-mers,
-                        the more distinct they will be.  We generally recommend using a k-mer size of at least 20. (--kmerSize)"/>
-          </when>  <!-- history -->
+                        the more distinct they will be.  We generally recommend using a k-mer size of at least 20."/>
+            </when>  <!-- history -->
         </conditional>  <!-- refTranscriptSource -->
 
         <conditional name="single_or_paired">
             <param name="single_or_paired_opts" type="select" label="Is this library mate-paired?">
-              <option value="single">Single-end</option>
-              <option value="paired">Paired-end</option>
+                <option value="single">Single-end</option>
+                <option value="paired">Paired-end</option>
             </param>
             <when value="single">
-                <param name="input_singles" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="FASTQ/FASTA file" help="FASTQ file." />
-                <param name="strandedness" type="select" label="Specify the strandedness of the reads">
-                  <option value="S">Sense strand</option>
-                  <option value="A">Antisense strand</option>
-                  <option value="U">unknown strandedness</option>
-                </param>
+                <param name="input_singles" type="data" format="fastq,fasta" label="FASTQ/FASTA file" help="FASTQ file." />
+                <expand macro="strandedness" />
             </when>
             <when value="paired">
-                <param name="input_mate1" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Mate pair 1" help="FASTQ file." />
-                <param name="input_mate2" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Mate pair 2" help="FASTQ file." />
+                <param name="input_mate1" type="data" format="fastq,fasta" label="Mate pair 1" help="FASTQ file." />
+                <param name="input_mate2" type="data" format="fastq,fasta" label="Mate pair 2" help="FASTQ file." />
                 <param name="orientation" type="select" label="Relative orientation of reads within a pair">
-                    <option value="same">Mates are oriented in the same direction</option>
-                    <option value="away">Mates are oriented away from each other</option>
-                    <option value="toward" selected="True">Mates are oriented toward each other</option>
+                    <option value="M">Mates are oriented in the same direction (M = matching)</option>
+                    <option value="O">Mates are oriented away from each other (O = outward)</option>
+                    <option value="I" selected="True">Mates are oriented toward each other (I = inward)</option>
                 </param>
-                <param name="strandedness" type="select" label="Specify the strandedness of the reads">
-                    <option value="S">Sense strand</option>
-                    <option value="A">Antisense strand</option>
-                    <option value="U">unknown strandedness</option>
-                    <option value="AS">mate 1 is from antisense and mate 2 from sense strand</option>
-                    <option value="SA">mate 1 is from sense strand and mate 2 from antisense</option>
-                </param>
+                <expand macro="strandedness" />
             </when>
         </conditional>
 
-        <param name="geneMap" type="data" format="tabular,gff,gtf" optional="True" label="File containing a mapping of transcripts to genes"
+        <param argument="--geneMap" type="data" format="tabular,gff,gtf" optional="True" label="File containing a mapping of transcripts to genes"
             help="Calculates the aggregated gene-level abundance estimations. This file should be eiher a GTF file or tab-delimited format
-            where each line contains the name of a transcript and the gene to which it belongs separated by a tab. (--geneMap)" />
+            where each line contains the name of a transcript and the gene to which it belongs separated by a tab." />
 
-        <param name="bias_correct" type="boolean" truevalue="--biasCorrect" falsevalue="" checked="False"
-                    label="Perform bias correction" help="(--biasCorrect)"/>
-        <!--param name="iterations" type="integer" value="0" label="The maximum number of iterations of the EM step to carry out"
-            help="The optimization algorithm that computes the transcript estimates will terminate when
-                either the convergence critera specified by the `-d / -delta` option (below) is met, or when this number of iterations has been performed. (-n / -iterations)"/-->
-        <!--param name="delta" type="float" value="0" label="The maximum allowable delta between consecutive iterations of the optimization procedure"
-            help="If the maximum relative change in any transcripts' abundance is less than this value between
-                two consecutive iterations of the optimization, then the procedure will be considered to have converged and the optimization will terminate. (-d / -delta)"/-->
+        <param argument="--biasCorrect" type="boolean" truevalue="--biasCorrect" falsevalue="" checked="False"
+                    label="Perform bias correction" help=""/>
 
-        <!--param name="polya" type="boolean" truevalue="-polya" falsevalue="" checked="False"
-            label="Do not count polyA/polyT k-mers" help=" (-polya)"/-->
-        <param name="fldMean" type="integer" value="200" optional="True" label="Calculate effective lengths"
+        <param argument="--fldMean" type="integer" value="200" optional="True" label="Calculate effective lengths"
             help="If single end reads are being used for quantification, or there are an insufficient number of uniquely mapping reads when performing paired-end quantification
-                    to estimate the empirical fragment length distribution, then use this value to calculate effective lengths.
-                    (--fldMean)"/>
+                    to estimate the empirical fragment length distribution, then use this value to calculate effective lengths."/>
 
-        <param name="fldSD" type="integer" value="80" optional="True" label="Standard deviation"
-            help="The standard deviation used in the fragment length distribution for single-end quantification or when an empirical distribution cannot be learned. (--fldSD)"/>
+        <param argument="--fldSD" type="integer" value="80" optional="True" label="Standard deviation"
+            help="The standard deviation used in the fragment length distribution for single-end quantification or when an empirical distribution cannot be learned."/>
 
-        <param name="maxReadOcc" type="integer" value="200" optional="True" label="Maximal read mapping occurence"
-            help="Reads mapping to more than this many places won't be considered (-w / --maxReadOcc)"/>
+        <param argument="--maxReadOcc" type="integer" value="200" optional="True" label="Maximal read mapping occurence"
+            help="Reads mapping to more than this many places won't be considered."/>
 
-        <param name="noEffectiveLengthCorrection" type="boolean" truevalue="--noEffectiveLengthCorrection" falsevalue="" checked="False"
+        <param argument="--noEffectiveLengthCorrection" type="boolean" truevalue="--noEffectiveLengthCorrection" falsevalue="" checked="False"
             label="Disable effective length correction" help="Disables effective length correction when computing the probability that a fragment was generated from a transcript.
-            If this flag is passed in, the fragment length distribution is not taken into account when computing this probability. (--noEffectiveLengthCorrection)"/>
+            If this flag is passed in, the fragment length distribution is not taken into account when computing this probability."/>
 
-        <param name="useVBOpt" type="boolean" truevalue="--useVBOpt" falsevalue="" checked="False"
-            label="Use Variational Bayesian EM algorithm for optimization" help="(--useVBOpt)"/>
+        <param argument="--useVBOpt" type="boolean" truevalue="--useVBOpt" falsevalue="" checked="False"
+            label="Use Variational Bayesian EM algorithm for optimization" help=""/>
 
-        <param name="allowOrphans" type="boolean" truevalue="--allowOrphans" falsevalue="" checked="False"
+        <param argument="--allowOrphans" type="boolean" truevalue="--allowOrphans" falsevalue="" checked="False"
             label="Consider orphaned reads as valid hits when performing lightweight-alignment"
-            help="This option will increase sensitivity (allow more reads to map and more transcripts to be detected), but may decrease specificity as orphaned alignments are more likely to be spurious. (--allowOrphans)"/>
+            help="This option will increase sensitivity (allow more reads to map and more transcripts to be detected), but may decrease specificity as orphaned alignments are more likely to be spurious."/>
+
+        <param argument="--unsmoothedFLD" type="boolean" truevalue="--unsmoothedFLD" falsevalue="" checked="False"
+            label="Use the un-smoothed approach to effective length correction" help="This traditional approach works by convolving the FLD with the characteristic function over each transcript."/>
+
+        <param argument="--maxFragLen" type="integer" value="1000" optional="True"
+            label="The maximum length of a fragment to consider when building the empirical fragment length distribution"
+            help=""/>
+
+        <param argument="--txpAggregationKey" value="gene_id" type="text" label="The key for aggregating transcripts during gene-level estimates"
+            help="The default is the gene_id field, but other fields (e.g. gene_name) might be useful depending on the specifics of the annotation being used." />
 
     </inputs>
     <outputs>
@@ -177,6 +180,16 @@
         </data>
     </outputs>
     <tests>
+        <test>
+            <param name="single_or_paired_opts" value="paired" />
+            <param name="input_mate1" value="reads_1.fastq" />
+            <param name="input_mate2" value="reads_2.fastq" />
+            <param name="biasCorrect" value="True" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output file="sailfish_quant_result1.tab" ftype="tabular" name="output_quant" />
+            <output file="sailfish_bias_result1.tab" ftype="tabular" name="output_bias_corrected_quant" />
+        </test>
     </tests>
     <help>
 <![CDATA[
@@ -295,11 +308,11 @@ A few more examples of some library format strings and their interpretations are
    +=====================+============+============+
    |                     | Paired-end | Single-end | 
    +---------------------+------------+------------+
-   |``-fr-unstranded``   |``-l IU``   |``-l U``    |          
+   |``-fr-unstranded``   |``-l IU``   |``-l U``    |
    +---------------------+------------+------------+
-   |``-fr-firststrand``  |``-l ISR``  |``-l SR``   |          
+   |``-fr-firststrand``  |``-l ISR``  |``-l SR``   |
    +---------------------+------------+------------+
-   |``-fr-secondstrand`` |``-l ISF``  |``-l SF``   |          
+   |``-fr-secondstrand`` |``-l ISF``  |``-l SF``   |
    +---------------------+------------+------------+
 
    The remaining salmon library format strings are not directly expressible in terms
