@@ -27,8 +27,6 @@
             #set $ref += $sep + str($db) + ',' + $os.path.splitext($os.path.basename(str($db)))[0]
             #set $sep = ':'
         #end for
-        \${SORTMERNADIR}/indexdb_rna --ref $ref
-        &&
     #else:
         ## databases path is not directly accessible, must match by hand with LOC file contents
         #set $data_table = dict([(_[0], _[2]) for _ in $databases_type.input_databases.input.options.tool_data_table.data])
@@ -37,24 +35,60 @@
             #set $sep = ':'
         #end for
     #end if
-    \${SORTMERNADIR}/sortmerna --ref $ref --reads $input_reads --aligned aligned
-    #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
-        $sequencing_type.paired_type
-    #end if
-    $strand_search
-    $aligned_fastx.aligned_fastx_selector
-    #if $aligned_fastx.aligned_fastx_selector == '--fastx'
-        #if $aligned_fastx.other
-            --other other_file
+    \${SORTMERNADIR}/indexdb_rna --ref $ref -L $seed_length --max_pos $max_pos
+        &&
+    \${SORTMERNADIR}/sortmerna 
+	--ref $ref 
+	--reads $input_reads 
+	--aligned aligned
+	
+	#if str( $sequencing_type.sequencing_type_selector ) == 'paired'
+        	$sequencing_type.paired_type
+	#end if
+
+    	$strand_search
+    	$aligned_fastx.aligned_fastx_selector
+    	#if $aligned_fastx.aligned_fastx_selector == '--fastx'
+        	#if $aligned_fastx.other
+            		--other other_file
+        	#end if
+    	#end if
+    	$aligned_sam.aligned_sam_selector
+    	#if $aligned_sam.aligned_sam_selector == '--sam'
+        	$aligned_sam.sq
+    	#end if
+    	$aligned_blast
+
+	
+    	$log
+	
+	#if $report.report_type == 'best'
+            #if $report.report_best.report_best_type == '0'
+                --best 0
+            #else if $report.report_best.report_best_type == '1'
+                --best 1
+                --min_lis $report.report_best.report_best_min_lis
+            #else
+                --best $report.report_best.report_best_value
+                --min_list $report.report_best.report_best_min_lis
+            #end if
+        #else
+            #if $report.report_num_alignments.report_num_alignments_type == '0'
+                --num_alignments 0
+            #else if $report.report_num_alignments.report_num_alignments_type == '1'
+                --num_alignments 1
+            #else
+                --num_alignments $report.report_num_alignments.report_num_alignments_value
+            #end if
         #end if
-    #end if
-    $aligned_sam.aligned_sam_selector
-    #if $aligned_sam.aligned_sam_selector == '--sam'
-        $aligned_sam.sq
-    #end if
-    $aligned_blast
-    $log
-    -a \${GALAXY_SLOTS:-1}
+
+        -e $e_value
+        --match $match
+        --mismatch $mismatch
+        --gap_open $gap_open
+        --gap_ext $gap_ext
+        -N $ambiguous_letter
+    	-a \${GALAXY_SLOTS:-1}
 ]]>
     </command>
     <inputs>
@@ -102,17 +136,17 @@
 
         <!-- Outputs -->
         <conditional name="aligned_fastx">
-            <param name="aligned_fastx_selector" type="select" label="Include aligned reads in FASTA/FASTQ format">
+            <param name="aligned_fastx_selector" type="select" label="Include aligned reads in FASTA/FASTQ format?">
                 <option value="--fastx">Yes (--fastx)</option>
                 <option value="">No</option>
             </param>
             <when value="--fastx">
-                <param name="other" type="boolean" label="Include rejected reads file" help="(--other)" />
+                <param name="other" type="boolean" label="Include rejected reads file?" help="(--other)" />
             </when>
             <when value="" />
         </conditional>
         <conditional name="aligned_sam">
-            <param name="aligned_sam_selector" type="select" label="Include alignments in SAM format">
+            <param name="aligned_sam_selector" type="select" label="Include alignments in SAM format?">
                 <option value="--sam">Yes (--sam)</option>
                 <option value="">No</option>
             </param>
@@ -131,6 +165,56 @@
         <param name="log" type="boolean" checked="False" truevalue="--log" falsevalue="" label="Generate statistics file"
                help="Generates statistics for the rRNA content of reads, as well as rRNA subunit distribution. (--log)">
         </param>
+	<conditional name="report">
+            <param name="report_type" type="select" display="radio" label="Parameters for filtering and read mapping" help="">
+                <option value="best" selected="true">Report best alignments per read reaching E-value</option>
+                <option value="num_alignments">Report first alignements per read reaching E-value</option>
+            </param>
+            <when value="best">
+                <conditional name="report_best">
+                    <param name="report_best_type" type="select" display="radio" label="Number of searched alignments" help="Only the best alignment is reported">
+                        <option value="0">All high-candidate reference sequences are searched for alignments (very slow)</option>
+                        <option value="1" selected="true">Only one high-candidate reference sequence is searched for alignments (fast). The high-candidate sequences are determined heuristically using a LIS of seed matches)</option>
+                        <option value="other_value">A custom number of reference sequences are searched for alignments (speed decrease for high value)</option>
+                    </param>
+                    <when value="other_value">
+                        <param name="report_best_value" type="integer" min="0" max="100" value="1" label="Number of alignments to be made" help="Only the best one is reported. The computation speed decrease with high value"/>
+                        <param name="report_best_min_lis" type="integer" min="0" max="100" value="2" label="Number of longest LIS an alignement needs to be searched" help="The alignements having the first INT longest LIS. LIS stands for Longest Increasing Subsequence, it is computed using seeds' positions to expand hits into longer matches prior to Smith-Waterman alignment."/>
+                    </when>
+                    <when value="1">
+                        <param name="report_best_min_lis" type="integer" min="0" max="100" value="2" label="Number of longest LIS an alignement needs to be searched" help="The alignements having the first INT longest LIS. LIS stands for Longest Increasing Subsequence, it is computed using seeds' positions to expand hits into longer matches prior to Smith-Waterman alignment."/>
+                    </when>
+                </conditional>
+            </when>
+            <when value="num_alignments">
+                <conditional name="report_num_alignments">
+                    <param name="report_num_alignments_type" type="select" display="radio" label="Number of output alignments" help="">
+                        <option value="0">All alignments reaching the E-value threshold are reported (very slow, this option is not suggested for high similarity rRNA databases)</option>
+                        <option value="1" selected="true">The first alignment passing E-value threshold are reported (very fast, best choice if only filtering is needed)</option>
+                        <option value="other_value">A custom number of alignments are made and reported (speed decrease for high value)</option>
+                    </param>
+                    <when value="other_value">
+                        <param name="report_num_alignments_value" type="integer" min="0" max="100" value="1" label="Number of alignments to be made and reported" help=""/>
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+
+        <param name="e_value" type="float" min="0" max="10" value="1" label="E-value threshold" help=""/>
+        <param name="match" type="integer" min="0" max="10" value="2" label="SW score for a match" help=""/>
+        <param name="mismatch" type="integer" min="-10" max="0" value="-3" label="SW penalty for a mismatch" help=""/>
+        <param name="gap_open" type="integer" min="0" max="10" value="5" label="SW penalty for introducing a gap" help=""/>
+        <param name="gap_ext" type="integer" min="0" max="10" value="2" label="SW penalty for extending a gap" help=""/>
+        <param name="ambiguous_letter" type="integer" min="-10" max="0" value="-3" label="SW penalty for ambiguous letters (N's)" help=""/>
+
+        <param name="strand" type="select" display="radio" label="Search on" help="">
+            <option value="both" selected="true">Both strands</option>
+            <option value="forward" >Only forward strand</option>
+            <option value="reverse" >Only reverse-complementary strand</option>
+        </param>
+
+        <param name="seed_length" type="integer" min="0" max="100" value="18" label="Seed length for database indexing" help=""/>
+        <param name="max_pos" type="integer" min="0" max="100000" value="10000" label="Maximum number of positions to store for each k-mer for database indexing" help="With 0, all positions are stored"/>
     </inputs>
     <outputs>
         <data format_source="input_reads" name="output_fastx" from_work_dir="aligned.dat"
@@ -248,6 +332,26 @@ The user may also choose to use their own rRNA databases.
 
 Note that your personal databases are indexed each time, and that
 this may take some time depending on the size of the given database.
+
+**Parameters**
+
+The database index can be modulated by:
+
+    - Seed length
+    - Maximum number of positions to store for each k-mer for database indexing
+
+For RNA sorting, the parameters are:
+    
+    - Test to output files in fasta or fastq, in sam and/or in blast format
+    - Test for conservation of rejected sequences
+    - Choice in blast format
+    - Test to add SQ tags in sam file
+    - Filtering and read mapping parameters
+        - Test for conservation of best alignment or first alignment
+        - Number of searched, conserved alignments
+    - E-value threshold
+    - SW score for a match, for a mismatch, for introducing a gap, for extending a gap, for ambigous letters
+    - Strand to search
 ]]>
     </help>
 
