@@ -22,9 +22,16 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
 <![CDATA[
     #set $ref = ''
     #set $sep=''
-    #if str( $databases_type.databases_selector ) == 'history':
+    #if str( $databases_type.databases_selector ) == 'history'
         #for $db in $databases_type.database_name
             #set $ref += $sep + str($db) + ',' + $os.path.splitext($os.path.basename(str($db)))[0]
+            #set $sep = ':'
+        #end for
+    #else if str( $databases_type.databases_selector ) == 'cached_to_index'
+        ## databases path is not directly accessible, must match by hand with LOC file contents
+        #set $data_table = dict([(_[0], _[2]) for _ in $databases_type.input_databases.input.options.tool_data_table.data])
+        #for $db in $databases_type.input_databases.value
+            #set $ref += $sep + $data_table[$db] + ',' + $os.path.splitext($data_table[$db])[0] + '-reindexed'
             #set $sep = ':'
         #end for
     #else:
@@ -35,8 +42,15 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
             #set $sep = ':'
         #end for
     #end if
-    indexdb_rna --ref $ref -L $seed_length --max_pos $max_pos
-    &&
+
+    #if str( $databases_type.databases_selector ) != 'cached':
+        indexdb_rna 
+            --ref $ref 
+            -L $databases_type.seed_length 
+            --max_pos $databases_type.max_pos 
+        &&
+    #end if
+
     sortmerna 
     	--ref $ref 
     	--reads $input_reads 
@@ -116,7 +130,8 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                 help="Public rRNA databases provided with SortMeRNA have been indexed.
                     On the contrary, personal databases must be indexed each time SortMeRNA is launched.
                     Please be patient, this may take some time depending on the size of the given database.">
-                <option value="cached" selected="true">Public ribosomal databases</option>
+                <option value="cached" selected="true">Public pre-indexed ribosomal databases</option>
+                <option value="cached_to_index">Public ribosomal databases to index with non default parameters</option>
                 <option value="history">Databases from your history</option>
             </param>
             <when value="cached">
@@ -125,9 +140,19 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                     <validator type="no_options" message="Select at least one database"/>
                 </param>
             </when>
+            <when value="cached_to_index">
+                <param name="input_databases" label="rRNA databases" type="select" display="checkboxes" multiple="true">
+                    <options from_data_table="rRNA_databases" />
+                    <validator type="no_options" message="Select at least one database"/>
+                </param>
+                <param name="seed_length" type="integer" min="0" max="100" value="18" label="Seed length for database indexing" help="(-L)"/>
+                <param name="max_pos" type="integer" min="0" max="100000" value="10000" label="Maximum number of positions to store for each k-mer for database indexing" help="With 0, all positions are stored (--max_pos)"/>
+            </when>
             <when value="history">
                 <param name="database_name" type="data" format="fasta" multiple="true" label="rRNA databases"
                     help="Your databases will be indexed first, which may take up to several minutes."/>
+                <param name="seed_length" type="integer" min="0" max="100" value="18" label="Seed length for database indexing" help="(-L)"/>
+                <param name="max_pos" type="integer" min="0" max="100000" value="10000" label="Maximum number of positions to store for each k-mer for database indexing" help="With 0, all positions are stored (--max_pos)"/>
             </when>
         </conditional>
 
@@ -206,11 +231,6 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
         <param name="gap_open" type="integer" min="0" max="10" value="5" label="SW penalty for introducing a gap" help="(--gap_open)"/>
         <param name="gap_ext" type="integer" min="0" max="10" value="2" label="SW penalty for extending a gap" help="(--gap_ext)"/>
         <param name="ambiguous_letter" type="integer" min="-10" max="0" value="-3" label="SW penalty for ambiguous letters (N's)" help="(-N)"/>
-
-        
-
-        <param name="seed_length" type="integer" min="0" max="100" value="18" label="Seed length for database indexing" help="(-L)"/>
-        <param name="max_pos" type="integer" min="0" max="100000" value="10000" label="Maximum number of positions to store for each k-mer for database indexing" help="With 0, all positions are stored (--max_pos)"/>
     </inputs>
     <outputs>
         <data format_source="input_reads" name="output_fastx" from_work_dir="aligned.dat"
