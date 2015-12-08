@@ -1,4 +1,4 @@
-<tool id="bg_sortmerna" name="Filter with SortMeRNA" version="2.0.0">
+<tool id="bg_sortmerna" name="Filter with SortMeRNA" version="2.1.0">
     <description>Fast and accurate filtering of ribosomal RNAs in metatranscriptomic data</description>
     <requirements>
         <requirement type='package' version="2.0">sortmerna</requirement>
@@ -22,13 +22,18 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
 <![CDATA[
     #set $ref = ''
     #set $sep=''
-    #if str( $databases_type.databases_selector ) == 'history':
+    #if str( $databases_type.databases_selector ) == 'history'
         #for $db in $databases_type.database_name
             #set $ref += $sep + str($db) + ',' + $os.path.splitext($os.path.basename(str($db)))[0]
             #set $sep = ':'
         #end for
-        indexdb_rna --ref $ref
-        &&
+    #else if str( $databases_type.databases_selector ) == 'cached_to_index'
+        ## databases path is not directly accessible, must match by hand with LOC file contents
+        #set $data_table = dict([(_[0], _[2]) for _ in $databases_type.input_databases.input.options.tool_data_table.data])
+        #for $db in $databases_type.input_databases.value
+            #set $ref += $sep + $data_table[$db] + ',' + $os.path.splitext($data_table[$db])[0] + '-reindexed'
+            #set $sep = ':'
+        #end for
     #else:
         ## databases path is not directly accessible, must match by hand with LOC file contents
         #set $data_table = dict([(_[0], _[2]) for _ in $databases_type.input_databases.input.options.tool_data_table.data])
@@ -37,24 +42,64 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
             #set $sep = ':'
         #end for
     #end if
-    sortmerna --ref $ref --reads $input_reads --aligned aligned
-    #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
-        $sequencing_type.paired_type
+
+    #if str( $databases_type.databases_selector ) != 'cached':
+        indexdb_rna 
+            --ref $ref 
+            -L $databases_type.seed_length 
+            --max_pos $databases_type.max_pos 
+        &&
     #end if
-    $strand_search
-    $aligned_fastx.aligned_fastx_selector
-    #if $aligned_fastx.aligned_fastx_selector == '--fastx'
-        #if $aligned_fastx.other
-            --other other_file
+
+    sortmerna 
+    	--ref $ref 
+    	--reads $input_reads 
+    	--aligned aligned
+	
+    	#if str( $sequencing_type.sequencing_type_selector ) == 'paired'
+            	$sequencing_type.paired_type
+    	#end if
+
+    	$strand_search
+    	$aligned_fastx.aligned_fastx_selector
+    	#if $aligned_fastx.aligned_fastx_selector == '--fastx'
+        	#if $aligned_fastx.other
+            		--other other_file
+        	#end if
+    	#end if
+    	$aligned_sam.aligned_sam_selector
+    	#if $aligned_sam.aligned_sam_selector == '--sam'
+        	$aligned_sam.sq
+    	#end if
+    	$aligned_blast
+
+    	$log
+
+        #if $report.report_type == 'best'
+            #if $report.report_best.report_best_type == '0'
+                --best 0
+            #else if $report.report_best.report_best_type == '1'
+                --best 1
+                --min_lis $report.report_best.report_best_min_lis
+            #else
+                --best $report.report_best.report_best_value
+                --min_lis $report.report_best.report_best_min_lis
+            #end if
+        #else
+            #if $report.report_num_alignments.report_num_alignments_type == 'other_value'
+                --num_alignments $report.report_num_alignments.report_num_alignments_value
+            #else
+                --num_alignments $report.report_num_alignments.report_num_alignments_type
+            #end if
         #end if
-    #end if
-    $aligned_sam.aligned_sam_selector
-    #if $aligned_sam.aligned_sam_selector == '--sam'
-        $aligned_sam.sq
-    #end if
-    $aligned_blast
-    $log
-    -a \${GALAXY_SLOTS:-1}
+
+        -e $e_value
+        --match $match
+        --mismatch $mismatch
+        --gap_open $gap_open
+        --gap_ext $gap_ext
+        -N $ambiguous_letter
+    	-a \${GALAXY_SLOTS:-1}
 ]]>
     </command>
     <inputs>
@@ -74,7 +119,7 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
             </when>
         </conditional>
 
-        <param name="strand_search" type="select" label="Which strands to search" display="radio">
+        <param name="strand_search" type="select" label="Which strands to search">
             <option value="">Search both strands</option>
             <option value="-F">Search only the forward strand (-F)</option>
             <option value="-R">Search only the reverse-complementary strand (-R)</option>
@@ -85,7 +130,8 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                 help="Public rRNA databases provided with SortMeRNA have been indexed.
                     On the contrary, personal databases must be indexed each time SortMeRNA is launched.
                     Please be patient, this may take some time depending on the size of the given database.">
-                <option value="cached" selected="true">Public ribosomal databases</option>
+                <option value="cached" selected="true">Public pre-indexed ribosomal databases</option>
+                <option value="cached_to_index">Public ribosomal databases to index with non default parameters</option>
                 <option value="history">Databases from your history</option>
             </param>
             <when value="cached">
@@ -94,25 +140,35 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                     <validator type="no_options" message="Select at least one database"/>
                 </param>
             </when>
+            <when value="cached_to_index">
+                <param name="input_databases" label="rRNA databases" type="select" display="checkboxes" multiple="true">
+                    <options from_data_table="rRNA_databases" />
+                    <validator type="no_options" message="Select at least one database"/>
+                </param>
+                <param name="seed_length" type="integer" min="0" max="100" value="18" label="Seed length for database indexing" help="(-L)"/>
+                <param name="max_pos" type="integer" min="0" max="100000" value="10000" label="Maximum number of positions to store for each k-mer for database indexing" help="With 0, all positions are stored (--max_pos)"/>
+            </when>
             <when value="history">
                 <param name="database_name" type="data" format="fasta" multiple="true" label="rRNA databases"
                     help="Your databases will be indexed first, which may take up to several minutes."/>
+                <param name="seed_length" type="integer" min="0" max="100" value="18" label="Seed length for database indexing" help="(-L)"/>
+                <param name="max_pos" type="integer" min="0" max="100000" value="10000" label="Maximum number of positions to store for each k-mer for database indexing" help="With 0, all positions are stored (--max_pos)"/>
             </when>
         </conditional>
 
         <!-- Outputs -->
         <conditional name="aligned_fastx">
-            <param name="aligned_fastx_selector" type="select" label="Include aligned reads in FASTA/FASTQ format">
+            <param name="aligned_fastx_selector" type="select" label="Include aligned reads in FASTA/FASTQ format?">
                 <option value="--fastx">Yes (--fastx)</option>
                 <option value="">No</option>
             </param>
             <when value="--fastx">
-                <param name="other" type="boolean" label="Include rejected reads file" help="(--other)" />
+                <param name="other" type="boolean" label="Include rejected reads file?" help="(--other)" />
             </when>
             <when value="" />
         </conditional>
         <conditional name="aligned_sam">
-            <param name="aligned_sam_selector" type="select" label="Include alignments in SAM format">
+            <param name="aligned_sam_selector" type="select" label="Include alignments in SAM format?">
                 <option value="--sam">Yes (--sam)</option>
                 <option value="">No</option>
             </param>
@@ -131,6 +187,50 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
         <param name="log" type="boolean" checked="False" truevalue="--log" falsevalue="" label="Generate statistics file"
                help="Generates statistics for the rRNA content of reads, as well as rRNA subunit distribution. (--log)">
         </param>
+	<conditional name="report">
+            <param name="report_type" type="select" label="Parameters for filtering and read mapping" help="">
+                <option value="best" selected="true">Report best alignments per read reaching E-value</option>
+                <option value="num_alignments">Report first alignements per read reaching E-value</option>
+            </param>
+            <when value="best">
+                <conditional name="report_best">
+                    <param name="report_best_type" type="select" label="Number of searched alignments" help="Only the best alignment is reported (--best)">
+                        <option value="0">All high-candidate reference sequences are searched for alignments (very slow)</option>
+                        <option value="1" selected="true">Only one high-candidate reference sequence is searched for alignments (fast). The high-candidate sequences are determined heuristically using a LIS of seed matches)</option>
+                        <option value="other_value">A custom number of reference sequences are searched for alignments (speed decrease for high value)</option>
+                    </param>
+                    <when value="0" />
+                    <when value="1">
+                        <param name="report_best_min_lis" type="integer" min="0" max="100" value="2" label="Number of longest LIS an alignement needs to be searched" help="The alignements having the first INT longest LIS. LIS stands for Longest Increasing Subsequence, it is computed using seeds' positions to expand hits into longer matches prior to Smith-Waterman alignment. (--min_lis)"/>
+                    </when>
+                    <when value="other_value">
+                        <param name="report_best_value" type="integer" min="2" max="100" value="2" label="Number of alignments to be made" help="Only the best one is reported. The computation speed decrease with high value"/>
+                        <param name="report_best_min_lis" type="integer" min="0" max="100" value="2" label="Number of longest LIS an alignement needs to be searched" help="The alignements having the first INT longest LIS. LIS stands for Longest Increasing Subsequence, it is computed using seeds' positions to expand hits into longer matches prior to Smith-Waterman alignment. (--min_lis)"/>
+                    </when>
+                </conditional>
+            </when>
+            <when value="num_alignments">
+                <conditional name="report_num_alignments">
+                    <param name="report_num_alignments_type" type="select" label="Number of output alignments" help="(--num_alignments)">
+                        <option value="0">All alignments reaching the E-value threshold are reported (very slow, this option is not suggested for high similarity rRNA databases)</option>
+                        <option value="1" selected="true">The first alignment passing E-value threshold are reported (very fast, best choice if only filtering is needed)</option>
+                        <option value="other_value">A custom number of alignments are made and reported (speed decrease for high value)</option>
+                    </param>
+                    <when value="0" />
+                    <when value="1" />
+                    <when value="other_value">
+                        <param name="report_num_alignments_value" type="integer" min="0" max="100" value="1" label="Number of alignments to be made and reported" help=""/>
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+
+        <param name="e_value" type="float" min="0" max="10" value="1" label="E-value threshold" help="(-e)"/>
+        <param name="match" type="integer" min="0" max="10" value="2" label="SW score for a match" help="(--match)"/>
+        <param name="mismatch" type="integer" min="-10" max="0" value="-3" label="SW penalty for a mismatch" help="(--mismatch)"/>
+        <param name="gap_open" type="integer" min="0" max="10" value="5" label="SW penalty for introducing a gap" help="(--gap_open)"/>
+        <param name="gap_ext" type="integer" min="0" max="10" value="2" label="SW penalty for extending a gap" help="(--gap_ext)"/>
+        <param name="ambiguous_letter" type="integer" min="-10" max="0" value="-3" label="SW penalty for ambiguous letters (N's)" help="(-N)"/>
     </inputs>
     <outputs>
         <data format_source="input_reads" name="output_fastx" from_work_dir="aligned.dat"
@@ -246,8 +346,10 @@ The user may also choose to use their own rRNA databases.
 
 .. class:: warningmark
 
-Note that your personal databases are indexed each time, and that
-this may take some time depending on the size of the given database.
+Note that your personal databases are indexed each time. The public ribosomal
+databases are indexed when added, but they can be re-indexed with non-default indexing 
+parameters. The indexing may take some time depending on the size of the given database.
+
 ]]>
     </help>
 
