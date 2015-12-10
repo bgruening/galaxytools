@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 import sys
@@ -11,7 +11,7 @@ def add_read_pair_num(input_filepath, output_filepath, read_pair_num):
     with open(input_filepath,'r') as input_file:
         with open(output_filepath,'w') as output_file:
             for line in input_file:
-                if line[0] == '>':
+                if line.startswith('>'):
                     split_line = line.split()
                     seq_id = split_line[0]
                     if seq_id.rfind(to_add) != (len(seq_id)-len(to_add)):
