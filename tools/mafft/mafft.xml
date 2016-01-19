@@ -14,37 +14,54 @@
     </version_command>
     <command>
     <![CDATA[
-        #if $cond_flavour.flavourType != 'custom'
+        #if $cond_flavour.flavourType != 'custom':
             $cond_flavour.flavourType
-        #elif $cond_flavour.flavourType == 'custom'
+            
+        #elif $cond_flavour.flavourType == 'custom':
             ### full parameter options
             mafft
+            --$cond_flavour.distance_method
+            --ep $cond_flavour.ep
+            --maxiterate $cond_flavour.iterations
         #end if
         
         ## specify threads to use
         --thread \${GALAXY_SLOTS:-1}
-      
+        
+        $datatype
+        --op $op
         $adjustdirection
         
-        #if $outputFormat.value == 'clustalw'
-            --clustalout
+        #if $matrix_condition.use_matrix == True :
+            #if $matrix_condition.matrix_selected.matrix == "BLOSUM":
+              --bl ${matrix_condition.matrix_selected.BLOSUM}
+            #else
+               --jtt ${matrix_condition.matrix_selected.PAM}
+            #end if
         #end if
         
-        $inputSequences > 
+        $reorder
+        $getTree    
+        $outputFormat.value
+        $inputSequences > $outputAlignment;
         
-        #if $outputFormat.value == 'fasta'
-            $outputFasta
-        #elif $outputFormat.value == 'clustalw'
-            $outputClustalW
+        #if $getTree.value == True:
+            mv ${inputSequences}.tree $outputTree;
         #end if
+        
     ]]>
     </command>
     <inputs>
         <param name="inputSequences" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format."/>
+        <param name="datatype" type="select" label="Data type">
+            <option value="">Auto detection</option>
+            <option value="--nuc">Nucleic acids</option>
+            <option value="--amino">Amino acids</option>
+        </param>
         <conditional name="cond_flavour">
             <param name="flavourType" type="select" label="MAFFT flavour" help="Run mafft with pre-defined input parameters. Specification of these parameters can be found in the help section.">
-                <option value="mafft-fftns" selected="true">fftns</option>
                 <option value="mafft --auto">auto</option>
+                <option value="mafft-fftns" selected="true">fftns</option>
                 <option value="mafft-fftnsi">fftnsi</option>
                 <option value="mafft-nwns">nwns</option>
                 <option value="mafft-nwnsi">nwnsi</option>
@@ -53,7 +70,7 @@
                 <option value="mafft-linsi">linsi</option>
                 <option value="mafft-qinsi">qinsi</option>
                 <option value="mafft-xinsi">xinsi</option>
-                <!-- <option value="custom">Custom Parameters</option> this should trigger tweaking of all parameters -->
+                <option value="custom">Custom Parameters</option> this should trigger tweaking of all parameters -->
             </param>
             <when value="mafft-fftns"/>
             <when value="mafft --auto"/>
@@ -65,36 +82,75 @@
             <when value="mafft-linsi"/>
             <when value="mafft-qinsi"/>
             <when value="mafft-xinsi"/>
+            <when value="custom">
+                <param name="distance_method" type="select" display="radio" label="Distance method" help="Distance method must be chosen regarding your data">
+                    <option value="6merpair" selected="true">Shared 6mers distance (fastest)</option>
+                    <option value="globalpair">Global alignment (NW)</option>
+                    <option value="localpair">Local alignment (SW)</option>
+                    <option value="genafpair">Local, affine gap cost</option>
+                </param>
+                <param name="ep" type="float" value="0.123" label="Gap extend penalty" help="0.123 default value" />
+                <param name="iterations" type="integer" value="1" min="1" max="1000" label="Maximum number of iterations" help="1000 for maximum quality" />
+            </when>
         </conditional>
+        <param name="op" type="float" value="1.53" label="Gap opening penalty" help="1.53 default value" />
         <param name="adjustdirection" type="select" display="radio" label="Direction of nucleotide sequences" help="Generate reverse complement sequences, as necessary, and align them together with the remaining sequences">
             <option value="--adjustdirection">adjust direction</option>
             <option value=" " selected="true">do not adjust direction</option>
-            </param>
+        </param>
+        <conditional name="matrix_condition">
+            <param name="use_matrix" type="boolean" truevalue="true" falsevalue="false" checked="False" label="Use matrix ?" help="Usefull only for amino acids" />
+            <when value="true">
+                <conditional name="matrix_selected">
+                    <param name="matrix" type="select" label="Matrix" display="radio">
+                        <option value="BLOSUM">BLOSUM</option>
+                        <option value="PAM">PAM</option>
+                    </param>
+                    <when value="BLOSUM">
+                        <param name="BLOSUM" type="select" display="radio" label="Coefficient of the BLOSUM matrix">
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                            <option value="62" selected="true">62</option>
+                            <option value="80">80</option>
+                        </param>
+                    </when>
+                    <when value="PAM">
+                        <param name="PAM" type="integer" value="80" min="1" max="350" label="Coefficient of the PAM matrix" />
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+        <param name="reorder" type="boolean" truevalue="--reorder" falsevalue="" checked="False" label="Reorder output?" />
+        <param name="getTree" type="boolean" truevalue="--treeout" falsevalue="" checked="False" label="Display alignment tree ?" />
         <param name="outputFormat" type="select" label="Output format" help="Either FASTA or ClustalW">
-            <option value="fasta" selected="true">FASTA</option>
-            <option value="clustalw">ClustalW</option>
+            <option value="" selected="true">FASTA</option>
+            <option value="--clustalout">ClustalW</option>
+            <option value="--phylipout">Phylip</option>
         </param>
     </inputs>
     <outputs>
-        <data format="fasta" name="outputFasta" label="${tool.name} on ${on_string}">
-            <filter>outputFormat == 'fasta'</filter>
+        <data format="fasta" name="outputAlignment" label="${tool.name} on ${on_string}">
+            <change_format>
+                <when input="outputFormat" value="--clustalout" format="clustal"/>
+                <when input="outputFormat" value="--phylipout" format="phylip"/>
+            </change_format>
         </data>
-        <data format="clustal" name="outputClustalW" label="${tool.name} on ${on_string}">
-            <filter>outputFormat == 'clustalw'</filter>
+        <data name="outputTree" format="txt" label="${tool.name} Guide Tree">
+            <filter>getTree == True</filter>
         </data>
     </outputs>
     <tests>
         <test>
             <param name="inputSequences" value="sample.fa"/>
             <param name="flavourType" value="mafft-fftns"/>
-            <param name="outputFormat" value="fasta"/>
-            <output name="outputFasta" ftype="fasta" file="mafft_fftns_result.aln"/>
+            <param name="outputFormat" value=""/>
+            <output name="outputAlignment" ftype="fasta" file="mafft_fftns_result.aln"/>
         </test>
         <test>
             <param name="inputSequences" value="sample.fa"/>
             <param name="flavourType" value="mafft-nwns"/>
-            <param name="outputFormat" value="clustalw"/>
-            <output name="outputClustalW" ftype="clustal" file="mafft_nwns_result.aln"/>
+            <param name="outputFormat" value="clustalout"/>
+            <output name="outputAlignment" ftype="clustal" file="mafft_nwns_result.aln"/>
         </test>
     </tests>
     <help>
@@ -158,6 +214,17 @@ From the MAFFT man page, an overview of the different predefined flavours of the
     Automatically selects an appropriate strategy from L-INS-i, FFT-NS-i and FFT-NS-2, according to data size. Default: off (always FFT-NS-2)
 --adjustdirection
     Generate reverse complement sequences, as necessary, and align them together with the remaining sequences. In the case of protein alignment, these options are just ignored.
+--op
+    Gap opening penalty, default: 1.53
+--ep
+    Offset (works like gap extension penalty), default: 0.0
+--maxiterate
+    Maximum number of iterative refinement, default: 0
+--clustalout
+    Output: clustal format, default: fasta
+--thread
+    Number of threads (if unsure, --thread -1)
+    
     ]]>
     </help>
     <citations>
