@@ -1,0 +1,451 @@
+---
+date: "30 Nov 2015"
+---
+
+```{r load_libraries, message=FALSE, warning=FALSE, echo=FALSE}
+library('data.table')
+library('DT')
+library('plotly')
+library('dplyr')
+library('genomation')
+library('rtracklayer')
+library('GenomicFeatures')
+library('knitr')
+```
+
+
+```{r get_inputs, echo=FALSE, eval=TRUE}
+args <- commandArgs(TRUE)
+work_dir = args[1] #path to working directory - necessary to set root.dir
+anot = args[2] #/home/buyar/projects/RCAS/test/PARCLIP_AGO1234_Hafner2010a_hg19_xaa.anot.tsv
+peaks = args[3] #'/home/buyar/projects/RCAS/test/PARCLIP_AGO1234_Hafner2010a_hg19_xaa.bed'
+gff_file = args[4] #'/data/akalin/Base/Annotation/GenomeAnnotation/hg19/gencode/gencode.v19.annotation.gff3.rds' #RDS session file as output from import gff function of rtracklayer library
+go_bp = args[5] ##go enrichment results for biological processes
+go_mf = args[6] ##go enrichment results for molecular functions
+go_cc = args[7] ##go enrichment results for sub-cellular locations
+msigdb = args[8] ##msigdb enrichment results 
+meme_outdir = args[9] ##output directory of meme results that contains the logos and meme.txt file 
+motif_anot_file = args[10] ##'../test/PARCLIP_AGO1234_Hafner2010a_hg19_xaa.anot-motif.tsv' #motif annotation output from top_motifs.py script of Dilmurat
+coverage_profile_option = args[11] ##option to run or not run the coverage profile calculations 
+figure_count = 1
+table_count = 1
+```
+
+
+```{r define_modules_to_run, echo=FALSE, warning=FALSE}
+##based on the input options; define boolean parameters that are used in corresponding chunks to determine if chunk should be evaluated or not. 
+run_anot = ifelse(anot == 'NOT_RUN', FALSE, TRUE)
+run_go_bp = ifelse(go_bp == 'NOT_RUN', FALSE, TRUE)
+run_go_mf = ifelse(go_mf == 'NOT_RUN', FALSE, TRUE)
+run_go_cc = ifelse(go_cc == 'NOT_RUN', FALSE, TRUE)
+run_go = run_go_bp || run_go_mf || run_go_cc 
+run_msigdb = ifelse(msigdb == 'NOT_RUN', FALSE, TRUE)
+run_meme = ifelse(meme_outdir == 'NOT_RUN', FALSE, TRUE)
+run_meme_anot = ifelse(motif_anot_file == 'NOT_RUN', FALSE, TRUE)
+run_coverage_profile = ifelse(coverage_profile_option == 'NOT_RUN', FALSE, TRUE)
+```
+
+
+```{r setup, echo=FALSE}
+opts_knit$set(root.dir=work_dir)
+```
+
+```{r read_anot_input, echo=FALSE, eval=run_anot}
+mdata = fread(anot)
+mdata$peak_id = paste(mdata$chromosome_id, mdata$start_position, mdata$end_position, mdata$strand, sep=":")
+```
+
+```{r MEME_top_motifs_figcap, echo=FALSE, results='asis', eval=run_meme}
+cat("# Motif Analysis Results\n")
+cat('## TOP MEME motifs discovered in the query regions\n')
+cat('**Figure',figure_count,':** The genomic sequences of the regions that are covered by each query region is extracted from the fasta file of the genome. Then, [MEME](http://meme-suite.org/tools/meme) was run to find enriched motif patterns in the list of query regions. The logos of the discovered motif patterns and the corresponding statistical test results are provided below.','\n')
+```
+
+```{r MEME_top_motifs, results='asis', echo=FALSE, warning=FALSE, message=FALSE, eval=run_meme}
+logos = dir(meme_outdir, "^logo[0-9]*.png$", full.names=TRUE )
+#get motif data:
+
+logos = normalizePath(logos)
+
+mylines = readLines(paste(meme_outdir, "meme.txt", sep="/"))
+motifs = grep("^MOTIF", mylines, value = TRUE)
+
+for (i in 1:length(logos)){
+  #cat(logos[i], motifs[i], "\n")
+  cat(paste("**",motifs[i],"** \n\n", sep=""),"\n")
+  cat(paste("![alt text](", logos[i], ")", sep = ""), "\n")
+  cat("\n")
+}
+figure_count = figure_count + 1
+```
+
+```{r read_motif_input, echo=FALSE, warning=FALSE, eval=run_meme_anot}
+motif_data = fread(motif_anot_file)
+motif_data$motif_instance_id = paste(motif_data$motif, motif_data$chromosome_id, motif_data$start_position, motif_data$end_position, motif_data$strand, sep=":")
+```
+
+```{r MEME_motif_frequency_figcap, echo=FALSE, results='asis', eval=run_meme_anot}
+cat('## Discovered consensus motifs and their frequency in the target transcriptome','\n')
+cat('**Figure',figure_count,':** The frequency of the top 10 discovered motifs in the transcriptome is plotted.','\n') 
+```
+
+```{r MEME_motif_frequency, echo=FALSE, warning=FALSE, message=FALSE, eval=run_meme_anot}
+dt = motif_data
+df = dt[,length(unique(motif_instance_id)), by=c('motif')]
+colnames(df) = c('motif', 'motif_instance_count')
+p = plot_ly(df, x=motif_instance_count, y=motif, mode="markers", size=motif_instance_count, color=motif_instance_count)
+layout(p, yaxis = list(title="Consensus Motifs"), margin = list(l=150))
+figure_count = figure_count + 1
+```
+
+```{r MEME_top_genes_tabcap, echo=FALSE, results='asis', eval=run_meme_anot}
+cat('## Top genes with most discovered types of motifs','\n')
+cat('**Table',table_count,':** Genes with highest motif diversity (100: highest; 0:lowest)', '\n')
+```
+
+```{r MEME_top_genes, echo=FALSE, warning=FALSE, message=FALSE, eval=run_meme_anot}
+dt = motif_data
+df = unique(dt[,c("gene_name", "motif"), with=FALSE])
+df = df[,length(motif),by=gene_name]
+colnames(df) = c("gene_name", "motif_diversity")
+df = df[order(motif_diversity, decreasing=TRUE)]
+df$motif_diversity = round(df$motif_diversity/length(unique(df$motif_diversity)),2)*100
+#get top 90% of genes with highest motif diversity
+datatable(df[motif_diversity > quantile(df$motif_diversity, c(0.95))], filter = 'top')
+table_count = table_count + 1
+```
+
+
+```{r MEME_gene_types_figcap, echo=FALSE, results='asis', eval=run_meme_anot}
+cat('## Distribution of discovered motifs in gene types\n')
+cat('**Figure',figure_count,':** The frequency of the top 10 discovered motifs in the transcriptome is plotted with respect to different types of genes.\n')
+```
+
+```{r MEME_gene_types, echo=FALSE, warning=FALSE, message=FALSE, eval=run_meme_anot}
+dt = motif_data
+df = dt[,length(unique(motif_instance_id)), by=c('motif', 'gene_type')]
+colnames(df) = c("motif", "gene_type", "motif_instance_count")
+p = plot_ly(df, x=motif_instance_count, y=motif, color = gene_type, mode="markers", size=motif_instance_count, text=gene_type)
+layout(p, margin=list(l=150, b=100))
+figure_count = figure_count + 1
+```
+
+
+```{r MEME_gene_features_figcap, echo=FALSE, results='asis', eval=run_meme_anot}
+cat('## Distribution of discovered motifs in gene features\n')
+cat('**Figure',figure_count,':** The frequency of the top 10 discovered motifs in the transcriptome is plotted with respect to different types of gene features.\n')
+```
+
+```{r MEME_gene_features, echo=FALSE, warning=FALSE, message=FALSE, eval=run_meme_anot}
+dt = motif_data
+df = dt[,length(unique(motif_instance_id)), by=c('motif', 'feature')]
+colnames(df) = c("motif", "feature", "motif_instance_count")
+p = plot_ly(df, x=motif_instance_count, y=motif, color = feature, mode="markers", size=motif_instance_count, text=feature)
+layout(p, margin=list(l=150, b=100))
+figure_count = figure_count + 1
+```
+
+
+
+
+
+```{r query_gene_features_figcap, echo=FALSE, results='asis', eval=run_anot}
+cat('# Distribution of query regions in genomic annotation features \n')
+cat('## Distribution of query regions across gene features\n')
+
+cat("**Figure",figure_count,":** The number of query regions that overlap different kinds of gene features are counted. The 'y' axis denotes the types of gene features included in the analysis and the 'x' axis denotes the percentage of query regions (out of total number of query regions denoted with 'n') that overlap at least one genomic interval that host the corresponding feature. Notice that the sum of the percentage values for different features don't add up to 100%, because some query regions may overlap multiple kinds of features. If the query regions don't overlap any gene features, they are classified as 'intergenic'.\n")
+```
+
+```{r query_gene_features, echo=FALSE, warning=FALSE, message=FALSE, eval=run_anot}
+dt = mdata
+df = dt[,length(unique(peak_id)), by=feature]
+colnames(df) = c("feature", "count")
+df = df[order(count)]
+df$percent = round(df$count / length(unique(dt$peak_id)) * 100, 1)
+
+p = plot_ly(df, type="bar", x = percent, y = feature , orientation="h", text=paste("count:", count), color=feature) 
+layout(p, margin = list(l=150, r=100, b=50), xaxis = list(title = paste("percentage of query regions,", "n =",length(unique(dt$peak_id)))))
+figure_count = figure_count + 1
+```
+
+
+```{r query_RNA_Genes_figcap, echo=FALSE, results='asis', eval=run_anot}
+cat('## Distribution of query regions across RNA genes\n')
+
+cat("**Figure",figure_count,":** The number of query regions that overlap different kinds of RNA genes are counted. The 'y' axis denotes the types of gene features included in the analysis and the 'x' axis denotes the percentage of query regions (out of total number of query regions denoted with 'n') that overlap at least one genomic interval that host the corresponding RNA gene type. Notice that the sum of the percentage values for different RNA genes don't add up to 100%, because some query regions may overlap multiple kinds of RNA genes.\n")
+```
+
+```{r query_RNA_Genes, echo=FALSE, warning=FALSE, message=FALSE, eval=run_anot}
+m = grepl("RNA", mdata$gene_type)
+dt = mdata[m]
+df = dt[,length(unique(peak_id)), by=gene_type]
+colnames(df) = c("feature", "count")
+df$percent = round(df$count / length(unique(dt$peak_id)) * 100, 1)
+df = df[order(count)]
+p = plot_ly(df, type="bar", x = percent, y = feature , orientation="h", text=paste("count:", count), color=feature)
+layout(p, margin = list(l=150, r=100, b=50), xaxis = list(title = paste("percentage of query regions,", "n =",length(unique(dt$peak_id)))))
+figure_count = figure_count + 1
+```
+
+
+```{r query_gene_types_figcap, echo=FALSE, results='asis', eval=run_anot}
+cat("## Distribution of query regions in the genome grouped by gene types\n")
+cat("**Figure",figure_count,":** The number of query regions that overlap different kinds of gene types are counted. The 'x' axis denotes the types of genes included in the analysis and the 'y' axis denotes the percentage of query regions (out of total number of query regions denoted with 'n') that overlap at least one genomic interval that host the corresponding gene type. If the query regions don't overlap any known genes, they are classified as 'Unknown'.\n")
+```
+
+```{r query_gene_types, echo=FALSE, warning=FALSE, message=FALSE, eval=run_anot}
+dt = mdata
+df = dt[,length(unique(peak_id)), by=gene_type]
+colnames(df) = c("feature", "count")
+df$percent = round(df$count / length(unique(dt$peak_id)) * 100, 1)
+df = df[order(count, decreasing = TRUE)]
+p = plot_ly(df, type="bar", x = feature, y = percent, text=paste("count:", count), color=feature)
+layout(p, margin = list(l=100, r=100, b=150), xaxis = list(showticklabels = TRUE,  tickangle = 90), yaxis = list(title = paste("percentage of query regions,", "n =",length(unique(dt$peak_id)))))
+figure_count = figure_count + 1
+```
+
+
+```{r chromosomes_gene_features_figcap, echo=FALSE, results='asis', eval=run_anot}
+cat("## Distribution of query regions across the chromosomes grouped by gene features\n")
+cat("**Figure",figure_count,":** The number of query regions that overlap different chromosomes are counted. For each chromosome, the frequency of query regions are further split into groups based on the gene features the query overlaps with. The 'x' axis denotes the chromosomes included in the analysis and the 'y' axis denotes the frequency of overlaps.\n")
+```
+
+```{r chromosomes_gene_features,  echo=FALSE, warning=FALSE, message=FALSE, eval=run_anot}
+p = mdata %>% count(chromosome_id, feature) %>%
+  plot_ly(x = chromosome_id, y = n, type = "bar", color = feature) %>%
+  layout(xaxis = list(tickangle = 90), margin = list(l = 80, r = 80, b=150, t=20))
+p
+figure_count = figure_count + 1
+```
+
+
+
+
+```{r get_table_of_genes_tabcap, echo=FALSE, results='asis', eval=run_anot}
+cat("## Interactive table of genes that overlap query regions\n")
+cat("**Table",table_count,":** Interactive table of genes (top 500) that overlap query regions, grouped by gene features such as introns, exons, UTRs, etc.\n")
+```
+
+```{r get_table_of_genes, echo=FALSE, eval=run_anot}
+features=unique(mdata$feature)
+mytable = mdata[feature==features[1],length(feature),by=c('gene_name')]
+colnames(mytable) = c('gene_name', features[1])
+
+for (i in 2:length(features)){
+  f = features[i]
+  dt = mdata[feature==f,length(feature),by=gene_name]
+  colnames(dt) = c('gene_name', f)
+  mytable = merge(mytable, dt, by='gene_name', all=TRUE)
+}
+
+mytable[is.na(mytable)] = 0
+mytable$sum = rowSums(mytable[,-1,with=FALSE])
+
+datatable(mytable[order(sum, decreasing = TRUE)][1:500], filter = 'top' )
+
+table_count = table_count + 1
+```
+
+
+
+```{r coverage_profiles_section_header, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("# Coverage Profiles\n")
+```
+
+```{r coverage_profiles_read_input, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+if(file.exists(paste0(gff_file, ".rds")))
+{
+  gff = readRDS(paste0(gff_file, ".rds"))
+}else
+{
+  cat('WARNING! generating rtracklayer - import gff3. This may take a lot of memory (~9gb)')
+  gff = import.gff3(gff_file)
+  saveRDS(gff, file=paste0(gff_file, ".rds"))
+}
+
+chr1 = unique(as.vector(seqnames(gff)))[1] #first chromosome in the gff data 
+chr1_data = gff[seqnames(gff) == chr1]
+txdb <- makeTxDbFromGRanges(chr1_data)
+peaks = import(peaks, format = "bed")
+
+calculate_coverage = function (peaks, windows, type){
+  sm = ScoreMatrixBin(target = peaks, windows = windows, bin.num = 100, strand.aware = TRUE)
+
+  mdata = as.data.frame(colSums(sm))
+  mdata$bins = c(1:100)
+  colnames(mdata) = c('coverage', 'bins')
+  p = plot_ly(mdata, x = bins, y = coverage)
+  p %>%  
+  add_trace(y = fitted(loess(coverage ~ as.numeric(bins)))) %>%
+  layout(title = paste("Coverage along", type, " (5' -> 3' direction) on chromosome", chr1, sep=" "), showlegend = FALSE, margin = list(l= 50, r=50, b=50, t=50))
+}
+```
+
+```{r coverage_profiles_transcripts_figcap, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("## Coverage profile of query regions across the length of transcripts\n")
+cat("**Figure",figure_count,":** The query regions are overlaid with the genomic coordinates of transcripts. The transcripts are divided into 100 bins of equal length and for each bin the number of query regions that cover the corresponding bin is counted. Transcripts shorter than 100bp are excluded. Thus, a coverage profile of the transcripts is obtained based on the distribution of the query regions. The strandedness of the transcripts are taken into account. The coverage profile is plotted in the 5' to 3' direction.\n")
+```
+
+```{r coverage_profiles_transcripts, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+calculate_coverage (peaks, windows = transcripts(txdb), "transcripts") 
+figure_count = figure_count + 1
+```
+
+```{r coverage_profiles_exons_figcap, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("## Coverage profile of query regions across the length of Exons\n")
+cat("**Figure",figure_count,":** The query regions are overlaid with the genomic coordinates of each exon of each transcript. The exons are divided into 100 bins of equal length and for each bin the number of query regions that cover the corresponding bin is counted. Exons shorter than 100bp are excluded. Thus, a coverage profile of the exons is obtained based on the distribution of the query regions. The strandedness of the exons are taken into account. The coverage profile is plotted in the 5' to 3' direction.\n")
+```
+
+```{r coverage_profiles_exons, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+exons = unlist(exonsBy(txdb, by="tx"))
+calculate_coverage (peaks, windows = exons, "exons")
+figure_count = figure_count + 1
+```
+
+```{r coverage_profiles_exon-introns_figcap, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("## Coverage profile of query regions across the 100 bp region centered on exon-intron junctions\n")
+cat("**Figure",figure_count,":** The query regions are overlaid with the genomic coordinates of each exon-intron junction of each transcript. The junction comprises of a 50 bp region of an exon and 50 bp region of its neighboring intron. Exon-intron junctions are divided into 100 bins of equal length and for each bin the number of query regions that cover the corresponding bin is counted. Exons shorter than 100bp are excluded. Thus, a coverage profile of the exon-intron junctions is obtained based on the distribution of the query regions. The strandedness of the exons are taken into account. The coverage profile is plotted in the 5' to 3' direction.\n")
+```
+
+```{r coverage_profiles_exon-introns, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+myexons = exons[width(exons) > 100] #remove exons that are shorter than 100 bp
+up_exon = flank(myexons, 50, start=TRUE, both=TRUE) #50 bp from upstream intron 50 bp from exon 
+down_exon = flank(myexons, 50, start=FALSE, both=TRUE) #50 bp from downstream intron, 50 bp from exon
+exon_intron_junctions = c(up_exon, down_exon)
+calculate_coverage (peaks, windows = exon_intron_junctions, "exon-intron junctions")
+figure_count = figure_count + 1
+```
+
+```{r coverage_profiles_introns_figcap, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("## Coverage profile of query regions across the length of introns\n")
+cat("**Figure",figure_count,":** The query regions are overlaid with the genomic coordinates of each intron of each transcript. The introns are divided into 100 bins of equal length and for each bin the number of query regions that cover the corresponding bin is counted. Introns shorter than 100bp are excluded. Thus, a coverage profile of the introns is obtained based on the distribution of the query regions. The strandedness of the introns are taken into account. The coverage profile is plotted in the 5' to 3' direction.\n")
+```
+
+```{r coverage_profiles_introns, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+introns = unlist(intronsByTranscript(txdb))
+calculate_coverage (peaks, windows = introns, "introns")
+figure_count = figure_count + 1
+```
+
+
+```{r coverage_profiles_promoters_figcap, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("## Coverage profile of query regions across the promoter regions\n")
+cat("**Figure",figure_count,":** The query regions are overlaid with the genomic coordinates of each promoter region of each transcript. The promoter region is defined as the region spanning from 2000bp upstream of the transcription start site and the first 200bp region after the transcription start site. The promoters are divided into 100 bins of equal length and for each bin the number of query regions that cover the corresponding bin is counted. Thus, a coverage profile of the promoters is obtained based on the distribution of the query regions. The strandedness of the promoters are taken into account. The coverage profile is plotted in the 5' to 3' direction.\n")
+```
+
+```{r coverage_profiles_promoters, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+promoters = promoters(txdb)
+calculate_coverage (peaks, windows = promoters, "promoters")
+figure_count = figure_count + 1
+```
+
+
+```{r coverage_profiles_fiveUTRs_figcap, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("## Coverage profile of query regions across the length of 5' UTRs\n")
+cat("**Figure",figure_count,":** The query regions are overlaid with the genomic coordinates of each 5' UTR region of each transcript. The 5' UTR regions are divided into 100 bins of equal length and for each bin the number of query regions that cover the corresponding bin is counted. Thus, a coverage profile of the 5' UTR regions is obtained based on the distribution of the query regions. The strandedness of the promoters are taken into account. The coverage profile is plotted in the 5' to 3' direction.\n")
+```
+
+```{r coverage_profiles_fiveUTRs, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+five_UTRs = unlist(fiveUTRsByTranscript(txdb))
+calculate_coverage (peaks, windows = five_UTRs, "5' UTRs")
+figure_count = figure_count + 1
+```
+
+
+```{r coverage_profiles_threeUTRs_figcap, echo=FALSE, results='asis', eval=run_coverage_profile}
+cat("## Coverage profile of query regions across the length of 3' UTRs\n")
+cat("**Figure",figure_count,":** The query regions are overlaid with the genomic coordinates of each 3' UTR region of each transcript. The 3' UTR regions are divided into 100 bins of equal length and for each bin the number of query regions that cover the corresponding bin is counted. Thus, a coverage profile of the 3' UTR regions is obtained based on the distribution of the query regions. The strandedness of the promoters are taken into account. The coverage profile is plotted in the 5' to 3' direction.\n")
+```
+
+```{r coverage_profiles_threeUTRs, echo=FALSE, warning=FALSE, message=FALSE, eval=run_coverage_profile}
+three_UTRs = unlist(threeUTRsByTranscript(txdb))
+calculate_coverage (peaks, windows = three_UTRs, "3' UTRs")
+figure_count = figure_count + 1
+```
+
+
+
+
+
+```{r GO_section_header, results='asis', echo=FALSE, eval=run_go}
+cat("# GO term and Pathway Enrichment Results\n")
+```
+
+```{r GO_BP_tabcap, results='asis', echo=FALSE, eval=run_go_bp}
+cat("## GO Term Enrichment Results for Biological Processes\n")
+cat("**Table",table_count,":** Significant Biological Process GO terms (FDR < 0.001) enriched for genes that overlap query regions\n")  
+```
+
+```{r GO_BP, results='asis', warning=FALSE, echo=FALSE, eval=run_go_bp}
+go = fread(go_bp)
+results = go[bonferroni < 0.001]
+if (nrow(results) > 0){
+  datatable(results, filter = 'top')
+}else{
+    cat("**WARNING: Couldn't detect any enrichment/depletion of GO terms (FDR < 0.001) related to biological processes**\n")
+}
+table_count = table_count + 1
+```
+
+
+```{r GO_MF_tabcap, results='asis', echo=FALSE, eval=run_go_mf}
+cat("## GO Term Enrichment Results for Molecular Functions\n")
+cat("**Table",table_count,":** Significant Molecular Function GO terms (FDR < 0.001) enriched for genes that overlap query regions\n")
+```
+
+```{r GO_MF, results='asis', warning=FALSE,  echo=FALSE, eval=run_go_mf}
+go = fread(go_mf)
+results = go[bonferroni < 0.001]
+if (nrow(results) > 0){
+  datatable(results,   filter = 'top')
+}else{
+  cat("**WARNING: Couldn't detect any enrichment/depletion of GO terms (FDR < 0.001) related to molecular functions**\n")
+}
+table_count = table_count + 1
+```
+
+
+```{r GO_CC_tabcap, results='asis', echo=FALSE, eval=run_go_cc}
+cat("## GO Term Enrichment Results for Cellular Compartments\n")
+cat("**Table",table_count,":** Significant Cellular Compartment GO terms (FDR < 0.001) enriched for genes that overlap query regions\n")
+```
+
+```{r GO_CC, results='asis', warning=FALSE,  echo=FALSE, eval=run_go_cc}
+go = fread(go_cc)
+results = go[bonferroni < 0.001]
+if (nrow(results) > 0){
+  datatable(results,  filter = 'top')
+}else{
+  cat("**WARNING: Couldn't detect any enrichment/depletion of GO terms related to subcellular localisation**\n")
+}
+table_count = table_count + 1
+```
+
+```{r GSEA_msigdb_tabcap, results='asis', echo=FALSE, eval=run_msigdb}
+cat("## Gene Set Enrichment Results based on MSigDB\n")
+cat("**Table",table_count,":** Significant MSigDB Gene Sets (FDR < 0.001) enriched for genes that overlap query regions\n")
+```
+
+```{r GSEA_msigdb, results='asis', warning=FALSE,  echo=FALSE, eval=run_msigdb}
+msigdb = fread(msigdb)
+if (nrow(msigdb) > 0){
+  datatable(msigdb, filter='top')
+}else{
+   cat("**WARNING: Couldn't detect any enrichment/depletion of MSIGDB gene sets**\n")
+}
+table_count = table_count + 1
+```
+
+# Acknowledgements
+
+RCAS is developed by [Dr. Altuna Akalin](http://bioinformatics.mdc-berlin.de/team.html#altuna-akalin-phd) (head of the Scientific Bioinformatics Platform), [Dr. Dilmurat Yusuf](http://bioinformatics.mdc-berlin.de/team.html#dilmurat-yusuf-phd) (Bioinformatics Scientist), [Dr. Bora Uyar](http://bioinformatics.mdc-berlin.de/team.html#bora-uyar-phd)  (Bioinformatics Scientist), and [Ricardo Wurmus](http://bioinformatics.mdc-berlin.de/team.html#ricardo-wurmus) (System Administrator) at the Berlin Institute of Medical Systems Biology ([BIMSB](https://www.mdc-berlin.de/13800178/en/bimsb)) at the Max-Delbrueck-Center for Molecular Medicine ([MDC](https://www.mdc-berlin.de)) in Berlin. 
+
+RCAS is developed as a bioinformatics service as part of the [RNA Bioinformatics Center](http://www.denbi.de/index.php/rbc), which is one of the eight centers of the German Network for Bioinformatics Infrastructure ([de.NBI](http://www.denbi.de/)).  
+
+
+
+
+
+
+
+
