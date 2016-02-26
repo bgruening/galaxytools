@@ -1,4 +1,4 @@
-<tool id="diffbind" name="DiffBind" version="2.0.2">
+<tool id="diffbind" name="DiffBind" version="2.1.0">
     <description> differential binding analysis of ChIP-Seq peak data</description>
     <requirements>
         <requirement type="binary">Rscript</requirement>
@@ -7,25 +7,6 @@
         <requirement type="package" version="1.2.10">deseq2</requirement>
         <requirement type="package" version="1.8.3">diffbind</requirement>
     </requirements>
-    <command>
-<![CDATA[
-        ## seems that diffbind also needs file extensions to work properly
-        #set $counter = 1
-        #for $sample in $samples:
-            ln -s $sample.bamreads #echo str($counter) + "_bamreads.bam"# &&
-            ln -s ${sample.bamreads.metadata.bam_index} #echo str($counter) + "_bamreads.bai"# &&
-            ln -s $sample.bamcontrol #echo str($counter) + "_bamcontrol.bam"# &&
-            ln -s ${sample.bamcontrol.metadata.bam_index} #echo str($counter) + "_bamcontrol.bai"# &&
-            #set $counter = $counter + 1
-        #end for
-
-        Rscript $__tool_directory__/diffbind.R
-            -i $infile
-            -o $outfile
-            -p $plots
-            -f $format
-]]>
-    </command>
     <stdio>
         <regex match="Execution halted"
            source="both"
@@ -40,6 +21,45 @@
            level="fatal"
            description="An undefined error occured, please check your intput carefully and contact your administrator." />
     </stdio>
+    <command>
+<![CDATA[
+        ## seems that diffbind also needs file extensions to work properly
+        #set $counter = 1
+        #for $sample in $samples:
+            ln -s $sample.bamreads #echo str($counter) + "_bamreads.bam"# &&
+            ln -s ${sample.bamreads.metadata.bam_index} #echo str($counter) + "_bamreads.bai"# &&
+            #if str( $sample.bamcontrol ) != 'None':
+                ln -s $sample.bamcontrol #echo str($counter) + "_bamcontrol.bam"# &&
+                ln -s ${sample.bamcontrol.metadata.bam_index} #echo str($counter) + "_bamcontrol.bai"# &&
+            #end if
+            #set $counter = $counter + 1
+        #end for
+
+        Rscript $__tool_directory__/diffbind.R
+            -i $infile
+            -o $outfile
+            -p $plots
+            -f $format
+]]>
+    </command>
+    <configfiles>
+<configfile name="infile">
+#set $counter = 1
+#for $sample in $samples:
+#if str( $sample.bamcontrol ) != 'None' and $counter == 1:
+SampleID,Tissue,Factor,Condition,Replicate,bamReads,bamControl,Peaks
+#elif $counter == 1:
+SampleID,Tissue,Factor,Condition,Replicate,bamReads,Peaks
+#end if
+#if str( $sample.bamcontrol ) != 'None':
+$sample.sample_id,$sample.tissue,$sample.factor,$sample.condition,$sample.replicate,#echo str($counter) + '_bamreads.bam'#,#echo str($counter) + '_bamcontrol.bam'#,$sample.peaks
+#else:
+$sample.sample_id,$sample.tissue,$sample.factor,$sample.condition,$sample.replicate,#echo str($counter) + '_bamreads.bam'#,$sample.peaks
+#end if
+#set $counter = $counter + 1
+#end for
+</configfile>
+    </configfiles>
     <inputs>
         <repeat name="samples" title="Samples" min="2">
             <param name="sample_id" type="text" value="Sample ID" label="Specify a sample id" help="e.g. BT474.1-" />
@@ -48,7 +68,7 @@
             <param name="condition" type="text" value="Condition" label="Specify the condition" help="e.g. Resistent" />
             <param name="replicate" type="integer" value="1" label="Specify the replicate number" help="e.g. 1" />
             <param format="bam" name="bamreads" type="data" label="Read BAM file" help="Specify the Read BAM file, used for Peak calling."/>
-            <param format="bam" name="bamcontrol" type="data" label="Control BAM file" help="Specify the Control BAM file, used for Peak calling."/>
+            <param format="bam" name="bamcontrol" type="data" optional="True" label="Control BAM file" help="If specifying a control BAM file for this sample, then all samples are required to specify one."/>
             <param format="bed" name="peaks" type="data" label="Peak file" help="Result of your Peak calling experiment."/>
         </repeat>
         <param name="pdf" type="boolean" truevalue="" falsevalue="" checked="true"
@@ -60,16 +80,6 @@
             <option value="wig">WIG</option>
         </param>
     </inputs>
-    <configfiles>
-<configfile name="infile">
-SampleID,Tissue,Factor,Condition,Replicate,bamReads,bamControl,Peaks
-#set $counter = 1
-#for $sample in $samples:
-$sample.sample_id,$sample.tissue,$sample.factor,$sample.condition,$sample.replicate,#echo str($counter) + '_bamreads.bam'#,#echo str($counter) + '_bamcontrol.bam'#,$sample.peaks
-#set $counter = $counter + 1
-#end for
-</configfile>
-    </configfiles>
     <outputs>
         <data format="bed" name="outfile" label="Differential binding sites on ${on_string}">
             <change_format>
@@ -81,36 +91,33 @@ $sample.sample_id,$sample.tissue,$sample.factor,$sample.condition,$sample.replic
             <filter>pdf == True</filter>
         </data>
     </outputs>
-
     <help>
 <![CDATA[
 
+What it does
+************
 
-**What it does**
+Diffbind provides functions for  processing  ChIP-Seq  data  enriched  for  genomic  loci  where  specific  protein/DNA  binding  occurs,  including  peak sets  identified  by  ChIP-Seq  peak  callers  and  aligned  sequence  read  datasets.
 
-Diffbind provides functions for  processing  ChIP-Seq  data  enriched  for  genomic  loci  where  specific  protein/DNA  binding  occurs,  including  peak sets  identified  by  ChIP-Seq  peak  callers  and  aligned  sequence  read  datasets. 
+Input
+*****
 
-**Input**
+* You have to specify your samples. Here is one example::
 
-- You have to specify your samples. Here is one example:
+    ID      Tissue  Factor  Condition   Treatment   Replicate   Caller  Intervals
+    BT4741  BT474   ER      Resistant   Full-Media  1           raw     1084
 
-ID      Tissue  Factor  Condition   Treatment   Replicate   Caller  Intervals
-BT4741  BT474   ER      Resistant   Full-Media  1           raw     1084
+* BAM file which contains the mapped sequencing reads can be associated with each peakset
+* Control BAM file represents a control dataset and are optional, but have to specified for all when used.
+* Peak file: Result of your Peak calling experiment
 
-- BAM file which contains the mapped sequencing reads can be associated with each
-peakset 
-
-- Control BAM file represents a control dataset
-
-- Peak file: Result of your Peak calling experiment
-
-
-**Output**
+Output
+******
 
 As output format you can choose BED, GFF, WIG.
 
-
-**References**
+References
+**********
 
 DiffBind_ Authors:  Rory Stark, Gordon Brown (2011)
 
@@ -120,4 +127,7 @@ Wrapper authors: Bjoern Gruening, Pavankumar Videm
 
 ]]>
     </help>
+    <citations>
+        <citation type="doi">doi:10.1038/nature10730</citation>
+    </citations>
 </tool>
