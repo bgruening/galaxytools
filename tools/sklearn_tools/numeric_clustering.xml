@@ -45,25 +45,27 @@ import numpy as np
 import sklearn.cluster
 import pandas
 from sklearn import metrics
+from scipy.io import mmread
 
 input_json_path = sys.argv[1]
 params = json.load(open(input_json_path, "r"))
 
-print params
-
-data = pandas.read_csv("$infile", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
 my_class = getattr(sklearn.cluster, params["algorithm_options"]["selected_algorithm"])
 cluster_object = my_class()
 options = params["algorithm_options"]["options"]
 cluster_object.set_params(**options)
 
-#if $end_column and $start_column:
-if  $end_column >= $start_column:
-    data_matrix = data.values[:, $start_column-1:$end_column]
+#if $input_types.selected_input_type == "sparse":
+data_matrix = mmread(open("$infile", 'r'))
+#else:
+data = pandas.read_csv("$infile", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+if $end_column and $start_column:
+    if  $end_column >= $start_column:
+        data_matrix = data.values[:, $start_column-1:$end_column]
+    else:
+        data_matrix = data.values
 else:
     data_matrix = data.values
-#else:
-data_matrix = data.values
 #end if
 
 prediction = cluster_object.fit_predict( data_matrix )
@@ -75,15 +77,32 @@ else:
 sys.stdout.write('silhouette score:' + '\t' + str(silhouette_score) + '\n')
 
 prediction_df = pandas.DataFrame(prediction)
+
+#if $input_types.selected_input_type == "sparse":
+res = prediction_df
+#else:
 res = pandas.concat([data, prediction_df], axis=1)
+#end if
+
 res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
 ]]>
         </configfile>
     </configfiles>
     <inputs>
-        <param name="infile" type="data" format="tabular" label="Data file with numeric values"/>
-        <param name="start_column" type="data_column" data_ref="infile" optional="True" label="Select a subset of data. Start column:" />
-        <param name="end_column" type="data_column" data_ref="infile" optional="True" label="End column:" />
+        <conditional name="input_types">
+            <param name="selected_input_type" type="select" label="Select the format of input data">
+                <option value="sparse">Sparse Vector Representation (mtx)</option>
+                <option value="tabular">Tabular Format (tabular, txt)</option>
+            </param>
+            <when value="sparse">
+                <param name="infile" type="data" format="txt" label="Sparse vector (scipy.sparse.csr_matrix) file:"/>
+            </when>
+            <when value="tabular">
+                <param name="infile" type="data" format="tabular" label="Data file with numeric values"/>
+                <param name="start_column" type="data_column" data_ref="infile" optional="True" label="Select a subset of data. Start column:" />
+                <param name="end_column" type="data_column" data_ref="infile" optional="True" label="End column:" />
+            </when>
+        </conditional>
         <conditional name="algorithm_options">
             <param name="selected_algorithm" type="select" label="Clustering Algorithm">
                 <option value="AgglomerativeClustering">Hierarchical Agglomerative Clustering</option>
@@ -102,7 +121,7 @@ res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
                     <expand macro="n_init"/>
                     <expand macro="max_iter"/>
                     <expand macro="tol" default_value="0.0001" help_text="Relative tolerance with regards to inertia to declare convergence."/>
-                    <!--param argument="precompute_distances" type="text" optional="true" value="" label="Precompute distances" help=""/-->
+                    <!--param argument="precompute_distances"/-->
                     <expand macro="random_state"/>
                     <param argument="copy_x" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Use a copy of data for precomputing distances" help="Mofifying the original data introduces small numerical differences caused by subtracting and then adding the data mean."/>
                 </section>
@@ -126,7 +145,7 @@ res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
                     <param argument="threshold" type="float" optional="true" value="0.5" label="Subcluster radius threshold" help="The radius of the subcluster obtained by merging a new sample; the closest subcluster should be less than the threshold to avoid a new subcluster."/>
                     <param argument="branching_factor" type="integer" optional="true" value="50" label="Maximum number of subclusters per branch" help="Maximum number of CF subclusters in each node."/>
                     <expand macro="n_clusters" default_value="3"/>
-                    <!--param argument="compute_labels" type="boolean" optional="true" truevalue="true" falsevale="false" label="Compute labels for each fit"/-->
+                    <!--param argument="compute_labels"/-->
                 </section>
             </when>
             <when value="AffinityPropagation">
@@ -135,7 +154,7 @@ res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
                     <expand macro="max_iter"/> <!--default to 200 -->
                     <param argument="convergence_iter" type="integer" optional="true" value="15" label="Number of iterations at each convergence step" help="Number of iterations with no change in the number of estimated clusters that stops the convergence."/>
                     <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Copy" help="If False, the affinity matrix is modified inplace by the algorithm, for memory efficiency."/> 
-                    <!--param argument="preference" type="text" optional="true" value="None" label="Array like shape (n_samples,)"/-->
+                    <!--param argument="preference"/-->
                     <param argument="affinity" type="select" label="Affinity" help="Affinity to use; euclidean uses the negative squared euclidean distance between points.">
                         <option value="euclidean">Euclidean</option>
                         <option value="precomputed">precomputed</option>
@@ -145,7 +164,7 @@ res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
             <when value="MeanShift">
                 <section name="options" title="Advanced Options" expanded="False">
                     <param argument="bandwidth" type="float" optional="true" value="" label="Kernel bandwidth" help="Bandwidth used in the RBF kernel. If not given, it will be computed using a heuristic based on the median of all pairwise distances."/>
-                    <!--param argument="seeds" type="list" optional="true" value="None" label=""/-->
+                    <!--param argument="seeds"/-->
                     <param argument="bin_seeding" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Discretize initial kernel locations" help="If true, initial kernel locations are the bins grid whose coarseness corresponds to the bandwidth, speeding up the algorithm."/>
                     <param argument="min_bin_freq" type="integer" optional="true" value="1" label="Minimum number of seeds per bin" help="To speed up the algorithm, accept only those bins with at least min_bin_freq points as seeds."/>
                     <param argument="cluster_all" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Cluster all" help="If true, all points (including orphans) are clustered. If false, orphans are given cluster label -1."/>
@@ -155,16 +174,16 @@ res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
                 <section name="options" title="Advanced Options" expanded="False">
                     <expand macro="n_clusters" default_value="2" />
                     <expand macro="affinity"/> <!--default = euclidean-->
-                    <!--param argument="memory" type="callable" optional="true" value="Memory(cachedir=None)" label="Caching path"/-->
-                    <!--param argument="connectivity" type="list array-like or callable" optional="true" value="None" label="Connectivity matrix"/-->
-                    <!--param argument="n_components" type="integer" optional="true" value="" label="Number of connected components" help=""/-->
-                    <!--param argument="compute_full_tree" type="text or boolean" optional="true" value="auto" label=""/-->
+                    <!--param argument="memory"-->
+                    <!--param argument="connectivity"-->
+                    <!--param argument="n_components"/-->
+                    <!--param argument="compute_full_tree"-->
                     <param argument="linkage" type="select" optional="true" label="Linkage" help="">
                         <option value="ward" selected="true">ward</option>
                         <option value="complete">complete</option>
                         <option value="average">average</option>
                     </param>
-                    <!--param argument="pooling_func" type="callable" optional="np.mean" value="None" label=""/-->
+                    <!--param argument="pooling_func"-->
                 </section>
             </when>
             <when value="SpectralClustering">
@@ -182,14 +201,14 @@ res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
                     <param argument="gamma" type="float" optional="true" value="1.0" label="Kernel scaling factor" help="Scaling factor of RBF, polynomial, exponential chi^2 and sigmoid affinity kernel. Ignored for affinity=''nearest_neighbors''."/>
                     <expand macro="affinity"/> <!--default =rbf-->
                     <param argument="n_neighbors" type="integer" optional="true" value="10" label="Number of neighbors" help="Number of neighbors to use when constructing the affinity matrix using the nearest neighbors method. Ignored for affinity=''rbf''"/>
-                    <!--param argument="eigen_tol" type="float" optional="true" value="0.0" label="arpack eigendecomposition stopping threshold"/-->
+                    <!--param argument="eigen_tol"-->
                     <param argument="assign_labels" type="select" label="Assign labels" help="The strategy to use to assign labels in the embedding space.">
                         <option value="kmeans" selected="true">kmeans</option>
                         <option value="discretize">discretize</option>
                     </param>
                     <param argument="degree" type="integer" optional="true" value="3" label="Degree of the polynomial (polynomial kernel only)" help="Ignored by other kernels. dafault : 3 "/>
                     <param argument="coef0" type="integer" optional="true" value="1" label="Zero coefficient (polynomial and sigmoid kernels only)" help="Ignored by other kernels. dafault : 1 "/>
-                    <!--param argument="kernel_params" type="dict" optional="true" value="None" label=""/-->
+                    <!--param argument="kernel_params"-->
                 </section>
             </when>
             <when value="MiniBatchKMeans">
@@ -201,7 +220,7 @@ res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
                     <expand macro="tol" help_text="Early stopping heuristics based on normalized center change. To disable set to 0.0 ."/> 
                     <expand macro="random_state"/>
                     <param argument="batch_size" type="integer" optional="true" value="100" label="Batch size" help="Size of the mini batches."/>
-                    <!--param argument="compute_labels" type="boolean" optional="true" truevalue="true" falsevale="false" label="Compute labels for all data"/-->
+                    <!--param argument="compute_labels"-->
                     <param argument="max_no_improvement" type="integer" optional="true" value="10" label="Maximum number of improvement attempts" help="
                     Convergence detection based on inertia (the consecutive number of mini batches that doe not yield an improvement on the smoothed inertia).
                     To disable, set max_no_improvement to None. "/>
