@@ -2,14 +2,15 @@
     <description></description>
     <macros>
         <import>main_macros.xml</import>
-        <!--macro name="nn_options">
-        TODO: switch between n_neighbors and radius params
-        </macro-->
     </macros>
     <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
     <command><![CDATA[
+    export PYTHONPATH=/home/kohvaeip/.local/lib/python2.7/site-packages:/home/kohvaeip/.local/lib/:\$PYTHONPATH
+    &&
+    cat "$inputs" >&2
+    &&
     python "$nnc_script" '$inputs'
 ]]>
     </command>
@@ -45,12 +46,15 @@ data_train = pandas.read_csv("$selected_tasks.infile_train", sep='\t', header=0,
 data = data_train.ix[:,0:len(data_train.columns)-1]
 labels = np.array(data_train[data_train.columns[len(data_train.columns)-1]])
 
-options = params["selected_tasks"]["selected_algorithms"]["options"]
 selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
 
 if selected_algorithm == "nneighbors":
-    classifier = params["selected_tasks"]["selected_algorithms"]["samples"]
+    classifier = params["selected_tasks"]["selected_algorithms"]["sampling_methods"]["sampling_method"]
+    sys.stdout.write(classifier)
+    options = params["selected_tasks"]["selected_algorithms"]["sampling_methods"]["options"]
+    sys.stdout.write(str(options))
 elif selected_algorithm == "ncentroid":
+    options = params["selected_tasks"]["selected_algorithms"]["options"]
     classifier = "NearestCentroid"
 
 my_class = getattr(sklearn.neighbors, classifier)
@@ -65,63 +69,36 @@ pickle.dump(classifier_object,open("$outfile", 'w+'))
         </configfile>
     </configfiles>
     <inputs>
-        <conditional name="selected_tasks">
-            <param name="selected_task" type="select" label="Select a Classification Task">
-                <option value="load">Load a model and predict</option>
-                <option value="train">Train a model</option>
+        <expand macro="train_loadConditional">
+            <param name="selected_algorithm" type="select" label="Classifier type">
+                <option value="nneighbors">Nearest Neighbors</option>
+                <option value="ncentroid">Nearest Centroid</option>
             </param>
-            <when value="load">
-                <param name="infile_model" type="data" format="txt" label="Models" help="Select a model file." />
-                <param name="infile_data" type="data" format="tabular" label="Data (tabular)" help="Select the dataset you want to classify."/>
-                <conditional name="prediction_options">
-                    <param name="prediction_option" type="select" label="Select the type of prediction">
-                        <option value="predict">Predict class labels</option>
-                        <option value="advanced">Include advanced options</option>
+            <when value="nneighbors">
+                <conditional name="sampling_methods">
+                    <param name="sampling_method" type="select" label="Neighbor selection method">
+                        <option value="KNeighborsClassifier" selected="true">K-nearest neighbors</option>
+                        <option value="RadiusNeighborsClassifier">Radius-based</option>
                     </param>
-                    <when value="predict">
+                    <when value="KNeighborsClassifier">
+                        <expand macro="nn_advanced_options">
+                            <param argument="n_neighbors" type="integer" optional="true" value="5" label="Number of neighbors" help=" "/>
+                        </expand>
                     </when>
-                    <when value="advanced">
+                    <when value="RadiusNeighborsClassifier">
+                        <expand macro="nn_advanced_options">
+                            <param argument="radius" type="float" optional="true" value="1.0" label="Radius" help="Range of parameter space to use by default for :meth ''radius_neighbors'' queries."/>
+                        </expand>
                     </when>
-                </conditional>
+                </conditional>  
             </when>
-            <when value="train">
-                <param name="infile_train" type="data" format="tabular" label="Training samples (tabular)" />
-                <conditional name="selected_algorithms">
-                    <param name="selected_algorithm" type="select" label="Classifier type">
-                        <option value="nneighbors">Nearest Neighbors</option>
-                        <option value="ncentroid">Nearest Centroid</option>
-                    </param>
-                    <when value="nneighbors">
-                        <param name="samples" type="select" label="Neighbor selection method">
-                            <option value="KNeighborsClassifier" selected="true">K-nearest neighbors</option>
-                            <option value="RadiusNeighborsClassifier">Radius-based</option>
-                        </param>
-                        <section name="options" title="Advanced Options" expanded="False">
-                            <param argument="weights" type="select" label="Weight function" help="Used in prediction.">
-                                <option value="uniform" selected="true" help="Uniform weights. All points in each neighborhood are weighted equally.">Uniform</option>
-                                <option value="distance" help="Weight points by the inverse of their distance.">Distance</option>
-                            </param>
-                            <param argument="algorithm" type="select" label="Neighbor selection algorithm">
-                                <option value="auto" selected="true">Auto</option>
-                                <option value="ball_tree">BallTree</option>
-                                <option value="kd_tree">KDTree</option>
-                                <option value="brute">Brute-force</option>
-                            </param>
-                            <param argument="leaf_size" type="integer" value="30" label="Leaf size" help="Used with BallTree and KDTree. Affects the time and memory usage of the constructed tree."/>
-                        <!--discuss param name="metric" type="text" -->
-                        <!--discuss param name="p" type="integer" -->
-                        <!--discuss param name="metric_params" type=??? -->
-                        </section>
-                    </when>
-                    <when value="ncentroid">
-                        <section name="options" title="Advanced Options" expanded="False">
-                            <param argument="metric" type="text" optional="true" value="euclidean" label="Metric" help="The metric to use when calculating distance between instances in a feature array."/>
-                            <param argument="shrink_threshold" type="float" optional="true" value="" label="Shrink threshold" help="Floating point number for shrinking centroids to remove features."/>
-                        </section>
-                    </when>
-                </conditional>
+            <when value="ncentroid">
+                <section name="options" title="Advanced Options" expanded="False">
+                    <param argument="metric" type="text" optional="true" value="euclidean" label="Metric" help="The metric to use when calculating distance between instances in a feature array."/>
+                    <param argument="shrink_threshold" type="float" optional="true" value="" label="Shrink threshold" help="Floating point number for shrinking centroids to remove features."/>
+                </section>
             </when>
-        </conditional>
+        </expand>
     </inputs>
     <outputs>
         <data format="txt" name="outfile"/>
@@ -131,7 +108,7 @@ pickle.dump(classifier_object,open("$outfile", 'w+'))
             <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="nneighbors"/>
-            <param name="samples" value="KNeighborsClassifier" />
+            <param name="sampling_method" value="KNeighborsClassifier" />
             <param name="algorithm" value="brute" />
             <output name="outfile" file="nn_model01.txt"/>
         </test>
@@ -140,7 +117,7 @@ pickle.dump(classifier_object,open("$outfile", 'w+'))
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value=""/>
             <param name="selected_algorithm" value="nneighbors"/>
-            <param name="samples" value="RadiusNeighborsClassifier" />
+            <param name="sampling_method" value="RadiusNeighborsClassifier" />
             <output name="outfile" file="nn_model02.txt"/>
         </test>
         <test>
