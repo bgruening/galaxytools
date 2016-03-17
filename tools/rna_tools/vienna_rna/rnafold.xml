@@ -1,14 +1,23 @@
-<tool id="rnafold" name="RNAfold" version="2.1.6.0">
+<tool id="rnafold" name="RNAfold" version="2.1.6.1">
     <description>Calculate minimum free energy secondary structures and partition function of RNAs</description>
-    <expand macro="requirements" />
-    <expand macro="version_command" />
-    <expand macro="stdio" />
     <macros>
         <token name="@EXECUTABLE@">RNAfold</token>
         <import>macros.xml</import>
     </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
+    <expand macro="version_command" />
     <command>
  <![CDATA[
+     #if str($input_source.select_fasta) == "false"
+        #if str($input_source.input_sequence).lstrip()[0] == ">"
+            echo "${input_source.input_sequence}" > "input.fasta" &&
+        #else
+            echo ">Sequence"                      >  "input.fasta" &&
+            echo "${input_source.input_sequence}" >> "input.fasta" &&
+        #end if
+    #end if
+
     RNAfold
     -T $temperature
     --dangles=$dangling
@@ -17,33 +26,49 @@
     #else
         $measelect.pf
     #end if
-    #if $varExists('$advancedOptions.nogu'):
-        $advancedOptions.noconversion
-        $advancedOptions.gquad
-        $advancedOptions.nolp
-        $advancedOptions.nogu
-        $advancedOptions.noclosinggu
-        $advancedOptions.canonicalonly
-        $advancedOptions.circular
-    #end if
+    
+    $advancedOptions.noconversion
+    $advancedOptions.gquad
+    $advancedOptions.nolp
+    $advancedOptions.nogu
+    $advancedOptions.noclosinggu
+    $advancedOptions.canonicalonly
+    $advancedOptions.circular
 
-    < $fasta_input
+    < 
+    #if str($input_source.select_fasta) == "false"
+        "input.fasta"
+    #else
+        "${input_source.fasta_input}"
+    #end if
 
     > $tabular_file
 ]]>
     </command>
 
     <inputs>
-    <param format="fasta" name="fasta_input" type="data" label="FASTA file"/>
-        <param name="temperature" type="float" value="37.0" label="Temperature [°C]" help="-T"/>
-        <param name="dangling" type="select" label="how to treat dangling end energies" help="-d">
+        <conditional name="input_source">
+            <param name="select_fasta" type="select" label="Input from FASTA file">
+                <option value="true" selected="true">Use FASTA</option>
+                <option value="false">Provide sequence as text-field</option>
+            </param>
+            <when value="true">
+                <param format="fasta" name="fasta_input" type="data" label="Sequence to fold (FASTA file)"/>
+            </when>
+            <when value="false">
+                <param name="input_sequence" type="text" label="Input sequence"/>
+            </when>
+        </conditional>
+
+        <param name="temperature" type="float" value="37.0" label="Temperature [°C]" argument="-T"/>
+        <param name="dangling" type="select" label="How to treat dangling end energies" argument="-d">
             <option value="0">0: ignore dangling ends</option>
             <option value="1">1: unpaired bases participate in one dangling end only</option>
             <option value="2" selected="True">2: unpaired bases participate in all dangling ends</option>
             <option value="3">3: allow coaxial stacking</option>
         </param>
         <conditional name="measelect">
-            <param name="mea" type="select" label="Calculate Maximum Expected accuracy" help="--MEA">
+            <param name="mea" type="select" label="Calculate Maximum Expected accuracy" argument="--MEA">
                 <option value="no">No</option>
                 <option value="yes">Yes</option>
             </param>
@@ -54,20 +79,77 @@
                 <param name="pf" type="boolean" checked="false" truevalue="--partfunc" falsevalue="" label="Calculate Partition Function" help="--partfunc"/>
             </when>
         </conditional>
-        <conditional name="advancedOptions">
-            <param name="advancedSelector" type="boolean" checked="false" label=" advanced options"/>
-            <when value="true">
-                <param name="noconversion" type="boolean" truevalue="--noconv" falsevalue="" checked="false" label="no conversion" help="--noconv  do not convert thymine to uracile (T -> U)."/>
-                <param name="gquad" type="boolean" truevalue="--gquad" falsevalue="" checked="false" label="G Quadruplex formation" help="-g  take into account G Quadruplex formation"/>
-                <param name="nolp" type="boolean" truevalue="--noLP" falsevalue="" checked="false" label="No lonely pairs" help="--noLP  don't allow lonely pairs."/>
-                <param name="nogu" type="boolean" truevalue="--noGU" falsevalue="" checked="false" label="No GU pairing" help="--noGU  don't allow pairing of G and U."/> <param name="noclosinggu" type="boolean" truevalue="--noClosingGU" falsevalue="" checked="false" label="No GU pairing at the ends" help="--noClosingGU  don't allow pairing of G and U at the ends of helices."/> <param name="notetra" type="boolean" truevalue="--noTetra" falsevalue="" checked="false" label="No stabilization for loops, hairpins etc." help="--noTetra"/>
-                <param name="canonicalonly" type="boolean" truevalue="--canonicalBPonly" falsevalue="" checked="false" label="Canonical basepairing only" help="--canonicalBPonly"/>
-                <param name="circular" type="boolean" truevalue="--circ" falsevalue="" checked="false" label="Assume circular RNA structure" help="--circ"/>
-            </when>
-        </conditional>
+        <section name="advancedOptions" title="Advanced options">
+            <param name="noconversion"
+                   type="boolean"
+                   truevalue=""
+                   falsevalue="--noconv"
+                   checked="true"
+                   label="Convert Thymine to Uracil (T -> U)"
+                   argument="--noconv"
+                   help="Avoids confusion with DNA sequences"/>
+
+            <param name="gquad"
+                   type="boolean"
+                   truevalue="--gquad"
+                   falsevalue=""
+                   checked="false"
+                   label="Take G Quadruplex formation into account"
+                   argument="-g"/>
+
+            <param name="nolp"
+                   type="boolean"
+                   truevalue=""
+                   falsevalue="--noLP"
+                   checked="true"
+                   label="Allow lonely pairs"
+                   argument="--noLP"/>
+
+            <param name="nogu"
+                   type="boolean"
+                   truevalue=""
+                   falsevalue="--noGU"
+                   checked="true"
+                   label="Include GU pairing"
+                   argument="--noGU"
+                   help="Allow wobbly pairs G-U."/>
+
+            <param name="noclosinggu"
+                   type="boolean"
+                   truevalue=""
+                   falsevalue="--noClosingGU"
+                   checked="true"
+                   label="Allow GU pairing at the ends"
+                   argument="--noClosingGU"
+                   help="Allow pairing of G and U at the ends of helices."/>
+
+            <param name="notetra"
+                   type="boolean"
+                   truevalue=""
+                   falsevalue="--noTetra"
+                   checked="true"
+                   label="Use stabilization for loops, hairpins etc."
+                   argument="--noTetra"/>
+
+            <param name="canonicalonly"
+                   type="boolean"
+                   truevalue=""
+                   falsevalue="--canonicalBPonly"
+                   checked="true"
+                   label="Allow non-canonical basepairings"
+                   argument="--canonicalBPonly"/>
+
+            <param name="circular"
+                   type="boolean"
+                   truevalue="--circ"
+                   falsevalue=""
+                   checked="false"
+                   label="Model as circular RNA structure"
+                   argument="--circ"/>
+        </section>
     </inputs>
     <outputs>
-        <data format="tabular" name="tabular_file"/>
+        <data format="dbn" name="tabular_file"/>
         <collection name="sequence_outputs" type="list" label="rna_eps outputs">
             <discover_datasets pattern="(?P&lt;designation&gt;.+)_ss\.ps" ext="eps" />
         </collection>
@@ -75,17 +157,26 @@
             <filter>measelect['pf'] is True</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;.+)_dp\.ps" ext="rna_eps" visible="true"/>
         </collection>
-          
     </outputs>
     <tests>
         <test>
+            <param name="select_fasta" value="true" />
             <param name="fasta_input" value="rnafold_input1.fa"/>
+
             <output name="out_file1" file="rnafold_result1.txt"/>
         </test>
         <test>
+            <param name="select_fasta" value="true" />
             <param name="fasta_input" value="rnafold_input2.fa"/>
             <param name="temperature" value="75"/>
+
             <output name="out_file1" file="rnafold_result2.txt"/>
+        </test>
+        <test>
+            <param name="select_fasta" value="false" />
+            <param name="input_sequence" value="TGGGAATTAGCTCAAATGGTAGAGCGCTCGCTTAGCATGTGAGAGGTAGTGGGATCGATGCCCACATTCTCCA"/>
+
+            <output name="out_file1" file="rnafold_result3.txt"/>
         </test>
     </tests>
     <help>
@@ -115,8 +206,7 @@ The program will read the whole FASTA input file and provide output for each fou
 
 **Input format**
 
-RNAfold requires one input file
-- FASTA file
+RNAfold requires one input file or a plain RNA sequence
 
 ------
 
