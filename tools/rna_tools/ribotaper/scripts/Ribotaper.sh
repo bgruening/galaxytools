@@ -132,25 +132,25 @@ $scripts_dir"/create_tracks.bash" $annot_dir"/unique_nonccds.bed" $annot_dir"/se
 
 echo "Running calculations ccds..."
 
-$scripts_dir"/tracks_analysis.R" ccds $scripts_dir $n_of_cores 
+Rscript $scripts_dir"/tracks_analysis.R" ccds $scripts_dir $n_of_cores
 
 echo "Running calculations exons_ccds..."
 
-$scripts_dir"/tracks_analysis.R" exonsccds $scripts_dir $n_of_cores
+Rscript $scripts_dir"/tracks_analysis.R" exonsccds $scripts_dir $n_of_cores
 
 echo "Running calculations nonccds..."
 
-$scripts_dir"/tracks_analysis.R" nonccds $scripts_dir $n_of_cores
+Rscript $scripts_dir"/tracks_analysis.R" nonccds $scripts_dir $n_of_cores
 
 # annotates the exons relative to ccds regions TO BE ADAPTED, CHECK WHICH FILES THEY NEED.
 
 echo "Annotate exons..."
 
-$scripts_dir"/annotate_exons.R" $annot_dir $scripts_dir $n_of_cores
+Rscript $scripts_dir"/annotate_exons.R" $annot_dir $scripts_dir $n_of_cores
 
 echo "Making quality plots..."
 
-$scripts_dir"/quality_check.R" $annot_dir
+Rscript $scripts_dir"/quality_check.R" $annot_dir
 
 #echo "Calculating coherence..."
 
@@ -164,22 +164,22 @@ $scripts_dir"/quality_check.R" $annot_dir
 
 echo "CCDS ORF finding..."
 
-$scripts_dir"/CCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
+Rscript $scripts_dir"/CCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
 
 echo "NONCCDS ORF finding..."
 
-$scripts_dir"/NONCCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
+Rscript $scripts_dir"/NONCCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
 
 # Groups ORFs and creates BED files + protein fasta database
 
 echo "Grouping ORFs and creating protein fasta database..."
 
-$scripts_dir"/create_protein_db.R"
+Rscript $scripts_dir"/create_protein_db.R"
 
 # makes summary plot for the found ORFs
 
 echo "Summarizing ORF finding results"
 
-$scripts_dir"/ORF_final_results.R"
+Rscript $scripts_dir"/ORF_final_results.R"
 
 echo "RiboTaper analysis finished !!!"
