@@ -4,7 +4,7 @@
 #    This file is part of RiboTaper.
 #    RiboTaper is a method for defining traslated ORFs using
 #    Ribosome Profiling data.
-#   
+#
 #    Copyright (C) 2015  Lorenzo Calviello
 #
 #    RiboTaper is free software: you can redistribute it and/or modify
@@ -135,19 +135,19 @@ st_st_NA$to_check_ALL<-NA
 
 NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) %dopar%{
         transcript<-transcr_sites[j]
-        
+
         ###assembles transcript
-        
+
         exons_in_transcr<-transcr_nonccds[transcr_nonccds[,"transcript_id"]==transcript,]
         exons_in_transcr<-exons_in_transcr[order(exons_in_transcr$start,decreasing=F),]
-        
+
         list_exons_transcr<-list()
         list_exons_seqs<-list()
-        
+
         for(k in seq(1,dim(exons_in_transcr)[1])){
                 exon_track<-c()
                 subs_nonccds<-index_nonccds[,"exon_id"]==exons_in_transcr[k,"exon_id"]
-                
+
                 if(sum(subs_nonccds)>0){
                         if(sum(subs_nonccds)==5){
                                 exon_track<-all_tracks_nonccds[subs_nonccds]
@@ -155,12 +155,12 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                         if(sum(subs_nonccds)>5){
                                 exon_track<-all_tracks_nonccds[which(subs_nonccds)[1:4]]
                         }
-                }                                
-                
-                
+                }
+
+
                 withsep<-strsplit(exon_track,split=" ")
                 x<-t(data.frame(withsep))
-                
+
                 strand<-x[1,2]
                 tracks<-t(x[,-c(1:2)])
                 colnames(tracks)<-c("Psites","RiboCov","RNACov","RNAcent","Seq")
@@ -171,29 +171,29 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                 list_exons_transcr[[k]]<-tracks
                 list_exons_seqs[[k]]<-seq
         }
-        
+
         merged_tracks<-do.call(what=rbind,list_exons_transcr)
-        
+
         if(strand=="-"){
                 merged_tracks<-cbind(rev(merged_tracks[,1]),rev(merged_tracks[,2]),rev(merged_tracks[,3]),rev(merged_tracks[,4]))
         }
-        
+
         tracks<-merged_tracks
         length<-dim(tracks)[1]
         if(strand=="+"){
                 seq_transcr<-unlist(list_exons_seqs)
         }
         if(strand=="-"){
-                
+
                 seq_transcr<-unlist(list_exons_seqs)
                 seq_transcr<-comp(rev((seq_transcr)),forceToLower=F)
         }
-        
+
         transcr_data<-data.frame(transcript_id=transcript,stringsAsFactors=F)
         transcr_data$gene_id<-unique(transcr_nonccds[transcr_nonccds[,"transcript_id"]==transcript,"gene_id"])[1]
         transcr_data$annotation<-unique(results_nonccds_ORFs[results_nonccds_ORFs[,"gene_id"]==transcr_data$gene_id,"annotation",])[1]
         transcr_data$gene_symbol<-unique(results_nonccds_ORFs[results_nonccds_ORFs[,"gene_id"]==transcr_data$gene_id,"gene_symbol",])[1]
-        
+
         P_sites_sum<-sum(tracks[,1])
         RNA_sites_sum<-sum(tracks[,4])
         transcr_data$strand<-strand
@@ -203,7 +203,7 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
         transcr_data$RNA_sites<-RNA_sites_sum
         transcr_data$Ribo_cov_aver<-mean(tracks[,2])
         transcr_data$RNA_cov_aver<-mean(tracks[,3])
-        
+
         transcr_data$freq_multit_3nt<-NA
         transcr_data$pval_multit_3nt<-NA
         transcr_data$spec_multit_3nt<-NA
@@ -214,78 +214,78 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                 transcr_data$freq_multit_3nt<-vals_mtm[1]
                 transcr_data$pval_multit_3nt<-vals_mtm[2]
                 transcr_data$spec_multit_3nt<-vals_mtm[3]
-                
+
         }
         Phase_P_sites_frame<-sum(tracks[seq(1,length,by=3),1])
         Phase_P_sites_frame_1<-sum(tracks[seq(2,length,by=3),1])
         Phase_P_sites_frame_2<-sum(tracks[seq(3,length,by=3),1])
-        
+
         transcr_data$chisq_noccds_psit<-NA
         if(P_sites_sum>15){
                 transcr_data$chisq_noccds_psit<-chisq.test(as.table(c(Phase_P_sites_frame,Phase_P_sites_frame_1,Phase_P_sites_frame_2)))$p.value}
         if(P_sites_sum<16 & P_sites_sum>0){
                 transcr_data$chisq_noccds_psit<-xmulti(obs=c(Phase_P_sites_frame,Phase_P_sites_frame_1,Phase_P_sites_frame_2),expr=c(1,1,1),statName="Prob",detail=0)$pProb
-        }    
+        }
         pctPhase_frame<-Phase_P_sites_frame/P_sites_sum
         pctPhase_frame_1<-Phase_P_sites_frame_1/P_sites_sum
         pctPhase_frame_2<-Phase_P_sites_frame_2/P_sites_sum
-        
+
         Centered_sites_sum<-round(sum(tracks[,4]),digits=6)
-        
+
         Phase_Centered_sites_frame<-sum(tracks[seq(1,length,by=3),4])
         Phase_Centered_sites_frame_1<-sum(tracks[seq(2,length,by=3),4])
         Phase_Centered_sites_frame_2<-sum(tracks[seq(3,length,by=3),4])
-        
+
         pctPhaseCentered_frame<-Phase_Centered_sites_frame/Centered_sites_sum
         pctPhaseCentered_frame_1<-Phase_Centered_sites_frame_1/Centered_sites_sum
         pctPhaseCentered_frame_2<-Phase_Centered_sites_frame_2/Centered_sites_sum
-        
+
         transcr_data$chisq_noccds_rna<-NA
         if(Centered_sites_sum>15){
                 chisq_rna<-chisq.test(as.table(c(Phase_Centered_sites_frame,Phase_Centered_sites_frame_1,Phase_Centered_sites_frame_2)))$p.value}
         if(Centered_sites_sum<16 & Centered_sites_sum>0){
                 chisq_rna<-xmulti(obs=c(Phase_Centered_sites_frame,Phase_Centered_sites_frame_1,Phase_Centered_sites_frame_2),expr=c(1,1,1),statName="Prob",detail=0)$pProb
         }
-        
-        
+
+
         MAXPhase_frame<-max(c(pctPhase_frame,pctPhase_frame_1,pctPhase_frame_2))
         FRAME_MAX_phase<-max.col(t(c(pctPhase_frame,pctPhase_frame_1,pctPhase_frame_2)))-1
-        
+
         MAXPhaseCentered_frame<-max(c(pctPhaseCentered_frame,pctPhaseCentered_frame_1,pctPhaseCentered_frame_2))
         FRAME_MAX_phaseCentered<-max.col(t(c(pctPhaseCentered_frame,pctPhaseCentered_frame_1,pctPhaseCentered_frame_2)))-1
-        
+
         frame_start_pred<-FRAME_MAX_phase
         frame_end_pred<-(length-(FRAME_MAX_phase+1))%%3
-        
+
         ###Finds ORFs on the 3 different frames
-        
+
         all_sign_frames<-list()
         for(u in 0:2){
-                
+
                 pept<-NA
                 pept<-unlist(getTrans(seq_transcr,sens="F",frame=u))
-                
+
                 starts<-pept=="M"
-                
+
                 stops<-pept=="*"
                 transcr_data$orf_position<-"undetected"
-                
+
                 start_pos<-((1:length(pept))[starts])*3
                 if(length(start_pos)>0){
                         start_pos<-start_pos+u-2
                 } else {start_pos<-NA}
-                
+
                 stop_pos<-((1:length(pept))[stops])*3
                 if(length(stop_pos)>0){
                         stop_pos<-stop_pos+u-2
                 } else {stop_pos<-NA}
-                
-                
+
+
                 if(sum(!is.na(start_pos))==0 | sum(!is.na(stop_pos))==0){
                         st_st<-st_st_NA
                         transcr_data_fr_sORFs<-cbind(transcr_data,st_st_NA)
                 }
-                
+
                 if(sum(!is.na(start_pos))>0 & sum(!is.na(stop_pos))>0){
                         st2vect<-c()
                         for(h in 1:length(start_pos)){
@@ -295,10 +295,10 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                 if(length(diff)>0){st2<-st1+min(diff)}
                                 if(length(diff)==0){st2<-NA}
                                 st2vect[h]<-st2
-                                
+
                         }
                         st_st<-data.frame(cbind(start_pos,st2vect))
-                        
+
                         st_st<-st_st[!is.na(st_st[,"st2vect"]),]
                         if(dim(st_st)[1]>0){
                                 if(dim(st_st)[1]==1){
@@ -308,7 +308,7 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                 if(dim(st_st)[1]>1){
                                         list_coords<-apply(st_st,FUN=function(x){x[1]:x[2]},1)
                                 }
-                                
+
                                 max_period<-NA
                                 start_pos<-NA
                                 stop_pos<-NA
@@ -327,7 +327,7 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                 st_st$ORF_freq_multi_rna<-NA
                                 st_st$ORF_pval_multi_rna<-NA
                                 st_st$ORF_spec_multi_rna<-NA
-                                
+
                                 st_st$ORF_freq3_fft_ribo<-NA
                                 st_st$ORF_spec3_fft_ribo<-NA
                                 st_st$ORF_freq3_spec_ribo<-NA
@@ -349,7 +349,7 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                 st_st$ORF_id_tr<-NA
                                 st_st$ORF_id_gen<-NA
                                 st_st$to_check_ALL<-NA
-                                
+
                                 for(r in 1:dim(st_st)[1]){
                                         tracks_stst<-tracks[st_st[r,1]:st_st[r,2],]
                                         length<-dim(tracks_stst)[1]
@@ -369,13 +369,13 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                                         score1<-((Phase_P_sites_frame-P_sites_sum/3)^2)/(P_sites_sum/3)
                                                         score2<-((Phase_P_sites_frame_1-P_sites_sum/3)^2)/(P_sites_sum/3)
                                                         score3<-((Phase_P_sites_frame_2-P_sites_sum/3)^2)/(P_sites_sum/3)
-                                                        
+
                                                         orfsc<-log2(score1+score2+score3+1)
                                                         st_st[r,"ORF_ORF_score_ribo"]<-orfsc
                                                         if(Phase_P_sites_frame<=Phase_P_sites_frame_1 | Phase_P_sites_frame<=Phase_P_sites_frame_2){
                                                                 st_st[r,"ORF_ORF_score_ribo"]<--orfsc
                                                         }
-                                                        
+
                                                         if(max(tracks_stst[,1])>(P_sites_sum*.7)){
                                                                 new_track<-tracks_stst
                                                                 new_track[which(new_track[,1]==max(new_track[,1]))]<-0
@@ -393,26 +393,26 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                                                         }
                                                                 }
                                                         }
-                                                        
+
                                                         if(P_sites_sum>15){
                                                                 st_st[r,"ORF_chisq_ribo"]<-chisq.test(as.table(c(Phase_P_sites_frame,Phase_P_sites_frame_1,Phase_P_sites_frame_2)))$p.value}
                                                         if(P_sites_sum<16 & P_sites_sum>0){
                                                                 st_st[r,"ORF_chisq_ribo"]<-xmulti(obs=c(Phase_P_sites_frame,Phase_P_sites_frame_1,Phase_P_sites_frame_2),expr=c(1,1,1),statName="Prob",detail=0)$pProb
-                                                        }  
+                                                        }
                                                         if(length<25){slepians<-dpss(n=length+(50-length),k=24,nw=12)}
                                                         if(length>=25){slepians<-dpss(n=length,k=24,nw=12)}
                                                         values_mtm_orf<-take_freqs_Fvalues_all_around_3nt_spec(x=tracks_stst[,1],n_tapers=24,time_bw=12,slepians_values=slepians)[c(1,6,7)]
-                                                        
+
                                                         st_st[r,"ORF_freq_multi_ribo"]<-values_mtm_orf[1]
                                                         st_st[r,"ORF_pval_multi_ribo"]<-values_mtm_orf[2]
                                                         st_st[r,"ORF_spec_multi_ribo"]<-values_mtm_orf[3]
-                                                        
+
                                                         fft_sp<-take_maxfreq_and_power_FFT_Spec(tracks_stst[,1])
                                                         st_st[,"ORF_freq3_fft_ribo"]<-fft_sp[1]
                                                         st_st[,"ORF_spec3_fft_ribo"]<-fft_sp[2]
                                                         st_st[,"ORF_freq3_spec_ribo"]<-fft_sp[3]
                                                         st_st[,"ORF_spec3_spec_ribo"]<-fft_sp[4]
-                                                        
+
                                                         pept<-unlist(getTrans(seq_transcr[st_st[r,1]:st_st[r,2]],sens="F"))
                                                         st_st[r,"ORF_pept"]<-paste(pept,sep="",collapse="")
                                                 }
@@ -420,18 +420,18 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                                         if(length<25){slepians<-dpss(n=length+(50-length),k=24,nw=12)}
                                                         if(length>=25){slepians<-dpss(n=length,k=24,nw=12)}
                                                         values_mtm_orf_rna<-take_freqs_Fvalues_all_around_3nt_spec(x=tracks_stst[,4],n_tapers=24,time_bw=12,slepians_values=slepians)[c(1,6,7)]
-                                                        
+
                                                         st_st[r,"ORF_freq_multi_rna"]<-values_mtm_orf_rna[1]
                                                         st_st[r,"ORF_pval_multi_rna"]<-values_mtm_orf_rna[2]
                                                         st_st[r,"ORF_spec_multi_rna"]<-values_mtm_orf_rna[3]
-                                                        
-                                                        
+
+
                                                         fft_sp<-take_maxfreq_and_power_FFT_Spec(tracks_stst[,4])
                                                         st_st[,"ORF_freq3_fft_rna"]<-fft_sp[1]
                                                         st_st[,"ORF_spec3_fft_rna"]<-fft_sp[2]
                                                         st_st[,"ORF_freq3_spec_rna"]<-fft_sp[3]
                                                         st_st[,"ORF_spec3_spec_rna"]<-fft_sp[4]
-                                                        
+
                                                         Phase_Centered_sites_frame<-sum(tracks_stst[seq(1,length,by=3),4])
                                                         Phase_Centered_sites_frame_1<-sum(tracks_stst[seq(2,length,by=3),4])
                                                         Phase_Centered_sites_frame_2<-sum(tracks_stst[seq(3,length,by=3),4])
@@ -439,13 +439,13 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                                         score1<-((Phase_Centered_sites_frame-P_sites_sum/3)^2)/(RNA_sites_sum/3)
                                                         score2<-((Phase_Centered_sites_frame_1-P_sites_sum/3)^2)/(RNA_sites_sum/3)
                                                         score3<-((Phase_Centered_sites_frame_2-P_sites_sum/3)^2)/(RNA_sites_sum/3)
-                                                        
+
                                                         orfsc<-log2(score1+score2+score3+1)
                                                         st_st[r,"ORF_ORF_score_rna"]<-orfsc
                                                         if(Phase_Centered_sites_frame<=Phase_Centered_sites_frame_1 | Phase_Centered_sites_frame<=Phase_Centered_sites_frame_2){
                                                                 st_st[r,"ORF_ORF_score_rna"]<--orfsc
                                                         }
-                                                        
+
                                                         if(max(tracks_stst[,4])>(RNA_sites_sum*.7)){
                                                                 new_track<-tracks_stst
                                                                 new_track[which(new_track[,4]==max(new_track[,4]))]<-0
@@ -463,13 +463,13 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                                                         }
                                                                 }
                                                         }
-                                                        
+
                                                         if(RNA_sites_sum>15){
                                                                 st_st[r,"ORF_chisq_rna"]<-chisq.test(as.table(c(Phase_Centered_sites_frame,Phase_Centered_sites_frame_1,Phase_Centered_sites_frame_2)))$p.value}
                                                         if(RNA_sites_sum<16 & RNA_sites_sum>0){
                                                                 st_st[r,"ORF_chisq_rna"]<-xmulti(obs=c(Phase_Centered_sites_frame,Phase_Centered_sites_frame_1,Phase_Centered_sites_frame_2),expr=c(1,1,1),statName="Prob",detail=0)$pProb
                                                         }
-                                                        
+
                                                 }
                                         }
                                 }
@@ -482,74 +482,74 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                         st_st$pct_P_sites_inframe_next_start<-0
                                         #find starts per each stop codon
                                         list_stopsorfs<-split.data.frame(x=st_st,f=st_st[,2],drop=T)
-                                        
+
                                         transcr_data_fr<-transcr_data
-                                        
+
                                         list_sORFs_frame_moretap<-list()
                                         list_sORFs_frame_bestperiod<-list()
                                         list_sORFs_frame_maxsit<-list()
-                                        
+
                                         for(g in 1:length(list_stopsorfs)){
-                                                
+
                                                 stoplist<-list_stopsorfs[[g]]
                                                 max_period<-stoplist[stoplist[,"ORF_pval_multi_ribo"]==min(stoplist[,"ORF_pval_multi_ribo"]),]
-                                                list_sORFs_frame_bestperiod[[g]]<-max_period 
+                                                list_sORFs_frame_bestperiod[[g]]<-max_period
                                                 stoplists_period<-stoplist[stoplist[,"ORF_pval_multi_ribo"]<0.05,]
                                                 if(dim(stoplists_period)[1]>0){
                                                         stoplists_period<-stoplists_period[!is.na(stoplists_period[,"ORF_pval_multi_ribo"]),]
                                                 }
                                                 if(dim(stoplists_period)[1]>1){
-                                                        
+
                                                         for(b in 1:(dim(stoplists_period)[1]-1)){
                                                                 stoplists_period[b,"nt_tocheck_next_start"]<-stoplists_period[b+1,"start_pos"]-stoplist[b,"start_pos"]
                                                                 tracks_stst<-tracks[stoplists_period[b,"start_pos"]:stoplists_period[b+1,"start_pos"],]
                                                                 length<-dim(tracks_stst)[1]
                                                                 P_sites_sum<-sum(tracks_stst[,1])
-                                                                pval_to_next<-1                                                              
-                                                                
+                                                                pval_to_next<-1
+
                                                                 Phase_P_sites_frame<-sum(tracks_stst[seq(1,length,by=3),1])
                                                                 Phase_P_sites_frame_1<-sum(tracks_stst[seq(2,length,by=3),1])
                                                                 Phase_P_sites_frame_2<-sum(tracks_stst[seq(3,length,by=3),1])
-                                                                
+
                                                                 pctPhase_frame<-Phase_P_sites_frame/P_sites_sum
                                                                 pctPhase_frame_1<-Phase_P_sites_frame_1/P_sites_sum
                                                                 pctPhase_frame_2<-Phase_P_sites_frame_2/P_sites_sum
-                                                                
+
                                                                 if(P_sites_sum>5){
                                                                         if(length<25){slepians<-dpss(n=length+(50-length),k=24,nw=12)}
                                                                         if(length>=25){slepians<-dpss(n=length,k=24,nw=12)}
-                                                                        
+
                                                                         pval_to_next<-take_freqs_Fvalues_all_around_3nt_spec(x=tracks_stst[,1],n_tapers=24,time_bw=12,slepians_values=slepians)[6]
                                                                 }
                                                                 stoplists_period[b,"P_sites_next_start"]<-P_sites_sum
-                                                                
+
                                                                 stoplists_period[b,"pct_P_sites_inframe_next_start"]<-pctPhase_frame
-                                                                
+
                                                                 stoplists_period[b,"pval_next_start"]<-pval_to_next
                                                         }
-                                                        
+
                                                         max_sit<-stoplists_period[which(stoplists_period[,"P_sites_next_start"]>5 & stoplists_period[,"pct_P_sites_inframe_next_start"]>0.5)[1],]
                                                         max_sit<-max_sit[!is.na(max_sit[,"ORF_length"]),]
                                                         if(dim(max_sit)[1]==0){
                                                                 max_sit<-max_period
                                                         }
-                                                        list_sORFs_frame_maxsit[[g]]<-max_sit   
-                                                        
+                                                        list_sORFs_frame_maxsit[[g]]<-max_sit
+
                                                         more_tap<-stoplists_period[which(stoplists_period[,"pval_next_start"]<0.05)[1],]
                                                         more_tap<-more_tap[!is.na(more_tap[,"ORF_length"]),]
                                                         if(dim(more_tap)[1]==0){
                                                                 more_tap<-max_period
                                                         }
                                                         list_sORFs_frame_moretap[[g]]<-more_tap
-                                                        
+
                                                 }
                                                 if(dim(stoplists_period)[1]<2){
                                                         list_sORFs_frame_maxsit[[g]]<-max_period
                                                         list_sORFs_frame_moretap[[g]]<-max_period
-                                                        
+
                                                 }
-                                                
-                                                
+
+
                                         }
                                         sORFs_frame_moretap<-do.call(what=rbind.data.frame,args=list_sORFs_frame_moretap)
                                         sORFs_frame_moretap$Method<-"more_tapers"
@@ -558,23 +558,23 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                         sORFs_frame_bestperiod<-do.call(what=rbind.data.frame,args=list_sORFs_frame_bestperiod)
                                         sORFs_frame_bestperiod$Method<-"best_periodicity"
                                         sORFs_frames<-rbind(sORFs_frame_moretap,sORFs_frame_maxsit,sORFs_frame_bestperiod)
-                                        
+
                                         for(w in 1:dim(sORFs_frames)[1]){
                                                 transcr_data_fr[w,]<-transcr_data_fr[1,]
                                         }
-                                        
+
                                         transcr_data_fr_sORFs<-cbind(transcr_data_fr,sORFs_frames)
                                         transcr_data_fr_sORFs$orf_position<-"detected"
                                 }
                         }
-                        
+
                         if(dim(st_st)[1]==0){
                                 st_st<-st_st_NA
                                 transcr_data_fr_sORFs<-cbind(transcr_data,st_st_NA)
                         }
                 }
-                
-                
+
+
                 all_sign_frames[[u+1]]<-transcr_data_fr_sORFs
         }
         all_sign_frames<-do.call(what=rbind.data.frame,args=all_sign_frames)
@@ -585,30 +585,30 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                 all_orfs<-unique(transcr_all_frames_ok[,c("transcript_id","length","strand","start_pos","st2vect","ORF_length","gene_id")])
                 transcr<-all_orfs$transcript_id[1]
                 trascr_length<-all_orfs$length[1]
-                orf_strand<-all_orfs$strand[1]                
+                orf_strand<-all_orfs$strand[1]
                 ex_intr_coords<-exons_in_transcr$exon_id
                 if(orf_strand=="-"){ex_intr_coords<-rev(ex_intr_coords)}
-                
+
                 exons_in_transcr_data<-results_nonccds_ORFs[results_nonccds_ORFs[,"exon_id"]%in%ex_intr_coords,]
                 exons_in_transcr_data<-exons_in_transcr_data[match(ex_intr_coords,exons_in_transcr_data$exon_id),]
                 cumsumexons<-cumsum(exons_in_transcr_data$length.x)
-                
+
                 list_orfas<-list()
                 for(z in 1:dim(all_orfs)[1]){
                         orfa<-all_orfs[z,]
-                        
+
                         transcr_data<-data.frame(transcript_id=transcr)
-                        
+
                         orf_start<-orfa$start_pos
                         orf_end<-orfa$st2vect
-                        
+
                         st_ex<-which((cumsumexons-orf_start)==min(cumsumexons[cumsumexons>orf_start]-orf_start))
                         end_ex<-which((cumsumexons-orf_end)==min(cumsumexons[cumsumexons>=orf_end]-orf_end))
                         in_betw_ex<-st_ex:end_ex
                         in_betw_ex<-in_betw_ex[!in_betw_ex%in%c(st_ex,end_ex)>0]
                         exon_inbetween_data<-exons_in_transcr_data[in_betw_ex,]
-                        
-                        
+
+
                         coord_start<-NA
                         coord_end<-NA
                         nt_to_rem<-NA
@@ -616,7 +616,7 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                         if(st_ex>1){rem_len<-cumsumexons[st_ex-1]}
                         if(orfa$strand=="+"){coord_start<-as.numeric(exons_in_transcr_data[st_ex,"start"]) + (orf_start-rem_len)}
                         if(orfa$strand=="-"){coord_start<-as.numeric(exons_in_transcr_data[st_ex,"end"]) - (orf_start-rem_len)}
-                        
+
                         if(length(in_betw_ex)==0){
                                 if(st_ex==end_ex){nt_to_rem<-0}
                                 if(st_ex!=end_ex){if(orfa$strand=="+"){
@@ -627,7 +627,7 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                                   }
                                 }
                         }
-                        
+
                         if(length(in_betw_ex)>0){
                                 nt_in_betw<-sum(exons_in_transcr_data[in_betw_ex,"length.x"])
                                 if(orfa$strand=="+"){
@@ -638,58 +638,58 @@ NONCCDS_orfs<-foreach(j=1:length(transcr_sites),.combine=rbind,.multicombine=T) 
                                 }
                                 nt_to_rem<-nt_to_rem+nt_in_betw
                         }
-                        
+
                         if(st_ex==end_ex & orfa$strand=="+"){coord_end<-coord_start+orfa$ORF_length+1}
                         if(st_ex==end_ex & orfa$strand=="-"){coord_end<-coord_start-orfa$ORF_length+1}
-                        
+
                         if(st_ex!=end_ex & orfa$strand=="+"){coord_end<-as.numeric(exons_in_transcr_data[end_ex,"start"]) + (orfa$ORF_length-nt_to_rem)+1}
                         if(st_ex!=end_ex & orfa$strand=="-"){coord_end<-as.numeric(exons_in_transcr_data[end_ex,"end"]) - (orfa$ORF_length-nt_to_rem)+1}
-                        
+
                         if(orfa$strand=="-"){
                                 coord_start2<-coord_start
                                 coord_start<-coord_end
                                 coord_end<-coord_start2
                         }
-                        
-                        
+
+
                         if(st_ex!=end_ex & orfa$strand=="+"){to_check_st<-paste(exons_in_transcr_data[st_ex,"chr"],coord_start,exons_in_transcr_data[st_ex,"end"],"CCDS",orfa$gene_id,orfa$strand,sep="_")
                                                              to_check_end<-paste(exons_in_transcr_data[end_ex,"chr"],exons_in_transcr_data[end_ex,"start"],coord_end,"CCDS",orfa$gene_id,orfa$strand,sep="_")
                                                              to_check<-paste(to_check_st,to_check_end,sep=";")
-                                                             
+
                         }
                         if(st_ex!=end_ex & orfa$strand=="-"){to_check_st<-paste(exons_in_transcr_data[st_ex,"chr"],exons_in_transcr_data[st_ex,"start"],coord_end,"CCDS",orfa$gene_id,orfa$strand,sep="_")
                                                              to_check_end<-paste(exons_in_transcr_data[end_ex,"chr"],coord_start,exons_in_transcr_data[end_ex,"end"],"CCDS",orfa$gene_id,orfa$strand,sep="_")
                                                              to_check<-paste(to_check_st,to_check_end,sep=";")
                         }
-                        
+
                         if(st_ex==end_ex){to_check<-paste(exons_in_transcr_data[st_ex,"chr"],coord_start,coord_end,"CCDS",orfa$gene_id,orfa$strand,sep="_")}
                         orfa$to_check<-to_check
                         orfa$to_check_rem<-NA
                         if(length(in_betw_ex)>0){
                                 orfa$to_check_rem<-paste(exon_inbetween_data$exon_id,collapse=";")
-                                
+
                         }
                         orfa$ORF_id_tr<-paste(transcr_data$transcript_id,orf_start,orf_end,sep="_")
                         orfa$ORF_id_gen<-paste(exons_in_transcr_data[st_ex,"chr"],coord_start,coord_end,sep="_")
                         orfa$to_check_ALL<-paste(orfa$to_check,orfa$to_check_rem,sep=";")
                         list_orfas[[z]]<-orfa
-                        
-                        
+
+
                 }
                 list_orfas<-do.call(rbind.data.frame,args=list_orfas)
                 transcr_all_frames_ok$ORF_id_gen<-NULL
                 transcr_all_frames_ok$to_check<-NULL
                 transcr_all_frames_ok$to_check_rem<-NULL
                 transcr_all_frames_ok$to_check_ALL<-NULL
-                
+
                 transcr_all_frames_ok<-merge(transcr_all_frames_ok,list_orfas[,c("ORF_id_tr","ORF_id_gen","to_check","to_check_rem","to_check_ALL")],by="ORF_id_tr")
                 #reconcile and maybe add the rest
                 return(transcr_all_frames_ok)
         }
         if(dim(transcr_all_frames_ok)[1]==0){return(transcr_all_frames_res)}
-        
-        
-        
+
+
+
 }
 
 NONCCDS_orfs<-NONCCDS_orfs[!is.na(NONCCDS_orfs[,"ORF_pept"]),]
@@ -724,7 +724,7 @@ for(h in 1:length(ex_to_check_spl)){
         bedfiles_to_check[h,"type"]<-to_bed[4]
         bedfiles_to_check[h,"gene_id"]<-to_bed[5]
         bedfiles_to_check[h,"strand"]<-to_bed[6]
-        
+
 }
 
 write.table(bedfiles_to_check,file="bed_tocheck_nonccds.bed",quote=F,row.names=F,sep="\t",col.names=F)
@@ -735,7 +735,7 @@ syst_scr<-paste(scr,"bed_tocheck_nonccds.bed bed_tocheck_nonccds",args[3],sep = 
 system(syst_scr)
 
 scr<-paste(args[2],"include_multi_nomerge.R",sep="/")
-syst_scr<-paste(scr,"bed_tocheck_nonccds",sep = " ")
+syst_scr<-paste("Rscript" , scr,"bed_tocheck_nonccds",sep = " ")
 
 system(syst_scr)
 
@@ -790,7 +790,7 @@ all_sORFs_noncod_multi_final<-foreach(g=1:(dim(all_sORFs_noncod_multi)[1]),.comb
         res_multi$pct_covered_onlymulti_rna_ALL<-res_multi$pct_covered_onlymulti_rna*res_multi$length.y
         res_multi$pct_region_covered_rna<-sum(res_multi$pct_region_covered_rna_ALL)/sum(res_multi$length.y)
         res_multi$pct_covered_onlymulti_rna<-sum(res_multi$pct_covered_onlymulti_rna_ALL)/sum(res_multi$length.y)
-        
+
         s<-cbind(s,res_multi[1,])
         s
 }
@@ -837,7 +837,7 @@ for(h in 1:length(ex_to_check_spl)){
         bedfiles_to_check[h,"type"]<-to_bed[4]
         bedfiles_to_check[h,"gene_id"]<-to_bed[5]
         bedfiles_to_check[h,"strand"]<-to_bed[6]
-        
+
 }
 
 write.table(bedfiles_to_check,file="sORFs_totest",quote=F,row.names=F,sep="\t",col.names=F)
@@ -869,7 +869,7 @@ if(lines_in_file>0){
         if(length(NA_str)>0){
                 for(o in NA_str){
                         results_nonoverlapcdss[o,"exon_id"]<-paste(results_nonoverlapcdss[o,"chr"],results_nonoverlapcdss[o,"start"],results_nonoverlapcdss[o,"end"],results_nonoverlapcdss[o,"type"],results_nonoverlapcdss[o,"gene_id"],sep="_")
-                        
+
                 }
         }
 }
@@ -885,7 +885,7 @@ for(i in 1:length(ex_to_check)){
         a<-ex_to_check[[i]]
         a<-a[a!="NA"]
         overl_cds[i]<-sum(!a%in%results_nonoverlapcdss$exon_id)>0
-        
+
 }
 #divides in overlcds (nonccds coding ORFs) and ncORFs
 noncod_found_overl<-noncod_found[overl_cds,]
@@ -977,7 +977,3 @@ write.table(ORF_all,file="ORFs_NONCCDS/more_tapers/ORFs_all",quote=F,row.names=F
 
 
 print(paste("--- non-CCDS ORF finding Done!","---",date(),sep=" "))
-
-
-
-
