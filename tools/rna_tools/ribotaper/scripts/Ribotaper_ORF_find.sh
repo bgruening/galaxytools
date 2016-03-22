@@ -5,7 +5,7 @@
 #    This file is part of RiboTaper.
 #    RiboTaper is a method for defining traslated ORFs using
 #    Ribosome Profiling data.
-#   
+#
 #    Copyright (C) 2015  Lorenzo Calviello
 #
 #    RiboTaper is free software: you can redistribute it and/or modify
@@ -29,7 +29,7 @@
 
 set -e
 
-if [ $# -ne 8 ]; then  
+if [ $# -ne 8 ]; then
 	echo "Usage: ./Ribotaper.sh <Ribo_bamfile> <RNA_bamfile> <annotation_dir> <comma-sep_read_lenghts_ribo> <comma-sep_cutoffs> <scripts_dir> <bedtools_dir> <n_cores> "
 	exit 1
 fi
@@ -102,28 +102,22 @@ echo ""
 
 echo "CCDS ORF finding..."
 
-$scripts_dir"/CCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
+Rscript $scripts_dir"/CCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
 
 echo "NONCCDS ORF finding..."
 
-$scripts_dir"/NONCCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
+Rscript $scripts_dir"/NONCCDS_orf_finder.R" $annot_dir $scripts_dir $bedtools_dir $n_of_cores
 
 # Groups ORFs and creates BED files + protein fasta database
 
 echo "Grouping ORFs and creating protein fasta database..."
 
-$scripts_dir"/create_protein_db.R"
+Rscript $scripts_dir"/create_protein_db.R"
 
 # makes summary plot for the found ORFs
 
 echo "Summarizing ORF finding results"
 
-$scripts_dir"/ORF_final_results.R"
+Rscript $scripts_dir"/ORF_final_results.R"
 
 echo "RiboTaper analysis finished !!!"
-
-
-
-
-
-
