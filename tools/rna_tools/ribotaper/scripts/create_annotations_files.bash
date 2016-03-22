@@ -5,7 +5,7 @@
 #    This file is part of RiboTaper.
 #    RiboTaper is a method for defining traslated ORFs using
 #    Ribosome Profiling data.
-#   
+#
 #    Copyright (C) 2015  Lorenzo Calviello
 #
 #    RiboTaper is free software: you can redistribute it and/or modify
@@ -30,7 +30,7 @@
 
 
 
-if [ $# -ne 7 ]; then  
+if [ $# -ne 7 ]; then
 	echo "Usage: ./create_annotation_files.bash <gtf_file> <genome_fasta_file(indexed)> <use_ccdsid?> <use_appris?> <dest_folder> <bedtools_path> <scripts_dir>"
 	exit 1
 fi
@@ -123,7 +123,7 @@ less gene_annot_name_pre | cut -f 1 | grep -Fvf - $genc_full | awk '{for (x=1;x<
 cat gene_annot_name_pre gene_noname_notype | sort | uniq > gene_annot_names
 
 
-rm gene_name_type gene_name_notype gene_noname_type gene_annot_name_pre gene_noname_notype 
+rm gene_name_type gene_name_notype gene_noname_type gene_annot_name_pre gene_noname_notype
 
 
 
@@ -217,12 +217,12 @@ grep -Fvf genes_ccds $genc_full | awk '{for (x=1;x<=NF;x++) if ($x~"^gene_id") f
 #start_stop_cds
 
 less $genc_full | awk '{for (x=1;x<=NF;x++) if ($x~"^gene_id") if($3=="start_codon" || $3=="stop_codon") print $1 "\t"$4-1 "\t"$5 "\t" $3 "\t" $(x+1) "\t"$7}' | sed 's/;//g' | sed 's/"//g' | sort -k1,1 -k2,2g | uniq | awk 'p{print $0 "\t" $2-p}{p=$2}' | tac | awk 'p{print $0 "\t" $2-p}{p=$2}' | tac | awk '{if($NF<-100 || $(NF-1)>100) print $1 "\t" $2 "\t" $3 "\t" $4 "\t" $5 "\t" $6}' > start_stops_FAR.bed
-$scripts_dir_full"/write_startstops.R"
+Rscript $scripts_dir_full"/write_startstops.R"
 #make cds transcript coords
 echo "Creating transcript cds coordinates from gtf..."
 
 awk '{ for (x=1;x<=NF;x++) if ($x~"^transcript_id") if ( $3=="exon" || $3=="CDS" ) print $1 "\t" $3 "\t" $4 "\t" $5 "\t" $7 "\t" $(x+1)}' $genc_full | sed 's/"//g' | sed 's/;//g' | sort -k1,1 -k3,3g > exons_cds_all
-$scripts_dir_full"/gtf_to_start_stop_tr.R" 
+Rscript $scripts_dir_full"/gtf_to_start_stop_tr.R"
 
 #make cds frames
 
@@ -232,7 +232,5 @@ less $genc_full | awk '{for (x=1;x<=NF;x++) if ($x~"^gene_id") if($3=="CDS") pri
 #take all exonic regions
 less $genc_full | awk '{if($3=="exon") print $0}' | awk '{for (x=1;x<=NF;x++) if ($x~"^gene_id") print $1 "\t" $4-1 "\t" $5 "\t" "exon" "\t" $(x+1) "\t" $7 }' | sort -k1,1 -k2,2n | uniq | sed 's/;//g' | sed 's/"//g' > all_exons.bed
 
-$scripts_dir_full"/genes_coor.R"
+Rscript $scripts_dir_full"/genes_coor.R"
 echo "Done!"
-
-
