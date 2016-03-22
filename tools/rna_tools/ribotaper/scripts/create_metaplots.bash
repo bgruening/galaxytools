@@ -5,7 +5,7 @@
 #    This file is part of RiboTaper.
 #    RiboTaper is a method for defining traslated ORFs using
 #    Ribosome Profiling data.
-#   
+#
 #    Copyright (C) 2015  Lorenzo Calviello
 #
 #    RiboTaper is free software: you can redistribute it and/or modify
@@ -28,7 +28,7 @@
 ##This script creates aggregate plots around start-stop codons, it uses as arguments a bam file, a bed file for start-stop positions (e.g. the one produced by the create_annotation.bash script), a name as an appendix for further analysis, the RiboTaper scripts directory
 
 
-if [ $# -ne 5 ]; then  
+if [ $# -ne 5 ]; then
 	echo "Usage: create_metaplots.bash <ribo.bam> <bedfile> <name> <bedtools_dir> <scripts_dir>"
 	exit 1
 fi
@@ -52,7 +52,7 @@ rm sample_to_metapl.sam
 
 echo "Intersecting alignments with start/stop sites ..."
 
-$bedtools_dir"bamToBed" -i sample_to_metapl.bam -bed12 -split | $bedtools_dir"windowBed" -w 100 -sm -b stdin -a $2 | awk '{print $7 "\t" $8 "\t" $9 "\t" $10 "\t" $11 "\t" $12 "\t" $13 "\t" $14 "\t" $15 "\t" $16 "\t" $17 "\t" $18}' | sort -k1,1 -k2,2g | $bedtools_dir"closestBed" -s -t "last" -a stdin -b $2 > $3
+$bedtools_dir"/bamToBed" -i sample_to_metapl.bam -bed12 -split | $bedtools_dir"/windowBed" -w 100 -sm -b stdin -a $2 | awk '{print $7 "\t" $8 "\t" $9 "\t" $10 "\t" $11 "\t" $12 "\t" $13 "\t" $14 "\t" $15 "\t" $16 "\t" $17 "\t" $18}' | sort -k1,1 -k2,2g | $bedtools_dir"/closestBed" -s -t "last" -a stdin -b $2 > $3
 
 if !  [[ -s $3 ]]; then
      echo "!!!!!   no intersections found, check input files"
@@ -65,7 +65,7 @@ echo "Creating metaplots..."
 
 scripts_dir=$5
 
-$scripts_dir"metag.R" $3
+Rscript $scripts_dir"/metag.R" $3
 
 mkdir metaplots
 
@@ -74,4 +74,3 @@ mv *.pdf metaplots/
 
 
 echo "Done !!! "
-
