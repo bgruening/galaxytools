@@ -69,7 +69,7 @@ Rscript $scripts_dir"/metag.R" $3
 
 mkdir metaplots
 
-mv *.pdf metaplots/
+mv $3*.pdf metaplots/
 
 
 
