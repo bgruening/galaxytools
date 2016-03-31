@@ -1,0 +1,176 @@
+<tool id="svm_classifier" name="Support vector machines (SVMs)" version="@VERSION@">
+    <description>for classification</description>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <macros>
+        <import>main_macros.xml</import>
+        <!-- macro name="class_weight" argument="class_weight"-->
+    </macros>
+    <version_command>echo "@VERSION@"</version_command>
+    <command><![CDATA[
+    python "$svc_script" '$inputs'
+]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs"/>
+        <configfile name="svc_script">
+<![CDATA[
+import sys
+import json
+import numpy as np
+import sklearn.svm
+import pandas
+import pickle
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+
+#if $selected_tasks.selected_task == "load":
+
+classifier_object = pickle.load(open("$infile_model", 'r'))
+
+data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+prediction = classifier_object.predict(data)
+prediction_df = pandas.DataFrame(prediction)
+res = pandas.concat([data, prediction_df], axis=1)
+res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
+
+#else:
+
+data_train = pandas.read_csv("$selected_tasks.infile_train", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+
+data = data_train.ix[:,0:len(data_train.columns)-1]
+labels = np.array(data_train[data_train.columns[len(data_train.columns)-1]])
+
+options = params["selected_tasks"]["selected_algorithms"]["options"]
+selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
+
+if not(selected_algorithm=="LinearSVC"):
+    if options["kernel"]:
+        options["kernel"] = str(options["kernel"])
+
+my_class = getattr(sklearn.svm, selected_algorithm)
+classifier_object = my_class(**options)
+classifier_object.fit(data,labels)
+
+pickle.dump(classifier_object,open("$outfile", 'w+'))
+
+#end if
+
+]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="train_loadConditional">
+            <param name="selected_algorithm" type="select" label="Classifier type">
+                <option value="SVC">C-Support Vector Classification</option>
+                <option value="NuSVC">Nu-Support Vector Classification</option>
+                <option value="LinearSVC">Linear Support Vector Classification</option>
+            </param>
+            <when value="SVC">
+                <expand macro="svc_advanced_options">
+                    <expand macro="C"/>
+                </expand>
+            </when>
+            <when value="NuSVC">
+                <expand macro="svc_advanced_options">
+                    <param argument="nu" type="float" optional="true" value="0.5" label="Nu control parameter" help="Controls the number of support vectors. Should be in the interval (0, 1]. "/>
+                </expand>
+            </when>
+            <when value="LinearSVC">
+                <section name="options" title="Advanced Options" expanded="False">
+                    <expand macro="C"/>
+                    <expand macro="tol" default_value="0.001" help_text="Tolerance for stopping criterion. "/>
+                    <expand macro="random_state" help_text="Integer number. The seed of the pseudo random number generator to use when shuffling the data for probability estimation. A fixed seed allows reproducible results."/>
+                    <!--expand macro="class_weight"/-->
+                    <param argument="max_iter" type="integer" optional="true" value="1000" label="Maximum number of iterations" help="The maximum number of iterations to be run."/>
+                    <param argument="loss" type="select" label="Loss function" help="Specifies the loss function. ''squared_hinge'' is the square of the hinge loss.">
+                        <option value="squared_hinge" selected="true">Squared hinge</option>
+                        <option value="hinge">Hinge</option>
+                    </param>
+                    <param argument="penalty" type="select" label="Penalization norm" help=" ">
+                        <option value="l1" >l1</option>
+                        <option value="l2" selected="true">l2</option>
+                    </param>
+                    <param argument="dual" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Use the shrinking heuristic" help="Select the algorithm to either solve the dual or primal optimization problem. Prefer dual=False when n_samples > n_features."/>
+                    <param argument="multi_class" type="select" label="Multi-class strategy" help="Determines the multi-class strategy if y contains more than two classes.">
+                        <option value="ovr" selected="true">ovr</option>
+                        <option value="crammer_singer" >crammer_singer</option>
+                    </param>
+                    <param argument="fit_intercept" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Calculate the intercept for this model" help="If set to false, data is expected to be already centered."/>
+                    <param argument="intercept_scaling" type="float" optional="true" value="1" label="Add synthetic feature to the instance vector" help=" "/>
+                </section>
+            </when>
+        </expand>
+    </inputs>
+    <outputs>
+        <data format="txt" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="SVC"/>
+            <param name="random_state" value="5"/>
+            <output name="outfile" file="svc_model01.txt"/>
+        </test>
+        <test>
+            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="NuSVC"/>
+            <param name="random_state" value="5"/>
+            <output name="outfile" file="svc_model02.txt"/>
+        </test>
+        <test>
+            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="LinearSVC"/>
+            <param name="random_state" value="5"/>
+            <output name="outfile" file="svc_model03.txt"/>
+        </test>
+        <test>
+            <param name="infile_model" value="svc_model01.txt" ftype="txt"/>
+            <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="svc_prediction_result01.tabular"/>
+        </test>
+        <test>
+            <param name="infile_model" value="svc_model02.txt" ftype="txt"/>
+            <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="svc_prediction_result02.tabular"/>
+        </test>
+        <test>
+            <param name="infile_model" value="svc_model03.txt" ftype="txt"/>
+            <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="svc_prediction_result03.tabular"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+This module implements the Support Vector Machine (SVM) classification algorithms.
+Support vector machines (SVMs) are a set of supervised learning methods used for classification, regression and outliers detection.
+
+**The advantages of support vector machines are:**
+
+        1- Effective in high dimensional spaces.
+
+        2- Still effective in cases where number of dimensions is greater than the number of samples.
+
+        3- Uses a subset of training points in the decision function (called support vectors), so it is also memory efficient.
+
+        4- Versatile: different Kernel functions can be specified for the decision function. Common kernels are provided, but it is also possible to specify custom kernels.
+
+**The disadvantages of support vector machines include:**
+
+        1- If the number of features is much greater than the number of samples, the method is likely to give poor performances.
+
+        2- SVMs do not directly provide probability estimates, these are calculated using an expensive five-fold cross-validation
+
+For more information check http://scikit-learn.org/stable/modules/neighbors.html
+
+    ]]>
+    </help>
+    <expand macro="sklearn_citation"/>
+</tool>
