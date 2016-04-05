@@ -16,7 +16,7 @@ Inputfiles, workflowsteps and results are stored in a history where you can view
 It is possible to share workflows and histories with other users or make the public available.
 Saved workflows can be used with new input files or just to rerun an analyses which ensures repeatability.
 
-
+===============
 
 Getting Started
 ===============
