@@ -1,0 +1,163 @@
+<tool id="sklearn_pairwise_metrics" name="Evaluate pairwise distances" version="@VERSION@">
+    <description>or compute affinity or kernel for sets of samples</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        python "$pairwise_script" '$inputs'
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+        <configfile name="pairwise_script">
+            <![CDATA[
+import sys
+import json
+import pandas
+import numpy as np
+from sklearn.metrics import pairwise
+from sklearn.metrics import pairwise_distances_argmin
+from scipy.io import mmread
+from scipy.io import mmwrite
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+
+options = params["input_type"]["metric_functions"]["options"]
+metric_function = params["input_type"]["metric_functions"]["selected_metric_function"]
+
+input_iter = []
+#for $i, $s in enumerate( $input_type.input_files )
+input_index=$i
+input_path="${s.input.file_name}"
+#if $input_type.selected_input_type == "sparse":
+input_iter.append(mmread(open(input_path, 'r')))
+#else:
+input_iter.append(pandas.read_csv(input_path, sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False ).values)
+#end if
+#end for
+
+if len(input_iter)>1:
+    X = input_iter[0]
+    Y = input_iter[1]
+else: X = Y = input_iter[0]
+
+if metric_function=="pairwise_distances_argmin":
+    metric_res = pairwise_distances_argmin(X,Y,**options)
+else:
+    my_function = getattr(pairwise, metric_function)
+    metric_res = my_function(X,Y,**options)
+
+pandas.DataFrame(metric_res).to_csv(path_or_buf = "$outfile", sep="\t", index=False, header=False)    
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="input_type">
+            <param name="selected_input_type" type="select" label="Select the type of your input data:">
+                <option value="tabular" selected="true">Tabular data (.tabular, .txt)</option>
+                <option value="sparse">Sparse matrix (.mtx)</option>
+            </param>
+            <when value="tabular">
+                <expand macro="multiple_input" max_num="2" format="tabular"/>
+                <conditional name="metric_functions">
+                    <expand macro="sparse_pairwise_metric_functions">
+                        <expand macro="pairwise_metric_functions"/>
+                    </expand>
+                    <when value="additive_chi2_kernel">
+                    </when>
+                    <when value="chi2_kernel">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <expand macro="gamma" help_text="Floating point scaling parameter of the chi2 kernel. "/>
+                        </section>
+                    </when>
+                    <when value="linear_kernel">
+                    </when>           
+                    <when value="manhattan_distances">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <param argument="sum_over_features" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Sum over features" help="If True, return the pairwise distance matrix, else return the componentwise L1 pairwise-distances. "/>
+                        </section>
+                    </when>
+                    <when value="polynomial_kernel">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <expand macro="gamma" default_value=""/>
+                            <expand macro="degree"/>
+                            <expand macro="coef0"/>
+                        </section>
+                    </when>
+                    <when value="rbf_kernel">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <expand macro="gamma" default_value=""/>
+                        </section>
+                    </when>
+                    <when value="laplacian_kernel">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <expand macro="gamma" default_value=""/>
+                        </section>
+                    </when>
+                    <when value="pairwise_kernels">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <expand macro="pairwise_kernel_metrics"/>
+                        </section>
+                    </when>
+                    <expand macro="sparse_pairwise_condition">
+                        <expand macro="distance_nonsparse_metrics"/>
+                    </expand>
+                    <expand macro="argmin_distance_condition">
+                        <expand macro="distance_nonsparse_metrics"/>
+                    </expand>
+                </conditional>
+            </when>
+            <when value="sparse">
+                <expand macro="multiple_input" max_num="2"/>
+                <conditional name="metric_functions">
+                    <expand macro="sparse_pairwise_metric_functions"/>
+                    <expand macro="sparse_pairwise_condition"/>
+                    <expand macro="argmin_distance_condition"/>
+                </conditional>
+            </when>            
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="selected_input_type" value="tabular"/>
+            <param name="selected_metric_function" value="rbf_kernel"/>
+            <param name="input_files_0|input" value="test.tabular" ftype="tabular"/>
+            <param name="input_files_1|input" value="test2.tabular" ftype="tabular"/>
+            <param name="gamma" value="0.5"/>
+            <output name="outfile" file="pw_metric01.tabular"/>
+        </test>
+        <test>
+            <param name="selected_input_type" value="tabular"/>
+            <param name="selected_metric_function" value="pairwise_distances"/>
+            <param name="metric" value="manhattan"/>
+            <param name="input_files_0|input" value="test.tabular" ftype="tabular"/>
+            <output name="outfile" file="pw_metric02.tabular"/>
+        </test>
+        <test>
+            <param name="selected_input_type" value="sparse"/>
+            <param name="selected_metric_function" value="pairwise_distances"/>
+            <param name="metric" value="cosine"/>
+            <param name="input_files_0|input" value="sparse.mtx" ftype="txt"/>
+            <output name="outfile" file="pw_metric03.tabular"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+
+This tool consists of utilities to evaluate pairwise distances or affinity of sets of samples.
+The base utilities are contained in Scikit-learn python library in sklearn.metrics package.
+This module contains both distance metrics and kernels. For a brief summary, please refer to:
+http://scikit-learn.org/stable/modules/metrics.html#metrics 
+        ]]>
+    </help>
+    <expand macro="sklearn_citation"/>
+</tool>
