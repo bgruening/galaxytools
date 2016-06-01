@@ -1,1 +1,1 @@
-This tool is not further developed here, but in `tools-iuc <https://github.com/galaxyproject/tools-iuc/tree/master/tools/prinseq>`_. 
+This tool is not further developed here. We can now found it in `tools-iuc <https://github.com/galaxyproject/tools-iuc/tree/master/tools/prinseq>`_. 
