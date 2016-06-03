@@ -448,6 +448,33 @@ class PDB( GenericMolFile ):
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disk'
 
+class PDBQT(GenericMolFile):
+    """
+    Autodock Format
+    The PDBQT format stores the atomic coordinates, partial charges and AutoDock atom types,
+    for both the receptor and the ligand.
+    http://autodock.scripps.edu/faqs-help/faq/what-is-the-format-of-a-pdbqt-file
+    """
+    file_ext = "pdbqt"
+
+    def sniff(self, filename):
+        if count_special_lines('COMPND', filename) > 0:
+            return True
+        elif count_special_lines('REMARK', filename) > 0:
+            return True
+        elif count_special_lines('ATOM') > 0:
+            return True
+        else:
+            return False
+
+    def set_peek(self, dataset, is_multi_byte=False):
+        if not dataset.dataset.purged:
+            self.sniff(dataset.filename)
+            dataset.blurb = "protein structure file used by autodock vina"
+        else:
+            dataset.peek = "file does not exist"
+            dataset.blurb = "file purged from disk"
+
 
 class grd( data.Text ):
     file_ext = "grd"
