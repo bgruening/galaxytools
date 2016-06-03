@@ -1,0 +1,223 @@
+<tool id="sklearn_data_preprocess" name="Preprocess" version="@VERSION@">
+    <description>raw feature vectors into standardized datasets</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        python "$pre_processor_script" '$inputs'
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+        <configfile name="pre_processor_script">
+            <![CDATA[
+import sys
+import json
+import pandas
+import pickle
+import numpy as np
+from scipy.io import mmread
+from scipy.io import mmwrite
+from sklearn import preprocessing
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+
+#if $input_type.selected_input_type == "sparse":
+X = mmread(open("$infile", 'r'))
+#else:
+X = pandas.read_csv("$infile", sep='\t', header=None, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+#end if
+
+#if $input_type.pre_processors.infile_transform.ext == 'txt':
+y = mmread(open("$infile", 'r'))
+#else:
+y = pandas.read_csv("$infile", sep='\t', header=None, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+#end if
+
+preprocessor = params["input_type"]["pre_processors"]["selected_pre_processor"]
+options = params["input_type"]["pre_processors"]["options"]
+
+my_class = getattr(preprocessing, preprocessor)
+estimator = my_class(**options)
+estimator.fit(X)
+result = estimator.transform(y)
+
+#if $input_type.pre_processors.infile_transform.ext == 'txt':
+mmwrite(open("$outfile_transform" , 'w+'), result)
+#else:
+res = pandas.DataFrame(result)
+res.to_csv(path_or_buf = "$outfile_transform", sep="\t", index=False, header=None)
+#end if
+
+#if $save:
+pickle.dump(estimator,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCOL)
+#end if
+        ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="input_type">
+            <param name="selected_input_type" type="select" label="Select the type of your input data:">
+                <option value="tabular" selected="true">Tabular</option>
+                <option value="sparse">Sparse</option>
+            </param>
+            <when value="tabular">
+                <param name="infile" type="data" format="tabular" label="Select a tabular file you want to train your preprocessor on its data:"/>
+                <conditional name="pre_processors">
+                    <expand macro="sparse_preprocessors">
+                        <option value="KernelCenterer">Kernel Centerer (Centers a kernel matrix)</option>
+                        <option value="MinMaxScaler">Minmax Scaler (Scales features to a range)</option>
+                        <option value="PolynomialFeatures">Polynomial Features (Generates polynomial and interaction features)</option>
+                        <option value="RobustScaler">Robust Scaler (Scales features using outlier-invariance statistics)</option>
+                    </expand>
+                    <expand macro="sparse_preprocessor_options">
+                        <when value="KernelCenterer">
+                            <expand macro="multitype_input"/>
+                            <section name="options" title="Advanced Options" expanded="False">
+                            </section>
+                        </when>
+                        <when value="MinMaxScaler">
+                            <expand macro="multitype_input"/>
+                            <section name="options" title="Advanced Options" expanded="False">
+                                <!--feature_range-->
+                                <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Use a copy of data for precomputing normalization" help=" "/>
+                            </section>
+                        </when>            
+                        <when value="PolynomialFeatures">
+                            <expand macro="multitype_input"/>
+                            <section name="options" title="Advanced Options" expanded="False">
+                                <param argument="degree" type="integer" optional="true" value="2" label="The degree of the polynomial features " help=""/>
+                                <param argument="interaction_only" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="false" label="Produce interaction features only" help="(Features that are products of at most degree distinct input features) "/>
+                                <param argument="include_bias" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Include a bias column" help="Feature in which all polynomial powers are zero "/>
+                            </section>
+                        </when>            
+                        <when value="RobustScaler">
+                            <expand macro="multitype_input"/>
+                            <section name="options" title="Advanced Options" expanded="False">
+                                <!--=True, =True, copy=True-->
+                                <param argument="with_centering" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Center the data before scaling" help=" "/>
+                                <param argument="with_scaling" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Scale the data to interquartile range" help=" "/>
+                                <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Use a copy of data for inplace scaling" help=" "/>
+                            </section>
+                        </when>            
+                    </expand>
+                </conditional>
+            </when>
+            <when value="sparse">
+                <param name="infile" type="data" format="txt" label="Select a sparse representation you want to train your preprocessor on its data:"/>
+                <conditional name="pre_processors">
+                    <expand macro="sparse_preprocessors"/>
+                    <expand macro="sparse_preprocessor_options"/>
+                </conditional>
+            </when>            
+        </conditional>
+        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolflase" checked="false" label="Save the preprocessor" help="Saves the preprocessor after fitting to the data. The preprocessor can then be passed to other tools and used in later operations."/>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile_transform" from_work_dir="./output"/>
+        <data format="zip" name="outfile_fit">
+            <filter>save</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="train.tabular" ftype="tabular"/>
+            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_input_type" value="tabular"/>
+            <param name="selected_pre_processor" value="KernelCenterer"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result01" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model01" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="train.tabular" ftype="tabular"/>
+            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_input_type" value="tabular"/>
+            <param name="selected_pre_processor" value="MinMaxScaler"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result02" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model02" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="train.tabular" ftype="tabular"/>
+            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_input_type" value="tabular"/>
+            <param name="selected_pre_processor" value="PolynomialFeatures"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result03" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model03" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="train.tabular" ftype="tabular"/>
+            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_input_type" value="tabular"/>
+            <param name="selected_pre_processor" value="RobustScaler"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result04" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model04" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="selected_input_type" value="sparse"/>
+            <param name="selected_pre_processor" value="Binarizer"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result05" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model05" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="selected_input_type" value="sparse"/>
+            <param name="selected_pre_processor" value="Imputer"/>
+            <param name="save" value="true"/>
+            <param name="axis" value="true"/>
+            <output name="outfile_transform" file="prp_result06" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model06" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="train.tabular" ftype="tabular"/>
+            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_input_type" value="tabular"/>
+            <param name="selected_pre_processor" value="StandardScaler"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result07" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model07" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="selected_input_type" value="sparse"/>
+            <param name="selected_pre_processor" value="MaxAbsScaler"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result08" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model08" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
+            <param name="selected_input_type" value="sparse"/>
+            <param name="selected_pre_processor" value="Normalizer"/>
+            <param name="save" value="true"/>
+            <output name="outfile_transform" file="prp_result09" ftype="tabular"/>
+            <output name="outfile_fit" file="prp_model09" ftype="zip" compare="sim_size" delta="500"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+
+This tool provides several transformer classes to change raw feature vectors into a representation that is more suitable for the downstream estimators. The library is provided by sklearn.preprocessing package.
+
+For information about preprocessing classes and parameter settings please refer to `Scikit-learn preprocessing`_.
+
+.. _`Scikit-learn preprocessing`: http://scikit-learn.org/stable/modules/preprocessing.html
+        ]]>
+    </help>
+    <expand macro="sklearn_citation"/>
+</tool>
