@@ -1,0 +1,133 @@
+<tool id="vt_@BINARY@" name="VT @BINARY@" version="@VERSION@.0">
+    <description>decomposes multiallelic variants into biallelic ones</description>
+    <macros>
+        <import>vt_macros.xml</import>
+        <token name="@BINARY@">decompose</token>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
+    <expand macro="version_command" />
+    <command>
+<![CDATA[
+
+        ln -s "${ infile }" infile.vcf &&
+
+
+        vt @BINARY@
+            #if str($output_format) == 'bcf':
+                -o decompose.bcf
+            #else:
+                -o decompose.vcf
+            #end if
+            $s
+            infile.vcf
+
+        &&
+        ## For some reason, the file move will randomly produce empty files.
+        ## Wait two seconds to let the system close file handlers and clean up.
+        sleep 2
+        &&
+
+        #if str($output_format) == 'bcf':
+            mv decompose.bcf "${ outfile }";
+        #else:
+            mv decompose.vcf "${ outfile }";
+        #end if
+
+]]>
+    </command>
+    <inputs>
+        <param name="infile" type="data" format="vcf" label="VCF file to be normalised" />
+
+        <param argument="-s" type="boolean" truevalue="-s" falsevalue=""
+            selected="false" label="Smart decomposition"
+            help="Splits up INFO and GENOTYPE fields that have number counts of R and A appropriately."/>
+
+        <param name="output_format" type="select" label="Choose the output format" help="">
+            <option value="bcf">BCF</option>
+            <option value="vcf" selected="true">VCF</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="outfile" format="vcf" label="${tool.name} on ${on_string}">
+            <change_format>
+                <when input="output_format" value="bcf" format="bcf" />
+            </change_format>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="infile01.vcf" />
+            <output name="outfile" file="decompose_result01.vcf" ftype="vcf" />
+        </test>
+        <test>
+            <param name="infile" value="infile02.vcf" />
+            <param name="s" value="True" />
+            <output name="outfile" file="decompose_result02.vcf" ftype="vcf" />
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+**What it does**
+
+Decompose multiallelic variants in a VCF file.
+If the VCF file has genotype fields GT,PL, GL or DP, they are modified to reflect the change in alleles.
+All other genotype fields are removed. The -s option will retain the fields and decompose fields of counts R and A accordingingly.
+
+Decomposition and combining variants is a complex operation where the correctness is dependent on:
+
+    * whether the observed variants are seen in the same sample
+    * if same sample, whether they are homozygous or heterozygous
+    * if both heterozygous, whether they are in the same haplotype or not (if known)
+
+and one should be aware of the issues in handling variants resulting from such operations.
+The original purpose of this tool is to allow for allelic comparisons between call sets. 
+
+Standard option:
+
+Before decomposition
+
+.. code::
+
+  #CHROM  POS     ID   REF     ALT         QUAL   FILTER  INFO                  FORMAT    S1                                     S2
+  1       3759889 .    TA      TAA,TAAA,T  .      PASS    AF=0.342,0.173,0.037	GT:DP:PL	  1/2:81:281,5,9,58,0,115,338,46,116,809	 0/0:86:0,30,323,31,365,483,38,291,325,567
+
+After decomposition
+
+.. code::
+
+  #CHROM  POS     ID   REF     ALT         QUAL   FILTER  INFO                                        FORMAT   S1               S2
+  1	  3759889 .    TA      TAA	   .	  PASS    OLD_MULTIALLELIC=1:3759889:TA/TAA/TAAA/T    GT:PL    1/.:281,5,9      0/0:0,30,323
+  1	  3759889 .    TA      TAAA        .      .       OLD_MULTIALLELIC=1:3759889:TA/TAA/TAAA/T    GT:PL    ./1:281,58,115   0/0:0,31,483
+  1	  3759889 .    TA      T           .      .       OLD_MULTIALLELIC=1:3759889:TA/TAA/TAAA/T    GT:PL    ./.:281,338,809  0/0:0,38,567
+
+
+One might want to post process the partial genotypes like 1/. to the best guess genotype based on the PL values.
+
+
+With **-s** option:
+
+Before decomposition
+
+.. code::
+
+  #CHROM  POS     ID   REF     ALT         QUAL   FILTER  INFO                  FORMAT    S1                                     S2
+  1       3759889 .    TA      TAA,TAAA,T  .      PASS    AF=0.342,0.173,0.037	GT:DP:PL	  1/2:81:281,5,9,58,0,115,338,46,116,809	 0/0:86:0,30,323,31,365,483,38,291,325,567
+
+After decomposition
+
+.. code::
+
+  #CHROM  POS     ID   REF     ALT         QUAL   FILTER  INFO                                                 FORMAT   S1               S2
+  1	  3759889 .    TA      TAA	   .	  PASS    AF=0.342;OLD_MULTIALLELIC=1:3759889:TA/TAA/TAAA/T    GT:PL    1/.:281,5,9      0/0:0,30,323
+  1	  3759889 .    TA      TAAA        .      .       AF=0.173;OLD_MULTIALLELIC=1:3759889:TA/TAA/TAAA/T    GT:PL    ./1:281,58,115   0/0:0,31,483
+  1	  3759889 .    TA      T           .      .       AF=0.037;OLD_MULTIALLELIC=1:3759889:TA/TAA/TAAA/T    GT:PL    ./.:281,338,809  0/0:0,38,567
+
+In general, you should recompute fields that involves alleles after decomposition.  Information is generally lost after vertically decomposing a variant, so care should be taken in interpreting the resultant values.
+
+@CITATION@
+]]>
+    </help>
+    <expand macro="citations"/>
+</tool>
