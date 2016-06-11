@@ -5,6 +5,8 @@ barcode_collapse.py  read in a .bam file where the
 first 9 nt of the read name
 are the barcode and merge reads mapped to the same position that have the same barcode
 
+From: https://github.com/YeoLab/gscripts
+
 """
 
 from collections import Counter
@@ -69,6 +71,7 @@ def barcode_collapse(in_bam, out_bam):
             for key, (read1, read2) in result_dict.items():
                 out_bam.write(read1)
                 out_bam.write(read2)
+                print 'foo bar'
     return total_count, removed_count
 
 if __name__ == "__main__":
