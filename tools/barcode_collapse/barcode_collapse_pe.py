@@ -71,7 +71,7 @@ def barcode_collapse(in_bam, out_bam):
             for key, (read1, read2) in result_dict.items():
                 out_bam.write(read1)
                 out_bam.write(read2)
-                print 'foo bar'
+
     return total_count, removed_count
 
 if __name__ == "__main__":
