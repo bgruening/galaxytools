@@ -21,7 +21,7 @@ for directory in sys.stdin:
             if directory not in bl:
                 for filename in os.listdir(directory):
                     xml_path = os.path.join(directory, filename)
-                    if xml_path.endswith('.xml') and is_tool(xml_path)
+                    if xml_path.endswith('.xml') and is_tool(xml_path):
                         print(xml_path)
             break
         else:
