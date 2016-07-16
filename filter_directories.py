@@ -8,21 +8,28 @@ def is_tool(path):
     xml = etree.parse(path)
     return xml.getroot().tag == 'tool'
 
+uploads = open('uploads.txt', 'w+')
+tests = open('tests.txt', 'w+')
 
 with open('.tt_blacklist') as handle:
     bl = [tool.strip() for tool in handle]
 
 for directory in sys.stdin:
     directory = directory.strip()
-    if directory.startswith('packages') or directory.startswith('data_managers'):
+    if directory.startswith('data_managers'):
         continue
     while directory:
         if os.path.exists( os.path.join(directory, '.shed.yml') ) or os.path.exists( os.path.join(directory, '.shed.yaml') ):
             if directory not in bl:
-                for filename in os.listdir(directory):
-                    xml_path = os.path.join(directory, filename)
-                    if xml_path.endswith('.xml') and is_tool(xml_path):
-                        print(xml_path)
+                uploads.write(directory)
+                if not directory.startswith('packages'):
+                    for filename in os.listdir(directory):
+                        xml_path = os.path.join(directory, filename)
+                        if xml_path.endswith('.xml') and is_tool(xml_path):
+                            tests.write(xml_path)
             break
         else:
             directory = os.path.dirname( directory )
+
+tests.close()
+uploads.close()
