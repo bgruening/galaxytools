@@ -119,16 +119,19 @@ class Model():
         self.train = function(
             inputs=[fp, fr, y],
             outputs=[y_hat, cost],
-            updates=updates)
+            updates=updates,
+            allow_input_downcast=True)
         # test
         self.test = function(
             inputs=[fp, fr, y],
-            outputs=[y_hat, cost])
+            outputs=[y_hat, cost],
+            allow_input_downcast=True)
 
         # predict
         self.predict = function(
             inputs=[fp, fr],
-            outputs=y_hat)
+            outputs=y_hat,
+            allow_input_downcast=True)
 
         if verbose:
             print("Done.")
