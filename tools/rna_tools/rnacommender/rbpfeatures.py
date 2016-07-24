@@ -1,6 +1,7 @@
 """Compute the RBP features."""
 
 import re
+import sys
 import subprocess as sp
 import uuid
 from os import mkdir
@@ -56,6 +57,9 @@ class RBPVectorizer():
         nf.write(pfam_utils.search_header())
 
         fasta = fasta_utils.import_fasta(self.fasta)
+
+        if len(fasta) != 1:
+            sys.exit("""Fasta file must contain exactly one sequence.""")
 
         for rbp in sorted(fasta.keys()):
             seq = fasta[rbp]
