@@ -5,7 +5,7 @@ import sys
 
 import numpy as np
 
-from theano import config, function, shared
+from theano import function, shared
 import theano.tensor as T
 
 __author__ = "Gianluca Corrado"
@@ -61,25 +61,25 @@ class Model():
         self.lambda_reg = lambda_reg
         np.random.seed(seed)
         # explictit features for proteins
-        fp = T.matrix("Fp", dtype=config.floatX)
+        fp = T.matrix("Fp", dtype='float32')
         # explictit features for RNAs
-        fr = T.matrix("Fr", dtype=config.floatX)
+        fr = T.matrix("Fr", dtype='float32')
         # Correct label
         y = T.vector("y")
 
         # projection matrix for proteins
         self.Ap = shared(((.5 - np.random.rand(kp, sp)) *
-                          irange).astype(config.floatX), name="Ap")
+                          irange).astype('float32'), name="Ap")
         self.bp = shared(((.5 - np.random.rand(kp)) *
-                          irange).astype(config.floatX), name="bp")
+                          irange).astype('float32'), name="bp")
         # projection matrix for RNAs
         self.Ar = shared(((.5 - np.random.rand(kr, sr)) *
-                          irange).astype(config.floatX), name="Ar")
+                          irange).astype('float32'), name="Ar")
         self.br = shared(((.5 - np.random.rand(kr)) *
-                          irange).astype(config.floatX), name="br")
+                          irange).astype('float32'), name="br")
         # generalization matrix
         self.B = shared(((.5 - np.random.rand(kp, kr)) *
-                         irange).astype(config.floatX), name="B")
+                         irange).astype('float32'), name="B")
 
         # Latent space for proteins
         p = T.nnet.sigmoid(T.dot(fp, self.Ap.T) + self.bp)
