@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 
 from theano import config
+config.floatX = 'float32'
 
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"
@@ -30,10 +31,10 @@ class Dataset(object):
         fr : str
             The name of the HDF5 file containing features for the RNAs.
         """
-        self.Fp = fp.astype(config.floatX)
+        self.Fp = fp.astype('float32')
 
         store = pd.io.pytables.HDFStore(fr)
-        self.Fr = store.features.astype(config.floatX)
+        self.Fr = store.features.astype('float32')
         store.close()
 
     def load(self):
