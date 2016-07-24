@@ -75,9 +75,9 @@ class PredictDataset(Dataset):
         protein_input_dim = self.Fp.shape[0]
         rna_input_dim = self.Fr.shape[0]
         num_examples = self.Fp.shape[1] * self.Fr.shape[1]
-        p = np.zeros((num_examples, protein_input_dim)).astype(config.floatX)
+        p = np.zeros((num_examples, protein_input_dim)).astype('float32')
         p_names = []
-        r = np.zeros((num_examples, rna_input_dim)).astype(config.floatX)
+        r = np.zeros((num_examples, rna_input_dim)).astype('float32')
         r_names = []
         index = 0
         for protein in self.Fp.columns:
