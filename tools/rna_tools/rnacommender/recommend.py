@@ -53,7 +53,7 @@ class Predictor():
         """Predict interaction values."""
         # predict the y_hat
         (p, p_names, r, r_names) = self.predict_dataset
-        y_hat = self.model.predict(p, r, allow_input_downcast=True)
+        y_hat = self.model.predict(p, r)
         # sort the interactions according to y_hat
         ordering = sorted(range(len(y_hat)),
                           key=lambda x: y_hat[x], reverse=True)
