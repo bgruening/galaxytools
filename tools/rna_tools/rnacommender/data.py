@@ -4,9 +4,6 @@ import numpy as np
 
 import pandas as pd
 
-from theano import config
-config.floatX = 'float32'
-
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"
 __license__ = "MIT"
