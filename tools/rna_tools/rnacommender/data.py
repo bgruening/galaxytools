@@ -4,8 +4,6 @@ import numpy as np
 
 import pandas as pd
 
-from theano import config
-
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"
 __license__ = "MIT"
@@ -30,10 +28,10 @@ class Dataset(object):
         fr : str
             The name of the HDF5 file containing features for the RNAs.
         """
-        self.Fp = fp.astype(config.floatX)
+        self.Fp = fp.astype('float32')
 
         store = pd.io.pytables.HDFStore(fr)
-        self.Fr = store.features.astype(config.floatX)
+        self.Fr = store.features.astype('float32')
         store.close()
 
     def load(self):
@@ -74,9 +72,9 @@ class PredictDataset(Dataset):
         protein_input_dim = self.Fp.shape[0]
         rna_input_dim = self.Fr.shape[0]
         num_examples = self.Fp.shape[1] * self.Fr.shape[1]
-        p = np.zeros((num_examples, protein_input_dim)).astype(config.floatX)
+        p = np.zeros((num_examples, protein_input_dim)).astype('float32')
         p_names = []
-        r = np.zeros((num_examples, rna_input_dim)).astype(config.floatX)
+        r = np.zeros((num_examples, rna_input_dim)).astype('float32')
         r_names = []
         index = 0
         for protein in self.Fp.columns:

@@ -7,8 +7,6 @@ from rbpfeatures import RBPVectorizer
 from data import PredictDataset
 from recommend import Predictor
 
-from theano import config
-
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"
 __license__ = "MIT"
@@ -16,7 +14,6 @@ __maintainer__ = "Gianluca Corrado"
 __email__ = "gianluca.corrado@unitn.it"
 __status__ = "Production"
 
-config.floatX = 'float32'
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(

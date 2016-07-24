@@ -53,6 +53,8 @@ class Predictor():
         """Predict interaction values."""
         # predict the y_hat
         (p, p_names, r, r_names) = self.predict_dataset
+        assert p.dtype == 'float32'
+        assert r.dtype == 'float32'
         y_hat = self.model.predict(p, r)
         # sort the interactions according to y_hat
         ordering = sorted(range(len(y_hat)),
