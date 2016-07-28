@@ -43,4 +43,6 @@ if __name__ == '__main__':
                       output="output.txt")
         P.predict()
     else:
-        sys.exit("""The queried protein has no domain similarity with the proteins in the training dataset. It cannot be predicted.""")
+        print """
+        The queried protein has no domain similarity with the proteins in the training dataset. It cannot be predicted.
+        """
