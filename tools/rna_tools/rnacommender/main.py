@@ -44,5 +44,7 @@ if __name__ == '__main__':
         P.predict()
     else:
         sys.stdout.write("""
-        The queried protein has no domain similarity with the proteins in the training dataset. It cannot be predicted.
+        ########################################
+        WARNING: The queried protein has no domain similarity with the proteins in the training dataset. It cannot be predicted.
+        ########################################
         """)
