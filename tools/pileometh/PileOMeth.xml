@@ -1,7 +1,7 @@
-<tool id="pileometh" name="PileOMeth" version="0.1.9">
+<tool id="pileometh" name="PileOMeth" version="0.1.13">
     <description>A tool for processing bisulfite sequencing alignments</description>
     <requirements>
-        <requirement type="package" version="0.1.9">pileometh</requirement>
+        <requirement type="package" version="0.1.13">pileometh</requirement>
     </requirements>
     <stdio>
         <!-- Anything other than zero is an error -->
@@ -11,9 +11,13 @@
         <regex match="Error:" />
         <regex match="Exception:" />
     </stdio>
-    <version_command><![CDATA[PileOMeth 2>&1  | head -n 2 | tail -n 1]]></version_command>
+    <version_command><![CDATA[PileOMeth --version]]></version_command>
     <command><![CDATA[
-        ln -s $reference_source.ref_file.fields.path reference.fasta &&
+        #if $reference_source.reference_source_selector == "cached":
+            ln -s $reference_source.ref_file.fields.path reference.fasta &&
+        #else:
+            ln -s $reference_source.ref_file reference.fasta &&
+        #end if
 
         PileOMeth
             $main_task.task
@@ -21,6 +25,18 @@
             #if $main_task.task == "extract":
                 -o output
                 $main_task.mergeContext
+                #if str($main_task.OT).strip() != "":
+                    --OT $main_task.OT
+                #end if
+                #if str($main_task.OB).strip() != "":
+                    --OB $main_task.OB
+                #end if
+                #if str($main_task.CTOT).strip() != "":
+                    --CTOT $main_task.CTOT
+                #end if
+                #if str($main_task.CTOB).strip() != "":
+                    --CTOB $main_task.CTOB
+                #end if
             #end if
 
             #if $advanced_options.options=="yes":
@@ -32,6 +48,7 @@
                 -q $advanced_options.min_mapq
                 -p $advanced_options.min_phred
                 -D $advanced_options.max_pbdepth
+                -d $advanced_options.min_pbdepth
                 $advanced_options.CHG
                 $advanced_options.CHH
             #end if
@@ -41,7 +58,11 @@
             $input_sortedAlignBAM
 
             #if $main_task.task == "mbias":
-                out_mbias
+                out_mbias &&
+                touch out_mbias_OT.svg &&
+                touch out_mbias_OB.svg &&
+                touch out_mbias_CTOT.svg &&
+                touch out_mbias_CTOB.svg
             #end if
     ]]></command>
     <inputs>
@@ -70,6 +91,21 @@
             <when value="extract">
                 <param name="mergeContext" type="boolean" checked="false" truevalue="--mergeContext" falsevalue=""
                 label="Merge per-Cytosine metrics from CpG and CHG contexts into per-CPG or per-CHG metrics" help="(--mergeContext)" />
+                <param name="OT" type="text" value="" label="Original top strand bounds (comma-separated, no spaces)"
+                    help="Inclusion bounds for methylation calls from reads/pairs
+                          origination from the original top strand. Suggested values can
+                          be obtained from the MBias program. Each integer represents a
+                          1-based position on a read. For example --OT A,B,C,D
+                          translates to, 'Include calls at positions from A through B
+                          on read #1 and C through D on read #2'. If a 0 is used a any
+                          position then that is translated to mean start/end of the
+                          alignment, as appropriate. For example, --OT 5,0,0,0 would
+                          include all but the first 4 bases on read #1. Users are
+                          strongly advised to consult a methylation bias plot, for
+                          example by using the MBias program." />
+                <param name="OB" type="text" value="" label="Original bottom strand bounds (comma-separated, no spaces)" />
+                <param name="CTOT" type="text" value="" label="Complementary to the original bottom strand bounds (comma-separated, no spaces)" />
+                <param name="CTOB" type="text" value="" label="Complementary to the original bottom strand bounds (comma-separated, no spaces)" />
             </when>
             <when value="mbias"/>
         </conditional>
@@ -87,6 +123,8 @@
                 <param name="min_mapq" type="integer" value="10" label="Minimum MAPQ threshold to include an alignment (default 10)"/>
                 <param name="min_phred" type="integer" value="5" label="Minimum Phred threshold to include a base (default 5). This must be >0."/>
                 <param name="max_pbdepth" type="integer" value="2000" label="Maximum per-base depth (default 2000)"/>
+                <param name="min_pbdepth" type="integer" value="1" min="1" label="Minimum per-base depth"
+                    help="Minimum per-base dpeth for reporting output. If you use --mergeContext (above), then this applies to the merged CpG/CHG (default 1). (-d)" />
 
                 <param name="CHG" type="boolean" checked="false" truevalue="--CHG" falsevalue=""
                     label="Additional output file with CHG methylation metrics" />
@@ -113,8 +151,20 @@
                 <filter>advanced_options['options'] == "yes"</filter>
                 <filter>advanced_options['CHH'] == "--CHH" </filter>
             </data>
-            <data  name="outFileMbiasCpG" format="svg" from_work_dir="out_mbias_OT.svg"
-                label="${tool.name} on ${on_string} (methylation bias)">
+            <data  name="outFileMbiasCpGOT" format="svg" from_work_dir="out_mbias_OT.svg"
+                label="${tool.name} on ${on_string} (methylation bias, original top strand)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+            <data  name="outFileMbiasCpGOB" format="svg" from_work_dir="out_mbias_OB.svg"
+                label="${tool.name} on ${on_string} (methylation bias, original bottom strand)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+            <data  name="outFileMbiasCpGCTOT" format="svg" from_work_dir="out_mbias_CTOT.svg"
+                label="${tool.name} on ${on_string} (methylation bias, complementary to the original top strand)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+            <data  name="outFileMbiasCpGCTOB" format="svg" from_work_dir="out_mbias_CTOB.svg"
+                label="${tool.name} on ${on_string} (methylation bias, complementary to the original bottom strand)">
                 <filter>main_task['task']  == 'mbias'</filter>
             </data>
     </outputs>
