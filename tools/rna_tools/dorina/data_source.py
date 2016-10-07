@@ -3,12 +3,12 @@
 # Data source application parameters are temporarily stored in the dataset file.
 import socket, urllib, sys, os
 from galaxy import eggs #eggs needs to be imported so that galaxy.util can find docutils egg...
-from galaxy.util.json import loads, dumps
 from galaxy.util import get_charset_from_http_headers
 import galaxy.model # need to import model before sniff to resolve a circular import dependency
 from galaxy.datatypes import sniff
 from galaxy.datatypes.registry import Registry
 from galaxy.jobs import TOOL_PROVIDED_JOB_METADATA_FILE
+from json import loads, dumps
 
 assert sys.version_info[:2] >= ( 2, 4 )
 
