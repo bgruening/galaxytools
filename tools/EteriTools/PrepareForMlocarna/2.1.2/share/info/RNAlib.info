@@ -1,0 +1,1594 @@
+This is RNAlib.info, produced by makeinfo version 4.13 from RNAlib.texinfo.
+
+
+File: RNAlib.info,  Node: Top,  Next: Introduction,  Prev: (dir),  Up: (dir)
+
+   This file documents the Vienna RNA Package Version 1.6
+
+   Copyright (C)1994-2002 Ivo Hofacker and Peter Stadler
+
+* Menu:
+
+* Introduction::
+* Folding Routines::            Functions for Folding RNA Secondary Structures
+* Parsing and Comparing::       Functions to Manipulate Structures
+* Utilities::                   Odds and Ends
+* Example::                     A Small Example Program
+* References::
+* Function Index::
+* Variable Index::
+
+
+File: RNAlib.info,  Node: Introduction,  Next: Folding Routines,  Prev: Top,  Up: Top
+
+1 Introduction
+**************
+
+The core of the Vienna RNA Package is formed by a collection of routines
+for the prediction and comparison of RNA secondary structures. These
+routines can be accessed through stand-alone programs, such as RNAfold,
+RNAdistance etc., which should be sufficient for most users. For those
+who wish to develop their own programs we provide a library which can be
+linked to your own code.
+
+   This document describes the library and will be primarily useful to
+programmers. However, it also contains details about the implementation
+that may be of interest to advanced users. The stand-alone programs are
+described in separate man pages.  The latest version of the package
+including source code and html versions of the documentation can be
+found at `http://www.tbi.univie.ac.at/~ivo/RNA/'.  This manual
+documents version 1.6.
+
+   Please send comments and bug reports to <ivo@tbi.univie.ac.at>.
+
+
+File: RNAlib.info,  Node: Folding Routines,  Next: Parsing and Comparing,  Prev: Introduction,  Up: Top
+
+2 Folding Routines
+******************
+
+* Menu:
+
+* mfe Fold::                    Calculating Minimum Free Energy Structures
+* PF Fold::                     Calculating Partition Functions and Pair Probabilities
+* Inverse Fold::                Searching for Predefined Structures
+* Suboptimal folding::          Enumerating Suboptimal Structures
+* Cofolding::                   Folding of 2 RNA molecules
+* Local Fold::                  Predicting local structures of large sequences
+* Alignment Fold::              Predicting Consensus Structures from Alignment
+* Fold Vars::                   Global Variables for the Folding Routines
+* Param Files::                 Reading Energy Parameters from File
+
+
+File: RNAlib.info,  Node: mfe Fold,  Next: PF Fold,  Prev: Folding Routines,  Up: Folding Routines
+
+2.1 Minimum free Energy Folding
+===============================
+
+The library provides a fast dynamic programming minimum free energy
+folding algorithm as described by `Zuker & Stiegler (1981)'.
+Associated functions are:
+
+ -- Function: float fold (char* SEQUENCE, char* STRUCTURE)
+     folds the SEQUENCE and returns the minimum free energy in kcal/mol;
+     the mfe structure in bracket notation (*note notations::) is
+     returned in STRUCTURE. Sufficient space for string of the same
+     length as SEQUENCE must be allocated for STRUCTURE before calling
+     `fold()'. If `fold_constrained' (*note Variables: Fold Vars.)  is
+     1, the STRUCTURE string is interpreted on input as a list of
+     constraints for the folding. The characters " | x < > " mark bases
+     that are paired, unpaired, paired upstream, or downstream,
+     respectively; matching brackets " ( ) " denote base pairs, dots
+     "." are used for unconstrained bases. Constrained folding works by
+     assigning bonus energies to all structures that comply with the
+     constraint.
+
+ -- Function: float energy_of_struct (char* SEQUENCE, char* STRUCTURE)
+     calculates the energy of SEQUENCE on the STRUCTURE
+
+   The `circ_fold()' and `energy_of_circ_struct()' provide analogous
+functions for folding and evaluating cricular RNA molecules.
+
+ -- Function: void initialize_fold (int LENGTH)
+     Obsolete function kept for backward compatibility.  Allocates
+     memory for mfe folding sequences not longer than LENGTH, and sets
+     up pairing matrix and energy parameters.
+
+ -- Function: void free_arrays ()
+     frees the memory allocated by `fold()'.
+
+ -- Function: void update_fold_params ()
+     call this to recalculate the pair matrix and energy parameters
+     after a change in folding parameters like `temperature' (*note
+     Variables: Fold Vars.).
+
+   Prototypes for these functions are declared in `fold.h'.
+
+
+File: RNAlib.info,  Node: PF Fold,  Next: Inverse Fold,  Prev: mfe Fold,  Up: Folding Routines
+
+2.2 Partition Function Folding
+==============================
+
+Instead of the minimum free energy structure the partition function of
+all possible structures and from that the pairing probability for every
+possible pair can be calculated, using a dynamic programming algorithm
+as described by `McCaskill (1990)'. The  following functions are
+provided:
+
+ -- Function: float pf_fold (char* SEQUENCE, char* STRUCTURE)
+     calculates the partition function Z of SEQUENCE and returns the
+     free energy of the ensemble F in kcal/mol, where F=-kT ln(Z). If
+     STRUCTURE is not a NULL pointer on input, it contains on return a
+     string consisting of the letters " . , | { } ( ) " denoting bases
+     that are essentially unpaired, weakly paired, strongly paired
+     without preference, weakly upstream (downstream) paired, or
+     strongly up- (down-)stream paired bases, respectively.  If
+     `fold_constrained' (*note Variables: Fold Vars.) is 1, the
+     STRUCTURE string is interpreted on input as a list of constraints
+     for the folding. The character "x" marks bases that must be
+     unpaired, matching brackets " ( ) " denote base pairs, all other
+     characters are ignored. Any pairs conflicting with the constraint
+     will be forbidden. This usually sufficient to ensure the
+     constraints are honored.  If `do_backtrack' (*note Variables: Fold
+     Vars.) has been set to 0 base pairing probabilities will not be
+     computed (saving CPU time), otherwise the `pr[iindx[i]-j]' (*note
+     Variables: Fold Vars.) will contain the probability that bases i
+     and j pair.
+
+ -- Function: void init_pf_fold (int LENGTH)
+     allocates memory for folding sequences not longer than LENGTH;
+     sets up pairing matrix and energy parameters. Has to be called
+     before the first call to `pf_fold()'.
+
+ -- Function: void free_pf_arrays (void)
+     frees the memory allocated by `init_pf_fold()'.
+
+ -- Function: void update_pf_params (int LENGTH)
+     Call this function to recalculate the pair matrix and energy
+     parameters after a change in folding parameters like temperature
+     (*note Variables: Fold Vars.).
+
+ -- Function: double mean_bp_dist (int LENGTH)
+     computes the mean base pair distance in the equilibrium ensemble
+     as a measure of the structural diversity.  It is given by <d> =
+     \sum_a,b p_a * p_b * d(a,b), where the sum goes over all pairs of
+     possible structure a,b, p_a is the Boltzmann weight of structure
+     a, and d(a,b) is the base pair distance (see `bp_distance()' in
+     *Note Distances::.). The mean base pair distances can be computed
+     efficiently from the pair probabilities p_ij as <d> = \sum_ij p_ij
+     * (1-p_ij). Uses the global `pr' array filled by a previous call
+     to `pf_fold()'.
+
+ -- Function: char *centroid (int LENGTH, double *DIST)
+     Computes the centroid structure, i.e. the structure having the
+     lowest average base pair distance to all structures in the
+     Boltzmann ensemble. This can be computed trivially from the pair
+     probabilities by choosing all base pairs that have probability
+     greater 0.5. The distance of the centroid to the ensemble is
+     returned in DIST.
+
+   Prototypes for these functions are declared in `part_func.h'.
+
+ -- Function: float *MEA (plist *PL, char *STRUCTURE, double GAMMA)
+     Computes a MEA (maximum expected accuracy) structure, such that
+     expected accuracy  A(S) = \sum_(i,j) \in S 2 \gamma p_ij + \sum_i
+     \notin S p^u_i is maximised. Higher values of \gamma result in
+     more base pairs of lower probability and thus higher sensitivity.
+     Low values of gamm result in structures containing only highly
+     likely pairs (high specificity).  The code of the MEA function
+     also demonstrates the use of sparse dynamic programming scheme to
+     reduce the time and memory complexity of folding.
+   The corresponding protoype is declared in `MEA.h'.
+
+
+File: RNAlib.info,  Node: Inverse Fold,  Next: Suboptimal folding,  Prev: PF Fold,  Up: Folding Routines
+
+2.3 Inverse Folding
+===================
+
+We provide two functions that search for sequences with a given
+structure, thereby inverting the folding routines.
+
+ -- Function: float inverse_fold (char* START, char* TARGET)
+     searches for a sequence with minimum free energy structure TARGET,
+     starting with sequence START. It returns 0 if the search was
+     successful, otherwise a structure distance to TARGET is returned.
+     The found sequence is returned in START. If `give_up' is set to 1,
+     the function will return as soon as it is clear that the search
+     will be unsuccessful, this speeds up the algorithm if you are only
+     interested in exact solutions.  Since `inverse_fold()' calls
+     `fold()' you have to allocate memory for folding by calling
+     `initialize_fold()'
+
+ -- Function: float inverse_pf_fold (char* START, char* TARGET)
+     searches for a sequence with maximum probability to fold into
+     structure TARGET using the partition function algorithm. It returns
+     -kT log(p) where p is the frequency of TARGET in the ensemble of
+     possible structures. This is usually much slower than
+     `inverse_fold()'.  Since `inverse_pf_fold()' calls `pf_fold()' you
+     have to allocate memory for folding by calling `init_pf_fold()'
+
+ -- Variable: char *symbolset
+     The global variable `char *symbolset' points to the allowed bases,
+     initially `"AUGC"'.  It can be used to design sequences from
+     reduced alphabets.
+
+   Prototypes for these functions are declared in `inverse.h'.
+
+
+File: RNAlib.info,  Node: Suboptimal folding,  Next: Cofolding,  Prev: Inverse Fold,  Up: Folding Routines
+
+2.4 Suboptimal folding
+======================
+
+ -- data type: SOLUTION struct {float energy; char *structure;}
+
+ -- Function: SOLUTION* subopt (char* SEQUENCE, char* CONSTRAINT, int*
+          DELTA, FILE* FP)
+     produces *all* suboptimal secondary structures within DELTA*0.01
+     kcal/mol of the optimum. The results are either directly written
+     to a FP (if FP is not `NULL'), or (FP`==NULL') returned in a
+     `SOLUTION *' list terminated by an entry were the `structure'
+     pointer is `NULL'.
+
+   Prototypes for these functions are declared in `subopt.h'.
+
+
+File: RNAlib.info,  Node: Cofolding,  Next: Local Fold,  Prev: Suboptimal folding,  Up: Folding Routines
+
+2.5 Predicting hybridization structures of two molecules
+========================================================
+
+The function of an RNA molecule often depends on its interaction with
+other RNAs. The following routines therefore allow to predict structures
+formed by two RNA molecules upon hybridization.  One approach to
+co-folding two RNAs consists of concatenating the two sequences and
+keeping track of the concatenation point in all energy evaluations.
+Correspondingly, many of the `cofold()' and `co_pf_fold()' routines
+below take one sequence string as argument and use the the global
+variable CUT_POINT to mark the concatenation point. Note that while the
+`RNAcofold' program uses the '&' character to mark the chain break in
+its input, you should not use an '&' when using the library routines
+(set CUT_POINT instead).  In a second approach to co-folding two RNAs,
+cofolding is seen as a stepwise process. In the first step the
+probability of an unpaired region is calculated and in a second step
+this probability of an unpaired region is  multiplied with the
+probability of an interaction between the two RNAs.  This approach is
+implemented for the interaction between a long target sequence and a
+short ligand RNA. Function `pf_unstru()' calculates the partition
+function over all unpaired regions in the input sequence. Function
+`pf_interact()', which calculates the partition function over all
+possible interactions between two sequences, needs both sequence as
+separate strings as input.
+
+ -- Variable: int cut_point
+     `cut_point' marks the position (starting from 1) of the first
+     nucleotide of the second molecule within the concatenated sequence.
+     The default value of -1 stands for single molecule folding. The
+     `cut_point' variable is also used by `PS_rna_plot()' and
+     `PS_dot_plot()' to mark the chain break in postscript plots.
+
+ -- Function: float cofold (char *SEQUENCE, char *STRUCTURE)
+     The analog to the  `fold()' function. Computes the minimum free
+     energy of two RNA molecules interacting. If `cut_point==-1' results
+     should be the same as with `fold()'.
+
+ -- Function: void free_co_arrays (void)
+     Frees arrays allocated by `cofold()'.
+
+ -- Function: void initialize_cofold (int LENGTH)
+     Allocates memory for mfe cofolding sequences not longer than
+     LENGTH, and sets up pairing matrix and energy parameters.
+     Explicitly calling  `initialize_cofold()' is normally not
+     necessary, as it will be called automagically before folding.
+
+   Prototypes for these functions are declared in `cofold.h'.
+
+2.6 Partition Function Cofolding
+================================
+
+As for folding one RNA molecule, this computes the partition function
+of all possible structures and the base pair probabilities. Uses the
+same global PF_SCALE variable to avoid overflows.
+
+   To simplify the implementation the partition function computation is
+done internally in a null model that does not include the duplex
+initiation energy, i.e. the entropic penalty for producing a dimer from
+two monomers). The resulting free energies and pair probabilities are
+initially relative to that null model. In a second step the free
+energies can be corrected to include the dimerization penalty, and the
+pair probabilities can be divided into the conditional pair
+probabilities given that a re dimer is formed or not formed.
+
+ -- data type: cofoldF struct {double F0AB, FAB, FcAB, FA, FB;}
+
+ -- Function: cofoldF co_pf_fold (char* SEQUENCE, char* STRUCTURE)
+     The analog to the `pf_fold()' function, it computes the partition
+     function of two interacting RNA molecules as well as base pair
+     probabilities.  It returns a struct including free energies
+     computed for different models. F0AB is the free energy in the null
+     model; FAB is corrected to include the initiation penalty, FcAB
+     only includes real dimers. FA and FB are the free energies of the
+     2 molecules, resp. As with `cofold()' the CUT_POINT global
+     variable has to be set to mark the chain break between the
+     molecules.
+
+ -- Function: void free_co_pf_arrays (void)
+     frees partition function cofold arrays allocated in `
+     co_pf_fold()'.
+
+ -- Function: void init_co_pf_fold (int LENGTH)
+     Obsolete function kept for backward compatibility.  Allocates
+     memory for partition function cofolding sequences not longer than
+     LENGTH, and sets up pairing matrix and energy parameters.
+
+ -- data type: plist struct {int i; int j; float p;}
+
+ -- Function: extern struct plist *get_plist (struct plist *PL, int
+          LENGTH, double CUT_OFF)
+     Makes a list of base pairs out of the global *PR array, ignoring
+     all base pairs with a probability less than CUT_OFF.  This is
+     useful since the PR array gets overwritten by subsequent foldings.
+
+   Prototypes for these functions are declared in `co_part_func.h'.
+
+2.7 Cofolding all Dimeres, Concentrations
+=========================================
+
+After computing the partition functions of all possible dimeres one can
+compute the probabilities of base pairs, the concentrations out of
+start concentrations and sofar and soaway.
+
+ -- Function: void compute_probabilities (double FAB, double FEA,
+          double FEB, struct plist *PRAB, struct plist *PRA, struct
+          plist *PRB, int ALENGTH)
+     Given the pair probabilities and free energies (in the null model)
+     for a dimer AB and the two constituent monomers A and B, compute
+     the conditional pair probabilities given that a dimer AB actually
+     forms.  Null model pair probabilities are given as a list as
+     produced by `get_plist()'), the dimer probabilities PRAB are
+     modified in place.
+
+   Dimer formation is inherently concentration dependent. Given the free
+energies of the monomers A and B and dimers AB, AA, and BB one can
+compute the equilibrium concentrations, given input concentrations of A
+and B, see e.g.~`Dimitrov & Zuker (2004)'
+
+ -- data type: ConcEnt struct {double A0; double B0;double ABc;double
+          AAc; double BBc; double Ac; double Bc;}
+
+ -- Function: extern struct ConcEnt *get_concentrations(double FEAB,
+          double FEAA, double FEBB, double FEA, double FEB, double *
+          STARTCONC)
+     Takes an array  STARTCONC of input concentrations with alternating
+     entries for the initial concentrations of molecules A and B
+     (terminated by two zeroes), then computes the resulting
+     equilibrium concentrations from the free energies for the dimers.
+     Dimer free energies should be the dimer-only free energies, i.e.
+     the FcAB entries from the `cofoldF' struct.
+
+   Prototypes for these functions are declared in `co_part_func.h'.
+
+2.8 Partition Function Cofolding as stepwise process
+====================================================
+
+In this approach to cofolding the interaction between two RNA molecules
+is seen as a stepwise process. In a first step, the target molecule has
+to adopt a structure in which a binding site is accessible. In a second
+step, the ligand molecule will hybridize with a region accessible to an
+interaction. Consequently the algorithm is designed as a two step
+process: The first step is the calculation of the probability that a
+region within the target is unpaired, or equivalently, the calculation
+of the free energy needed to expose a region. In the second step we
+compute the free energy of an interaction for every possible binding
+site.
+
+ -- data type: pu_contrib struct {double **H; double **I; double **M;
+          double **E; int length;}
+
+ -- Function: `pu_contrib' *pf_unstru (char *SEQUENCE, int U)
+     This function calculates the partition function over all unpaired
+     regions in *SEQUENCE of a maximal length U. You have to call
+     function `pf_fold()' for *SEQUENCE befor calling `pf_unstru()'. If
+     you want to calculate unpaired regions for a constrained
+     structure, set variable STRUCTURE in function `pf_fold()' to the
+     constrain string.  Function `pf_unstru' returns a `pu_contrib'
+     struct containing four arrays of dimension [i = 1 to length of
+     *SEQUENCE][j = 0 to U-1] containing all possible contributions to
+     the probabilities of unpaired regions of maximum length U.  Each
+     array in `pu_contrib' contains one of the contributions to the
+     total probability of being unpaired: The probability of being
+     unpaired within an exterior loop is in array `pu_contrib->E', the
+     probability of being unpaired within a hairpin loop is in array
+     `pu_contrib->H', the probability of being unpaired within an
+     interior loop is in array `pu_contrib->I' and probability of being
+     unpaired within a multi-loop is in array `pu_contrib->M'. The
+     total probability of being unpaired is the sum of the four arrays
+     of `pu_contrib'.  Function `pf_unstru' frees everything allocated
+     automatically. To free the output structure call `free_pu_contrib'.
+
+ -- Function: void free_pu_contrib (`pu_contrib' *P_CON)
+     frees the output of function `pf_unstru'.
+
+ -- data type: interact struct {double *Pi; double *I; double Gikjl;
+          double Gikjl_wo; int i, int k, int j, int l, int length;}
+
+ -- Function: interact *pf_interact (const char *S1, const char *S2,
+          `pu_contrib' *P_C, `pu_contrib' *P_C2,int W, char *CSTRUC,
+          int INCR3, int INCR5)
+     Calculates the probability of a local interaction between sequence
+     *S1 and sequence *S2, considering the probability that the region
+     of interaction is unpaired within *S1 and  *S2. The longer
+     sequence has to be given as *S1. The shorter sequence has to be
+     given as *S2. Function `pf_unstru()' has to be called for *S1 and
+     *S2, where the probabilities of  being unpaired have to be given
+     in *P_C and *P_C2, respectively. If you do not want to include the
+     probabilities of  being unpaired for *S2 set *P_C2 to NULL. If
+     variable char *CSTRUC is not NULL, constrained folding is done:
+     The available constrains for intermolecular interaction are: '.'
+     (no constrain), 'x' (the base has no intermolecular interaction)
+     and '|' (the corresponding base has to be paired
+     intermolecularily).  The parameter W determines the maximal length
+     of the interaction. The parameters INCR5 and INCR3 allows
+     inclusion of unpaired residues left (INCR5) and right (INCR3) of
+     the region of interaction in *S1. If the INCR options are used,
+     function `pf_unstru()' has to be called with W=W+INCR5+INCR3 for
+     the longer sequence *S1.  Function `pf_interact()' returns a
+     structure of type `interact' which contains the probability of the
+     best local interaction including residue i in Pi and the minimum
+     free energy in Gi, where i is the position in sequence *S1. The
+     member Gikjl of structure `interact' is the best interaction
+     between region [k,i] k<i in longer sequence *S1 and region [j,l]
+     j<l in *S2. Gikjl_wo is Gikjl without the probability of beeing
+     unpaired.  Use `free_interact)' to free the returned structure, all
+     other stuff is freed inside `pf_interact()'.
+
+ -- Function: void free_interact (`interact' *PIN)
+     frees the output of function `pf_interact'.
+
+   Prototypes for these functions are declared in `part_func_up.h'.
+
+
+File: RNAlib.info,  Node: Local Fold,  Next: Alignment Fold,  Prev: Cofolding,  Up: Folding Routines
+
+2.9 Searching for local structures in large molecules
+=====================================================
+
+Local structures can be predicted by a modified version of the `fold()'
+algorithm that restricts the span of all base pairs.
+
+ -- Function: float Lfold (char *STRING, char *STRUCTURE, int MAXDIST)
+     The local analog to `fold()'. Computes the minimum free energy
+     structure including only base pairs with a span smaller than
+
+   MAXDIST.
+
+ -- Function: struct plist *pfl_fold (char *SEQUENCE, int WINSIZE,int
+          PAIRSIZE, float CUTOFFB, double **PU,struct plist **DPP2,
+          FILE *PUFP, FILE *SPUP))
+     pfl_fold computes partition functions for every window of size
+     WINSIZE possible in a RNA molecule, allowing only pairs with a span
+     smaller than PAIRSIZE. It returns the mean pair probabilities
+     averaged over all windows containing the pair in PL. WINSIZE should
+     always be >= PAIRSIZE. Note that in contrast to `Lfold()', bases
+     outside of the window do not influence the structure at all. Only
+     probabilities higher than CUTOFF are kept.
+
+     The remaining arguments are optional in the sense that they can be
+     set to NULL unless the corresponding functionality is wanted.  If
+     PU is supplied (i.e is not the NULL pointer), `pfl_fold()' will
+     also compute local _accessibilities_, as the mean probability that
+     regions of length `u' or smaller are unpaired. The parameter
+     `ulength' is supplied in `pU[0][0]'. On return the PU array will
+     contain these probabilities, with the entry on `pU[x][y]'
+     containing the mean probability that x and the y following bases
+     are unpaired.  If DPP2 is supplied (i.e is not the NULL pointer),
+     `pfl_fold()' will also compute the probability of stacked pairs,
+     more precisely the conditional probabilities of base pairs (i,j)
+     given that the enclosing pair (i-1,j+1) is formed.  The file
+     pointers PUFP and SPUP file pointer is provided, the unpaired
+     probabilities will direcly be printed and not saved, which can be
+     useful when memory is an issue).  If the  file pointer is
+     provided, the base pair probabilities will direcly be printed and
+     not saved, which can be useful when memory is an issue).
+
+
+ -- Function: void init_pf_foldLP (int LENGTH)
+     Analog to `init_pf_fold()'. LENGTH is the length  of the sequence.
+
+ -- Function: void free_pf_arraysLP (void)
+     frees the arrays used by `pfl_fold()'
+
+ -- Function: void update_pf_paramsLP (int LENGTH)
+     Analog to `update_pf_params()'. LENGTH is the length  of the
+     sequence.
+
+
+File: RNAlib.info,  Node: Alignment Fold,  Next: Fold Vars,  Prev: Local Fold,  Up: Folding Routines
+
+2.10 Predicting Consensus Structures from an Alignment
+======================================================
+
+Consensus structures can be predicted by a modified version of the
+`fold()' algorithm that takes a set of aligned sequences instead of a
+single sequence. The energy function consists of the mean energy
+averaged over the sequences, plus a covariance term that favors pairs
+with consistent and compensatory mutations and penalizes pairs that
+cannot be formed by all structures. For details see `Hofacker (2002)'.
+
+ -- Function: float alifold (char** SEQUENCES, char* STRUCTURE)
+     Predicts the consensus structure for the aligned SEQUENCES and
+     returns the minimum free energy; the mfe structure in bracket
+     notation (*note notations::) is returned in STRUCTURE.  Sufficient
+     space must be allocated for STRUCTURE before calling `alifold()'.
+
+ -- Function: void free_alifold_arrays ()
+     frees the memory allocated by `alifold()'.
+
+ -- Function: void update_alifold_params ()
+     call this to recalculate the pair matrix and energy parameters
+     after a change in folding parameters like `temperature' (*note
+     Variables: Fold Vars.).
+
+ -- Function: float alipf_fold (char** SEQUENCES, char* STRUCTURE,
+          pair_info **PI)
+     The partition function version of `alifold()' works in analogy to
+     `pf_fold()'. Pair probabilities and information about sequence
+     covariations are returned via the PI variable as a list of
+     `pair_info' structs.  The list is terminated by the first entry
+     with `pi.i = 0'.
+
+ -- data type: pair_info struct {short i,j; float p; float ent; short
+          bp[8]; char comp;}
+     for each base pair `i,j' the structure lists: its probability `p',
+     an entropy-like measure for its well-definedness `ent', and in
+     `bp[]' the frequency of each type of pair. `bp[0]' contains the
+     number of non-compatible sequences, `bp[1]' the number of CG
+     pairs, etc.
+
+ -- Variable: double cv_fact
+     `cv_fact' controls the weight of the covariance term in the energy
+     function. Default is 1.
+
+ -- Variable: double nc_fact
+     controls the magnitude of the penalty for non-compatible sequences
+     in the covariance term. Default is 1.
+
+
+File: RNAlib.info,  Node: Fold Vars,  Next: Param Files,  Prev: Alignment Fold,  Up: Folding Routines
+
+2.11 Global Variables for the Folding Routines
+==============================================
+
+The following global variables change the behavior the folding
+algorithms or contain additional information after folding.
+
+ -- Variable: int noGU
+     do not allow GU pairs if equal 1; default is 0.
+
+ -- Variable: int no_closingGU
+     if 1 allow GU pairs only inside stacks, not as closing pairs;
+     default is 0.
+
+ -- Variable: int noLonelyPairs
+     Disallow all pairs which can *only* occur as lonely pairs (i.e. as
+     helix of length 1). This avoids lonely base pairs in the predicted
+     structures in most cases.
+
+ -- Variable: int tetra_loop
+     include special stabilizing energies for some tetra loops; default
+     is 1.
+
+ -- Variable: int energy_set
+     if 1 or 2: fold sequences from an artificial alphabet ABCD...,
+     where A pairs B, C pairs D, etc. using either GC (1) or AU
+     parameters (2); default is 0, you probably don't want to change it.
+
+ -- Variable: float temperature
+     rescale energy parameters to a temperature of `temperature' C.
+     Default is 37C. You have to call the update_..._params() functions
+     after changing this parameter.
+
+ -- Variable: int dangles
+     if set to 0 no stabilizing energies are assigned to bases adjacent
+     to helices in free ends and multiloops (so called dangling ends).
+     Normally (`dangles = 1') dangling end energies are assigned only
+     to unpaired bases and a base cannot participate simultaneously in
+     two dangling ends. In the partition function algorithm `pf_fold()'
+     these checks are neglected.  If `dangles' is set to 2, the
+     `fold()' and `energy_of_struct()' function will also follow this
+     convention. This treatment of dangling ends gives more favorable
+     energies to helices directly adjacent to one another, which can be
+     beneficial since such helices often do engage in stabilizing
+     interactions through co-axial stacking.
+     If `dangles = 3' co-axial stacking is explicitly included for
+     adjacent helices in mutli-loops. The option affects only mfe
+     folding and energy evaluation (`fold()' and `energy_of_struct()'),
+     as well as suboptimal folding (`subopt()') via re-evaluation of
+     energies.  Co-axial stacking with one intervening mismatch is not
+     considered so far.
+
+     Default is 1, `pf_fold()' treats 1 as 2.
+
+ -- Variable: char* nonstandards
+     Lists additional base pairs that will be allowed to form in
+     addition to GC, CG, AU, UA, GU and UG. Nonstandard base pairs are
+     given a stacking energy of 0.
+
+ -- Variable: int cut_point
+     To evaluate the energy of a duplex structure (a structure formed
+     by two strands), concatenate the to sequences and set CUT_POINT to
+     the first base of the second strand in the concatenated sequence.
+     Reset to 0 or -1 (the default) to evaluate normal single sequence
+     structures.
+
+ -- Variable: struct bond { int i,j;} base_pair
+     Contains a list of base pairs after a call to `fold()'.
+     `base_pair[0].i' contains the total number of pairs.
+
+ -- Variable: double* pr
+     contains the base pair probability matrix after a call to
+     `pf_fold()'.
+
+ -- Variable: int* iindx
+     index array to move through pr. The probability for base i and j
+     to form a pair is in `pr[iindx[i]-j]'.
+
+ -- Variable: float pf_scale
+     a scaling factor used by `pf_fold()' to avoid overflows. Should be
+     set to approximately exp((-F/kT)/length), where F is an estimate
+     for the ensemble free energy, for example the minimum free energy.
+     You must call `update_pf_params()' or `init_pf_fold()' after
+     changing this parameter. If pf_scale is -1 (the default) , an
+     estimate will be provided automatically when calling
+     `init_pf_fold()' or `update_f_params()'. The automatic estimate is
+     usually insufficient for sequences more than a few hundred bases
+     long.
+
+ -- Variable: int fold_constrained
+     If 1, calculate constrained minimum free energy structures. *Note
+     mfe Fold::, for more information. Default is 0;
+
+ -- Variable: int do_backtrack
+     if 0, do not calculate pair probabilities in `pf_fold()'; this is
+     about twice as fast. Default is 1.
+
+ -- Variable: char backtrack_type
+     only for use by `inverse_fold()'; 'C': force (1,N) to be paired,
+     'M' fold as if the sequence were inside a multi-loop. Otherwise the
+     usual mfe structure is computed.
+
+   include `fold_vars.h' if you want to change any of these variables
+from their defaults.
+
+
+File: RNAlib.info,  Node: Param Files,  Prev: Fold Vars,  Up: Folding Routines
+
+2.12 Energy Parameter Files
+===========================
+
+A default set of parameters, identical to the one described in `Mathews
+et.al. (1999)', is compiled into the library.  Alternately, parameters
+can be read from and written to a file.
+
+ -- Function: void read_parameter_file (const char FNAME[])
+     reads energy parameters from file FNAME. See below for the format
+     of the parameter file.
+
+ -- Function: void write_parameter_file (const char FNAME[])
+     writes current energy parameters to the file FNAME.
+
+   The following describes the file format expected by
+`read_parameter_file()'. All energies should be given as integers in
+units of 0.01kcal/mol.
+
+   Various loop parameters depend in general on the pairs closing the
+loops, as well as unpaired bases in the loops. Internally, the library
+distinguishes 8 types of pairs (CG=1, GC=2, GU=3, UG=4, AU=5, UA=6,
+nonstandard=7, 0= no pair), and 5 types of bases (A=1, C=2, G=3, U=4
+and 0 for anything else). Parameters belonging to pairs of type 0 are
+not listed in the parameter files, but values for nonstandard pairs
+(type 7) and nonstandard bases (type 0) are. Thus, a table for
+symmetric size 2 interior loops would have 7*7*5*5 entries (2 pairs,
+two unpaired bases).
+
+   The order of entries always uses the closing pair or pairs as the
+first indices followed by the unpaired bases in 5' to 3' direction.  To
+determine the type of a pair consider the base at the (local) 5' end of
+each strand first, i.e. use the pairs (i,j) and (q,p) for an interior
+loop with i<p<q<j. This is probably better explained by an example.
+Consider the symmetric size 4 interior loop
+     		      5'-GAUA-3'
+     		      3'-CGCU-5'
+   the first pair is GC, the second UA (not AU!) the unpaired bases are
+(in 5' to 3' direction, starting at the first pair) A U C G. Thus we
+need entry [2,6,1,4,2,3] of the corresponding table. Because the loop is
+symmetric you could equally well describe it by UA GC C G A U, i.e.
+entry [6,2,2,3,1,4]. Be careful to preserve this symmetry when editing
+parameter tables!
+
+   The first line of the file should read
+## RNAfold parameter file
+
+lines of the form
+# token
+mark the beginning of a list of energy parameters of the type specified
+by token. The following tokens are recognized:
+
+# stack_energies
+The list of free energies for stacked pairs, indexed by the two closing
+pairs. The list should be formatted as symmetric an 7*7
+matrix,conforming to the order explained above. As an example the
+stacked pair
+     		      5'-GU-3'        5'-AC-3'
+     		      3'-CA-5'        3'-UG-5'
+   corresponds to the entry [2,5], which should be identical to [5,2].
+Note that the format has changed from previous releases, to make it
+consistent with other loop parameters.
+
+# stack_enthalpies
+enthalpies for stacked pairs, used to rescale stacking energies to
+temperatures other than 37C. Same format as stack_energies.
+
+# hairpin
+Free energies of hairpin loops as a function of size. The list should
+contain 31 entries on one or more lines. Since the minimum size of a
+hairpin loop is 3 and we start counting with 0, the first three values
+should be INF to indicate a forbidden value.
+
+# bulge
+Free energies of bulge loops. Should contain 31 entries, the first one
+being INF.
+
+# internal_loop
+Free energies of internal loops. Should contain 31 entries, the first 4
+being INF (since smaller loops are tabulated).
+
+# mismatch_interior
+Free energies for the interaction between the closing pair of an
+interior loop and the two unpaired bases adjacent to the helix. This is
+a three dimensional array indexed by the type of the closing pair (see
+above) and the two unpaired bases. Since we distinguish 5 bases the
+list contains 7*5*5 entries and should be formatted either as an 7*25
+matrix or 7 5*5 matrices. The order is such that for example the
+mismatch
+     			       5'-CU-3'
+     			       3'-GC-5'
+   corresponds to entry [1,4,2] (CG=1, U=4, C=2), (in this notation the
+first index runs from 1 to 7, second and third from 0 to 4)
+
+# mismatch_hairpin
+Same as above for hairpin loops.
+
+# mismatch_enthalpies
+Corresponding enthalpies for rescaling to temperatures other than 37C.
+
+# int11_energies
+Free energies for symmetric size 2 interior loops. 7*7*5*5 entries
+formatted as 49 5*5 matrices, or seven 7*25 matrices. Example:
+     			       5'-CUU-3'
+     			       3'-GCA-5'
+   corresponds to entry [1,5,4,2], which should be identical to
+[5,1,2,4].
+
+# int21_energies
+Free energies for size 3 (2+1) interior loops. 7*7*5*5*5 entries
+formatted in 5*5 or 5*25 matrices. The strand with a single unpaired
+base is listed first, example:
+     			       5'-CU U-3'
+     			       3'-GCCA-5'
+   corresponds to entry [1,5,4,2,2].
+
+# int22_energies
+Free energies for symmetric size 4 interior loops. To reduce the size of
+parameter files this table only lists canonical bases (A,C,G,U)
+resulting in a 7*7*4*4*4*4 table. See above for an example.
+
+# dangle5
+Energies for the interaction of an unpaired base on the 5' side and
+adjacent to a helix in multiloops and free ends (the equivalent of
+mismatch energies in interior and hairpin loops). The array is indexed
+by the type of pair closing the helix and the unpaired base and,
+therefore, forms a 8*5 matrix. For example the dangling base in
+     			       5'-GC-3'
+     			       3'- G-5'
+   corresponds to entry [1,3] (CG=1, G=3);
+
+# dangle3
+Same as above for bases on the 3' side of a helix.
+     			       5'- A-3'
+     			       3'-AU-5'
+   corresponds to entry [5,1] (AU=5, A=1);
+
+# ML_params
+For the energy of a multi-loop a function of the form `E =
+cu*n_unpaired + ci*loop_degree + cc' is used where n_unpaired is the
+number of unpaired bases in the loop and loop_degree is the number of
+helices forming the loop. In addition a "terminal AU" penalty is
+applied to AU and GU pairs in the loop.  The line following the token
+should contain these four values, in the order `cu cc ci termAU'. The
+terminal AU penalty is also used for the exterior loop and size 3
+hairpins, for other loop types it is already included in the mismatch
+energies.
+
+# Tetraloops
+Some tetraloops particularly stable tetraloops are assigned an energy
+bonus. Up to forty tetraloops and their bonus energies can be listed
+following the token, one sequence per line. For example:
+            GAAA    -200
+   assigns a bonus energy of -2 kcal/mol to tetraloops containing the
+sequence GAAA.
+
+# END
+Anything beyond this token will be ignored.
+
+   A parameter file need not be complete, it might may contain only a
+subset of interaction parameters, such as only stacking energies.
+However, for each type of interaction listed, all entries have to be
+present.  A `*' may be used to indicate entries of a list that are to
+retain their default value. For loop energies a `x' may be used to
+indicate that the value is to be extrapolated from the values for
+smaller loop sizes.  Parameter files may contain C-style comments, i.e.
+any text between `/*' and `*/' will be ignored. However, you may have
+no more than one comment per line and no multi-line comments.
+
+   A parameter file listing the default parameter set should accompany
+your distribution as `default.par', the file `old.par' contains
+parameters used in version 1.1b of the Package.
+
+
+File: RNAlib.info,  Node: Parsing and Comparing,  Next: Utilities,  Prev: Folding Routines,  Up: Top
+
+3 Parsing and Comparing of Structures
+*************************************
+
+* Menu:
+
+* notations::                   Representations of Secondary Structures.
+* Parsing::                     Functions for Parsing and Coarse Graining.
+* Distances::                   Distances for RNA Secondary Structures
+
+
+File: RNAlib.info,  Node: notations,  Next: Parsing,  Prev: Parsing and Comparing,  Up: Parsing and Comparing
+
+3.1 Representations of Secondary Structures
+===========================================
+
+The standard representation of a secondary structure is the "bracket
+notation", where matching brackets symbolize base pairs and unpaired
+bases are shown as dots. Alternatively, one may use two types of node
+labels, 'P' for paired and 'U' for unpaired; a dot is then replaced by
+'(U)', and each closed bracket is assigned an additional identifier 'P'.
+We call this the expanded notation. In `Fontana et al. (1993)' a
+condensed representation of the secondary structure is proposed, the
+so-called homeomorphically irreducible tree (HIT) representation. Here
+a stack is represented as a single pair of matching brackets labeled
+'P' and weighted by the number of base pairs.  Correspondingly, a
+contiguous strain of unpaired bases is shown as one pair of matching
+brackets labeled 'U' and weighted by its length.  Generally any string
+consisting of matching brackets and identifiers is equivalent to a
+plane tree with as many different types of nodes as there are
+identifiers.
+
+   `Bruce Shapiro (1988)' proposed a coarse grained representation,
+which, does not retain the full information of the secondary structure.
+He represents the different structure elements by single matching
+brackets and labels them as 'H' (hairpin loop), 'I' (interior loop), 'B'
+(bulge), 'M' (multi-loop), and 'S' (stack). We extend his alphabet by an
+extra letter for external elements 'E'. Again these identifiers may be
+followed by a weight corresponding to the number of unpaired bases or
+base pairs in the structure element.  All tree representations (except
+for the dot-bracket form) can be encapsulated into a virtual root
+(labeled 'R'), see the example below.
+
+   The following example illustrates the different linear tree
+representations used by the package. All lines show the same secondary
+structure.
+
+     a) .((((..(((...)))..((..)))).)).
+        (U)(((((U)(U)((((U)(U)(U)P)P)P)(U)(U)(((U)(U)P)P)P)P)(U)P)P)(U)
+     b) (U)(((U2)((U3)P3)(U2)((U2)P2)P2)(U)P2)(U)
+     c) (((H)(H)M)B)
+        ((((((H)S)((H)S)M)S)B)S)
+        (((((((H)S)((H)S)M)S)B)S)E)
+     d) ((((((((H3)S3)((H2)S2)M4)S2)B1)S2)E2)R)
+
+   Above: Tree representations of secondary structures.  a) Full
+structure: the first line shows the more convenient condensed notation
+which is used by our programs; the second line shows the rather clumsy
+expanded notation for completeness, b) HIT structure, c) different
+versions of coarse grained structures: the second line is exactly
+Shapiro's representation, the first line is obtained by neglecting the
+stems.  Since each loop is closed by a unique stem, these two lines are
+equivalent.  The third line is an extension taking into account also the
+external digits.  d) weighted coarse structure, this time including the
+virtual root.
+
+   For the output of aligned structures from string editing, different
+representations are needed, where we put the label on both sides.  The
+above examples for tree representations would then look like:
+
+     a) (UU)(P(P(P(P(UU)(UU)(P(P(P(UU)(UU)(UU)P)P)P)(UU)(UU)(P(P(UU)(U...
+     b) (UU)(P2(P2(U2U2)(P2(U3U3)P3)(U2U2)(P2(U2U2)P2)P2)(UU)P2)(UU)
+     c) (B(M(HH)(HH)M)B)
+        (S(B(S(M(S(HH)S)(S(HH)S)M)S)B)S)
+        (E(S(B(S(M(S(HH)S)(S(HH)S)M)S)B)S)E)
+     d) (R(E2(S2(B1(S2(M4(S3(H3)S3)((H2)S2)M4)S2)B1)S2)E2)R)
+
+   Aligned structures additionally contain the gap character '_'.
+
+
+File: RNAlib.info,  Node: Parsing,  Next: Distances,  Prev: notations,  Up: Parsing and Comparing
+
+3.2 Parsing and Coarse Graining of Structures
+=============================================
+
+Several functions are provided for parsing structures and converting to
+different representations.
+
+ -- Function: char* expand_Full (char* FULL)
+     converts the FULL structure from bracket notation to the expanded
+     notation including root.
+
+ -- Function: char* b2HIT (char* FULL)
+     converts the FULL structure from bracket notation to the HIT
+     notation including root.
+
+ -- Function: char* b2C (char* FULL)
+     converts the FULL structure from bracket notation to the a coarse
+     grained notation using the 'H' 'B' 'I' 'M' and 'R' identifiers.
+
+ -- Function: char* b2Shapiro (char* FULL)
+     converts the FULL structure from bracket notation to the
+     _weighted_ coarse grained notation using the 'H' 'B' 'I' 'M' 'S'
+     'E' and 'R' identifiers.
+
+ -- Function: char* expand_Shapiro (char* COARSE)
+     inserts missing 'S' identifiers in unweighted coarse grained
+     structures as obtained from `b2C()'.
+
+ -- Function: char* add_root (char* ANY)
+     adds a root to an un-rooted tree in any except bracket notation.
+
+ -- Function: char* unexpand_Full (char* EXPANDED)
+     restores the bracket notation from an expanded full or HIT tree,
+     that is any tree using only identifiers 'U' 'P' and 'R'.
+
+ -- Function: char* unweight (char* EXPANDED)
+     strip weights from any weighted tree.
+
+   All the above functions allocate memory for the strings they return.
+
+ -- Function: void unexpand_aligned_F (char* ALIGN[2])
+     converts two aligned structures in expanded notation as produced by
+     `tree_edit_distance()' function back to bracket notation with '_'
+     as the gap character. The result overwrites the input.
+
+ -- Function: void parse_structure (char* FULL)
+     Collects a statistic of structure elements of the FULL structure in
+     bracket notation, writing to the following global variables:
+
+ -- Variable: int loop_size[]
+     contains a list of all loop sizes. `loop_size[0]' contains the
+     number of external bases.
+
+ -- Variable: int loop_degree[]
+     contains the corresponding list of loop degrees.
+
+ -- Variable: int helix_size[]
+     contains a list of all stack sizes.
+
+ -- Variable: int loops
+     contains the number of loops ( and therefore of stacks ).
+
+ -- Variable: int pairs
+     contains the number of base pairs in the last parsed structure.
+
+ -- Variable: int unpaired
+     contains the number of unpaired bases.
+
+   Prototypes for the above functions can be found in `RNAstruct.h'.
+
+
+File: RNAlib.info,  Node: Distances,  Prev: Parsing,  Up: Parsing and Comparing
+
+3.3 Distance Measures
+=====================
+
+* Menu:
+
+* Tree Distances::              Using Tree Edit Distances to Compare Structures
+* String Distances::            Using String Alignment for Comparison
+* Profile Distances::           Comparing Pair probability Matrices
+
+   A simple measure of dissimilarity between secondary structures of
+equal length is the base pair distance, given by the number of pairs
+present in only one of the two structures being compared. I.e. the
+number of base pairs that have to be opened or closed to transform one
+structure into the other. It is therefore particularly useful for
+comparing structures on the same sequence. It is implemented by
+
+ -- Function: int bp_distance (char* S1, char* S2)
+     returns the "base pair" distance between two secondary structures
+     S1 and S2, which should have the same length.
+
+   For other cases a distance measure that allows for gaps is
+preferable.  We can define distances between structures as edit
+distances between trees or their string representations. In the case of
+string distances this is the same as "sequence alignment". Given a set
+of edit operations and edit costs, the edit distance is given by the
+minimum sum of the costs along an edit path converting one object into
+the other. Edit distances like these always define a metric. The edit
+operations used by us are insertion, deletion and replacement of nodes.
+String editing does not pay attention to the matching of brackets, while
+in tree editing matching brackets represent a single node of the tree.
+Tree editing is therefore usually preferable, although somewhat slower.
+String edit distances are always smaller or equal to tree edit
+distances.
+
+   The different level of detail in the structure representations
+defined above naturally leads to different measures of distance. For
+full structures we use a cost of 1 for deletion or insertion of an
+unpaired base and 2 for a base pair. Replacing an unpaired base for a
+pair incurs a cost of 1.
+
+   Two cost matrices are provided for coarse grained structures:
+
+     /*  Null,   H,   B,   I,   M,   S,   E     */
+        {   0,   2,   2,   2,   2,   1,   1},   /* Null replaced */
+        {   2,   0,   2,   2,   2, INF, INF},   /* H    replaced */
+        {   2,   2,   0,   1,   2, INF, INF},   /* B    replaced */
+        {   2,   2,   1,   0,   2, INF, INF},   /* I    replaced */
+        {   2,   2,   2,   2,   0, INF, INF},   /* M    replaced */
+        {   1, INF, INF, INF, INF,   0, INF},   /* S    replaced */
+        {   1, INF, INF, INF, INF, INF,   0},   /* E    replaced */
+
+
+     /*  Null,   H,   B,   I,   M,   S,   E    */
+        {   0, 100,   5,   5,  75,   5,   5},   /* Null replaced */
+        { 100,   0,   8,   8,   8, INF, INF},   /* H    replaced */
+        {   5,   8,   0,   3,   8, INF, INF},   /* B    replaced */
+        {   5,   8,   3,   0,   8, INF, INF},   /* I    replaced */
+        {  75,   8,   8,   8,   0, INF, INF},   /* M    replaced */
+        {   5, INF, INF, INF, INF,   0, INF},   /* S    replaced */
+        {   5, INF, INF, INF, INF, INF,   0},   /* E    replaced */
+
+   The lower matrix uses the costs given in `Shapiro (1990)'.  All
+distance functions use the following global variables:
+
+ -- Variable: int cost_matrix
+     if 0, use the default cost matrix (upper matrix in example);
+     otherwise use Shapiro's costs (lower matrix).
+
+ -- Variable: int edit_backtrack
+     produce an alignment of the two structures being compared by
+     tracing the editing path giving the minimum distance.
+
+ -- Variable: char* aligned_line[2]
+     contains the two aligned structures after a call to one of the
+     distance functions with `edit_backtrack' set to 1. *Note
+     notations::, for details on the representation of structures.
+
+
+File: RNAlib.info,  Node: Tree Distances,  Next: String Distances,  Prev: Distances,  Up: Distances
+
+3.3.1 Functions for Tree Edit Distances
+---------------------------------------
+
+ -- Function: Tree* make_tree (char* XSTRUC)
+     constructs a `Tree' ( essentially the postorder list ) of the
+     structure XSTRUC, for use in `tree_edit_distance()'.  XSTRUC may
+     be any rooted structure representation.
+
+ -- Function: float tree_edit_distance (Tree* T1, Tree* T2)
+     calculates the edit distance of the two trees T1 and T2.
+
+ -- Function: void free_tree (Tree* T)
+     frees the memory allocated for T.
+
+   Prototypes for the above functions can be found in `treedist.h'. The
+type `Tree' is defined in `dist_vars.h', which is automatically
+included with `treedist.h'
+
+
+File: RNAlib.info,  Node: String Distances,  Next: Profile Distances,  Prev: Tree Distances,  Up: Distances
+
+3.3.2 Functions for String Alignment
+------------------------------------
+
+ -- Function: swString* Make_swString (char* XSTRUC)
+     converts the structure XSTRUC into a format suitable for
+     `string_edit_distance()'.
+
+ -- Function: float string_edit_distance (swString* T1, swString* T2)
+     calculates the string edit distance of T1 and T2.
+
+   Prototypes for the above functions can be found in `stringdist.h'.
+
+
+File: RNAlib.info,  Node: Profile Distances,  Prev: String Distances,  Up: Distances
+
+3.3.3 Functions for Comparison of Base Pair Probabilities
+---------------------------------------------------------
+
+For comparison of base pair probability matrices, the matrices are first
+condensed into probability profiles which are the compared by alignment.
+
+ -- Function: float* Make_bp_profile (int LENGTH)
+     reads the base pair probability matrix `pr' (*note Variables: Fold
+     Vars.) and calculates a profile, i.e. a vector containing for each
+     base the probabilities of being unpaired, upstream, or downstream
+     paired, respectively. The returned array is suitable for
+     `profile_edit_distance'.
+
+ -- Function: float profile_edit_distance (float* T1, float* T2)
+     calculates an alignment distance of the two profiles T1 and T2.
+
+ -- Function: void free_profile (float* T)
+     frees the memory allocated for the profile T.  Backward
+     compatibility only. You can just use plain `free()'
+
+   Prototypes for the above functions can be found in `profiledist.h'.
+
+
+File: RNAlib.info,  Node: Utilities,  Next: Example,  Prev: Parsing and Comparing,  Up: Top
+
+4 Utilities
+***********
+
+The following utilities are used and therefore provided by the library:
+
+ -- Function: int PS_dot_plot (char* SEQUENCE, char* FILENAME)
+     reads base pair probabilities produced by `pf_fold()' from the
+     global array `pr' and the pair list `base_pair' produced by
+     `fold()' and produces a postscript "dot plot" that is written to
+     FILENAME. The "dot plot" represents each base pairing probability
+     by a square of corresponding area in a upper triangle matrix. The
+     lower part of the matrix contains the minimum free energy
+     structure.
+
+ -- Function: int PS_rna_plot (char* SEQUENCE, char* STRUCTURE, char*
+          FILENAME)
+     produces a secondary structure graph in PostScript and writes it to
+     FILENAME. Note that this function has changed from previous
+     versions and now expects the structure to be plotted in
+     dot-bracket notation as an argument. It does not make use of the
+     global `base_pair' array anymore.
+
+ -- Function: int PS_rna_plot_a (char* SEQUENCE, char* STRUCTURE, char*
+          FILENAME, char* PRE, char* POST)
+     Same as `PS_rna_plot' but adds extra PostScript macros for various
+     annotations (see generated PS code). The PRE and POST variables
+     contain PostScript code that is verbatim copied in the resulting
+     PS file just before and after the structure plot.
+
+ -- Function: int svg_RNA_plot (char* SEQUENCE, char* STRUCTURE, char*
+          FILENAME)
+     produces a secondary structure plot in SVG format and writes it to
+     FILENAME.
+
+ -- Function: int gmlRNA (char* SEQUENCE, char* STRUCTURE, char*
+          FILENAME, char OPTION)
+     produces a secondary structure graph in the Graph Meta Language
+     gml and writes it to FILENAME. If `option' is an uppercase letter
+     the `sequence' is used to label nodes, if `option' equals `'X'' or
+     `'x'' the resulting file will coordinates for an initial layout of
+     the graph.
+
+ -- Variable: int rna_plot_type
+     switches between different layout algorithms for drawing secondary
+     structures in `PS_rna_plot' and `gmlRNA'. Current possibility are
+     0 for a simple radial drawing or 1 for the modified radial drawing
+     taken from the `naview' program of `Bruccoleri & Heinrich (1988)'.
+
+ -- Function: char* random_string (int L, char* SYMBOLS)
+     generates a "random" string of characters from SYMBOLS with length
+     L.
+
+ -- Function: int hamming (char* S1, char* S2)
+     returns the number of positions in which S1 and S2 differ, the so
+     called "Hamming" distance. S1 and S2 should have the same length.
+
+ -- Function: unsigned char* pack_structure (char* STRUC)
+     returns a binary string encoding the secondary structure STRUC
+     using a 5:1 compression scheme. The string is NULL terminated and
+     can therefore be used with standard string functions such as
+     strcmp().  Useful for programs that need to keep many structures
+     in memory.
+
+ -- Function: char* unpack_structure (unsigned char* PACKED)
+     translate a compressed binary string produced by pack_structure()
+     back into the familiar dot bracket notation.
+
+ -- Function: short* make_pair_table (char* STRUCTURE)
+     returns a newly allocated table, such that:  table[i]=j if (i.j)
+     pair or 0 if i is unpaired, table[0] contains the length of the
+     STRUCTURE.
+
+ -- Function: char* time_stamp (void)
+     returns a string containing the current date in the format "Fri
+     Mar 19 21:10:57 1993".
+
+ -- Function: void nrerror (char* MESSAGE)
+     writes MESSAGE to stderr and aborts the program.
+
+ -- Function: double urn ()
+     returns a pseudo random number in the range [0..1[, usually
+     implemented by calling `erand48()'.
+
+ -- Variable: unsigned short xsubi[3]
+     is used by `urn ()'. These should be set to some random number
+     seeds before the first call to `urn ()'.
+
+ -- Function: int int_urn (int FROM, int TO)
+     generates a pseudo random integer in the range [FROM, TO].
+
+ -- Function: void* space (unsigned int SIZE)
+     returns a pointer to SIZE bytes of allocated and 0 initialized
+     memory; aborts with an error if memory is not available.
+
+ -- Function: char* get_line (FILE* FP)
+     reads a line of arbitrary length from the stream *FP, and returns
+     a pointer to the resulting string. The necessary memory is
+     allocated and should be released using `free()' when the string is
+     no longer needed.
+
+   Prototypes for `PS_rna_plot()' and `PS_dot_plot()' reside in
+`PS_dot.h', the other functions are declared in `utils.h'.
+
+
+File: RNAlib.info,  Node: Example,  Next: References,  Prev: Utilities,  Up: Top
+
+5 A Small Example Program
+*************************
+
+The following program exercises most commonly used functions of the
+library.  The program folds two sequences using both the mfe and
+partition function algorithms and calculates the tree edit and profile
+distance of the resulting structures and base pairing probabilities.
+
+     #include  <stdio.h>
+     #include  <math.h>
+     #include  "utils.h"
+     #include  "fold_vars.h"
+     #include  "fold.h"
+     #include  "part_func.h"
+     #include  "inverse.h"
+     #include  "RNAstruct.h"
+     #include  "treedist.h"
+     #include  "stringdist.h"
+     #include  "profiledist.h"
+
+     void main()
+     {
+        char *seq1="CGCAGGGAUACCCGCG", *seq2="GCGCCCAUAGGGACGC",
+     	*struct1,* struct2,* xstruc;
+        float e1, e2, tree_dist, string_dist, profile_dist, kT;
+        Tree *T1, *T2;
+        swString *S1, *S2;
+        float **pf1, **pf2;
+
+        /* fold at 30C instead of the default 37C */
+        temperature = 30.;      /* must be set *before* initializing  */
+        /* allocate memory for fold(), could be skipped */
+        initialize_fold(strlen(seq1));
+
+        /* allocate memory for structure and fold */
+        struct1 = (char* ) space(sizeof(char)*(strlen(seq1)+1));
+        e1 =  fold(seq1, struct1);
+
+        struct2 = (char* ) space(sizeof(char)*(strlen(seq2)+1));
+        e2 =  fold(seq2, struct2);
+
+        free_arrays();     /* free arrays used in fold() */
+
+        /* produce tree and string representations for comparison */
+        xstruc = expand_Full(struct1);
+        T1 = make_tree(xstruc);
+        S1 = Make_swString(xstruc);
+        free(xstruc);
+
+        xstruc = expand_Full(struct2);
+        T2 = make_tree(xstruc);
+        S2 = Make_swString(xstruc);
+        free(xstruc);
+
+        /* calculate tree edit distance and aligned structures with gaps */
+        edit_backtrack = 1;
+        tree_dist = tree_edit_distance(T1, T2);
+        free_tree(T1); free_tree(T2);
+        unexpand_aligned_F(aligned_line);
+        printf("%s\n%s  %3.2f\n", aligned_line[0], aligned_line[1], tree_dist);
+
+        /* same thing using string edit (alignment) distance */
+        string_dist = string_edit_distance(S1, S2);
+        free(S1); free(S2);
+        printf("%s  mfe=%5.2f\n%s  mfe=%5.2f  dist=%3.2f\n",
+     	aligned_line[0], e1, aligned_line[1], e2, string_dist);
+
+        /* for longer sequences one should also set a scaling factor for
+           partition function folding, e.g: */
+        kT = (temperature+273.15)*1.98717/1000.;  /* kT in kcal/mol */
+        pf_scale = exp(-e1/kT/strlen(seq1));
+        init_pf_fold(strlen(seq1));
+
+        /* calculate partition function and base pair probabilities */
+        e1 = pf_fold(seq1, struct1);
+        pf1 = Make_bp_profile(strlen(seq1));
+
+        e2 = pf_fold(seq2, struct2);
+        pf2 = Make_bp_profile(strlen(seq2));
+
+        free_pf_arrays();  /* free space allocated for pf_fold() */
+
+        profile_dist = profile_edit_distance(pf1, pf2);
+        printf("%s  free energy=%5.2f\n%s  free energy=%5.2f  dist=%3.2f\n",
+     	aligned_line[0], e1, aligned_line[1], e2, profile_dist);
+
+        free_profile(pf1); free_profile(pf2);
+     }
+
+   In a typical Unix environment you would compile this program using:
+`cc -c example.c -IHPATH' and link using `cc -o example example.o
+-LLPATH -lRNA -lm' where HPATH and LPATH point to the location of the
+header files and library, respectively.
+
+
+File: RNAlib.info,  Node: References,  Next: Function Index,  Prev: Example,  Up: Top
+
+6 References
+************
+
+   - D.H. Mathews, J. Sabina, M. Zuker and H. Turner (1999)
+     Expanded sequence dependence of thermodynamic parameters provides
+      robust prediction of RNA secondary structure, JMB, 288: 911-940
+
+   - M. Zuker and P. Stiegler (1981)
+     Optimal  computer  folding  of large RNA sequences using
+     thermodynamic and auxiliary information, Nucl Acid Res 9: 133-148
+
+   - D.A. Dimitrov, M.Zuker(2004)
+     Prediction of hybridization and melting for double stranded nucleic
+       acids, Biophysical J. 87: 215-226,
+
+   - J.S. McCaskill (1990)
+     The equilibrium partition function and base pair binding
+     probabilities for RNA secondary structures, Biopolymers 29:
+     1105-1119
+
+   - D.H. Turner, N. Sugimoto and S.M. Freier (1988)
+     RNA structure prediction, Ann Rev Biophys Biophys Chem 17: 167-192
+
+   - J.A. Jaeger, D.H. Turner and M. Zuker (1989)
+     Improved predictions of secondary structures for RNA,    Proc.
+     Natl. Acad. Sci. 86: 7706-7710
+
+   - L. He, R. Kierzek, J. SantaLucia, A.E. Walter and D.H. Turner
+     (1991)
+     Nearest-Neighbor Parameters For GU Mismatches,    Biochemistry 30:
+     11124-11132
+
+   - A.E. Peritz, R. Kierzek, N, Sugimoto, D.H. Turner (1991)
+     Thermodynamic Study of Internal Loops in Oligoribonucleotides ... ,
+       Biochemistry 30: 6428-6435
+
+   - A. Walter, D. Turner, J. Kim, M. Lyttle, P. Mu"ller, D. Mathews
+     and M. Zuker (1994)
+     Coaxial stacking of helices enhances binding of
+     Oligoribonucleotides..,    Proc. Natl. Acad. Sci. 91: 9218-9222
+
+   - B.A. Shapiro, (1988)
+     An algorithm for comparing multiple  RNA secondary structures,
+     CABIOS 4, 381-393
+
+   - B.A. Shapiro and K. Zhang (1990)
+     Comparing multiple RNA secondary structures using tree comparison,
+       CABIOS 6, 309-318
+
+   - R. Bruccoleri and G. Heinrich (1988)
+     An improved algorithm for nucleic acid secondary structure display,
+       CABIOS 4, 167-173
+
+   - W. Fontana , D.A.M. Konings, P.F. Stadler, P. Schuster (1993)
+     Statistics of RNA secondary structures, Biopolymers 33, 1389-1404
+
+   - W. Fontana, P.F. Stadler, E.G. Bornberg-Bauer, T. Griesmacher, I.L.
+       Hofacker, M. Tacker, P. Tarazona, E.D. Weinberger, P. Schuster
+     (1993)
+     RNA folding and combinatory landscapes, Phys. Rev. E 47: 2083-2099
+
+   - I.L. Hofacker, W. Fontana, P.F. Stadler, S. Bonhoeffer, M. Tacker,
+     P.     Schuster (1994) Fast Folding and Comparison of RNA
+     Secondary Structures.     Monatshefte f. Chemie 125: 167-188
+
+   - I.L. Hofacker (1994) The Rules of the Evolutionary Game for RNA:
+     A Statistical Characterization of the Sequence to Structure
+     Mapping in RNA.     PhD Thesis, University of Vienna.
+
+   - I.L. Hofacker, M. Fekete, P.F. Stadler (2002).     Secondary
+     Structure Prediction for Aligned RNA Sequences.     J. Mol. Biol.
+     319:1059-1066
+
+   - S.H. Bernhart, I.L. Hofacker, S. Will, A. Gruber, P.F. Stadler
+     (2008).
+     RNAalifold: improved consensus structure prediction for RNA
+     alignments. BMC Bioinformatics, 9:474, 2008.
+
+   - I.L. Hofacker and Peter F. Stadler (2006).
+     Memory efficient folding algorithms for circular RNA secondary
+     structures. Bioinformatics, 22:1172–1176.
+
+   - S.H. Bernhart, H. Tafer, U. Mückstein, Ch. Flamm, P.F. Stadler,
+     I.L. Hofacker (2006). Partition function and base pairing
+     probabilities    of RNA heterodimers. Algorithms Mol. Biol., 1:3.
+
+   - S.H. Bernhart, I.L. Hofacker, P.F. Stadler (2006).
+     Local RNA base pairing probabilities in large sequences.
+     Bioinformatics, 22:614–615.
+
+   - U. Mückstein, H. Tafer, J. Hackermüller, S.H. Bernhart,    P.F.
+     Stadler, I.L Hofacker (2006).     Thermodynamics of RNA-RNA
+     binding. Bioinformatics, 22:1177–1182.
+
+   - I.L. Hofacker, B. Priwitzer, P.F. Stadler (2004).
+     Prediction of locally stable RNA secondary structures for
+     genome-wide    surveys. Bioinformatics, 20:186–190.
+
+   - D. Adams (1979)
+     The hitchhiker's guide to the galaxy, Pan Books, London
+
+
+File: RNAlib.info,  Node: Function Index,  Next: Variable Index,  Prev: References,  Up: Top
+
+Function Index
+**************
+
+ [index ]
+* Menu:
+
+* *centroid:                             PF Fold.             (line  57)
+* *MEA:                                  PF Fold.             (line  67)
+* *pf_interact:                          Cofolding.           (line 183)
+* *pf_unstru:                            Cofolding.           (line 154)
+* add_root:                              Parsing.             (line  31)
+* alifold:                               Alignment Fold.      (line  14)
+* alipf_fold:                            Alignment Fold.      (line  29)
+* b2C:                                   Parsing.             (line  18)
+* b2HIT:                                 Parsing.             (line  14)
+* b2Shapiro:                             Parsing.             (line  22)
+* bp_distance:                           Distances.           (line  20)
+* co_pf_fold:                            Cofolding.           (line  70)
+* cofold:                                Cofolding.           (line  36)
+* compute_probabilities:                 Cofolding.           (line 109)
+* energy_of_struct:                      mfe Fold.            (line  25)
+* expand_Full:                           Parsing.             (line  10)
+* expand_Shapiro:                        Parsing.             (line  27)
+* fold:                                  mfe Fold.            (line  11)
+* free_alifold_arrays:                   Alignment Fold.      (line  20)
+* free_arrays:                           mfe Fold.            (line  36)
+* free_co_arrays:                        Cofolding.           (line  41)
+* free_co_pf_arrays:                     Cofolding.           (line  81)
+* free_interact:                         Cofolding.           (line 211)
+* free_pf_arrays:                        PF Fold.             (line  38)
+* free_pf_arraysLP:                      Local Fold.          (line  49)
+* free_profile:                          Profile Distances.   (line  20)
+* free_pu_contrib:                       Cofolding.           (line 175)
+* free_tree:                             Tree Distances.      (line  15)
+* get_line:                              Utilities.           (line  98)
+* gmlRNA:                                Utilities.           (line  39)
+* hamming:                               Utilities.           (line  56)
+* init_co_pf_fold:                       Cofolding.           (line  85)
+* init_pf_fold:                          PF Fold.             (line  33)
+* init_pf_foldLP:                        Local Fold.          (line  46)
+* initialize_cofold:                     Cofolding.           (line  44)
+* initialize_fold:                       mfe Fold.            (line  31)
+* int_urn:                               Utilities.           (line  91)
+* inverse_fold:                          Inverse Fold.        (line  10)
+* inverse_pf_fold:                       Inverse Fold.        (line  21)
+* Lfold:                                 Local Fold.          (line  10)
+* Make_bp_profile:                       Profile Distances.   (line  10)
+* make_pair_table:                       Utilities.           (line  71)
+* Make_swString:                         String Distances.    (line   7)
+* make_tree:                             Tree Distances.      (line   7)
+* mean_bp_dist:                          PF Fold.             (line  46)
+* nrerror:                               Utilities.           (line  80)
+* pack_structure:                        Utilities.           (line  60)
+* parse_structure:                       Parsing.             (line  48)
+* pf_fold:                               PF Fold.             (line  13)
+* plist:                                 Local Fold.          (line  18)
+* profile_edit_distance:                 Profile Distances.   (line  17)
+* PS_dot_plot:                           Utilities.           (line   9)
+* PS_rna_plot:                           Utilities.           (line  19)
+* PS_rna_plot_a:                         Utilities.           (line  27)
+* random_string:                         Utilities.           (line  52)
+* read_parameter_file:                   Param Files.         (line  11)
+* space:                                 Utilities.           (line  94)
+* string_edit_distance:                  String Distances.    (line  11)
+* struct:                                Cofolding.           (line  93)
+* subopt:                                Suboptimal folding.  (line  10)
+* svg_RNA_plot:                          Utilities.           (line  34)
+* time_stamp:                            Utilities.           (line  76)
+* tree_edit_distance:                    Tree Distances.      (line  12)
+* unexpand_aligned_F:                    Parsing.             (line  43)
+* unexpand_Full:                         Parsing.             (line  34)
+* unpack_structure:                      Utilities.           (line  67)
+* unweight:                              Parsing.             (line  38)
+* update_alifold_params:                 Alignment Fold.      (line  23)
+* update_fold_params:                    mfe Fold.            (line  39)
+* update_pf_params:                      PF Fold.             (line  41)
+* update_pf_paramsLP:                    Local Fold.          (line  52)
+* urn:                                   Utilities.           (line  83)
+* write_parameter_file:                  Param Files.         (line  15)
+
+
+File: RNAlib.info,  Node: Variable Index,  Prev: Function Index,  Up: Top
+
+Variable Index
+**************
+
+ [index ]
+* Menu:
+
+* *symbolset:                            Inverse Fold.        (line  29)
+* aligned_line:                          Distances.           (line  76)
+* backtrack_type:                        Fold Vars.           (line 100)
+* base_pair:                             Fold Vars.           (line  69)
+* cost_matrix:                           Distances.           (line  68)
+* cut_point <1>:                         Fold Vars.           (line  62)
+* cut_point:                             Cofolding.           (line  29)
+* cv_fact:                               Alignment Fold.      (line  44)
+* dangles:                               Fold Vars.           (line  36)
+* do_backtrack:                          Fold Vars.           (line  96)
+* edit_backtrack:                        Distances.           (line  72)
+* energy_set:                            Fold Vars.           (line  26)
+* fold_constrained:                      Fold Vars.           (line  92)
+* give_up:                               Inverse Fold.        (line  13)
+* helix_size:                            Parsing.             (line  59)
+* iindx:                                 Fold Vars.           (line  77)
+* loop_degree:                           Parsing.             (line  56)
+* loop_size:                             Parsing.             (line  52)
+* loops:                                 Parsing.             (line  62)
+* nc_fact:                               Alignment Fold.      (line  48)
+* no_closingGU:                          Fold Vars.           (line  13)
+* noGU:                                  Fold Vars.           (line  10)
+* noLonelyPairs:                         Fold Vars.           (line  17)
+* nonstandards:                          Fold Vars.           (line  57)
+* pairs:                                 Parsing.             (line  65)
+* pf_scale:                              Fold Vars.           (line  81)
+* pr:                                    Fold Vars.           (line  73)
+* rna_plot_type:                         Utilities.           (line  46)
+* temperature:                           Fold Vars.           (line  31)
+* tetra_loop:                            Fold Vars.           (line  22)
+* unpaired:                              Parsing.             (line  68)
+* xsubi:                                 Utilities.           (line  87)
+
+
+
+Tag Table:
+Node: Top0
+Node: Introduction602
+Node: Folding Routines1612
+Node: mfe Fold2423
+Node: PF Fold4424
+Node: Inverse Fold8436
+Node: Suboptimal folding10073
+Node: Cofolding10754
+Node: Local Fold22112
+Node: Alignment Fold24820
+Node: Fold Vars27147
+Node: Param Files31766
+Node: Parsing and Comparing39083
+Node: notations39493
+Node: Parsing43016
+Node: Distances45657
+Node: Tree Distances49520
+Node: String Distances50298
+Node: Profile Distances50828
+Node: Utilities51907
+Node: Example56543
+Node: References60052
+Node: Function Index64180
+Node: Variable Index69658
+
+End Tag Table
