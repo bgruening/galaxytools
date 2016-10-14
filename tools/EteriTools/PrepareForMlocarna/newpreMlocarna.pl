@@ -702,10 +702,10 @@ sub matrix2tree {
 
   my $temp_file;
 
-  my $path = "/home/eteri/GalaxyProject/galaxy/tools/PrepareForMlocarna/";
+  #my $path = "/home/eteri/GalaxyProject/galaxy/tools/PrepareForMlocarna/";
   #mkdir($tree_dir);
   system("cat $matrix_file | awk '{for(i=1;i<NR;i++){print NR,i,\$(i)}}' > $tree_dir/tree.score-list");
-  system("perl /home/eteri/GalaxyProject/galaxy/tools/PrepareForMlocarna/rnaclustScores2Dist.pl --quantile 1.0 < $tree_dir/tree.score-list > $tree_dir/tree.dist-list") == 0 or die " .1. command was unable to run to completion:\n\n";
+  system("perl rnaclustScores2Dist.pl --quantile 1.0 < $tree_dir/tree.score-list > $tree_dir/tree.dist-list") == 0 or die " .1. command was unable to run to completion:\n\n";
 
   system("pgma $names_file $tree_dir/tree.dist-list > $tree_outfile") == 0 or die " .2. command was unable to run to completion:\n\n";
 

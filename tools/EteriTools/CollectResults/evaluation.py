@@ -3,23 +3,26 @@ import shutil
 from shutil import copyfile
 from os import system
 import re
-import sklearn
+#import sklearn
 from sklearn import metrics
-from tabulate import tabulate
+#from tabulate import tabulate
 
 
 
 def sh(script):
     system("bash -c '%s'" % script)
 
-dataNames = sys.argv[1]
+#dataNames = sys.argv[1]
+dataNames = "FASTA/data.names"
 #path = sys.argv[2]
 
 
 listOfClusters = []
 listOfClasses = []
 
-cluster_seqs_stats_path = "test-data/RESULTS/*.cluster.all"
+#cluster_seqs_stats_path = "test-data/RESULTS/*.cluster.all"
+
+cluster_seqs_stats_path = "RESULTS/*.cluster.all"
 cluster_seqs_stats_files = glob.glob(cluster_seqs_stats_path)
 
 blackList =[]
@@ -41,7 +44,7 @@ for singleFile in sorted(cluster_seqs_stats_files):
 
             with open(dataNames, "r") as names:
                 for nameLine in names.readlines():
-                    fullUniqeId = nameLine.split()[6] #waas 3
+                    fullUniqeId = nameLine.split()[3] #waas 6
                     print "full uniqueId = ", fullUniqeId
                     rnaClass, sep, tail = fullUniqeId.partition("_")
                     if fullUniqeId == uniqueId:
@@ -51,7 +54,7 @@ print "numberOfClusters = " ,numberOfClusters
 numberOfClusters += 1 ### 1 cluster for all unassigned seqs
 with open(dataNames, "r") as names:
     for nameLine in names.readlines():
-        fullUniqeId = nameLine.split()[6] # was 3
+        fullUniqeId = nameLine.split()[3] # was 6
         rnaClass, sep, tail = fullUniqeId.partition("_")
         print "fullUniqeId = ", fullUniqeId
         rnaClass, sep, tail = fullUniqeId.partition("_")
@@ -62,25 +65,25 @@ with open(dataNames, "r") as names:
 
 
 toWrite = ""
-table=[]
+#table=[]
 for i in range(len(listOfClusters)):
     toWrite += listOfClasses[i] + "\t" + listOfClusters[i] + '\n'
-    table += [[listOfClasses[i],listOfClusters[i]]]
+    #table += [[listOfClasses[i],listOfClusters[i]]]
 
-f = open('table.txt', 'w')
-f.write(tabulate(table))
-f.close()
+#f = open('table.txt', 'w')
+#f.write(tabulate(table))
+#f.close()
 
-with open("fullTab.txt", "w") as full:
+with open("RESULTS/fullTab.tabular", "w") as full:
     full.write(toWrite)
 
-with open("listOfClusters.txt", "w") as fclt:
-    fclt.write("" + str(listOfClusters))
+# with open("listOfClusters.txt", "w") as fclt:
+#     fclt.write("" + str(listOfClusters))
+#
+# with open("listOfClasses.txt", "w") as fcls:
+#     fcls.write("" + str(listOfClasses))
 
-with open("listOfClasses.txt", "w") as fcls:
-    fcls.write("" + str(listOfClasses))
-
-# completeness_score = metrics.completeness_score(listOfClasses, listOfClusters)
+#completeness_score = metrics.completeness_score(listOfClasses, listOfClusters)
 # homogeneity_score = metrics.homogeneity_score(listOfClasses, listOfClusters)
 # adjusted_rand_score = metrics.adjusted_rand_score(listOfClasses, listOfClusters)
 # adjusted_mutual_info_score = metrics.adjusted_mutual_info_score(listOfClasses, listOfClusters)
@@ -93,7 +96,7 @@ with open("listOfClasses.txt", "w") as fcls:
 #
 #
 #
-# print "compl_score = ", completeness_score, "\n"
+#print "compl_score = ", completeness_score, "\n"
 # print "homog_score = ", homogeneity_score , "\n"
 # print "v_measure_score = ", v_measure_score , "\n"
 # print "adjusted_rand_score = ", adjusted_rand_score , "\n"

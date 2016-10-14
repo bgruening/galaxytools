@@ -39,7 +39,7 @@ sh(cmd_stk)
 model_tree_stk = "model.cmfinder.stk.sth"
 
 
-os.popen("/home/eteri/GalaxyProject/galaxy/tools/CMFinder/cmfinder " +  gapCmd + " " + gapVal + " -a " + model_tree_stk +  " " + cmfinder_fa + " " +  " output > model.cmfinder.stk")# + directory +"/model.cmfinder.stk && rm " + directory + "/output")
+os.popen("cmfinder " +  gapCmd + " " + gapVal + " -a " + model_tree_stk +  " " + cmfinder_fa + " " +  " output > model.cmfinder.stk")# + directory +"/model.cmfinder.stk && rm " + directory + "/output")
 if os.path.isfile('output') :
     ##copyfile("output", "model.cmfinder.stk")
     sh("rm output")
