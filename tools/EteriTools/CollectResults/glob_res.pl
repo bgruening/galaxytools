@@ -156,7 +156,7 @@ foreach my $file (@tabFiles ) {
 
 
     system("rm -f RESULTS/partitions/final_partition.used_cmsearch");
-    write_partition( $all_hits, $clus2idx, $old2new_map_SOFT, "EVAL/partitions/$round.soft" );
+    write_partition( $all_hits, $clus2idx, $old2new_map_SOFT, "RESULTS/partitions/$round.soft" );
 
     #next if ($do_summary_only);
 
@@ -179,7 +179,7 @@ foreach my $file (@tabFiles ) {
 #     }
 #print "\n #################################### \n";
 
-    write_partition( $hits, $clus2idx, $old2new_map_BEST, "EVAL/partitions/$round.hard.best" );
+    write_partition( $hits, $clus2idx, $old2new_map_BEST, "RESULTS/partitions/$round.hard.best" );
 
     ## merged partitions
     ## overlap matrix is based on %cm_hitlists, i.e. on soft, not on hard partition of hits
@@ -188,7 +188,7 @@ foreach my $file (@tabFiles ) {
     $clus2idx = get_clus2idx( \%cm_hitlists, $old2new_map_MERGED );
 
   #  print "hits = $hits \n";
-    write_partition( $hits, $clus2idx, $old2new_map_MERGED, "EVAL/partitions/$round.hard.merged" );
+    write_partition( $hits, $clus2idx, $old2new_map_MERGED, "RESULTS/partitions/$round.hard.merged" );
 
 
   } ## foreach round
@@ -200,16 +200,16 @@ foreach my $file (@tabFiles ) {
   exit if ($round_max == 0);
 
   ## soft part data
-  system("cp EVAL/partitions/$round_max.soft RESULTS/partitions/final_partition.soft");
+  system("cp RESULTS/partitions/$round_max.soft RESULTS/partitions/final_partition.soft");
 
   open( OUT, ">RESULTS/partitions/final_partition.used_cmsearch" );
   map { print OUT $_ . "\n" } keys %exist_part_used;
   close(OUT);
 
-  system("cp EVAL/partitions/$round_max.hard.merged RESULTS/partitions/final_partition.hard.merged");
-  system("cp EVAL/partitions/$round_max.hard.best RESULTS/partitions/final_partition.hard.best");
-  system("cp EVAL/overlap/$round_max.cm_overlap RESULTS/partitions/final_overlap.matrix");
-  system("cp EVAL/overlap/$round_max.cm_overlap.merge_map RESULTS/partitions/final_overlap.map");
+  system("cp RESULTS/partitions/$round_max.hard.merged RESULTS/partitions/final_partition.hard.merged");
+  system("cp RESULTS/partitions/$round_max.hard.best RESULTS/partitions/final_partition.hard.best");
+  system("cp RESULTS/overlap/$round_max.cm_overlap RESULTS/partitions/final_overlap.matrix");
+  system("cp RESULTS/overlap/$round_max.cm_overlap.merge_map RESULTS/partitions/final_overlap.map");
 
 #  exit;
 
