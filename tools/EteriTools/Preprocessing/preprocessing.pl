@@ -42,6 +42,15 @@ writeFiles( \@fa_in, $frags_splitN, $genome_locs); ## skip grey_href
 
 system("zip -r FASTA.zip FASTA");
 
+print "\n#########################################################################\n";
+print " STATS\n\n";
+print "input seqs                                    : " . ( @{ $fa_in[1] } ) . "\n";
+print "    fragments (after removing masked regions) : " . ( map { @{$_} } @{$frags_splitN} ) . "\n";
+print "    fragments (after using windows/shift)     : " . ( keys %{$frags_shift} ) . "\n";
+print "    fragments (after blastclust)              : " . ( @{$frags_keep} ) . "\n";
+print "#########################################################################\n";
+
+
 
 sub writeFrags {
   my $fa        = $_[0];  ## fastan file

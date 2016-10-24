@@ -7,10 +7,10 @@ $vrna_path = "2.1.2/bin";
 #~ ask Bjorn how to do that with wrappers
 
 
-my ($fast_cluster, $data_fasta, $fast_cluster_sim, $map_data,$nspdk_knn_center ) = @ARGV;
+my ( $CI, $fast_cluster, $data_fasta, $fast_cluster_sim, $map_data,$nspdk_knn_center ) = @ARGV;
 
 
-my $CI = 1;
+#my $CI = 1;
 
 if (not defined $fast_cluster ||  not defined $data_fasta || not defined $fats_cluster_sim || not defined $map_data) {
   die "Wrong arguments: candidate clusters, fasta file, similarity scores and/or map data are missing \n";
@@ -62,23 +62,32 @@ while ( keys %toDo_models ) {
 #        my $model_dir = "$CLUSTER_DIR/$clus_idx.MODEL";
 #        system("mkdir -p $model_dir");
 
+  #    if ( -e "$CLUSTER_DIR/$clus_idx.cluster/cmsearch.DONE" ) {
+  #        print "Round $CI cluster $clus_idx stages 6-8 already finished!\n";
+  #        delete $toDo_models{$clus_idx};
+  #        next;
+  #    }
+
 
         $clus_idx =~ /\d+\.(\d+)/;
         my $clus_idx_ci      = $1;
+
+        print "cluster_idx = $clus_idx \n";
+        print "cluster_idx_ci = $clus_idx_ci \n";
+
         #my $curr_cluster_dir = "$CLUSTER_DIR/$clus_idx.cluster";
 
         #system("mkdir -p $CLUSTER_DIR/$clus_idx.cluster");
 
 
         my $ids_aref =  readSubset($fast_cluster, $clus_idx_ci, $nspdk_knn_center);
-
         writeSet( $ids_aref, "$CLUSTER_DIR/$clus_idx.center.ids" );
         writeSubsetFrags( \@fa, $ids_aref, "$CLUSTER_DIR/$clus_idx.center.frags", "SEQ" );
         writeSubsetFasta( \@fa, $ids_aref, "$CLUSTER_DIR/$clus_idx.center.fa", 1 );
+
         my $center_fa_file = "$CLUSTER_DIR/$clus_idx.center.fa";
 
         my $ids_all = readSubset( $fast_cluster, 1, $nspdk_knn_center * 3 );
-
         writeSet( $ids_all, "$CLUSTER_DIR/$clus_idx.center.ids.ext" );
         writeSubsetFasta( \@fa, $ids_all, "$CLUSTER_DIR/$clus_idx.center.fa.ext", 1 );
 
@@ -116,9 +125,6 @@ while ( keys %toDo_models ) {
         print "$center_fa_file \n";
 
 
-      #  $mloc_opts = "-p 0.001 --max-diff-am 50 --tau 50  --max-diff 100 --alifold-consensus-dp";
-
-      #  system("mlocarna $mloc_opts --treefile $tree_file $center_fa_file --tgtdir $tree_dir/mloc") == 0 or die " mloc command was unable to run to completion:\n\n";
 
          my $ids_ext = readSubset( "$CLUSTER_DIR/$clus_idx.center.ids.ext", 1 );
          my @fa_ext_all = read_fasta_file("$CLUSTER_DIR/$clus_idx.center.fa.ext");
@@ -131,7 +137,7 @@ while ( keys %toDo_models ) {
 
         delete $toDo_models{$clus_idx};
 
- } #end forach
+ } #end foreach
 
     $trigger_new_partition = 0;
 
@@ -139,31 +145,6 @@ while ( keys %toDo_models ) {
 
 
 }   #end while
-
-
-
-#my $directory = $CLUSTER_DIR;
-
-#opendir (DIR, $directory) or die $!;
-
-#while (my $file = readdir(DIR)) {
-
-#      print "$file\n";
-#      next if ($file =~ m/^\./);
-#      system("zip -r $CLUSTER_DIR/$file.gfClustzip $CLUSTER_DIR/$file");
-#      system("rm -r $CLUSTER_DIR/$file")
-#  }
-
-
-
-
-
-
-
-
-
-
-
 
 
 

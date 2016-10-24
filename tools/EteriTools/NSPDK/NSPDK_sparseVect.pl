@@ -7,7 +7,7 @@ use Array::Utils qw(:all);
 
 #my $CI = 1; ## iteration num
 my $SVECTOR_DIR = "SVECTOR";
-my $nspdk_mi = 0;
+
 
 my ($data_fasta, $gspan, $rad, $dist) = @ARGV;
 
