@@ -14,7 +14,7 @@ my $GLOBAL_hit_blacklist_overlap = 0.2; #add as param
 #my $data_fasta = "FASTA/data.fasta";
 $final_partition_soft="";
 my $bl_list ="";
-my ( $data_fasta, $data_names, $noCache, $ensf,  $oc, $usn, $nspdk_knn_center, $nhf, $nspdk_nhf_max, $nspdk_nhf_step, $CI, $GLOBAL_num_clusters, $bl_list, $final_partition_soft, $round_soft, $fast_cluster_last_round, $GLOBAL_hit_blacklist_overlap) = @ARGV;
+my ( $data_fasta, $data_names, $noCache, $ensf,  $oc, $usn, $nspdk_knn_center, $nhf, $nspdk_nhf_max, $nspdk_nhf_step, $GLOBAL_num_clusters, $CI, $bl_list, $final_partition_soft, $round_soft, $fast_cluster_last_round, $GLOBAL_hit_blacklist_overlap) = @ARGV;
 
 my $data_svector = "$SVECTOR_DIR/data.svector";
 
@@ -50,8 +50,10 @@ my $num_seqs = @{ $fa[1] };
 #system("mkdir -p $SVECTOR_DIR");
 
 my $clusters_last_round = [];
+
 if ( $CI > 1 ) {
-print "stex chpiti mtni \n";
+
+  print "stex chpiti mtni \n";
 
   ## get list of center-idx from last round (soft partition) which lead to cluster (> results_min_cluster_size)
   $clusters_last_round = foundClusters( $CI - 1 );
@@ -61,10 +63,9 @@ print "stex chpiti mtni \n";
 
   my $center_last_round = 0;
   ## fast_cluster file not exists if $in_stage_end = 5 (also used with special blacklist)
-  #if ( -e "$data_svector." . ( $CI - 1 ) . ".fast_cluster" ) {
+
   if ( -e $fast_cluster_last_round ) {
     my @t = readpipe( "cat $fast_cluster_last_round" );
-  #  print "t = @t \n";
     chomp(@t);
     $center_last_round = @t;
     print "center last round = $center_last_round \n";
@@ -101,62 +102,63 @@ print "stex chpiti mtni \n";
 
 } ## end if ( $CI > 1 )
 
-  if ($CI == 1){
+
       ## we always have blacklist paramter for NSPDK stage 5 -> need always a file
       system("touch $SVECTOR_DIR/data.svector.blacklist.$CI") if ( !-e "$SVECTOR_DIR/data.svector.blacklist.$CI" );
       ## todo: !!! tempBlacklist is not working, needs refactor but currently we can live without it
       system("touch $SVECTOR_DIR/blacklist.no_model");
       $bl_list = "$SVECTOR_DIR/data.svector.blacklist.$CI";
-    }
+  
 
 ####here should also be part for more rounds. check later
 
-#if ( $CI > 1 && !-e "$SVECTOR_DIR/data.svector.blacklist.$CI.special" ) {
+if ( $CI > 1 && !-e "$SVECTOR_DIR/data.svector.blacklist.$CI.special" ) {
   ## make blacklist for this round from all Infernal hits so far
-  ## collect all cmsearch hits from last round as blacklist
-  ## hits are based on hard merged partition file, i.e. on last glob_results.pl call
-#  makeBlacklist( $CI, "$SVECTOR_DIR/round." . ( $CI - 1 ) . ".hits", $GLOBAL_hit_blacklist_overlap );
-#}
+  # collect all cmsearch hits from last round as blacklist
+  # hits are based on hard merged partition file, i.e. on last glob_results.pl call
+  makeBlacklist( $CI, "$SVECTOR_DIR/round." . ( $CI - 1 ) . ".hits", $GLOBAL_hit_blacklist_overlap );
+}
 
-#if ( $CI > 1 ) {
+if ( $CI > 1 ) {
   #system( "cat $SVECTOR_DIR/blacklist.no_model $SVECTOR_DIR/round." . ( $CI - 1 ) . ".hits $FASTA_DIR/$DATA_prefix.no_match > $SVECTOR_DIR/data.svector.blacklist.$CI" );
-#  system( "cat $SVECTOR_DIR/blacklist.no_model $SVECTOR_DIR/round." . ( $CI - 1 ) . ".hits > $SVECTOR_DIR/data.svector.blacklist.$CI" );
-#} else {
+  #system( "cat $SVECTOR_DIR/blacklist.no_model $SVECTOR_DIR/round." . ( $CI - 1 ) . ".hits > $SVECTOR_DIR/data.svector.blacklist.$CI" );
+  system( "cat  $SVECTOR_DIR/round." . ( $CI - 1 ) . ".hits > $bl_list" );
+} else {
   #system("cat $SVECTOR_DIR/blacklist.no_model $FASTA_DIR/$DATA_prefix.no_match > $SVECTOR_DIR/data.svector.blacklist.$CI");
-#  system("cat $SVECTOR_DIR/blacklist.no_model  > $SVECTOR_DIR/data.svector.blacklist.$CI");
-#}
+  system("cat $SVECTOR_DIR/blacklist.no_model  > $bl_list");
+}
 
 
 #################################################################
 
 
-#my $blacklist_curr_size = 0;
-#my @bl_num = readpipe("cat $SVECTOR_DIR/data.svector.blacklist.$CI");
-#chomp(@bl_num);
-#$blacklist_curr_size = unique(@bl_num);
-#print "\nFINAL blacklist size for round $CI: $blacklist_curr_size\n";
+my $blacklist_curr_size = 0;
+my @bl_num = readpipe("cat $bl_list");
+chomp(@bl_num);
+$blacklist_curr_size = unique(@bl_num);
+print "\nFINAL blacklist size for round $CI: $blacklist_curr_size\n";
 
-## $in_stage_end=10 -> special mode: only use NSPDK and predict candidate cluster,
+# $in_stage_end=10 -> special mode: only use NSPDK and predict candidate cluster,
 ## but do nothing else, stop each iteration after stage 5
-#if ( -e "$SVECTOR_DIR/data.svector.blacklist.$CI.special" ) {
-#    system("cp $SVECTOR_DIR/data.svector.blacklist.$CI.special $SVECTOR_DIR/data.svector.blacklist.$CI");
-#    $in_stage_end = 10;
-#    $blacklist_curr_size = `cat $SVECTOR_DIR/data.svector.blacklist.$CI.special | wc -l`;
-# }
+if ( -e "$SVECTOR_DIR/data.svector.blacklist.$CI.special" ) {
+    system("cp $SVECTOR_DIR/data.svector.blacklist.$CI.special $SVECTOR_DIR/data.svector.blacklist.$CI");
+    $in_stage_end = 10;
+    $blacklist_curr_size = `cat $SVECTOR_DIR/data.svector.blacklist.$CI.special | wc -l`;
+ }
 
 ## do nothing for this round if we have to few sequences left
-#my $num_seqs_left = $num_seqs - $blacklist_curr_size;
-#print "num of seqs = $num_seqs \n";
-#print "blacklist_curr_size = $blacklist_curr_size \n";
-#if ( $num_seqs_left < 2 ) {
+my $num_seqs_left = $num_seqs - $blacklist_curr_size;
+print "num of seqs = $num_seqs \n";
+print "blacklist_curr_size = $blacklist_curr_size \n";
+if ( $num_seqs_left < 2 ) {
     ## do not call NSPDK again
-#    print "\n...only $num_seqs_left sequences left for clustering.\n";
-#    print " Skip all following iterations!\n\n";
+    print "\n...only $num_seqs_left sequences left for clustering.\n";
+    print " Skip all following iterations!\n\n";
 
     #~ system("echo  \`date\` >> $EVAL_DIR/times/time.round.$CI"); ## only for time measurment
     #~ system( "echo " . time . " >> $EVAL_DIR/times/time.round.$CI" ); ## only for time measurment
-#    last;
-#}
+    last;
+}
 
 
 
