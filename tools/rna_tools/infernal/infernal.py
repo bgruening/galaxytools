@@ -53,7 +53,7 @@ class Infernal_CM_1_1( Text ):
                 dataset.blurb = "1 model"
             else:
                 dataset.blurb = "%s models" % dataset.metadata.number_of_models
-            dataset.peek = data.get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
+            dataset.peek = get_file_peek( dataset.file_name, is_multi_byte=is_multi_byte )
         else:
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disc'

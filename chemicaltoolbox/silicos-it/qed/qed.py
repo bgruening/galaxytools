@@ -212,13 +212,13 @@ def properties(mol):
     Calculates the properties that are required to calculate the QED descriptor.
     """
     matches = []
-    if (mol is None):
+    if mol is None:
         raise WrongArgument("properties(mol)", "mol argument is \'None\'")
     x = [0] * 9
     x[0] = Descriptors.MolWt(mol)                                                # MW 
     x[1] = Descriptors.MolLogP(mol)                                                # ALOGP
     for hba in Acceptors:                                                        # HBA
-        if (mol.HasSubstructMatch(hba)):
+        if mol.HasSubstructMatch(hba):
             matches = mol.GetSubstructMatches(hba)
             x[2] += len(matches)
     x[3] = Descriptors.NumHDonors(mol)                                            # HBD
@@ -411,4 +411,4 @@ if __name__ == "__main__":
                 smiles
                 ))
     else:
-        sys.exit("Error: unknown file-type: ", filetype)
+        sys.exit("Error: unknown file-type: %s" % filetype)

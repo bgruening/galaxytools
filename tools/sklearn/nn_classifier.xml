@@ -1,0 +1,150 @@
+<tool id="nn_classifier" name="Nearest Neighbors Classification" version="@VERSION@">
+    <description></description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command><![CDATA[
+    python "$nnc_script" '$inputs'
+]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs"/>
+        <configfile name="nnc_script">
+<![CDATA[
+import sys
+import json
+import numpy as np
+import sklearn.neighbors
+import pandas
+import pickle
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+
+
+#if $selected_tasks.selected_task == "load":
+
+classifier_object = pickle.load(open("$infile_model", 'r'))
+
+data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+prediction = classifier_object.predict(data)
+prediction_df = pandas.DataFrame(prediction)
+res = pandas.concat([data, prediction_df], axis=1)
+res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
+
+#else:
+
+data_train = pandas.read_csv("$selected_tasks.infile_train", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+
+data = data_train.ix[:,0:len(data_train.columns)-1]
+labels = np.array(data_train[data_train.columns[len(data_train.columns)-1]])
+
+selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
+
+if selected_algorithm == "nneighbors":
+    classifier = params["selected_tasks"]["selected_algorithms"]["sampling_methods"]["sampling_method"]
+    sys.stdout.write(classifier)
+    options = params["selected_tasks"]["selected_algorithms"]["sampling_methods"]["options"]
+    sys.stdout.write(str(options))
+elif selected_algorithm == "ncentroid":
+    options = params["selected_tasks"]["selected_algorithms"]["options"]
+    classifier = "NearestCentroid"
+
+my_class = getattr(sklearn.neighbors, classifier)
+classifier_object = my_class(**options)
+classifier_object.fit(data,labels)
+
+pickle.dump(classifier_object,open("$outfile", 'w+'))
+
+#end if
+
+]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="train_loadConditional"><!--Todo: add sparse to targets-->
+            <param name="selected_algorithm" type="select" label="Classifier type">
+                <option value="nneighbors">Nearest Neighbors</option>
+                <option value="ncentroid">Nearest Centroid</option>
+            </param>
+            <when value="nneighbors">
+                <conditional name="sampling_methods">
+                    <param name="sampling_method" type="select" label="Neighbor selection method">
+                        <option value="KNeighborsClassifier" selected="true">K-nearest neighbors</option>
+                        <option value="RadiusNeighborsClassifier">Radius-based</option>
+                    </param>
+                    <when value="KNeighborsClassifier">
+                        <expand macro="nn_advanced_options">
+                            <param argument="n_neighbors" type="integer" optional="true" value="5" label="Number of neighbors" help=" "/>
+                        </expand>
+                    </when>
+                    <when value="RadiusNeighborsClassifier">
+                        <expand macro="nn_advanced_options">
+                            <param argument="radius" type="float" optional="true" value="1.0" label="Radius" help="Range of parameter space to use by default for :meth ''radius_neighbors'' queries."/>
+                        </expand>
+                    </when>
+                </conditional>  
+            </when>
+            <when value="ncentroid">
+                <section name="options" title="Advanced Options" expanded="False">
+                    <param argument="metric" type="text" optional="true" value="euclidean" label="Metric" help="The metric to use when calculating distance between instances in a feature array."/>
+                    <param argument="shrink_threshold" type="float" optional="true" value="" label="Shrink threshold" help="Floating point number for shrinking centroids to remove features."/>
+                </section>
+            </when>
+        </expand>
+    </inputs>
+    <outputs>
+        <data format="txt" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="nneighbors"/>
+            <param name="sampling_method" value="KNeighborsClassifier" />
+            <param name="algorithm" value="brute" />
+            <output name="outfile" file="nn_model01.txt"/>
+        </test>
+        <test>
+            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value=""/>
+            <param name="selected_algorithm" value="nneighbors"/>
+            <param name="sampling_method" value="RadiusNeighborsClassifier" />
+            <output name="outfile" file="nn_model02.txt"/>
+        </test>
+        <test>
+            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="ncentroid"/>
+            <output name="outfile" file="nn_model03.txt"/>
+        </test>
+        <test>
+            <param name="infile_model" value="nn_model01.txt" ftype="txt"/>
+            <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="nn_prediction_result01.tabular"/>
+        </test>
+        <test>
+            <param name="infile_model" value="nn_model02.txt" ftype="txt"/>
+            <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="nn_prediction_result02.tabular"/>
+        </test>
+        <test>
+            <param name="infile_model" value="nn_model03.txt" ftype="txt"/>
+            <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="nn_prediction_result03.tabular"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+This module implements the k-nearest neighbors classification algorithms.
+For more information check http://scikit-learn.org/stable/modules/neighbors.html
+    ]]></help>
+    <expand macro="sklearn_citation"/>
+</tool>
