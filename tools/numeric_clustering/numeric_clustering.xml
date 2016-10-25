@@ -1,0 +1,390 @@
+<tool id="numeric_clustering" name="Numeric Clustering" version="@VERSION@">
+    <description></description>
+    <requirements>
+        <requirement type="package" version="2.3.0">anaconda</requirement>
+    </requirements>
+    <stdio>
+        <exit_code level="fatal" range="1:"/>
+    </stdio>
+    <macros>
+        <token name="@VERSION@">0.9</token>
+        <macro name="n_clusters" token_default_value="8">
+            <param name="n_clusters" type="integer" optional="true" value="@DEFAULT_VALUE@" label="Number of clusters"
+                help="default value is @DEFAULT_VALUE@ (--n_clusters)"/>
+        </macro>
+        <macro name="n_init">
+            <param name="n_init" type="integer" optional="true" value="" label="Number of runs with different centroid seeds"/>
+        </macro>
+        <macro name="max_iter">
+            <param name="max_iter" type="integer" optional="true" value="" label="Maximum number of iterations per single run"/>
+        </macro>
+        <macro name="random_state">
+            <param name="random_state" type="integer" optional="true" value="" label="Initialize centers"/>
+        </macro>
+        <macro name="affinity">
+            <param name="affinity" type="text" optional="true" value="" label="Affinity"/>
+        </macro>
+        <macro name="tol">
+            <param name="tol" type="float" optional="true" value="" label="Relative tolerance"/>
+        </macro>
+        <macro name="init">
+            <param name="init" type="select" label="Select initialization method">
+                <option value="k-means++">k-means++</option>
+                <option value="random">random</option>
+            </param>
+        </macro>
+    </macros>
+    <version_command>echo "@VERSION@"</version_command>
+    <command><![CDATA[
+    cat "$cluster_script" >&2
+    &&
+    #import json
+    #set $params = dict()
+    #for $key, $value in $algorithm_options.items():
+        #if not $key.startswith('__') and $key.strip() != 'selected_algorithm' and str($value).strip():
+            #if str($value).strip() == 'false':
+                #set $value = False
+            #elif str($value).strip() == 'true':
+                #set $value = True
+            #else:
+                #try:
+                    #set $val = float($value)
+                    #try:
+                        #set $value = int($value)
+                    #except:
+                        #set $value = float($value)
+                    #end try
+                #except:
+                    #set $value = str($value)
+                #end try
+            #end if
+            $params.update({str($key): $value})
+        #end if
+    #end for
+    #set $json_string = json.dumps( $params )
+
+    python "$cluster_script" '$json_string'
+
+]]>
+    </command>
+    <configfiles>
+        <configfile name="cluster_script">
+<![CDATA[
+import sys
+import json
+import numpy as np
+import sklearn.cluster
+import pandas
+
+data = pandas.read_csv("$infile", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+my_class = getattr(sklearn.cluster, "$algorithm_options.selected_algorithm")
+cluster_object = my_class()
+
+params = json.loads( sys.argv[1] )
+cluster_object.set_params(**params)
+#if $end_column and $start_column:
+
+if  $end_column >= $start_column:
+    data_matrix = data.values[:, $start_column-1:$end_column]
+else:
+    data_matrix = data.values
+
+#else:
+data_matrix = data.values
+#end if
+prediction = cluster_object.fit_predict( data_matrix )
+prediction_df = pandas.DataFrame(prediction)
+res = pandas.concat([data, prediction_df], axis=1)
+res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
+]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="tabular" label="Data file with numeric values" />
+        <param name="start_column" type="data_column" data_ref="infile" optional="True" label="Clustering column from" />
+        <param name="end_column" type="data_column" data_ref="infile" optional="True" label="to" />
+        <conditional name="algorithm_options">
+            <param name="selected_algorithm" type="select" label="Clustering Algorithm">
+                <option value="KMeans">KMeans</option>
+                <option value="DBSCAN">DBSCAN</option>
+                <option value="Birch">Birch</option>
+                <option value="MeanShift">MeanShift</option>
+                <option value="AffinityPropagation">Affinity Propagation</option>
+                <option value="AgglomerativeClustering">Agglomerative Clustering</option>
+                <option value="SpectralClustering">Spectral Clustering</option>
+                <option value="MiniBatchKMeans">Mini Batch KMeans</option>
+            </param>
+            <when value="KMeans">
+                <expand macro="n_clusters" default_label="8"/>
+                <expand macro="init"/>
+                <expand macro="n_init"/>
+                <expand macro="max_iter"/>
+                <expand macro="tol"/>
+                <param name="precompute_distances" type="text" optional="true" value="" label="Precompute distances"/>
+                <expand macro="random_state"/>
+                <param name="copy_x" type="boolean" optional="true" truevalue="--copy_x" falsevale="" label="Do not modify original data"/>
+            </when>
+            <when value="DBSCAN">
+                <param name="eps" type="float" optional="true" value="0.5" label="Maximum neghborhood distance"/>
+                <param name="min_samples" type="integer" optional="true" value="5" label="Core point minimum population"/>
+                <param name="metric" type="text" optional="true" value="euclidean" label="Metric"/>
+                <param name="algorithm" type="select" optional="true" value="auto" label="Pointwise distance algorithm">
+                    <option value="auto">auto</option>
+                    <option value="ball_tree">ball_tree</option>
+                    <option value="kd_tree">kd_tree</option>
+                    <option value="brute">brute</option>
+                </param>
+                <param name="leaf_size" type="integer" optional="true" value="30" label="Leaf size"/>
+            </when>
+            <when value="Birch">
+                <param name="threshold" type="float" optional="true" value="0.5" label="Subcluster radius threshold"/>
+                <param name="branching_factor" type="integer" optional="true" value="50" label="Maximum number of subclusters per branch"/>
+                <expand macro="n_clusters"  default_label="3" /> <!-- default to 3-->
+                <!--param name="compute_labels" type="boolean" optional="true" truevalue="true" falsevale="false" label="Compute labels for each fit"/-->
+            </when>
+            <when value="AffinityPropagation">
+                <param name="damping" type="float" optional="true" value="0.5" label="Damping factor"/>
+                <expand macro="max_iter"/> <!--default to 200 -->
+                <param name="convergence_iter" type="integer" optional="true" value="15" label="Number of iterations at each convergence step"/>
+                <param name="copy" type="boolean" optional="true" truevalue="true" falsevale="false" label="Make a copy of input data"/> 
+                <!--param name="preference" type="text" optional="true" value="None" label="Array like shape (n_samples,)"/-->
+                <expand macro="affinity"/> <!--default = euclidean-->
+            </when>
+            <when value="MeanShift">
+                <param name="bandwidth" type="float" optional="true" value="" label="RBF kernel bandwidth"/>
+                <!--param name="seeds" type="list" optional="true" value="None" label=""/-->
+                <param name="bin_seeding" type="boolean" optional="true" truevalue="true" falsevale="false" label="Discretize initial kernel locations"/>
+                <param name="min_bin_freq" type="integer" optional="true" value="1" label="Minimum number of seeds per bin"/>
+                <param name="cluster_all" type="boolean" optional="true" truevalue="true" falsevale="false" label="Cluster all"/>
+            </when>
+            <when value="AgglomerativeClustering">
+                <expand macro="n_clusters"  default_label="2" /> <!-- deafault 2-->
+                <expand macro="affinity"/> <!--default = euclidean-->
+                <!--param name="memory" type="callable" optional="true" value="Memory(cachedir=None)" label="Caching path"/-->
+                <!--param name="connectivity" type="list array-like or callable" optional="true" value="None" label="Connectivity matrix"/-->
+                <param name="n_components" type="integer" optional="true" value="" label="Number of connected components"/>
+                <!--param name="compute_full_tree" type="text or boolean" optional="true" value="auto" label=""/-->
+                <param name="linkage" type="select" optional="true" value="ward" label="Linkage">
+                    <option value="ward">ward</option>
+                    <option value="complete">complete</option>
+                    <option value="average">average</option>
+                </param>
+                <!--param name="pooling_func" type="callable" optional="np.mean" value="None" label=""/-->
+            </when>
+            <when value="SpectralClustering">
+                <expand macro="n_clusters" default_label="8" />
+                <param name="eigen_solver" type="select" value="arpack" label="Eigenvalue decomposition strategy">
+                    <option value="arpack">arpack</option>
+                    <option value="lobpcg">lobpcg</option>
+                    <option value="amg">amg</option>
+                </param>
+                <expand macro="random_state"/>
+                <!-- Todo: extend random_state type to int seed, RandomState instance, or None. -->
+                <expand macro="n_init"/> <!-- default to 10-->
+                <param name="gamma" type="float" optional="true" value="1.0" label="Kernel scaling factor"/>
+                <expand macro="affinity"/> <!--default =rbf-->
+                <param name="n_neighbors" type="integer" optional="true" value="10" label="Number of neighbors"/>
+                <!--param name="eigen_tol" type="float" optional="true" value="0.0" label="arpack eigendecomposition stopping threshold"/-->
+                <param name="assign_labels" type="select" optional="true" value="kmeans" label="Assign labels">
+                    <option value="kmeans">kmeans</option>
+                    <option value="discretize">discretize</option>
+                </param>
+                <param name="degree" type="integer" optional="true" value="3" label="Degree of the polynomial (polynomial kernel only)"/>
+                <param name="coef0" type="integer" optional="true" value="1" label="Zero coefficient (polynomial and sigmoid kernels only)"/>
+                <!--param name="kernel_params" type="dict" optional="true" value="None" label=""/-->
+            </when>
+            <when value="MiniBatchKMeans">
+                <expand macro="n_clusters" default_label="8"/>
+                <expand macro="init"/>
+                <expand macro="n_init"/> <!-- default to 3-->
+                <expand macro="max_iter"/> <!--default to 100-->
+                <expand macro="tol"/> <!--default = 0.0-->
+                <expand macro="random_state"/>
+                <param name="batch_size" type="integer" optional="true" value="100" label="Mini batch size"/>
+                <!--param name="compute_labels" type="boolean" optional="true" truevalue="true" falsevale="false" label="Compute labels for all data"/-->
+                <param name="max_no_improvement" type="integer" optional="true" value="10" label="Maximum number of improvement attempts"/>
+                <param name="init_size" type="integer" optional="true" value="" label="Number of random init samples"/>
+                <param name="reassignment_ratio" type="float" optional="true" value="0.01" label="Re-assignment ratio"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format_source="infile" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="KMeans"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="n_clusters" value="4" />
+            <param name="init" value="k-means++" />
+            <param name="random_state" value="100"/>
+            <output name="outfile" file="cluster_result01.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="KMeans"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="n_clusters" value="4" />
+            <param name="init" value="random" />
+            <param name="random_state" value="100"/>
+            <output name="outfile" file="cluster_result02.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="DBSCAN"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="algorithm" value="kd_tree"/>
+            <param name="leaf_size" value="10"/>
+            <param name="eps" value="1.0"/>
+            <output name="outfile" file="cluster_result03.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="Birch"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="n_clusters" value="4"/>
+            <param name="threshold" value="0.008"/>
+            <output name="outfile" file="cluster_result04.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="Birch"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="branching_factor" value="20"/>
+            <output name="outfile" file="cluster_result05.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="AffinityPropagation"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="affinity" value="euclidean"/>
+            <param name="copy" value="false"/>
+            <output name="outfile" file="cluster_result06.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="AffinityPropagation"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="damping" value="0.8"/>
+            <output name="outfile" file="cluster_result07.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="MeanShift"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="min_bin_freq" value="3"/>
+            <output name="outfile" file="cluster_result08.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="MeanShift"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="cluster_all" value="False"/>
+            <output name="outfile" file="cluster_result09.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="AgglomerativeClustering"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="affinity" value="euclidean"/>
+            <param name="linkage" value="average"/>
+            <param name="n_clusters" value="4"/>
+            <output name="outfile" file="cluster_result10.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="AgglomerativeClustering"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="linkage" value="complete"/>
+            <param name="n_clusters" value="4"/>
+            <output name="outfile" file="cluster_result11.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="SpectralClustering"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="eigen_solver" value="arpack"/>
+            <param name="n_neighbors" value="12"/>
+            <param name="n_clusters" value="4"/>
+            <param name="assign_labels" value="discretize"/>
+            <param name="random_state" value="100"/>
+            <output name="outfile" file="cluster_result12.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="SpectralClustering"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="assign_labels" value="discretize"/>
+            <param name="random_state" value="100"/>
+            <param name="degree" value="2"/>
+            <output name="outfile" file="cluster_result13.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="MiniBatchKMeans"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="tol" value="0.5"/>
+            <param name="random_state" value="100"/>
+            <output name="outfile" file="cluster_result14.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="MiniBatchKMeans"/>
+            <param name="n_init" value="5"/>
+            <param name="start_column" value="2" />
+            <param name="end_column" value="4" />
+            <param name="batch_size" value="10"/>
+            <param name="n_clusters" value="4"/>
+            <param name="random_state" value="100"/>
+            <param name="reassignment_ratio" value="1.0"/>
+            <output name="outfile" file="cluster_result15.txt"/>
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular"/>
+            <param name="selected_algorithm" value="KMeans"/>
+            <param name="start_column" value="1" />
+            <param name="end_column" value="1" />
+            <param name="n_clusters" value="4" />
+            <param name="random_state" value="100"/>
+            <output name="outfile" file="cluster_result16.txt"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+This clustering tool offers different clustering algorithms which are provided by
+scikit-learn to find similarities among samples and cluster the samples based on these similarities.
+
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+            @article{scikit-learn,
+             title={Scikit-learn: Machine Learning in {P}ython},
+             author={Pedregosa, F. and Varoquaux, G. and Gramfort, A. and Michel, V.
+                     and Thirion, B. and Grisel, O. and Blondel, M. and Prettenhofer, P.
+                     and Weiss, R. and Dubourg, V. and Vanderplas, J. and Passos, A. and
+                     Cournapeau, D. and Brucher, M. and Perrot, M. and Duchesnay, E.},
+             journal={Journal of Machine Learning Research},
+             volume={12},
+             pages={2825--2830},
+             year={2011}
+             url = {https://github.com/scikit-learn/scikit-learn}
+            }
+        </citation>
+    </citations>
+</tool>

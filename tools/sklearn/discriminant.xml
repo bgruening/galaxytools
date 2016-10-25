@@ -1,0 +1,189 @@
+<tool id="sklearn_discriminant_classifier" name="Discriminant Analysis" version="@VERSION@">
+    <description></description>
+    <macros>
+        <import>main_macros.xml</import>
+        <!--macro name="priors"-->
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command><![CDATA[
+    python "$discriminant_script" '$inputs'
+]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs"/>
+        <configfile name="discriminant_script">
+<![CDATA[
+import sys
+import json
+import numpy as np
+import sklearn.discriminant_analysis
+import pandas
+import pickle
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+
+
+#if $selected_tasks.selected_task == "load":
+
+classifier_object = pickle.load(open("$infile_model", 'r'))
+
+data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+prediction = classifier_object.predict(data)
+prediction_df = pandas.DataFrame(prediction)
+res = pandas.concat([data, prediction_df], axis=1)
+res.to_csv(path_or_buf = "$outfile", sep="\t", index=False)
+
+#else:
+
+data_train = pandas.read_csv("$selected_tasks.infile_train", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+
+data = data_train.ix[:,0:len(data_train.columns)-1]
+labels = np.array(data_train[data_train.columns[len(data_train.columns)-1]])
+
+options = params["selected_tasks"]["selected_algorithms"]["options"]
+selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
+
+my_class = getattr(sklearn.discriminant_analysis, selected_algorithm)
+classifier_object = my_class(**options)
+classifier_object.fit(data,labels)
+pickle.dump(classifier_object,open("$outfile", 'w+'), pickle.HIGHEST_PROTOCOL)
+
+#end if
+]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="train_loadConditional" model="zip">
+            <param name="selected_algorithm" type="select" label="Classifier type">
+                <option value="LinearDiscriminantAnalysis" selected="true">Linear Discriminant Classifier</option>
+                <option value="QuadraticDiscriminantAnalysis">Quadratic Discriminant Classifier</option>
+            </param>
+            <when value="LinearDiscriminantAnalysis">
+                <section name="options" title="Advanced Options" expanded="False">
+                    <param argument="solver" type="select" optional="true" label="Solver" help="">
+                        <option value="svd" selected="true">Singular Value Decomposition</option>
+                        <option value="lsqr">Least Squares Solution</option>
+                        <option value="eigen">Eigenvalue Decomposition</option>
+                    </param>
+                    <!--param name="shrinkage"--> 
+                    <!--expand macro="priors"/-->
+                    <param argument="n_components" type="integer" optional="true" value="" label="Number of components" help="Number of components for dimensionality reduction. ( always less than  n_classes - 1 )"/>
+                    <expand macro="tol" default_value="0.0001" help_text="Rank estimation threshold used in SVD solver."/>
+                    <param argument="store_covariance" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="false" label="Store covariance" help="Compute class covariance matrix."/>
+                </section>
+            </when>
+            <when value="QuadraticDiscriminantAnalysis">
+                <section name="options" title="Advanced Options" expanded="False">
+                    <!--expand macro="priors"/-->
+                    <param argument="reg_param" type="float" optional="true" value="0.0" label="Regularization coefficient" help="Covariance estimate regularizer."/>
+                    <expand macro="tol" default_value="0.00001" help_text="Rank estimation threshold used in SVD solver."/>
+                    <param argument="store_covariances" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="false" label="Store covariances" help="Compute class covariance matrixes."/>
+                </section>
+            </when>
+        </expand>
+    </inputs>
+    <outputs>
+        <data name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile_train" value="train.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="LinearDiscriminantAnalysis"/>
+            <param name="solver" value="svd" />
+            <param name="store_covariances" value="True"/>
+            <output name="outfile" file="lda_model01" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile_train" value="train.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="LinearDiscriminantAnalysis"/>
+            <param name="solver" value="lsqr"/>
+            <output name="outfile" file="lda_model02" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile_train" value="train.tabular" ftype="tabular"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="QuadraticAnalysis"/>
+            <output name="outfile" file="qda_model01" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile_model" value="lda_model01" ftype="zip"/>
+            <param name="infile_data" value="test.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="lda_prediction_result01.tabular"/>
+        </test>
+        <test>
+            <param name="infile_model" value="lda_model02" ftype="zip"/>
+            <param name="infile_data" value="test.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="lda_prediction_result02.tabular"/>
+        </test>
+        <test>
+            <param name="infile_model" value="qda_model01" ftype="zip"/>
+            <param name="infile_data" value="test.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile" file="qda_prediction_result01.tabular"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+***What it does***
+Linear and Quadratic Discriminant Analysis are two classic classifiers with a linear and a quadratic decision surface respectively. These classifiers are fast and easy to interprete.
+
+
+ **1 - Trainig input**
+
+ When you choose to train a model, discriminant analysis tool expects a tabular file with numeric values, the order of the columns being as follows:
+ 
+ ::
+ 
+ "feature_1"	"feature_2"	"..."	"feature_n"	"class_label"
+
+ **Example for training data**
+ The following training dataset contains 3 feature columns and a column containing class labels:
+ 
+ ::
+ 
+  4.01163365529    -6.10797684314    8.29829894763     1
+  10.0788438916    1.59539821454     10.0684278289     0
+  -5.17607775503   -0.878286135332   6.92941850665     2
+  4.00975406235    -7.11847496542    9.3802423585      1
+  4.61204065139    -5.71217537352    9.12509610964     1
+
+
+ **2 - Trainig output**
+ 
+ Based on your choice, this tool fits a sklearn discriminant_analysis.LinearDiscriminantAnalysis or discriminant_analysis.QuadraticDiscriminantAnalysis on the traning data and outputs the trained model in the form of pickled object in a text file.
+
+
+ **3 - Prediction input**
+ 
+ When you choose to load a model and do prediction, the tool expects an already trained Discriminant Analysis estimator and a tabular dataset as input. The dataset is a tabular file with new samples which you want to classify. It just contains feature columns.
+ 
+ **Example for prediction data**
+ 
+ ::
+ 
+  8.26530668997    2.96705005011     8.88881190248
+  2.96366327113    -3.76295851562    11.7113372463
+  8.13319631944    -0.223645298585   10.5820605308
+ 
+ .. class:: warningmark
+ 
+ The number of feature columns must be the same in training and prediction datasets!
+ 
+ 
+ **3 - Prediction output**
+ The tool predicts the class labels for new samples and adds them as the last column to the prediction dataset. The new dataset then is output as a tabular file. The prediction output format should look like the training dataset.
+ 
+Discriminant Analysis is based on sklearn.discriminant_analysis library from Scikit-learn. 
+For more information please refer to `Scikit-learn site`_.
+
+.. _`Scikit-learn site`: http://scikit-learn.org/stable/modules/lda_qda.html
+
+    ]]></help>
+    <expand macro="sklearn_citation"/>
+</tool>

@@ -9,9 +9,6 @@ from galaxy.datatypes.binary import Binary
 from galaxy.datatypes.xml import GenericXml
 import subprocess
 import os
-#import pybel
-#import openbabel
-#openbabel.obErrorLog.StopLogging()
 
 from galaxy.datatypes.metadata import MetadataElement
 from galaxy.datatypes import metadata
@@ -34,6 +31,7 @@ def count_special_lines( word, filename, invert = False ):
     except:
         pass
     return 0
+
 
 def count_lines( filename, non_empty = False):
     """
@@ -70,6 +68,7 @@ class GenericMolFile( data.Text ):
 
     def get_mime(self):
         return 'text/plain'
+
 
 class MOL( GenericMolFile ):
     file_ext = "mol"
@@ -449,6 +448,33 @@ class PDB( GenericMolFile ):
             dataset.peek = 'file does not exist'
             dataset.blurb = 'file purged from disk'
 
+class PDBQT(GenericMolFile):
+    """
+    Autodock Format
+    The PDBQT format stores the atomic coordinates, partial charges and AutoDock atom types,
+    for both the receptor and the ligand.
+    http://autodock.scripps.edu/faqs-help/faq/what-is-the-format-of-a-pdbqt-file
+    """
+    file_ext = "pdbqt"
+
+    def sniff(self, filename):
+        if count_special_lines('COMPND', filename) > 0:
+            return True
+        elif count_special_lines('REMARK', filename) > 0:
+            return True
+        elif count_special_lines('ATOM') > 0:
+            return True
+        else:
+            return False
+
+    def set_peek(self, dataset, is_multi_byte=False):
+        if not dataset.dataset.purged:
+            self.sniff(dataset.filename)
+            dataset.blurb = "protein structure file used by autodock vina"
+        else:
+            dataset.peek = "file does not exist"
+            dataset.blurb = "file purged from disk"
+
 
 class grd( data.Text ):
     file_ext = "grd"
@@ -539,8 +565,9 @@ class SMILES( Tabular ):
         """
         Its hard or impossible to sniff a SMILES File. We can
         try to import the first SMILES and check if it is a molecule, but 
-        currently its not possible to use external libraries from the toolshed
-        in datatype definition files. TODO
+        currently its not possible to use external libraries in datatype definition files.
+        Moreover it seems mpossible to inlcude OpenBabel as python library because OpenBabel
+        is GPL licensed.
         """
         self.molecule_number = count_lines( filename, non_empty = True )
         word_count = count_lines( filename )

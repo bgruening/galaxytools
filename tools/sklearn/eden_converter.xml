@@ -1,0 +1,104 @@
+<tool id="eden_sequence_converter" name="Convert" version="@VERSION@">
+    <description>sequences to graphs</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements">
+        <requirement type="package" version="2.2.5">viennarna</requirement>
+        <requirement type="package" version="2.1.6">rnashapes</requirement>
+    </expand>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        python "$eden_converter_script" '$inputs'
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+        <configfile name="eden_converter_script">
+            <![CDATA[
+import sys
+import json
+import networkx
+from eden.converter.fasta import fasta_to_sequence
+from eden.converter.rna.rnashapes import rnashapes_to_eden
+from eden.converter.rna.rnafold import rnafold_to_eden
+from eden.converter.graph.node_link_data import eden_to_node_link_data
+#*from eden.converter.graph.node_link_data import eden_to_node_link_file*#
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+
+sequence_iterable = fasta_to_sequence("$infile")
+
+if "$converter_options.selected_converter" == "rnafold_to_eden":
+    graph_list = rnafold_to_eden(sequence_iterable)
+elif "$converter_options.selected_converter" == "rnashapes_to_eden":
+    params["converter_options"].pop('selected_converter')
+    sub_params = params["converter_options"]["options"]
+    graph_list = rnashapes_to_eden(sequence_iterable, **sub_params )
+
+json_graph_list = eden_to_node_link_data(graph_list)
+
+#*TODO: replace with eden_to_node_link_file(graph_list, fname)*#
+with open("$outfile", 'w+') as out_file:
+    for json_graph in json_graph_list:
+        out_file.write(json_graph + '\n')
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="fasta" label="Fasta file" help="File including lines with FASTA format."/>
+        <conditional name="converter_options">
+            <param name="selected_converter" type="select" label="Folding algorithm">
+                <option value="rnafold_to_eden">RNAfold</option>
+                <option value="rnashapes_to_eden">RNAshapes</option>
+            </param>
+            <when value="rnafold_to_eden">
+            </when>
+            <when value="rnashapes_to_eden">
+                <section name="options" title="Advanced Options" expanded="False">
+                    <param argument="shape_type" type="integer" optional="true" value="5" label="Shape type" help="The level of abstraction or dissimilarity which defines a different shape. ( Integer ranging from 1 to 5; default : 5 )"/>
+                    <param argument="energy_range" type="integer" optional="true" value="10" label="Energy range" help="Energy range as percentage value of the minimum free energy. ( Positive floating point number; default : 10 )"/>
+                    <param argument="max_num" type="integer" optional="true" value="3" label="Number of generated shapes" help="Maximum number of structures that are generated. ( default : 3 )"/>
+                    <param argument="split_components" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="false" label="Split structures" help="Yields each strucutre as an independent graph or packs all structures in the same graph with several disconnectd components. ( default : False )"/>
+                </section>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="json" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="RF01704.fasta" ftype="fasta"/>
+            <param name="selected_converter" value="rnafold_to_eden"/>
+            <output name="outfile" file="converter_result01.json"/>
+        </test>
+        <test>
+            <param name="infile" value="RF01704.fasta" ftype="fasta"/>
+            <param name="selected_converter" value="rnashapes_to_eden"/>
+            <param name="shape_type" value="2" />
+            <param name="energy_range" value="4" />
+            <param name="max_num" value="3" />
+            <param name="split_components" value="true" />
+            <output name="outfile" file="converter_result02.json"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+        **What it does**
+        
+        This tool transforms fasta sequences to graphs that encode secondary structure information.
+
+        Users can choose between two RNA folding algorithms:
+
+        1. RNAfold to predict the Minimum Free Energy (mfe) structure.
+
+        2. RNAshapes to predict a specified number of shapes with the highest occurrence probability.
+
+        ]]>
+    </help>
+    <expand macro="eden_citation"/>
+</tool>

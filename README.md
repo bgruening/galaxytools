@@ -1,4 +1,7 @@
 [![Build Status](https://travis-ci.org/bgruening/galaxytools.svg?branch=master)](https://travis-ci.org/bgruening/galaxytools)
+[![DOI](https://zenodo.org/badge/5466/bgruening/galaxytools.svg)](https://zenodo.org/badge/latestdoi/5466/bgruening/galaxytools)
+
+
 
 Galaxy Tool wrappers
 ====================

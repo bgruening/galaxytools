@@ -34,7 +34,7 @@ def simple_pattern_search(sequence, pattern, outfile, strand='+'):
     Simple regular expression search. This is way faster than the complex search.
     """
     bed_template = '%s\t%s\t%s\t%s\t%s\t%s\n'
-    for match in re.finditer( str(pattern), str(sequence.seq) ):
+    for match in re.finditer( str(pattern), str(sequence.seq), re.IGNORECASE ):
         outfile.write(bed_template % (sequence.id,  match.start(), match.end(), sequence.description, '', strand))
 
 
