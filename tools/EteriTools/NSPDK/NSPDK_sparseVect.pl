@@ -1,9 +1,7 @@
 #!/usr/bin/perl
 use List::Util qw/ min max /;
 use POSIX qw(ceil floor);
-use Array::Utils qw(:all);
-
-
+#use Array::Utils qw(:all);
 
 #my $CI = 1; ## iteration num
 my $SVECTOR_DIR = "SVECTOR";
@@ -20,7 +18,7 @@ my $group_gspan = "group.gspan";
 #print system("file $data_fasta") ;
 
 system("bzcat $gspan > $group_gspan");
-
+#$group_gspan = $gspan;##################################
 
 my @fa  = read_fasta_file($data_fasta);
 my $num_seqs = @{ $fa[1] };

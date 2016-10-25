@@ -14,7 +14,12 @@ my $GLOBAL_hit_blacklist_overlap = 0.2; #add as param
 #my $data_fasta = "FASTA/data.fasta";
 $final_partition_soft="";
 my $bl_list ="";
+my $CI=1;
 my ( $data_fasta, $data_names, $noCache, $ensf,  $oc, $usn, $nspdk_knn_center, $nhf, $nspdk_nhf_max, $nspdk_nhf_step, $GLOBAL_num_clusters, $CI, $bl_list, $final_partition_soft, $round_soft, $fast_cluster_last_round, $GLOBAL_hit_blacklist_overlap) = @ARGV;
+
+if ($CI == ""){
+  $CI=1;
+}
 
 my $data_svector = "$SVECTOR_DIR/data.svector";
 
@@ -108,7 +113,7 @@ if ( $CI > 1 ) {
       ## todo: !!! tempBlacklist is not working, needs refactor but currently we can live without it
       system("touch $SVECTOR_DIR/blacklist.no_model");
       $bl_list = "$SVECTOR_DIR/data.svector.blacklist.$CI";
-  
+
 
 ####here should also be part for more rounds. check later
 

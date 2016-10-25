@@ -8,20 +8,12 @@ use Getopt::Long;
 use Pod::Usage;
 use List::Util qw/ min max /;
 
-#use StructureLibrary::RNAtoolsConfig;
-#use StructureLibrary::Sequence;
 
 use Cwd qw(getcwd abs_path);
 use File::Temp qw(tempdir);
 use File::Copy;
 use POSIX qw(ceil);
 
-use FindBin;
-use lib "$FindBin::Bin";
-use GraphClust; 
-
-use vars qw(%CONFIG);
-##*CONFIG = \%GraphClust::CONFIG;   ##es em commentel
 
 =head1 NAME
 
@@ -102,10 +94,10 @@ Options:
         				if this is given, then -seq-graph-win AND/OR -seq-graph-t
         				are required.
         -match-shape    <SHAPE>
-                all seqs/windows will be constraint folded into that shape via 
-                RNAshapes (if structure is given in another way this struct will be kept), 
-                if this shape is not possible within given energy range, produce a 
-                specific t graph with only one vertex 'X'. By this the instance 
+                all seqs/windows will be constraint folded into that shape via
+                RNAshapes (if structure is given in another way this struct will be kept),
+                if this shape is not possible within given energy range, produce a
+                specific t graph with only one vertex 'X'. By this the instance
                 becomes very unsimilar to all other graphs (for knn)
         -vp     enable graph computation with viewpoints:
                 svmsgdnspdk will center on those nucleotides that are given
@@ -117,7 +109,7 @@ Options:
         -group		<INTEGER> e.g. 5
                         Combine/group that number of input seqs into 1 gspan file
                         output name is then '<INT>.group.gspan.bz2'
-        
+
         -stdout         send graphs to stdout instead of writing to files
         -ignore-header  don't write fasta id part after first space to gspan
         -debug          additional debug output
@@ -132,7 +124,7 @@ Options:
         -tmp    "/var/tmp/fasta2shrep"
         -o		"CURRENT_DIR/GSPAN_Outputs/"
 
-        
+
 
 =head1 DESCRIPTION
 
@@ -178,11 +170,11 @@ my $options = GetOptions(
   "seq-graph-win"   => \$i_add_seq_graph_win,
   "seq-graph-t"     => \$i_add_seq_graph_t,
   "seq-graph-alph"  => \$i_change_seq_graph_alph,
-  
+
   "task-id=i"       => \$i_jobid,
   "ignore-header"   => \$i_ignore_seq_header,
   "stdout"          => \$i_stdout,
-  
+
   "group=i"         => \$i_groupsize,
   "annotate=s"      => \$i_annotate,
   "abstr"           => \$i_abstr,
@@ -282,13 +274,13 @@ if ( not $i_stdout ) {
 # GLOBAL VARIABLES
 ###############################################################################
 
-##my $rnashapes_loc = "./RNAshapes";    ##### stex es er grac es poxel em:  $CONFIG{PATH_RNASHAPES} . "/RNAshapes";
-my $rnashapes_loc = "/usr/local/rnashapes/2.1.6/bin/RNAshapes";   
+my $rnashapes_loc = "./RNAshapes";
+
 
 if ( !$rnashapes_loc || !-e $rnashapes_loc ) {
   my $loc = `which RNAshapes`;
   chomp($loc);
-  
+
   die "\n 1. Cannot find RNAshapes binary! Exit...\n\n" if ( !$loc );
   die "\n 2. Cannot find RNAshapes binary! Exit...\n\n" if ( !-e $loc );
   $rnashapes_loc = $loc;
@@ -579,7 +571,7 @@ sub call_RNAshapes {
   $call .= "-T $T " if ( $q and $T );
   $call .= "-w $win_size ";  ##### before it was just --windowSize
   $call .= "-W $shift " if ($i_shift);  ##### before it was just --windowIncrement
-  
+
   die("ERROR in $FUNCTION: Give only one of the options -c or -e (RNAshapes)!\n")
 
     if ( $e && $c );
@@ -598,11 +590,11 @@ sub call_RNAshapes {
   ($i_debug) and print STDERR "$seqLen $sample_length $win_size $call\n";
 
   open my $rnashapesoutput, "$call |" or die( "ERROR in $FUNCTION: The following call " . "could not be carried out!\n$call\n" );
-   
+
    print " \n";
    print " call function = 	$call	";
    print "\n ";
-	
+
   return $rnashapesoutput;
 }
 
@@ -871,6 +863,80 @@ sub convertShapeWindow {
 
   return $curr_gi;
 }
+
+##################################################################################
+# This method parses a fasta file and is useful if the header ID is not-unique!!
+# It returns the header lines in an array and the sequence lines in the same
+# order. It is then up to the user to extract the parts from the header that is
+# necessary for the script.
+# Furthermore, the method deals with multiple lines, and returns a single sequence
+# without line breaks.
+# Input:
+#		file		The name of the fasta file
+# Output:
+#	(1)	An array reference for each header line
+#	(2) An array reference for each sequence in same order as the headers
+##################################################################################
+
+sub read_fasta_with_nonunique_headers_meta {
+  my ($file) = @_;
+  my $FUNCTION = "read_fasta_file in Sequences.pm";
+
+  my $header    = "";
+  my $seqstring = "";
+  my @headers   = ();
+  my @sequences = ();
+  my @meta      = ();
+  my %seq_meta  = ();
+  open( IN_HANDLE, "<$file" ) || die "ERROR in $FUNCTION:\n" . "Couldn't open the following file in package Tool," . " sub read_fasta_file: $file\n";
+
+  while ( my $line = <IN_HANDLE> ) {
+    chomp($line);
+
+    # header (can contain one space after > symbol)
+    if ( $line =~ /^\>(.*)/ ) {
+      if ($header) {
+        $seqstring =~ s/\s*//g;    ## do not allow spaces in sequence
+        push( @headers,   $header );
+        push( @sequences, $seqstring );
+        push( @meta,      +{%seq_meta} );    ## anonymous hash reference
+                                             #print keys %seq_meta;
+        $seqstring = "";
+        undef(%seq_meta);
+      }
+      $header = $1;
+
+    } elsif ( $line =~ /(.+)\s+(#\S+)$/ && $header ) {
+
+      if ( exists $seq_meta{$2} ) {
+        $seq_meta{$2} .= $1;
+      } else {
+        $seq_meta{$2} = $1;
+      }
+
+    } elsif ($header) {
+      $seqstring .= $line
+    }
+  }
+
+  if ($header) {
+    $seqstring =~ s/\s*//g;    ## do not allow spaces in sequence
+    push( @headers,   $header );
+    push( @sequences, $seqstring );
+    push( @meta,      +{%seq_meta} );
+    $seqstring = "";
+    %seq_meta  = ();
+  }
+  return ( \@headers, \@sequences, \@meta );
+}
+
+
+
+
+
+
+
+
 
 ###########################################################################
 # Here the vertices for the nucleotides are generated and also the backbone
@@ -2332,4 +2398,3 @@ sub getSeqHeader {
 
 # If a sequence graph option is given, then these graphs (u #) have to
 # be labelled with this annotation
-
