@@ -43,6 +43,7 @@ print "CI = $CI \n";
 print "final_partition_soft = $final_partition_soft \n";
 print "round_soft = $round_soft \n";
 print "fast_cluster_last_round = $fast_cluster_last_round \n";
+print "blacklist = $bl_list \n";
 print "GLOBAL_hit_blacklist_overlap = $GLOBAL_hit_blacklist_overlap \n";
 print "GLOBAL_num_clusters = $GLOBAL_num_clusters \n";
 
@@ -208,6 +209,7 @@ $OPTS_nspdk_centers = "-ensf $ensf $oc $usn";
 ####es ifi mase petqa erevi avelacnel es sistemi mej
 
   system("NSPDK $noCache -rs $CI -fsb $data_svector.$CI -bl $bl_list $OPTS_nspdk_centers -knn $nspdk_knn_center -ss $GLOBAL_num_clusters -nhf $nhf -mi $nspdk_mi -fcs 1");
+  print "NKSPDKIC heto! \n";
     #system("NSPDK $noCache -rs $CI -fsb $data_svector.$CI -bl $SVECTOR_DIR/data.svector.blacklist.$CI $OPTS_nspdk_centers -knn $nspdk_knn_center -ss $GLOBAL_num_clusters -nhf $nhf -mi $nspdk_mi -fcs 1");
     #print "data_fast = $data_svector.$CI.fast_cluster \n";
 
