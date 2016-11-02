@@ -1,9 +1,5 @@
-<tool id="sailfish" name="Sailfish" version="0.7.6.1">
+<tool id="sailfish" name="Sailfish" version="0.10.1">
     <description>transcript quantification from RNA-seq data</description>
-    <requirements>
-        <requirement type="package" version="0.7.6">sailfish</requirement>
-        <requirement type="package" version="1.57.0">boost</requirement>
-    </requirements>
     <macros>
         <xml name="strandedness">
             <param name="strandedness" type="select" label="Specify the strandedness of the reads">
@@ -13,6 +9,9 @@
             </param>
         </xml>
     </macros>
+    <requirements>
+        <requirement type="package" version="0.10.1">sailfish</requirement>
+    </requirements>
     <stdio>
         <exit_code range="1:" />
         <exit_code range=":-1" />
@@ -23,7 +22,6 @@
     <version_command>sailfish -version</version_command>
     <command>
 <![CDATA[
-
         #if $refTranscriptSource.TranscriptSource == "history":
             sailfish index
                 --transcripts $refTranscriptSource.ownFile
@@ -34,35 +32,26 @@
         #else:
             #set $index_path = $refTranscriptSource.index.fields.path
         #end if
-
         &&
-
         #if $single_or_paired.single_or_paired_opts == 'single':
-
             #if $single_or_paired.input_singles.ext == 'fasta':
                 #set $ext = 'fasta'
             #else:
                 #set $ext = 'fastq'
             #end if
-
             ln -s $single_or_paired.input_singles ./single.$ext &&
         #else:
-
             #if $single_or_paired.input_mate1.ext == 'fasta':
                 #set $ext = 'fasta'
             #else:
                 #set $ext = 'fastq'
             #end if
-
             ln -s $single_or_paired.input_mate1 ./mate1.$ext &&
             ln -s $single_or_paired.input_mate2 ./mate2.$ext &&
         #end if
-
-
         #if $geneMap:
             ln -s "$geneMap" ./geneMap.$geneMap.ext &&
         #end if
-
         sailfish quant
             --index $index_path
             #if $single_or_paired.single_or_paired_opts == 'single':
@@ -73,34 +62,51 @@
                 --mates2 ./mate2.$ext
                 --libType "${single_or_paired.orientation}${single_or_paired.strandedness}"
             #end if
-            --output ./
+            --output ./results
             $biasCorrect
+            $gcBiasCorrect
             --threads "\${GALAXY_SLOTS:-4}"
-
-            #if $fldMean:
+            $dumpEq
+            #if str($gcSizeSamp):
+                --gcSizeSamp $gcSizeSamp
+            #end if
+            #if str($gcSpeedSamp):
+                --gcSpeedSamp $gcSpeedSamp
+            #end if
+            #if str($fldMean):
                 --fldMean $fldMean
             #end if
-
-            #if $fldSD:
+            #if str($fldSD):
                 --fldSD $fldSD
             #end if
-
             #if $maxReadOcc:
                 --maxReadOcc $maxReadOcc
             #end if
-
             #if $geneMap:
                 --geneMap ./geneMap.${geneMap.ext}
             #end if
-
+            $strictIntersect
             $noEffectiveLengthCorrection
             $useVBOpt
-            $allowOrphans
-
+            $discardOrphans
             $unsmoothedFLD
             --maxFragLen ${maxFragLen}
-            --txpAggregationKey "${txpAggregationKey}"
-
+            --txpAggregationKey '${txpAggregationKey}'
+            $ignoreLibCompat
+            $enforceLibCompat
+            $allowDovetail
+            #if str($numBiasSamples):
+                --numBiasSamples $numBiasSamples
+            #end if
+            #if str($numFragSamples):
+                --numFragSamples $numFragSamples
+            #end if
+            #if str($numGibbsSamples):
+                --numGibbsSamples $numGibbsSamples
+            #end if
+            #if str($numBootstraps):
+                --numBootstraps $numBootstraps
+            #end if
 ]]>
     </command>
     <inputs>
@@ -118,7 +124,7 @@
                 </param>
             </when>  <!-- build-in -->
             <when value="history">
-                <param name="ownFile" type="data" format="fasta" metadata_name="dbkey" label="Select the reference transcriptome" help="in FASTA format" />
+                <param name="ownFile" type="data" format="fasta"  label="Select the reference transcriptome" help="in FASTA format" />
                 <param argument="kmerSize" type="integer" value="21" max="32" label="The size of the k-mer on which the index is built"
                     help="There is a tradeoff here between the distinctiveness of the k-mers and their robustness to errors.
                         The shorter the k-mers, the more robust they will be to errors in the reads, but the longer the k-mers,
@@ -152,47 +158,109 @@
             where each line contains the name of a transcript and the gene to which it belongs separated by a tab." />
 
         <param argument="--biasCorrect" type="boolean" truevalue="--biasCorrect" falsevalue="" checked="False"
-                    label="Perform bias correction" help=""/>
+            label="Perform sequence-specific bias correction" help=""/>
+
+        <param argument="--gcBiasCorrect" type="boolean" truevalue="--gcBiasCorrect" falsevalue="" checked="False"
+            label="Perform fragment GC bias correction" help=""/>
+
+        <param argument="--dumpEq" type="boolean" truevalue="--dumpEq" falsevalue="" checked="False"
+            label="Dump the equivalence class counts that were computed during quasi-mapping." help=""/>
+
+        <param argument="--gcSizeSamp" type="integer" value="1" optional="True"
+            label="The value by which to down-sample transcripts when representing the GC content"
+            help="Larger values will reduce memory usage, but may decrease the fidelity of bias modeling results."/>
+
+        <param argument="--gcSpeedSamp" type="integer" value="1" optional="True"
+            label="The value at which the fragment length PMF is down-sampled when evaluating GC fragment bias."
+            help="Larger values speed up effective length correction, but may decrease the fidelity of bias modeling results."/>
+
+        <param argument="--strictIntersect" type="boolean" truevalue="--strictIntersect" falsevalue="" checked="False"
+            label="Strict Intersect." help="When this flag is set, if the intersection of the
+            quasi-mappings for the left and right is empty, then all mappings for the left and all mappings
+            for the right read are reported as orphaned quasi-mappings."/>
 
         <param argument="--fldMean" type="integer" value="200" optional="True" label="Calculate effective lengths"
-            help="If single end reads are being used for quantification, or there are an insufficient number of uniquely mapping reads when performing paired-end quantification
-                    to estimate the empirical fragment length distribution, then use this value to calculate effective lengths."/>
+            help="If single end reads are being used for quantification, or there are an insufficient number of uniquely
+            mapping reads when performing paired-end quantification
+            to estimate the empirical fragment length distribution, then use this value to calculate effective lengths."/>
 
         <param argument="--fldSD" type="integer" value="80" optional="True" label="Standard deviation"
-            help="The standard deviation used in the fragment length distribution for single-end quantification or when an empirical distribution cannot be learned."/>
+            help="The standard deviation used in the fragment length distribution for single-end quantification or
+            when an empirical distribution cannot be learned."/>
 
         <param argument="--maxReadOcc" type="integer" value="200" optional="True" label="Maximal read mapping occurence"
             help="Reads mapping to more than this many places won't be considered."/>
 
         <param argument="--noEffectiveLengthCorrection" type="boolean" truevalue="--noEffectiveLengthCorrection" falsevalue="" checked="False"
-            label="Disable effective length correction" help="Disables effective length correction when computing the probability that a fragment was generated from a transcript.
+            label="Disable effective length correction" help="Disables effective length correction when computing the probability
+            that a fragment was generated from a transcript.
             If this flag is passed in, the fragment length distribution is not taken into account when computing this probability."/>
 
         <param argument="--useVBOpt" type="boolean" truevalue="--useVBOpt" falsevalue="" checked="False"
-            label="Use Variational Bayesian EM algorithm for optimization" help=""/>
+            label="Use Variational Bayesian EM algorithm for optimization" help="Use Variational Bayesian EM algorithm rather
+            than the traditional EM angorithm for optimization"/>
 
-        <param argument="--allowOrphans" type="boolean" truevalue="--allowOrphans" falsevalue="" checked="False"
-            label="Consider orphaned reads as valid hits when performing lightweight-alignment"
-            help="This option will increase sensitivity (allow more reads to map and more transcripts to be detected), but may decrease specificity as orphaned alignments are more likely to be spurious."/>
+        <param argument="--discardOrphans" type="boolean" truevalue="--discardOrphans" falsevalue="" checked="False"
+            label="Discard orphaned reads as valid hits when performing lightweight-alignment"
+            help="This option will discard orphaned fragments. This only has an effect on paired-end input, but enabling this option will discard, rather than count, any reads where only one of the paired fragments maps to a transcript."/>
 
         <param argument="--unsmoothedFLD" type="boolean" truevalue="--unsmoothedFLD" falsevalue="" checked="False"
-            label="Use the un-smoothed approach to effective length correction" help="This traditional approach works by convolving the FLD with the characteristic function over each transcript."/>
+            label="Use the un-smoothed approach to effective length correction" help="This traditional approach works by convolving the FLD with the
+            characteristic function over each transcript."/>
 
         <param argument="--maxFragLen" type="integer" value="1000" optional="True"
             label="The maximum length of a fragment to consider when building the empirical fragment length distribution"
             help=""/>
 
-        <param argument="--txpAggregationKey" value="gene_id" type="text" label="The key for aggregating transcripts during gene-level estimates"
-            help="The default is the gene_id field, but other fields (e.g. gene_name) might be useful depending on the specifics of the annotation being used." />
-
+        <param argument="--txpAggregationKey" value="gene_id" type="text" label="The key for aggregating transcripts during gene-level estimates">
+            <help>
+              <![CDATA[
+              When generating the gene-level estimates, use the provided key for aggregating transcripts. The default is the "gene_id" field,
+              but other fields (e.g. "gene_name") might be useful depending on the specifics of the annotation being used. Note: this option only
+              affects aggregation when using a GTF annotation; not an annotation in "simple" format.]]>
+            </help>
+        </param>
+        <param argument="--ignoreLibCompat" type="boolean" truevalue="--ignoreLibCompat" falsevalue="" checked="False"
+                label="Disables strand-aware processing completely.">
+            <help>
+                <![CDATA[
+                All hits are considered "Valid".]]>
+            </help>
+        </param>
+        <param argument="--enforceLibCompat" type="boolean" truevalue="--enforceLibCompat" falsevalue="" checked="False"
+                label="Enforces strict library compatibility.">
+            <help>
+                <![CDATA[
+                Fragments that map in a manner other than what is specified by the expected library type will be discarded,
+                even if there are no mappings that agree with the expected library type.]]>
+            </help>
+        </param>
+        <param argument="--allowDovetail" type="boolean" truevalue="--allowDovetail" falsevalue="" checked="False"
+                label="Allow paired-end reads from the same fragment to dovetail.">
+            <help>
+                <![CDATA[
+                Allow paired-end reads from the same fragment to "dovetail", such that the ends of the mapped reads can extend past each other.]]>
+            </help>
+        </param>
+        <param argument="--numBiasSamples" type="integer" value="1000000" optional="True"
+          label="Number of fragment mappings to use when learning the sequene-specific bias model"
+          help=""/>
+        <param argument="--numFragSamples" type="integer" value="10000" optional="True"
+          label="Number of fragments from unique alignments to sample when building the fragment length distribution"
+          help=""/>
+        <param argument="--numGibbsSamples" type="integer" value="0" optional="True"
+          label="Number of Gibbs sampling rounds to perform."
+          help=""/>
+        <param argument="--numBootstraps" type="integer" value="0" optional="True"
+          label="Number of bootstrap samples to generate."
+          help="This is mutually exclusive with Gibbs"/>
     </inputs>
+
+
     <outputs>
-        <data name="output_quant" format="tabular" from_work_dir="quant.sf" label="${tool.name} on ${on_string} (Quantification)" />
-        <data name="output_bias_corrected_quant" format="tabular" from_work_dir="quant_bias_corrected.sf" label="${tool.name} on ${on_string} (Bias corrected Quantification)">
-            <filter>biasCorrect is True</filter>
-        </data>
-        <data name="output_gene_quant" format="tabular" from_work_dir="quant.genes.sf" label="${tool.name} on ${on_string} (Gene Quantification)">
-            <filter>geneMap is True</filter>
+        <data name="output_quant" format="tabular" from_work_dir="results/quant.sf" label="${tool.name} on ${on_string} (Quantification)" />
+        <data name="output_gene_quant" format="tabular" from_work_dir="results/quant.genes.sf" label="${tool.name} on ${on_string} (Gene Quantification)">
+            <filter>geneMap</filter>
         </data>
     </outputs>
     <tests>
@@ -200,15 +268,33 @@
             <param name="single_or_paired_opts" value="paired" />
             <param name="input_mate1" value="reads_1.fastq" />
             <param name="input_mate2" value="reads_2.fastq" />
-            <param name="biasCorrect" value="True" />
+            <param name="biasCorrect" value="False" />
             <param name="TranscriptSource" value="history" />
             <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
             <output file="sailfish_quant_result1.tab" ftype="tabular" name="output_quant" />
-            <output file="sailfish_bias_result1.tab" ftype="tabular" name="output_bias_corrected_quant" />
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired" />
+            <param name="input_mate1" value="reads_1.fastq" />
+            <param name="input_mate2" value="reads_2.fastq" />
+            <param name="biasCorrect" value="True" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output file="sailfish_bias_result1.tab" ftype="tabular" name="output_quant" />
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired" />
+            <param name="input_mate1" value="reads_1.fastq" />
+            <param name="input_mate2" value="reads_2.fastq" />
+            <param name="biasCorrect" value="True" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <output file="sailfish_bias_result1.tab" ftype="tabular" name="output_quant" />
+            <output file="sailfish_genMap_result1.tab" ftype="tabular" name="output_gene_quant" />
         </test>
     </tests>
-    <help>
-<![CDATA[
+    <help><![CDATA[
 
 **What it does**
 
@@ -336,6 +422,8 @@ A few more examples of some library format strings and their interpretations are
    of the TopHat library types, and so there is no direct mapping for them.
 
 
-]]>
-    </help>
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1038/nbt.2862</citation>
+    </citations>
 </tool>
