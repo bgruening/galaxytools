@@ -4,8 +4,9 @@ Galaxy wrappers for sailfish
 These wrappers are copyright 2014 by Björn Grüning and additional contributors. 
 All rights reserved. See the licence text below.
 
-Currently tested with sailfish 0.6.3.
+The current wrappers by Mhd Ramez Alrawas and additional contributors are following the same copyright as the one mentioned in licence text below.
 
+Currently tested with sailfish 0.10.1
 
 Automated Installation
 ======================
@@ -20,7 +21,8 @@ History
 Version  Changes
 -------- ----------------------------------------------------------------------
 v0.6.3.0  - First release
-
+-------- ----------------------------------------------------------------------
+v0.10.1   - Second release
 ======== ======================================================================
 
 
