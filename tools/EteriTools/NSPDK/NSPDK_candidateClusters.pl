@@ -59,7 +59,7 @@ my $clusters_last_round = [];
 
 if ( $CI > 1 ) {
 
-  print "stex chpiti mtni \n";
+  
 
   ## get list of center-idx from last round (soft partition) which lead to cluster (> results_min_cluster_size)
   $clusters_last_round = foundClusters( $CI - 1 );

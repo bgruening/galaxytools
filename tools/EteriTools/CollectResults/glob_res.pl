@@ -7,9 +7,12 @@ use Array::Utils qw(:all);
 use POSIX qw(ceil floor);
 use List::Util qw/ min max /;
 
-my ($tabularFiles, $merge_cluster_ol, $merge_overlap, $min_cluster_size, $cm_min_bitscore, $cm_max_eval, $cm_bitscore_sig) = @ARGV;
+my $CI=0;
+my $part_soft="";
+my $part_cmsearch="";
+my $part_type = 1 ;
+my ($tabularFiles, $merge_cluster_ol, $merge_overlap, $min_cluster_size, $cm_min_bitscore, $cm_max_eval, $cm_bitscore_sig, $part_type, $CI, $part_soft, $part_cmsearch) = @ARGV;
 #my ($merge_cluster_ol, $merge_overlap, $min_cluster_size, $cm_min_bitscore, $cm_max_eval, $cm_bitscore_sig) = @ARGV;
-
 
 
 my $exist_part;
@@ -44,12 +47,15 @@ foreach my $tab (@tabFiles) {
 
 print "test for aguments: cm_min_bitscore =  $cm_min_bitscore  \n";
 
-if ( -e "RESULTS/partitions/final_partition.soft" && -e "RESULTS/partitions/final_partition.used_cmsearch" ) {
-  $exist_part = read_partition("RESULTS/partitions/final_partition.soft");
+if ( $part_soft ne "" && $part_cmsearch ne "" ) {
+  $exist_part = read_partition($part_soft);
 
-  my $used_cm = read_partition("RESULTS/partitions/final_partition.used_cmsearch");
+  print "\n !!!!!!!!!!!!!!!!!!in glob_res.pl ifi mej !!!!!!!!!!!!!!!!!!!\n";
+
+  my $used_cm = read_partition($part_cmsearch);
   map { $exist_part_used{ $_->[0] } = 1 } @{$used_cm};
 }
+
 
 my $index = 1;
 
@@ -72,7 +78,8 @@ foreach my $file (@tabFiles ) {
       $cm_hits = read_CM_tabfile_ext( $file, $cm_min_bitscore, $cm_max_eval, $cm_bitscore_sig, $key );
       $exist_part_used{$key} = 1;
 
-    } else {
+    }
+    else {
       my @exist_hits = grep { $_->[4] eq $key } @{$exist_part};
       $cm_hits = part2frags( \@exist_hits );
 
@@ -172,12 +179,6 @@ foreach my $file (@tabFiles ) {
     my $old2new_map_BEST = filterClusters( $hits, $old2new_map_ORIG );
     $clus2idx = get_clus2idx( \%cm_hitlists, $old2new_map_BEST );
 
-#print "############## foreach  ###################### \n";
-#    foreach my $key ( keys %cm_hitlists ) {
-#      $cm_hitlists{$key}->{CLASS} = $cm_hitlists{$key}->{HITS}->[0]->{CLASS_CLUSTER};
-#      print " $cm_hitlists{$key}->{HITS}->[0]->{CLASS_CLUSTER} ";
-#     }
-#print "\n #################################### \n";
 
     write_partition( $hits, $clus2idx, $old2new_map_BEST, "EVAL/partitions/$round.hard.best" );
 
@@ -221,9 +222,15 @@ collect_results();
 sub collect_results {
 
   print "stage 9: Final RESULTS - collect all found clusters";
+my $part_file;
+if( $part_type == 0){
+   $part_file = "RESULTS/partitions/final_partition.hard.merged";
+}
+else{
 
-  my $part_file = "RESULTS/partitions/final_partition.hard.merged";
+  $part_file = "RESULTS/partitions/final_partition.soft";
 
+}
 
   ## part: array of [528,42.40,1.1,1.2,1,63,63]
   my $part = read_partition($part_file);
@@ -247,7 +254,7 @@ sub collect_results {
     my $job_uuid = "stage9";
 
 
-    system("perl gc_res.pl");
+    system("perl gc_res.pl $part_type");
 
   my $stats_file = "RESULTS/cluster.final.stats";
   system("rm -f $stats_file");

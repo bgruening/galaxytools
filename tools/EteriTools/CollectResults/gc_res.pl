@@ -27,8 +27,20 @@ my $results_top_num = 10;
 
 $in_root_dir = "";
 
-my $part_file = "RESULTS/partitions/final_partition.hard.merged";
+my ($part_type) = @ARGV;
 
+print "$part_type\n";
+
+my $part_file;
+
+if($part_type == 0){
+   $part_file = "RESULTS/partitions/final_partition.hard.merged";
+}
+else{
+
+  $part_file = "RESULTS/partitions/final_partition.soft";
+
+}
 
 ## summary contains evaluation info for used partition
 my $summary;
@@ -193,34 +205,6 @@ foreach my $res_idx (@res_todo) {
 exit;
 
 ################################################################################
-
-sub alignTopResults {
-  my $clusHits = $_[0];
-  my $faScan   = $_[1];
-  my $top_num  = $_[2];
-  my $resDir   = $_[3];
-  my $name     = $_[4];
-
-  my @sorted_hits = grep { $clusHits->{$_}->{PART}->[1] > 0 } sort { $clusHits->{$b}->{PART}->[1] <=> $clusHits->{$a}->{PART}->[1] } keys %{$clusHits};
-
-  my $max = @sorted_hits;
-  $max = $top_num if ( $max > $top_num );
-  my @hitsTop = @sorted_hits[ 0 .. ( $max - 1 ) ];
-
-  ## write out fasta with selected seqs, check direction of cm hit (+1,-1)
-  my $fa_file_top = "$resDir/" . "cluster.$name.fa";
-
-  writeClusterFasta( \@hitsTop, $clusHits, $faScan, $fa_file_top );
-
-  my @hit_set = read_fasta_file($fa_file_top);
-  my $useLocP = 1;
-
-
-
-  return $fa_file_top;
-}
-
-
 
 
 
