@@ -1,7 +1,7 @@
 use List::Util qw/ min max /;
 
 
-my ($center_fa_file, $tree_file, $p, $max_diff_am, $tau, $max_diff) = @ARGV;
+my ($center_fa_file, $tree_file, $p, $max_diff_am, $tau, $max_diff, $path) = @ARGV;
 
 
 $mloc_opts = "-p $p --max-diff-am $max_diff_am --tau $tau  --max-diff $max_diff --alifold-consensus-dp";
@@ -11,10 +11,12 @@ $mloc_opts = "-p $p --max-diff-am $max_diff_am --tau $tau  --max-diff $max_diff 
 #print $str;
 #print "\n";
 
-my $cmd_stk = "perl mloc2stockholm.pl -file $tree_file";
+print "tree file = $tree_file\n";
+
+my $cmd_stk = "perl $path/mloc2stockholm.pl -file $tree_file";
 $cmd_stk .= " -split_input yes -con_struct $tree_file.alifold";
 
-system("$cmd_stk");# == 0 or die " mloc2stockholm command was unable to run to completion:\n\n";
+#system("$cmd_stk");# == 0 or die " mloc2stockholm command was unable to run to completion:\n\n";
 
 
 system("mlocarna $mloc_opts --treefile $tree_file $center_fa_file --tgtdir mloc") == 0 or die " mloc command was unable to run to completion:\n\n";

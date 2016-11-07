@@ -39,14 +39,14 @@ if ( !$file ) {
 
 my $aln_file  = $file;
 my $tmp_path  = "var/tmp";
-my $vrna_path ="/home/eteri/ThesisSoftware/ViennaRNA-2.1.2/Progs";
+##my $vrna_path ="/home/eteri/ThesisSoftware/ViennaRNA-2.1.2/Progs";
 
 ## alifold result to get consensus structure string for infernal and some nice pictures
 my $tmp_dir = "$tmp_path/alifold_$$";
 my $currDir = getcwd;
 mkdir($tmp_dir);
 chdir($tmp_dir);
-my @call_alifold = readpipe( "$vrna_path/" . "RNAalifold -r --noLP --color --aln $aln_file 2>/dev/null" );
+my @call_alifold = readpipe("RNAalifold -r --noLP --color --aln $aln_file 2>/dev/null" );
 my $aln_cons_struct = $call_alifold[1];    ## store cons-struct
 chomp($aln_cons_struct);
 $aln_cons_struct =~ /([\(\).]*)(.*)/;      ## extract cons-struct

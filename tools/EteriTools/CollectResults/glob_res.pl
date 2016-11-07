@@ -8,11 +8,47 @@ use POSIX qw(ceil floor);
 use List::Util qw/ min max /;
 
 my $CI=0;
-my $part_soft="";
+my $final_partition_soft="";
 my $part_cmsearch="";
-my $part_type = 1 ;
-my ($tabularFiles, $merge_cluster_ol, $merge_overlap, $min_cluster_size, $cm_min_bitscore, $cm_max_eval, $cm_bitscore_sig, $part_type, $CI, $part_soft, $part_cmsearch) = @ARGV;
-#my ($merge_cluster_ol, $merge_overlap, $min_cluster_size, $cm_min_bitscore, $cm_max_eval, $cm_bitscore_sig) = @ARGV;
+#my $part_type = 1 ;
+#my ($tabularFiles, $merge_cluster_ol, $merge_overlap, $min_cluster_size, $cm_min_bitscore, $cm_max_eval, $cm_bitscore_sig, $part_type, $path, $CI, $final_partition_soft, $part_cmsearch) = @ARGV;
+
+
+
+my $tabularFiles = $ARGV[0];
+my $merge_cluster_ol = $ARGV[1];
+my $merge_overlap = $ARGV[2];
+my $min_cluster_size = $ARGV[3];
+my $cm_min_bitscore = $ARGV[4];
+my $cm_max_eval = $ARGV[5];
+my $cm_bitscore_sig = $ARGV[6];
+my $part_type = $ARGV[7];
+my $path = $ARGV[8];
+
+my $num_args = $#ARGV;
+if($num_args >8){
+
+  $CI=$ARGV[9];
+  $final_partition_soft=$ARGV[10];
+  $part_cmsearch=$ARGV[11];
+
+}
+
+print "tabFiles = $tabularFiles\n";
+print "merge_cluster_ol = $merge_cluster_ol\n";
+print "merge_overlap = $merge_overlap\n";
+print "min_cluster_size = $min_cluster_size\n";
+print "cm_min_bitscore = $cm_min_bitscore\n";
+print "cm_max_eval = $cm_max_eval\n";
+print "cm_bitscore_sig = $cm_bitscore_sig\n";
+print "part_type = $part_type\n";
+print "path = $path\n";
+
+print "CI = $CI\n";
+print "final_partition_soft = $final_partition_soft\n";
+print "part_cmsearch = $part_cmsearch\n";
+
+
 
 
 my $exist_part;
@@ -47,8 +83,8 @@ foreach my $tab (@tabFiles) {
 
 print "test for aguments: cm_min_bitscore =  $cm_min_bitscore  \n";
 
-if ( $part_soft ne "" && $part_cmsearch ne "" ) {
-  $exist_part = read_partition($part_soft);
+if ( $final_partition_soft ne "" && $part_cmsearch ne "" ) {
+  $exist_part = read_partition($final_partition_soft);
 
   print "\n !!!!!!!!!!!!!!!!!!in glob_res.pl ifi mej !!!!!!!!!!!!!!!!!!!\n";
 
@@ -254,7 +290,7 @@ else{
     my $job_uuid = "stage9";
 
 
-    system("perl gc_res.pl $part_type");
+    system("perl $path/gc_res.pl $part_type");
 
   my $stats_file = "RESULTS/cluster.final.stats";
   system("rm -f $stats_file");

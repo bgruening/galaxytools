@@ -1,4 +1,4 @@
-#!/usr/bin/perl
+#!/usr/bin/env perl
 
 use strict;
 
@@ -17,9 +17,9 @@ my $quantile=0.9993; #original RNAclust
 
 ## Getopt::Long::Configure("no_ignore_case");
 
-GetOptions(	   
+GetOptions(
 	   "verbose" => \$verbose,
-	   "quiet" => \$quiet,   
+	   "quiet" => \$quiet,
 	   "help"=> \$help,
 	   "man" => \$man,
 	   "quantile=f" => \$quantile
@@ -39,7 +39,7 @@ my @scores=();
 for my $line (@lines) {
     #if($line =~/(\d+)$/) {
     #dont push lines which have inf, as score (necessary for local clustering
-    if(($line =~ /^\S+\s+\S+\s+(\S+)\s+/) && ($line !~ /inf/)){  
+    if(($line =~ /^\S+\s+\S+\s+(\S+)\s+/) && ($line !~ /inf/)){
         push @scores,$1;
     }
 }
@@ -50,7 +50,7 @@ my $m = $sscores[$quantile*($#scores)];
 
 for my $line (@lines) {
     #if($line =~/(.*)\s(\d+)$/) {
-    if($line =~ /^(\S+\s+\S+)\s+(\S+)/ && ($line !~ /inf/)){ 
+    if($line =~ /^(\S+\s+\S+)\s+(\S+)/ && ($line !~ /inf/)){
         print "$1 ".(($m-$2>0)?($m-$2):0)."\n";
     }
     else{

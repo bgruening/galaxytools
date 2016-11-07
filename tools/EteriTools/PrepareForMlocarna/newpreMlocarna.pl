@@ -1,16 +1,10 @@
 #!/usr/bin/perl
 use List::Util qw/ min max /;
-$vrna_path = "2.1.2/bin";
-
-########## TO DO!! #############
-#~ check and change all the pathes from local to global
-#~ ask Bjorn how to do that with wrappers
 
 
-my ( $CI, $fast_cluster, $data_fasta, $fast_cluster_sim, $map_data,$nspdk_knn_center ) = @ARGV;
+my ( $CI, $fast_cluster, $data_fasta, $fast_cluster_sim, $map_data,$nspdk_knn_center, $myPath ) = @ARGV;
 
 
-#my $CI = 1;
 
 if (not defined $fast_cluster ||  not defined $data_fasta || not defined $fats_cluster_sim || not defined $map_data) {
   die "Wrong arguments: candidate clusters, fasta file, similarity scores and/or map data are missing \n";
@@ -686,7 +680,10 @@ sub matrix2tree {
   #my $path = "/home/eteri/GalaxyProject/galaxy/tools/PrepareForMlocarna/";
   #mkdir($tree_dir);
   system("cat $matrix_file | awk '{for(i=1;i<NR;i++){print NR,i,\$(i)}}' > $tree_dir/tree.score-list");
-  system("perl rnaclustScores2Dist.pl --quantile 1.0 < $tree_dir/tree.score-list > $tree_dir/tree.dist-list") == 0 or die " .1. command was unable to run to completion:\n\n";
+
+  system("pwd");
+
+  system("perl $myPath/rnaclustScores2Dist.pl --quantile 1.0 < $tree_dir/tree.score-list > $tree_dir/tree.dist-list") == 0 or die " .1. command was unable to run to completion:\n\n";
 
   system("pgma $names_file $tree_dir/tree.dist-list > $tree_outfile") == 0 or die " .2. command was unable to run to completion:\n\n";
 

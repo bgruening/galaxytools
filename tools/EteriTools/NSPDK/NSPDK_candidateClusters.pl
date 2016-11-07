@@ -15,7 +15,7 @@ my $GLOBAL_hit_blacklist_overlap = 0.2; #add as param
 $final_partition_soft="";
 my $bl_list ="";
 my $CI=1;
-my ( $data_fasta, $data_names, $noCache, $ensf,  $oc, $usn, $nspdk_knn_center, $nhf, $nspdk_nhf_max, $nspdk_nhf_step, $GLOBAL_num_clusters, $CI, $bl_list, $final_partition_soft, $round_soft, $fast_cluster_last_round, $GLOBAL_hit_blacklist_overlap) = @ARGV;
+my ( $data_fasta, $data_names, $noCache, $ensf,  $oc, $usn, $nspdk_knn_center, $nhf, $nspdk_nhf_max, $nspdk_nhf_step, $GLOBAL_num_clusters, $CI, $bl_list, $final_partition_soft, $fast_cluster_last_round, $GLOBAL_hit_blacklist_overlap) = @ARGV;
 
 if ($CI == ""){
   $CI=1;
@@ -41,7 +41,7 @@ print "nspdk_nhf_max = $nspdk_nhf_max \n";
 print "nspdk_nhf_step = $nspdk_nhf_step \n";
 print "CI = $CI \n";
 print "final_partition_soft = $final_partition_soft \n";
-print "round_soft = $round_soft \n";
+#print "round_soft = $round_soft \n";
 print "fast_cluster_last_round = $fast_cluster_last_round \n";
 print "blacklist = $bl_list \n";
 print "GLOBAL_hit_blacklist_overlap = $GLOBAL_hit_blacklist_overlap \n";
@@ -59,7 +59,7 @@ my $clusters_last_round = [];
 
 if ( $CI > 1 ) {
 
-  
+
 
   ## get list of center-idx from last round (soft partition) which lead to cluster (> results_min_cluster_size)
   $clusters_last_round = foundClusters( $CI - 1 );
@@ -237,7 +237,7 @@ sub foundClusters {
 
   #my $part = read_partition("$RESULTS/partitions/$round.soft");
   #my $part = read_partition("partitions/1.soft");
-  my $part = read_partition("$round_soft");
+  my $part = read_partition("$final_partition_soft");
 
   my %clusters = ();
 

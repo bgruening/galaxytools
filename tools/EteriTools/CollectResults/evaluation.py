@@ -4,7 +4,7 @@ from shutil import copyfile
 from os import system
 import re
 #import sklearn
-from sklearn import metrics
+#from sklearn import metrics
 #from tabulate import tabulate
 
 
