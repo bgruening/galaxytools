@@ -21,13 +21,14 @@
     </stdio>
     <version_command>salmon -version</version_command>
     <command><![CDATA[
+
         #if $refTranscriptSource.TranscriptSource == "history":
             salmon index
                 --transcripts $refTranscriptSource.ownFile
                 --kmerLen $refTranscriptSource.kmerLen
                 --threads "\${GALAXY_SLOTS:-4}"
-                --index $index_path
-                --type quasi
+                --index salmon_index
+                --type $type
                 $perfectHash
                 #if str($sasamp):
                     --sasamp $sasamp
@@ -54,7 +55,7 @@
             ln -s $single_or_paired.input_mate2 ./mate2.$ext &&
         #end if
         #if $geneMap:
-            ln -s "$geneMap" ./geneMap.$geneMap.ext &&
+            ln -s "$geneMap" ./geneMap.${geneMap.ext} &&
         #end if
         salmon quant
             --index $index_path
@@ -67,6 +68,11 @@
                 --libType "${single_or_paired.orientation}${single_or_paired.strandedness}"
             #end if
             --output ./results
+            #if str($quasi_orphans.type) == 'quasi':
+                --quasi_orphans.allowOrphans
+            #else:
+                $quasi_orphans.allowOrphans
+            #end if
             $seqBias
             $gcBias
             --threads "\${GALAXY_SLOTS:-4}"
@@ -92,7 +98,7 @@
             #if $forgettingFactor:
                 --forgettingFactor $forgettingFactor
             #end if
-            $writemappings
+            $writeMappings
             #if str($maxOcc):
                 --maxOcc $maxOcc
             #end if
@@ -107,8 +113,6 @@
             #end if
             $noEffectiveLengthCorrection
             $useVBOpt
-            $allowOrphans
-            $unsmoothedFLD
             #if str($numBiasSamples):
                 --numBiasSamples $numBiasSamples
             #end if
@@ -150,7 +154,7 @@
               <param name="ownFile" type="data" format="fasta" label="Select the reference transcriptome" help="in FASTA format" />
                 <param argument="kmerLen" type="integer" value="31" label="The size should be odd number."/>
             </when>  <!-- history -->
-        </conditional>  <!-- refTranscriptSource -->
+        </conditional>
 
         <conditional name="single_or_paired">
             <param name="single_or_paired_opts" type="select" label="Is this library mate-paired?">
@@ -172,14 +176,26 @@
                 <expand macro="strandedness" />
             </when>
         </conditional>
+
+        <conditional name="quasi_orphans">
+            <param argument="--type" type="select" label="Type of index" help="When using quasi, orphaned reads will be considered when performing lightweight-alignment.">
+                <option value="quasi" selected="True">quasi</option>
+                <option value="fmd">fmd</option>
+            </param>
+            <when value="quasi">
+            </when>  <!-- build-in -->
+            <when value="fmd">
+                <param argument="--allowOrphans" type="boolean" truevalue="--allowOrphans" falsevalue="" checked="True"
+                    label="Consider orphaned reads as valid hits when performing lightweight-alignment"
+                    help="This option will increase sensitivity (allow more reads to map and more transcripts to be detected), but may decrease specificity as orphaned alignments are more likely to be spurious."/>
+            </when>  <!-- history -->
+        </conditional>
+
         <param argument="--perfectHash" type="boolean" truevalue="--perfectHash" falsevalue="" checked="False"
             label="Perfect Hash"
             help="Build the index using a perfect hash rather than a dense hash.  This will require  less memory (especially during quantification), but will take longer to construct "/>
         <param argument="--sasamp" type="integer" value="1" optional="True" label="Suffix Array"
             help="The interval at which the suffix array should be sampled. Smaller values are faster, but produce a larger index. The default should be OK, unless your transcriptome is huge. This value should be a power of 2."/>
-        <param argument="--allowOrphans" type="boolean" truevalue="--allowOrphans" falsevalue="" checked="False"
-            label="Consider orphaned reads as valid hits when performing lightweight-alignment"
-            help="This option will increase sensitivity (allow more reads to map and more transcripts to be detected), but may decrease specificity as orphaned alignments are more likely to be spurious."/>
         <param argument="--seqBias" type="boolean" truevalue="--seqBias" falsevalue="" checked="False"
             label="Perform sequence-specific bias correction"
             help=""/>
@@ -193,8 +209,8 @@
             help=" Setting this option then the quasi-mapping results will be written out in SAM-cpmpatible format. By default, output will be directed to stdout, but an alternative file name can be provided instead." />
 
         <param argument="--incompatPrior" type="float" optional="True" value="9.9999999999999995e-21"
-            label="This option sets the prior probability that an alignment that disagrees with the specified library type (--libType) results from the true fragment origin"
-            help="Setting this to 0 specifies that alignments that disagree with the library type should be 'impossible', while setting it to 1 says that alignments that disagree with the library type are no less likely than those that do" />
+            label="Incompatible Prior"
+            help="This option sets the prior probability that an alignment that disagrees with the specified library type (--libType) results from the true fragment origin. Setting this to 0 specifies that alignments that disagree with the library type should be 'impossible', while setting it to 1 says that alignments that disagree with the library type are no less likely than those that do" />
 
         <param argument="--dumpEq" type="boolean" truevalue="--dumpEq" falsevalue="" checked="False"
             label="Dump the equivalence class counts that were computed during quasi-mapping." help=""/>
@@ -242,7 +258,7 @@
             label="Standard deviation"
             help="The standard deviation used in the fragment length distribution prior."/>
 
-        <param argument="--forgettingFactor" type="float" value="=0.65000000000000002" optional="True"
+        <param argument="--forgettingFactor" type="float" value="0.65000000000000002" optional="True"
             label="The forgetting factor used in the online learning schedule."
             help=" A smaller value results in quicker learning, but higher variance and may be unstable. A larger value results in slower learning but may be more stable.  Value should be in the interval (0.5, 1.0]." />
 
@@ -304,9 +320,9 @@
 
         <param argument="--perTranscriptPrior" type="boolean" truevalue="--perTranscriptPrior" falsevalue="" checked="False"
             label="The prior will be interpreted as a transcript-level prior."
-            help="either the default or the argument provided via --vbPrior"/>
+            help="either the default or the argument provided via --vbPrior" />
 
-        <param name="--vbPrior" type="float" value="0.001" optional="True"
+        <param argument="--vbPrior" type="float" value="0.001" optional="True"
             label="The prior that will be used in the VBEM algorithm."
             help="This is interpreted as a per-nucleotide prior, unless the --perTranscriptPrior flag is also given, in which case this is used as a transcript-level prior." />
 
@@ -327,28 +343,22 @@
     </outputs>
     <tests>
         <test>
-            <param name="TranscriptSource" value="history" />
-            <param name="ownFile" value="test-data/transcripts.fasta" ftype="fasta" />
-            <param name="kmerSize" value="31" />
-            <param name="type" value="quasi" />
-        </test>
-        <test>
             <param name="single_or_paired_opts" value="paired" />
             <param name="input_mate1" value="reads_1.fastq" />
             <param name="input_mate2" value="reads_2.fastq" />
             <param name="biasCorrect" value="False" />
             <param name="TranscriptSource" value="history" />
             <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
-            <output file="sailfish_quant_result1.tab" ftype="tabular" name="output_quant" />
+            <output file="salmon_quant_result1.tab" ftype="tabular" name="test-data/output_quant" />
         </test>
-        <test>
+        <!-- <test>
             <param name="single_or_paired_opts" value="paired" />
             <param name="input_mate1" value="reads_1.fastq" />
             <param name="input_mate2" value="reads_2.fastq" />
             <param name="biasCorrect" value="True" />
             <param name="TranscriptSource" value="history" />
             <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
-            <output file="sailfish_bias_result1.tab" ftype="tabular" name="output_quant" />
+            <output file="salmon_bias_result1.tab" ftype="tabular" name="output_quant" />
         </test>
         <test>
             <param name="single_or_paired_opts" value="paired" />
@@ -358,9 +368,9 @@
             <param name="TranscriptSource" value="history" />
             <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
             <param name="geneMap" value="gene_map.tab" ftype="tabular" />
-            <output file="sailfish_bias_result1.tab" ftype="tabular" name="output_quant" />
-            <output file="sailfish_genMap_result1.tab" ftype="tabular" name="output_gene_quant" />
-        </test>
+            <output file="salmon_bias_result1.tab" ftype="tabular" name="output_quant" />
+            <output file="salmon_genMap_result1.tab" ftype="tabular" name="output_gene_quant" />
+        </test> -->
     </tests>
     <help>
 <![CDATA[
@@ -403,21 +413,27 @@ reads.
 The first part of the library string (relative orientation) is only provided if
 the library is paired-end. The possible options are:
 ::
+
     I = inward
     O = outward
     M = matching
+
 The second part of the read library string specifies whether the protocol is
 stranded or unstranded; the options are:
 ::
+
     S = stranded
     U = unstranded
+
 If the protocol is unstranded, then we're done.  The final part of the library
 string specifies the strand from which the read originates in a strand-specific
 protocol — it is only provided if the library is stranded (i.e. if the
 library format string is of the form S).  The possible values are:
 ::
+
     F = read 1 (or single-end read) comes from the forward strand
     R = read 1 (or single-end read) comes from the reverse strand
+
 So, for example, if you wanted to specify a fragment library of strand-specific
 paired-end reads, oriented toward each other, where read 1 comes from the
 forward strand and read 2 comes from the reverse strand, you would specify ``-l
@@ -432,17 +448,25 @@ unstranded), ``SF`` (for strand-specific reads coming from the forward strand)
 and ``SR`` (for strand-specific reads coming from the reverse strand).
 A few more examples of some library format strings and their interpretations are:
 ::
+
     IU (an unstranded paired-end library where the reads face each other)
+
 ::
+
     SF (a stranded single-end protocol where the reads come from the forward strand)
+
 ::
+
     OSR (a stranded paired-end protocol where the reads face away from each other,
          read1 comes from reverse strand and read2 comes from the forward strand)
+
 .. note:: Correspondence to TopHat library types
+
    The popular `TopHat <http://ccb.jhu.edu/software/tophat/index.shtml>`_ RNA-seq
    read aligner has a different convention for specifying the format of the library.
    Below is a table that provides the corresponding Salmon/salmon library format
    string for each of the potential TopHat library types:
+
    +---------------------+-------------------------+
    | TopHat              | Salmon (and Sailfish)   |
    +=====================+============+============+
@@ -454,6 +478,7 @@ A few more examples of some library format strings and their interpretations are
    +---------------------+------------+------------+
    |``-fr-secondstrand`` |``-l ISF``  |``-l SF``   |
    +---------------------+------------+------------+
+
    The remaining salmon library format strings are not directly expressible in terms
    of the TopHat library types, and so there is no direct mapping for them.
 ]]>
