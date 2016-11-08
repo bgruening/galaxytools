@@ -1,0 +1,561 @@
+<tool id="bismark_bowtie2" name="Bismark Mapper" version="0.10.2">
+    <!-- Wrapper compatible with Bismark version 0.10 -->
+    <description>Bisulfite reads mapper</description>
+    <!--<version_command>bismark version</version_command>-->
+    <requirements>
+        <requirement type="package" version="0.1.19">samtools</requirement>
+        <requirement type="package" version="2.1.0">bowtie2</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+        <exit_code range=":-1" />
+        <regex match="Error:" />
+        <regex match="Exception:" />
+    </stdio>
+    <command interpreter="python">
+<![CDATA[
+        bismark_wrapper.py
+
+        ## Change this to accommodate the number of threads you have available.
+        --num-threads "\${GALAXY_SLOTS:-24}"
+
+        ##--bismark_path \$SCRIPT_PATH
+        --bismark_path $__tool_directory__
+
+        --bowtie2
+
+        ##
+        ## Bismark Genome Preparation, if desired.
+        ##
+
+        ## Handle reference file.
+        #if $refGenomeSource.genomeSource == "built_in_fasta":
+            --own-file=${refGenomeSource.built_in_fasta.fields.path}
+        #else if $refGenomeSource.genomeSource == "own_fasta":
+            --own-file=$refGenomeSource['own_fasta']
+        #else:
+            --indexes-path ${refGenomeSource.built_in_indexes.fields.path}
+        #end if
+
+        ##
+        ##  Input parameters
+        ##
+
+        #if $singlePaired.sPaired == "single":
+            --single-paired $singlePaired.input_singles
+
+            #if $singlePaired.input_singles.ext == "fastqillumina":
+                --phred64-quals
+                --fastq
+            #elif $singlePaired.input_singles.ext == "fastqsanger":
+                --fastq
+            #elif $singlePaired.input_singles.ext == "fasta":
+                --fasta
+            #end if
+        #else:
+            --mate-paired
+            #set $mate1 = list()
+            #set $mate2 = list()
+            #for $mate_pair in $singlePaired.mate_list
+                $mate1.append( str($mate_pair.input_mate1) )
+                $mate2.append( str($mate_pair.input_mate2) )
+            #end for
+
+            --mate1 #echo ','.join($mate1)
+            --mate2 #echo ','.join($mate2)
+
+            #for $mate_pair in $singlePaired.mate_list:
+                #if $mate_pair.input_mate1.ext == "fastqillumina":
+                    --phred64-quals
+                    --fastq
+                #elif $mate_pair.input_mate1.ext == "fastqsanger":
+                    --fastq
+                #elif $mate_pair.input_mate1.ext == "fasta":
+                    --fasta
+                #end if
+                #break
+            #end for
+
+            -I $singlePaired.minInsert
+            -X $singlePaired.maxInsert
+        #end if
+
+        #if $sort_bam:
+            --sort-bam
+        #end if
+
+        ## for now hardcode the value for the required memory per thread in --best mode
+        --chunkmbs 512
+
+
+        #if $params.settingsType == "custom":
+
+            ## default 20
+            --seed-len $params.seed_len
+            ## default 0
+            --seed-mismatches $params.seed_mismatches
+            ## default 15
+            --seed-extention-attempts $params.seed_extention_attempts
+            ## default 2
+            --max-reseed $params.max_reseed
+
+            ## default 70
+            ##--maqerr $params.maqerr
+
+            ## default unlimited
+            #if $params.qupto != 0:
+                --qupto $params.qupto
+            #end if
+            #if $params.skip_reads != 0:
+                --skip-reads $params.skip_reads
+            #end if
+
+            ## if set, disable the original behaviour
+            $params.no_mixed
+            ## if set, disable the original behaviour
+            $params.no_discordant
+
+            #if $params.bismark_stdout:
+                --stdout $output_stdout
+            #end if
+
+            #if $params.isReportOutput:
+                --output-report-file $report_file
+            #end if
+
+        #else:
+          --output-report-file $report_file
+        #end if
+
+      ##
+      ## Output parameters.
+      ##
+      --output $output
+      ##$suppress_header
+
+      #if str( $singlePaired.sPaired ) == "single"
+        #if $output_unmapped_reads_l
+          --output-unmapped-reads $output_unmapped_reads_l
+        #end if
+        #if $output_suppressed_reads_l
+          --output-suppressed-reads $output_suppressed_reads_l
+        #end if
+      #else
+        #if $output_unmapped_reads_l and $output_unmapped_reads_r
+          --output-unmapped-reads-l $output_unmapped_reads_l
+          --output-unmapped-reads-r $output_unmapped_reads_r
+        #end if
+        #if $output_suppressed_reads_l and $output_suppressed_reads_l
+          --output-suppressed-reads-l $output_suppressed_reads_l
+          --output-suppressed-reads-r $output_suppressed_reads_r
+        #end if
+      #end if
+
+]]>
+    </command>
+    <inputs>
+        <conditional name="refGenomeSource">
+         	<param name="genomeSource" type="select" label="Will you select a reference genome from your history or use a built-in index?" help="Built-ins were indexed using default options">
+            	<option value="built_in_indexes" selected="true">Use built-in Bismark indexes</option>
+				<option value="built_in_fasta">Generate Bismark indexes from built-in Reference Genome (fasta)</option>
+              	<option value="own_fasta">Generate Bismark indexes from Genome (fasta) in your Galaxy history</option>
+         	</param>
+        	<when value="built_in_indexes">
+				<param name="built_in_indexes" type="select" label="Select Reference Genome (bismark indexes)" help="If your genome of interest is not listed, contact your Galaxy admin">
+              		<options from_data_table="bismark_indexes">
+                		<filter type="sort_by" column="name"/>
+						<validator type="no_options" message="No indexes are available for the selected input dataset"/>
+              		</options>
+				</param>
+          	</when>
+          	<when value="built_in_fasta"> 
+            	<param name="built_in_fasta" type="select" label="Select Reference Genome (fasta)">
+              		<options from_data_table="all_fasta">
+                		<filter type="sort_by" column="name"/>
+                		<validator type="no_options" message="No genomes in fasta are available for the selected input dataset"/>
+              		</options>
+           		 </param>
+          	</when>
+          	<when value="own_fasta"> 
+            	<param name="own_fasta" type="data" format="fasta" label="Select the reference genome"/>
+          	</when>
+        </conditional>
+
+        <!-- Input Parameters -->
+        <conditional name="singlePaired">
+            <param name="sPaired" type="select" label="Is this library mate-paired?">
+              <option value="single">Single-end</option>
+              <option value="paired">Paired-end</option>
+            </param>
+            <when value="single">
+                <param name="input_singles" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="FASTQ/FASTA file" help="FASTQ or FASTA files." />
+            </when>
+            <when value="paired">
+                <repeat name="mate_list" title="Paired End Pairs" min="1">
+                    <param name="input_mate1" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Mate pair 1" help="FASTQ or FASTA files." />
+                    <param name="input_mate2" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Mate pair 2" help="FASTQ or FASTA files." />
+                </repeat>
+                <param name="minInsert" type="integer" value="0" label="Minimum insert size for valid paired-end alignments" />
+                <param name="maxInsert" type="integer" value="500" label="Maximum insert size for valid paired-end alignments" />
+            </when>
+        </conditional>
+
+        <param name="sort_bam" type="boolean" truevalue="true" falsevalue="false" checked="False" label="Sort BAM file by chromosomal position (not compatibile with methylation extractor)"/>
+
+        <conditional name="params">
+            <param name="settingsType" type="select" label="Bismark settings to use" help="You can use the default settings or set custom values for any of Bismark's parameters.">
+              <option value="default">Use Defaults</option>
+              <option value="custom">Full parameter list</option>
+            </param>
+            <!--<when value="default" />-->
+            <!-- Full/advanced params. -->
+            <when value="custom">
+                <!-- -N -->
+                <param name="seed_mismatches" type="integer" value="0" label="Number of mismatches to be allowed in a seed alignment during multiseed alignment" />
+                <!-- -L -->
+                <param name="seed_len" type="integer" value="20" label="Length of the seed substrings to align during multiseed alignment" />
+                <!--
+                <param name="maqerr" type="integer" value="70" label="Maximum permitted total of quality values at all mismatched read positions throughout the entire alignment, not just in the 'seed'." />
+                -->
+                <!-- -D -->
+                <param name="seed_extention_attempts" type="integer" value="15" label="How many consecutive seed extension attempts can fail before Bowtie 2 moves on" />
+                <!-- -R -->
+                <param name="max_reseed" type="integer" value="2" label="Maximum number of times Bowtie 2 will re-seed reads with repetitive seeds" />
+
+                <param name="qupto" type="integer" value="0" label="Only aligns the first N reads or read pairs from the input" help="Default is 0 and means 'no-limit'." />
+                <param name="skip_reads" type="integer" value="0" label="Skip (i.e. do not align) the first N reads or read pairs from the input" />
+
+                <param name="no_discordant" type="boolean" truevalue="--no-discordant" falsevalue="" checked="false" label="Disable looking for discordant alignments if it cannot find any concordant alignments (only for paired-end reads)" help="" />
+                <param name="no_mixed" type="boolean" truevalue="--no-mixed" falsevalue="" checked="false" label="Disable Bowtie 2's behaviour to try to find alignments for the individual mates (only for paired-end reads" help="" />
+
+                <param name="suppressed_read_file" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Write ambiguous reads to an extra output file" help="Write all reads which produce more than one valid alignment with the same number of lowest mismatches or other reads that fail to align uniquely." />
+                <param name="unmapped_read_file" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Write all reads that could not be aligned to a file" />
+                <!-- output Options -->
+                <param name="bismark_stdout" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Write the bismark output and summary information to an extra file" />
+                <param name="isReportOutput" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Offer all report files concatenated in one file (Mapping Report)" />
+
+                <!--end output options -->
+            </when>  <!-- full -->
+      </conditional>  <!-- params -->
+      <!--
+      <param name="suppress_header" type="boolean" truevalue="..suppress-header" falsevalue="" checked="false" label="Suppress the header in the output SAM file" help="Bowtie produces SAM with several lines of header information by default." />
+        -->
+    </inputs>
+
+
+    <outputs>
+        <data format="txt" name="report_file" label="${tool.name} on ${on_string}: mapping report">
+            <filter>
+            ((
+            	params['settingsType'] == "default" or
+                ( params['settingsType'] == "custom" and
+                params['isReportOutput'] is True )
+            ))
+            </filter>
+        </data>
+        <data format="txt" name="output_stdout" label="${tool.name} on ${on_string}: Summary">
+            <filter>
+            ((
+                params['settingsType'] == "custom" and
+                params['bismark_stdout'] is True
+            ))
+            </filter>
+        </data>
+
+        <data format="bam" name="output" label="${tool.name} on ${on_string}: mapped reads">
+          <actions>
+            <conditional name="refGenomeSource.genomeSource">
+              <when value="built_in_indexes">
+                <action type="metadata" name="dbkey">
+                  <option type="from_data_table" name="bismark_indexes" column="1" offset="0">
+                    <filter type="param_value" column="0" value="#" compare="startswith" keep="False"/>
+                    <filter type="param_value" ref="refGenomeSource.built_in_indexes" column="0"/>
+                  </option>
+                </action>
+              </when>
+              <when value="generate_indexes">
+                <action type="metadata" name="dbkey">
+                  <option type="from_data_table" name="all_fasta" column="1" offset="0">
+                    <filter type="param_value" column="0" value="#" compare="startswith" keep="False"/>
+                    <filter type="param_value" ref="refGenomeSource.generate_indexes" column="0"/>
+                  </option>
+                </action>
+              </when>
+            </conditional>
+          </actions>
+        </data>
+
+    	<data format="fastq" name="output_suppressed_reads_l" label="${tool.name} on ${on_string}: suppressed reads (L)">
+      		<filter>
+        	((
+          		params['settingsType'] == "custom" and
+          		params['suppressed_read_file'] is True
+        	))
+      		</filter>
+      		<actions>
+        	<conditional name="singlePaired.sPaired">
+          	<when value="single">
+            	<action type="format">
+              		<option type="from_param" name="singlePaired.input_singles" param_attribute="ext" />
+            	</action>
+          	</when>
+       		</conditional>
+      		</actions>
+   		</data>
+
+    <data format="fastq" name="output_suppressed_reads_r" label="${tool.name} on ${on_string}: suppressed reads (R)">
+      <filter>
+        ((
+            singlePaired['sPaired'] == "paired" and
+          params['settingsType'] == "custom" and
+          params['suppressed_read_file'] is True
+        ))
+      </filter>
+      <actions>
+        <conditional name="singlePaired.sPaired">
+          <when value="single">
+            <action type="format">
+              <option type="from_param" name="singlePaired.input_singles" param_attribute="ext" />
+            </action>
+          </when>
+          <when value="paired">
+            <!--action type="format">
+              <option type="from_param" name="singlePaired.mate_list[0].input_mate1" param_attribute="ext" />
+            </action-->
+          </when>
+        </conditional>
+      </actions>
+    </data>
+
+    <!-- Outout unmapped reads -->
+    <data format="fastq" name="output_unmapped_reads_l" label="${tool.name} on ${on_string}: unmapped reads (L)">
+      <filter>
+        ((
+          params['settingsType'] == "custom" and
+          params['unmapped_read_file'] is True
+        ))
+      </filter>
+      <actions>
+        <conditional name="singlePaired.sPaired">
+          <when value="single">
+            <action type="format">
+              <option type="from_param" name="singlePaired.input_singles" param_attribute="ext" />
+            </action>
+          </when>
+          <when value="paired">
+            <!--action type="format">
+              <option type="from_param" name="singlePaired.mate_list[0].input_mate1" param_attribute="ext" />
+            </action-->
+          </when>
+        </conditional>
+      </actions>
+    </data>
+
+    <data format="fastq" name="output_unmapped_reads_r" label="${tool.name} on ${on_string}: unmapped reads (R)">
+      <filter>
+        ((
+            singlePaired['sPaired'] == "paired" and
+          params['settingsType'] == "custom" and
+          params['unmapped_read_file'] is True
+        ))
+      </filter>
+      <actions>
+        <conditional name="singlePaired.sPaired">
+          <when value="single">
+            <action type="format">
+              <option type="from_param" name="singlePaired.input_singles" param_attribute="ext" />
+            </action>
+          </when>
+          <when value="paired">
+            <!--action type="format">
+              <option type="from_param" name="singlePaired.mate_list[0].input_mate1" param_attribute="ext" />
+            </action-->
+          </when>
+        </conditional>
+      </actions>
+    </data>
+    </outputs>
+
+    <tests>
+    </tests>
+
+  <help>
+<![CDATA[
+
+**What it does**
+
+  | Bismark_ is a bisulfite mapper and methylation caller. Bismark takes in FastA or FastQ files and aligns the reads to a specified bisulfite genome. 
+  | Sequence reads are transformed into a bisulfite converted forward strand version (C->T conversion) or into a bisulfite treated reverse strand (G->A conversion of the forward strand).
+  | Each of these reads are then aligned to bisulfite treated forward strand index of a reference genome (C->T converted) and a bisulfite treated reverse strand index of the genome (G->A conversion of the forward strand, by doing this alignments will produce the same positions). 
+  | These instances of Bowtie 2 are run in parallel. The sequence file(s) are then read in again sequence by sequence to pull out the original sequence from the genome and determine if there were any protected C's present or not.
+  |
+  | As of version 0.7.0 Bismark will only run 2 alignment threads for OT and OB in parallel, the 4 strand mode can be re-enabled by using non_directional mode.
+  |
+  | It is developed by Krueger F and Andrews SR. at the Babraham Institute. Krueger F, Andrews SR. (2011) Bismark: a flexible aligner and methylation caller for Bisulfite-Seq applications. Bioinformatics, 27, 1571-2.
+
+.. _Bismark: http://www.bioinformatics.babraham.ac.uk/projects/bismark/
+
+----
+
+**Know what you are doing**
+
+  .. class:: warningmark
+
+  | There is no such thing (yet) as an automated gearshift in short read mapping. It is all like stick-shift driving in San Francisco.
+  | In other words = running this tool with default parameters will probably not give you meaningful results. 
+  | A way to deal with this is to **understand** the parameters by carefully reading the `documentation`__ and experimenting. Fortunately, Galaxy makes experimenting easy.
+  |
+
+  .. class:: warningmark
+
+  | Make sure all your input reads are in the correct and same format. If thats not the case please adjust/convert the filetype with galaxy's build-in converters.
+
+.. __: http://www.bioinformatics.babraham.ac.uk/projects/bismark/
+
+----
+
+**Input formats**
+
+  | Bismark accepts files in either Sanger FASTQ format (galaxy type *fastqsanger*), Illumina FASTQ format (galaxy type *fastqillumina*) or FASTA format (galaxy type *fasta*). Use the FASTQ Groomer to prepare your files.
+
+----
+
+**A Note on Built-in Reference Genomes**
+
+  | The default variant for all genomes is "Full", defined as all primary chromosomes (or scaffolds/contigs) including mitochondrial plus associated unmapped, plasmid, and other segments. 
+  | When only one version of a genome is available in this tool, it represents the default "Full" variant. Some genomes will have more than one variant available. 
+  | The "Canonical Male" or sometimes simply "Canonical" variant contains the primary chromosomes for a genome. For example a human "Canonical" variant contains chr1-chr22, chrX, chrY, and chrM. The "Canonical Female" variant contains the primary chromosomes excluding chrY.
+
+----
+
+**Outputs**
+
+* The final output of Bismark is in SAM format by default, and has the following columns::
+
+      Column  Description
+    --------  --------------------------------------------------------
+    1  QNAME  seq-ID
+    2  FLAG   this flag tries to take the strand a bisulfite read
+              originated from into account
+              (this is different from ordinary DNA alignment flags!)
+    3  RNAME  chromosome
+    4  POS    start position
+    5  MAPQ   always 255
+    6  CIGAR  extended CIGAR string
+    7  MRNM   Mate Reference sequence NaMe ('=' if same as RNAME)
+    8  MPOS   1-based Mate POSition
+    9  ISIZE  Inferred insert SIZE
+    10 SEQ    query SEQuence on the same strand as the reference
+    11 QUAL   Phred33 scale
+    12 NM-tag edit distance to the reference)
+    13 XX-tag base-by-base mismatches to the reference.
+              This does not include indels.
+    14 XM-tag methylation call string
+    15 XR-tag read conversion state for the alignment
+    16 XG-tag genome conversion state for the alignment
+
+
+  | Each read of paired-end alignments is written out in a separate line in the above format.
+  |
+
+* It looks like this (scroll sideways to see the entire example)::
+
+    QNAME	FLAG	RNAME	POS	MAPQ	CIAGR	MRNM	MPOS	ISIZE	SEQ	QUAL	OPT
+    HWI-EAS91_1_30788AAXX:1:1:1761:343	4	*	0	0	*	*	0	0	AAAAAAANNAAAAAAAAAAAAAAAAAAAAAAAAAAACNNANNGAGTNGNNNNNNNGCTTCCCACAGNNCTGG	hhhhhhh;;hhhhhhhhhhh^hOhhhhghhhfhhhgh;;h;;hhhh;h;;;;;;;hhhhhhghhhh;;Phhh
+    HWI-EAS91_1_30788AAXX:1:1:1578:331	4	*	0	0	*	*	0	0	GTATAGANNAATAAGAAAAAAAAAAATGAAGACTTTCNNANNTCTGNANNNNNNNTCTTTTTTCAGNNGTAG	hhhhhhh;;hhhhhhhhhhhhhhhhhhhhhhhhhhhh;;h;;hhhh;h;;;;;;;hhhhhhhhhhh;;hhVh
+
+----
+
+**Note on Bismark settings**
+
+  | All of the options have a default value. You can change any of them. If any Bismark function is missing please contact the tool author or your Galaxy admin.
+
+----
+
+**Bismark settings**
+
+* **If Paired-End Reads**
+
+  * **Minimum insert size for valid paired-end alignments**
+
+      | The minimum insert size for valid paired-end alignments. E.g. if -I 60 is specified and a paired-end alignment consists of two 20-bp alignments in the appropriate orientation with a 20-bp gap between them, that alignment is considered valid (as long as -X is also satisfied). A 19-bp gap would not be valid in that case. Default: 0.
+      |
+      | Alignment option *-I/--minins <INT>*
+
+
+  * **Maximum insert size for valid paired-end alignments**
+
+      |  The maximum insert size for valid paired-end alignments. E.g. if -X 100 is specified and a paired-end alignment consists of two 20-bp alignments in the proper orientation with a 60-bp gap between them, that alignment is considered valid (as long as -I is also satisfied). A 61-bp gap would not be valid in that case. Default: 500.
+      |
+      | Alignment option *-X/--maxins <INT>*
+
+
+* **Number of mismatches to be allowed in a seed alignment during multiseed alignment**
+
+    | Sets the number of mismatches to allowed in a seed alignment during multiseed alignment. Can be set to 0 or 1. Setting this higher makes alignment slower (often much slower) but increases sensitivity. Default: 0. This option is only available for Bowtie 2 (for Bowtie 1 see -n).
+    |
+    | Bowtie 2 Specific option *-N <INT>*
+
+* **Length of the seed substrings to align during multiseed alignment**
+
+    | Sets the length of the seed substrings to align during multiseed alignment. Smaller values make alignment slower but more senstive. Default: the --sensitive preset of Bowtie 2 is used by default, which sets -L to 20. This option is only available for Bowtie 2 (for Bowtie 1 see -l).
+    |
+    | Bowtie 2 Specific option *-L <INT>*
+
+
+* **How many consecutive seed extension attempts can fail before Bowtie 2 moves on**
+
+    | Up to <int> consecutive seed extension attempts can "fail" before Bowtie 2 moves on, using the alignments found so far. A seed extension "fails" if it does not yield a new best or a new second-best alignment. Default: 15.
+    |
+    | Bowtie 2 Effort option *-D <INT>*
+
+* **Maximum number of times Bowtie 2 will re-seed reads with repetitive seeds**
+
+    | <int> is the maximum number of times Bowtie 2 will "re-seed" reads with repetitive seeds. When "re-seeding," Bowtie 2 simply chooses a new set of reads (same length, same number of mismatches allowed) at different offsets and searches for more alignments. A read is considered to have repetitive seeds if the total number of seed hits divided by the number of seeds that aligned at least once is greater than 300. Default: 2.
+    |
+    | Bowtie 2 Effort option *-R <INT>*
+
+* **Only aligns the first N reads or read pairs from the input**
+
+    | Only aligns the first <int> reads or read pairs from the input. Default: no limit.
+    |
+    | Input option *-u/--upto <INT>*
+
+* **Skip (i.e. do not align) the first N reads or read pairs from the input**
+
+    | Input option *-s/--skip*
+
+* **Disable looking for discordant alignments if it cannot find any concordant alignments**
+
+    | Normally, Bowtie 2 looks for discordant alignments if it cannot find any concordant alignments. A discordant alignment is an alignment where both mates align uniquely, but that does not satisfy the paired-end constraints (--fr/--rf/--ff, -I, -X). This option disables that behavior and it is on by default.
+    |
+    | Bowtie 2 Paired-End option *--no-discordant*
+
+* **Disable Bowtie 2's behaviour to try to find alignments for the individual mates**
+
+    | This option disables Bowtie 2's behavior to try to find alignments for the individual mates if it cannot find a concordant or discordant alignment for a pair. This option is invariable and on by default.
+    |
+    | Bowtie 2 Paired-End option *--no-mixed*
+
+* **Write ambiguous reads to an extra output file**
+
+    | Write all reads which produce more than one valid alignment with the same number of lowest mismatches or other reads that fail to align uniquely to a file in the output directory. Written reads will appear as they did in the input, without any of the translation of quality values that may have taken place within Bowtie or Bismark. Paired-end reads will be written to two parallel files with _1 and _2 inserted in theit filenames, i.e. _ambiguous_reads_1.txt and _ambiguous_reads_2.txt. These reads are not written to the file specified with --un.
+    |
+    | Output option *--ambiguous*
+
+* **Write all reads that could not be aligned to a file**
+
+    | Write all reads that could not be aligned to a file in the output directory. Written reads will appear as they did in the input, without any translation of quality values that may have taken place within Bowtie or Bismark. Paired-end reads will be written to two parallel files with _1 and _2 inserted in their filenames, i.e. _unmapped_reads_1.txt and unmapped_reads_2.txt. Reads with more than one valid alignment with the same number of lowest mismatches (ambiguous mapping) are also written to _unmapped_reads.txt unless the option --ambiguous is specified as well.
+    |
+    | Output option *-un/--unmapped*
+
+* **Offer all report files concatenated in one file**
+
+    | Prints out a Bismark mapping report
+
+]]>
+  </help>
+  <citations>
+      <citation type="doi">10.1093/bioinformatics/btr167</citation>
+  </citations>
+</tool>
