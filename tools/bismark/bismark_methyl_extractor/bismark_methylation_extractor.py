@@ -11,12 +11,13 @@ def stop_err( msg ):
 
 def zipper(dir, zip_file):
     output_files_regex = re.compile('^(Non_)?C[pH][GH]_.*')
+    bedgraph_regex = re.compile('.*bedGraph.gz')
     zip = zipfile.ZipFile(zip_file, 'w', compression=zipfile.ZIP_DEFLATED)
     root_len = len(os.path.abspath(dir))
     for root, dirs, files in os.walk(dir):
         archive_root = os.path.abspath(root)[root_len:]
         for f in files:
-            if re.search(output_files_regex, f):
+            if re.search(output_files_regex, f) or re.search(bedgraph_regex, f):
                 fullpath = os.path.join(root, f)
                 archive_name = os.path.join(archive_root, f)
                 zip.write(fullpath, archive_name, zipfile.ZIP_DEFLATED)
