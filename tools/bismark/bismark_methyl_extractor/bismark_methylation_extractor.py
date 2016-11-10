@@ -53,7 +53,7 @@ def __main__():
     parser.add_argument('--mbias_report', dest='mbias_report')
     parser.add_argument('--cytosine_report', dest="cytosine_report")
     parser.add_argument('--genome_file', dest="genome_file")
-    parser.add_argument('--cx_context', dest="cx_context")
+    parser.add_argument('--cx_context', action="store_true" )
 
     parser.add_argument( '--comprehensive', action="store_true" )
     parser.add_argument( '--merge-non-cpg', dest='merge_non_cpg', action="store_true" )
