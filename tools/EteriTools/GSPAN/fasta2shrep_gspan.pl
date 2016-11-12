@@ -276,10 +276,10 @@ if ( not $i_stdout ) {
 
 my $rnashapes_loc = "./RNAshapes";
 
-
 if ( !$rnashapes_loc || !-e $rnashapes_loc ) {
   my $loc = `which RNAshapes`;
   chomp($loc);
+  print " loc = $loc\n";
 
   die "\n 1. Cannot find RNAshapes binary! Exit...\n\n" if ( !$loc );
   die "\n 2. Cannot find RNAshapes binary! Exit...\n\n" if ( !-e $loc );
