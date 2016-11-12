@@ -14,11 +14,13 @@ def sh(script):
 #input_dir = sys.argv[1]
 model_tree_stk = sys.argv[1]
 cmfinder_fa = sys.argv[2]
+path = sys.argv[3]
+
 gapCmd = ""
 gapVal = ""
-if len(sys.argv) > 3:
-    gapCmd = sys.argv[3]
-    gapVal = sys.argv[4]
+if len(sys.argv) > 4:
+    gapCmd = sys.argv[4]
+    gapVal = sys.argv[5]
 
 
 #sh("mkdir  CLUSTER")
@@ -27,10 +29,10 @@ cmd = " cp -f " + model_tree_stk  +  " model.cmfinder.stk"
      #print cmd
 sh(cmd)
 
-alifoldCmd = "perl alifold.pl -file " + model_tree_stk
+alifoldCmd = "perl " + path + "/alifold.pl -file " + model_tree_stk
 sh(alifoldCmd)
 
-cmd_stk = "perl mloc2stockholm.pl -file model.cmfinder.stk  -split_input yes  --con_struct " + model_tree_stk + ".alifold"
+cmd_stk = "perl " + path + "/mloc2stockholm.pl -file model.cmfinder.stk  -split_input yes  --con_struct " + model_tree_stk + ".alifold"
 
 sh(cmd_stk)
 

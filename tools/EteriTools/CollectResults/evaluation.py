@@ -12,7 +12,7 @@ import re
 def sh(script):
     system("bash -c '%s'" % script)
 
-#dataNames = sys.argv[1]
+#dataNames = "test-data/FASTA/data.names"
 dataNames = "FASTA/data.names"
 #path = sys.argv[2]
 
@@ -47,9 +47,14 @@ for singleFile in sorted(cluster_seqs_stats_files):
                     fullUniqeId = nameLine.split()[3] #waas 6
                     print "full uniqueId = ", fullUniqeId
                     rnaClass, sep, tail = fullUniqeId.partition("_")
-                    if fullUniqeId == uniqueId:
+
+                    n = 2
+                    short_unique =  re.findall("_".join(["[^_]+"] * n), fullUniqeId)[0]
+
+                    if short_unique == uniqueId:
                         blackList.append(uniqueId)
 
+print "blackList = ", blackList
 print "numberOfClusters = " ,numberOfClusters
 numberOfClusters += 1 ### 1 cluster for all unassigned seqs
 with open(dataNames, "r") as names:
@@ -57,12 +62,15 @@ with open(dataNames, "r") as names:
         fullUniqeId = nameLine.split()[3] # was 6
         rnaClass, sep, tail = fullUniqeId.partition("_")
         print "fullUniqeId = ", fullUniqeId
+        n = 2
+        short_unique =  re.findall("_".join(["[^_]+"] * n), fullUniqeId)[0]
         rnaClass, sep, tail = fullUniqeId.partition("_")
-        if fullUniqeId not in blackList:
-            numberOfClusters += 1 ### separate cluster for all unassigned seqs
-            listOfClasses.append(rnaClass)
-            listOfClusters.append(str(numberOfClusters))
+        if short_unique not in blackList:
 
+            listOfClasses.append(rnaClass)
+            #listOfClasses.append(fullUniqeId)
+            listOfClusters.append(str(numberOfClusters))
+            numberOfClusters += 1 ### separate cluster for all unassigned seqs
 
 toWrite = ""
 #table=[]
@@ -73,6 +81,9 @@ for i in range(len(listOfClusters)):
 #f = open('table.txt', 'w')
 #f.write(tabulate(table))
 #f.close()
+
+#with open("fullTab.tabular", "w") as full:
+#    full.write(toWrite)
 
 with open("RESULTS/fullTab.tabular", "w") as full:
     full.write(toWrite)
