@@ -1,0 +1,218 @@
+<tool id="pipmir" name="PIPmiR PIPELINE" version="0.1.0">
+
+    <description>a method to identify novel plant miRNA</description>
+
+    <requirements>
+        <!-- conda dependency -->
+        <requirement type="package" version="1.1">pipmir</requirement>
+    </requirements>
+
+    <command>
+<![CDATA[
+
+    samtools sort
+
+    ## output in BAM format
+    -O BAM
+
+    ## output file name
+    -o test_sorted.bam
+
+    "$input_bam"
+
+    &&
+    samtools index test_sorted.bam test_sorted.bai
+
+    ## the tool requires the location of RNAfold binary
+    &&
+    RNAfold_location=\$(which RNAfold)
+
+    &&
+    PIPmiR PIPELINE
+
+    -a test_sorted.bam
+
+    ## genome source
+    #if $refGenomeSource.genomeSource == 'history':
+        -t "$refGenomeSource.ownFile"
+    #else
+        -t "$refGenomeSource.2bit_genome.fields.path"
+    #end if
+
+    -o test
+
+    ## optional parameters
+    #if $params.settingsType == "custom":
+        ## default: 50
+        -l $params.min_precursor
+
+        ## default: 500
+        -L $params.max_precursor
+
+        ## default: 2
+        -s $params.step_size
+
+        ## default: 10
+        -m $params.min_read
+    #end if
+
+    ## default: 1
+    -p \${GALAXY_SLOTS:-1}
+
+    -R \$RNAfold_location
+
+]]>
+    </command>
+    <inputs>
+        <param name="input_bam" type="data"
+            format="sam,bam" label="Alignment"
+            help=".bam or .sam file containing alignment of the read data."/>
+
+        <!-- Genome source. -->
+        <conditional name="refGenomeSource">
+            <param name="genomeSource" type="select"
+                label="Will you select a reference genome from your
+                history or use a built-in 2bit genome?"
+                help="The 2bit version of the genome against which
+                the reads were aligned.">
+                <option value="2bit" selected="True">
+                    Use a built-in 2bit genome</option>
+                <option value="history">
+                    Use a 2bit genome from my current history</option>
+            </param>
+            <when value="2bit">
+            <param name="2bit_genome" type="select"
+                label="Select a reference genome">
+                <options from_data_table="2bit_genome">
+                    <filter type="sort_by" column="2"/>
+                    <validator type="no_options"
+                    message="No 2bit genomes are available for
+                    the selected input dataset"/>
+                </options>
+            </param>
+            </when>
+            <when value="history">
+                <param name="ownFile" type="data" format="twobit"
+                label="Select the reference genome" />
+            </when>
+        </conditional>
+
+        <!-- optional parameters -->
+        <conditional name="params">
+            <param name="settingsType" type="select"
+                label="Optional parameters"
+                help="You can use the default settings or
+                set custom values for any of pipmir's parameters.">
+              <option value="default">Use defaults</option>
+              <option value="custom">Full parameter list</option>
+            </param>
+            <when value="default" />
+            <!-- Full/advanced params. -->
+            <when value="custom">
+                <param name="min_precursor" type="integer"
+                    value="50" label="Minimum size"
+                    help="Minimum size for a precursor sequence
+                    (Default: 50)"/>
+                <param name="max_precursor" type="integer"
+                    value="500" label="Maximum size"
+                    help="Maximum size for a precursor sequence
+                    (Default: 500)"/>
+                <param name="step_size" type="integer"
+                    value="2" label="Step size"
+                    help="the step size used to identifiy the precursor
+                    from the minimum to the maximum possible
+                    size of precursor (Default: 2)"/>
+                <param name="min_read" type="integer"
+                    value="10" label="Minimum read count"
+                    help="Minimum read count for a mature to be
+                    considered expressed (Default: 10)"/>
+            </when>  <!-- full -->
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="putativeMatures" format="bed"
+        from_work_dir="test_putativeMatures.bed"
+        label="${tool.name} on ${on_string}: putative mature miRNAs"/>
+
+        <data name="predictedPrecursors" format="txt"
+        from_work_dir="test_predictedPrecursors.txt"
+        label="${tool.name} on ${on_string}: predicted precursor"/>
+
+        <data name="predicted_miRNA" format="txt"
+        from_work_dir="test_predicted_miRNAs.txt"
+        label="${tool.name} on ${on_string}: predicted miRNAs"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_bam" value="Aligned.out.sam" ftype="sam" />
+            <param name="genomeSource" value="history" />
+            <param name="ownFile" value="test_seq.2bit" />
+            <param name="settingsType" value="custom" />
+            <param name="step_size" value="10" />
+            <output name="predicted_miRNA" file="test_predicted_miRNAs.txt"
+            ftype="txt"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+`pipmir`_ is algorithm to identify novel plant miRNA genes from a combination
+of deep sequencing data and genomic features. The algorithm
+
+.. _pipmir: https://ohlerlab.mdc-berlin.de/software/Pipeline_for_the_Identification_of_Plant_miRNAs_84/
+
+**Optional parameters**
+
+``Minimum size``
+
+The MINIMUM size the precursor predictor can begin searching,
+50 is reccomended (and is the default).
+
+``Maximum size``
+
+The MAXIMUM size the precursor predictor can search.
+The larger you make this, the longer PIPmiR will take as folding time
+is exponential with increased size
+500 is what was used in the manuscript and will include almost
+all currently known Arabidopsis Thaliana miRNAs.
+300 is a limit that will include most known miRNAs
+and still have a reasonable search time.
+
+``Step size``
+
+The step size used to identifiy the precursor from the minimum to the maximum
+possible size of precursor.
+Increasing this value will speed up the precursor prediction step but
+limit the number of possible precursor sequences.
+2 is the default and is what was used in the manuscript,
+however 5 still works well enough, and is only slightly less accurate
+
+**Outputs**
+
+``A bed file of putative mature miRNAs``
+
+The 'name' column will be
+an arbitrary name given to the putative mature and
+the 'score' column will be the read count.
+
+``A text file of predicted precursors``
+
+This will be a file
+that contains the predicted precursors for the putative matures
+(if there was one).
+
+``A text file of predicted miRNAs``
+
+This file will contain the miRNAs that had a positive classifier score,
+meaning that PIPmiR believes that they may be novel miRNA genes.
+This file contains the genomic coordinates of the predicted precursor
+as well as for the mature and star sequences.
+The file also contains the precursor sequence and the dot-bracket notation of
+its secondary structure.
+
+]]></help>
+    <citations>
+        <citation type="doi">10.1101/gr.123547.111</citation>
+    </citations>
+</tool>
