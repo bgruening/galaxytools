@@ -46,9 +46,10 @@ def overlap(infile):
                 prev_end = end
                 prev_start = start
 
-    unique = remove_first_line(unique)
-    unique_regions = "\n%s\t%i\t%i\n" % (chromo, start, end)
+    #writing the last region
+    unique_regions = "%s\t%i\t%i\n" % (chromo, start, end)
     unique += unique_regions
+    unique = remove_first_line(unique)
     return unique, overlapping
 
 def unique_regions(args):
@@ -63,7 +64,6 @@ def unique_regions(args):
     #writing the overlapping regions to a seperate files
     with open("temp_overlapping_regions.bed", 'w') as f2:
         f2.write(overlapping)
-    print unique
 
     #if there were any overlapping regions, the process will be repeated
     #starting from the overlapping regions file.
