@@ -79,9 +79,7 @@ def unique_regions(args):
             f1.write(unique)
         with open("temp_overlapping_regions.bed", 'w') as f2:
             f2.write(overlapping)
-        print unique
     os.remove("temp_overlapping_regions.bed")
-
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
