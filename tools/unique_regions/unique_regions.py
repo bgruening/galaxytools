@@ -13,12 +13,8 @@ def overlap(infile):
     prev_start = 0
     prev_end = 0
 
-    #reading the input file
-    with open(infile, 'r') as to_check:
-        lines = to_check.readlines()
-
     #iterating the bed file, line by line
-    for line in lines:
+    for line in open(infile, 'r'):
         split_line = line[:-1].split("\t")
         chromo = str(split_line[0])
         start = int(split_line[1])
