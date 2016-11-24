@@ -6,6 +6,9 @@ import argparse
 def remove_first_line(s):
     return s[s.find('\n')+1:s.rfind('\n')]
 
+def build_cont(prev1, prev2, prev3):
+    return "%s\t%i\t%i\n" % (prev1, prev2, prev3)
+
 def overlap(infile):
     overlapping = ""
     unique = ""
@@ -15,7 +18,7 @@ def overlap(infile):
 
     #iterating the bed file, line by line
     for line in open(infile, 'r'):
-        split_line = line[:-1].split("\t")
+        split_line = line.split("\t")
         chromo = str(split_line[0])
         start = int(split_line[1])
         end = int(split_line[2])
@@ -24,27 +27,19 @@ def overlap(infile):
         #if not, the comparison will be skipped
         if chromo != prev_chromo:
             prev_chromo = chromo
-            unique_regions = "%s\t%i\t%i\n" % (prev_chromo, prev_start, prev_end)
-            unique += unique_regions
-            prev_end = end
-            prev_start = start
+            unique += build_cont(prev_chromo, prev_start, prev_end)
         else:
             #seperating the unique regions
             if start >= prev_end:
-                unique_regions = "%s\t%i\t%i\n" % (prev_chromo, prev_start, prev_end)
-                unique += unique_regions
-                prev_end = end
-                prev_start = start
+                unique += build_cont(prev_chromo, prev_start, prev_end)
             else:
                 #seperating the overlapping regions
-                overlapping_regions = "%s\t%i\t%i\n" % (prev_chromo, prev_start, prev_end)
-                overlapping += overlapping_regions
-                prev_end = end
-                prev_start = start
+                overlapping += build_cont(prev_chromo, prev_start, prev_end)
+        prev_end = end
+        prev_start = start
 
     #writing the last region
-    unique_regions = "%s\t%i\t%i\n" % (chromo, start, end)
-    unique += unique_regions
+    unique += build_cont(prev_chromo, prev_start, prev_end)
     unique = remove_first_line(unique)
     return unique, overlapping
 
@@ -64,7 +59,7 @@ def unique_regions(args):
     #if there were any overlapping regions, the process will be repeated
     #starting from the overlapping regions file.
     #the process will be repeated until there is no more overlapping regions
-    while os.stat("temp_overlapping_regions.bed").st_size > 0:
+    while overlapping != "":
         l += 1
         args.input = "temp_overlapping_regions.bed"
         unique, overlapping = overlap(args.input)
