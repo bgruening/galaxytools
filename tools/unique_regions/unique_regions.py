@@ -47,7 +47,7 @@ def unique_regions(args):
     l = 0
     #retrieving the two output groups (unique and overlapping regions)
     unique, overlapping = overlap(args.input)
-    unover_file_name = "unique_regions_"+str(l)+".bed"
+    unover_file_name = "unique_regions_"+"%s"%(l)+".bed"
     unover_file_name = os.path.join(args.output, unover_file_name)
     #writing the unique regions to a seperate file
     with open(unover_file_name, 'w') as f1:
@@ -64,7 +64,7 @@ def unique_regions(args):
         args.input = "temp_overlapping_regions.bed"
         unique, overlapping = overlap(args.input)
 
-        unover_file_name = "unique_regions_"+str(l)+".bed"
+        unover_file_name = "unique_regions_"+"%s"%(l)+".bed"
         unover_file_name = os.path.join(args.output, unover_file_name)
         with open(unover_file_name, 'w') as f1:
             f1.write(unique)
