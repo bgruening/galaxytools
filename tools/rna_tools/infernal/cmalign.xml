@@ -1,0 +1,241 @@
+<tool id="infernal_cmalign" name="Align sequences to a covariance model" version="@VERSION@.0">
+    <description>against a sequence database (cmsearch)</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
+    <command>
+<![CDATA[
+
+        cmalign
+            ## Infernal Options
+            --cpu "\${GALAXY_SLOTS:-12}"
+            -o '$outfile'
+
+            $alignment_algorithm_cont.alignment_algorithm.alignment_algorithm_selector
+            #if $alignment_algorithm_cont.alignment_algorithm.alignment_algorithm_selector=="--sample"
+                --seed $alignment_algorithm_cont.alignment_algorithm.seed
+            #end if
+            $alignment_algorithm_cont.notrunc_opt.notrunc
+            #if $alignment_algorithm_cont.notrunc_opt.notrunc=="--notrunc"
+                $alignment_algorithm_cont.notrunc_opt.sub
+            #end if
+            $speed_memory_cont.hmm_banding.banding_selector
+            #if $speed_memory_cont.hmm_banding.banding_selector=="--hbanded"
+                --tau $speed_memory_cont.hmm_banding.tau
+                --mxsize $speed_memory_cont.hmm_banding.mxsize
+                $speed_memory_cont.hmm_banding.fixedtau
+                --maxtau $speed_memory_cont.hmm_banding.maxtau
+            #end if
+            #if $speed_memory_cont.hmm_banding.banding_selector=="--nonbanded"
+                --mxsize $speed_memory_cont.hmm_banding.mxsize
+            #end if
+            
+            #if $other_opts.mapali_opt.mapali_cond
+                --mapali '$other_opts.mapali_opt.mapali'
+                $other_opts.mapali_opt.mapstr
+            #end if
+            
+            --informat $seqdb.ext
+            --outformat $other_opts.outformat_selector
+            $other_opts.dnaout
+            $other_opts.noprob
+            $other_opts.matchonly
+            $other_opts.ileaved
+            
+            ##--small requirements according to cmalign.c
+
+            #if $alignment_algorithm_cont.alignment_algorithm.alignment_algorithm_selector=="--cyk" \
+                and $other_opts.noprob \
+                and $speed_memory_cont.hmm_banding.banding_selector=="--nonbanded" \
+                and $alignment_algorithm_cont.notrunc_opt.notrunc=="--notrunc"
+                    $speed_memory_cont.small
+            #end if
+            
+            ## CM file from the history or stored as database on disc
+            #if $cm_opts.cm_opts_selector == "db":
+                $cm_opts.database.fields.path
+            #else:
+                '$cm_opts.cmfile'
+            #end if
+            ## sequence file
+            '$seqdb'
+
+]]>
+    </command>
+    <inputs>
+
+        <param name="seqdb" type="data" format="fasta" label="Sequence database"/>
+
+        <conditional name="cm_opts">
+            <param name="cm_opts_selector" type="select" label="Subject covariance models">
+              <option value="db" selected="True">Locally installed covariance models</option>
+              <option value="histdb">Covariance model from your history</option>
+            </param>
+            <when value="db">
+                <param name="database" type="select" label="Covariance models">
+                    <options from_file="infernal.loc">
+                      <column name="value" index="0"/>
+                      <column name="name" index="1"/>
+                      <column name="path" index="2"/>
+                    </options>
+                </param>
+            </when>
+            <when value="histdb">
+                <param name="cmfile" type="data" format="cm" label="Covariance models file from the history."/>
+            </when>
+        </conditional>
+
+        <param argument="-g" truevalue="-g" falsevalue="" checked="False" type="boolean"
+            label="Turn on the glocal alignment algorithm" help="... global with respect to the query model and local with respect to the target database."/>
+        
+        <section name="alignment_algorithm_cont" title="Options controlling alignment algorithm" >
+            <conditional name="alignment_algorithm">
+                <param name="alignment_algorithm_selector" type="select" label="Options controlling alignment algorithm" help="">
+                    <option value="--optacc" selected="true">The Holmes/Durbin optimal accuracy algorithm (--optacc)</option>
+                    <option value="--cyk"> The CYK algorithm (--cyk)</option>
+                    <option value="--sample">Sample alignment of each seq from posterior distribution (--sample)</option>
+                </param>
+                <when value="--optacc"></when>
+                <when value="--cyk"></when>
+                <when value="--sample">
+                        <param argument="--seed" type="integer" value="0" label="set RNG seed to 'n'" help="if 0: one-time arbitrary seed"/>
+                </when>
+            </conditional>
+            <conditional name="notrunc_opt">
+                <param argument="--notrunc" truevalue="" falsevalue="--notrunc" checked="true" type="boolean"
+                label="Use truncated alignment algorithm" help=""/>
+                <when value=""></when>
+                <when value="--notrunc">
+                    <param argument="--sub" type="boolean" truevalue="--sub" falsevalue="" checked="false"
+                        label="Build sub CM for columns b/t HMM predicted start/end points" help=""/>
+                    
+                </when>
+            </conditional>
+        </section>
+
+        <section name="speed_memory_cont" title="Options controlling speed and memory requirements">
+            <conditional name="hmm_banding">
+                <param name="banding_selector" type="select" label="HMM banding">
+                    <option value="--hbanded" selected="true"></option>
+                    <option value="--nonbanded"></option>
+                </param>
+                <when value="--hbanded">
+                    <param argument="--tau" type="float" value="1e-7" min="1e-18" max="1.0" 
+                        label="Tail loss probability for HMM bands" help="This is the amount of probability mass within the HMM posterior probabilities that is considered negligible."/>
+                    <param argument="--mxsize" type="integer" value="1028" min="1"
+                        label="Set the maximum allowable CM DP matrix size to 'x' megabytes" help=""/>
+                    <param argument="--fixedtau" type="boolean" truevalue="--fixedtau" falsevalue="" checked="false" 
+                        label="Turn off the HMM band tightening strategy" help="Cmalign will attempt to iteratively tighten the HMM bands it uses to constrain the alignment by raising the tau parameter and recalculating the bands until the total matrix size needed falls below 'x' megabytes or the maximum allowable tau value (0.05 by default, but changeable with --maxtau) is reached."/>
+                    <param argument="--maxtau" type="float" value="0.05" min="1e-18" max="1.0"
+                        label="Set the maximum allowed value for tau during band tightening" help=""/>
+                </when>
+                <when value="--nonbanded">
+                    <param argument="--mxsize" type="integer" value="1028" min="1"
+                        label="Set the maximum allowable CM DP matrix size to 'x' megabytes" help=""/>                   
+                </when>
+            </conditional> 
+            <param argument="--small" type="boolean" truevalue="--small" falsevalue="" checked="false" 
+                label="Use small memory divide and conquer algorithm" help="Allows CM alignment within practical memory limits, reducing the memory required for alignment. WARNING: It can only be used when --cyk,--noprob,--nonbanded,--notrunc are all enabled"/>                      
+        </section>
+        
+        <section name="other_opts" title="Other options">
+            <conditional name="mapali_opt">
+                <param name="mapali_cond" type="boolean" checked="false" 
+                    label="Read the aligment file that used to build the CM" help="The alignment from the file is held fixed. This allows you to align sequences to a model with cmalign and view them in the context of an existing trusted multiple alignment."/>
+                <when value="true">
+                    <param argument="--mapali" type="data" format="fasta" 
+                        label="The aligment file that used to build the CM" help=""/>
+                    <param argument="--mapstr" type="boolean" truevalue="--small" falsevalue="" checked="true" 
+                            label="Use small memory divide and conquer algorithm" help=""/>
+                </when>
+                <when value="false"></when>            
+            </conditional>
+            <param name="outformat_selector" type="select" label="" argument="--outformat">
+                <option value="Stockholm" selected="true">Stockholm</option>
+                <option value="Pfam">Pfam</option>
+                <option value="AFA">AFA: aligned fasta</option>
+                <option value="A2M">A2M</option>
+                <option value="Clustal">Clustal</option>
+                <option value="Phylip">Phylip</option>
+            </param>
+            <param argument="--dnaout" type="boolean" truevalue="--dnaout" falsevalue="" checked="false" 
+                label="Output the alignments as DNA sequence alignments" help="... instead of RNA ones."/>
+            <param argument="--noprob" type="boolean" truevalue="" falsevalue="--noprob" checked="true" 
+                label="Annotate the output alignment with posterior probabilities" help=""/>
+            <param argument="--matchonly" type="boolean" truevalue="--matchonly" falsevalue="" checked="false" 
+                label="Only include match columns in the output alignment" help="Do not include any insertions relative to the consensus model."/>
+            <param argument="--ileaved" type="boolean" truevalue="--ileaved" falsevalue="" checked="false" 
+                label="Output the alignment in interleaved Stockholm format of a fixed width" help="will only work for alignments of up to 100,000 sequences or a total of 100,000,000 aligned nucleotides"/>
+        </section>
+        
+        
+    </inputs>
+    <outputs>        
+        <data  name="outfile" format="text" label="cmalign on ${on_string}"/>
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="cm_opts">
+                <param name="cm_opts_selector" value="histdb"/>
+                <param name="cmfile" value="cmalign_input2_tRNA5.c.cm"/>
+            </conditional>
+            <param name="seqdb" value="cmalign_input_mrum_tRNAs10.fa"/>
+            <output name="outfile">
+                <assert_contents>
+                    <has_text text="GGAGCUAUAGCUCAAU..GGC"/>
+                </assert_contents>
+            </output>    
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+
+**What it does**
+
+cmalign aligns the RNA sequences to the covariance model (CM).
+
+
+The sequence file must be in FASTA or Genbank format. cmalign
+uses an HMM banding technique to accelerate alignment by default. By default,
+cmalign computes the alignment with maximum expected accuracy that is consistent with constraints
+(bands) derived from an HMM, using a banded version of the Durbin/Holmes optimal accuracy algorithm. cmalign takes special care to correctly align truncated sequences, where some nucleotides from the beginning (5’) and/or end (3’) of the actual full length biological sequence are not present in the input sequence. This behavior is on by default.
+
+
+
+
+**Output format**
+
+
+(1) target name: The name of the target sequence or profile.
+(2) accession: The accession of the target sequence or profile, or ’-’ if none.
+(3) query name: The name of the query sequence or profile.
+(4) accession: The accession of the query sequence or profile, or ’-’ if none.
+(5) mdl (model): Which type of model was used to compute the final score. Either ’cm’ or ’hmm’. A CM is used to compute the final hit scores unless the model has zero basepairs or the --hmmonly option is used, in which case a HMM will be used.
+(6) mdl from (model coord): The start of the alignment of this hit with respect to the profile (CM or HMM), numbered 1..N for a profile of N consensus positions.
+(7) mdl to (model coord): The end of the alignment of this hit with respect to the profile (CM or HMM), numbered 1..N for a profile of N consensus positions.
+(8) seq from (ali coord): The start of the alignment of this hit with respect to the sequence, numbered 1..L for a sequence of L residues.
+(9) seq to (ali coord): The end of the alignment of this hit with respect to the sequence, numbered 1..L for a sequence of L residues.
+(10) strand: The strand on which the hit occurs on the sequence. ’+’ if the hit is on the top (Watson) strand, ’-’ if the hit is on the bottom (Crick) strand. If on the top strand, the “seq from” value will be less than or equal to the “seq to” value, else it will be greater than or equal to it.
+(11) trunc: Indicates if this is predicted to be a truncated CM hit or not. This will be “no” if it is a CM hit that is not predicted to be truncated by the end of the sequence, “5’ ” or “3’ ” if the hit is predicted to have one or more 5’ or 3’ residues missing due to a artificial truncation of the sequence, or “5’&3”’ if the hit is predicted to have one or more 5’ residues missing and one or more 3’ residues missing. If the hit is an HMM hit, this will always be ’-’.
+(12) pass: Indicates what “pass” of the pipeline the hit was detected on. This is probably only useful for testing and debugging. Non-truncated hits are found on the first pass, truncated hits are found on successive passes.
+(13) gc: Fraction of G and C nucleotides in the hit.
+(14) bias: The biased-composition correction: the bit score difference contributed by the null3 model for CM hits, or the null2 model for HMM hits. High bias scores may be a red flag for a false positive. It is difficult to correct for all possible ways in which a nonrandom but nonhomologous biological sequences can appear to be similar, such as short-period tandem repeats, so there are cases where the bias correction is not strong enough (creating false positives).
+(15) score: The score (in bits) for this target/query comparison. It includes the biased-composition cor-rection (the “null3” model for CM hits, or the “null2” model for HMM hits).
+(16) E-value: The expectation value (statistical significance) of the target. This is a per query E-value; i.e. calculated as the expected number of false positives achieving this comparison’s score for a single query against the search space Z. For cmsearch Z is defined as the total number of nucleotides in the target dataset multiplied by 2 because both strands are searched. For cmscan Z is the total number of nucleotides in the query sequence multiplied by 2 because both strands are searched and multiplied by the number of models in the target database. If you search with multiple queries and if you want to control the overall false positive rate of that search rather than the false positive rate per query, you will want to multiply this per-query E-value by how many queries you’re doing.
+(17) inc: Indicates whether or not this hit achieves the inclusion threshold: ’!’ if it does, ’?’ if it does not (and rather only achieves the reporting threshold). By default, the inclusion threshold is an E-value of 0.01 and the reporting threshold is an E-value of 10.0, but these can be changed with command line options as described in the manual pages.
+(18) description of target: The remainder of the line is the target’s description line, as free text.
+
+
+For further questions please refere to the Infernal `Userguide <http://eddylab.org/infernal/Userguide.pdf>`_.
+
+
+]]>
+    </help>
+    
+    <expand macro="citations" />
+    
+    
+</tool>
