@@ -81,10 +81,12 @@ while ( keys %toDo_models ) {
 
         my $center_fa_file = "$CLUSTER_DIR/$clus_idx.center.fa";
 
-        my $ids_all = readSubset( $fast_cluster, 1, $nspdk_knn_center * 3 );
+        my $ids_all = readSubset( $fast_cluster, $clus_idx_ci, $nspdk_knn_center * 3 );
         writeSet( $ids_all, "$CLUSTER_DIR/$clus_idx.center.ids.ext" );
         writeSubsetFasta( \@fa, $ids_all, "$CLUSTER_DIR/$clus_idx.center.fa.ext", 1 );
 
+        my @fa_center = read_fasta_file($center_fa_file);
+        my $subset_fa = writeSubsetFasta( \@fa_center, $ids_aref, "$CLUSTER_DIR/$clus_idx.model.tree.fa", 1 );
 
         my $knn_sim = readSubset( $fast_cluster_sim, $clus_idx_ci );
 
@@ -140,7 +142,7 @@ while ( keys %toDo_models ) {
 
 }   #end while
 
-
+system("zip -r  clInfo.zip CLUSTER ");
 
 
 

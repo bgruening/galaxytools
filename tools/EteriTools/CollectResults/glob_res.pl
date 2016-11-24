@@ -7,7 +7,7 @@ use Array::Utils qw(:all);
 use POSIX qw(ceil floor);
 use List::Util qw/ min max /;
 
-my $CI=0;
+my $CI=1;
 my $final_partition_soft="";
 my $part_cmsearch="";
 #my $part_type = 1 ;
@@ -24,13 +24,15 @@ my $cm_max_eval = $ARGV[5];
 my $cm_bitscore_sig = $ARGV[6];
 my $part_type = $ARGV[7];
 my $path = $ARGV[8];
+my $cutType = $ARGV[9];
+my $model_tree_files = $ARGV[10];
 
 my $num_args = $#ARGV;
-if($num_args >8){
+if($num_args >10){
 
-  $CI=$ARGV[9];
-  $final_partition_soft=$ARGV[10];
-  $part_cmsearch=$ARGV[11];
+  $CI=$ARGV[11];
+  $final_partition_soft=$ARGV[12];
+  $part_cmsearch=$ARGV[13];
 
 }
 
@@ -43,7 +45,8 @@ print "cm_max_eval = $cm_max_eval\n";
 print "cm_bitscore_sig = $cm_bitscore_sig\n";
 print "part_type = $part_type\n";
 print "path = $path\n";
-
+print "cutType = $cutType\n";
+print "model_tree_files = $model_tree_files\n";
 print "CI = $CI\n";
 print "final_partition_soft = $final_partition_soft\n";
 print "part_cmsearch = $part_cmsearch\n";
@@ -81,6 +84,11 @@ foreach my $tab (@tabFiles) {
     print "$tab\n";
   }
 
+my @modTreeFiles = split(',', $model_tree_files);
+foreach my $tab (@modTreeFiles) {
+  print "mode files = $tab\n";
+}
+
 print "test for aguments: cm_min_bitscore =  $cm_min_bitscore  \n";
 
 if ( $final_partition_soft ne "" && $part_cmsearch ne "" ) {
@@ -98,7 +106,7 @@ my $index = 1;
 #foreach my $file ( glob( "CLUSTER/*.cluster/CMSEARCH/*.tabresult" ) ) {
 foreach my $file (@tabFiles ) {
 
-  my $round = "1";
+  my $round = $CI; #####stex petqa ushadir linel
   my @indexes = split('\.', $file);
   my $key = "$round.$index";
   next if ( $round_last && $round > $round_last );
@@ -290,7 +298,7 @@ else{
     my $job_uuid = "stage9";
 
 
-    system("perl $path/gc_res.pl $part_type");
+    system("perl $path/gc_res.pl $part_type @modTreeFiles");
 
   my $stats_file = "RESULTS/cluster.final.stats";
   system("rm -f $stats_file");
@@ -1013,7 +1021,8 @@ sub read_partition {
   #    print "line[0] = $line[0] \n";
   #    next if ( @line != 17 );
   #    print "nextic heto \n";
-#      $use_e_values = 1 if ( $line[15] ne "-" );  #### option in wrapper
+       #$use_e_values = 1 if ( $line[15] ne "-" );  #### option in wrapper
+       $use_e_values = 1 if ( $cutType );  #### option in wrapper
       #print "use_e_values = $use_e_values \n"  ;
       my $strand = "+";
       my $hit    = {

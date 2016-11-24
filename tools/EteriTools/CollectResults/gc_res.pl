@@ -7,6 +7,8 @@ use POSIX qw(ceil floor);
 use Cwd qw(abs_path getcwd);
 use File::Path;
 
+use Data::Dumper;
+
 use Array::Utils qw(:all);
 use List::Util qw/ min max /;
 #use GraphClust;
@@ -27,7 +29,7 @@ my $results_top_num = 10;
 
 $in_root_dir = "";
 
-my ($part_type) = @ARGV;
+my ($part_type, @modTreeFiles) = @ARGV;
 
 print "$part_type\n";
 
@@ -65,6 +67,7 @@ foreach my $res_idx (@res_todo) {
   my $clus_idx  = $res_clus_sort[ $res_idx - 1 ];
 
   foreach my $p ( grep { $_->[5] eq $clus_idx } @{$part} ) {
+    print "\nin part to assign type\n";
     my $key = $p->[0];
     $clus_hits{$key}         = {};
     $clus_hits{$key}->{TYPE} = "CMSEARCH";
@@ -90,13 +93,29 @@ foreach my $res_idx (@res_todo) {
 
   ## read in model ids of a final(merged) cluster, could be >1 orig clusters in case of merging
   my %model_ids = ();
-#  foreach my $orig_cl (@orig_clus) {
-#    my @model_fa = read_fasta_file("CLUSTER/$orig_cl.cluster/MODEL/model.tree.fa");
-#    map { $model_ids{$_} = 1 } @{ $model_fa[1] };
-#  }
+  # foreach my $orig_cl (@orig_clus) {
+  #   print "orig_cl = $orig_cl \n";
+  #   #$orig_cl = 2.1;
+  #   my @model_fa = read_fasta_file("extracted/CLUSTER/$orig_cl.model.tree.fa");
+  #   map { $model_ids{$_} = 1 } @{ $model_fa[1] };
+  # }
+
+  foreach my $f (@modTreeFiles) {
+    print "f = $f \n";
+    #$orig_cl = 2.1;
+    my @model_fa = read_fasta_file("$f");
+    map { $model_ids{$_} = 1 } @{ $model_fa[1] };
+  }
+
 
   ## annotate %clus_hits with TYPE=MODEL or TYPE=BLASTCLUST
   my ( $model_map, $bc_map ) = getHitMap( $in_root_dir, \%clus_hits, \%model_ids );
+  print "model_map = " .$model_map ."\n";
+  print "map = ". %{$model_map};
+
+  print "\nbc_map = " .$bc_map ."\n";
+  print "bc = " . %{$bc_map};
+
 
   ## write out current cluster as partition
   open( PART, ">$clus_dir.cluster.part" );
@@ -114,8 +133,9 @@ foreach my $res_idx (@res_todo) {
   foreach my $key ( sort { $clus_hits{$b}->{PART}->[1] <=> $clus_hits{$a}->{PART}->[1] } grep { $clus_hits{$_}->{TYPE} eq "MODEL" } keys %clus_hits ) {
     my $score = $clus_hits{$key}->{PART}->[1];
     my $clus  = $clus_hits{$key}->{PART}->[4];
+    print "\nin MODEL part \n";
     #print OUT "CLUSTER  $clus_idx " . $key . " CM_SCORE $score MODEL $clus ";
-      print OUT "CLUSTER  $clus_idx  CM_SCORE $score MODEL $clus ";
+    print OUT "CLUSTER  $clus_idx  CM_SCORE $score MODEL $clus ";
   #  print OUT $fa_scan[2]->{ $clus_hits{$key}->{SEQID} } . "\n";
 #    print OUT $fa_scan[2]->{ $clus_hits{$key}->{FRAG}->{SEQID} } . "\n";
     #print OUT $fa_scan[2]->{ $clus_hits{$key}->{FRAG} } . "\n";
@@ -126,17 +146,19 @@ foreach my $res_idx (@res_todo) {
 
   }
 
-  ## add model seqs with no cm hit as well -> score = 0, MODEL_NOHIT tag
-  foreach my $mod ( keys %{$model_map} ) {
-    next if ( exists $model_map->{$mod}->{HIT} );
-  #  print OUT "CLUSTER $clus_idx " . $model_map->{$mod}->{FRAG}->{KEY} . "  CM_SCORE 0 MODEL_NOHIT 0 " . $fa_scan[2]->{ $model_map->{$mod}->{FRAG}->{SEQID} } . "\n";
-    print OUT "CLUSTER $clus_idx   CM_SCORE 0 MODEL_NOHIT 0 " . $fa_scan[2]->{ $model_map->{$mod}->{FRAG}->{SEQID} } . "\n";
-    #print OUT "CLUSTER $clus_idx   CM_SCORE 0 MODEL_NOHIT 0 " . $fa_scan[2]->{ $model_map->{$mod}->{FRAG} } . "\n";
-    my  $str = $fa_scan[2]->{ $model_map->{$mod}->{FRAG} };
-    my @orId = split / /, $str;
-  #  print "string = $str \n";
-    print OUT $orId[3] . " " . $orId[4] . "\n";
-  }
+  # add model seqs with no cm hit as well -> score = 0, MODEL_NOHIT tag
+  # foreach my $mod ( keys %{$model_map} ) {
+  #   print "mtnuma NO MOdel i mej \n";
+  #   next if ( exists $model_map->{$mod}->{HIT} );
+  # #  print OUT "CLUSTER $clus_idx " . $model_map->{$mod}->{FRAG}->{KEY} . "  CM_SCORE 0 MODEL_NOHIT 0 " . $fa_scan[2]->{ $model_map->{$mod}->{FRAG}->{SEQID} } . "\n";
+  #   print OUT "CLUSTER $clus_idx   CM_SCORE 0 MODEL_NOHIT 0 ";
+  #   #print OUT "CLUSTER $clus_idx   CM_SCORE 0 MODEL_NOHIT 0 " . $fa_scan[2]->{ $model_map->{$mod}->{FRAG} } . "\n";
+  #   my  $str = $fa_scan[2]->{ $model_map->{$mod}->{FRAG} };
+  #
+  #   my @orId = split / /, $str;
+  #   print "string = $str \n";
+  #   print OUT $orId[3] . " " . $orId[4] . "\n";
+  # }
 
   ## write all other hit seqs
   foreach my $key ( sort { $clus_hits{$b}->{PART}->[1] <=> $clus_hits{$a}->{PART}->[1] } grep { $clus_hits{$_}->{TYPE} ne "MODEL" } keys %clus_hits ) {
@@ -146,6 +168,7 @@ foreach my $res_idx (@res_todo) {
     my  $str = $fa_scan[2]->{ $clus_hits{$key}->{FRAG}->{SEQID}};
     my @orId = split / /, $str;
   #  print "string = $str \n";
+    print "\nin cmearch part \n";
     print OUT $orId[3] . " " . $orId[4] . "\n";
   }
 
