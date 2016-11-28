@@ -17,12 +17,12 @@ my @fa_in = read_fasta_file($in_fasta,1);
 
 my $in_prefix      = "data";
 my $SEQPREFIX      = "SEQ";
+my $max_N_stretch = 15;
 
-my $max_N_stretch  =  $ARGV[1];
-my $max_length     =  $ARGV[2];
-my $in_winShift    =  $ARGV[3]; ### winshift value from config
+my $max_length     =  $ARGV[1];
+my $in_winShift    =  $ARGV[2]; ### winshift value from config
 my $fa_name = $in_prefix;
-my $min_seq_length =  $ARGV[4];
+my $min_seq_length =  $ARGV[3];
 
 
 my @split_wins = ($max_length); ## done

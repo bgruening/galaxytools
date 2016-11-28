@@ -2,7 +2,7 @@ use List::Util qw/ min max /;
 use Cwd qw(abs_path getcwd);
 
 
-my ($center_fa_file, $tree_file, $p, $max_diff_am, $tau, $max_diff, $path, $data_map) = @ARGV;
+my ($center_fa_file, $tree_file, $p, $max_diff_am, $tau, $max_diff, $path, $data_map, $plfold_minlen) = @ARGV;
 print "fa file = $center_fa_file \n";
 
 my $OPTS_locarna_paligs  = " -p $p --max-diff-am $max_diff_am --tau $tau --max-diff $max_diff --indel-open -400 --indel -200 --struct-weight 180 ";
@@ -16,11 +16,14 @@ my $center_model_type  = 5;
 my $center_tree_aligs  = 1;
 my $center_skip_unstable = 0;
 my $vrna_path = ".";
+my $cmfinder_path = ".";
+
+print "center_model_type  = $center_model_type \n";
 
 my $tree_aligs_local = 0;
 $tree_aligs_local = 1 if ( $OPTS_locarna_paligs =~ /local/ || $OPTS_locarna_paligs =~ /normalized/ );
-$center_model_type = 1 if ((!-e "cmfinder" || !-e "cmfinder") || ($cmfinder_path eq "false" && $center_model_type == 5) );
-
+#$center_model_type = 1 if ((!-e "cmfinder" || !-e "cmfinder") || ($cmfinder_path eq "false" && $center_model_type == 5) );
+print "center_model_type  = $center_model_type \n";
 
 my $dp_dir  = "dp";
 
@@ -32,9 +35,10 @@ my $mloc_opts = $OPTS_locarna_maligs;
 $mloc_opts = $OPTS_locarna_p_model if $use_prob_alig;
 
 if ( !$use_prob_alig ) {
+
   my $rnafold_opts   =  "--noLP ";
   my $rnaplfold_opts = " --noLP -c 0.0005 -L 200 -W 300";
-  my $plfold_minlen  =  210 ;
+#  my $plfold_minlen  =  210 ;
 
   my $fold_opts = "--vrna-path $vrna_path --fasta $center_fa_file --tgtdir $dp_dir --new-only ";
   $fold_opts .= "--switch-len $plfold_minlen ";
@@ -111,13 +115,14 @@ system("cp $tree_aln_file $model_dir/best_subtree.aln");
 system("cp $tree_aln_file.ps $model_dir/best_subtree.aln.ps");
 
 if ( $center_model_type == 2 ) {
+  print "center_model_type = 2\n";
   ## realign with locarna and diff opts 'OPTS_locarna_model'
   print "\n...realign best subtree with locarna...\n";
   mlocarna_center( $center_fa_file, $model_dir, $dp_dir, 0 );
   $tree_aln_file = "$model_dir/results/result.aln";
 
 } elsif ( $center_model_type == 3 || $center_model_type == 4 || $center_model_type == 5 ) {
-
+  print "center_model_type = 3 kam 5\n";
   if ( $center_tree_aligs != 2 && !-e "$model_dir/results/result.aln" ) {
     ## realign with LocarnaP as subtrees were aligned with locarna (with $center_tree_aligs==1 we already have locarnaP alignments)
     print "\n...realign best subtree with locarnaP...\n";

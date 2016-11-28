@@ -142,7 +142,7 @@ while ( keys %toDo_models ) {
 
 }   #end while
 
-system("zip -r  clInfo.zip CLUSTER ");
+#system("zip -r  clInfo.zip CLUSTER ");
 
 
 
