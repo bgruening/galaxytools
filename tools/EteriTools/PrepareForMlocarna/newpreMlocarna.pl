@@ -687,7 +687,7 @@ sub matrix2tree {
 
   system("perl $myPath/rnaclustScores2Dist.pl --quantile 1.0 < $tree_dir/tree.score-list > $tree_dir/tree.dist-list") == 0 or die " .1. command was unable to run to completion:\n\n";
 
-  system("pgma $names_file $tree_dir/tree.dist-list > $tree_outfile") == 0 or die " .2. command was unable to run to completion:\n\n";
+  system("$myPath/./pgma $names_file $tree_dir/tree.dist-list > $tree_outfile") == 0 or die " .2. command was unable to run to completion:\n\n";
 
   #system(" cd $path && ./pgma $names_file $tree_dir/tree.dist-list > $tree_outfile && cd -") == 0 or die "command was unable to run to completion:\n\n";
 }

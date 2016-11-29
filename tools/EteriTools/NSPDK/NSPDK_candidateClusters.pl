@@ -15,7 +15,7 @@ my $GLOBAL_hit_blacklist_overlap = 0.2; #add as param
 $final_partition_soft="";
 my $bl_list ="";
 my $CI=1;
-my ( $data_fasta, $data_names, $noCache, $ensf,  $oc, $usn, $nspdk_knn_center, $nhf, $nspdk_nhf_max, $nspdk_nhf_step, $GLOBAL_num_clusters, $CI, $bl_list, $final_partition_soft, $fast_cluster_last_round, $GLOBAL_hit_blacklist_overlap) = @ARGV;
+my ( $data_fasta, $data_names, $noCache, $ensf,  $oc, $usn, $nspdk_knn_center, $nhf, $nspdk_nhf_max, $nspdk_nhf_step, $GLOBAL_num_clusters, $path, $CI, $bl_list, $final_partition_soft, $fast_cluster_last_round, $GLOBAL_hit_blacklist_overlap) = @ARGV;
 
 if ($CI == ""){
   $CI=1;
@@ -46,6 +46,7 @@ print "fast_cluster_last_round = $fast_cluster_last_round \n";
 print "blacklist = $bl_list \n";
 print "GLOBAL_hit_blacklist_overlap = $GLOBAL_hit_blacklist_overlap \n";
 print "GLOBAL_num_clusters = $GLOBAL_num_clusters \n";
+print "path = $path \n";
 
 
 
@@ -208,7 +209,7 @@ $OPTS_nspdk_centers = "-ensf $ensf $oc $usn";
       }
 ####es ifi mase petqa erevi avelacnel es sistemi mej
 
-  system("NSPDK $noCache -rs $CI -fsb $data_svector.$CI -bl $bl_list $OPTS_nspdk_centers -knn $nspdk_knn_center -ss $GLOBAL_num_clusters -nhf $nhf -mi $nspdk_mi -fcs 1");
+  system("$path./NSPDK $noCache -rs $CI -fsb $data_svector.$CI -bl $bl_list $OPTS_nspdk_centers -knn $nspdk_knn_center -ss $GLOBAL_num_clusters -nhf $nhf -mi $nspdk_mi -fcs 1");
   print "NKSPDKIC heto! \n";
     #system("NSPDK $noCache -rs $CI -fsb $data_svector.$CI -bl $SVECTOR_DIR/data.svector.blacklist.$CI $OPTS_nspdk_centers -knn $nspdk_knn_center -ss $GLOBAL_num_clusters -nhf $nhf -mi $nspdk_mi -fcs 1");
     #print "data_fast = $data_svector.$CI.fast_cluster \n";

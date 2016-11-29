@@ -7,7 +7,7 @@ use POSIX qw(ceil floor);
 my $SVECTOR_DIR = "SVECTOR";
 
 
-my ($data_fasta, $gspan, $rad, $dist) = @ARGV;
+my ($data_fasta, $gspan, $rad, $dist, $path) = @ARGV;
 
 #print $nspdk_knn_center;
 my $group_gspan = "group.gspan";
@@ -26,7 +26,7 @@ print "\nNumber of sequences in data.fasta: " . $num_seqs . "\n";
 
 die "Fasta file $data_fasta contains only $num_seqs sequences! Exit...\n\n" if ( $num_seqs <= 2 );
 
-system("NSPDK -R $rad -D $dist -gt DIRECTED -fg $group_gspan -of");
+system("$path./NSPDK -R $rad -D $dist -gt DIRECTED -fg $group_gspan -of") == 0 or die "nspdk chi ashxatum\n";
 system("mkdir -p $SVECTOR_DIR");
 system("cat $group_gspan.feature_bin > $SVECTOR_DIR/data.svector");
 #system("cat $group_gspan.feature_bin > $SVECTOR_DIR/data.svector.$CI");
