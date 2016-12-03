@@ -1,6 +1,7 @@
 <tool id="paralyzer" name="PARalyzer" version="0.1.0">
 
-    <description> A method to generate a high resolution map of interaction sites between RNA-binding proteins and their targets</description>
+    <description>A method to map interaction sites between RNA-binding proteins
+      and their targets</description>
 
     <requirements>
         <!-- conda dependency -->
@@ -16,63 +17,63 @@
         &&
     #end if
 
-    samtools sort
-
-    ## output in BAM format
-    -O BAM
-
-    ## output file name
-    -o test_sorted.bam
-
-    '$input_bam'
-
-    &&
-    samtools index test_sorted.bam test_sorted.bai
-
-    ## the tool requires the location of RNAfold binary
-    &&
-    RNAfold_location=\$(which RNAfold)
-
-    &&
-    PIPmiR PIPELINE
-
-    -a test_sorted.bam
-
     ## genome source
     #if $refGenomeSource.genomeSource == "history":
-        -t ownFile.2bit
+        echo 'GENOME_2BIT_FILE=ownFile.2bit' > input.ini &&
     #else
-        -t '$refGenomeSource.builtin.fields.path'
+        echo 'GENOME_2BIT_FILE=$refGenomeSource.builtin.fields.path' > input.ini &&
     #end if
 
-    -o test
+    echo 'SAM_FILE=$input_sam$collapse' >> input.ini &&
 
-    ## optional parameters
+    #if $methods.choice == "ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL":
+      echo 'ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL=$methods.max_num' >> input.ini &&
+    #else:
+      echo '$methods.choice' >> input.ini &&
+    #end if
+
+    #if $conversion.selection == "custom":
+      echo 'CONVERSION=$conversion.character_from>$conversion.character_to' >> input.ini &&
+    #end if
+
+    ## required parameters
     #if $params.settingsType == "custom":
-        ## default: 50
-        -l $params.min_precursor
-
-        ## default: 500
-        -L $params.max_precursor
-
-        ## default: 2
-        -s $params.step_size
-
-        ## default: 10
-        -m $params.min_read
+      echo 'BANDWIDTH=$params.BANDWIDTH' >> input.ini &&
+      echo 'MINIMUM_READ_COUNT_PER_GROUP=$params.min_read_group' >> input.ini &&
+      echo 'MINIMUM_READ_COUNT_PER_CLUSTER=$params.min_read_cluster' >> input.ini &&
+      echo 'MINIMUM_READ_COUNT_FOR_KDE=$params.min_read_kde' >> input.ini &&
+      echo 'MINIMUM_READ_COUNT_FOR_CLUSTER_INCLUSION=$params.min_read_cluster_inc' >> input.ini &&
+      echo 'MINIMUM_CLUSTER_SIZE=$params.min_cluster_size' >> input.ini &&
+      echo 'MINIMUM_CONVERSION_LOCATIONS_FOR_CLUSTER=$params.min_conv_loc_cluster' >> input.ini &&
+      echo 'MINIMUM_CONVERSION_COUNT_FOR_CLUSTER=$params.min_conv_cluster' >> input.ini &&
+      echo 'MINIMUM_READ_LENGTH=$params.min_read_len' >> input.ini &&
+      echo 'MAXIMUM_NUMBER_OF_NON_CONVERSION_MISMATCHES=$params.max_num_conv_mis' >> input.ini &&
     #end if
 
-    ## default: 1
-    -p \${GALAXY_SLOTS:-1}
+    echo 'OUTPUT_DISTRIBUTIONS_FILE=out.distribution' >> input.ini &&
+    echo 'OUTPUT_GROUPS_FILE=out.groups' >> input.ini &&
+    echo 'OUTPUT_CLUSTERS_FILE=out.clusters' >> input.ini &&
+    echo 'OUTPUT_READS_FILE=out_PARalyzer_Utilized.sam' >> input.ini &&
 
-    -R \$RNAfold_location
+    ## execute paralyzer
+    ## note the 2nd argument is the memory parameter
+    ## the parameter can be override in job_conf.xml e.g.
+    ## <env id="_JAVA_OPTIONS">-Xmx12G</env>
+    PARalyzer 2G input.ini
 
 ]]>
     </command>
     <inputs>
-        <param name="input_bam" type="data"
-            format="sam,bam" label="Alignment"
-            help="The bam or sam file containing alignment of the read data."/>
+        <param name="input_sam" type="data"
+            format="sam" label="Alignment"
+            help="The sam file containing alignment of the read data."/>
+
+        <param name="collapse" type="boolean" truevalue="=COLLAPSED"
+          falsevalue="" checked="True"
+          label="Incorporate the read copy number"
+          help="If reads were collapse before alignment and you want
+          to incorporate the read copy number, please select Yes,
+          otherwise select No" />
 
         <!-- Genome source. -->
         <conditional name="refGenomeSource">
@@ -102,45 +103,143 @@
             </when>
         </conditional>
 
+        <conditional name="methods">
+          <param name="choice" type="select"
+              label="Please select one of the following"
+              help="">
+              <option value="EXTEND_BY_READ">
+                EXTEND_BY_READ
+              </option>
+              <option value="HAFFNER_APPROACH">
+                HAFFNER_APPROACH
+              </option>
+              <option value="ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL">
+                ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL
+              </option>
+          </param>
+          <when value="EXTEND_BY_READ" />
+          <when value="HAFFNER_APPROACH" />
+          <when value="ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL">
+            <param name="max_num" type="integer"
+                value="0" label="The maximum number"
+                help="
+                The maximum number of reads to extend beyond the positive
+                signal in each direction (default 0) the cluster is defined
+                ">
+                <validator type="in_range"
+                    message="Minimum allowed value is 0" min="0"/>
+            </param>
+          </when>
+        </conditional>
+
+        <conditional name="conversion">
+            <param name="selection" type="select"
+                label="Conversion"
+                help="Please specify characters">
+              <option value="default">Use defaults: T to C</option>
+              <option value="custom">Specify other characters</option>
+            </param>
+            <when value="default" />
+            <when value="custom">
+                <param name="character_from" type="text"
+                    size="1" value="T" label="Character from"
+                    help="Character representing the modified ribonucleotide
+                    (default 'T')">
+                </param>
+                <param name="character_to" type="text"
+                    size="1" value="C" label="Character to"
+                    help="Character representing what the modified ribonucleotide
+                    is read as by rTranscriptase (default 'C')">
+                </param>
+            </when>
+        </conditional>
+
         <!-- optional parameters -->
         <conditional name="params">
             <param name="settingsType" type="select"
-                label="Optional parameters"
+                label="Required parameters"
                 help="You can use the default settings or
-                set custom values for any of pipmir's parameters.">
+                set custom values for any of paralyzer's parameters.">
               <option value="default">Use defaults</option>
               <option value="custom">Full parameter list</option>
             </param>
             <when value="default" />
             <!-- Full/advanced params. -->
             <when value="custom">
-                <param name="min_precursor" type="integer"
-                    value="50" label="Minimum size"
-                    help="Minimum size of a precursor sequence (Default: 50)">
+                <param name="BANDWIDTH" type="integer"
+                    value="3" label="BANDWIDTH"
+                    help="Size of bandwidth for KDE calculation (default 3)">
                     <validator type="in_range"
                         message="Minimum allowed value is 1" min="1"/>
                 </param>
 
-                <param name="max_precursor" type="integer"
-                    value="500" label="Maximum size"
-                    help="Maximum size of a precursor sequence (Default: 500)">
+                <param name="min_read_group" type="integer"
+                    value="10" label="MINIMUM_READ_COUNT_PER_GROUP"
+                    help="Minimum number of reads required to call a group (default 10)">
                     <validator type="in_range"
                         message="Minimum allowed value is 1" min="1"/>
                 </param>
 
-                <param name="step_size" type="integer"
-                    value="2" label="Step size"
-                    help="The step size used to identifiy the precursor
-                    from the minimum to the maximum possible
-                    size of precursor (Default: 2)">
+                <param name="min_read_cluster" type="integer"
+                    value="1" label="MINIMUM_READ_COUNT_PER_CLUSTER"
+                    help="Minimum number of reads required to call a cluster (default 1)">
                     <validator type="in_range"
                         message="Minimum allowed value is 1" min="1"/>
                 </param>
 
-                <param name="min_read" type="integer"
-                    value="10" label="Minimum read count"
-                    help="Minimum read count for a mature to be
-                    considered expressed (Default: 10)">
+                <param name="min_read_kde" type="integer"
+                    value="1" label="MINIMUM_READ_COUNT_FOR_KDE"
+                    help="Minimum read depth at a location to
+                    make a KDE estimate (default 1, recommend 5)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read_cluster_inc" type="integer"
+                    value="1" label="MINIMUM_READ_COUNT_FOR_CLUSTER_INCLUSION"
+                    help="Minimum read depth for a location to be included
+                    within a cluster (default 1)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_cluster_size" type="integer"
+                    value="1" label="MINIMUM_CLUSTER_SIZE"
+                    help="Minimum length required for a cluster
+                    to be reported (default 1)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_conv_loc_cluster" type="integer"
+                    value="1" label="MINIMUM_CONVERSION_LOCATIONS_FOR_CLUSTER"
+                    help="Minimum number of separate locations to have a
+                    reported conversion for a cluster to be
+                    reported (default 1, recommend 2)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_conv_cluster" type="integer"
+                    value="1" label="MINIMUM_CONVERSION_COUNT_FOR_CLUSTER"
+                    help="Minimum number of conversion events within a
+                    region to report a cluster (default 1)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read_len" type="integer"
+                    value="1" label="MINIMUM_READ_LENGTH"
+                    help="Minimum length of mapped read to be included
+                    in the analysis (default 1)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="max_num_conv_mis" type="integer"
+                    value="5" label="MAXIMUM_NUMBER_OF_NON_CONVERSION_MISMATCHES"
+                    help="Maximum number of non-conversion mismatches of
+                    a mapped read to be included in the analysis (default 5)">
                     <validator type="in_range"
                         message="Minimum allowed value is 1" min="1"/>
                 </param>
@@ -148,31 +247,50 @@
         </conditional>
     </inputs>
     <outputs>
-        <data name="putativeMatures" format="bed"
-        from_work_dir="test_putativeMatures.bed"
-        label="${tool.name} on ${on_string}: putative mature miRNAs"/>
+        <data name="distribution" format="txt"
+        from_work_dir="out.distribution"
+        label="${tool.name} on ${on_string}: distribution"/>
 
-        <data name="predictedPrecursors" format="txt"
-        from_work_dir="test_predictedPrecursors.txt"
-        label="${tool.name} on ${on_string}: predicted precursor"/>
+        <data name="groups" format="txt"
+        from_work_dir="out.groups"
+        label="${tool.name} on ${on_string}: groups"/>
 
-        <data name="predicted_miRNA" format="txt"
-        from_work_dir="test_predicted_miRNAs.txt"
-        label="${tool.name} on ${on_string}: predicted miRNAs"/>
+        <data name="clusters" format="txt"
+        from_work_dir="out.clusters"
+        label="${tool.name} on ${on_string}: clusters"/>
+
+        <data name="PARalyzer_Utilized" format="sam"
+        from_work_dir="out_PARalyzer_Utilized.sam"
+        label="${tool.name} on ${on_string}: PARalyzer_Utilized.sam"/>
     </outputs>
     <tests>
         <test>
-            <param name="input_bam" value="Aligned.out.sam" ftype="sam" />
+            <param name="input_sam" value="input.sam" ftype="sam" />
             <param name="genomeSource" value="history" />
-            <param name="ownFile" value="test_seq.fa" />
+            <param name="ownFile" value="input.fa" />
+            <param name="choice" value="EXTEND_BY_READ" />
+            <param name="selection" value="custom" />
+            <param name="character_from" value="T" />
+            <param name="character_to" value="C" />
             <param name="settingsType" value="custom" />
-            <param name="step_size" value="10" />
-            <output name="putativeMatures" file="test_putativeMatures.bed"
-            ftype="bed"/>
-            <output name="predictedPrecursors" file="test_predictedPrecursors.txt"
+            <param name="$BANDWIDTH" value="3" />
+            <param name="min_read_group" value="10" />
+            <param name="min_read_cluster" value="1" />
+            <param name="min_read_kde" value="1" />
+            <param name="min_read_cluster_inc" value="1" />
+            <param name="min_cluster_size" value="1" />
+            <param name="min_conv_loc_cluster" value="1" />
+            <param name="min_conv_cluster" value="1" />
+            <param name="min_read_len" value="1" />
+            <param name="max_num_conv_mis" value="5" />
+            <output name="distribution" file="out.distribution"
             ftype="txt"/>
-            <output name="predicted_miRNA" file="test_predicted_miRNAs.txt"
+            <output name="groups" file="out.groups"
             ftype="txt"/>
+            <output name="clusters" file="out.clusters"
+            ftype="txt"/>
+            <output name="PARalyzer_Utilized" file="out_PARalyzer_Utilized.sam"
+            ftype="sam"/>
         </test>
     </tests>
     <help>
