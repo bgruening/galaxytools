@@ -14,10 +14,28 @@
                 <param name="input" type="data" format="txt" label="Add a file"
                     help="Such input file may be obtained from AMP pipeline for aligning RRBS reads." />
     </repeat>
+    <param name="choice" type="select"
+        label="Analysis to carry out:"
+        help="The analysis you wish to carry out.">
+        <option value="differential_methylation">
+        Differential methylation
+        </option>
+        <option value="clustering">
+        Clustering
+        </option>
+        <option value="segmentation">
+        Segmentation
+        </option>
+        <option value="all">
+        All of the above
+        </option>
+    </param>
   </inputs>
 
   <configfiles>
     <configfile name="script_file">
+        library("methylKit")
+
         test_files = list()
         control_files = list()
 
@@ -40,16 +58,50 @@
         myobj=methRead( file.list,
                     sample.id=sample_ids,assembly="hg18",pipeline="amp",treatment=treatment_tag)
 
-        # unite function
+
+        ## unite function
         methidh=unite(myobj)
 
-        pdf( "${out_file1}" )
-        methClust = clusterSamples(methidh)
-        devname = dev.off()
+        #if $choice in ["all", "differential_methylation"]:
+            diffMethPerChr(myDiff,plot=FALSE,qvalue.cutoff=0.01, meth.cutoff=25)
 
-        pdf( "${out_file2}" )
-        PCASamples(methidh)
-        devname = dev.off()
+            bedgraph(myDiff, file.name="output.bed", col.name="meth.diff",
+                     unmeth=FALSE,log.transform=FALSE,negative=FALSE,add.on="")
+
+            hypo = getMethylDiff(myDiff,difference=25,qvalue=0.01,type="hypo")
+            hyper = getMethylDiff(myDiff,difference=25,qvalue=0.01,type="hyper")
+
+            bedgraph(hyper, file.name="output_hyper.bed", col.name="meth.diff",
+                     unmeth=FALSE,log.transform=FALSE,negative=FALSE,add.on="")
+            bedgraph(hypo, file.name="output_hypo.bed", col.name="meth.diff",
+                     unmeth=FALSE,log.transform=FALSE,negative=FALSE,add.on="")
+        #end if
+
+        #if $choice in ["all", "clustering"]:
+            pdf( "output_clustering.pdf" )
+            methClust = clusterSamples(methidh)
+            devname = dev.off()
+
+            pdf( "output_PCA.pdf" )
+            PCASamples(methidh)
+            devname = dev.off()
+        #end if
+
+        #if $choice in ["all", "segmentation"]:
+            ## methSeg works for methylRaw or methylDiff with resolution region,
+            ## so methylBase has to be tiled before
+            tileRaw = tileMethylCounts(myobj[[1]])
+            tileBase = tileMethylCounts(methidh)
+            tileDiff = calculateDiffMeth(tileBase)
+
+            ## methseg generates Granges
+            segRaw = methSeg(tileRaw,diagnostic.plot = FALSE)
+            segDiff = methSeg(tileDiff,diagnostic.plot = FALSE)
+
+            ## and can be exported as BED
+            methSeg2bed(segments = segRaw, filename = "output_raw.bed")
+            methSeg2bed(segments = segDiff, filename = "output_diff.bed")
+        #end if
     </configfile>
 
   </configfiles>
