@@ -10,7 +10,8 @@ Currently tested with salmon 0.7.2.
 Automated Installation
 ======================
 
-Galaxy should be able to automatically install the salmon for you.
+Galaxy should be able to automatically install the salmon for you if you have Conda dependency management enabled in Galaxy.
+For more information please read the documentation at: https://github.com/galaxyproject/galaxy/blob/dev/doc/source/admin/conda_faq.rst
 
 
 History
