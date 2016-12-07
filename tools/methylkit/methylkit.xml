@@ -8,6 +8,85 @@
       r_wrapper.sh $script_file
 ]]>
   </command>
+  <configfiles>
+    <configfile name="script_file">
+        library("methylKit")
+
+        test_files = list()
+        control_files = list()
+
+        test_ids = list()
+        control_ids = list()
+
+        #for $i, $s in enumerate( $test_series )
+          test_ids[${i}] = past("test", ${i}, sep="")
+          test_files[${i}] = "${s.input.file_name}"
+        #end for
+
+        #for $i, $s in enumerate( $control_series )
+          control_ids[${i}] = past("control", ${i}, sep="")
+          control_files[${i}] = "${s.input.file_name}"
+        #end for
+
+        input_files = append(test_files, control_files)
+        sample_ids = append(test_ids, control_ids)
+        treatment_tag = c(rep.int(1, length(test_ids)), rep.int(0, length(control_ids)))
+
+        myobj=methRead(input_files, sample.id=sample_ids, assembly="${assembly}",
+                    pipeline="${pipeline}", treatment=treatment_tag)
+
+        ## unite function
+        methidh=unite(myobj)
+
+        #if $choice in ["all", "differential_methylation"]:
+            ## the last two arguments slim, weighted.mean
+            ## have the redundant counterparts in effect and adjust,
+            ## so turning them off to avoide the possible conflict.
+            myDiff = calculateDiffMeth(methidh, overdispersion="${input_type.overdispersion}",
+            adjust="${input_type.adjust}", effect="${input_type.effect}", test="${input_type.test}",
+            slim=FALSE, weighted.mean=FALSE)
+
+            bedgraph(myDiff, file.name="output_myDiff.bed", col.name="meth.diff",
+                     unmeth=FALSE, log.transform=FALSE, negative=FALSE, add.on="")
+
+            MethPerChr = diffMethPerChr(myDiff, plot=FALSE,
+                                        qvalue.cutoff=${input_type.qvalue_cutoff},
+                                        meth.cutoff=${input_type.meth_cutoff})
+            write.table(MethPerChr, sep="\t", row.names=FALSE, quote=FALSE, file="output_MethPerChr.csv")
+
+            MethylDiff = getMethylDiff(myDiff, difference=${input_type.meth_cutoff},
+                                        qvalue=${input_type.qvalue_cutoff}, type="${input_type.type}")
+            bedgraph(MethylDiff, file.name="output_MethylDiff.bed", col.name="meth.diff",
+                     unmeth=FALSE,log.transform=FALSE,negative=FALSE,add.on="")
+        #end if
+
+        #if $choice in ["all", "clustering"]:
+            pdf( "output_clustering.pdf" )
+            methClust = clusterSamples(methidh, dist="${input_type.dist}", method="${input_type.method}")
+            devname = dev.off()
+
+            pdf( "output_PCA.pdf" )
+            PCASamples(methidh)
+            devname = dev.off()
+        #end if
+
+        #if $choice in ["all", "segmentation"]:
+            ## methSeg works for methylRaw or methylDiff with resolution region,
+            ## so methylBase has to be tiled before
+            tileRaw = tileMethylCounts(myobj[[1]])
+            tileBase = tileMethylCounts(methidh)
+            tileDiff = calculateDiffMeth(tileBase)
+
+            ## methseg generates Granges
+            segRaw = methSeg(tileRaw, diagnostic.plot = FALSE)
+            segDiff = methSeg(tileDiff, diagnostic.plot = FALSE)
+
+            ## and can be exported as BED
+            methSeg2bed(segments = segRaw, filename = "output_seg_raw.bed")
+            methSeg2bed(segments = segDiff, filename = "output_seg_diff.bed")
+        #end if
+    </configfile>
+  </configfiles>
 
   <inputs>
     <repeat name="test_series" title="Test samples" min="1">
@@ -393,86 +472,6 @@
         <when value="segmentation" />
     </conditional>
   </inputs>
-
-  <configfiles>
-    <configfile name="script_file">
-        library("methylKit")
-
-        test_files = list()
-        control_files = list()
-
-        test_ids = list()
-        control_ids = list()
-
-        #for $i, $s in enumerate( $test_series )
-          test_ids[${i}] = past("test", ${i}, sep="")
-          test_files[${i}] = "${s.input.file_name}"
-        #end for
-
-        #for $i, $s in enumerate( $control_series )
-          control_ids[${i}] = past("control", ${i}, sep="")
-          control_files[${i}] = "${s.input.file_name}"
-        #end for
-
-        input_files = append(test_files, control_files)
-        sample_ids = append(test_ids, control_ids)
-        treatment_tag = c(rep.int(1, length(test_ids)), rep.int(0, length(control_ids)))
-
-        myobj=methRead(input_files, sample.id=sample_ids, assembly="${assembly}",
-                    pipeline="${pipeline}", treatment=treatment_tag)
-
-        ## unite function
-        methidh=unite(myobj)
-
-        #if $choice in ["all", "differential_methylation"]:
-            ## the last two arguments slim, weighted.mean
-            ## have the redundant counterparts in effect and adjust,
-            ## so turning them off to avoide the possible conflict.
-            myDiff = calculateDiffMeth(methidh, overdispersion="${input_type.overdispersion}",
-            adjust="${input_type.adjust}", effect="${input_type.effect}", test="${input_type.test}",
-            slim=FALSE, weighted.mean=FALSE)
-
-            bedgraph(myDiff, file.name="output_myDiff.bed", col.name="meth.diff",
-                     unmeth=FALSE, log.transform=FALSE, negative=FALSE, add.on="")
-
-            MethPerChr = diffMethPerChr(myDiff, plot=FALSE,
-                                        qvalue.cutoff=${input_type.qvalue_cutoff},
-                                        meth.cutoff=${input_type.meth_cutoff})
-            write.table(MethPerChr, sep="\t", row.names=FALSE, quote=FALSE, file="output_MethPerChr.csv")
-
-            MethylDiff = getMethylDiff(myDiff, difference=${input_type.meth_cutoff},
-                                        qvalue=${input_type.qvalue_cutoff}, type="${input_type.type}")
-            bedgraph(MethylDiff, file.name="output_MethylDiff.bed", col.name="meth.diff",
-                     unmeth=FALSE,log.transform=FALSE,negative=FALSE,add.on="")
-        #end if
-
-        #if $choice in ["all", "clustering"]:
-            pdf( "output_clustering.pdf" )
-            methClust = clusterSamples(methidh, dist="${input_type.dist}", method="${input_type.method}")
-            devname = dev.off()
-
-            pdf( "output_PCA.pdf" )
-            PCASamples(methidh)
-            devname = dev.off()
-        #end if
-
-        #if $choice in ["all", "segmentation"]:
-            ## methSeg works for methylRaw or methylDiff with resolution region,
-            ## so methylBase has to be tiled before
-            tileRaw = tileMethylCounts(myobj[[1]])
-            tileBase = tileMethylCounts(methidh)
-            tileDiff = calculateDiffMeth(tileBase)
-
-            ## methseg generates Granges
-            segRaw = methSeg(tileRaw, diagnostic.plot = FALSE)
-            segDiff = methSeg(tileDiff, diagnostic.plot = FALSE)
-
-            ## and can be exported as BED
-            methSeg2bed(segments = segRaw, filename = "output_seg_raw.bed")
-            methSeg2bed(segments = segDiff, filename = "output_seg_diff.bed")
-        #end if
-    </configfile>
-  </configfiles>
 
   <outputs>
       <data name="output_myDiff" format="bed"
