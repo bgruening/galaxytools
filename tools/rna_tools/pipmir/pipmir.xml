@@ -1,0 +1,252 @@
+<tool id="pipmir" name="PIPmiR PIPELINE" version="0.1.0">
+
+    <description>a method to identify novel plant miRNA</description>
+
+    <requirements>
+        <!-- conda dependency -->
+        <requirement type="package" version="1.1">pipmir</requirement>
+        <requirement type="package" version="324">ucsc-fatotwobit</requirement>
+    </requirements>
+
+    <command>
+<![CDATA[
+
+    #if $refGenomeSource.genomeSource == "history":
+        faToTwoBit '$refGenomeSource.ownFile' ownFile.2bit
+        &&
+    #end if
+
+    samtools sort
+
+    ## output in BAM format
+    -O BAM
+
+    ## output file name
+    -o test_sorted.bam
+
+    '$input_bam'
+
+    &&
+    samtools index test_sorted.bam test_sorted.bai
+
+    ## the tool requires the location of RNAfold binary
+    &&
+    RNAfold_location=\$(which RNAfold)
+
+    &&
+    PIPmiR PIPELINE
+
+    -a test_sorted.bam
+
+    ## genome source
+    #if $refGenomeSource.genomeSource == "history":
+        -t ownFile.2bit
+    #else
+        -t '$refGenomeSource.builtin.fields.path'
+    #end if
+
+    -o test
+
+    ## optional parameters
+    #if $params.settingsType == "custom":
+        ## default: 50
+        -l $params.min_precursor
+
+        ## default: 500
+        -L $params.max_precursor
+
+        ## default: 2
+        -s $params.step_size
+
+        ## default: 10
+        -m $params.min_read
+    #end if
+
+    ## default: 1
+    -p \${GALAXY_SLOTS:-1}
+
+    -R \$RNAfold_location
+
+]]>
+    </command>
+    <inputs>
+        <param name="input_bam" type="data"
+            format="sam,bam" label="Alignment"
+            help="The bam or sam file containing alignment of the read data."/>
+
+        <!-- Genome source. -->
+        <conditional name="refGenomeSource">
+            <param name="genomeSource" type="select"
+                label="Will you select a reference genome from your
+                history or use a built-in genome?"
+                help="The version of genome against which the reads were aligned.">
+                <option value="2bit" selected="True">
+                    Use a built-in genome</option>
+                <option value="history">
+                    Use a genome from my current history</option>
+            </param>
+            <when value="2bit">
+            <param name="builtin" type="select"
+                label="Select a reference genome">
+                <options from_data_table="lastz_seqs">
+                    <filter type="sort_by" column="1" />
+                    <validator type="no_options"
+                    message="A built-in reference genome is not available
+                    for the build associated with the selected input file"/>
+                </options>
+            </param>
+            </when>
+            <when value="history">
+                <param name="ownFile" type="data" format="fasta"
+                label="Select the reference genome" />
+            </when>
+        </conditional>
+
+        <!-- optional parameters -->
+        <conditional name="params">
+            <param name="settingsType" type="select"
+                label="Optional parameters"
+                help="You can use the default settings or
+                set custom values for any of pipmir's parameters.">
+              <option value="default">Use defaults</option>
+              <option value="custom">Full parameter list</option>
+            </param>
+            <when value="default" />
+            <!-- Full/advanced params. -->
+            <when value="custom">
+                <param name="min_precursor" type="integer"
+                    value="50" label="Minimum size"
+                    help="Minimum size of a precursor sequence (Default: 50)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="max_precursor" type="integer"
+                    value="500" label="Maximum size"
+                    help="Maximum size of a precursor sequence (Default: 500)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="step_size" type="integer"
+                    value="2" label="Step size"
+                    help="The step size used to identifiy the precursor
+                    from the minimum to the maximum possible
+                    size of precursor (Default: 2)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read" type="integer"
+                    value="10" label="Minimum read count"
+                    help="Minimum read count for a mature to be
+                    considered expressed (Default: 10)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+            </when>  <!-- full -->
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="putativeMatures" format="bed"
+        from_work_dir="test_putativeMatures.bed"
+        label="${tool.name} on ${on_string}: putative mature miRNAs"/>
+
+        <data name="predictedPrecursors" format="txt"
+        from_work_dir="test_predictedPrecursors.txt"
+        label="${tool.name} on ${on_string}: predicted precursor"/>
+
+        <data name="predicted_miRNA" format="txt"
+        from_work_dir="test_predicted_miRNAs.txt"
+        label="${tool.name} on ${on_string}: predicted miRNAs"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_bam" value="Aligned.out.sam" ftype="sam" />
+            <param name="genomeSource" value="history" />
+            <param name="ownFile" value="test_seq.fa" />
+            <param name="settingsType" value="custom" />
+            <param name="step_size" value="10" />
+            <output name="putativeMatures" file="test_putativeMatures.bed"
+            ftype="bed"/>
+            <output name="predictedPrecursors" file="test_predictedPrecursors.txt"
+            ftype="txt"/>
+            <output name="predicted_miRNA" file="test_predicted_miRNAs.txt"
+            ftype="txt"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+.. class:: infomark
+
+**What it does**
+
+`pipmir`_ is an algorithm to identify novel plant miRNA genes from a combination
+of deep sequencing data and genomic features.
+
+.. _pipmir: https://ohlerlab.mdc-berlin.de/software/Pipeline_for_the_Identification_of_Plant_miRNAs_84/
+
+.. class:: infomark
+
+**Optional parameters**
+
+Minimum size
+ * The MINIMUM size the precursor predictor can search.
+ * 50 is recommended (and is the default).
+
+Maximum size
+ * The MAXIMUM size the precursor predictor can search.
+
+ * The larger you make this, the longer PIPmiR will take as folding time is exponential with increased size.
+
+ * 500 is what was used in the manuscript and will include almost all currently known Arabidopsis Thaliana miRNAs.
+
+ * 300 is a limit that will include most known miRNAs and still have a reasonable search time.
+
+Step size
+ * The step size used to identify the precursor from the minimum to the maximum possible size of a precursor.
+
+ * Increasing this value will speed up the precursor prediction step but limit the number of possible precursor sequences.
+
+ * 2 is the default and is what was used in the manuscript, however 5 still works well enough, and is only slightly less accurate
+
+.. class:: infomark
+
+**Outputs**
+
+A `bed`_ file of putative mature miRNAs
+ * 'name' column = an arbitrary name given to the putative mature
+ * 'score' column = the read count
+
+ .. _bed: https://genome.ucsc.edu/FAQ/FAQformat#format1
+
+A text file of predicted precursors
+ * Form: Chromosome,Strand,Precursor_Start,Precursor_End,Sequence,Fold_Structure,Normalized_Minimum_Free_Energy,Mature_miRNA_Location
+
+ * Chromosome = chromosome that the precursor is on
+
+ * Strand = strand that the precursor is on
+
+ * Precursor_Start = start nucleotide (1 based) of the precursor
+
+ * Precursor_End = last nucleotide (1 based, inclusive) of the precursor
+
+ * Sequence = sequence of the precursor
+
+ * Fold_Structure = dot-bracket notation of the precursor fold centroid secondary structure (generated from RNAfold -p -d2 -noLP -noPS)
+
+ * Normalized_Minimum_Free_Energy = minimum free energy of the centroid structure divided by the length of the sequence
+
+ * Mature_miRNA_location = name & location of the mature miRNA within the precursor sequence
+
+A text file of predicted miRNAs
+ * This file will contain the miRNAs that had a positive classifier score, meaning that PIPmiR believes that they may be novel miRNA genes.
+
+ * This file contains the genomic coordinates of the predicted precursor as well as for the mature and star sequences.
+
+ * The file also contains the precursor sequence and the dot-bracket notation of its secondary structure.
+]]></help>
+    <citations>
+        <citation type="doi">10.1101/gr.123547.111</citation>
+    </citations>
+</tool>

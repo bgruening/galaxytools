@@ -1,0 +1,387 @@
+<tool id="paralyzer" name="PARalyzer" version="1.5">
+
+    <description>A method to map interaction sites between RNA-binding proteins
+      and their targets</description>
+
+    <requirements>
+        <!-- conda dependency -->
+        <requirement type="package" version="1.5">paralyzer</requirement>
+        <requirement type="package" version="324">ucsc-fatotwobit</requirement>
+    </requirements>
+
+    <command>
+<![CDATA[
+    #if $refGenomeSource.genomeSource == "history":
+        faToTwoBit '$refGenomeSource.ownFile' ownFile.2bit
+        &&
+    #end if
+
+    ## execute paralyzer
+    ## note the 2nd argument is the memory parameter
+    ## the parameter can be override in job_conf.xml e.g.
+    ## <env id="_JAVA_OPTIONS">-Xmx12G</env>
+    PARalyzer 2G $input_ini
+
+]]>
+    </command>
+    <inputs>
+        <param name="input_sam" type="data"
+            format="sam" label="Alignment"
+            help="The sam file containing alignment of the read data."/>
+
+        <param name="collapse" type="boolean" truevalue="=COLLAPSED"
+          falsevalue="" checked="True"
+          label="Incorporate the read copy number"
+          help="If reads were collapse before alignment and you want
+          to incorporate the read copy number, please select Yes,
+          otherwise select No" />
+
+        <!-- Genome source. -->
+        <conditional name="refGenomeSource">
+            <param name="genomeSource" type="select"
+                label="Will you select a reference genome from your
+                history or use a built-in genome?"
+                help="The version of genome against which the reads were aligned.">
+                <option value="2bit" selected="True">
+                    Use a built-in genome</option>
+                <option value="history">
+                    Use a genome from my current history</option>
+            </param>
+            <when value="2bit">
+            <param name="builtin" type="select"
+                label="Select a reference genome">
+                <options from_data_table="lastz_seqs">
+                    <filter type="sort_by" column="1" />
+                    <validator type="no_options"
+                    message="A built-in reference genome is not available
+                    for the build associated with the selected input file"/>
+                </options>
+            </param>
+            </when>
+            <when value="history">
+                <param name="ownFile" type="data" format="fasta"
+                label="Select the reference genome" />
+            </when>
+        </conditional>
+
+        <conditional name="methods">
+          <param name="choice" type="select"
+              label="Please select one of the approaches"
+              help="">
+              <option value="EXTEND_BY_READ">
+                EXTEND_BY_READ
+              </option>
+              <option value="HAFFNER_APPROACH">
+                HAFFNER_APPROACH
+              </option>
+              <option value="ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL">
+                ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL
+              </option>
+          </param>
+          <when value="EXTEND_BY_READ" />
+          <when value="HAFFNER_APPROACH" />
+          <when value="ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL">
+            <param name="max_num" type="integer"
+                value="0" label="The maximum number"
+                help="
+                The maximum number of reads to extend beyond the positive
+                signal in each direction (default 0) the cluster is defined
+                ">
+                <validator type="in_range"
+                    message="Minimum allowed value is 0" min="0"/>
+            </param>
+          </when>
+        </conditional>
+
+        <conditional name="conversion">
+            <param name="selection" type="select"
+                label="Conversion"
+                help="Please specify characters">
+              <option value="default">Use defaults: T to C</option>
+              <option value="custom">Specify other characters</option>
+            </param>
+            <when value="default" />
+            <when value="custom">
+                <param name="character_from" type="text"
+                    size="1" value="T" label="Character from"
+                    help="Character representing the modified ribonucleotide
+                    (default 'T')">
+                </param>
+                <param name="character_to" type="text"
+                    size="1" value="C" label="Character to"
+                    help="Character representing what the modified ribonucleotide
+                    is read as by rTranscriptase (default 'C')">
+                </param>
+            </when>
+        </conditional>
+
+        <!-- optional parameters -->
+        <conditional name="params">
+            <param name="settingsType" type="select"
+                label="Required parameters"
+                help="You can use the default settings or
+                set custom values for any of paralyzer's parameters.">
+              <option value="default">Use defaults</option>
+              <option value="custom">Full parameter list</option>
+            </param>
+            <when value="default" />
+            <!-- Full/advanced params. -->
+            <when value="custom">
+                <param name="BANDWIDTH" type="integer"
+                    value="3" label="BANDWIDTH"
+                    help="Size of bandwidth for KDE calculation (default 3)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read_group" type="integer"
+                    value="5" label="MINIMUM_READ_COUNT_PER_GROUP"
+                    help="Minimum number of reads required to call a group (default 5)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read_cluster" type="integer"
+                    value="2" label="MINIMUM_READ_COUNT_PER_CLUSTER"
+                    help="Minimum number of reads required to call a cluster (default 2)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read_kde" type="integer"
+                    value="3" label="MINIMUM_READ_COUNT_FOR_KDE"
+                    help="Minimum read depth at a location to
+                    make a KDE estimate (default 3)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read_cluster_inc" type="integer"
+                    value="1" label="MINIMUM_READ_COUNT_FOR_CLUSTER_INCLUSION"
+                    help="Minimum read depth for a location to be included
+                    within a cluster (default 1)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_cluster_size" type="integer"
+                    value="11" label="MINIMUM_CLUSTER_SIZE"
+                    help="Minimum length required for a cluster
+                    to be reported (default 11)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_conv_loc_cluster" type="integer"
+                    value="2" label="MINIMUM_CONVERSION_LOCATIONS_FOR_CLUSTER"
+                    help="Minimum number of separate locations to have a
+                    reported conversion for a cluster to be
+                    reported (default 2)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_conv_cluster" type="integer"
+                    value="2" label="MINIMUM_CONVERSION_COUNT_FOR_CLUSTER"
+                    help="Minimum number of conversion events within a
+                    region to report a cluster (default 2)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="min_read_len" type="integer"
+                    value="20" label="MINIMUM_READ_LENGTH"
+                    help="Minimum length of mapped read to be included
+                    in the analysis (default 20)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+
+                <param name="max_num_conv_mis" type="integer"
+                    value="1" label="MAXIMUM_NUMBER_OF_NON_CONVERSION_MISMATCHES"
+                    help="Maximum number of non-conversion mismatches of
+                    a mapped read to be included in the analysis (default 1)">
+                    <validator type="in_range"
+                        message="Minimum allowed value is 1" min="1"/>
+                </param>
+            </when>  <!-- full -->
+        </conditional>
+    </inputs>
+    <configfiles>
+      <configfile name="input_ini">
+## genome source
+#if $refGenomeSource.genomeSource == "history":
+GENOME_2BIT_FILE=ownFile.2bit
+#else
+GENOME_2BIT_FILE=$refGenomeSource.builtin.fields.path
+#end if
+
+SAM_FILE=$input_sam$collapse
+
+#if $methods.choice == "ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL":
+ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL=$methods.max_num
+#else:
+$methods.choice
+#end if
+
+#if $conversion.selection == "custom":
+CONVERSION=$conversion.character_from>$conversion.character_to
+#end if
+
+## required parameters
+#if $params.settingsType == "custom":
+BANDWIDTH=$params.BANDWIDTH
+MINIMUM_READ_COUNT_PER_GROUP=$params.min_read_group
+MINIMUM_READ_COUNT_PER_CLUSTER=$params.min_read_cluster
+MINIMUM_READ_COUNT_FOR_KDE=$params.min_read_kde
+MINIMUM_READ_COUNT_FOR_CLUSTER_INCLUSION=$params.min_read_cluster_inc
+MINIMUM_CLUSTER_SIZE=$params.min_cluster_size
+MINIMUM_CONVERSION_LOCATIONS_FOR_CLUSTER=$params.min_conv_loc_cluster
+MINIMUM_CONVERSION_COUNT_FOR_CLUSTER=$params.min_conv_cluster
+MINIMUM_READ_LENGTH=$params.min_read_len
+MAXIMUM_NUMBER_OF_NON_CONVERSION_MISMATCHES=$params.max_num_conv_mis
+#end if
+
+OUTPUT_DISTRIBUTIONS_FILE=out.distribution
+OUTPUT_GROUPS_FILE=out.groups
+OUTPUT_CLUSTERS_FILE=out.clusters
+      </configfile>
+    </configfiles>
+    <outputs>
+        <data name="distribution" format="txt"
+        from_work_dir="out.distribution"
+        label="${tool.name} on ${on_string}: DISTRIBUTIONS"/>
+
+        <data name="groups" format="txt"
+        from_work_dir="out.groups"
+        label="${tool.name} on ${on_string}: GROUPS"/>
+
+        <data name="clusters" format="txt"
+        from_work_dir="out.clusters"
+        label="${tool.name} on ${on_string}: CLUSTERS"/>
+
+        <!--
+        <data name="PARalyzer_Utilized" format="sam"
+        from_work_dir="out_PARalyzer_Utilized.sam"
+        label="${tool.name} on ${on_string}: PARalyzer_Utilized.sam"/>
+      -->
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_sam" value="input.sam" ftype="sam" />
+            <param name="genomeSource" value="history" />
+            <param name="ownFile" value="input.fa" />
+            <param name="choice" value="EXTEND_BY_READ" />
+            <param name="selection" value="custom" />
+            <param name="character_from" value="T" />
+            <param name="character_to" value="C" />
+            <param name="settingsType" value="custom" />
+            <param name="$BANDWIDTH" value="3" />
+            <param name="min_read_group" value="5" />
+            <param name="min_read_cluster" value="2" />
+            <param name="min_read_kde" value="3" />
+            <param name="min_read_cluster_inc" value="1" />
+            <param name="min_cluster_size" value="11" />
+            <param name="min_conv_loc_cluster" value="2" />
+            <param name="min_conv_cluster" value="2" />
+            <param name="min_read_len" value="20" />
+            <param name="max_num_conv_mis" value="1" />
+            <output name="distribution" file="out.distribution"
+            ftype="txt"/>
+            <output name="groups" file="out.groups"
+            ftype="txt"/>
+            <output name="clusters" file="out.clusters"
+            ftype="txt"/>
+            <!--
+            <output name="PARalyzer_Utilized" file="out_PARalyzer_Utilized.sam"
+            ftype="sam"/>
+            -->
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+.. class:: infomark
+
+**What it does**
+
+`paralyzer`_ is an algorithm to generate a high resolution
+map of interaction sites between RNA-binding proteins and their targets. The
+algorithm utilizes the deep sequencing reads generated by `PAR-CLIP`_
+(Photoactivatable-Ribonucleoside-Enhanced Crosslinking and
+Immunoprecipitation) protocol.The use of photoactivatable nucleotides in the
+PAR-CLIP protocol results in more efficient crosslinking between the
+RNA-binding protein and its target relative to other CLIP methods; in addition
+a nucleotide substitution occurs at the site of crosslinking, providing for
+single-nucleotide resolution binding information. PARalyzer utilizes this
+nucleotide substition in a kernel density estimate classifier to generate
+the high resolution set of Protein-RNA interaction sites.
+
+.. _paralyzer: https://ohlerlab.mdc-berlin.de/software/PARalyzer_85/
+.. _PAR-CLIP: http://www.ncbi.nlm.nih.gov/pubmed/20371350
+
+.. class:: infomark
+
+**Approaches**
+
+``EXTEND_BY_READ``: including this line means that the cluster will be extended
+beyond the signal to include a region such that it extends to
+the end of any read that falls within the cluster and contained
+a conversion, or until the minimum read depth
+(MINIMUM_READ_COUNT_FOR_CLUSTER_INCLUSION parameter) is no longer met
+
+``HAFNER_APPROACH``: identifies the location with the largest number of conversion
+events and extends the cluster up to
+( parameter ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL)nt
+in each direction from that point, or until the minimum
+read depth (MINIMUM_READ_COUNT_FOR_CLUSTER_INCLUSION parameter) is no longer met
+
+``ADDITIONAL_NUCLEOTIDES_BEYOND_SIGNAL``: the maximum number of reads to
+extend beyond the positive signal in each direction (default 0)
+the cluster is defined as the region where the conversion KDE is above
+the background KDE and then extended up to #integer#, or until the minimum
+read depth (MINIMUM_READ_COUNT_FOR_CLUSTER_INCLUSION parameter) is no longer met
+
+.. class:: infomark
+
+**Outputs**
+
+DISTRIBUTIONS: contains the signal KDE, background KDE, read count & conversion for all locations within each group
+  * The data will be in blocks of four lines for each group
+  * groups on the reverse strand do not need to be reversed; the values always equal nucleotdies from GroupStart to GroupEnd, regardless of Strand
+  * First Column = Chromosome = chromosome on which the group resides
+  * Second Column = Strand = orientation in which the group resides
+  * Third Column = GroupStart = beginning coordinate on the chromosome of the group
+  * Fourth Column = GroupEnd = ending coordinate on the chromosome of the group
+  * Fifth Column = GroupID = unique ID for the group
+  * Sixth Column = Information = reports if the current line contains the Signal, Background, Conversion Percent, or ReadCount
+  * All nucleotides that do not have any possibility of having a conversion event are given a value of -1
+  * All Subsequent Columns: the values for each nucleotide from GroupStart until GroupEnd
+
+
+GROUPS: a comma separated file containing the information about the resulting groups
+  * Chromosome = chromosome on which the group resides
+  * Strand = orientation in which the group resides
+  * GroupStart = beginning coordinate on the chromosome of the group
+  * GroupEnd = ending coordinate on the chromosome of the group
+  * GroupID = unique ID for the group
+  * ReadCount = number of reads within the group
+
+CLUSTERS: a comma separated file containing the information about the resulting clusters
+  * Chromosome = chromosome on which the cluster resides
+  * Strand = orientation in which the cluster resides
+  * ClusterStart = beginning coordinate on the chromosome of the cluster
+  * ClusterEnd = ending coordinate on the chromosome of the cluster
+  * ClusterID = unique ID for the cluster
+  * ClusterSequence = sequence of the cluster
+  * ReadCount = number of reads that overlap the cluster by at least 1 nucleotide
+  * ModeLocation = coordinate of the location with the highest signal / (signal + background) value
+  * ModeScore = score of the highest signal / (signal + background) value
+  * ConversionLocationCount = number of unique location where at least 1 conversion occurred
+  * ConversionEventCount = total number of conversions that occurred within the cluster
+  * NonConversionEventCount = total number of possible conversion events that did not occur
+
+]]></help>
+    <citations>
+        <citation type="doi">10.1186/gb-2011-12-8-r79</citation>
+    </citations>
+</tool>
