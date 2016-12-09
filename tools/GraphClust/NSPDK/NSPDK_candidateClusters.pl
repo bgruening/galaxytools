@@ -8,6 +8,8 @@ use Array::Utils qw(:all);
 my $SVECTOR_DIR = "SVECTOR";
 my $DATA_prefix = "data";
 
+### dnvdfbvk djvnkjnkv
+
 my $final_partition_soft = "";
 my $bl_list              = "";
 my $CI                   = 1;

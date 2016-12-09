@@ -5,7 +5,7 @@ use List::Util qw/ min max /;
 use POSIX qw(ceil floor);
 
 my $SVECTOR_DIR = "SVECTOR";
-my ( $data_fasta, $gspan, $rad, $dist) = @ARGV;
+my ( $data_fasta, $gspan, $rad, $dist ) = @ARGV;
 my $group_gspan = "group.gspan";
 
 system("bzcat $gspan > $group_gspan");

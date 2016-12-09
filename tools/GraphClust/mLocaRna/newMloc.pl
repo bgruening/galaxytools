@@ -150,26 +150,6 @@ elsif ($center_model_type == 3
 
 }
 
-## in case we have realigned best subtree we create the new alifold files (annotated colored postscript)
-# if ( !( -e "$tree_aln_file.ps" && -e "$tree_aln_file.alifold" ) ) {
-#     aln2alifold( $tree_aln_file, '.', $vrna_path );
-#     print "mtnuma aln2alifold i mej \n";
-# }
-
-## default is best subtree alignment
-#my $final_tree_prefix = "$model_dir/model.tree.aln";
-# system("cp $tree_aln_file $final_tree_prefix");
-# system("cp $tree_aln_file.ps $final_tree_prefix.ps");
-# system("cp $tree_aln_file.alirna.ps $final_tree_prefix.alirna.ps");
-# system("cp $tree_aln_file.alifold $final_tree_prefix.alifold");
-#
-# ## reliabillity signal
-# if ( -e "$tree_aln_file.rel_signal" ) {
-#   system("cp $tree_aln_file.rel_signal $final_tree_prefix.rel_signal");
-#   system("cp $tree_aln_file.rel_plot.pdf $final_tree_prefix.rel_plot.pdf")
-#    if ( -e "$tree_aln_file.rel_plot.pdf" ); ## in case R is not working correctly, plot is not there
-# }
-
 sub mlocarna_center {
     my $fasta    = $_[0];
     my $dir      = $_[1];
@@ -192,20 +172,9 @@ sub mlocarna_center {
 
     }
 
-
-#system("mlocarna --sequ-local true --tgtdir $dir $fasta $in_mlocarna_opts");
-#system( "mlocarna $OPTS_locarna_model --verbose --skip-pp --tgtdir $dir $fasta > $dir/locarna.out 2>&1 ");
-#  my $currDir = getcwd;
-#  print "curr dir before mlocaran = $currDir \n";
     system(
 "mlocarna $OPTS_locarna_model  --skip-pp --verbose --tgtdir $dir $fasta > $dir/locarna.out 2>&1"
     );
-
-    #}
-
-    ## cleanup
-#  system("rm -r -f $dir/input $dir/intermediates $dir/probs $dir/results/single_reliabilities $dir/results/ali* $dir/alifold.out");
-
 }
 
 sub read_fasta_file {
@@ -363,16 +332,6 @@ sub computeTreeAligsLocP {
         my $subset_fa =
           writeSubsetFasta( \@fa_tree, $childs, "$tgtDir/$id/$id.fa", 1 );
 
-        ####don't need this so far
-        #   if ($use_sim_tree) {
-        #     print "use sim-tree structure for subtree node $id\n";
-        #     my $subtree_str = subtree2Newick( $tree, $id, 1 );
-        #     print "sim-tree for subtree node $id: $subtree_str\n";
-        #     open( TREE, ">$tgtDir/$id/$id.subtree" );
-        #     print TREE $subtree_str . ";";
-        #     close(TREE);
-        #   }
-        #
         ## reuse dot plots, does not work locarnaP currently!
         if ( !$use_probabilistic ) {
             my $loc_pp_dir = "$subtree_dir/input";
@@ -524,8 +483,6 @@ sub newick_tree_to_postorder2 {
             $preID++;
             push( @last, $preID );
 
-            # print "open preID $preID\n";
-
             $tree{$preID}->{LEAF}   = 0;
             $tree{$preID}->{NLEAFS} = 0;
             $tree{$preID}->{CHILDS} = [];
@@ -585,8 +542,6 @@ sub newick_tree_to_postorder2 {
                 $len = $1;
             }
 
-            #print "t $t $len last $last[$#last]\n";
-
             if ($token) {
 
                 $preID++;
@@ -600,8 +555,6 @@ sub newick_tree_to_postorder2 {
                 push( @{ $tree{ $last[$#last] }->{NAMES} },  $token );
                 $tree{ $last[$#last] }->{NLEAFS}++;
             }
-
-            #print "part $t token<".$token."> len<$len>\n";
 
             $i += ( length $t ) - 1;
             push @list, $token if ($token);
@@ -652,7 +605,6 @@ sub getSubtrees {
 
         my ( $childs1, $nodes1 ) = getNodeLeafs( $tree, $nodeID );
 
-#  print "check node $nodeID leaf:" . $tree->{$nodeID}->{LEAF} . " nleafs:" . $tree->{$nodeID}->{NLEAFS} . " childs:" . join( ":", @{$childs1} ) . "\n";
         next if ( exists $used_IDs{$nodeID} );
 
         next
@@ -689,10 +641,6 @@ sub writeSubsetFasta {
     my $out_file = $_[2];
     my $info     = $_[3];
 
-    #  my $seqs_href   = $_[0];
-    #  my $out_file    = $_[1];
-    #  my $header_href = $_[2];
-
     open( OUT, ">$out_file" ) or die "Cannot open file $out_file! Exit...\n\n";
 
     ## order is important !!!
@@ -711,15 +659,6 @@ sub writeSubsetFasta {
         print OUT $fa_aref->[3]->{$key}->{"#S"} . " #S\n"
           if ( exists $fa_aref->[3]->{$key}->{"#S"} );
     }
-
-    ## order is important !!!
-    #  foreach my $key ( sort { $a <=> $b } keys %{$seqs_href} ) {
-    #    print OUT ">$key";
-    #    print OUT " " . $header_href->{$key} if ($header_href);
-    #    print OUT "\n";
-    #
-    #    print OUT $seqs_href->{$key} . "\n";
-    #  }
 
     close(OUT);
     return $out_file;
@@ -781,7 +720,6 @@ sub rankSubtrees {
         $node{NODEID}    = 0;
         $node{NLEAFS}    = @{$aln};
 
-
         ## fill node with scores
         NodeScore( \%node, $aln, $childs2, $tree_matrix );
 
@@ -826,13 +764,7 @@ sub read_clustalw_alnloh {
 
 sub makeCol {
     my $col_file = $_[0];
-
-    #  my $tmp_dir = "_col_tmp_" . $$;
-    #  mkdir($tmp_dir);
-    #  system("column -t $col_file > $tmp_dir/t");
-    #  system("mv $tmp_dir/t $col_file");
-    #  system("rm -R -f $tmp_dir");
-
+    
     ## read content and spit into columns
     open( my $in_file, $col_file );
     my @cont    = ();
@@ -1159,8 +1091,7 @@ sub readSubset {
     }
     close(IN);
 
-    print
-"(readSubset) File $file contains less than $sub_idx lines! \n"
+    print "(readSubset) File $file contains less than $sub_idx lines! \n"
       if ( !@set );
 
     if (@set) {

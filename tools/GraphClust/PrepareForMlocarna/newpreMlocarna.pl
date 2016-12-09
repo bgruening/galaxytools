@@ -35,24 +35,33 @@ my $trigger_new_partition = 0;
 
 while ( keys %toDo_models ) {
 
-    foreach my $clus_idx ( sort { $toDo_models{$a} <=> $toDo_models{$b} } keys %toDo_models )
+    foreach my $clus_idx (
+        sort { $toDo_models{$a} <=> $toDo_models{$b} }
+        keys %toDo_models
+      )
     {
 
         $clus_idx =~ /\d+\.(\d+)/;
         my $clus_idx_ci = $1;
-        my $ids_aref = readSubset( $fast_cluster, $clus_idx_ci, $nspdk_knn_center );
+        my $ids_aref =
+          readSubset( $fast_cluster, $clus_idx_ci, $nspdk_knn_center );
         writeSet( $ids_aref, "$CLUSTER_DIR/$clus_idx.center.ids" );
-        writeSubsetFrags( \@fa, $ids_aref, "$CLUSTER_DIR/$clus_idx.center.frags", "SEQ" );
-        writeSubsetFasta( \@fa, $ids_aref, "$CLUSTER_DIR/$clus_idx.center.fa", 1 );
+        writeSubsetFrags( \@fa, $ids_aref,
+            "$CLUSTER_DIR/$clus_idx.center.frags", "SEQ" );
+        writeSubsetFasta( \@fa, $ids_aref, "$CLUSTER_DIR/$clus_idx.center.fa",
+            1 );
 
         my $center_fa_file = "$CLUSTER_DIR/$clus_idx.center.fa";
 
-        my $ids_all = readSubset( $fast_cluster, $clus_idx_ci, $nspdk_knn_center * 3 );
+        my $ids_all =
+          readSubset( $fast_cluster, $clus_idx_ci, $nspdk_knn_center * 3 );
         writeSet( $ids_all, "$CLUSTER_DIR/$clus_idx.center.ids.ext" );
-        writeSubsetFasta( \@fa, $ids_all, "$CLUSTER_DIR/$clus_idx.center.fa.ext", 1 );
+        writeSubsetFasta( \@fa, $ids_all,
+            "$CLUSTER_DIR/$clus_idx.center.fa.ext", 1 );
 
         my @fa_center = read_fasta_file($center_fa_file);
-        my $subset_fa = writeSubsetFasta( \@fa_center, $ids_aref, "$CLUSTER_DIR/$clus_idx.model.tree.fa", 1 );
+        my $subset_fa = writeSubsetFasta( \@fa_center, $ids_aref,
+            "$CLUSTER_DIR/$clus_idx.model.tree.fa", 1 );
 
         my $knn_sim = readSubset( $fast_cluster_sim, $clus_idx_ci );
 
@@ -68,23 +77,38 @@ while ( keys %toDo_models ) {
         map { print OUT $_ . "\n"; } sort { $a <=> $b } @{$ids_knn};
         close(OUT);
 
+        sim2matrix( "$CLUSTER_DIR/$clus_idx.center.sim",
+            $ids_knn, "$CLUSTER_DIR/$clus_idx.matrix.kernel" );
 
-        sim2matrix( "$CLUSTER_DIR/$clus_idx.center.sim", $ids_knn, "$CLUSTER_DIR/$clus_idx.matrix.kernel" );
+        matrix_blacklist_overlap_frags(
+            "$CLUSTER_DIR/$clus_idx.matrix.kernel",
+            "$CLUSTER_DIR/$clus_idx.center.ids",
+            $map_data,
+            "$CLUSTER_DIR/$clus_idx.matrix.kernel.ol",
+            0.1,
+            6
+        );
 
-        matrix_blacklist_overlap_frags("$CLUSTER_DIR/$clus_idx.matrix.kernel",
-            "$CLUSTER_DIR/$clus_idx.center.ids", $map_data, "$CLUSTER_DIR/$clus_idx.matrix.kernel.ol", 0.1, 6);
-
-        system("cp $CLUSTER_DIR/$clus_idx.matrix.kernel.ol $CLUSTER_DIR/$clus_idx.matrix.tree");
+        system(
+"cp $CLUSTER_DIR/$clus_idx.matrix.kernel.ol $CLUSTER_DIR/$clus_idx.matrix.tree"
+        );
 
         my $tree_file = "$CLUSTER_DIR/$clus_idx.tree";
-        matrix2tree("$CLUSTER_DIR/$clus_idx.matrix.tree","$CLUSTER_DIR/$clus_idx.names",$CLUSTER_DIR, $tree_file);
+        matrix2tree(
+            "$CLUSTER_DIR/$clus_idx.matrix.tree",
+            "$CLUSTER_DIR/$clus_idx.names",
+            $CLUSTER_DIR, $tree_file
+        );
 
-        die "No tree file found ($tree_file)! Exit...\n\n" if ( !-e $tree_file );
+        die "No tree file found ($tree_file)! Exit...\n\n"
+          if ( !-e $tree_file );
 
         my $ids_ext = readSubset( "$CLUSTER_DIR/$clus_idx.center.ids.ext", 1 );
-        my @fa_ext_all = read_fasta_file("$CLUSTER_DIR/$clus_idx.center.fa.ext");
+        my @fa_ext_all =
+          read_fasta_file("$CLUSTER_DIR/$clus_idx.center.fa.ext");
         my $fa_ext_merged = mergeFrags( \@fa_ext_all );
-        writeSubsetFasta( $fa_ext_merged, $fa_ext_merged->[1], "$CLUSTER_DIR/$clus_idx.cmfinder.fa", 1 );
+        writeSubsetFasta( $fa_ext_merged, $fa_ext_merged->[1],
+            "$CLUSTER_DIR/$clus_idx.cmfinder.fa", 1 );
 
         delete $toDo_models{$clus_idx};
 
@@ -115,7 +139,8 @@ sub readSubset {
     }
     close(IN);
 
-    print"readSubset :: File $file contains less than $sub_idx lines! \n" if ( !@set );
+    print "readSubset :: File $file contains less than $sub_idx lines! \n"
+      if ( !@set );
 
     if (@set) {
         $max_rank = -1 if ( !$max_rank );
@@ -174,7 +199,6 @@ sub writeSubsetFasta {
     ## order is important !!!
     foreach my $key ( sort { $a <=> $b } @{$ids_aref} ) {
 
-
         die "Error! Seq-ID $key does not esist in fasta! Exit...\n\n"
           if ( !exists $fa_aref->[0]->{$key} );
 
@@ -188,8 +212,6 @@ sub writeSubsetFasta {
         print OUT $fa_aref->[3]->{$key}->{"#S"} . " #S\n"
           if ( exists $fa_aref->[3]->{$key}->{"#S"} );
     }
-
-
 
     close(OUT);
 
@@ -648,14 +670,19 @@ sub matrix2tree {
 
     my $temp_file;
 
-    system("cat $matrix_file | awk '{for(i=1;i<NR;i++){print NR,i,\$(i)}}' > $tree_dir/tree.score-list");
+    system(
+"cat $matrix_file | awk '{for(i=1;i<NR;i++){print NR,i,\$(i)}}' > $tree_dir/tree.score-list"
+    );
 
     system("pwd");
 
-    system("perl $myPath/rnaclustScores2Dist.pl --quantile 1.0 < $tree_dir/tree.score-list > $tree_dir/tree.dist-list") == 0
+    system(
+"perl $myPath/rnaclustScores2Dist.pl --quantile 1.0 < $tree_dir/tree.score-list > $tree_dir/tree.dist-list"
+      ) == 0
       or die " .1. command was unable to run to completion:\n\n";
 
-    system("pgma $names_file $tree_dir/tree.dist-list > $tree_outfile") == 0 or die " .2. command was unable to run to completion:\n\n";
+    system("pgma $names_file $tree_dir/tree.dist-list > $tree_outfile") == 0
+      or die " .2. command was unable to run to completion:\n\n";
 }
 
 sub mergeFrags {
@@ -701,8 +728,10 @@ sub mergeFrags {
 
     foreach my $seq ( keys %olmap ) {
 
-        while ( my @fr =
-            sort { $a->{START} <=> $b->{START} } values %{ $olmap{$seq} } )
+        while (
+            my @fr =
+            sort { $a->{START} <=> $b->{START} } values %{ $olmap{$seq} }
+          )
         {
 
             my $ols = fragment_overlap( [ $fr[0] ], \@fr, 0.1, 0 );

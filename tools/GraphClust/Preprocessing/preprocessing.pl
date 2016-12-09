@@ -8,27 +8,28 @@ use Cwd qw(abs_path getcwd);
 use List::Util 'shuffle';
 use List::Util qw/ min max /;
 
-# in_fasta is just normal fasta file
-my $tgtdir   = 'FASTA';
-my $in_fasta = $ARGV[0];
-my @fa_in = read_fasta_file( $in_fasta, 1 );
+my $tgtdir        = 'FASTA';
+my $in_fasta      = $ARGV[0];
+my @fa_in         = read_fasta_file( $in_fasta, 1 );
 my $in_prefix     = "data";
 my $SEQPREFIX     = "SEQ";
 my $max_N_stretch = 15;
-my $max_length     = $ARGV[1];
-my $in_winShift    = $ARGV[2];     ### winshift value from config
+my $max_length    = $ARGV[1];
+my $in_winShift    = $ARGV[2];         ### winshift value from config
 my $fa_name        = $in_prefix;
 my $min_seq_length = $ARGV[3];
-my @split_wins   = ($max_length);
-my $splitWin     = $split_wins[0];
+my @split_wins     = ($max_length);
+my $splitWin       = $split_wins[0];
 my $frags_splitN = splitMasked( \@fa_in, $max_N_stretch );
-my $frags_shift = splitLengthShift( $frags_splitN, $splitWin, $in_winShift, $max_N_stretch );
-my $frags_keep   = [ keys %{$frags_shift} ];
-my $genome_locs  = genomeLocations( \@fa_in );
+my $frags_shift =
+  splitLengthShift( $frags_splitN, $splitWin, $in_winShift, $max_N_stretch );
+my $frags_keep  = [ keys %{$frags_shift} ];
+my $genome_locs = genomeLocations( \@fa_in );
 
 system("mkdir -p $tgtdir");
 
-writeFrags( \@fa_in, $frags_shift, $frags_keep, "$tgtdir/$fa_name" );    ##skip grey_href
+writeFrags( \@fa_in, $frags_shift, $frags_keep, "$tgtdir/$fa_name" )
+  ;    ##skip grey_href
 writeFiles( \@fa_in, $frags_splitN, $genome_locs );    ## skip grey_href
 
 system("zip -r FASTA.zip FASTA > /dev/null");
@@ -222,7 +223,8 @@ sub splitLengthShift {
             ## end cueing can be ignored
             #$seq_frag =~ s/^([N]+)//;
             my $start_cue = 0;
-            $start_cue = length($1) if ( $seq_frag =~ s/^([N]+)// and length($1) > 0 );
+            $start_cue = length($1)
+              if ( $seq_frag =~ s/^([N]+)// and length($1) > 0 );
             $seq_frag =~ s/[N]+$//;
 
             my $end_pos = length($seq_frag);
@@ -357,8 +359,6 @@ sub writeFiles {
     close(FR);
 
     makeCol("$tgtdir/fragments.splitMasked.list");
-
-    #GraphClust::makeCol("$tgtdir/fragments.splitMasked.list");
 }
 
 sub genomeLocations {
