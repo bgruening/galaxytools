@@ -52,7 +52,7 @@ if ( $final_partition_soft ne "" && $part_cmsearch ne "" ) {
 my $index = 1;
 
 foreach my $file (sort(@tabFiles)) {
-
+    
     my $round   = $CI;
     my @indexes = split( '\.', $file );
     my $key     = "$round.$index";

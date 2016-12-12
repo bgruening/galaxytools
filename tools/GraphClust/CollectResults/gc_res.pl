@@ -67,6 +67,7 @@ foreach my $res_idx (@res_todo) {
   my %model_ids = ();
 
   foreach my $f (sort(@modTreeFiles)) {
+    
     my @model_fa = read_fasta_file("$f");
     map { $model_ids{$_} = 1 } @{ $model_fa[1] };
   }
