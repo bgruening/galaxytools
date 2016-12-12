@@ -51,7 +51,7 @@ if ( $final_partition_soft ne "" && $part_cmsearch ne "" ) {
 
 my $index = 1;
 
-foreach my $file (@tabFiles) {
+foreach my $file (sort(@tabFiles)) {
 
     my $round   = $CI;
     my @indexes = split( '\.', $file );
@@ -757,7 +757,7 @@ sub write_res_summary {
     my $fm       = $_[1];
     my $outfile  = $_[2];
 
-    
+
     ## sort by iteration and then by f score, skip last entry (contains ALL info)
     my @fm_sort =
       sort {
