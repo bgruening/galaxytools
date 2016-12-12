@@ -66,7 +66,7 @@ foreach my $res_idx (@res_todo) {
   ## read in model ids of a final(merged) cluster, could be >1 orig clusters in case of merging
   my %model_ids = ();
 
-  foreach my $f (@modTreeFiles) {
+  foreach my $f (sort(@modTreeFiles)) {
     my @model_fa = read_fasta_file("$f");
     map { $model_ids{$_} = 1 } @{ $model_fa[1] };
   }
