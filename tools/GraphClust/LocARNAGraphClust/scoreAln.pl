@@ -7,22 +7,23 @@ use FindBin;
 use lib "$FindBin::Bin";
 use Getopt::Long;
 use strict;
+use warnings;
 use Data::Dumper;
 use Math::Round;
 
 #adapt to each program
 my $usage = << "JUS";
-  usage:    perl $0 -i ALIGNMENT_FILE -f FORMAT [CLUSTALW|TBA|MAF] -o [0|1]  
-  
+  usage:    perl $0 -i ALIGNMENT_FILE -f FORMAT [CLUSTALW|TBA|MAF] -o [0|1]
+
   options:  -i    An alignment file 	                  [REQUIRED]
             -f    The format of the alignment             [REQUIRED]
 	          [CLUSTALW|TBA|MAF]
             -o    Detailed output (1) or no details, only the score (0)
 	    -s	  Which score				  [REQUIRED]
 	          [sop|mpi]
-	    
+
   purpose:  Calculate sum-of-pairs score, mean pairwise identity for given alignments
-  results:  For each alignment the score is written to STDOUT  
+  results:  For each alignment the score is written to STDOUT
 JUS
 
 my ( $opt_i, $opt_f, $opt_o, $opt_s ) = ( "", "", 0, "" );
@@ -335,4 +336,3 @@ sub readMAF() {
 
     #print Dumper %seq;
 }
-

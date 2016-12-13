@@ -1,6 +1,7 @@
 #!/usr/bin/perl
 
 use strict;
+use warnings;
 use Getopt::Long;
 use Pod::Usage;
 use POSIX qw(ceil floor);
