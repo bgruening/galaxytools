@@ -52,7 +52,7 @@ if ( $final_partition_soft ne "" && $part_cmsearch ne "" ) {
 my $index = 1;
 
 foreach my $file (sort(@tabFiles)) {
-    
+
     my $round   = $CI;
     my @indexes = split( '\.', $file );
     my $key     = "$round.$index";
@@ -277,8 +277,9 @@ sub do_overlap_matrix {
     my @keys = keys %{$map_soft};
     my %ol_map;
 
-    @keys =
-      sort { $cm_hitlists{$a}->{CLASS} <=> $cm_hitlists{$b}->{CLASS} } @keys;
+    @keys = sort @keys; ## es mase es poxel
+  #  @keys =
+  #    sort { $cm_hitlists{$a}->{CLASS} <=> $cm_hitlists{$b}->{CLASS} } @keys;
 
     open( CMO, ">$ol_file" );
     print CMO "# MODEL " . join( " ", @keys ) . "\n";
