@@ -35,7 +35,7 @@ for singleFile in sorted(cluster_seqs_stats_files):
 numberOfClusters += 1  # 1 cluster for all unassigned seqs
 with open(dataNames, "r") as names:
     for line in names.readlines():
-        fullUniqeId = line.split()[3]  
+        fullUniqeId = line.split()[3]
         rnaClass, sep, tail = fullUniqeId.partition("_")
         short_unique = re.findall("_".join(["[^_]+"] * 2), fullUniqeId)[0]
         rnaClass, sep, tail = fullUniqeId.partition("_")

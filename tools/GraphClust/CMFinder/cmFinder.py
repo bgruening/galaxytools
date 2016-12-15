@@ -22,11 +22,11 @@ if len(sys.argv) > 4:
 cmd = " cp -f %s model.cmfinder.stk" % (model_tree_stk)
 sh(cmd)
 
-alifoldCmd = "perl %s/alifold.pl -file  %s" % (path, model_tree_stk)
+alifoldCmd = "%salifold.pl -file  %s" % (path, model_tree_stk)
 # alifoldCmd = "perl " + path + "/alifold.pl -file " + model_tree_stk
 sh(alifoldCmd)
 
-cmd_stk = "perl %s/mloc2stockholm.pl -file model.cmfinder.stk  -split_input yes --con_struct %s.alifold" % (path, model_tree_stk)
+cmd_stk = "%smloc2stockholm.pl -file model.cmfinder.stk  -split_input yes --con_struct %s.alifold" % (path, model_tree_stk)
 # cmd_stk = "perl " + path + "/mloc2stockholm.pl -file model.cmfinder.stk  -split_input yes --con_struct " + model_tree_stk + ".alifold"
 sh(cmd_stk)
 
