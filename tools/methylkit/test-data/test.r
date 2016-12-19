@@ -2,11 +2,22 @@ library("methylKit")
 
 file.list = list("input_test1.myCpG.txt", "input_test2.myCpG.txt", "input_control1.myCpG.txt", "input_control2.myCpG.txt")
 
-myobj=methRead( file.list, 
-                sample.id=list("test1","test2","ctrl1","ctrl2"),assembly="hg18",pipeline="amp",treatment=c(1,1,0,0))
+myobj=methRead( file.list,
+                sample.id=list("test 1","test 2","control 1","control 2"),assembly="hg18",pipeline="amp",treatment=c(1,1,0,0))
+
+pdf('output_statistics.pdf')
+for (obj in myobj){
+  getMethylationStats(obj,plot=TRUE,both.strands=FALSE)
+  getCoverageStats(obj,plot=TRUE,both.strands=FALSE)
+}
+devname = dev.off()
 
 # unite function
 methidh = unite(myobj)
+
+pdf("output_correlation.pdf")
+getCorrelation(object = methidh, plot=TRUE, method = "pearson")
+devname = dev.off()
 
 # differential methylation
 myDiff = calculateDiffMeth(methidh, overdispersion="none",
@@ -19,7 +30,7 @@ bedgraph(myDiff, file.name="output_myDiff.bed", col.name="meth.diff",
 MethPerChr = diffMethPerChr(myDiff, plot=FALSE,
                             qvalue.cutoff=0.01,
                             meth.cutoff=25)
-write.table(MethPerChr, sep="\t", row.names=FALSE, quote=FALSE, file="output_MethPerChr.csv")
+write.table(MethPerChr, sep=",", row.names=FALSE, quote=FALSE, file="output_MethPerChr.csv")
 
 MethylDiff = getMethylDiff(myDiff, difference=25,
                                qvalue=0.01, type="all")
