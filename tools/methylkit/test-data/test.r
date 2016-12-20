@@ -24,17 +24,17 @@ myDiff = calculateDiffMeth(methidh, overdispersion="none",
                            adjust="SLIM", effect="wmean", test="Chisq",
                            slim=FALSE, weighted.mean=FALSE)
 
-bedgraph(myDiff, file.name="output_myDiff.bed", col.name="meth.diff",
+bedgraph(myDiff, file.name="output_myDiff.bedgraph", col.name="meth.diff",
          unmeth=FALSE, log.transform=FALSE, negative=FALSE, add.on="")
 
 MethPerChr = diffMethPerChr(myDiff, plot=FALSE,
                             qvalue.cutoff=0.01,
                             meth.cutoff=25)
-write.table(MethPerChr, sep=",", row.names=FALSE, quote=FALSE, file="output_MethPerChr.csv")
+write.table(MethPerChr, sep="\t", row.names=FALSE, quote=FALSE, file="output_MethPerChr.tsv")
 
 MethylDiff = getMethylDiff(myDiff, difference=25,
                                qvalue=0.01, type="all")
-bedgraph(MethylDiff, file.name="output_MethylDiff.bed", col.name="meth.diff",
+bedgraph(MethylDiff, file.name="output_MethylDiff.bedgraph", col.name="meth.diff",
          unmeth=FALSE,log.transform=FALSE,negative=FALSE,add.on="")
 
 pdf( "output_clustering.pdf" )
