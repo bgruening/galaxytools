@@ -8,6 +8,7 @@ def sh(script):
 
 
 dataNames = "FASTA/data.names"
+
 listOfClusters = []
 listOfClasses = []
 cluster_seqs_stats_path = "RESULTS/*.cluster.all"
@@ -19,7 +20,7 @@ for singleFile in sorted(cluster_seqs_stats_files):
     numberOfClusters += 1
     with open(singleFile, "r") as f:
         for line in f.readlines():
-            uniqueId = line.split()[6]
+            uniqueId = line.split()[7]
             clustNum = line.split()[1]
             rnaClass, sep, tail = uniqueId.partition("_")
             listOfClasses.append(rnaClass)
@@ -28,8 +29,7 @@ for singleFile in sorted(cluster_seqs_stats_files):
                 for line in names.readlines():
                     fullUniqeId = line.split()[3]
                     rnaClass, sep, tail = fullUniqeId.partition("_")
-                    short_unique = re.findall("_".join(["[^_]+"] * 2), fullUniqeId)[0]
-                    if short_unique == uniqueId:
+                    if fullUniqeId == uniqueId:
                         blackList.append(uniqueId)
 
 numberOfClusters += 1  # 1 cluster for all unassigned seqs
@@ -37,9 +37,8 @@ with open(dataNames, "r") as names:
     for line in names.readlines():
         fullUniqeId = line.split()[3]
         rnaClass, sep, tail = fullUniqeId.partition("_")
-        short_unique = re.findall("_".join(["[^_]+"] * 2), fullUniqeId)[0]
         rnaClass, sep, tail = fullUniqeId.partition("_")
-        if short_unique not in blackList:
+        if fullUniqeId not in blackList:
             listOfClasses.append(rnaClass)
             listOfClusters.append(str(numberOfClusters))
             numberOfClusters += 1  # separate cluster for all unassigned seqs
