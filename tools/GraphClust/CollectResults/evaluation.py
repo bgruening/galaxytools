@@ -5,7 +5,6 @@ import re
 def sh(script):
     system("bash -c '%s'" % script)
 
-
 dataNames = "FASTA/data.names"
 
 listOfClusters = []
