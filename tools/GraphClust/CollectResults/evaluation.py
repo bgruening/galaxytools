@@ -2,7 +2,6 @@ import glob
 from os import system
 import re
 
-
 def sh(script):
     system("bash -c '%s'" % script)
 
