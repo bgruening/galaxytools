@@ -1,9 +1,11 @@
 import glob
 from os import system
 import re
+from sklearn import metrics
 
 def sh(script):
     system("bash -c '%s'" % script)
+
 
 dataNames = "FASTA/data.names"
 
@@ -46,3 +48,31 @@ for i in range(len(listOfClusters)):
     toWrite += listOfClasses[i] + "\t" + listOfClusters[i] + '\n'
 with open("RESULTS/fullTab.tabular", "w") as full:
     full.write(toWrite)
+
+
+listOfClasses = []
+listOfClusters = []
+pattern = re.compile("^RF.*$")
+
+with open("RESULTS/fullTab.tabular", 'r') as f:
+    first_line = f.readline()
+
+if pattern.match(str(first_line.split()[0])):
+    with open("RESULTS/fullTab.tabular", "r") as tabF:
+        for line in tabF.readlines():
+            listOfClasses.append(line.split()[0])
+            listOfClusters.append(line.split()[1])
+
+    completeness_score = metrics.completeness_score(listOfClasses, listOfClusters)
+    homogeneity_score = metrics.homogeneity_score(listOfClasses, listOfClusters)
+    adjusted_rand_score = metrics.adjusted_rand_score(listOfClasses, listOfClusters)
+    adjusted_mutual_info_score = metrics.adjusted_mutual_info_score(listOfClasses, listOfClusters)
+    v_measure_score = metrics.v_measure_score(listOfClasses, listOfClusters)
+
+    toWrite = "completeness_score : " + str(completeness_score) + "\n" + "homogeneity_score : " + str(homogeneity_score) + "\n" + "adjusted_rand_score : " +str(adjusted_rand_score)  + "\n" + "adjusted_mutual_info_score : " + str(adjusted_mutual_info_score)+ "\n" + "v_measure_score : " + str(v_measure_score)
+
+else:
+    toWrite = "completeness_score : NA \nhomogeneity_score : NA \nadjusted_rand_score : NA \nadjusted_mutual_info_score : NA \nv_measure_score : NA"
+
+with open("RESULTS/evaluation.txt", "w") as fOut:
+    fOut.write(toWrite)
