@@ -6,7 +6,6 @@ from sklearn import metrics
 def sh(script):
     system("bash -c '%s'" % script)
 
-
 dataNames = "FASTA/data.names"
 
 listOfClusters = []
