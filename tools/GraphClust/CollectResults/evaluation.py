@@ -49,18 +49,10 @@ with open("RESULTS/fullTab.tabular", "w") as full:
     full.write(toWrite)
 
 
-listOfClasses = []
-listOfClusters = []
 pattern = re.compile("^RF.*$")
 
-with open("RESULTS/fullTab.tabular", 'r') as f:
-    first_line = f.readline()
 
-if pattern.match(str(first_line.split()[0])):
-    with open("RESULTS/fullTab.tabular", "r") as tabF:
-        for line in tabF.readlines():
-            listOfClasses.append(line.split()[0])
-            listOfClusters.append(line.split()[1])
+if len(listOfClasses) > 0 and  pattern.match(str(listOfClasses[0])):
 
     completeness_score = metrics.completeness_score(listOfClasses, listOfClusters)
     homogeneity_score = metrics.homogeneity_score(listOfClasses, listOfClusters)
