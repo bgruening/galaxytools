@@ -1,0 +1,284 @@
+<tool id="locarna_pairwise" name="LocARNA Pairwise Aligner" version="@VERSION@.0">
+    <description>
+        Pairwise Simultaneous Alignment and Folding of RNAs
+    </description>
+
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    
+    <expand macro="requirements" />
+
+    <expand macro="stdio" />
+    
+    <expand macro="version" />
+   
+    <command><![CDATA[
+    #if str($alignment_mode.alignment_mode_selector) == "sparse"
+        sparse
+    #else
+        locarna
+    #end if
+
+    '$inputA'
+    '$inputB'
+    
+    --width 60
+    
+    ## -------------------- alignment mode and specific options
+
+    #if str($alignment_mode.alignment_mode_selector) == "global_locarna"
+        #if str($alignment_mode.free_endgaps) != "----"
+            --free-endgaps $alignment_mode.free_endgaps
+        #end if
+    #else if str($alignment_mode.alignment_mode_selector) == "local_locarna"
+        --sequ-local on
+    #else if str($alignment_mode.alignment_mode_selector) == "structure_local_locarna"
+        --struct-local on
+    #else if str($alignment_mode.alignment_mode_selector) == "structure_sequence_local_locarna"
+        --sequ-local on
+        --struct-local on
+    #end if
+
+    ## -------------------- scoring parameters
+    
+    --indel $Scoring.indel
+    --indel-opening $Scoring.indel_opening
+    --struct-weight $Scoring.struct_weight
+    --tau $Scoring.tau
+    
+    #if str($Scoring.sequence_score.sequence_score_selector) == "match"
+        --match $Scoring.sequence_score.match
+        --mismatch $Scoring.sequence_score.mismatch
+    #else if str($Scoring.sequence_score.sequence_score_selector) == "ribosum"
+        --use-ribosum true
+    #else if str($Scoring.sequence_score.sequence_score_selector) == "ribofit"
+        --ribofit true
+    #end if
+
+    ## -------------------- folding parameters
+
+    #if float($Folding.rnafold_temperature) != 37.0
+        --rnafold-temperature $Folding.rnafold_temperature
+    #end if
+
+    $Folding.alifold_consensus_dp
+    --consensus-structure $Folding.consensus_structure
+
+    ## -------------------- heuristic parameters
+    
+    -p $Heuristics.min_prob
+    --max-diff-am $Heuristics.max_diff_am
+    --max-diff $Heuristics.max_diff
+    --max-diff-at-am $Heuristics.max_diff_at_am
+    
+    #if float($Heuristics.max_bps_length_ratio) != 0.0
+        --max-bps-length-ratio $Heuristics.max_bps_length_ratio
+    #end if
+    
+    ## -------------------- other parameters
+        
+    $Constraint.lonely_pairs
+
+    #if $Constraint.maxBPspan != -1
+        --maxBPspan $Constraint.maxBPspan
+    #end if
+
+    $Constraint.ignore_constraints
+
+    ## -------------------- output
+    
+    #if 'stockholm' in str($outputs).split(",")
+        --stockholm '$stockholm'
+    #end if
+    #if 'clustal' in str($outputs).split(",")
+        --clustal '$clustal'
+    #end if
+    #if 'clustal_strict' in str($outputs).split(",") and (not 'clustal' in str($outputs).split(","))
+        --clustal '$clustal_strict'
+    #end if
+    #if 'pp' in str($outputs).split(",")
+        --pp '$pp'
+    #end if
+    
+    $stdout_verbosity
+
+    #if str($stdout_verbosity) != "--quiet":
+        > '$stdout'
+    #end if
+
+    #if 'clustal' in str($outputs).split(",") and 'clustal_strict' in str($outputs).split(",")
+        && cp $clustal $clustal_strict
+    #end if
+
+    #if 'clustal_strict' in str($outputs).split(",")
+        && sed -i '/\^#/d' '$clustal_strict'
+    #end if
+
+    ]]></command>
+
+    <inputs>
+        <param name="inputA" type="data" format="fasta,clustal,txt" label="Sequence A"
+               help="First sequence in fasta, clustal, dp_ps, or PP2.0 format"
+               />
+        <param name="inputB" type="data" format="fasta,clustal,txt" label="Sequence B"
+               help="Second sequence in fasta, clustal, dp_ps, or PP2.0 format"
+               />
+        <conditional name="alignment_mode">
+            <param name="alignment_mode_selector" type="select" label="Alignment mode"
+                   help="Note that local alignment mode usually requires to turn off 
+                         the 'max-diff' heuristic (maximal difference for alignment traces)."
+                   >
+                <option value="global_locarna">Global alignment
+                (LocARNA)</option>
+                <option value="local_locarna">Local alignment (LocARNA)</option>
+                <option value="sparse">Global alignment (SPARSE)</option>
+                <option value="structure_sequence_local_locarna">
+                    Structure and sequence local alignment (LocARNA)
+                </option>
+                <option value="structure_local_locarna">
+                    Structure local, sequence global alignment (LocARNA)
+                </option>
+            </param>
+            <when value="global_locarna">
+                <param name="free_endgaps" type="select" label="Free endgaps"
+                       help="Specify whether gaps at the ends (all, 5', or 3' ends)
+                             of the sequences should be penalized or allowed for free.">
+                    <option value="----">None</option>
+                    <option value="++++">All</option>
+                    <option value="+-+-">5' ends</option>
+                    <option value="-+-+">3' ends</option>
+                    <option value="++--">first sequence</option>
+                    <option value="--++">second sequence</option>
+                    <option value="+---">sequence A, 5' end</option>
+                    <option value="-+--">sequence A, 3' end</option>
+                    <option value="--+-">sequence B, 5' end</option>
+                    <option value="---+">sequence B, 3' end</option>
+                </param>
+            </when>
+            <when value="local_locarna">
+            </when>
+            <when value="sparse" />
+            <when value="structure_sequence_local_locarna" />
+            <when value="structure_local_locarna" />
+        </conditional>
+        
+        <param name="outputs" type="select" display="checkboxes" multiple="True" 
+               label="Output options">
+            <option value="clustal_strict" selected="True">Output alignment
+            in ClustalW format</option>
+            <option value="clustal" selected="False">Output alignment
+            in constraint-annotated ClustalW format</option>
+            <option value="stockholm" selected="False">Output
+            alignment in Stockholm format</option>
+            <option value="pp" selected="False">Output
+            alignment in LocARNA's PP 2.0 format</option>
+        </param>
+        
+        <param name="stdout_verbosity" type="select" label="Standard output verbosity">
+            <option value="--quiet">Don't report standard
+            output</option>
+            <option value="">Non verbose</option>
+            <option value="--verbose">Verbose</option>
+        </param>
+               
+        <section name="Scoring" title="Scoring parameters">
+            <expand macro="common_scoring_parameters" />
+        </section>
+        
+        <section name="Folding" title="RNA folding parameters">
+            <expand macro="common_folding_parameters" />
+            <expand macro="alifold_consensus_parameter" />
+            <param name="consensus_structure" type="select" label="Consensus structure type"
+                   help="Type of consensus structures written to screen and stockholm output"
+                   >
+                <!-- <option value="mea">mea</option>-->
+                <option value="none">none</option>
+                <option value="alifold">alifold</option>
+            </param>
+        </section>
+
+        <section name="Heuristics" title="Heuristic parameters">
+            <expand macro="common_heuristic_parameters" />
+        </section>
+
+        <section name="Constraint" title="Constraint parameters">
+            <expand macro="constraints" />
+        </section>
+    </inputs>
+    
+    <outputs>
+        <data format="txt" name="stdout" label="${tool.name} std out on ${on_string}">
+            <filter>stdout_verbosity != '--quiet'</filter>
+        </data>
+        <data format="clustal" name="clustal"
+              label="${tool.name} alignment (annotated clustal) on ${on_string}">
+            <filter>'clustal' in outputs</filter>
+        </data>
+        <data format="clustal" name="clustal_strict" 
+              label="${tool.name} alignment (clustal) on ${on_string}">
+            <filter>'clustal_strict' in outputs</filter>
+        </data>
+        <data format="stockholm" name="stockholm"
+              label="${tool.name} alignment (stockholm) on ${on_string}">
+            <filter>'stockholm' in outputs</filter>
+        </data>
+        <data format="txt" name="pp"
+              label="${tool.name} alignment (PP 2.0) on ${on_string}">
+            <filter>'pp' in outputs</filter>
+        </data>
+    </outputs>
+    
+    <tests>
+        <test>
+            <param name="inputA" value="tRNA_2-1.fa" />
+            <param name="inputB" value="tRNA_2-2.fa" />
+            <param name="outputs" value="clustal" />
+            <output name="clustal" file="tRNA_2.aln" />
+        </test>
+    </tests>
+
+    <help><![CDATA[ **LocARNA -- Pairwise alignment of RNAs**
+
+Pairwise RNA alignment tools of the LocARNA suite (locarna,
+sparse). These tools perform variants of simultaneous RNA folding and
+alignment. They can be adapted to specific needs by a broad range of
+parameters:
+
+* *scoring* of the alignment, e.g. influencing the cost of
+  insertions/deletions and the weight of sequence vs. structure
+  similarity.
+
+* *RNA folding*, which control the secondary RNA structure prediciton.
+
+* *heuristics*, which trade alignment accuracy vs. computation
+  speed. The huge complexity of simultaneous alignment and folding
+  generally requires some heuristics for reasonable computation times.
+  Some alignment instances and alignment modes will require relaxation
+  of the default heuristics; in particular, local, constrained, and free end gap
+  alignment, will often require turning off the "maximal difference for
+  alignment traces" heuristic.
+  
+* *constraints*, which can be applied to include prior knowledge to
+  improve the quality of results and/or speed of computation.
+
+**Input.**
+
+Input consists of two sequences or alignments, which are specified in
+fasta, clustal, stockholm, or LocARNA pp format.
+
+Optionally, one can specify structure and anchor constraints in these
+input files.
+
+**Output.**
+
+The final pairwise alignment is reported in standard and/or variants of the
+clustal and stockholm format, as well as LocARNA's own pp format.
+    
+For more information, see     
+.. __: http://www.bioinf.uni-freiburg.de/Software/LocARNA/
+    ]]></help>
+
+    <expand macro="citations" />
+    
+</tool>
