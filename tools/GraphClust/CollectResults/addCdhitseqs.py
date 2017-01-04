@@ -47,11 +47,13 @@ with open(cdhitcluster, 'r+') as f:
             #repSeqRedSeqdict[rep_short_id] = lineArr
 
 toWrite = ""
+
 for singleFile in sorted(cluster_seqs_stats_files):
-    for key, val in repSeqRedSeqdict.items():
-        if key in open(singleFile).read():
-            line = open(singleFile).readline()
-            for i in val:
-                toWrite = line.split()[0] + "  " + line.split()[1] + "  " + line.split()[2] + "  " + " - " + "   " + "CD-Hit" + "    " + line.split()[5] + "  " + "ORIGID" + "  "  + str(i) + "\n"
-                with open(singleFile, "a") as clFile:
-                    clFile.write(toWrite)
+    with open(singleFile, "a+") as clFile:
+        file_content = clFile.read()
+        first_line = file_content.split('\n')[0]
+        for key, val in repSeqRedSeqdict.items():
+            if key in file_content:
+                for i in val:
+                    toWrite += first_line.split()[0] + "  " + first_line.split()[1] + "  " + first_line.split()[2] + "  " + " - " + "   " + "CD-Hit" + "    " + first_line.split()[5] + "  " + "ORIGID" + "  "  + str(i) + "\n"
+        clFile.write(toWrite)
