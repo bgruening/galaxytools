@@ -1,0 +1,311 @@
+<tool id="locarna_multiple" name="LocARNA Multiple Aligner (mlocarna)" version="@VERSION@.0">
+    <description>
+        Multiple Alignment and Folding of RNAs
+    </description>
+
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    
+    <expand macro="requirements" />
+
+    <expand macro="stdio" />
+    
+    <expand macro="version" />
+    
+    <command><![CDATA[
+    mlocarna
+    
+    '$input_data'
+    #if 'stockholm' in str($outputs).split(","):
+    --stockholm
+    #end if
+
+    --tgtdir mlocarna_results
+    --width 60
+    
+    ## -------------------- alignment mode and specific options
+
+    #if str($alignment_mode.alignment_mode_selector) == "global_locarna"
+        $alignment_mode.free_endgaps
+    #else if str($alignment_mode.alignment_mode_selector) == "local_locarna"
+        --sequ-local on
+    #else if str($alignment_mode.alignment_mode_selector) == "probabilistic"
+        --probabilistic
+        $alignment_mode.consistency_transformation
+        
+        #if str($alignment_mode.iterate) == "true"
+            --iterate
+            --iterations $alignment_mode.iterations
+        #end if
+    #else if str($alignment_mode.alignment_mode_selector) == "sparse"
+        --sparse
+    #end if
+    
+    ## -------------------- scoring parameters
+    
+    --indel $Scoring.indel
+    --indel-opening $Scoring.indel_opening
+    --struct-weight $Scoring.struct_weight
+    --tau $Scoring.tau
+    
+    #if str($Scoring.sequence_score.sequence_score_selector) == "match"
+        --match $Scoring.sequence_score.match
+        --mismatch $Scoring.sequence_score.mismatch
+    #else if str($Scoring.sequence_score.sequence_score_selector) == "ribosum"
+        --use-ribosum true
+    #else if str($Scoring.sequence_score.sequence_score_selector) == "ribofit"
+        --ribofit true
+    #end if
+
+    ## -------------------- folding parameters
+
+    #if $Folding.plfold_span>=0
+        --plfold-span $Folding.plfold_span
+        --plfold-winsize $Folding.plfold_winsize
+    #end if
+    
+    #if float($Folding.rnafold_temperature) != 37.0
+        --rnafold-temperature $Folding.rnafold_temperature
+    #end if
+
+    $Folding.alifold_consensus_dp
+
+    ## -------------------- heuristic parameters
+    
+    -p $Heuristics.min_prob
+    --max-diff-am $Heuristics.max_diff_am
+    --max-diff $Heuristics.max_diff
+    --max-diff-at-am $Heuristics.max_diff_at_am
+    --max-bps-length-ratio $Heuristics.max_bps_length_ratio
+    
+
+    ## -------------------- other parameters
+
+    #if str($Constraint.bed_anchors.bed_anchors_selector) == "yes"
+        --anchor-constraints $Constraint.bed_anchors.bed_anchors_file
+    #end if
+
+    $Constraint.lonely_pairs
+
+    #if $Constraint.maxBPspan != -1
+        --maxBPspan $Constraint.maxBPspan
+    #end if
+
+    $Constraint.ignore_constraints
+
+    $stdout_verbosity
+
+    #if str($stdout_verbosity) != "--quiet":
+        > '$stdout'
+    #end if
+
+    #if 'clustal_strict' in str($outputs).split(",")
+        && grep -v '^#' mlocarna_results/results/result.aln > mlocarna_results/results/result.strict-aln
+    #end if
+
+    ]]></command>
+
+    <inputs>
+        <conditional name="input_data_type">
+            <param name="input_data_type_selector" type="select" label="Input type">
+                <option value="fasta">Fasta input (strict)</option>
+                <option value="text">Fasta-like input with LocARNA constraints</option>
+              </param>
+            <when value="fasta">
+                <param name="input_data" type="data" format="fasta" label="Sequence input"
+                       help="Sequence input in pure fasta format"
+                       />
+            </when>
+            <when value="text">
+                <param name="input_data" type="data" format="text" label="Sequence input"
+                       help="Sequence input in fasta format with locarna-specific extensions"
+                       />
+            </when>
+        </conditional>
+        <conditional name="alignment_mode">
+            <param name="alignment_mode_selector" type="select" label="Alignment mode"
+                   help="Note that local alignment mode usually requires to turn off 
+                         the 'max-diff' heuristic (maximal difference for alignment traces)."
+                   >
+                <option value="global_locarna">Global alignment
+                (LocARNA)</option>
+                <option value="local_locarna">Local alignment (LocARNA)</option>
+                <option value="probabilistic">Probabilistic alignment (LocARNA-P)</option>
+                <option value="sparse">Global alignment (SPARSE)</option>
+            </param>
+            <when value="global_locarna">
+                <param name="free_endgaps" type="select" label="Free endgaps"
+                       help="Specify whether gaps at the ends (all, 5', or 3' ends)
+                             of the sequences should be penalized or allowed for free.">
+                    <option value="">No free endgaps</option>
+                    <option value="--free-endgaps">Free endgaps</option>
+                    <option value="--free-endgaps-5">Free endgaps, only 5'</option>
+                    <option value="--free-endgaps-3">Free endgaps, only 3'</option>
+                </param>
+            </when>
+            <when value="local_locarna">
+            </when>
+            <when value="probabilistic">
+                <param name="consistency_transformation" type="boolean" 
+                       truevalue="--consistency-transformation" falsevalue="" 
+                       checked="true" label="Consistency transformation" 
+                       help="--consistency-transformation" />
+                <param name="iterate" type="boolean"
+                       truevalue="true" falsevalue="false"
+                       checked="false" label="Iterative refinement"
+                       help="--iterate" />
+                <param name="iterations" type="integer"
+                       value="1" label="Number of refinement iterations"
+                       help="--iterations num" />
+            </when>
+            <when value="sparse" />
+        </conditional>
+        
+        <param name="outputs" type="select" display="checkboxes" multiple="True" 
+               label="Output options">
+            <option value="clustal_strict" selected="True">Output alignment
+            in ClustalW format</option>
+            <option value="clustal" selected="False">Output alignment
+            in constraint-annotated ClustalW format</option>
+            <option value="stockholm" selected="False">Output
+            alignment in Stockholm format</option>
+            <option value="pp" selected="False">Output
+            alignment in LocARNA's PP 2.0 format</option>
+            <option value="mlocarna_results" selected="False">
+            Output LocARNA results archive (tar.gz)</option>
+        </param>
+        
+        <param name="stdout_verbosity" type="select" label="Standard output verbosity">
+            <option value="--quiet">Don't report standard
+            output</option>
+            <option value="">Non verbose</option>
+            <option value="--verbose">Verbose</option>
+            <option value="--moreverbose">More verbose</option>
+        </param>
+               
+        <section name="Scoring" title="Scoring parameters">
+            <expand macro="common_scoring_parameters" />
+        </section>
+        
+        <section name="Folding" title="RNA folding parameters">
+            <expand macro="plfolding_parameters" />
+            <expand macro="common_folding_parameters" />
+            <expand macro="alifold_consensus_parameter" />
+        </section>
+
+        <section name="Heuristics" title="Heuristic parameters">
+            <expand macro="common_heuristic_parameters" />
+        </section>
+
+        <section name="Constraint" title="Constraint parameters">
+            <expand macro="bed_anchors" />
+            <expand macro="constraints" />
+        </section>
+    </inputs>
+    
+    <outputs>
+        <expand macro="common_outputs" />
+    </outputs>
+    
+    <tests>
+        <test>
+            <param name="input_data" value="archaea.fa" />
+            <param name="stdout_verbosity" value="" />
+            <output name="stdout" file="archaea-default.stdout" />
+        </test>
+        <test>
+            <param name="input_data" value="haca.snoRNA.fa" />
+            <param name="stdout_verbosity" value="" />
+            <output name="stdout" file="haca.snoRNA-default.stdout" />
+        </test>
+        <test>
+            <param name="input_data" value="archaea.fa" />
+            <param name="stdout_verbosity" value="" />
+            <param name="outputs" value="clustal" />
+            <param name="alignment_mode_selector" value="probabilistic" />
+            <output name="clustal" file="archaea-probabilistic.aln" />
+        </test>
+    </tests>
+
+    <help><![CDATA[ **MLocARNA -- Multiple alignment of RNAs**
+
+MLocARNA is the (general, progressive) multiple RNA alignment tool of
+the LocARNA suite. It supports several alignment modes and can be
+adapted to specific needs by a broad range of parameters. Thus, there
+are parameters for
+
+* *scoring* of the alignment, e.g. influencing the cost of
+  insertions/deletions and the weight of sequence vs. structure
+  similarity.
+
+* *RNA folding*, which control the secondary RNA structure prediciton.
+
+* *heuristics*, which trade alignment accuracy vs. computation
+  speed. The huge complexity of simultaneous alignment and folding
+  generally requires some heuristics for reasonable computation times.
+  Some alignment instances and alignment modes will require relaxation
+  of the default heuristics; in particular, local, constrained, and free end gap
+  alignment, will often require turning off the "maximal difference for
+  alignment traces" heuristic.
+  
+* *constraints*, which can be applied to include prior knowledge to
+  improve the quality of results and/or speed of computation.
+
+Technically, mlocarna constructs multiple alignments progressively
+based on pairwise alignments by locarna, locarna-p, or sparse, which
+perform variants of simultaneous RNA folding and alignment.
+
+**Input.**
+Sequences can be given in plain fasta format like::
+
+  >fruA
+  CCUCGAGGGGAACCCGAAAGGGACCCGAGAGG
+  >fdhA
+  CGCCACCCUGCGAACCCAAUAUAAAAUAAUACAAGGGAGCAGGUGGCG
+  >vhuU
+  AGCUCACAACCGAACCCAUUUGGGAGGUUGUGAGCU
+
+Morover, mlocarna supports structure constraints for folding and anchor
+constraints for alignment. Both types of constraints can be specified
+in extension of the standard fasta format via 'constraint
+lines'. Fasta-ish input with constraints looks like this::
+
+  >A
+  GACCCUGGGAACAUUAACUACUCUCGUUGGUGAUAAGGAACA
+  ..((.(....xxxxxx...................))).xxx #S
+  ..........000000.......................111 #1
+  ..........123456.......................123 #2
+  >B
+  ACGGAGGGAAAGCAAGCCUUCUGCGACA
+  .(((....xxxxxx.......))).xxx #S
+  ........000000...........111 #1
+  ........123456...........123 #2
+
+The same anchor constraints (like by the lines tagged #1, #2) can
+alternatively be specified in bed format by the entries::
+
+  A	10	16	first_box
+  B	8	14	first_box
+  A	39	42	ACA-box
+  B	25	28	ACA-box
+
+where anchor regions (boxes) have arbitrary but matching names
+and contig/sequence names correspond to the sequence names
+of the fasta(-like) input.
+
+
+**Output.**
+
+The final alignment is reported in standard and/or variants of the
+clustal and stockholm format. Moreover, an archive with final and
+intermediary results of the mlocarna run can be returned.
+
+    
+For more information, see     
+.. __: http://www.bioinf.uni-freiburg.de/Software/LocARNA/
+    ]]></help>
+
+    <expand macro="citations" />
+    
+</tool>

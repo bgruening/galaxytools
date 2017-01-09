@@ -1,0 +1,153 @@
+<tool id="glob_report" name="Report_Results" version="0.1">
+	<requirements>
+		<requirement type="package" version="0.1">graphclust-wrappers</requirement>
+		<requirement type="package" version='0.5'>perl-array-utils</requirement>
+		<requirement type="package" version='0.18.1'>scikit-learn</requirement>
+	</requirements>
+	<stdio>
+		<exit_code range="1:" />
+	</stdio>
+	<command>
+		<![CDATA[
+        unzip $FASTA  &> /dev/null &&
+
+        #set $inputFiles = ""
+
+        #for $cms_res in $cmsearch_results:
+            #set $inputFiles += str($cms_res)+','
+        #end for
+        #set $inputFiles = $inputFiles[:-1]
+
+        #set $inputFilesTrees = ""
+
+        #for $mods in $model_tree_files:
+            #set $inputFilesTrees += str($mods)+','
+        #end for
+        #set $inputFilesTrees = $inputFilesTrees[:-1]
+		    glob_res.pl 
+                '$inputFiles'
+                $merge_cluster_ol
+                $merge_overlap
+                $min_cluster_size
+                $cm_min_bitscore
+                $cm_max_eval
+                $cm_bitscore_sig
+                $partition_type ''
+                $cut_type
+                '$inputFilesTrees'
+        #if  $iteration_num.iteration_num_selector:
+          $iteration_num.CI
+          $final_partition_soft
+          $final_partition_used_cmsearch
+        #end if
+
+        &&
+        python '$__tool_directory__/evaluation.py'
+		#if $cdhit:
+    		&&
+	    	python '$__tool_directory__/addCdhitseqs.py' '$cdhit'
+	    #end if		
+]]>
+	</command>
+	<inputs>
+		<param type="data" name="FASTA" format="zip" />
+		<param type="data" name="cmsearch_results" format="tabular" multiple="True"/>
+		<param type="data" name="model_tree_files" format="txt" multiple="True"/>
+		<param name="partition_type" type="boolean" checked="True" truevalue="0" falsevalue="1" label="Hard partition"/>
+		<param name="cut_type" type="boolean" checked="True" truevalue="0" falsevalue="1" label="Use CM score for cutoff" help="otherwise use E-value"/>
+		<param type="data" name="cdhit" format="txt" optional="true"/>
+		<conditional name="iteration_num">
+			<param name="iteration_num_selector" type="boolean"  checked="no" label="Multiple iterations"  help="for single iteration- NO, for multiple-YES"/>
+			<when value="true">
+				<param name="CI" type="integer" value="2" size="5" label="Number of current iteration "/>
+				<param type="data" name="final_partition_soft" format="txt" />
+				<param type="data" name="final_partition_used_cmsearch" format="txt" />
+			</when>
+			<when value="false" ></when>
+		</conditional>
+		<param name="merge_cluster_ol" type="float" value="0.66" size="5" label="merge_cluster_ol" help=""/>
+		<param name="merge_overlap" type="float" value="0.51" size="5" label="merge_overlap" help=""/>
+		<param name="min_cluster_size" type="integer" value="3" size="5" label="min_cluster_size" help=""/>
+		<param name="cm_min_bitscore" type="integer" value="20" size="5" label="cm_min_bitscore" help=""/>
+		<param name="cm_max_eval" type="float" value="0.001" size="5" label="cm_max_eval" help=""/>
+		<param name="cm_bitscore_sig" type="integer" value="1" size="5" label="cm_bitscore_sig" help=""/>
+	</inputs>
+	<outputs>
+		<data name="final_stats" format="txt" from_work_dir="RESULTS/cluster.final.stats" label="cluster.final.stats"  />
+		<data name="tableForEval" format="tabular" from_work_dir="RESULTS/fullTab.tabular" label="tableForEval"  />
+		<data name="final_soft" format="txt" from_work_dir="RESULTS/partitions/final_partition.soft" label="soft_part"   />
+		<data name="final_used_cmsearch" format="txt" from_work_dir="RESULTS/partitions/final_partition.used_cmsearch" label="final_partition_used_cmsearch"   />
+		<data name="evaluation" format="txt" from_work_dir="RESULTS/evaluation.txt" label="evaluation_of_clusters"   />
+		<collection name="clusters" type="list" label="CLUSTERS">
+			<discover_datasets pattern="(?P&lt;name&gt;^.*\.all$)" directory="RESULTS"  />
+		</collection>
+		<collection name="partitions" type="list" label="Partitions">
+			<discover_datasets pattern="(?P&lt;name&gt;^.*$)" directory="RESULTS/partitions" />
+		</collection>
+	</outputs>
+	<tests>
+		<test>
+			<param name="FASTA" value="FASTA.zip" ftype="searchgui_archive"/>
+			<param name="cmsearch_results" value="1.tabular,2.tabular"/>
+			<param name="model_tree_files" value="1.1.model.tree.fa,1.2.model.tree.fa"/>
+			<param name="partition_type" value="0"/>
+			<param name="cut_type" value="0"/>
+			<conditional name="iteration_num">
+				<param name="iteration_num_selector" value="false"/>
+			</conditional>
+			<param name="merge_cluster_ol" value="0.66"/>
+			<param name="merge_overlap" value="0.51"/>
+			<param name="min_cluster_size" value="3"/>
+			<param name="cm_min_bitscore" value="20"/>
+			<param name="cm_max_eval" value="0.001"/>
+			<param name="cm_bitscore_sig" value="1"/>
+			<output name="final_stats" file="RESULTS/cluster.final.stats" />
+			<output_collection name="clusters" type="list">
+				<element name="1.cluster.all" file="RESULTS/1.cluster.all" compare="contains"/>
+				<element name="2.cluster.all" file="RESULTS/2.cluster.all" compare="contains"/>
+			</output_collection>
+			<output_collection name="partitions">
+				<element name="final_overlap.map" file="RESULTS/partitions/final_overlap.map" compare="contains">
+					<assert_contents>
+						<has_text text="1.1  1.1" />
+						<has_text text="1.2  1.2" />
+					</assert_contents>
+				</element>
+				<element name="final_overlap.matrix" file="RESULTS/partitions/final_overlap.matrix" compare="contains">
+					<assert_contents>
+						<has_text text="MODEL CLASS 0 0" />
+						<has_text text="1.2" />
+						<has_text text="1.1" />
+					</assert_contents>
+				</element>
+				<element name="final_partition.hard.best" file="RESULTS/partitions/final_partition.hard.best" />
+				<element name="final_partition.hard.merged" file="RESULTS/partitions/final_partition.hard.merged" />
+				<element name="final_partition.soft" file="RESULTS/partitions/final_partition.soft" />
+				<element name="final_partition.used_cmsearch" file="RESULTS/partitions/final_partition.used_cmsearch" compare="contains"/>
+			</output_collection>
+		</test>
+	</tests>
+	<help>
+		<![CDATA[
+
+**What it does**
+
+Post-processing. Redundant clusters are merged and instances that belong to multiple clusters
+are assigned unambiguously. For every pair of clusters, the relative overlap (i.e. the fraction of
+instances that occur in both clusters) is computed and clusters are merged if the overlap exceeds 50%.
+Cluster members are finally ranked by their CM bitscore.
+
+    ]]>
+	</help>
+	<citations>
+    <citation type="bibtex">@inproceedings{costa2010fast,
+        title={Fast neighborhood subgraph pairwise distance kernel},
+        author={Costa, Fabrizio and De Grave, Kurt},
+        booktitle={Proceedings of the 26th International Conference on Machine Learning},
+        pages={255--262},
+        year={2010},
+        organization={Omnipress}
+      }
+      </citation>
+  </citations>
+</tool>

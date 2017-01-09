@@ -1,16 +1,17 @@
-Galaxy wrappers for sailfish
+Galaxy wrappers for salmon
 =====================================
 
-These wrappers are copyright 2014 by Björn Grüning and additional contributors. 
+These wrappers are copyright 2014, updated 2016 by Björn Grüning, Mhd Ramez Alrawas and additional contributors.
 All rights reserved. See the licence text below.
 
-Currently tested with sailfish 0.6.3.
+Currently tested with salmon 0.7.2.
 
 
 Automated Installation
 ======================
 
-Galaxy should be able to automatically install the sailfish for you.
+Galaxy should be able to automatically install the salmon for you if you have Conda dependency management enabled in Galaxy.
+For more information please read the documentation at: https://github.com/galaxyproject/galaxy/blob/dev/doc/source/admin/conda_faq.rst
 
 
 History
@@ -20,6 +21,8 @@ History
 Version  Changes
 -------- ----------------------------------------------------------------------
 v0.6.3.0  - First release
+-------- ----------------------------------------------------------------------
+v0.7.2    - Second release
 
 ======== ======================================================================
 
