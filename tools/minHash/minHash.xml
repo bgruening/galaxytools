@@ -1,37 +1,103 @@
-<tool id="minHashTool" name="MinHash approx k-neighbors" version="0.1">
-  <description>approximate k-neighbors computation for sparse datasets</description>
+<tool id="minHashTool" name="MinHash" version="0.1">
+  <description>Approximate k-neighbors search for sparse datasets</description>
+  <requirements>
+    <requirement type="package" version="0.2.3">sparse-neighbors-search</requirement>
+  </requirements>
   <command>
     <![CDATA[
-    python "$minHash_script" '$inputs'
+    source activate sparse_neighbors_search &&
+    python "$minHash_script" '$inputs' && 
+    source deactivate sparse_neighbors_search
     ]]>
   </command>
   <configfiles>
     <inputs name="inputs" />
     <configfile name="minHash_script">
       <![CDATA[
-from bioinf_learn import MinHash
+from sparse_neighbors_search import MinHash
 import sys
 from numpy import savetxt
-import json
-from scipy.io import mmread
+import numpy as np
 
-input_json_path = sys.argv[1]
-input_json_raw = open(input_json_path, 'r')
-params = json.load(input_json_raw)
-print sys.argv
-# options = params["inputs"]["algorithm_options"]
-data_matrix = mmread("$input_file")
-minHash = MinHash(n_neighbors = $advanced_options.k_neighbors, radius = $advanced_options.radius, fast=$advanced_options.fast, 
-                number_of_hash_functions=$advanced_options.number_of_hash_functions,
-                max_bin_size = $advanced_options.max_bin_size, minimal_blocks_in_common = $advanced_options.minimal_blocks_in_common,
-                shingle_size = $advanced_options.shingle_size, excess_factor = $advanced_options.excess_factor,
-                similarity=$advanced_options.similarity, number_of_cores=$advanced_options.number_of_cores,
-                chunk_size=$advanced_options.chunk_size, prune_inverse_index=$advanced_options.prune_inverse_index,
-                prune_inverse_index_after_instance=$advanced_options.prune_inverse_index_after_instance, 
-                remove_hash_function_with_less_entries_as=$advanced_options.remove_hash_functions_with_less_entries_as, 
-                block_size = $advanced_options.block_size, shingle=$advanced_options.shingle,
-                store_value_with_least_sigificant_bit=$advanced_options.store_value_with_least_significant_bit,
-                gpu_hashing=$advanced_options.gpu_hashing)
+data_matrix = np.load("$input_file")
+n_neighbors = 5
+radius = 1.0
+shingle_size = 4
+prune_inverse_index = -1
+prune_inverse_index_after_instance = -1.0
+remove_hash_function_with_less_entries_as = -1
+block_size = 5
+shingle = 0
+store_value_with_least_significant_bit = 0 
+
+#if $advanced_options.computing_method.method == 'kneighbors':
+
+n_neighbors = $advanced_options.computing_method.k_neighbors
+radius = 1.0
+
+#else: 
+
+n_neighbors = 5
+radius = $advanced_options.computing_method.radius
+
+#end if
+
+
+
+#if bool($advanced_options.prune_index.prune_bool):
+
+prune_inverse_index = $advanced_options.prune_index.prune_value
+
+#if bool($advanced_options.prune_index.prune_index_during_fitting.prune_index_during_fitting_bool):
+
+prune_inverse_index_after_instance = $advanced_options.prune_index.prune_index_during_fitting.prune_inverse_index_after_instance
+
+#else:
+
+prune_inverse_index_after_instance = -1.0
+
+#end if
+
+
+#else:
+
+prune_inverse_index = -1
+prune_inverse_index_after_instance = -1.0
+
+#end if
+
+
+
+#if bool($advanced_options.remove_entries.remove_entries_bool):
+remove_hash_function_with_less_entries_as = $advanced_options.remove_entries.remove_hash_function_with_less_entries_as
+#else: 
+remove_hash_function_with_less_entries_as = -1.0
+#end if
+
+#if bool($advanced_options.shingle.shingle_bool):
+shingle = $advanced_options.shingle.shingle_size
+block_size = $advanced_options.shingle.block_size
+#else:
+shingle = 0
+block_size = 5
+#end if
+
+#if bool($advanced_options.least_significant_bit.least_significant_bit_bool):
+store_value_with_least_significant_bit = $advanced_options.least_significant_bit.store_value_with_least_significant_bit
+#else:
+store_value_with_least_significant_bit = 0
+#end if
+
+minHash = MinHash(n_neighbors = int(n_neighbors), radius = float(radius), fast=bool($advanced_options.fast), 
+                    number_of_hash_functions=int($advanced_options.number_of_hash_functions),
+                    max_bin_size = int($advanced_options.max_bin_size), minimal_blocks_in_common = int($advanced_options.minimal_blocks_in_common),
+                    shingle_size = int(shingle_size), excess_factor = int($advanced_options.excess_factor),
+                    similarity=bool($advanced_options.similarity), number_of_cores=int($advanced_options.number_of_cores),
+                    chunk_size=int($advanced_options.chunk_size), prune_inverse_index=int(prune_inverse_index),
+                    prune_inverse_index_after_instance=float(prune_inverse_index_after_instance), 
+                    remove_hash_function_with_less_entries_as=int(remove_hash_function_with_less_entries_as), 
+                    block_size=int(block_size), shingle=int(shingle),
+                    store_value_with_least_sigificant_bit=int(store_value_with_least_significant_bit))
 dist, indices = minHash.fit_kneighbors(data_matrix)
 savetxt("$dist", dist, fmt='%f')
 savetxt("$indices", indices, fmt='%i')
@@ -41,7 +107,7 @@ savetxt("$indices", indices, fmt='%i')
 
   
     <inputs>
-        <param name="input_file" type="data" label="Source file" help="Needs to be a sparse matrix from scipy in csr format."/>
+        <param name="input_file" type="data" format="npy" label="Source file" help="Needs to be a sparse matrix from scipy/numpy in csr format."/>
 
         <section name="advanced_options" title="Advanced options">
             <conditional name="computing_method">
@@ -67,7 +133,7 @@ savetxt("$indices", indices, fmt='%i')
             <conditional name="prune_index">
                 <param name="prune_bool" type="boolean" label="Prune inverse index"/>
                 <when value="true">
-                    <param name="prune_value" type="text" label="Value" value="0" help="Remove every hash value with less occurence than"/>
+                    <param name="prune_value" type="integer" label="Value" value="0" help="Remove every hash value with less occurence than"/>
                     <conditional name="prune_index_during_fitting">
                         <param name="prune_index_during_fitting_bool" type="boolean" label="Prune inverse index during fitting"/>
                         <when value="true">
@@ -85,7 +151,7 @@ savetxt("$indices", indices, fmt='%i')
              <conditional name="remove_entries">
                 <param name="remove_entries_bool" type="boolean" label="Remove every hash function with less hash values as x"/>
                 <when value="true">
-                    <param name="remove_hash_functions_with_less_entries_as" type="integer" value="0" label="Value"/>
+                    <param name="remove_hash_function_with_less_entries_as" type="integer" value="0" label="Value"/>
                 </when>
                  <when value="false">
                  </when>
@@ -107,7 +173,7 @@ savetxt("$indices", indices, fmt='%i')
                  <when value="false">
                  </when>
             </conditional>
-            <param name="gpu_hashing" type="boolean" truevalue="1" falsevalue="0" label="Use GPU hashing" help="Use GPU hashing with NVIDIAs CUDA to significant improve the runtime. Works only if your hardware is supporting it and CUDA is installed."/>
+            <!--<param name="gpu_hashing" type="boolean" truevalue="1" falsevalue="0" label="Use GPU hashing" help="Use GPU hashing with NVIDIAs CUDA to significant improve the runtime. Works only if your hardware is supporting it and CUDA is installed."/>-->
         </section>
     </inputs>
     <outputs>
