@@ -64,9 +64,6 @@ Generating OpenMS wrappers
     -f filetypes.txt
     ```
 
-The list of needed Tools is a whitelist of all Tools that you want to create. It's simply a list of all tools separated by line breaks.
-An example file is located under https://gist.github.com/bgruening/421f97d36c27443e5f35
-
 
  * As last step you need to change manually the binary names of all external binaries you want to use in OpenMS. For example:
 
