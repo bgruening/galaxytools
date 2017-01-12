@@ -53,30 +53,38 @@ Generating OpenMS wrappers
 
     ```bash
     python ./galaxyconfiggenerator/generator.py \ 
-    -i /PATH/TO/YOUR/CTD*.ctd \
+    -i /PATH/TO/YOUR/CTD/*.ctd \
     -o ./wrappers -t tool.conf \
-    -d OpenMS -g proteomics \
+    -d OpenMS -g openms \
     -b version log debug test no_progress threads \
-     in_type exe executable myrimatch_executable \
+     in_type executable myrimatch_executable \
+     fido_executable fidocp_executable \
      omssa_executable pepnovo_executable \
      xtandem_executable \
-    -l ListOfNeededTools.txt
+    -f filetypes.txt
     ```
-
-The list of needed Tools is a whitelist of all Tools that you want to create. It's simply a list of all tools separated by line breaks.
-An example file is located under https://gist.github.com/bgruening/421f97d36c27443e5f35
 
 
  * As last step you need to change manually the binary names of all external binaries you want to use in OpenMS. For example:
 
     ```
-    sed -i '10 a\-exe fido' wrappers/FidoAdapter.xml
-    sed -i '10 a\-executable msgfplus.jar' wrappers/MSGFPlusAdapter.xml
-    sed -i '10 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
-    sed -i '10 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
-    sed -i '10 a\-pepnovo_executable pepnovo' wrappers/PepNovoAdapter.xml
-    sed -i '10 a\-xtandem_executable xtandem' wrappers/XTandemAdapter.xml
+    sed -i '13 a\-fido_executable fido' wrappers/FidoAdapter.xml
+    sed -i '13 a\-fidocp_executable fido_choose_parameters' wrappers/FidoAdapter.xml
+    sed -i '13 a\-executable msgfplus.jar' wrappers/MSGFPlusAdapter.xml
+    sed -i '13 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
+    sed -i '13 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
+    sed -i '13 a\-pepnovo_executable pepnovo' wrappers/PepNovoAdapter.xml
+    sed -i '13 a\-xtandem_executable xtandem' wrappers/XTandemAdapter.xml
     ```
+
+ * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in Galaxy-stable:
+    * SeedListGenerator
+    * SpecLibSearcher
+    * MapAlignerIdentification
+    * MapAlignerPoseClustering
+    * MapAlignerSpectrum
+    * MapAlignerRTTransformer
+    
 
 Licence (MIT)
 =============

@@ -3,12 +3,19 @@
     <requirements>
         <requirement type="package" version="0.2.0">segemehl</requirement>
     </requirements>
+    <stdio>
+        <regex match="Exit forced"
+           source="both"
+           level="fatal"
+           description="Execution halted." />
+    </stdio>
     <command>
 <![CDATA[
         ## prepare segemehl index if no reference genome is supplied
-        temp_index = `mktemp`;
         #if $refGenomeSource.genomeSource == "history":
-            segemehl.x -x $temp_index -d $refGenomeSource.own_reference_genome;
+            mkdir ./temp_index/ &&
+	    #set $temp_index = './temp_index/temp.idx'
+	    segemehl.x -x $temp_index -d $refGenomeSource.own_reference_genome &&
         #else:
             #set $temp_index = $refGenomeSource.index.fields.index_path
         #end if
@@ -20,8 +27,11 @@
         ## number of threads
         -t "\${GALAXY_SLOTS:-12}"
 
-        ## db file path
-        -d ${refGenomeSource.index.fields.db_path}
+        #if $refGenomeSource.genomeSource == "history":
+	    -d $refGenomeSource.own_reference_genome
+        #else:
+            -d ${refGenomeSource.index.fields.db_path}
+        #end if
 
         -i $temp_index
 
@@ -29,8 +39,8 @@
         #if str( $library.type ) == "single":
             #set $query_list = list()
             ## prepare inputs
-            #for $fastq in $library.reads:
-                $query_list.append('%s' %($fastq.input_query))
+            #for $fastq in $library.input_query:
+                $query_list.append('%s' % $fastq )
             #end for
             -q "#echo ' '.join( $query_list )#"
         #else
@@ -61,6 +71,7 @@
         $autoclip
         $hardclip
         $order
+	$splits
         #if $maxout:
             --maxout $maxout
         #end if
@@ -71,17 +82,10 @@
         --minfraglen $minfraglen
         --splicescorescale $splicescorescale
 
-        -o $segemehl_out
+        -o '$segemehl_out'
 ]]>
     </command>
-    <stdio>
-        <regex match="Exit forced"
-           source="both"
-           level="fatal"
-           description="Execution halted." />
-    </stdio>
     <inputs>
-
         <conditional name="refGenomeSource">
           <param name="genomeSource" type="select" label="Will you select a reference genome from your history or use a built-in index?" help="Built-ins were indexed using default options">
             <option value="indexed">Use a built-in index</option>
@@ -101,10 +105,9 @@
             </param>
           </when>  <!-- build-in -->
           <when value="history">
-            <param name="own_reference_genome" type="data" format="fasta" metadata_name="dbkey" label="Select the reference genome" />
+              <param name="own_reference_genome" type="data" format="fasta" label="Select the reference genome" />
           </when>  <!-- history -->
         </conditional>  <!-- refGenomeSource -->
-
 
         <conditional name="library">
             <param name="type" type="select" label="Is this library paired-end?">
@@ -146,12 +149,21 @@
         <param name="autoclip" type="boolean" truevalue="--autoclip" falsevalue="" checked="false" label="Autoclip unknown 3prime adapter" help="(-Y)"/>
         <param name="hardclip" type="boolean" truevalue="--hardclip" falsevalue="" checked="false" label="Enable hard clipping" help="(-C)"/>
         <param name="order" type="boolean" truevalue="--order" falsevalue="" checked="false" label="Sorts the output by chromsome and position" help="(-O)"/>
-        <param name="splits" type="boolean" truevalue="--hardclip" falsevalue="" checked="false" label="Detect split/spliced reads" help="(--splits)"/>
+        <param name="splits" type="boolean" truevalue="--splits" falsevalue="" checked="false" label="Detect split/spliced reads" help="(--splits)"/>
     </inputs>
-
     <outputs>
         <data format="sam" name="segemehl_out" label="Read alignments on ${on_string}"/>
     </outputs>
+    <tests>
+      <test>
+	<param name="genomeSource" value="history" />
+        <param name="own_reference_genome" value="chr1.fa" />
+	<param name="library" value="single" />
+	<param name="input_query" value="test.fastq" />	
+	<param name="splits" value="true" />
+        <output name="segemehl_out" file="testmap.sam" lines_diff="2" />
+      </test>
+    </tests>
     <help>
 <![CDATA[
 
