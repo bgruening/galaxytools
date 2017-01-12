@@ -1,5 +1,5 @@
-<tool id="infernal_cmsearch" name="Search covariance model(s)" version="@VERSION@.0">
-    <description>against a sequence database (cmsearch)</description>
+<tool id="infernal_cmsearch" name="cmsearch" version="@VERSION@.0">
+    <description>Search covariance model(s) against a sequence database </description>
     <macros>
         <import>macros.xml</import>
     </macros>
@@ -20,13 +20,14 @@
             $bottomonly
             $toponly
             $cyk
+            $acyk
             $notrunc
             $anytrunc
             $nonull3
-            #if $smxsize <> 128
+            #if $smxsize <> 128.0
                 --smxsize $smxsize
             #end if
-            #if $mxsize <> 128
+            #if $mxsize <> 128.0
                 --mxsize $mxsize
             #end if
             --tblout \$temp_tabular_output
@@ -46,13 +47,17 @@
                 -E $reporting_thresholds_opts.E
             #elif str($reporting_thresholds_opts.reporting_thresholds_selector) == "-T":
                 -T $reporting_thresholds_opts.T
-            #end if        
-            #if $bitscore_thresholds
-                $bitscore_thresholds
-            #end if        
-            $acceleration_huristics.acceleration_huristics_selector
-            #if $acceleration_huristics.acceleration_huristics_selector == "--mid"
-                --Fmid $acceleration_huristics.Fmid
+            #end if
+            $model_thresholds.cut_ga
+            $model_thresholds.cut_nc
+            $model_thresholds.cut_tc
+            #if $acceleration_huristics.acceleration_huristics_selector == "FZ"
+                --FZ $$acceleration_huristics.FZ
+            #else
+                $acceleration_huristics.acceleration_huristics_selector
+                #if $acceleration_huristics.acceleration_huristics_selector == "--mid"
+                    --Fmid $acceleration_huristics.Fmid
+                #end if
             #end if
             ## CM file from the history or stored as database on disc
             #if str($cm_opts.cm_opts_selector) == "db":
@@ -95,8 +100,8 @@
 
         <param argument="-g" truevalue="-g" falsevalue="" checked="False" type="boolean"
             label="Turn on the glocal alignment algorithm" help="... global with respect to the query model and local with respect to the target database."/>
-        <param argument="-Z" type="integer" min="1" optional="true" label="Calculate E-values as if the search space size is 'x' megabases (Mb)" help=""/>
-        
+        <param argument="-Z" type="float" min="0" optional="true" label="Calculate E-values as if the search space size is 'x' megabases (Mb)" help=""/>
+
         <param argument="--bottomonly" truevalue="--bottomonly" falsevalue="" checked="False" type="boolean"
             label="Only search the bottom (Crick) strand of target sequences" help="in the sequence database"/>
         <param argument="--toponly" truevalue="--toponly" falsevalue="" checked="False" type="boolean"
@@ -113,11 +118,11 @@
             label="Allow full and truncated hits anywhere within sequences" help=""/>
         <param argument="--nonull3" truevalue="--nonull3" falsevalue="" checked="false" type="boolean"
             label="Turn off the null3 CM score corrections for biased composition" help="This correction is not used during the HMM filter stages."/>
-        <param argument="--mxsize" type="integer" value="128" min="1"
+        <param argument="--mxsize" type="float" value="128.0" min="0.1"
             label="Set the maximum allowable CM DP matrix size to 'x' megabytes" help=""/>
-        <param argument="--smxsize" type="integer" value="128" min="1"
+        <param argument="--smxsize" type="float" value="128.0" min="0.1"
             label="Set the maximum allowable CM search DP matrix size to 'x' megabytes." help=""/>
-            
+
         <!-- accelleration pipeline -->
         <conditional name="acceleration_huristics">
             <param name="acceleration_huristics_selector" type="select" label="Options controlling acceleration heuristics" help="These options are, in order from least strict (slowest but most sensitive) to most strict (fastest but least sensitive)">
@@ -127,6 +132,7 @@
                 <option value="--default" selected="true">Run search space size-dependent pipeline (--default)</option>
                 <option value="--rfam">Use a strict filtering strategy devised for large databases (more than 20 Gb) (--rfam)</option>
                 <option value="--hmmonly">Use HMM only, don't use a CM at all (--hmmonly)</option>
+                <option value="FZ">set filters to defaults used for a search space of size 'x' Mb (--FZ)</option>
             </param>
             <when value="--max">
             </when>
@@ -141,18 +147,23 @@
             </when>
             <when value="--hmmonly">
             </when>
+            <when value="FZ">
+                <param argument="--FZ" type="float" value="" label="Size of search space in Mb"/>
+            </when>
         </conditional>
-        
-        
+
+
 
         <!-- Options for model-specific score thresholding -->
-        <param name="bitscore_thresholds" type="select" label="Bit score thresholds" help="Curated CM databases may define specific bit score thresholds for each CM, superseding any thresholding based on statistical significance alone.">
-            <option value="" selected="true">None</option>
-            <option value="--cut_ga">GA (gathering) bit scores</option>
-            <option value="--cut_nc">NC (noise cutoff) bit score</option>
-            <option value="--cut_tc">TC (trusted cutoff) bit score</option>
-        </param>
 
+        <section name="model_thresholds" title="Options controlling model-specific reporting thresholds" help="Curated CM databases may define specific bit score thresholds for each CM, superseding any thresholding based on statistical significance alone.">
+            <param argument="--cut_ga" truevalue="--cut_ga" falsevalue="" checked="false" type="boolean"
+                label="Use CM's GA gathering cutoffs as reporting thresholds" help="GA thresholds are generally considered to be the reliable curated thresholds defining family membership"/>
+            <param argument="--cut_nc" truevalue="--cut_nc" falsevalue="" checked="false" type="boolean"
+                label="use CM's NC noise cutoffs as reporting thresholds" help="NC thresholds are generally considered to be the score of the highest-scoring known false positive."/>
+            <param argument="--cut_tc" truevalue="--cut_tc" falsevalue="" checked="false" type="boolean"
+                label="use CM's TC trusted cutoffs as reporting thresholds" help="TC thresholds are generally considered to be the score of the lowest-scoring known true positive that is above all known false positives."/>
+        </section>
 
         <!-- Options for inclusion thresholds -->
         <conditional name="inclusion_thresholds_opts">
@@ -226,7 +237,7 @@
         <data format="tabular" name="multiple_alignment_output" label="cmsearch on ${on_string} (multi alignment)">
             <filter>A is True</filter>
         </data>
-        
+
     </outputs>
     <tests>
         <test>
@@ -236,10 +247,10 @@
             </conditional>
             <param name="seqdb" value="cmsearch_input2.fa"/>
             <output name="outfile" file="cmsearch_result.tabular"/>
-                
+
         </test>
     </tests>
-    
+
     <help>
 <![CDATA[
 
@@ -254,7 +265,7 @@ To build CMs from multiple alignments, see cmbuild (build covariance models).
 
 **Input**
 
-The CM query file must have been calibrated for E-values with cmcalibrate. As a special exception, any models CM query files that have zero basepairs need not be calibrated. 
+The CM query file must have been calibrated for E-values with cmcalibrate. As a special exception, any models CM query files that have zero basepairs need not be calibrated.
 
 
 **Options**
@@ -282,27 +293,38 @@ The CM query file must have been calibrated for E-values with cmcalibrate. As a 
 
 **Output Options**
 
-- *reporting thresholds*: Hits are ranked by statistical significance (E-value). By *default*, all hits with an E-value <= 10 are reported. The following options allow you to change the default *E-value* reporting thresholds, or to use *bit score* thresholds instead. 
+- *reporting thresholds*: Hits are ranked by statistical significance (E-value). By *default*, all hits with an E-value <= 10 are reported. The following options allow you to change the default *E-value* reporting thresholds, or to use *bit score* thresholds instead.
 
 
 Output columns:
+
 (1)  rank
+
 (2)  E-value
+
 (3)  score
+
 (4)  bias
+
 (5)  sequence
+
 (6)  start
+
 (7)  end
+
 (8)  mdl
+
 (9)  trunc
+
 (10)  gc
+
 (11)  description
 
 ----   --------- ------ -----  ----------- ------- -------   --- ----- ----  -----------
 
-!   1.3e-18   71.5   0.0  NC_013790.1  362026  361955 -  cm    no 0.50  Methanobrevibacter ruminantium M1 
+!   1.3e-18   71.5   0.0  NC_013790.1  362026  361955 -  cm    no 0.50  Methanobrevibacter ruminantium M1
 
-!   3.3e-18   70.2   0.0  NC_013790.1 2585265 2585193 -  cm    no 0.60  Methanobrevibacter ruminantium M1 
+!   3.3e-18   70.2   0.0  NC_013790.1 2585265 2585193 -  cm    no 0.60  Methanobrevibacter ruminantium M1
 
 
 For further questions please refere to the Infernal `Userguide <http://eddylab.org/infernal/Userguide.pdf>`_.
@@ -310,6 +332,6 @@ For further questions please refere to the Infernal `Userguide <http://eddylab.o
 ]]>
     </help>
     <expand macro="citations" />
-   
-    
+
+
 </tool>
