@@ -1,0 +1,287 @@
+<tool id="infernal_cmscan" name="cmscan" version="@VERSION@.0">
+    <description> Search sequences against collections of covariance models</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="stdio"/>
+    <command>
+<![CDATA[
+    ## a temp file is needed, because the standard tabular output from infernal is not usefull in Galaxy
+    ## it will be converted to a tab delimited file and piped to Galaxy
+    temp_tabular_output=\$(mktemp) &&
+
+    #if str($cm_opts.cm_opts_selector) == "histdb":
+        ln -s '$cm_opts.cmfile' cmdb.cm &&
+    #end if
+
+    tar xvf '$aux_files' &&
+    ln -s `find *.i1f` cmdb.cm.i1f &&
+    ln -s `find *.i1i` cmdb.cm.i1i &&
+    ln -s `find *.i1m` cmdb.cm.i1m &&
+    ln -s `find *.i1p` cmdb.cm.i1p &&
+
+    cmscan
+        --cpu "\${GALAXY_SLOTS:-2}"
+        --tblout '\$temp_tabular_output'
+        -o /dev/null
+        $g
+        #if $Z
+            -Z $Z
+        #end if
+        $verbose
+        $other_opts.notrunc
+        $other_opts.anytrunc
+        $other_opts.nonull3
+        #if $other_opts.smxsize <> 128.0
+            --smxsize $other_opts.smxsize
+        #end if
+        #if $other_opts.mxsize <> 128.0
+            --mxsize $other_opts.mxsize
+        #end if
+        $other_opts.cyk
+        $other_opts.acyk
+        $other_opts.bottomonly
+        $other_opts.toponly
+        #if str($inclusion_thresholds_opts.inclusion_thresholds_selector) == "--incE":
+            --incE $inclusion_thresholds_opts.incE
+        #elif str($inclusion_thresholds_opts.inclusion_thresholds_selector) == "--incT":
+            --incT $inclusion_thresholds_opts.incT
+        #end if
+        #if str($reporting_thresholds_opts.reporting_thresholds_selector) == "-E":
+            -E $reporting_thresholds_opts.E
+        #elif str($reporting_thresholds_opts.reporting_thresholds_selector) == "-T":
+            -T $reporting_thresholds_opts.T
+        #end if
+        $model_thresholds.cut_ga
+        $model_thresholds.cut_nc
+        $model_thresholds.cut_tc
+        #if $acceleration_huristics.acceleration_huristics_selector == "FZ"
+            --FZ $$acceleration_huristics.FZ
+        #else
+            $acceleration_huristics.acceleration_huristics_selector
+            #if $acceleration_huristics.acceleration_huristics_selector == "--mid"
+                --Fmid $acceleration_huristics.Fmid
+            #end if
+        #end if
+        ## CM file from the history or stored as database on disc
+        #if str($cm_opts.cm_opts_selector) == "db":
+            '$cm_opts.database.fields.path'
+        #else:
+            ##'$cm_opts.cmfile'
+            cmdb.cm
+        #end if
+        ## sequence file
+        '$seqdb'
+        &&
+        sed 's/ \+ /\t/g' '\$temp_tabular_output' > '$outfile'
+
+]]>
+    </command>
+    <inputs>
+        <param name="seqdb" type="data" format="fasta" label="Sequence database &lt;seqfile&gt;"/>
+
+        <conditional name="cm_opts">
+            <param name="cm_opts_selector" type="select" label="Subject covariance models &lt;cmdb&gt; ">
+                <option value="db" >Locally installed covariance models</option>
+                <option value="histdb" selected="True">Covariance model from your history</option>
+            </param>
+            <when value="db">
+                <param name="database" type="select" label="Covariance models">
+                    <options from_file="infernal.loc">
+                        <column name="value" index="0"/>
+                        <column name="name" index="1"/>
+                        <column name="path" index="2"/>
+                    </options>
+                </param>
+            </when>
+            <when value="histdb">
+                <param name="cmfile" type="data" format="cm" label="Covariance models file from the history."/>
+            </when>
+        </conditional>
+        <param name="aux_files" type="data" format="tar" label="Auxillury files" help="A tar file contains the four auxillury files suffixed .i1{fimp}. These files are generated after pressing the cm files using cmpress"/>
+
+        <param argument="-g" truevalue="-g" falsevalue="" checked="False" type="boolean"
+            label="Turn on the glocal alignment algorithm" help="... global with respect to the query model and local with respect to the target database."/>
+        <param argument="-Z" type="float" optional="true" min="0" label="Search space size in *Mb* for E-value calculations" help="Without the use of this option, the search space size changes for each query sequence"/>
+        <param argument="--verbose" truevalue="--verbose" falsevalue="" checked="False" type="boolean"
+            label="Be verbose" help="report extra information; mainly useful for debugging"/>
+
+
+
+        <!-- Options for inclusion thresholds -->
+        <conditional name="inclusion_thresholds_opts">
+            <param name="inclusion_thresholds_selector" type="select" label="Inclusion thresholds"
+            help="Inclusion thresholds are stricter than reporting thresholds. Inclusion thresholds control which hits are considered to be reliable enough to be included in an output alignment or in a possible subsequent search round, or marked as significant (”!”) as opposed to questionable (”?”) in hit output.">
+                <option value="" selected="true">default</option>
+                <option value="--incE">Use E-value</option>
+                <option value="--incT">Use bit score</option>
+            </param>
+            <when value=""/>
+            <when value="--incE">
+                <param name="incE" type="float" value="0.01" label="Use E-value" help="of &lt;= X as the hit inclusion threshold.">
+                    <sanitizer>
+                        <valid initial="string.printable">
+                            <remove value="&apos;"/>
+                        </valid>
+                    </sanitizer>
+                </param>
+            </when>
+            <when value="--incT">
+                <param name="incT" type="integer" value="0" label="Use bit score" help="of >= X as the hit inclusion threshold.">
+                    <sanitizer>
+                        <valid initial="string.printable">
+                            <remove value="&apos;"/>
+                        </valid>
+                    </sanitizer>
+                </param>
+            </when>
+        </conditional>
+
+        <!-- Options controlling reporting thresholds -->
+
+        <conditional name="reporting_thresholds_opts">
+            <param name="reporting_thresholds_selector" type="select" label="reporting thresholds"
+            help="Reporting thresholds control which hits are reported in output files">
+                <option value="" selected="true">default</option>
+                <option value="-E">Use E-value</option>
+                <option value="-T">Use bit score</option>
+            </param>
+            <when value=""/>
+            <when value="-E">
+                <param name="E" type="float" value="10.0" label="Use E-value" help="of &lt;= X as the hit reporting threshold. The default is 10.0, meaning that on average, about 10 false positives will be reported per query, so you can see the top of the noise and decide for yourself if it’s really noise.">
+                    <sanitizer>
+                        <valid initial="string.printable">
+                            <remove value="&apos;"/>
+                        </valid>
+                    </sanitizer>
+                </param>
+            </when>
+            <when value="-T">
+                <param name="T" type="integer" value="0" label="Use bit score" help="of >= X as the hit reporting threshold.">
+                    <sanitizer>
+                        <valid initial="string.printable">
+                            <remove value="&apos;"/>
+                        </valid>
+                    </sanitizer>
+                </param>
+            </when>
+        </conditional>
+
+        <section name="model_thresholds" title="Options controlling model-specific reporting thresholds" help="Curated CM databases may define specific bit score thresholds for each CM, superseding any thresholding based on statistical significance alone.">
+            <param argument="--cut_ga" truevalue="--cut_ga" falsevalue="" checked="false" type="boolean"
+                label="Use CM's GA gathering cutoffs as reporting thresholds" help="GA thresholds are generally considered to be the reliable curated thresholds defining family membership"/>
+            <param argument="--cut_nc" truevalue="--cut_nc" falsevalue="" checked="false" type="boolean"
+                label="use CM's NC noise cutoffs as reporting thresholds" help="NC thresholds are generally considered to be the score of the highest-scoring known false positive."/>
+            <param argument="--cut_tc" truevalue="--cut_tc" falsevalue="" checked="false" type="boolean"
+                label="use CM's TC trusted cutoffs as reporting thresholds" help="TC thresholds are generally considered to be the score of the lowest-scoring known true positive that is above all known false positives."/>
+        </section>
+
+        <conditional name="acceleration_huristics">
+            <param name="acceleration_huristics_selector" type="select" label="Options controlling acceleration heuristics" help="These options are, in order from least strict (slowest but most sensitive) to most strict (fastest but least sensitive)">
+                <option value="--max">Turn all heuristic filters off (--max)</option>
+                <option value="--nohmm">Skip all HMM filter stages, use only CM (--nohmm)</option>
+                <option value="--mid">Skip first two HMM filter stages (SSV and Vit) (--mid)</option>
+                <option value="--default" selected="true">Run search space size-dependent pipeline (--default)</option>
+                <option value="--rfam">Use a strict filtering strategy devised for large databases (more than 20 Gb) (--rfam)</option>
+                <option value="--hmmonly">Use HMM only, don't use a CM at all (--hmmonly)</option>
+                <option value="FZ">set filters to defaults used for a search space of size 'x' Mb (--FZ)</option>
+            </param>
+            <when value="--max">
+            </when>
+            <when value="--nohmm">
+            </when>
+            <when value="--mid">
+                    <param argument="--Fmid" type="float" value="0.02" label="P-value threshold for HMM stages"/>
+            </when>
+            <when value="--default">
+            </when>
+            <when value="--rfam">
+            </when>
+            <when value="--hmmonly">
+            </when>
+            <when value="FZ">
+                <param argument="--FZ" type="float" value="125" label="Size of search space in Mb"/>
+            </when>
+        </conditional>
+
+        <section name="other_opts" title="Other options">
+            <param argument="--notrunc" truevalue="--notrunc" falsevalue="" checked="False" type="boolean"
+                label="Skip truncated hit detection" help=""/>
+            <param argument="--anytrunc" truevalue="--anytrunc" falsevalue="" checked="false" type="boolean"
+                label="Allow full and truncated hits anywhere within sequences" help=""/>
+            <param argument="--nonull3" truevalue="--nonull3" falsevalue="" checked="false" type="boolean"
+                label="Turn off the null3 CM score corrections for biased composition" help="This correction is not used during the HMM filter stages."/>
+            <param argument="--mxsize" type="float" value="128.0" min="0.1"
+                label="Set the maximum allowable CM DP matrix size to 'x' megabytes" help=""/>
+            <param argument="--smxsize" type="float" value="128.0" min="0.1"
+                label="Set the maximum allowable CM search DP matrix size to 'x' megabytes." help=""/>
+            <param argument="--cyk" truevalue="--cyk" falsevalue="" checked="False" type="boolean"
+                label="Use the CYK algorithm, not Inside, to determine the final score of all hits" help=""/>
+            <param argument="--acyk" truevalue="--cyk" falsevalue="" checked="False" type="boolean"
+                label="Use the CYK algorithm to align hits" help="By default, the Durbin/Holmes optimal accuracy algorithm is used, which finds the alignment that maximizes the expected accuracy of all aligned residues."/>
+            <param argument="--bottomonly" truevalue="--bottomonly" falsevalue="" checked="False" type="boolean"
+                label="Only search the bottom (Crick) strand of target sequences" help="in the sequence database"/>
+            <param argument="--toponly" truevalue="--toponly" falsevalue="" checked="False" type="boolean"
+                label="Only search the top (Watson) strand of target sequences" help="in the sequence database"/>
+
+        </section>
+
+
+
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile" label="cmscan on ${on_string}"/>
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="cm_opts">
+                <param name="cm_opts_selector" value="histdb"/>
+                <param name="cmfile" value="minifam.cm" />
+            </conditional>
+            <param name="aux_files" value="minifam.tar" ftype="tar"/>
+            <param name="seqdb" value="metag-example.fa"/>
+            <output name="outfile">
+                <assert_contents>
+                    <has_text text="AAGA01015927.1"/>
+                </assert_contents>
+            </output>
+        </test>
+
+    </tests>
+    <help>
+<![CDATA[
+
+
+**What it does**
+
+cmscan is used to search sequences against collections of covariance models.
+For each sequence in <seqfile>, use that query sequence to search the target database of CMs in <cmdb>,
+and output ranked lists of the CMs with the most significant matches to the sequence
+
+**Input format**
+
+The <seqfile> may contain more than one query sequence. It can be in FASTA format, or several other common
+sequence file formats (genbank, embl, and among others), or in alignment file formats (stockholm, aligned fasta, and
+others).
+
+The <cmdb> needs to be press’ed using cmpress before it can be searched with cmscan. This creates four binary
+files, suffixed .i1{fimp}. Additionally, <cmdb> must have been calibrated for E-values with cmcalibrate before being
+press’ed with cmpress.
+
+NOTE: Please provid a tar file that contains the .cm file in addition to the four binary files, suffixed .i1{fimp},
+and specify the file type as "tar" before uploading the file. Otherwise Galaxy will not read the binary files properly.
+
+**Output format**
+
+The output format is designed to be human-readable.
+
+For further questions please refere to the Infernal `Userguide <http://eddylab.org/infernal/Userguide.pdf>`_.
+
+
+]]>
+    </help>
+
+    <expand macro="citations" />
+
+</tool>
