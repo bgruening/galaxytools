@@ -30,6 +30,8 @@ Generating OpenMS wrappers
     ```bash
     for binary in `ls`; do ./$binary -write_ctd /PATH/TO/YOUR/CTD; done;
     ```
+    
+ * `MetaProSIP.ctd` includes a not supported character: To use it, search for `²` and replace it (e.g. with `^2`).
 
  * clone or install CTDopts
 
@@ -43,25 +45,27 @@ Generating OpenMS wrappers
     export PYTHONPATH=/home/user/CTDopts/
     ```
 
- * clone or install GalaxyConfigGenerator
+ * clone or install CTD2Galaxy
 
     ```bash
-    git clone https://github.com/TorHou/GalaxyConfigGenerator.git
+    git clone https://github.com/blankclemens/CTD2Galaxy.git
     ```
     
- * If you have CTDopts and GalaxyConfigGenerator installed you are ready to generate Galaxy Tools from CTD definitions
+ * If you have CTDopts and CTD2Galaxy installed you are ready to generate Galaxy Tools from CTD definitions. Change the following command according to your needs, especially the `/PATH/TO` parts. 
 
     ```bash
-    python ./galaxyconfiggenerator/generator.py \ 
+    python generator.py \ 
     -i /PATH/TO/YOUR/CTD/*.ctd \
-    -o ./wrappers -t tool.conf \
+    -o ./PATH/TO/YOUR/WRAPPERS/ -t tool.conf \
     -d OpenMS -g openms \
     -b version log debug test no_progress threads \
      in_type executable myrimatch_executable \
      fido_executable fidocp_executable \
      omssa_executable pepnovo_executable \
-     xtandem_executable \
-    -f filetypes.txt
+     xtandem_executable param_model_directory \
+     java_executable java_memory java_permgen \
+    -f /PATH/TO/filetypes.txt -m /PATH/TO/macros.xml \
+    -s PATH/TO/SKIP_TOOLS_FILES.txt
     ```
 
 
@@ -76,8 +80,41 @@ Generating OpenMS wrappers
     sed -i '13 a\-pepnovo_executable pepnovo' wrappers/PepNovoAdapter.xml
     sed -i '13 a\-xtandem_executable xtandem' wrappers/XTandemAdapter.xml
     ```
+    
+ * For some tools, additional work has to be done. In `MSGFPlusAdapter.xml` the following is needed in the command section at the beginning (check your file to know what to copy where):
+ 
+   ```
+    <command><![CDATA[
 
- * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in Galaxy-stable:
+    ## check input file type
+    #set $in_type = $param_in.ext
+
+    ## create the symlinks to set the proper file extension, since msgf uses them to choose how to handle the input files
+    ln -s '$param_in' 'param_in.${in_type}' &&
+    ln -s '$param_database' param_database.fasta &&
+    ## find location of the MSGFPlus.jar file of the msgf_plus conda package
+    MSGF_JAR=\$(msgf_plus -get_jar_path) &&
+
+    MSGFPlusAdapter
+    -executable \$MSGF_JAR
+    #if $param_in:
+      -in 'param_in.${in_type}'
+    #end if
+    #if $param_out:
+      -out $param_out
+    #end if
+    #if $param_mzid_out:
+      -mzid_out $param_mzid_out
+    #end if
+    #if $param_database:
+      -database param_database.fasta
+    #end if
+    
+    [...]
+    ]]>
+    ```
+
+ * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in Galaxy-stable and are therefore in `SKIP_TOOLS_FILES.txt`:
     * SeedListGenerator
     * SpecLibSearcher
     * MapAlignerIdentification
@@ -85,6 +122,10 @@ Generating OpenMS wrappers
     * MapAlignerSpectrum
     * MapAlignerRTTransformer
     
+ * Additionally cause of lacking dependencies, the following adapters have been removed in `SKIP_TOOLS_FILES.txt` as well:
+    * OMSSAAdapter
+    * MyrimatchAdapter
+
 
 Licence (MIT)
 =============
