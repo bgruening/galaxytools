@@ -57,7 +57,7 @@ Generating OpenMS wrappers
     python generator.py \ 
     -i /PATH/TO/YOUR/CTD/*.ctd \
     -o ./PATH/TO/YOUR/WRAPPERS/ -t tool.conf \
-    -d OpenMS -g openms \
+    -d datatypes_conf.xml -g openms \
     -b version log debug test no_progress threads \
      in_type executable myrimatch_executable \
      fido_executable fidocp_executable \
