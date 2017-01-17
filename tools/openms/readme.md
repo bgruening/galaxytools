@@ -57,7 +57,7 @@ Generating OpenMS wrappers
     python generator.py \ 
     -i /PATH/TO/YOUR/CTD/*.ctd \
     -o ./PATH/TO/YOUR/WRAPPERS/ -t tool.conf \
-    -d OpenMS -g openms \
+    -d datatypes_conf.xml -g openms \
     -b version log debug test no_progress threads \
      in_type executable myrimatch_executable \
      fido_executable fidocp_executable \
@@ -74,7 +74,6 @@ Generating OpenMS wrappers
     ```
     sed -i '13 a\-fido_executable fido' wrappers/FidoAdapter.xml
     sed -i '13 a\-fidocp_executable fido_choose_parameters' wrappers/FidoAdapter.xml
-    sed -i '13 a\-executable msgfplus.jar' wrappers/MSGFPlusAdapter.xml
     sed -i '13 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
     sed -i '13 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
     sed -i '13 a\-pepnovo_executable pepnovo' wrappers/PepNovoAdapter.xml
