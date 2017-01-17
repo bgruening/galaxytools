@@ -74,7 +74,6 @@ Generating OpenMS wrappers
     ```
     sed -i '13 a\-fido_executable fido' wrappers/FidoAdapter.xml
     sed -i '13 a\-fidocp_executable fido_choose_parameters' wrappers/FidoAdapter.xml
-    sed -i '13 a\-executable msgfplus.jar' wrappers/MSGFPlusAdapter.xml
     sed -i '13 a\-myrimatch_executable myrimatch' wrappers/MyriMatchAdapter.xml
     sed -i '13 a\-omssa_executable omssa' wrappers/OMSSAAdapter.xml
     sed -i '13 a\-pepnovo_executable pepnovo' wrappers/PepNovoAdapter.xml
