@@ -112,6 +112,14 @@ Generating OpenMS wrappers
     [...]
     ]]>
     ```
+ * In `PeakPickerHiRes.xml`, the parameter `report_FWHM_unit` has to be put in quotation marks. Look for the following line
+ 
+        -algorithm:report_FWHM_unit $param_algorithm_report_FWHM_unit
+     
+   and change it to
+   
+        -algorithm:report_FWHM_unit "$param_algorithm_report_FWHM_unit"
+
 
  * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in Galaxy-stable and are therefore in `SKIP_TOOLS_FILES.txt`:
     * SeedListGenerator
