@@ -1,5 +1,4 @@
 import glob
-import os
 from os import system
 import re
 from sklearn import metrics
@@ -71,10 +70,4 @@ with open("RESULTS/evaluation.txt", "w") as fOut:
     fOut.write(toWrite)
 
 
-make_archive('RESULTS', 'zip', 'RESULTS')
-statinfo = os.stat('RESULTS.zip')
-print ("size of zip = ")
-print (statinfo.st_size)
-
-
-
+make_archive('RESULTS', 'zip', root_dir='RESULTS')
