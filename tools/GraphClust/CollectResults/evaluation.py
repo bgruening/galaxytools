@@ -70,4 +70,4 @@ with open("RESULTS/evaluation.txt", "w") as fOut:
     fOut.write(toWrite)
 
 
-make_archive('RESULTS', 'zip', root_dir='RESULTS')
+make_archive('RESULTS', 'zip', 'RESULTS')
