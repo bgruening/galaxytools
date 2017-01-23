@@ -120,6 +120,9 @@ Generating OpenMS wrappers
    
         -algorithm:report_FWHM_unit "$param_algorithm_report_FWHM_unit"
 
+ * In `FileConverter.xml` add `auto_format="true"` to the output, e.g.:
+ 
+        <data name="param_out" metadata_source="param_in" auto_format="true"/>
 
  * These tools have multiple outputs (number of inputs = number of outputs) which is not yet supported in Galaxy-stable and are therefore in `SKIP_TOOLS_FILES.txt`:
     * SeedListGenerator
