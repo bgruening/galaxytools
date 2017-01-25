@@ -2,6 +2,7 @@ import glob
 from os import system
 import re
 from sklearn import metrics
+from shutil import make_archive
 
 def sh(script):
     system("bash -c '%s'" % script)
@@ -67,3 +68,6 @@ else:
 
 with open("RESULTS/evaluation.txt", "w") as fOut:
     fOut.write(toWrite)
+
+
+make_archive('RESULTS', 'zip', root_dir='RESULTS')

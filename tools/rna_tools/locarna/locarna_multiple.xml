@@ -1,6 +1,6 @@
-<tool id="locarna_multiple" name="LocARNA Multiple Aligner (mlocarna)" version="@VERSION@.0">
+<tool id="locarna_multiple" name="LocARNA Multiple Aligner" version="@VERSION@.1">
     <description>
-        Multiple Alignment and Folding of RNAs
+        Multiple Alignment and Folding of RNAs (mlocarna)
     </description>
 
     <macros>
@@ -25,12 +25,12 @@
     --width 60
     
     ## -------------------- alignment mode and specific options
-
+    #
     #if str($alignment_mode.alignment_mode_selector) == "global_locarna"
         $alignment_mode.free_endgaps
-    #else if str($alignment_mode.alignment_mode_selector) == "local_locarna"
+    #elif str($alignment_mode.alignment_mode_selector) == "local_locarna"
         --sequ-local on
-    #else if str($alignment_mode.alignment_mode_selector) == "probabilistic"
+    #elif str($alignment_mode.alignment_mode_selector) == "probabilistic"
         --probabilistic
         $alignment_mode.consistency_transformation
         
@@ -38,67 +38,32 @@
             --iterate
             --iterations $alignment_mode.iterations
         #end if
-    #else if str($alignment_mode.alignment_mode_selector) == "sparse"
+    #elif str($alignment_mode.alignment_mode_selector) == "sparse"
         --sparse
     #end if
     
-    ## -------------------- scoring parameters
-    
-    --indel $Scoring.indel
-    --indel-opening $Scoring.indel_opening
-    --struct-weight $Scoring.struct_weight
-    --tau $Scoring.tau
-    
-    #if str($Scoring.sequence_score.sequence_score_selector) == "match"
-        --match $Scoring.sequence_score.match
-        --mismatch $Scoring.sequence_score.mismatch
-    #else if str($Scoring.sequence_score.sequence_score_selector) == "ribosum"
-        --use-ribosum true
-    #else if str($Scoring.sequence_score.sequence_score_selector) == "ribofit"
-        --ribofit true
-    #end if
+    @SCORING_ARGS@
 
-    ## -------------------- folding parameters
-
+    @FOLDING_ARGS@
     #if $Folding.plfold_span>=0
         --plfold-span $Folding.plfold_span
         --plfold-winsize $Folding.plfold_winsize
     #end if
-    
-    #if float($Folding.rnafold_temperature) != 37.0
-        --rnafold-temperature $Folding.rnafold_temperature
-    #end if
-
     $Folding.alifold_consensus_dp
 
-    ## -------------------- heuristic parameters
+    @HEURISTIC_ARGS@
+
+    #if str($alignment_mode.alignment_mode_selector) == "sparse"
+        --pw-aligner-options " @HEURISTIC_SPARSE_ARGS@ "
+    #end if
+
     
-    -p $Heuristics.min_prob
-    --max-diff-am $Heuristics.max_diff_am
-    --max-diff $Heuristics.max_diff
-    --max-diff-at-am $Heuristics.max_diff_at_am
-    --max-bps-length-ratio $Heuristics.max_bps_length_ratio
-    
-
-    ## -------------------- other parameters
-
-    #if str($Constraint.bed_anchors.bed_anchors_selector) == "yes"
-        --anchor-constraints $Constraint.bed_anchors.bed_anchors_file
+    @CONSTRAINT_ARGS@
+    #if str($Constraints.bed_anchors.bed_anchors_selector) == "yes"
+        --anchor-constraints $Constraints.bed_anchors.bed_anchors_file
     #end if
 
-    $Constraint.lonely_pairs
-
-    #if $Constraint.maxBPspan != -1
-        --maxBPspan $Constraint.maxBPspan
-    #end if
-
-    $Constraint.ignore_constraints
-
-    $stdout_verbosity
-
-    #if str($stdout_verbosity) != "--quiet":
-        > '$stdout'
-    #end if
+    @STDOUT_ARGS@
 
     #if 'clustal_strict' in str($outputs).split(",")
         && grep -v '^#' mlocarna_results/results/result.aln > mlocarna_results/results/result.strict-aln
@@ -132,7 +97,7 @@
                 (LocARNA)</option>
                 <option value="local_locarna">Local alignment (LocARNA)</option>
                 <option value="probabilistic">Probabilistic alignment (LocARNA-P)</option>
-                <option value="sparse">Global alignment (SPARSE)</option>
+                <option value="sparse">Global fast alignment (SPARSE)</option>
             </param>
             <when value="global_locarna">
                 <param name="free_endgaps" type="select" label="Free endgaps"
@@ -159,7 +124,12 @@
                        value="1" label="Number of refinement iterations"
                        help="--iterations num" />
             </when>
-            <when value="sparse" />
+            <when value="sparse">
+                <section name="HeuristicsSparse" title="Heuristic parameters for SPARSE">
+                    <expand macro="common_heuristic_parameters_sparse" />
+                </section>
+            </when>
+
         </conditional>
         
         <param name="outputs" type="select" display="checkboxes" multiple="True" 
@@ -196,22 +166,25 @@
 
         <section name="Heuristics" title="Heuristic parameters">
             <expand macro="common_heuristic_parameters" />
+            <expand macro="max_diff_parameters_aln" />
         </section>
 
-        <section name="Constraint" title="Constraint parameters">
+        <section name="Constraints" title="Constraint parameters">
             <expand macro="bed_anchors" />
-            <expand macro="constraints" />
+            <expand macro="common_constraint_parameters" />
         </section>
     </inputs>
     
     <outputs>
-        <expand macro="common_outputs" />
+        <expand macro="mlocarna_outputs" />
     </outputs>
     
     <tests>
         <test>
             <param name="input_data" value="archaea.fa" />
             <param name="stdout_verbosity" value="" />
+            <param name="max_diff_mode_selector" value="max-diff" />
+            <param name="max_diff" value="20" />
             <output name="stdout" file="archaea-default.stdout" />
         </test>
         <test>
@@ -225,6 +198,15 @@
             <param name="outputs" value="clustal" />
             <param name="alignment_mode_selector" value="probabilistic" />
             <output name="clustal" file="archaea-probabilistic.aln" />
+        </test>
+        <test>
+            <param name="input_data" value="archaea.fa" />
+            <param name="stdout_verbosity" value="" />
+            <param name="outputs" value="clustal" />
+            <param name="max_diff_mode_selector" value="max-diff-aln" />
+            <param name="max_diff_aln" value="archaea-ref.aln" />
+            <param name="max_diff" value="2" />
+            <output name="clustal" file="archaea-ref_result.aln" />
         </test>
     </tests>
 
