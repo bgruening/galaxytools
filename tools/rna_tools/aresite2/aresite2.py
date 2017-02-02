@@ -1,13 +1,11 @@
 # A simple tool to connect to the AREsite server and retrieve feature
 # information using the AREsite REST Interface.
 # Parts of this code are from https://toolshed.g2.bx.psu.edu/repos/earlhaminst/ensembl_get_feature_info
-from __future__ import print_function
-
 import json
 import optparse
 import sys
-import urllib
-import urllib2
+import urllib.request, urllib.parse, urllib.error
+import urllib.request, urllib.error, urllib.parse
 import time
 import requests
 from six.moves.urllib.parse import urljoin
@@ -42,7 +40,7 @@ class AREsiteRestClient(object):
             hdrs['Content-Type'] = 'application/json'
 
         if params:
-            endpoint += '?' + urllib.urlencode(params)
+            endpoint += '?' + urllib.parse.urlencode(params)
 
         data = None
 
@@ -55,14 +53,14 @@ class AREsiteRestClient(object):
             self.req_count = 0
 
         try:
-            request = urllib2.Request(self.server + endpoint, headers=hdrs)
-            response = urllib2.urlopen(request)
-            content = response.read()
+            request = urllib.request.Request(self.server + endpoint, headers=hdrs)
+            response = urllib.request.urlopen(request)
+            content = response.read().decode('utf-8')
             if content:
                 data = json.loads(content)
             self.req_count += 1
 
-        except urllib2.HTTPError, e:
+        except urllib2.HTTPError as e:
             # check if we are being rate limited by the server
             if e.code == 429:
                 if 'Retry-After' in e.headers:
@@ -107,11 +105,7 @@ def run(species, gene, motifs):
 
         aresite = sorted(aresite, key=getKey)
         
-#        outfile = 'AREsite2_Rest_{0}_{1}_{2}.bed'.format(motifs,gene,species)       
-#        f = open(outfile, 'w')
-        
         for i in range(len(aresite)):
-            #            f.write("\t".join(aresite[i])+"\n")
             print ("\t".join(aresite[i])+"\n")
                 
             
