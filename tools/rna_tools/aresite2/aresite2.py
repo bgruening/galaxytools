@@ -105,8 +105,8 @@ def run(species, gene, motifs):
 
         aresite = sorted(aresite, key=getKey)
         
-        for i in range(len(aresite)):
-            print ("\t".join(aresite[i]))
+        for site in aresite:
+            print("\t".join(site))
                 
             
 if __name__ == '__main__':
