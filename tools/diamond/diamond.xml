@@ -1,8 +1,11 @@
-<tool id="bg_diamond" name="Diamond" version="0.1.6.0">
+<tool id="bg_diamond" name="Diamond" version="@VERSION@">
     <description>alignment tool for short sequences against a protein database</description>
-    <requirements>
-        <requirement type="package" version="0.6.13">diamond</requirement>
-    </requirements>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
+    <expand macro="version_command" />
     <command>
 <![CDATA[
 
@@ -15,41 +18,57 @@
     &&
 
     diamond
-        $method.method_select
+        $method_select
         --threads "\${GALAXY_SLOTS:-12}"
         --db ./database
-        --query $query
-        --out $blast_output
-        ##--sam $sam_output
-        --compress 0
-        --tmpdir ./
+        --query '$query'
+        --query-gencode '$query_gencode'
+
+        #if $output.outfmt == "5"
+            --outfmt '5'
+            --out '$blast_xml'
+            $output.salltitles
+        #else if $output.outfmt == "6"
+            --outfmt '6' #echo ' '.join(str($output.fields).split(','))
+            --out '$blast_tabular'
+        #else if $output.outfmt == "101"
+            --outfmt '101'
+            --out '$sam_output'
+            $output.salltitles
+        #end if
+
+        --compress '0'
+        $sensitive
+        $more_sensitive
+        --gapopen '$gapopen'
+        --gapextend '$gapextend'
+        --matrix '$matrix'
+        --seg '$seg'
 
         #if str($hit_filter.hit_filter_select) == 'max':
-            --max-target-seqs $hit_filter.max
+            --max-target-seqs '$hit_filter.max_target_seqs'
         #else:
-            --top $hit_filter.percentage
+            --top '$hit_filter.top'
         #end if
 
         #if str($filter_score.filter_score_select) == 'evalue':
-            --evalue $filter_score.evalue
+            --evalue '$filter_score.evalue'
         #else:
-            --evalue $filter_score.bitscore
+            --min-score '$filter_score.min_score'
         #end if
 
-        --id $identity
-        $sensitive
-        --gapopen $method.gapopen
-        --gapextend $method.gapextend
-        --matrix $matrix
-        $seg
-        $salltitles
-
+        --id '$id'
+        --query-cover '$query_cover'
+        --block-size '$block_size'
 ]]>
     </command>
+
     <inputs>
-
-        <param name="query" type="data" format="fasta" label="Input query file in FASTA format" />
-
+        <param name="method_select" type="select" label="What do you want to align?" help="(--blastp/--blastx)">
+            <option value="blastp">Align amino acid query sequences (blastp)</option>
+            <option value="blastx">Align DNA query sequences (blastx)</option>
+        </param>
+        <param argument="--query" type="data" format="fasta,fastq" label="Input query file in FASTA or FASTQ format" />
         <conditional name="ref_db_source">
           <param name="db_source" type="select" label="Will you select a reference genome from your history or use a built-in index?" help="Built-ins were indexed using default options">
             <option value="indexed">Use a built-in index</option>
@@ -62,85 +81,157 @@
                 <validator type="no_options" message="No indexes are available for the selected input dataset"/>
               </options>
             </param>
-          </when>  <!-- build-in -->
+          </when>
           <when value="history">
-            <param name="reference_database" type="data" format="diamond_database" label="Select the reference database" />
-          </when>  <!-- history -->
+            <param name="reference_database" type="data" format="dmnd" label="Select the reference database" />
+          </when>
         </conditional>
-
-        <conditional name="method">
-            <param name="method_select" type="select" label="What do you want to align" help="(--blastp/--blastx)">
-                <option value="blastp">Align amino acid query sequences (blastp)</option>
-                <option value="blastx">Align DNA query sequences (blastx)</option>
-            </param>
-            <when value="blastp">
-                <param name="gapopen" type="integer" value="11" label="Gap open panalty" help="(--gapopen)" />
-                <param name="gapextend" type="integer" value="1" label="Gap extend panalty" help="(--gapextend)" />
-            </when>
-            <when value="blastx">
-                <param name="gapopen" type="integer" value="-1" label="Gap open panalty" help="(--gapopen)" />
-                <param name="gapextend" type="integer" value="-1" label="Gap extend panalty" help="(--gapextend)" />
-            </when>
-        </conditional>
-
-        <param name="matrix" type="select" label="Select scoring matrix" help="(--matrix)">
-            <option value="BLOSUM45">BLOSUM45</option>
-            <option value="BLOSUM50">BLOSUM50</option>
-            <option value="BLOSUM62" selected="True">BLOSUM62</option>
-            <option value="BLOSUM80">BLOSUM80</option>
-            <option value="BLOSUM90">BLOSUM90</option>
-            <option value="PAM250">PAM250</option>
-            <option value="PAM70">PAM70</option>
-            <option value="PAM30">PAM30</option>
+        <param name="query_gencode" argument="--query-gencode" type="select" label="Genetic code used for translation of query in BLASTX mode" help="">
+            <option value="1">The Standard Code</option>
+            <option value="2">The Vertebrate Mitochondrial Code</option>
+            <option value="3">The Yeast Mitochondrial Code</option>
+            <option value="4">The Mold, Protozoan, and Coelenterate Mitochondrial Code and the Mycoplasma/Spiroplasma Code</option>
+            <option value="5">The Invertebrate Mitochondrial Code</option>
+            <option value="6">The Ciliate, Dasycladacean and Hexamita Nuclear Code</option>
+            <option value="9">The Echinoderm and Flatworm Mitochondrial Code</option>
+            <option value="10">The Euplotid Nuclear Code</option>
+            <option value="11">The Bacterial, Archaeal and Plant Plastid Code</option>
+            <option value="12">The Alternative Yeast Nuclear Code</option>
+            <option value="13">The Ascidian Mitochondrial Code</option>
+            <option value="14">The Alternative Flatworm Mitochondrial Code</option>
+            <option value="16">Chlorophycean Mitochondrial Code</option>
+            <option value="21">Trematode Mitochondrial Code</option>
+            <option value="22">Scenedesmus obliquus Mitochondrial Code</option>
+            <option value="23">Thraustochytrium Mitochondrial Code</option>
+            <option value="24">Pterobranchia Mitochondrial Code</option>
+            <option value="5">Candidate Division SR1 and Gracilibacteria Code</option>
+            <option value="26">Pachysolen tannophilus Nuclear Code</option>
         </param>
-
-        <conditional name="filter_score">
-            <param name="filter_score_select" type="select" label="Filter by score" help="(--evalue/--min-score)">
-                <option value="evalue">Maximum e-value to report alignments</option>
-                <option value="bit">Minimum bit score to report alignments</option>
+        <conditional name="output">
+            <param argument="--outfmt" type="select" label="Format of output file " help="">
+                <option value="5">BLAST XML</option>
+                <option value="6">BLAST tabular</option>
+                <option value="101">SAM</option>
             </param>
-            <when value="evalue">
-                <param name="evalue" type="float" value="0.001" label="Filter by evalue" help="(--evalue)" />
+            <when value="5">
+                <param argument="--salltitles" type="boolean" truevalue="--salltitles" falsevalue="" checked="true" label="Include full length subject titles in output?" help=""/>
             </when>
-            <when value="bit">
-                <param name="bitscore" type="integer" value="0" label="Filter by bit score" help="(--min-score)" />
+            <when value="6">
+                <param name="fields" type="select" label="Tabular fields" help="" multiple="true">
+                    <option value="qseqid" selected="true">Query Seq - id</option>
+                    <option value="sseqid" selected="true">Subject Seq - id</option>
+                    <option value="sallseqid">All subject Seq - id(s)</option>
+                    <option value="qlen">Query sequence length</option>
+                    <option value="slen">Subject sequence length</option>
+                    <option value="pident" selected="true">Percentage of identical matches</option>
+                    <option value="length" selected="true">Alignment length</option>
+                    <option value="nident">Number of identical matches</option>
+                    <option value="mismatch" selected="true">Number of mismatches</option>
+                    <option value="positive">Number of positive - scoring matches</option>
+                    <option value="gapopen" selected="true">Number of gap openings</option>
+                    <option value="gaps">Total number of gaps</option>
+                    <option value="ppos">Percentage of positive - scoring matches</option>
+                    <option value="qstart" selected="true">Start of alignment in query</option>
+                    <option value="qend" selected="true">End of alignment in query</option>
+                    <option value="sstart" selected="true">Start of alignment in subject</option>
+                    <option value="send" selected="true">End of alignment in subject</option>
+                    <option value="qseq">Aligned part of query sequence</option>
+                    <option value="sseq">Aligned part of subject sequence</option>
+                    <option value="evalue" selected="true">Expect value</option>
+                    <option value="bitscore" selected="true">Bit score</option>
+                    <option value="score">Raw score</option>
+                    <option value="qframe">Query frame</option>
+                    <option value="stitle">Subject Title</option>
+                    <option value="salltitles">All Subject Title(s)</option>
+                    <option value="qcovhsp">Query Coverage Per HSP</option>
+                </param>
+            </when>
+            <when value="101">
+                <param argument="--salltitles" type="boolean" truevalue="--salltitles" falsevalue="" checked="true" label="Include full length subject titles in output?" help=""/>
             </when>
         </conditional>
-
+        <param argument="--sensitive" type="boolean" truevalue="--sensitive" falsevalue="" checked="false" label="Trigger the sensitive alignment mode with a 16x9 seed shape configuration?" help=""/>
+        <param name="more_sensitive" argument="--more-sensitive" type="boolean" truevalue="--more-sensitive" falsevalue="" checked="false" label="Trigger the more sensitive mode?" help="This mode provides some additional sensitivity compared to the sensitive mode."/>
+        <param argument="--gapopen" type="integer" value="11" label="Gap open penalty" help="" />
+        <param argument="--gapextend" type="integer" value="1" label="Gap extension penalty" help="" />
+        <param argument="--matrix" type="select" label="Scoring matrix" help="In brackets are the supported values for (gap open)/(gap extend)">
+            <option value="BLOSUM45">BLOSUM45 ((10-13)/3; (12-16)/2; (16-19)/1)</option>
+            <option value="BLOSUM50">BLOSUM50 ((9-13)/3; (12-16)/2; (15-19)/1)</option>
+            <option value="BLOSUM62" selected="True">BLOSUM62 ((6-11)/2; (9-13)/1)</option>
+            <option value="BLOSUM80">BLOSUM80 ((6-9)/2; 13/2; 25/2; (9-11)/1)</option>
+            <option value="BLOSUM90">BLOSUM90 ((6-9)/2; (9-11)/1)</option>
+            <option value="PAM250">PAM250 ((11-15)/3; (13-17)/2; (17-21)/1)</option>
+            <option value="PAM70">PAM70 ((6-8)/2; (9-11)/1)</option>
+            <option value="PAM30">PAM30 ((5-7)/2; (8-10)/1)</option>
+        </param>
+        <param argument="--seg" type="boolean" truevalue="yes" falsevalue="no" checked="true" label="Enable SEG masking of low complexity segments in the query?" help=""/>
         <conditional name="hit_filter">
-            <param name="hit_filter_select" type="select" label="Restrict number of hits by" help="(--max-target-seqs/--top)">
+            <param name="hit_filter_select" type="select" label="Method to restrict the number of hits?">
                 <option value="max">Maximum number of target sequences</option>
-                <option value="percentage">Percentage of top alignment score</option>
+                <option value="top">Percentage of top alignment score</option>
             </param>
             <when value="max">
-                <param name="max" type="integer" value="25" label="How many hits?" help="(--max-target-seqs)" />
+                <param name="max_target_seqs" argument="--max-target-seqs" type="integer" value="25" label="The maximum number of target sequences per query to keep alignments for" help="" />
             </when>
-            <when value="percentage">
-                <param name="percentage" type="integer" value="0" label="How many percentage" help="(--top)" />
+            <when value="top">
+                <param argument="--top" type="integer" value="0" label="Keep alignments within the given percentage range of the top alignment score for a quer" help="" />
             </when>
         </conditional>
-
-        <param name="identity" type="integer" value="0" label="minimum identity to report an alignment" help="in percentage (--id)" />
-        <param name="salltitles" type="boolean" truevalue="--salltitles" falsevalue="" checked="false"
-            label="Print subject titles into the blast tabular format" help="(--salltitles)"/>
-        <param name="seg" type="boolean" truevalue="--seg yes" falsevalue="--seg no" checked="true"
-            label="Enable SEG masking of queries" help="(--seg)"/>
-        <param name="sensitive" type="boolean" truevalue="--sensitive" falsevalue="" checked="false"
-            label="Enable sensitive mode" help="(--sensitive)"/>
+        <conditional name="filter_score">
+            <param name="filter_score_select" type="select" label="Method to filter?" help="(--evalue/--min-score)">
+                <option value="evalue">Maximum e-value to report alignments</option>
+                <option value="min-score">Minimum bit score to report alignments</option>
+            </param>
+            <when value="evalue">
+                <param argument="--evalue" type="float" value="0.001" label="Maximum expected value to keep an alignment" />
+            </when>
+            <when value="min-score">
+                <param name="min_score" argument="--min-score" type="integer" value="0" label="Minimum bit score to keep an alignment" help="(--min-score)" />
+            </when>
+        </conditional>
+        <param argument="--id" type="integer" value="0" label="Minimum identity percentage to report an alignment" help="" />
+        <param name="query_cover" argument="--query-cover" type="integer" value="0" label="Minimum query cover percentage to report an alignment" help="" />
+        <param name="block_size" argument="--block-size" type="float" value="2" label="Block size in billions of sequence letters to be processed at a time" help="" />
     </inputs>
+
     <outputs>
-        <!--data format="sam" name="sam_output"/-->
-        <data format="tabular" name="blast_output"/>
+        <data format="xml" name="blast_xml" label="${tool.name} on ${on_string}">
+            <filter>output["outfmt"] == "5"</filter>
+        </data>
+        <data format="tabular" name="blast_tabular" label="${tool.name} on ${on_string}">
+            <filter>output["outfmt"] == "6"</filter>
+        </data>
+        <data format="sam" name="sam_output" label="${tool.name} on ${on_string}">
+            <filter>output["outfmt"] == "101"</filter>
+        </data>
     </outputs>
+
     <tests>
         <test>
-            <param name="method" value="blastp"/>
+            <param name="method_select" value="blastp" />
             <param name="query" value="protein.fasta" ftype="fasta"/>
-            <param name="reference_database" value="diamond_makedb_result1.dmnd" ftype="diamond_database"/>
             <param name="db_source" value="history"/>
-            <output name="blast_output" file="diamond_result1.tabular" ftpye="tabular"/>
+            <param name="reference_database" value="db.dmnd"/>
+            <param name="query_gencode" value="1"/>
+            <param name="outfmt" value="6"/>
+            <param name="fields" value="qseqid,sseqid,pident,length,mismatch,gapopen,qstart,qend,sstart,send,evalue,bitscore"/>
+            <param name="sensitive" value=""/>
+            <param name="more_sensitive" value=""/>
+            <param name="gapopen" value="11"/>
+            <param name="gapextend" value="1"/>
+            <param name="matrix" value="BLOSUM62"/>
+            <param name="seg" value="yes"/>
+            <param name="hit_filter_select" value="max"/>
+            <param name="max_target_seqs" value="25" />
+            <param name="filter_score_select" value="evalue"/>
+            <param name="evalue" value="0.001" />
+            <param name="id" value="0"/>
+            <param name="query_cover" value="0"/>
+            <param name="block_size" value="2"/>
+            <output name="blast_tabular" file="diamond_results.tabular"/>
         </test>
     </tests>
+
     <help>
 <![CDATA[
 
@@ -157,7 +248,7 @@ The DIAMOND algorithm is designed for the alignment of large datasets. The algor
 
 **Input**
 
-Input data is a large protein or nucleotide sequence file. 
+Input data is a large protein or nucleotide sequence file.
 
 
 **Output**
@@ -179,8 +270,6 @@ Column 	Description
 12 	    Bit score
 
 
-
-
 Supported values for gap open and gap extend parameters depending on the selected scoring matrix.
 
 ========  ============================================
@@ -199,7 +288,5 @@ PAM30     (5-7)/2; (8-10)/1
 
 ]]>
     </help>
-    <citations>
-        <citation type="doi">10.1038/nmeth.3176</citation>
-    </citations>
+    <expand macro="citations" />
 </tool>
