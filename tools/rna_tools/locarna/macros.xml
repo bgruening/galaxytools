@@ -25,14 +25,16 @@
         <conditional name="bed_anchors">
             <param name="bed_anchors_selector" type="select" label="Anchor constraints"
                    help="Anchor constraints in bed format specify positions of
-                             named anchor regions per sequence. The sequence names
-                             ('contig' names have to correspond to the fasta input
-                             sequence names. Anchor names must be unique per sequence
-                             and regions of the same name for different sequences
-                             must have the same length. This constrains the alignment
-                             to align all regions of the same name.">
-                <option value="no">Don't load anchor constraints from bed file</option> 
-                <option value="yes">Load anchor constraints from bed file</option> 
+                         named anchor regions per sequence. The sequence names
+                         ('contig' names have to correspond to the fasta input
+                         sequence names. Anchor names must be unique per sequence
+                         and regions of the same name for different sequences
+                         must have the same length. This constrains the alignment
+                         to align all regions of the same name.">
+                <option value="no">Don't load anchor constraints from
+                bed file</option>
+                <option value="yes">Load anchor constraints from bed
+                file</option>
             </param>
             <when value="no" />
             <when value="yes">
@@ -91,37 +93,192 @@
                label="Temperature for RNAfold (RNAfold's -T option)" />
     </xml>
 
+    <token name="@SCORING_ARGS@">
+        ## -------------------- scoring parameters
+        --indel $Scoring.indel
+        --indel-opening $Scoring.indel_opening
+        --struct-weight $Scoring.struct_weight
+        --tau $Scoring.tau
+        
+        #if str($Scoring.sequence_score.sequence_score_selector) == "match"
+            --match $Scoring.sequence_score.match
+            --mismatch $Scoring.sequence_score.mismatch
+        #elif str($Scoring.sequence_score.sequence_score_selector) == "ribosum"
+            --use-ribosum true
+        #elif str($Scoring.sequence_score.sequence_score_selector) == "ribofit"
+            --ribofit true
+        #end if
+    </token>
+
+    <token name="@FOLDING_ARGS@">
+        ## -------------------- folding parameters
+        #if float($Folding.rnafold_temperature) != 37.0
+            --rnafold-temperature $Folding.rnafold_temperature
+        #end if
+    </token>
+
+    <token name="@HEURISTIC_ARGS@">
+        ## -------------------- heuristic parameters
+        -p $Heuristics.min_prob
+
+        #if str($Heuristics.max_diff_mode.max_diff_mode_selector) == "off"
+            --max-diff -1
+        #elif str($Heuristics.max_diff_mode.max_diff_mode_selector) == "max-diff"
+            --max-diff $Heuristics.max_diff_mode.max_diff
+        #elif str($Heuristics.max_diff_mode.max_diff_mode_selector) == "max-diff-at-am"
+            --max-diff -1
+            --max-diff-at-am $Heuristics.max_diff_mode.max_diff_at_am
+        #elif str($Heuristics.max_diff_mode.max_diff_mode_selector) == "max-diff-aln"
+            --max-diff $Heuristics.max_diff_mode.max_diff
+            --max-diff-aln '$Heuristics.max_diff_mode.max_diff_aln'
+            $Heuristics.max_diff_mode.max_diff_relax
+        #end if
+        
+        --max-diff-am $Heuristics.max_diff_am
+    
+        #if float($Heuristics.max_bps_length_ratio) > 0.0
+            --max-bps-length-ratio $Heuristics.max_bps_length_ratio
+        #end if
+    </token>
+
+    <token name="@HEURISTIC_SPARSE_ARGS@">
+           --prob-unpaired-in-loop $alignment_mode.HeuristicsSparse.prob_unpaired_in_loop_threshold
+           --prob-basepair-in-loop $alignment_mode.HeuristicsSparse.prob_basepair_in_loop_threshold
+
+    </token>
+
+    <token name="@CONSTRAINT_ARGS@">
+        ## -------------------- constraint parameters
+        $Constraints.lonely_pairs
+
+        #if $Constraints.maxBPspan != -1
+            --maxBPspan $Constraints.maxBPspan
+        #end if
+
+        $Constraints.ignore_constraints
+    </token>
+
+    <token name="@STDOUT_ARGS@">
+        $stdout_verbosity
+        
+        #if str($stdout_verbosity) != "--quiet":
+            > '$stdout'
+        #end if
+    </token>
+
+    <xml name="max_diff_parameters_selector">
+        <param name="max_diff_mode_selector" type="select"
+               label="Restrict alignable positions by maximum difference" 
+               help="(max-diff*)">
+            <option value="off">Off</option>
+            <option value="max-diff" selected="True">Maximal difference of aligned positions</option>
+            <option value="max-diff-at-am">Maximal difference of aligned positions at arc matches</option> 
+            <yield />
+        </param>
+    </xml>
+    
+    <xml name="max_diff_parameters_standard_cases">
+        <when value="off" />
+        <when value="max-diff">
+            <param  name="max_diff" argument="max-diff" type="integer"
+                    value="60" min="-1" max="300"
+                    label="Maximal difference of aligned positions" />
+        </when>
+        <when value="max-diff-at-am">
+            <param  name="max_diff_at_am" argument="max-diff-at-am" type="integer" 
+                    value="60" min="-1" max="300"
+                    label="Maximal difference of aligned positions,
+                           only at arc match positions" />
+        </when>
+    </xml>
+
+    <xml name="max_diff_parameters">
+        <conditional name="max_diff_mode">
+            <expand macro="max_diff_parameters_selector" />
+            <expand macro="max_diff_parameters_standard_cases" />
+        </conditional>
+    </xml>
+
+    <xml name="max_diff_parameters_aln">
+        <conditional name="max_diff_mode">
+            <expand macro="max_diff_parameters_selector">
+                <option value="max-diff-aln">Maximal difference to a reference alignment</option>
+            </expand>
+            <expand macro="max_diff_parameters_standard_cases" />
+            <when value="max-diff-aln">
+                <param name="max_diff_aln" argument="max-diff-aln" type="data" format="clustal"
+                       label="Reference alignment"
+                       />
+                <param  name="max_diff" argument="max-diff" type="integer"
+                        value="60" min="-1" max="300"
+                        label="Maximal difference of aligned positions" />
+                <param name="max_diff_relax" argument="max-diff-relax" type="boolean"
+                       truevalue="--max-diff-relax" falsevalue=""
+                       checked="False"
+                       label="Relax deviation constraints in multiple
+                              aligmnent."
+                       />
+            </when>
+        </conditional>
+    </xml>
+
     <xml name="common_heuristic_parameters">
         <param  name="min_prob" argument="min-prob" type="float" value="0.0005" 
                 min="0.0" max="0.2"
                 label="Minimal / cutoff probability" /> 
-
+    
         <param  name="max_diff_am" argument="max-diff-am" 
                 type="integer" value="30" 
                 min="-1" max="300"
-                label="Maximal difference for sizes of matched arcs (-1=off)" /> 
-
-        <param  name="max_diff" argument="max-diff" type="integer"
-                value="60" min="-1" max="300"
-                label="Maximal difference for alignment traces (-1=off)" /> 
-
-        <param  name="max_diff_at_am" argument="max-diff-am" type="integer" 
-                value="-1" min="-1" max="300"
-                label="Maximal difference for alignment traces, only at arc match positions" /> 
+                label="Maximal difference for sizes of matched arcs (-1=off)" />
         
         <param  name="max_bps_length_ratio" argument="max-bps-length-ratio"
-                type="float" value="0.0" min="0.0" max="1.0" 
-                label="Maximal ratio of #base pairs divided by sequence length (default: no effect)" /> 
+                type="float" value="0.0" min="0.0" max="10.0" 
+                label="Maximal ratio 'number of considered base pairs' by
+                       'sequence length' (default: 0.0 = no effect)" />
+    </xml>
+    
+    <xml name="common_heuristic_parameters_sparse">
+        <param  name="prob_unpaired_in_loop_threshold" argument="prob-unpaired-in-loop-threshold" type="float" value="0.00005" 
+                min="0.0" max="0.2"
+                label="Probability threshold for unpaired bases in loops" /> 
+
+        <param  name="prob_basepair_in_loop_threshold" argument="prob-basepair-in-loop-threshold" type="float" value="0.0001" 
+                min="0.0" max="0.2"
+                label="Probability threshold for base pairs in loops" />       
+    </xml>
+    
+    <xml name="in_loop_ratio_parameters">
+        <param  name="max_uil_length_ratio" argument="max-uil-length-ratio"
+                type="float" value="0.0" min="0.0" max="10.0" 
+                label="Maximal ratio 'number considered unpaired bases in loops' by
+                       'sequence length' (default: 0.0; no effect)" />
+        
+        <param  name="max_bpil_length_ratio" argument="max-bpil-length-ratio"
+                type="float" value="0.0" min="0.0" max="10.0" 
+                label="Maximal ratio 'number of considered base pairs in loops'
+                       by 'sequence length' (default: 0.0; no effect)" />
+    </xml>
+
+    <xml name="exparnap_in_loop_parameters">
+        <param  name="prob_unpaired_in_loop_threshold"
+                argument="prob_unpaired_in_loop_threshold"
+                type="float" value="0.01" min="0.0" max="1.0" 
+                label="Probability threshold for unpaired bases in loops" />
+        <param  name="prob_basepair_in_loop_threshold"
+                argument="prob_basepair_in_loop_threshold"
+                type="float" value="0.01" min="0.0" max="1.0" 
+                label="Probability threshold for base pairs in loops" />
     </xml>
 
     <xml name="alifold_consensus_parameter">
         <param  name="alifold_consensus_dp" argument="alifold-consensus-dp" 
-                type="boolean" checked="false" 
+                type="boolean" checked="False" 
                 truevalue="--alifold-consensus-dp" falsevalue=""
                 label="Compute consensus dot plot by alifold" />
     </xml>
     
-    <xml name="constraints">
+    <xml name="common_constraint_parameters">
         <param name="lonely_pairs" type="boolean" truevalue="--LP" falsevalue="--noLP" 
                checked="false" label="Allow lonely base-pairs" help="(--LP/--noLP)" />
         <param name="maxBPspan" argument="--maxBPspan" 
@@ -133,13 +290,14 @@
                      in the fasta(-ish) input." />
     </xml>
 
-    <xml name="common_other_parameters">
-    </xml>
-
-    <xml name="common_outputs">
+    <xml name="standard_outupt">
         <data format="txt" name="stdout" label="${tool.name} std out on ${on_string}">
             <filter>stdout_verbosity != '--quiet'</filter>
         </data>
+    </xml>
+
+    <xml name="mlocarna_outputs">
+        <expand macro="standard_outupt" />
         <data format="clustal" name="clustal" from_work_dir="mlocarna_results/results/result.aln"
               label="${tool.name} alignment (annotated clustal) on ${on_string}">
             <filter>'clustal' in outputs</filter>
@@ -166,9 +324,10 @@
 
     <xml name="citations">
         <citations>
-            <citation
-            type="doi">10.1371/journal.pcbi.0030065</citation>
+            <citation type="doi">10.1371/journal.pcbi.0030065</citation>
             <citation type="doi">10.1261/rna.029041.111</citation>
+            <citation type="doi">10.1093/bioinformatics/btv185</citation>
+            <citation type="doi">10.1186/s12859-014-0404-0</citation>
         </citations>
     </xml>
 
