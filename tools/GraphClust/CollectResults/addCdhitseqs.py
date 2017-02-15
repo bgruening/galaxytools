@@ -1,10 +1,6 @@
 import re
 import glob
 import sys
-from os import system
-
-def sh(script):
-    system("bash -c '%s'" % script)
 
 cdhitcluster = sys.argv[1]
 
