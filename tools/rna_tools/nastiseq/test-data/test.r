@@ -38,5 +38,3 @@ write.table(WR_names$newpairs, file = "output_newpairs.tsv", row.names = FALSE, 
 
 write.table(WR_names$neworphan, file = "output_neworphan.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
 
-write.table(WR_names$knownpairs, file = "output_knownpairs.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
-
