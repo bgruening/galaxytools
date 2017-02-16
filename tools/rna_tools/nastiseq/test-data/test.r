@@ -10,31 +10,29 @@ library(NASTIseq)
 #
 # write.table(WholeRoot$pospairs, file = "input_positive_pair.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
 
-mydata = list()
+genepos = read.table("input_TAIR10_annotation.tsv", header = TRUE, sep = "\t")
+genepos$attributes = as.character(genepos$attributes)
+rownames(genepos) = genepos$attributes
 
-mydata$genepos = read.table("input_TAIR10_annotation.tsv", header = TRUE, sep = "\t")
-mydata$genepos$attributes = as.character(mydata$genepos$attributes)
-rownames(mydata$genepos) = mydata$genepos$attributes
+pospairs = read.table("input_positive_pair.tsv", sep = "\t", as.is = TRUE)
 
-mydata$pospairs = read.table("input_positive_pair.tsv", sep = "\t", as.is = TRUE)
+smat = as.matrix(read.table("input_read_count_smt.tsv",  sep = "\t",  row.names = 1))
+colnames(smat) = NULL
 
-mydata$smat = as.matrix(read.table("input_read_count_smt.tsv",  sep = "\t",  row.names = 1))
-colnames(mydata$smat) = NULL
+asmat = as.matrix(read.table("input_read_count_asmt.tsv",  sep = "\t",  row.names = 1))
+colnames(asmat) = NULL
 
-mydata$asmat = as.matrix(read.table("input_read_count_asmt.tsv",  sep = "\t",  row.names = 1))
-colnames(mydata$asmat) = NULL
+WRscore = getNASTIscore(smat, asmat)
 
-WRscore<-getNASTIscore(mydata$smat, mydata$asmat)
+negpairs = getnegativepairs(genepos)
 
-negpairs<-getnegativepairs(mydata$genepos)
+WRpred = NASTIpredict(smat,asmat, pospairs, negpairs)
 
-WRpred<-NASTIpredict(mydata$smat,mydata$asmat, mydata$pospairs, negpairs)
+WRpred_rocr = prediction(WRpred$predictions,WRpred$labels)
 
-WRpred_rocr<-prediction(WRpred$predictions,WRpred$labels)
+thr = defineFDR(WRpred_rocr,0.05)
 
-thr<-defineFDR(WRpred_rocr,0.05)
-
-WR_names<-FindNATs(WRscore, thr, mydata$pospairs, mydata$genepos)
+WR_names = FindNATs(WRscore, thr, pospairs, genepos)
 
 write.table(WR_names$newpairs, file = "output_newpairs.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
 
