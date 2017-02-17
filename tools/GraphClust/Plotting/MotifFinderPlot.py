@@ -23,8 +23,8 @@ def plot_bar(ranges, colors, orig_names, cluster_nums):
     plt.savefig("motif_plot.png")
 
 
-def parse_clusters(result_path):
-    cluster_files = sorted(list(glob.glob(result_path+'RESULTS/*.cluster.all')))
+def parse_clusters():
+    cluster_files = sorted(list(glob.glob('RESULTS/*.cluster.all')))
     if len(cluster_files) == 0:
         raise RuntimeError('Expected cluster.all search path is empty:{}'.format(cluster_files))
     palette = itertools.cycle(sns.color_palette("Set2", len(cluster_files)))
@@ -45,7 +45,5 @@ def parse_clusters(result_path):
             orig_names[seq] = row[10]
     return ranges, colors, orig_names, cluster_nums
 
-
-my_result_path = "./"
-my_ranges, my_colors, my_orig_names, my_cluster_nums = parse_clusters(my_result_path)
+my_ranges, my_colors, my_orig_names, my_cluster_nums = parse_clusters()
 plot_bar(my_ranges, my_colors, my_orig_names, my_cluster_nums)
