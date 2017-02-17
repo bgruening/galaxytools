@@ -1,33 +1,29 @@
 from matplotlib import pyplot as plt
 import matplotlib.patches as mpatches
-from collections import OrderedDict
-
-def plot_bar(ranges, colors, orig_names, cluster_nums):
-    fig, ax = plt.subplots()
-    for i, k in enumerate(sorted(ranges.keys())):
-        ax.broken_barh(ranges[k], (i-0.25,0.5),facecolors=colors[k])
-
-    ax.set_xlim(0)
-    ax.set_xlabel('position in sequence')
-
-    ax.set_yticklabels(['']+[k+'-'+orig_names[k] for k in sorted(ranges.keys())])
-    ax.grid(True)
-    fig.suptitle('Structure motif prediction for Ig-Kapp lncRNA\nRegions with same color are prediticted to have similar structures')
-    # Add the legend
-    patches = [mpatches.Patch(color=cluster_nums[lab], label=lab) for lab in sorted(cluster_nums)]
-#     patches = patches + [mpatches.Patch(color=default_color, label='Other')]
-    ax.legend(handles=patches, loc='best')#, bbox_to_anchor=(1, 0.5), loc='center left')
-    plt.savefig("motif_plot.png")
-#     ax.legend()
-
 from collections import defaultdict
 import glob
 import pandas as pd
 import itertools
 import seaborn as sns
 
-def parse_clusters(result_path):
 
+def plot_bar(ranges, colors, orig_names, cluster_nums):
+    fig, ax = plt.subplots()
+    for i, k in enumerate(sorted(ranges.keys())):
+        ax.broken_barh(ranges[k], (i-0.25, 0.5), facecolors=colors[k])
+
+    ax.set_xlim(0)
+    ax.set_xlabel('position in sequence')
+    ax.set_yticklabels(['']+[k+'-'+orig_names[k] for k in sorted(ranges.keys())])
+    ax.grid(True)
+    fig.suptitle('Structure motif prediction for Ig-Kapp lncRNA\nRegions with same color are prediticted to have similar structures')
+    # Add the legend
+    patches = [mpatches.Patch(color=cluster_nums[lab], label=lab) for lab in sorted(cluster_nums)]
+    ax.legend(handles=patches, loc='best')  # , bbox_to_anchor=(1, 0.5), loc='center left')
+    plt.savefig("motif_plot.png")
+
+
+def parse_clusters(result_path):
     cluster_files = sorted(list(glob.glob(result_path+'RESULTS/*.cluster.all')))
     if len(cluster_files) == 0:
         raise RuntimeError('Expected cluster.all search path is empty:{}'.format(cluster_files))
@@ -37,24 +33,19 @@ def parse_clusters(result_path):
     orig_names = defaultdict(list)
     cluster_nums = defaultdict(list)
     for cluster_file in cluster_files:
-        print cluster_file
         cluster_color = palette.next()
-        df_cluster = pd.read_csv(cluster_file,sep='\s+', header=None)
+        df_cluster = pd.read_csv(cluster_file, sep='\s+', header=None)
         for irow, row in df_cluster.iterrows():
             seq, start, end, strand = row[0].split("#")
-
-            # print seq, start, end, strand
-            ranges[seq].append((int(start),int(end)-int(start)+1))
+            ranges[seq].append((int(start), int(end)-int(start)+1))
             colors[seq].append(cluster_color)
             assert row[1] == 'RESULT'
             cluster_nums['cluster-{}'.format(row[2])] = cluster_color
-
             assert row[9] == 'ORIGHEAD'
             orig_names[seq] = row[10]
-    return ranges, colors, orig_names,cluster_nums
+    return ranges, colors, orig_names, cluster_nums
 
 
 my_result_path = "./"
-
 my_ranges, my_colors, my_orig_names, my_cluster_nums = parse_clusters(my_result_path)
 plot_bar(my_ranges, my_colors, my_orig_names, my_cluster_nums)
