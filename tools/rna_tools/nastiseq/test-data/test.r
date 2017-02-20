@@ -1,4 +1,5 @@
 library(NASTIseq)
+library(data.table)
 
 ### generation of test set
 # data(WholeRoot)
@@ -10,8 +11,19 @@ library(NASTIseq)
 #
 # write.table(WholeRoot$pospairs, file = "input_positive_pair.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
 
-genepos = read.table("input_TAIR10_annotation.tsv", header = TRUE, sep = "\t")
-genepos$attributes = as.character(genepos$attributes)
+genepos = fread('Arabidopsis_thaliana.TAIR10.34.gtf', stringsAsFactors=TRUE)
+colnames(genepos) = c("seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attributes")
+
+genepos = subset(genepos, feature=="gene")
+
+get_id <- function(attri){
+  gene_info = strsplit(attri, ";")[[1]][1]
+  gene_id = strsplit(gene_info, " ")[[1]][2]
+  gene_id = gsub("\"", "", gene_id)
+  return(gene_id)
+}
+
+genepos$attributes = as.character(lapply(as.character(genepos$attributes), get_id))
 rownames(genepos) = genepos$attributes
 
 pospairs = read.table("input_positive_pair.tsv", sep = "\t", as.is = TRUE)
