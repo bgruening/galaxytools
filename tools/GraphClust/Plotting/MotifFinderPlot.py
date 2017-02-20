@@ -24,7 +24,6 @@ def plot_bar(ranges, colors, orig_names, cluster_nums):
 
 
 def parse_clusters():
-    currentdir_files = sorted(list(glob.glob('*')))
     cluster_files = sorted(list(glob.glob('RESULTS/*.cluster.all')))
     if len(cluster_files) == 0:
         raise RuntimeError('Expected cluster.all search path is empty:{}'.format(cluster_files))
