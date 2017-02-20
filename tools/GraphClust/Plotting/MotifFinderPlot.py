@@ -16,7 +16,7 @@ def plot_bar(ranges, colors, orig_names, cluster_nums):
     ax.set_xlabel('position in sequence')
     ax.set_yticklabels(['']+[k+'-'+orig_names[k] for k in sorted(ranges.keys())])
     ax.grid(True)
-    fig.suptitle('Structure motif prediction for Ig-Kapp lncRNA\nRegions with same color are prediticted to have similar structures')
+    fig.suptitle('Structure motif prediction\nRegions with same color are prediticted to have similar structures')
     # Add the legend
     patches = [mpatches.Patch(color=cluster_nums[lab], label=lab) for lab in sorted(cluster_nums)]
     ax.legend(handles=patches, loc='best')  # , bbox_to_anchor=(1, 0.5), loc='center left')
