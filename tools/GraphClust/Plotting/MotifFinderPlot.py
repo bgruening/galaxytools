@@ -24,6 +24,8 @@ def plot_bar(ranges, colors, orig_names, cluster_nums):
 
 
 def parse_clusters():
+    currentdir_files = sorted(list(glob.glob('*')))
+    print ("currentdir_files are: ", currentdir_files)
     cluster_files = sorted(list(glob.glob('RESULTS/*.cluster.all')))
     if len(cluster_files) == 0:
         raise RuntimeError('Expected cluster.all search path is empty:{}'.format(cluster_files))
@@ -44,6 +46,7 @@ def parse_clusters():
             assert row[9] == 'ORIGHEAD'
             orig_names[seq] = row[10]
     return ranges, colors, orig_names, cluster_nums
+
 
 my_ranges, my_colors, my_orig_names, my_cluster_nums = parse_clusters()
 plot_bar(my_ranges, my_colors, my_orig_names, my_cluster_nums)
