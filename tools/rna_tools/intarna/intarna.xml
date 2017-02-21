@@ -1,0 +1,415 @@
+<tool id="intarna" name="IntaRNA" version="2.0.0">
+    <description>Efficient RNA-RNA interaction prediction incorporating accessibility and seeding of interaction sites.</description>
+    <macros>
+        <macro name="query_macro">
+            <param name="_query" argument="--query" format="fasta" type="data" label="Query sequence(s)" help="Sequences have to use IUPAC nucleotide encoding. File must be in FASTA format" />
+            <conditional name="qAcc_cond">
+                <param argument="--qAcc" type="select" label="Accessibility computation" help="">
+                    <option value="N">No accessibility contributions ('N')</option>
+                    <option value="C" selected="true">Computation of accessibilities ('C')</option>
+                    <option value="P">Unpaired probabilities in RNAplfold format from --qAccFile</option>
+                    <option value="E">ED values in RNAplfold Pu-like format from --qAccFile</option>
+                </param>
+                <when value="N"/>
+                <when value="C"/>
+                <when value="P">
+                    <param argument="--qAccFile" format="text" type="data" label="Accessibility computation" help="" />
+                </when>
+                <when value="E">
+                    <param argument="--qAccFile" format="text" type="data" label="Accessibility computation" help="" />
+                </when>
+            </conditional>
+            <param argument="--qAccW" type="integer" value="150" min="0" max="99999"
+                label="Max. interaction length" help="... for query accessibility computation. Set to 0 to use full sequence length"/>
+            <param argument="--qAccL" type="integer" value="100" min="0" max="99999"
+                label="Max. loop length" help="... for query accessibility computation. 0 defaults to sliding window size 'qAccW'"/>
+        </macro>
+        <macro name="target_macro">
+            <param name="_target" argument="--target" format="fasta" type="data" label="Target sequence(s)" help="Sequences have to use IUPAC nucleotide encoding. File must be in FASTA format" />
+            <conditional name="tAcc_cond">
+                <param argument="--tAcc" type="select" label="Accessibility computation" help="">
+                    <option value="N">No accessibility contributions ('N')</option>
+                    <option value="C" selected="true">Computation of accessibilities ('C')</option>
+                    <option value="P">Unpaired probabilities in RNAplfold format from --qAccFile</option>
+                    <option value="E">ED values in RNAplfold Pu-like format from --qAccFile</option>
+                </param>
+                <when value="N"/>
+                <when value="C"/>
+                <when value="P">
+                    <param argument="--tAccFile" format="text" type="data" label="The file to be parsed" help="... for accessibility computation" />
+                </when>
+                <when value="E">
+                    <param argument="--tAccFile" format="text" type="data" label="Accessibility computation" help="" />
+                </when>
+            </conditional>
+            <param argument="--tAccW" type="integer" value="150" min="0" max="99999"
+                label="Max. interaction length" help="... for query accessibility computation. Set to 0 to use full sequence length"/>
+            <param argument="--tAccL" type="integer" value="100" min="0" max="99999"
+                label="Max. loop length" help="... for query accessibility computation. 0 defaults to sliding window size 'tAccW'"/>
+        </macro>
+        <macro name="seed_macro">
+            <param argument="--noSeed" truevalue="--noSeed" falsevalue="" checked="False" type="boolean"
+                label="Disable seed constraint entirely for computation" help=""/>
+            <param argument="--seedBP" type="integer" value="7" min="2" max="20"  label="Min. number of basepairs in seed" help="number of inter-molecular base pairs within the seed region"/>
+            <param argument="--seedMaxUP" type="integer" value="0" min="0" max="20"
+                label="Max. overall number of unpaired bases (query+target)" help=""/>
+        </macro>
+        <macro name="interaction_macro">
+            <param argument="--mode" type="select" label="Prediction mode" help="">
+                <option value="H" selected="true">Heuristic (fast and low memory)</option>
+                <option value="M">Exact and low memory</option>
+                <option value="E">Exact (high memory)</option>
+            </param>
+        </macro>
+        <macro name="output_macro">
+            <param argument="--outMode" type="select" label="Output Mode" help="">
+                <option value="N">Normal output (ASCII char + energy)</option>
+                <option value="D">Detailed output (ASCII char + energy/position details)</option>
+                <option value="C" selected="true">CSV output (see --outCsvCols)</option>
+                <option value="1">backward compatible IntaRNA v1.* normal output</option>
+                <option value="O">backward compatible IntaRNA v1.* detailed output</option>
+            </param>
+
+
+            <param argument="--outCsvCols" type="text" optional="true"
+                    label="Comma separated list of CSV column IDs to print" help="An empty argument prints all possible columns from the following available ID list: [id1], [id2], [seq1], [seq2], [subseq1], [subseq2], [subseqDP], [subseqDB], [start1], [end1], [start2], [end2], [hybridDP], [hybridDB], [E], [ED1], [ED2], [Pu1], [Pu2], [E_init], [E_loops], [E_dangleL], [E_dangleR], [E_endL], [E_endR], [seedStart1], [seedEnd1], [seedStart2], [seedEnd2], [seedE], [seedED1], [seedED2], [seedPu1], [seedPu2]"/>
+            <param argument="--outNumber" type="integer" value="1" min="0" max="1000"
+                label="Max. number of predictions per query/target pair" help="Number of optimal and suboptimal interaction to predict per query-target pair"/>
+            <param argument="--outOverlap" type="select" label="Overlapping of suboptimal predictions" help="Whether or not interactions can overlap">
+                <option value="N" >in none of the sequences</option>
+                <option value="T">in the target only</option>
+                <option value="Q" selected="true">in the query only</option>
+                <option value="B">in both sequences</option>
+            </param>
+        </macro>
+    </macros>
+    <requirements>
+        <requirement type="package" version="2.0.0">intarna</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Error occurred. Please check Tool Standard Error" />
+        <exit_code range=":-1" level="fatal" description="Error occurred. Please check Tool Standard Error" />
+    </stdio>
+    <version_command>IntaRNA --version</version_command>
+    <command>
+    <![CDATA[
+        IntaRNA
+            #if $advancedOptions.advancedSelector == "advanced"
+                ## Query parameters
+                --query '$advancedOptions.query._query'
+                --qAcc $advancedOptions.query.qAcc_cond.qAcc
+                #if $advancedOptions.query.qAcc_cond.qAcc == "P" or $advancedOptions.query.qAcc_cond.qAcc == "E"
+                    --qAccFile '$advancedOptions.query.qAcc_cond.qAccFile'
+                #end if
+                --qAccW $advancedOptions.query.qAccW
+                --qAccL $advancedOptions.query.qAccL
+                ## #if $advancedOptions.query.qAccConstr <> "."
+                ##    --qAccConstr $advancedOptions.query.qAccConstr
+                ## #end if
+                --qIntLoopMax $advancedOptions.query.qIntLoopMax
+                #if $advancedOptions.query.qRegion
+                    --qRegion '$advancedOptions.query.qRegion'
+                #end if
+
+                ## Target param.
+                --target '$advancedOptions.target._target'
+                --tAcc $advancedOptions.target.tAcc_cond.tAcc
+                #if $advancedOptions.target.tAcc_cond.tAcc == "P" or $advancedOptions.target.tAcc_cond.tAcc == "E"
+                    --tAccFile '$advancedOptions.target.tAcc_cond.tAccFile'
+                #end if
+                --tAccW $advancedOptions.target.tAccW
+                --tAccL $advancedOptions.target.tAccL
+                ## #if $advancedOptions.target.tAccConstr <> "."
+                ##    --tAccConstr $advancedOptions.target.tAccConstr
+                ## #end if
+                --tIntLoopMax $advancedOptions.target.tIntLoopMax
+                #if $advancedOptions.target.tRegion
+                    --tRegion '$advancedOptions.target.tRegion'
+                #end if
+
+                ## Seed param.
+                --noSeed $advancedOptions.seed.noSeed
+                --seedBP $advancedOptions.seed.seedBP
+                --seedMaxUP $advancedOptions.seed.seedMaxUP
+                --seedQMaxUP $advancedOptions.seed.seedQMaxUP
+                --seedTMaxUP $advancedOptions.seed.seedTMaxUP
+                --seedMaxE $advancedOptions.seed.seedMaxE
+                --seedMinPu $advancedOptions.seed.seedMinPu
+                --seedQRange '$advancedOptions.seed.seedQRange'
+                --seedTRange '$advancedOptions.seed.seedTRange'
+
+                ## Interaction param.
+                --mode $advancedOptions.interaction.mode
+                --pred $advancedOptions.interaction.pred
+                --energy $advancedOptions.interaction.energy
+                #if $advancedOptions.interaction.energyVRNA
+                    --energyVRNA '$advancedOptions.interaction.energyVRNA'
+                #end if
+                --temperature $advancedOptions.interaction.temperature
+
+                ##Output param.
+                --out ./temp_tabular_output
+                --outMode $advancedOptions.output.outMode
+                --outNumber $advancedOptions.output.outNumber
+                --outOverlap $advancedOptions.output.outOverlap
+                --outMaxE $advancedOptions.output.outMaxE
+                --outDeltaE $advancedOptions.output.outDeltaE
+                #if $advancedOptions.output.outCsvCols
+                    --outCsvCols '$advancedOptions.output.outCsvCols'
+                #end if
+                #if $advancedOptions.output.add_output_cond.selector == "add"
+                    #if str($advancedOptions.output.add_output_cond.add_output.value) != 'None'
+                       #for j in $advancedOptions.output.add_output_cond.add_output.value:
+                           --$j $getVar($j)
+                       #end for
+                   #end if
+                #end if
+
+            #elif $advancedOptions.advancedSelector == "basic"
+                ## Query parameters
+                --query '$advancedOptions.query._query'
+                --qAcc $advancedOptions.query.qAcc_cond.qAcc
+                #if $advancedOptions.query.qAcc_cond.qAcc == "P" or $advancedOptions.query.qAcc_cond.qAcc == "E"
+                    --qAccFile '$advancedOptions.query.qAcc_cond.qAccFile'
+                #end if
+                --qAccW $advancedOptions.query.qAccW
+                --qAccL $advancedOptions.query.qAccL
+
+                ## Target param.
+                --target '$advancedOptions.target._target'
+                --tAcc $advancedOptions.target.tAcc_cond.tAcc
+                #if $advancedOptions.target.tAcc_cond.tAcc == "P" or $advancedOptions.target.tAcc_cond.tAcc == "E"
+                    --tAccFile '$advancedOptions.target.tAcc_cond.tAccFile'
+                #end if
+                --tAccW $advancedOptions.target.tAccW
+                --tAccL $advancedOptions.target.tAccL
+
+                ## Seed param.
+                --noSeed $advancedOptions.seed.noSeed
+                --seedBP $advancedOptions.seed.seedBP
+                --seedMaxUP $advancedOptions.seed.seedMaxUP
+
+                ## Interaction param.
+                --mode $advancedOptions.interaction.mode
+
+                ##Output param.
+                --out ./temp_tabular_output
+                --outMode $advancedOptions.output.outMode
+                --outNumber $advancedOptions.output.outNumber
+                --outOverlap $advancedOptions.output.outOverlap
+                #if $advancedOptions.output.outCsvCols
+                    --outCsvCols '$advancedOptions.output.outCsvCols'
+                #end if
+            #end if
+            && sed 's/\t/     /g' ./temp_tabular_output > ./temp_output_no_tabs
+            && sed 's/;/\t/g' ./temp_output_no_tabs > '$outfile'
+
+    ]]>
+    </command>
+    <inputs>
+
+        <conditional name="advancedOptions">
+            <param name="advancedSelector" type="select" label="Options">
+                <option value="basic">Basic Options</option>
+                <option value="advanced">Advanced Options</option>
+            </param>
+            <when value="advanced">
+                <section name="query" title="Query Parameters" expanded="True">
+                    <expand macro="query_macro"/>
+                    <!--
+                    <param name="qAccConstr" type="select" label="Structure constraint for each sequence position" help="">
+                        <option value="." selected="true">No constraint</option>
+                        <option value="x">Unpaired</option>
+                        <option value="b">Blocked positions are excluded from interaction prediction and considered unpaired </option>
+                    </param>
+                -->
+                    <param argument="--qIntLoopMax" type="integer" value="16" min="0" max="30"
+                        label="Maximal number of unpaired bases between neighbored interacting bases" help="... to be considered in interactions within the query"/>
+                    <param argument="--qRegion" type="text" optional="true" label="Query regions to be considered for interaction prediction"
+                        help="In the format 'from1-to1,from2-to2,..' assuming indexing starts with 1" />
+                </section>
+                <section name="target" title="Target Parameters" expanded="True">
+                    <expand macro="target_macro"/>
+                    <!-- <param name="tAccConstr" type="select" label="Structure constraint for each sequence position" help="">
+                        <option value="." selected="true">No constraint</option>
+                        <option value="x">Unpaired</option>
+                        <option value="b">Blocked.blocked positions are excluded from interaction prediction and considered unpaired </option>
+                    </param>
+                -->
+
+                    <param argument="--tIntLoopMax" type="integer" value="16" min="0" max="30"
+                        label="Maximal number of unpaired bases between neighbored interacting bases" help="... to be considered in interactions within the target"/>
+                    <param argument="--tRegion" type="text" optional="true" label="Target regions to be considered for interaction prediction"
+                        help="In the format 'from1-to1,from2-to2,..' assuming indexing starts with 1" />
+                </section>
+                <section name="seed" title="Seed Parameters">
+                    <expand macro="seed_macro"/>
+                    <param argument="--seedQMaxUP" type="integer" value="-1" min="-1" max="20"
+                        label="Max. number of unpaired bases within the query's seed region" help=""/>
+                    <param argument="--seedTMaxUP" type="integer" value="-1" min="-1" max="20"
+                        label="Max. number of unpaired bases within the target's seed region" help=""/>
+                    <param argument="--seedMaxE" type="integer" value="0" min="-999" max="999"
+                        label="Max. energy a seed region may have" help=""/>
+                    <param argument="--seedMinPu" type="float" value="0" min="0" max="1"
+                        label="Min. unpaired probability (per sequence)" help=""/>
+
+                    <param argument="--seedQRange" type="text" value=""
+                        label="Interval(s) in the query to search for seeds" help="in format 'from1-to1,from2-to2,...' (Note, only for single query)"/>
+                    <param argument="--seedTRange" type="text" value=""
+                        label="Interval(s) in the target to search for seeds" help="in format 'from1-to1,from2-to2,...' (Note, only for single query)"/>
+                </section>
+                <section name="interaction" title="Interaction Parameters">
+                    <expand macro="interaction_macro"/>
+                    <param argument="--pred" type="select" label="Prediction target" help="Sets what to optimize for">
+                        <option value="S" selected="true">Single-site minimum-free-energy interaction</option>
+                        <option value="P">Single-site maximum-probability interaction</option>
+                    </param>
+                    <param argument="--energy" type="select" label="Energy computation" help="">
+                        <!-- <option value="B">Base pair == -1 ()</option> -->
+                        <option value="V" selected="true">VRNA-based computation</option>
+                    </param>
+                    <param argument="--energyVRNA" type="data" format="*" optional="true"
+                        label="Energy parameter file of VRNA package" help="If not provided, the default parameter set of the linked Vienna RNA package is used."/>
+                    <param argument="--temperature" type="integer" value="37" min="0" max="100"
+                        label="Temperature [°C]" help="VRNA energy parameters"/>
+                </section>
+                <section name="output" title="Output Options">
+                    <expand macro="output_macro"/>
+                    <param argument="--outMaxE" type="float" value="0"
+                        label="Max. absolute energy of an interaction" help="Only interactions with E &#8804; maxE are reported"/>
+                    <param argument="--outDeltaE" type="float" value="100"
+                        label="Max. delta energy above mfe of an interaction" help="suboptimal output: only interactions with E &#8804; (minE+deltaE) are reported"/>
+
+                    <conditional name="add_output_cond">
+                        <param name="selector" type="select" label="Additional output files">
+                            <option value="add">Output additional files</option>
+                            <option value="none" selected="true">Don't output additional files</option>
+                        </param>
+                        <when value="add">
+                            <param name="add_output" type="select" display="checkboxes" multiple="True"
+                                label="Additional output files" help="Written in a format similar to RNAplfold unpaired probability output.">
+                                <option value="outQAccFile" selected="true">The query's ED values (--outQAccFile)</option>
+                                <option value="outTAccFile">The target's ED values (--outTAccFile) </option>
+                                <option value="outQPuFile">The query's unpaired probabilities used for ED values (--outQPuFile) </option>
+                                <option value="outTPuFile">The target's unpaired probabilities used for ED values (--outTPuFile)</option>
+                            </param>
+                        </when>
+                        <when value="none"/>
+                    </conditional>
+
+                </section>
+            </when>
+            <when value="basic">
+                <section name="query" title="Query Parameters" expanded="True">
+                    <expand macro="query_macro"/>
+                </section>
+                <section name="target" title="Target Parameters" expanded="True">
+                    <expand macro="target_macro"/>
+                </section>
+                <section name="seed" title="Seed Parameters">
+                    <expand macro="seed_macro"/>
+                </section>
+                <section name="interaction" title="Interaction Parameters">
+                    <expand macro="interaction_macro"/>
+                </section>
+                <section name="output" title="Output Options">
+                    <expand macro="output_macro"/>
+                </section>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data  name="outfile" format="text" label="IntaRNA on ${on_string}">
+            <change_format>
+                <when input="advancedOptions.output.outMode" value="C" format="tabular" />
+            </change_format>
+        </data>
+        <data name="outQAccFile" format="text" label="Query's ED values, on ${on_string}">
+            <filter>
+                ((
+                advancedOptions['advancedSelector'] == "advanced" and
+                advancedOptions['output']['add_output_cond']['selector'] == "add" and
+                'outQAccFile' in advancedOptions['output']['add_output_cond']['add_output']
+                ))
+            </filter>
+        </data>
+        <data name="outTAccFile" format="text" label="Target's ED values, on ${on_string}">
+            <filter>
+                ((
+                advancedOptions['advancedSelector'] == "advanced" and
+                advancedOptions['output']['add_output_cond']['selector'] == "add" and
+                'outTAccFile' in advancedOptions['output']['add_output_cond']['add_output']
+                ))
+            </filter>
+        </data>
+        <data name="outQPuFile" format="text" label="Query's unpaired probabilities used for ED values, on ${on_string}">
+            <filter>
+                ((
+                advancedOptions['advancedSelector'] == "advanced" and
+                advancedOptions['output']['add_output_cond']['selector'] == "add" and
+                'outQPuFile' in advancedOptions['output']['add_output_cond']['add_output']
+                ))
+            </filter>
+        </data>
+        <data name="outTPuFile" format="text" label="Target's unpaired probabilities used for ED values, on ${on_string}">
+            <filter>
+                ((
+                advancedOptions['advancedSelector'] == "advanced" and
+                advancedOptions['output']['add_output_cond']['selector'] == "add" and
+                'outTPuFile' in advancedOptions['output']['add_output_cond']['add_output']
+                ))
+            </filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="advancedOptions">
+                <param name="advancedSelector" value="basic"/>
+                <section name="query">
+                    <param name="_query" value="intarna_query.fa" />
+                </section>
+                <section name="target">
+                    <param name="_target" value="intarna_target.fa"/>
+                </section>
+            </conditional>
+            <output name="outfile" file="intarna_result.tabular"/>
+        </test>
+    </tests>
+
+    <help>
+<![CDATA[
+
+**What it does**
+
+Efficient RNA-RNA interaction prediction incorporating accessibility and seeding of interaction sites
+
+During the last few years, several new small regulatory RNAs (sRNAs) have been discovered in bacteria. Most of them act as post-transcriptional regulators by base pairing to a target mRNA, causing translational repression or activation, or mRNA degradation. Numerous sRNAs have already been identified, but the number of experimentally verified targets is considerably lower. Consequently, computational target prediction is in great demand. Many existing target prediction programs neglect the accessibility of target sites and the existence of a seed, while other approaches are either specialized to certain types of RNAs or too slow for genome-wide searches.
+
+IntaRNA, developed by `Prof. Backofen's bioinformatics group at Freiburg University <http://www.bioinf.uni-freiburg.de/>`_, is a general and fast approach to the prediction of RNA-RNA interactions incorporating both the accessibility of interacting sites as well as the existence of a user-definable seed interaction. We successfully applied IntaRNA to the prediction of bacterial sRNA targets and determined the exact locations of the interactions with a higher accuracy than competing programs.
+
+.. class:: infomark
+
+Please refer to  `IntaRNA github repository <https://github.com/BackofenLab/IntaRNA>`_ for use cases and additional information.
+
+
+**Input**
+
+
+
+RNA sequences in *FASTA* format
+
+
+**Output**
+
+RNA-RNA interaction information in CSV format and additional information/files on demand
+
+]]>
+
+    </help>
+
+    <citations>
+        <citation type="doi">10.1093/nar/gku359</citation>
+        <citation type="doi">10.1093/bioinformatics/btn544</citation>
+    </citations>
+
+</tool>
