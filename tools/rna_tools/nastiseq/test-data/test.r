@@ -1,8 +1,17 @@
 library(NASTIseq)
 library(data.table)
 
-### generation of test set
-# data(WholeRoot)
+## generation of test set
+data(WholeRoot)
+WholeRoot$genepos$feature <- 'gene'
+
+set_attri <- function(attri){
+  attri = paste('gene_id ', '"', attri, '"', ';', sep = '')
+  return(attri)
+}
+
+WholeRoot$genepos$attributes = as.character(lapply(as.character(WholeRoot$genepos$attributes), set_attri))
+
 #
 # write.table(WholeRoot$genepos, file = "input_TAIR10_annotation.tsv",row.names = FALSE ,  sep = "\t", quote = FALSE)
 #
@@ -11,7 +20,12 @@ library(data.table)
 #
 # write.table(WholeRoot$pospairs, file = "input_positive_pair.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
 
-genepos = fread('Arabidopsis_thaliana.TAIR10.34.gtf', stringsAsFactors=TRUE)
+# genepos = read.table("Arabidopsis_thaliana.TAIR10.34.gtf", sep = "\t")
+# genepos$attributes = as.character(genepos$attributes)
+
+genepos = read.delim("Arabidopsis_thaliana.TAIR10.34.gtf", header=FALSE, comment.char="#")
+
+# genepos = fread('Arabidopsis_thaliana.TAIR10.34.gtf', stringsAsFactors=TRUE)
 colnames(genepos) = c("seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attributes")
 
 genepos = subset(genepos, feature=="gene")
@@ -24,7 +38,7 @@ get_id <- function(attri){
 }
 
 genepos$attributes = as.character(lapply(as.character(genepos$attributes), get_id))
-rownames(genepos) = genepos$attributes
+# rownames(genepos) = genepos$attributes
 
 pospairs = read.table("input_positive_pair.tsv", sep = "\t", as.is = TRUE)
 
@@ -38,7 +52,7 @@ WRscore = getNASTIscore(smat, asmat)
 
 negpairs = getnegativepairs(genepos)
 
-WRpred = NASTIpredict(smat,asmat, pospairs, negpairs)
+WRpred = NASTIpredict(sm,asmat, pospairs, negpairs)
 
 WRpred_rocr = prediction(WRpred$predictions,WRpred$labels)
 
