@@ -20,8 +20,8 @@ for singleFile in sorted(cluster_seqs_stats_files):
     numberOfClusters += 1
     with open(singleFile, "r") as f:
         for line in f.readlines():
-            uniqueId = line.split()[7]
-            clustNum = line.split()[1]
+            uniqueId = line.split()[8]
+            clustNum = line.split()[2]
             rnaClass, sep, tail = uniqueId.partition("_")
             listOfClasses.append(rnaClass)
             listOfClusters.append(clustNum)
