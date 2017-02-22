@@ -24,7 +24,7 @@ def plot_bar(ranges, colors, orig_names, cluster_nums):
     # Add the legend
     patches = [mpatches.Patch(color=cluster_nums[lab], label=lab) for lab in sorted(cluster_nums)]
     ax.legend(handles=patches, loc='best')  # , bbox_to_anchor=(1, 0.5), loc='center left')
-    plt.savefig("motif_plot.png")
+    plt.savefig("motif_plot.png", bbox_inches='tight')
 
 
 def parse_clusters():
