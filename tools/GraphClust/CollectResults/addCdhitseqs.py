@@ -3,26 +3,29 @@ import glob
 import sys
 
 cdhitcluster = sys.argv[1]
-#clusters = sys.argv[2]
 
 cluster_seqs_stats_path = "RESULTS/*.cluster.all"
 cluster_seqs_stats_files = glob.glob(cluster_seqs_stats_path)
 
-#clusterFiles = clusters.split(',')
 repSeqRedSeqdict = {}
 repLine = ""
 count = 0
 first = False
+add_FullId = ""
+k = 0
 
 with open(cdhitcluster, 'r+') as f:
-    lines = f.readlines()
+    content = f.read()
+    reps = re.compile("^.*\*$", re.MULTILINE).findall(content)
+    lines = content.split('\n')
+
     for i in range(0, len(lines)):
         line = lines[i]
         if ">Cluster" in line:
             first = True
             count = 0
-            if i+1 < len(lines):
-                repLine = lines[i+1]
+            repLine = reps[k]
+            k = k+1
             continue
         elif not first:
             count += 1
@@ -33,27 +36,41 @@ with open(cdhitcluster, 'r+') as f:
         if count > 0:
             repLine = repLine.strip()
             rep_FullId = repLine.split()[2]
-            rep_FullId = rep_FullId.replace(">", "")
-            #rep_short_id = re.findall("_".join(["[^_]+"] * 2), rep_FullId)[0]
-            rep_FullId = rep_FullId.replace("...", "")
+            rep_FullId = rep_FullId.replace(">","")
+            rep_FullId = rep_FullId.replace("...","")
+            if "*" in line or not line.strip():
+                continue
             line = line.strip()
             add_FullId = line.split()[2]
-            add_FullId = add_FullId.replace(">", "")
-            add_FullId = add_FullId.replace("...", "")
-            #add_short_id = re.findall("_".join(["[^_]+"] * 2), add_FullId)[0]
+            add_FullId = add_FullId.replace(">","")
+            add_FullId = add_FullId.replace("...","")
             lineArr.append(add_FullId)
             repSeqRedSeqdict[rep_FullId] = lineArr
-            #lineArr.append(add_short_id)
-            #repSeqRedSeqdict[rep_short_id] = lineArr
 
 toWrite = ""
-
 for singleFile in sorted(cluster_seqs_stats_files):
-    with open(singleFile, "a+") as clFile:
-        file_content = clFile.read()
-        first_line = file_content.split('\n')[0]
+    toWrite = ""
+    with open(singleFile, "r+") as clFile:
+        file_lines = clFile.readlines()
+        for line in file_lines:
+            line = '\t'.join(line.split())
+            toWrite += line + '\n'
+        clFile.seek(0)
+        clFile.write(toWrite)
+        clFile.truncate()
+        first_line = file_lines[0]
+        toWrite = ""
+        cols = first_line.split()
+        file_content =  '\n'.join(file_lines)
         for key, val in repSeqRedSeqdict.items():
             if key in file_content:
+
                 for i in val:
-                    toWrite += first_line.split()[0] + "  " + first_line.split()[1] + "  " + first_line.split()[2] + "  " + " - " + "   " + "CD-Hit" + "    " + first_line.split()[5] + "  " + "ORIGID" + "  "  + str(i) + "\n"
+                    cols[3] = "---"
+                    cols[4] = "CD-Hit"
+                    cols[7] = str(i)
+                    if len(first_line.split()) > 9:
+                        cols[9] = str(i.rsplit("_",1)[0])
+                    toWrite += '\t'.join(cols)
+                    toWrite +="\n"
         clFile.write(toWrite)
