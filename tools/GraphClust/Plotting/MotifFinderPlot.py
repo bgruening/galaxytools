@@ -34,12 +34,14 @@ def parse_clusters():
     if len(cluster_files) == 0:
         raise RuntimeError('Expected cluster.all search path is empty:{}'.format(cluster_files))
     palette = itertools.cycle(sns.color_palette("Set2", len(cluster_files)))
+
+
     ranges = defaultdict(list)
     colors = defaultdict(list)
     orig_names = defaultdict(list)
     cluster_nums = defaultdict(list)
     for cluster_file in cluster_files:
-        cluster_color = palette.next()
+        cluster_color = next(palette)
         df_cluster = pd.read_csv(cluster_file, sep='\s+', header=None)
         for irow, row in df_cluster.iterrows():
             seq, start, end, strand = row[0].split("#")
