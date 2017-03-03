@@ -97,8 +97,10 @@ def run(species, gene, motifs):
         evt         = aresite["ttp_evidence"]
         eva         = aresite["auf_evidence"]
         anno        = aresite["annotation"]
+        meanaccs    = ['{:.4e}'.format(x) for x in aresite["meanacshort"]]
+        meanaccl    = ['{:.4e}'.format(x) for x in aresite["meanaclong"]]             
         
-        aresite = zip(chrs,starts,ends,mots,anno,strands,genes,transcripts,evh,evt,eva)
+        aresite = zip(chrs,starts,ends,mots,anno,strands,genes,transcripts,meanaccs,meanaccl,evh,evt,eva)
 
         def getKey(item):
             return item[1]
