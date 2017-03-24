@@ -9,7 +9,7 @@ import glob
 import pandas as pd
 import itertools
 import seaborn as sns
-
+import numpy as np
 
 def plot_bar(ranges, colors, orig_names, cluster_nums):
     fig, ax = plt.subplots()
@@ -18,12 +18,13 @@ def plot_bar(ranges, colors, orig_names, cluster_nums):
 
     ax.set_xlim(0)
     ax.set_xlabel('position in sequence')
+    ax.set_yticks(np.arange(-1, len(ranges)))
     ax.set_yticklabels(['']+[k+'-'+orig_names[k] for k in sorted(ranges.keys())])
     ax.grid(True)
     fig.suptitle('Structure motif prediction\nRegions with same color are prediticted to have similar structures')
     # Add the legend
     patches = [mpatches.Patch(color=cluster_nums[lab], label=lab) for lab in sorted(cluster_nums)]
-    ax.legend(handles=patches, loc='best')  # , bbox_to_anchor=(1, 0.5), loc='center left')
+    ax.legend(handles=patches, loc='best', bbox_to_anchor=(1.2, 1.05))#, loc='center left')
     plt.savefig("motif_plot.png", bbox_inches='tight')
 
 
@@ -31,12 +32,11 @@ def parse_clusters():
     currentdir_files = sorted(list(glob.glob('*')))
     print ("currentdir_files are: ", currentdir_files)
     print ("RESULTS_files are: ", sorted(list(glob.glob('RESULTS/*'))))
-    
+
     cluster_files = sorted(list(glob.glob('RESULTS/*.cluster.all')))
     if len(cluster_files) == 0:
         raise RuntimeError('Expected cluster.all search path is empty:{}'.format(cluster_files))
     palette = itertools.cycle(sns.color_palette("Set2", len(cluster_files)))
-
 
     ranges = defaultdict(list)
     colors = defaultdict(list)
