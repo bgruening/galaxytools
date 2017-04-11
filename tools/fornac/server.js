@@ -6,11 +6,13 @@ if(process.argv.length < 5){
 	process.exit();
 }else{
 
-	// requirements
+	// Requirements
 	var jsdom = require('jsdom');
 	var fs = require("fs");
+	const pnfs = require("pn/fs");
+	const svg2png = require("svg2png");
 
-	// global variables
+	// Global variables
 	var editorHtml;
 	var format = process.argv[2];
 	var input = process.argv[3];
@@ -21,10 +23,9 @@ if(process.argv.length < 5){
 	*	the nucleotides for the visualization.
 	*/
 	function writeInput() {
-		var inputFile = fs.readFileSync(input.toString(), "utf-8");
+		var inputFile = fs.readFileSync(input + ".json", "utf-8");
 		editorHtml = fs.readFileSync("./editor.html", "utf-8");
 		var newValue = editorHtml.replace(/<input>/, inputFile);
-
 	  	fs.writeFileSync('./editor.html', newValue, 'utf-8');
 	}
 
@@ -39,11 +40,47 @@ if(process.argv.length < 5){
 	/** Writes the output of the final file. Depending on the format it might be
 	*	an svg, png or some other format file.
 	*/
-	function writeOutput(content){
-		fs.writeFileSync(output.toString(), content, 'utf-8');
+	function writeSvgOutput(content){
+		fs.writeFileSync(output + ".svg", content, 'utf-8');
 	}
 
-	/** The function that contains the main logic
+	/** Processes and generates the svg, also adds the needed tags for it to be
+	*	displayable as a xml file in browser.
+	*/
+	function generateSvg(window){
+		// Get the css styles for the svg
+	  	var svgStyle = window.$("style").html();
+	  	// Svg attributes that are needed for standalone function
+	  	// as a separate file
+	  	var svg = window.$("svg").attr("viewBox", "0 0 300 300");
+	  	svg.attr("xmlns","http://www.w3.org/2000/svg");
+	  	svg.attr("version","1.1");
+	  	svg.attr("xmlns:xlink","http://www.w3.org/1999/xlink");
+	  	svg.attr("width","300");
+	  	svg.attr("height","300");
+	  	// Locate the style inside the svg itself and fill it with
+	  	// the previously loaded styles
+	  	window.$("svg > style").html(''+svgStyle);
+	  	var svgFinal = 
+	  		`<?xml version="1.0" standalone="no"?>
+			<?xml-stylesheet type="text/css" href="style8.css"?>
+			<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+			` +
+  			window.$("#rna_ss").html();
+	    writeSvgOutput(svgFinal);
+	}
+
+	/** Processes and generates the svg, also adds the needed tags for it to be
+	*	displayable as a xml file in browser.
+	*/
+	function convertSvgToPng(){
+		pnfs.readFile(output + ".svg")
+		    .then(svg2png)
+		    .then(buffer => fs.writeFile(output + ".png", buffer))
+		    .catch(e => console.error(e));
+	}
+
+	/** The function that contains the main logic.
 	*/
 	function main(){
 		writeInput();
@@ -59,27 +96,11 @@ if(process.argv.length < 5){
 
 		config.done = function (err, window) {
 		  	if(format == "svg"){
-		  		// Get the css styles for the svg
-			  	var svgStyle = window.$("style").html();
-			  	// Svg attributes that are needed for standalone function
-			  	// as a separate file
-			  	var svg = window.$("svg").attr("viewBox", "0 0 300 300");
-			  	svg.attr("xmlns","http://www.w3.org/2000/svg");
-			  	svg.attr("version","1.1");
-			  	svg.attr("xmlns:xlink","http://www.w3.org/1999/xlink");
-			  	// Locate the style inside the svg itself and fill it with
-			  	// the previously loaded styles
-			  	window.$("svg > style").html(''+svgStyle);
-
-			  	var svgFinal = 
-			  		`<?xml version="1.0" standalone="no"?>
-					<?xml-stylesheet type="text/css" href="style8.css"?>
-					<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
-					` +
-		  			window.$("#rna_ss").html();
-			    writeOutput(svgFinal);
+		  		generateSvg(window);
 			}else if(format == "png"){
-				//TODO: handle png format request
+			 	generateSvg(window);
+			 	convertSvgToPng();
+				fs.unlink(output + ".svg");
 			}
 			revertInput();
 		}
@@ -88,6 +109,6 @@ if(process.argv.length < 5){
 		jsdom.env(config);
 	}
 
-	// call to main
+	// Call to main
 	main();
 }
