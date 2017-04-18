@@ -7,83 +7,80 @@
         <exit_code range="1:" />
     </stdio>
     <command><![CDATA[
-        mkdir chip; mkdir chip/sorted; mkdir chip/dedup;
-        MUSIC -preprocess $infile_format $chip_infile chip/;
-        MUSIC -sort_reads chip chip/sorted;
-        MUSIC -remove_duplicates chip/sorted $no_max_duplicates chip/dedup;
+        mkdir mappability;
+        #for $mapp_infile in $mapp_infiles
+            mv $mapp_infile mappability/;
+        #end for
+        mkdir SSERs;
+        mkdir ERs;
         #if $control
-            mkdir input; mkdir input/sorted; mkdir input/dedup;
-            MUSIC -preprocess $infile_format $control_infile input/;
-            MUSIC -sort_reads input input/sorted;
-            MUSIC -remove_duplicates input/sorted $no_max_duplicates input/dedup;
+            mkdir input;mkdir input/preprocessed input/sorted input/pruned;
+            run_MUSIC.csh -preprocess $control_infile input/preprocessed;
+            run_MUSIC.csh -remove_duplicates input/preprocessed input/sorted input/pruned
         #end if
-        MUSIC -chip chip/dedup
+
+        rm -f -r preprocessed sorted pruned;
+        mkdir preprocessed sorted pruned;
+        #for $chip_infile in $chip_infiles
+            run_MUSIC.csh -preprocess $chip_infile preprocessed;
+        #end for
+        run_MUSIC.csh -remove_duplicates preprocessed sorted pruned;
+
+        rm -f ERs/*.bed
+        rm -f SSERs/*.bed
+
+        #if str($options) == "-get_broad_ERs":
+            rm -f l_p_param_stats.txt
+            MUSIC -get_per_win_p_vals_vs_FC -chip pruned/ -control input/pruned/ -l_win_step $l_win_step -l_win_min $l_win_min -l_win_max $l_win_max
+            MUSIC -get_multiscale_broad_ERs -l_p 0
+        #elif  str($options) == "-get_punctate_ERs":
+            MUSIC -get_multiscale_punctate_ERs -l_p $l_p
+        #end if
+        -chip pruned/
         #if $control
-            -control input/dedup
+            -control input/pruned/
         #end if
-        -mapp $mapp_dir
+        -mapp mappability/
         -begin_l $begin_l
         -end_l $end_l
         -step $step
         -l_bin $l_bin
-        #if str($l_mapp)
-            -l_mapp $l_mapp
-        #end if
+        -l_mapp $l_mapp
         -mapp_thr $mapp_thr
         -l_frag $l_frag
-        -l_c $l_c
-        #if str($l_p)
-            -l_p $l_p
-        #end if
         -sigma $sigma
         -gamma $gamma
-        #if str($q_val)
-            -q_val $q_val
-        #end if
-        #if str($options) == "-get_per_win_p_vals_vs_FC":
-            -l_win_min $l_win_min
-            -l_win_max $l_win_max
-            -l_win_step $l_win_step
-        #end if
+        -q_val $q_val
         ;
-        mkdir SSERs;
-        mkdir ERs;
         mv SSERs*.bed SSERs/;
         mv ERs*.bed ERs/
 
     ]]></command>
     <inputs>
         <param name="options" type="select" label="Options">
-            <option value="-get_multiscale_broad_ERs">Get Multiscale Broad ERs</option>
-            <option value="-get_multiscale_punctate_ERs">Get Multiscale Punctate ERs</option>
-            <option value="-get_TF_peaks">Get TF Peaks</option>
-            <option value="-write_MS_decomposition">Write MS Decomposition</option>
-            <option value="-write_logR_signal">Write LogR Signal</option>
-            <option value="-get_per_win_p_vals_vs_FC">Get per win_p values vs. FC</option>
-            <option value="-get_scale_spectrum">Get Scale Spectrum</option>
-            <option value="-get_multiscale_music">Get Multiscale Music</option>
+            <option value="-get_broad_ERs">Broad ERs</option>
+            <option value="-get_punctate_ERs">Punctate ERs</option>
         </param>
-        <param name="infile_format" type="text" value="" help="Input file format ('SAM', 'ELAND', 'bowtie', 'tagAlign', 'BED5', 'BED6')"/>
-        <param type="data" name="chip_infile" help="ChIP input file"/>
+        <param type="data" name="chip_infiles" multiple="true" help="ChIP input file"/>
+        <param type="data" name="mapp_infiles" multiple="true" help="multi-mapability profiles"/>
         <param type="data" name="control_infile" help="Control input file"/>
         <param name="control" type="boolean" checked="false" truevalue="-control" falsevalue="" help="Whether control is present or not"/>
-        <param type="data" name="in_mapp" help="multi-mapability profiles"/>
         <param name="no_max_duplicates" type="integer" value="2" help="Max # of duplicates per position"/>
         <param name="begin_l" type="integer" value="1000" help="First scale smoothing window length"/>
         <param name="end_l" type="integer" value="16000" help="Last scale smoothing window length"/>
         <param name="step" type="float" value="1.5" help="Multiplicative window length step"/>
         <param name="l_bin" type="integer" value="5" help="Bin size in nucleotides"/>
-        <param name="l_mapp" type="integer" value="" optional="True" help="Read length of multi-mapability profiles"/>
+        <param name="l_mapp" type="integer" value="50" help="Read length of multi-mapability profiles"/>
         <param name="mapp_thr" type="float" value="1.2" help="Multi-mapability signal threshold used in correction"/>
         <param name="l_frag" type="integer" value="200" help="Fragment length"/>
         <param name="l_c" type="integer" value="2000" help="Mapability correction window length"/>
-        <param name="l_p" type="integer" value="" optional="True" help="Normalization window length for p-value computation"/>
+        <param name="l_p" type="integer" value="0" help="Normalization window length for p-value computation"/>
         <param name="sigma" type="float" value="0.5" help="min(Fore/Back, Back/Fore)"/>
         <param name="gamma" type="integer" value="4" help="Min threshold for unsmoothed/smoothed"/>
-        <param name="q_val" type="integer" value="" optional="True" help="Maximum q-value for the reported ERs"/>
-        <param name="l_win_min" type="integer" value="100" help="Minimum p-val window length"/>
+        <param name="q_val" type="float" value="0.1" help="Maximum q-value for the reported ERs"/>
+        <param name="l_win_min" type="integer" value="200" help="Minimum p-val window length"/>
         <param name="l_win_max" type="integer" value="5000" help="Maximum p-val window length"/>
-        <param name="l_win_step" type="integer" value="250" help="p-val window length step"/>
+        <param name="l_win_step" type="integer" value="50" help="p-val window length step"/>
     </inputs>
     <outputs>
         <data format="bed" name="SSERs_report">
@@ -95,9 +92,9 @@
     </outputs>
     <tests>
         <test>
-            <param name="chip_infile" value="input.sam"/>
-            <param name="infile_format" value="BED5"/>
-            <param name="options" value="-get_multiscale_broad_ERs"/>
+            <param name="chip_infiles" value="test1.bam,test2.bam,testA.bam,testB.bam"/>
+            <param name="mapp_infiles" value="2LHet.bin,M.bin,XHet.bin,YHet.bin"/>
+            <param name="options" value="-get_punctate_ERs"/>
             <output name="SSERs_report" format="bed" directory="SSERs"/>
             <output name="ERs_report" format="bed" directory="ERs"/>
         </test>
