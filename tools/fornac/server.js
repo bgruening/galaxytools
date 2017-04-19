@@ -26,7 +26,6 @@ if(process.argv.length < 5){
 	function writeInput() {
 		var inputFile = fs.readFileSync(input, "utf-8");
 		editorHtml = fs.readFileSync(tool_directory + "editor.html", "utf-8");
-		console.log(editorHtml);
 		var newValue = editorHtml.replace(/<input>/, inputFile);
 	  	fs.writeFileSync(tool_directory + 'editor.html', newValue, 'utf-8');
 	}
