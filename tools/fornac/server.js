@@ -26,6 +26,7 @@ if(process.argv.length < 5){
 	function writeInput() {
 		var inputFile = fs.readFileSync(input, "utf-8");
 		editorHtml = fs.readFileSync(tool_directory + "editor.html", "utf-8");
+		console.log(editorHtml);
 		var newValue = editorHtml.replace(/<input>/, inputFile);
 	  	fs.writeFileSync(tool_directory + 'editor.html', newValue, 'utf-8');
 	}
@@ -42,7 +43,7 @@ if(process.argv.length < 5){
 	*	an svg, png or some other format file.
 	*/
 	function writeSvgOutput(content){
-		fs.writeFileSync(output + ".svg", content, 'utf-8');
+		fs.writeFileSync(output, content, 'utf-8');
 	}
 
 	/** Processes and generates the svg, also adds the needed tags for it to be
