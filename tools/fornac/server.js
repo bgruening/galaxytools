@@ -17,16 +17,17 @@ if(process.argv.length < 5){
 	var format = process.argv[2];
 	var input = process.argv[3];
 	var output = process.argv[4];
+	var tool_directory = process.argv[5];
 
 	/** A function that loads the input file and then modifies the editor.html
 	*	to change the input parameters for Fornac. It loads the structures and
 	*	the nucleotides for the visualization.
 	*/
 	function writeInput() {
-		var inputFile = fs.readFileSync(input + ".json", "utf-8");
-		editorHtml = fs.readFileSync("./editor.html", "utf-8");
+		var inputFile = fs.readFileSync(input, "utf-8");
+		editorHtml = fs.readFileSync(tool_directory + "editor.html", "utf-8");
 		var newValue = editorHtml.replace(/<input>/, inputFile);
-	  	fs.writeFileSync('./editor.html', newValue, 'utf-8');
+	  	fs.writeFileSync(tool_directory + 'editor.html', newValue, 'utf-8');
 	}
 
 	/** Reverts the changes made to editor.html for future use. If this function
@@ -34,7 +35,7 @@ if(process.argv.length < 5){
 	*	to work.
 	*/
 	function revertInput() {
-		fs.writeFileSync('./editor.html', editorHtml, 'utf-8');
+		fs.writeFileSync(tool_directory + 'editor.html', editorHtml, 'utf-8');
 	}
 
 	/** Writes the output of the final file. Depending on the format it might be
@@ -88,7 +89,7 @@ if(process.argv.length < 5){
 		// The config object is built for the jsdom options
 		var config = {};
 
-		config.file = './editor.html';
+		config.file = tool_directory + 'editor.html';
 		config.features = {
 			FetchExternalResources : ['script'],
 			ProcessExternalResources : ['script']
