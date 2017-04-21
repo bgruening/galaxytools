@@ -14,6 +14,7 @@ if(process.argv.length < 5){
 
 	// Global variables
 	var editorHtml;
+	var tmpFileName;
 	var format = process.argv[2];
 	var input = process.argv[3];
 	var output = process.argv[4];
@@ -27,15 +28,25 @@ if(process.argv.length < 5){
 		var inputFile = fs.readFileSync(input, "utf-8");
 		editorHtml = fs.readFileSync(tool_directory + "editor.html", "utf-8");
 		var newValue = editorHtml.replace(/<input>/, inputFile);
-	  	fs.writeFileSync(tool_directory + 'editor.html', newValue, 'utf-8');
+		var removedExtension = cleanFileName(input);
+		tmpFileName = tool_directory + '/' + 'editor_' + removedExtension + '.html';
+	  	fs.writeFileSync(tmpFileName, newValue, 'utf-8');
 	}
 
-	/** Reverts the changes made to editor.html for future use. If this function
-	*	is not applied the file will have to be changed manually for the script
-	*	to work.
+	/** Removal of the prefixes of the full path and extension trimming.
 	*/
-	function revertInput() {
-		fs.writeFileSync(tool_directory + 'editor.html', editorHtml, 'utf-8');
+	function cleanFileName(name){
+		var parts = name.split("\/");
+		var nameAndExtension = parts[parts.length - 1];
+		return nameAndExtension.split("\.")[0];
+	}
+
+	/** A function that deletes the temporary file that is used for the 
+	*	particular input sequence. This file is generated from the writeInput()
+	*	function.
+	*/
+	function deleteTmpFile() {
+		fs.unlink(tmpFileName);
 	}
 
 	/** Writes the output of the final file. Depending on the format it might be
@@ -89,7 +100,7 @@ if(process.argv.length < 5){
 		// The config object is built for the jsdom options
 		var config = {};
 
-		config.file = tool_directory + 'editor.html';
+		config.file = tmpFileName;
 		config.features = {
 			FetchExternalResources : ['script'],
 			ProcessExternalResources : ['script']
@@ -103,7 +114,7 @@ if(process.argv.length < 5){
 			 	convertSvgToPng();
 				fs.unlink(output + ".svg");
 			}
-			revertInput();
+			deleteTmpFile();
 		}
 
 		// Run the jsdom server and generate the output
