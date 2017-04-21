@@ -20,14 +20,18 @@ if(process.argv.length < 5){
 	var output = process.argv[4];
 	var tool_directory = process.argv[5];
 
+	function readInput() {
+		return fs.readFileSync(input, "utf-8");
+	}
+
 	/** A function that loads the input file and then modifies the editor.html
 	*	to change the input parameters for Fornac. It loads the structures and
 	*	the nucleotides for the visualization.
 	*/
-	function writeInput() {
-		var inputFile = fs.readFileSync(input, "utf-8");
+	function writeInput(content) {
+		content = JSON.stringify(content);
 		editorHtml = fs.readFileSync(tool_directory + "editor.html", "utf-8");
-		var newValue = editorHtml.replace(/<input>/, inputFile);
+		var newValue = editorHtml.replace(/<input>/, content);
 		var removedExtension = cleanFileName(input);
 		tmpFileName = tool_directory + '/' + 'editor_' + removedExtension + '.html';
 	  	fs.writeFileSync(tmpFileName, newValue, 'utf-8');
@@ -92,10 +96,11 @@ if(process.argv.length < 5){
 		    .catch(e => console.error(e));
 	}
 
-	/** The function that contains the main logic.
+	/** A function that runs the JSDOM server and executes it with the needed options.
+	*	The server is set to execute the javascripts so the svg can be generated.
 	*/
-	function main(){
-		writeInput();
+	function runJSDOM(content){
+		writeInput(content);
 
 		// The config object is built for the jsdom options
 		var config = {};
@@ -119,6 +124,20 @@ if(process.argv.length < 5){
 
 		// Run the jsdom server and generate the output
 		jsdom.env(config);
+	}
+
+	/** The function that contains the main logic.
+	*/
+	function main(){
+		var content = JSON.parse(readInput());
+
+		if(content.constructor === Array){
+			for(object in content){
+				runJSDOM(content);
+			}
+		}else{
+			runJSDOM(content);
+		}
 	}
 
 	// Call to main
