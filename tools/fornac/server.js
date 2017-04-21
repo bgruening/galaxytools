@@ -56,14 +56,14 @@ if(process.argv.length < 5){
 	/** Writes the output of the final file. Depending on the format it might be
 	*	an svg, png or some other format file.
 	*/
-	function writeSvgOutput(content){
-		fs.writeFileSync(output, content, 'utf-8');
+	function writeSvgOutput(content, file){
+		fs.writeFileSync(file, content, 'utf-8');
 	}
 
 	/** Processes and generates the svg, also adds the needed tags for it to be
 	*	displayable as a xml file in browser.
 	*/
-	function generateSvg(window){
+	function generateSvg(window, file){
 		// Get the css styles for the svg
 	  	var svgStyle = window.$("style").html();
 	  	// Svg attributes that are needed for standalone function
@@ -83,16 +83,16 @@ if(process.argv.length < 5){
 			<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 			` +
   			window.$("#rna_ss").html();
-	    writeSvgOutput(svgFinal);
+	    writeSvgOutput(svgFinal, file);
 	}
 
 	/** Processes and generates the svg, also adds the needed tags for it to be
 	*	displayable as a xml file in browser.
 	*/
-	function convertSvgToPng(){
-		pnfs.readFile(output + ".svg")
+	function convertSvgToPng(tmpSvg, png){
+		pnfs.readFile(tmpSvg)
 		    .then(svg2png)
-		    .then(buffer => fs.writeFile(output + ".png", buffer))
+		    .then(buffer => fs.writeFile(png, buffer))
 		    .catch(e => console.error(e));
 	}
 
@@ -113,11 +113,13 @@ if(process.argv.length < 5){
 
 		config.done = function (err, window) {
 		  	if(format == "svg"){
-		  		generateSvg(window);
+		  		generateSvg(window, output);
 			}else if(format == "png"){
-			 	generateSvg(window);
-			 	convertSvgToPng();
-				fs.unlink(output + ".svg");
+				var removedExtension = cleanFileName(input);
+				var tmpSvg = removedExtension + ".svg";
+			 	generateSvg(window, tmpSvg);
+			 	convertSvgToPng(tmpSvg, output);
+				fs.unlink(tmpSvg);
 			}
 			deleteTmpFile();
 		}
