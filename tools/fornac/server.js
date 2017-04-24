@@ -24,6 +24,10 @@ if(process.argv.length < 5){
 		return fs.readFileSync(input, "utf-8");
 	}
 
+	function readTmp() {
+		return fs.readFileSync(tmpFileName, "utf-8");
+	}
+
 	/** A function that loads the input file and then modifies the editor.html
 	*	to change the input parameters for Fornac. It loads the structures and
 	*	the nucleotides for the visualization.
@@ -56,7 +60,7 @@ if(process.argv.length < 5){
 	/** Writes the output of the final file. Depending on the format it might be
 	*	an svg, png or some other format file.
 	*/
-	function writeSvgOutput(content, file){
+	function writeOutput(content, file){
 		fs.writeFileSync(file, content, 'utf-8');
 	}
 
@@ -83,7 +87,7 @@ if(process.argv.length < 5){
 			<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
 			` +
   			window.$("#rna_ss").html();
-	    writeSvgOutput(svgFinal, file);
+	    writeOutput(svgFinal, file);
 	}
 
 	/** Processes and generates the svg, also adds the needed tags for it to be
@@ -120,6 +124,9 @@ if(process.argv.length < 5){
 			 	generateSvg(window, tmpSvg);
 			 	convertSvgToPng(tmpSvg, output);
 				fs.unlink(tmpSvg);
+			}else if(format == "html"){
+	    		var html = readTmp();
+	    		writeOutput(html, output);
 			}
 			deleteTmpFile();
 		}
