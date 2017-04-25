@@ -21,7 +21,37 @@ if(process.argv.length < 5){
 	var tool_directory = process.argv[5];
 
 	function readInput() {
-		return fs.readFileSync(input, "utf-8");
+		var temp1 = String(fs.readFileSync(input, "utf-8"));
+		var count1 = (temp1.match(/Time/g) || []).length;
+		if(count1 == 1){
+			var index1 = temp1.search("Time");
+    		var temp2 = temp1.substring(index1);
+	    	var index2 = temp2.search(">");
+		    var temp3 = temp2.substring(19);
+		    for(i=0 ; i<temp3.length ; i++)
+		    {
+			
+                if (temp3.charAt(i) == "A" || temp3.charAt(i) == "G" || temp3.charAt(i) == "C" || temp3.charAt(i) == "U"  )
+                {
+                    var indexEND = i;
+                    break;
+                } 
+            }
+		    var temp4 = temp3.substring(0, indexEND-1);
+		    var temp6 = temp4.replace(/^\s+|\s+$/g, '');
+		    var temp5 = temp3.substring(indexEND);
+		    var temp7 = temp5.replace(/^\s+|\s+$/g, '');
+		    var final1_1 = '"structure" :'.concat('','"' + temp6);
+		    var final1_2 = final1_1.concat('', '",');
+		    var final2_1 = '"sequence" : "'.concat('', temp7);
+		    var final2_2 = final2_1.concat('', '"')
+		    finalJSON = '{\n    '+final1_2+'\n    '+final2_2+'\n}';
+		    console.log(finalJSON);
+            return finalJSON;
+	    }
+	    else{
+	    	return fs.readFileSync(input, "utf-8");
+	    }		
 	}
 
 	function readTmp() {
