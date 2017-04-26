@@ -298,18 +298,24 @@ def __main__():
 
 
     if args.output_suppressed_reads:
-        shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads.txt'))[0], args.output_suppressed_reads )
+        if glob(os.path.join( output_dir, '*ambiguous_reads.txt')):
+            shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads.txt'))[0], args.output_suppressed_reads )
     if args.output_suppressed_reads_l:
-        shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads_1.txt'))[0], args.output_suppressed_reads_l )
+        if glob(os.path.join(output_dir, '*ambiguous_reads_1.txt')):
+            shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads_1.txt'))[0], args.output_suppressed_reads_l )
     if args.output_suppressed_reads_r:
-        shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads_2.txt'))[0], args.output_suppressed_reads_r )
+        if glob(os.path.join(output_dir, '*ambiguous_reads_2.txt')):
+            shutil.move( glob(os.path.join( output_dir, '*ambiguous_reads_2.txt'))[0], args.output_suppressed_reads_r )
 
     if args.output_unmapped_reads:
-        shutil.move( glob(os.path.join( output_dir, '*unmapped_reads.txt'))[0], args.output_unmapped_reads )
+        if glob(os.path.join(output_dir, '*unmapped_reads.txt')):
+            shutil.move( glob(os.path.join( output_dir, '*unmapped_reads.txt'))[0], args.output_unmapped_reads )
     if args.output_unmapped_reads_l:
-        shutil.move( glob(os.path.join( output_dir, '*unmapped_reads_1.txt'))[0], args.output_unmapped_reads_l )
+        if glob(os.path.join(output_dir, '*unmapped_reads_1.txt')):
+            shutil.move( glob(os.path.join( output_dir, '*unmapped_reads_1.txt'))[0], args.output_unmapped_reads_l )
     if args.output_unmapped_reads_r:
-        shutil.move( glob(os.path.join( output_dir, '*unmapped_reads_2.txt'))[0], args.output_unmapped_reads_r )
+        if glob(os.path.join(output_dir, '*unmapped_reads_2.txt')):
+            shutil.move( glob(os.path.join( output_dir, '*unmapped_reads_2.txt'))[0], args.output_unmapped_reads_r )
 
     try:
         """
