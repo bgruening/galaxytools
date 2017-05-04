@@ -198,6 +198,9 @@ if(process.argv.length < 5){
 			tmpMultipleOutputs[index] = output;		
 		}else{
 			var extension = ".dat";
+			if(format == "html"){
+				extension = ".html";
+			}
 			tmpMultipleOutputs[index] = cleanFileName(output) + "_" + index + extension;
 		}
 
