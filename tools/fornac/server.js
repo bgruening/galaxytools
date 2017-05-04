@@ -121,6 +121,14 @@ if(process.argv.length < 5){
 		return nameAndExtension.split("\.")[0];
 	}
 
+	/** Gets the extension of the given file name and cleans the path.
+	*/
+	function getExtension(name){
+		var parts = name.split("\/");
+		var nameAndExtension = parts[parts.length - 1];
+		return nameAndExtension.split("\.")[1];
+	}
+
 	/** A function that deletes the temporary file that is used for the 
 	*	particular input sequence. This file is generated from the writeInput()
 	*	function.
@@ -189,7 +197,8 @@ if(process.argv.length < 5){
 		if(index == 0){
 			tmpMultipleOutputs[index] = output;		
 		}else{
-			tmpMultipleOutputs[index] = cleanFileName(output) + "_" + index + ".dat";
+			var extension = ".dat";
+			tmpMultipleOutputs[index] = cleanFileName(output) + "_" + index + extension;
 		}
 
 		config.done = function (err, window) {
