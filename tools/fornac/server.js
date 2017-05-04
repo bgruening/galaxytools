@@ -168,12 +168,12 @@ if(process.argv.length < 5){
 	  	var svgStyle = window.$("style").html();
 	  	// Svg attributes that are needed for standalone function
 	  	// as a separate file
-	  	var svg = window.$("svg").attr("viewBox", "0 0 300 300");
+	  	var svg = window.$("svg").attr("viewBox", "0 0 600 600");
 	  	svg.attr("xmlns","http://www.w3.org/2000/svg");
 	  	svg.attr("version","1.1");
 	  	svg.attr("xmlns:xlink","http://www.w3.org/1999/xlink");
-	  	svg.attr("width","300");
-	  	svg.attr("height","300");
+	  	svg.attr("width","600");
+	  	svg.attr("height","600");
 	  	// Locate the style inside the svg itself and fill it with
 	  	// the previously loaded styles
 	  	window.$("svg > style").html(''+svgStyle);
