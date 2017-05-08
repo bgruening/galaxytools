@@ -1,7 +1,7 @@
 // Usage node server.js [format] [input] [output]
 
-if(process.argv.length < 5){
-	console.log("Script expects 5 or more arguments.")
+if(process.argv.length < 7){
+	console.log("Script expects 7 or more arguments.")
 	console.log("Usage: node server.js [format] [input] [output]");
 	process.exit();
 }else{
@@ -17,9 +17,11 @@ if(process.argv.length < 5){
 	var tmpFileName = [];
 	var tmpMultipleOutputs = [];
 	var format = process.argv[2];
-	var input = process.argv[3];
-	var output = process.argv[4];
-	var tool_directory = process.argv[5];
+	var width = process.argv[3];
+	var height = process.argv[4];
+	var input = process.argv[5];
+	var output = process.argv[6];
+	var tool_directory = process.argv[7];
 
 	function readInput() 
 	{
@@ -107,7 +109,9 @@ if(process.argv.length < 5){
 	function writeInput(content, index) {
 		content = JSON.stringify(content);
 		editorHtml = fs.readFileSync(tool_directory + "editor.html", "utf-8");
-		var newValue = editorHtml.replace(/<input>/, content);
+		var newValue = editorHtml.replace(/<input>/, content)
+								.replace(/<width>/g, width)
+						 		.replace(/<height>/g, height);
 		var removedExtension = cleanFileName(input);
 		tmpFileName[index] = tool_directory + '/' + 'editor_' + removedExtension + "_" + index + '.html';
 	  	fs.writeFileSync(tmpFileName[index], newValue, 'utf-8');
@@ -152,12 +156,12 @@ if(process.argv.length < 5){
 	  	var svgStyle = window.$("style").html();
 	  	// Svg attributes that are needed for standalone function
 	  	// as a separate file
-	  	var svg = window.$("svg").attr("viewBox", "0 0 600 600");
+	  	var svg = window.$("svg").attr("viewBox", "0 0 " + width + " " + height);
 	  	svg.attr("xmlns","http://www.w3.org/2000/svg");
 	  	svg.attr("version","1.1");
 	  	svg.attr("xmlns:xlink","http://www.w3.org/1999/xlink");
-	  	svg.attr("width","600");
-	  	svg.attr("height","600");
+	  	svg.attr("width", width.toString());
+	  	svg.attr("height", height.toString());
 	  	// Locate the style inside the svg itself and fill it with
 	  	// the previously loaded styles
 	  	window.$("svg > style").html(''+svgStyle);
