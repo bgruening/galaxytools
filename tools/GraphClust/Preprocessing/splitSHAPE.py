@@ -1,7 +1,6 @@
 import os
-import sys
-from os import system
 import re
+import sys
 
 shape_file = sys.argv[1]
 win_size = int(sys.argv[2])
