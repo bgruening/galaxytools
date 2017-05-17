@@ -1,0 +1,195 @@
+<tool id="wtaHashTool" name="WtaHash" version="0.1">
+  <description>Approximate k-neighbors search for sparse datasets</description>
+  <requirements>
+    <requirement type="package" version="0.3">sparse-neighbors-search</requirement>
+  </requirements>
+  <command>
+    <![CDATA[
+    python "$minHash_script" '$inputs' "\${GALAXY_SLOTS:-8}"
+    ]]>
+  </command>
+  <configfiles>
+    <inputs name="inputs" />
+    <configfile name="minHash_script">
+      <![CDATA[
+from sparse_neighbors_search import WtaHash
+import sys
+from numpy import savetxt
+from scipy.io import mmread
+from scipy.io import mmwrite
+
+threads = int(sys.argv[2])
+data_matrix = mmread(open("$input_file", 'r'))
+n_neighbors = 5
+radius = 1.0
+shingle_size = 4
+prune_inverse_index = -1
+prune_inverse_index_after_instance = -1.0
+remove_hash_function_with_less_entries_as = -1
+block_size = 5
+shingle = 0
+store_value_with_least_significant_bit = 0 
+
+#if $advanced_options.computing_method.method == 'kneighbors':
+
+n_neighbors = $advanced_options.computing_method.k_neighbors
+radius = 1.0
+
+#else: 
+
+n_neighbors = 5
+radius = $advanced_options.computing_method.radius
+
+#end if
+
+
+
+#if bool($advanced_options.prune_index.prune_bool):
+
+prune_inverse_index = $advanced_options.prune_index.prune_value
+
+#if bool($advanced_options.prune_index.prune_index_during_fitting.prune_index_during_fitting_bool):
+
+prune_inverse_index_after_instance = $advanced_options.prune_index.prune_index_during_fitting.prune_inverse_index_after_instance
+
+#else:
+
+prune_inverse_index_after_instance = -1.0
+
+#end if
+
+
+#else:
+
+prune_inverse_index = -1
+prune_inverse_index_after_instance = -1.0
+
+#end if
+
+
+
+#if bool($advanced_options.remove_entries.remove_entries_bool):
+remove_hash_function_with_less_entries_as = $advanced_options.remove_entries.remove_hash_function_with_less_entries_as
+#else: 
+remove_hash_function_with_less_entries_as = -1.0
+#end if
+
+#if bool($advanced_options.shingle.shingle_bool):
+shingle = $advanced_options.shingle.shingle_size
+block_size = $advanced_options.shingle.block_size
+#else:
+shingle = 0
+block_size = 5
+#end if
+
+#if bool($advanced_options.least_significant_bit.least_significant_bit_bool):
+store_value_with_least_significant_bit = $advanced_options.least_significant_bit.store_value_with_least_significant_bit
+#else:
+store_value_with_least_significant_bit = 0
+#end if
+
+wtaHash = WtaHash(n_neighbors = int(n_neighbors), radius = float(radius), fast=bool($advanced_options.fast), rangeK_wta=($advanced_options.rangek_wta),
+                    number_of_hash_functions=int($advanced_options.number_of_hash_functions),
+                    max_bin_size = int($advanced_options.max_bin_size), minimal_blocks_in_common = int($advanced_options.minimal_blocks_in_common),
+                    shingle_size = int(shingle_size), excess_factor = int($advanced_options.excess_factor),
+                    similarity=bool($advanced_options.similarity), number_of_cores=threads,
+                    chunk_size=0, prune_inverse_index=int(prune_inverse_index),
+                    prune_inverse_index_after_instance=float(prune_inverse_index_after_instance), 
+                    remove_hash_function_with_less_entries_as=int(remove_hash_function_with_less_entries_as), 
+                    block_size=int(block_size), shingle=int(shingle),
+                    store_value_with_least_sigificant_bit=int(store_value_with_least_significant_bit))
+dist, indices = wtaHash.fit_kneighbors(data_matrix)
+mmwrite(open("$dist", 'w+'), dist) 
+mmwrite(open("$indices", 'w+'), indices)
+      ]]>
+    </configfile>
+  </configfiles>
+
+  
+    <inputs>
+        <param name="input_file" type="data" format="mtx" label="Source file" help="Needs to be a sparse matrix from scipy/numpy in csr format, stored as mtx."/>
+
+        <section name="advanced_options" title="Advanced options">
+            <conditional name="computing_method">
+                <param name="method" type="select" label="Radius search or closest k-neighbors.">
+                    <option value="radius">Radius</option>
+                    <option value="kneighbors" selected="true">k-neighbors</option>
+                </param>
+                <when value="radius">
+                    <param name="radius" type="float" value="1.0" help="Range of parameter space to use by default for radius_neighbors queries."/>
+                </when>
+                <when value="kneighbors">
+                    <param name="k_neighbors" type="integer" value="5" label="Number of neighbors"/>
+                </when>
+            </conditional>
+            <param name="fast" type="boolean" truevalue="True" falsevalue="False" label="Fast version of WtaHash, less accurate"/>
+            <param name="number_of_hash_functions" type="integer" value="400" label="Number of hash function that should be used for the approximation."/>
+            <param name="max_bin_size" type="integer" value="50" label="The number of maximal collisions for one hash value of one hash function. "/>
+            <param name="rangek_wta" type="integer" value="20" label="The first k elements that should be used to select the min value after the permutation."/>
+           
+            <param name="minimal_blocks_in_common" type="integer" value="1" label="The minimal number of hash collisions two instances have to be in common to be recognised."/>
+            <param name="excess_factor" type="integer" value="5" label="Factor to return more neighbors internally as defined with n_neighbors."/>
+            <param name="similarity" type="boolean" truevalue="True" falsevalue="False" label="Use cosine similarity or euclidean distance as a measurement."/>
+            <conditional name="prune_index">
+                <param name="prune_bool" type="boolean" label="Prune inverse index"/>
+                <when value="true">
+                    <param name="prune_value" type="integer" label="Value" value="0" help="Remove every hash value with less occurence than"/>
+                    <conditional name="prune_index_during_fitting">
+                        <param name="prune_index_during_fitting_bool" type="boolean" label="Prune inverse index during fitting"/>
+                        <when value="true">
+                            <param name="prune_inverse_index_after_instance" type="float" value="0.5" label="Prune inverse index after x% of the data" help="Choose a value between 0.0 and 1.0."/>
+                        </when>
+                        <when value="false">
+                        </when>
+                    </conditional>
+                </when>
+                 <when value="false">
+                 </when>
+            </conditional>
+            <!--<param name="prune_inverse_index" type="integer" value="-1" label="Remove every hash value with less occurence than: "/>
+            <param name="prune_inverse_index_after_instance" type="float" value="-1.0" label="Prune inverse index after x% of the data"/>-->
+             <conditional name="remove_entries">
+                <param name="remove_entries_bool" type="boolean" label="Remove every hash function with less hash values as x"/>
+                <when value="true">
+                    <param name="remove_hash_function_with_less_entries_as" type="integer" value="0" label="Value"/>
+                </when>
+                 <when value="false">
+                 </when>
+            </conditional>
+             <conditional name="shingle">
+                <param name="shingle_bool" type="boolean" label="Use shingles"/>
+                <when value="true">
+                    <param name="shingle_size" type="integer" value="4" label="Reduction factor for the signature size"/>
+                    <param name="block_size" type="integer" value="5" label="Extension by block size"/>
+                </when>
+                 <when value="false">
+                 </when>
+            </conditional>
+             <conditional name="least_significant_bit">
+                <param name="least_significant_bit_bool" type="boolean" label="Store least significant bits:"/>
+                <when value="true">
+                    <param name="store_value_with_least_significant_bit" type="integer" value="0" label="Value"/>
+                </when>
+                 <when value="false">
+                 </when>
+            </conditional>
+            <!--<param name="gpu_hashing" type="boolean" truevalue="1" falsevalue="0" label="Use GPU hashing" help="Use GPU hashing with NVIDIAs CUDA to significant improve the runtime. Works only if your hardware is supporting it and CUDA is installed."/>-->
+        </section>
+    </inputs>
+    <outputs>
+    <data format="mtx" name="dist" />
+    <data format="mtx" name="indices" />
+
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_file" value="bursi_test.mtx" />
+            <output name="indices" value="bursi_neighbors_wta.mtx" lines_diff="20"/>
+        </test>
+    </tests>
+
+    <help>
+    This tool computes the approximate k-nearest neighbors and works only on sparse datasets.
+    </help>
+
+    </tool>
