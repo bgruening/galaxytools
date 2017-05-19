@@ -128,8 +128,7 @@ https://chemfp.readthedocs.org
                     default=0.8,
                     help="Tanimoto threshold [0.8]")
 
-    parser.add_argument('-p', '--processors', type=int, 
-        default=4)
+    parser.add_argument('-p', '--processors', type=int, default=4)
 
     options = parser.parse_args()
     butina( options )
