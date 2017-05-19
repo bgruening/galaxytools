@@ -10,13 +10,13 @@ try:
     from galaxy import eggs
     eggs.require('psycopg2')
 except:
-    print 'psycopg2 is not available. It is currently used in the pgchem wrappers, that are not shipped with default CTB'
+    print('psycopg2 is not available. It is currently used in the pgchem wrappers, that are not shipped with default CTB')
 
 try:
     import pybel
     import openbabel
 except:
-    print 'OpenBabel could not be found. A few functions are not available without OpenBabel.'
+    print('OpenBabel could not be found. A few functions are not available without OpenBabel.')
 
 from multiprocessing import Pool
 import glob, tempfile, re
@@ -221,7 +221,7 @@ def split_library( lib_path, lib_format = 'sdf', package_size = None ):
                 pack += 1
                 outfile = open('/%s/%s_pack_%i.%s' % ( '/'.join(lib_path.split('/')[:-1]), lib_path.split('/')[-1].split('.')[0], pack, 'sdf'), 'w' )
                 if mol_counter*10 % package_size == 0:
-                    print '%i molecules parsed, starting pack nr. %i' % ( mol_counter, pack - 1 )
+                    print('%i molecules parsed, starting pack nr. %i' % ( mol_counter, pack - 1 ))
     outfile.close()
 
     return True
@@ -253,12 +253,12 @@ def mp_run(input_path, regex, PROCESSES, function_to_call ):
     paths.sort()
 
     pool = Pool(processes=PROCESSES)
-    print 'Process initialized with', PROCESSES, 'processors'
+    print('Process initialized with', PROCESSES, 'processors')
     result = pool.map_async(function_to_call, paths)
     result.get()
 
     return paths
 
 if __name__ == '__main__':
-    print check_filetype(sys.argv[1])
+    print(check_filetype(sys.argv[1]))
 
