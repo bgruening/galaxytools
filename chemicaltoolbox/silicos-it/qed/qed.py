@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 __all__ = ['weights_max', 'weights_mean', 'weights_none', 'default']
 
-# Silicos-it
-from errors import WrongArgument
-
 # RDKit
 from rdkit.Chem import Descriptors
 from rdkit import Chem
@@ -13,6 +10,23 @@ from copy import deepcopy
 from math import exp, log
 import sys, os, re
 import argparse
+
+
+class SilicosItError(Exception):
+    """Base class for exceptions in Silicos-it code"""
+    pass
+
+class WrongArgument(SilicosItError):
+    """
+    Exception raised when argument to function is not of correct type.
+
+    Attributes:
+        function -- function in which error occurred
+        msg      -- explanation of the error
+    """
+    def __init__(self, function, msg):
+        self.function = function
+        self.msg = msg
 
 def check_filetype(filepath):
     mol = False
