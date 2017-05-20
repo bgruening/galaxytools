@@ -75,13 +75,13 @@ def filter_new_compounds(args, filters):
     return_code = child.returncode
 
     if return_code:
-        sys.stdout.write(stdout)
-        sys.stderr.write(stderr)
+        sys.stdout.write(stdout.decode('utf-8'))
+        sys.stderr.write(stderr.decode('utf-8'))
         sys.stderr.write("Return error code %i from command:\n" % return_code)
         sys.stderr.write("%s\n" % cmd)
     else:
-        sys.stdout.write(stdout)
-        sys.stdout.write(stderr)
+        sys.stdout.write(stdout.decode('utf-8'))
+        sys.stdout.write(stderr.decode('utf-8'))
 
 
 def __main__():
