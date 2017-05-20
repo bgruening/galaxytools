@@ -95,7 +95,7 @@ def __main__():
     filters = json.loads((args.filters).replace(' ', '').replace(',}', '}'))
     if args.iformat == 'sdf':
         # Check if the sdf file contains all of the required metadata to invoke the precalculation filtering
-        mol = pybel.readfile('sdf', args.input).next()
+        mol = next(pybel.readfile('sdf', args.input))
         for key, elem in filters.items():
             property = cheminfolib.ColumnNames[key]
             if not property in mol.data:
