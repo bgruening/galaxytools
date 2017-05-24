@@ -56,8 +56,8 @@ for i in range(len(orig_id)):
     for j in react_val[int(chunks[1])-1:int(chunks[2])]:
         id_s = int(j.split()[0])
 
-        if id_s > win_size:
-            id_s = id_s - int(chunks[1])
+
+        id_s = id_s - int(chunks[1]) + 1
         toWrite += str(id_s) + '\t' + j.split()[1] + "\n"
 
 with open("shape_data_split.react", 'w') as out:
