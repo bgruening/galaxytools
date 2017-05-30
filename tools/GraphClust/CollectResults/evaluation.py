@@ -48,7 +48,7 @@ with open(dataNames, "r") as names:
         if len(splits) >= 6:
             fullHeader = line.split()[5]
         if fullHeader not in blackList or len(fullHeader) == 0:
-            listOfHeaders.append(fullUniqeId)
+            listOfHeaders.append(fullHeader)
             listOfClusters.append(str(numberOfClusters))
             numberOfClusters += 1  # separate cluster for all unassigned seqs
 
