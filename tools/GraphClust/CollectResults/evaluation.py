@@ -16,7 +16,7 @@ cluster_seqs_stats_path = "RESULTS/*.cluster.all"
 cluster_seqs_stats_files = glob.glob(cluster_seqs_stats_path)
 
 with open(dataNames, "r") as names:
-    for line2 in names.readlines():
+    for line2 in names:
         splits2 = line2.split()
         fullHeader = ''
         if len(splits2) >= 6:
@@ -28,7 +28,7 @@ numberOfClusters = 0
 for singleFile in sorted(cluster_seqs_stats_files):
     numberOfClusters += 1
     with open(singleFile, "r") as f:
-        for line in f.readlines():
+        for line in f:
             splits = line.split()
             header = ''
             if len(splits) >= 11:
@@ -42,9 +42,10 @@ for singleFile in sorted(cluster_seqs_stats_files):
 numberOfClusters += 1  # 1 cluster for all unassigned seqs
 with open(dataNames, "r") as names:
     for line in names.readlines():
-        fullUniqeId = line.split()[3]
+        splits = line.split() 
+        fullUniqeId = splits[3]
         fullHeader = ''
-        if len(line.split()) >= 6:
+        if len(splits) >= 6:
             fullHeader = line.split()[5]
         if fullHeader not in blackList or len(fullHeader) == 0:
             listOfHeaders.append(fullUniqeId)
@@ -59,8 +60,6 @@ with open("RESULTS/fullTab.tabular", "w") as full:
 
 
 pattern = re.compile("^RF.*$")
-print (listOfHeaders[0])
-print (listOfHeaders)
 
 if len(listOfHeaders) > 1: # and  pattern.match(str(listOfHeaders[0])):
 
