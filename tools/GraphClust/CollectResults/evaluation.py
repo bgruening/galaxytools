@@ -10,9 +10,18 @@ def sh(script):
 dataNames = "FASTA/data.names"
 
 listOfClusters = []
-listOfClasses = []
+listOfHeaders = []
+headersNames = set()
 cluster_seqs_stats_path = "RESULTS/*.cluster.all"
 cluster_seqs_stats_files = glob.glob(cluster_seqs_stats_path)
+
+with open(dataNames, "r") as names:
+    for line2 in names.readlines():
+        splits2 = line2.split()
+        fullHeader = ''
+        if len(splits2) >= 6:
+            fullHeader = splits2[5]
+            headersNames.add(fullHeader)
 
 blackList = []
 numberOfClusters = 0
@@ -20,46 +29,46 @@ for singleFile in sorted(cluster_seqs_stats_files):
     numberOfClusters += 1
     with open(singleFile, "r") as f:
         for line in f.readlines():
-            uniqueId = line.split()[8]
-            clustNum = line.split()[2]
-            rnaClass, sep, tail = uniqueId.partition("_")
-            listOfClasses.append(rnaClass)
+            splits = line.split()
+            header = ''
+            if len(splits) >= 11:
+                header = splits[10]
+            clustNum = splits[2]
+            listOfHeaders.append(header)
             listOfClusters.append(clustNum)
-            with open(dataNames, "r") as names:
-                for line in names.readlines():
-                    fullUniqeId = line.split()[3]
-                    rnaClass, sep, tail = fullUniqeId.partition("_")
-                    if fullUniqeId == uniqueId:
-                        blackList.append(uniqueId)
+            if header in headersNames:
+                blackList.append(header)
 
 numberOfClusters += 1  # 1 cluster for all unassigned seqs
 with open(dataNames, "r") as names:
     for line in names.readlines():
         fullUniqeId = line.split()[3]
-        rnaClass, sep, tail = fullUniqeId.partition("_")
-        rnaClass, sep, tail = fullUniqeId.partition("_")
-        if fullUniqeId not in blackList:
-            listOfClasses.append(rnaClass)
+        fullHeader = ''
+        if len(line.split()) >= 6:
+            fullHeader = line.split()[5]
+        if fullHeader not in blackList or len(fullHeader) == 0:
+            listOfHeaders.append(fullUniqeId)
             listOfClusters.append(str(numberOfClusters))
             numberOfClusters += 1  # separate cluster for all unassigned seqs
 
 toWrite = ""
 for i in range(len(listOfClusters)):
-    toWrite += listOfClasses[i] + "\t" + listOfClusters[i] + '\n'
+    toWrite += listOfHeaders[i] + "\t" + listOfClusters[i] + '\n'
 with open("RESULTS/fullTab.tabular", "w") as full:
     full.write(toWrite)
 
 
 pattern = re.compile("^RF.*$")
+print (listOfHeaders[0])
+print (listOfHeaders)
 
+if len(listOfHeaders) > 1: # and  pattern.match(str(listOfHeaders[0])):
 
-if len(listOfClasses) > 0 and  pattern.match(str(listOfClasses[0])):
-
-    completeness_score = metrics.completeness_score(listOfClasses, listOfClusters)
-    homogeneity_score = metrics.homogeneity_score(listOfClasses, listOfClusters)
-    adjusted_rand_score = metrics.adjusted_rand_score(listOfClasses, listOfClusters)
-    adjusted_mutual_info_score = metrics.adjusted_mutual_info_score(listOfClasses, listOfClusters)
-    v_measure_score = metrics.v_measure_score(listOfClasses, listOfClusters)
+    completeness_score = metrics.completeness_score(listOfHeaders, listOfClusters)
+    homogeneity_score = metrics.homogeneity_score(listOfHeaders, listOfClusters)
+    adjusted_rand_score = metrics.adjusted_rand_score(listOfHeaders, listOfClusters)
+    adjusted_mutual_info_score = metrics.adjusted_mutual_info_score(listOfHeaders, listOfClusters)
+    v_measure_score = metrics.v_measure_score(listOfHeaders, listOfClusters)
 
     toWrite = "completeness_score : " + str(completeness_score) + "\n" + "homogeneity_score : " + str(homogeneity_score) + "\n" + "adjusted_rand_score : " +str(adjusted_rand_score)  + "\n" + "adjusted_mutual_info_score : " + str(adjusted_mutual_info_score)+ "\n" + "v_measure_score : " + str(v_measure_score)
 
