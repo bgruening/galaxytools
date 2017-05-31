@@ -36,7 +36,7 @@ with open(shape_file, 'r') as shape:
     lines = content.split('\n')
     for line in lines:
         if pattern.match(line):
-            line = line.replace('>','').strip()
+            line = line.replace('>','').split()[0]
             react_arr=[]
             react_dict[line] = react_arr
             continue
@@ -47,7 +47,7 @@ toWrite = ""
 chunks = []
 for i in range(len(orig_id)):
     if not orig_id[i] in react_dict:
-        raise RuntimeError('Error key {} not found'.format(orig_id))
+        raise RuntimeError('Error key {} {} not found'.format(i, orig_id[i]))
 
     react_val = react_dict[orig_id[i]]
     toWrite += '>' + str(seq_id[i]) + " " + seq_string[i] + "\n"
