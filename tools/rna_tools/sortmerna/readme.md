@@ -15,6 +15,8 @@ It is recommended to install this wrapper via the `Galaxy Tool Shed`.
 
 .. _`Galaxy Tool Shed`:  https://testtoolshed.g2.bx.psu.edu/view/bgruening/sortmerna
 
+To install the databases, we recommend to use the dedicated data manager available in the `Galaxy Tool Shed`
+
 
 =======
 History
