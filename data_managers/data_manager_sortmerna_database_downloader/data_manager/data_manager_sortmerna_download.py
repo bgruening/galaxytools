@@ -130,11 +130,10 @@ def move_index_files(archive_content_path, target_dir, data_tables, version):
         # Move file
         os.rename(input_filepath, output_filepath)
         # Index the file with indexdb_rna
-        ref = "%s,%s" %(output_filepath, os.path.splitext(output_filepath)[0])
-        process = subprocess.run(
-            ["indexdb_rna", "--ref", ref],
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE)
+        command = "indexdb_rna --ref %s,%s" % (
+            output_filepath,
+            os.path.splitext(output_filepath)[0])
+        process = subprocess.call(command, shell=True )
         # Add entry in the data table
         db_name = os.path.splitext(filename)[0]
         add_data_table_entry(
