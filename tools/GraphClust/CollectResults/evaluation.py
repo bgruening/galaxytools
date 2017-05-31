@@ -1,3 +1,4 @@
+#!/usr/bin/env python2
 import glob
 from os import system
 import re
