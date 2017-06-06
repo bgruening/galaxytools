@@ -139,7 +139,7 @@ def move_index_files(archive_content_path, target_dir, data_tables, version):
         add_data_table_entry(
             data_tables,
             "rRNA_databases",
-            dict(                
+            dict(
                 value=version,
                 name=db_name,
                 path=output_filepath))
