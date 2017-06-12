@@ -126,23 +126,28 @@ def move_index_files(archive_content_path, target_dir, data_tables, version):
         if not filename.endswith("fasta"):
             continue
         input_filepath = os.path.join(file_dir, filename)
-        output_filepath = os.path.join(target_dir, filename)
-        # Move file
-        os.rename(input_filepath, output_filepath)
+        # Extract the db name
+        db_name = os.path.splitext(filename)[0]
+        # Create the directory where to put the fasta files and indexed files
+        filedir = os.path.join(target_dir, db_name)
+        os.mkdir(filedir)
+        fasta_filepath = os.path.join(filedir, "%s.fasta" % db_name)
+        indexed_filepath = os.path.join(filedir, db_name)
+        # Move the fasta file
+        os.rename(input_filepath, fasta_filepath)
         # Index the file with indexdb_rna
         command = "indexdb_rna --ref %s,%s" % (
-            output_filepath,
-            os.path.splitext(output_filepath)[0])
+            fasta_filepath,
+            indexed_filepath)
         process = subprocess.call(command, shell=True )
         # Add entry in the data table
-        db_name = os.path.splitext(filename)[0]
         add_data_table_entry(
             data_tables,
             "rRNA_databases",
             dict(
                 value="%s-%s" %(version, db_name),
                 name=db_name,
-                path=output_filepath))
+                path=filedir))
 
 
 def download_db(data_tables, version, target_dir):
