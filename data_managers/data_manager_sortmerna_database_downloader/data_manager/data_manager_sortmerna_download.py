@@ -4,6 +4,7 @@
 import argparse
 import json
 import os
+import shutil
 import tarfile
 import requests
 import subprocess
@@ -134,7 +135,7 @@ def move_index_files(archive_content_path, target_dir, data_tables, version):
         fasta_filepath = os.path.join(filedir, "%s.fasta" % db_name)
         indexed_filepath = os.path.join(filedir, db_name)
         # Move the fasta file
-        os.rename(input_filepath, fasta_filepath)
+        shutil.move(input_filepath, fasta_filepath)
         # Index the file with indexdb_rna
         command = "indexdb_rna --ref %s,%s" % (
             fasta_filepath,
