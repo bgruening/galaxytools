@@ -57,7 +57,7 @@ def __main__():
     # This sets up the parameters for the Spectrophore generation. Parameters are set to fit those of our standard parsing tool
     set_parameters(args)
 
-    mol = pybel.readfile('sdf', args.target).next()
+    mol = next(pybel.readfile('sdf', args.target))
     target_spectrophore = mol.data["Spectrophores(TM)"].strip().split(', ')
     # Compute the paired-distance between every molecule in the library and the target
     distances = Compute_Spectrophores_distance(target_spectrophore, args)

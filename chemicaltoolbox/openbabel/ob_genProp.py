@@ -27,7 +27,7 @@ def compute_properties(args):
     else:
         outfile = open(args.output, 'w')
         if args.header:
-            mol = pybel.readfile(args.iformat, args.input).next()
+            mol = next(pybel.readfile(args.iformat, args.input))
             metadata = cheminfolib.get_properties_ext(mol)
             outfile.write( '%s\n' % '\t'.join( [ cheminfolib.ColumnNames[key] for key in metadata ] ) )
 

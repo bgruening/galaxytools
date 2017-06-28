@@ -117,6 +117,14 @@ All filetypes are interchangable due to three easy to use converting options:
 Getting Started
 ===============
 
+The easiest way to get the ChemicalToolBox up and running is to use CTB in our Galaxy Docker flavor from https://github.com/bgruening/docker-galaxy-chemicaltoolbox. Simply run::
+
+	docker run -i -t -p 8080:80 quay.io/bgruening/galaxy-chemicaltoolbox
+
+And open your webbrowser on `localhost:8080`. You can also install CTB manually, in the following we will guide you through this process.
+
+
+
 .. _Installation:
 
 ChemicalToolBoX can be installed on all common Unix systems. 
