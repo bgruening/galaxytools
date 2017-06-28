@@ -1,5 +1,5 @@
-<tool id="trim_galore" name="Trim Galore!" version="0.4.2">
-    <!-- Wrapper compatible with Trim Galore! version 0.4 -->
+<tool id="trim_galore" name="Trim Galore!" version="0.4.3.1" profile="17.01">
+    <!-- Wrapper compatible with Trim Galore! version 0.4.3 -->
     <description>Quality and adapter trimmer of reads</description>
     <macros>
         <macro name="adapter_trimming">
@@ -24,7 +24,6 @@
             </conditional>
         </macro>
         <macro name="paired_adapter_trimming">
-
             <expand macro="adapter_trimming">
                 <param name="adapter2" type="text" optional="True" value="" label="Adapter sequence to be trimmed off read 2">
                     <validator type="regex" message="Adapter sequence must contain DNA characters only (A,C,T,G or N)">^[ACTGNactgn]*$</validator>
@@ -44,46 +43,54 @@
         </macro>
     </macros>
     <requirements>
-        <!-- conda dependency -->
-        <requirement type="package" version="1.8.3">cutadapt</requirement>
-        <requirement type="package" version="1.8">cutadapt</requirement>
+        <requirement type="package" version="0.4.3">trim-galore</requirement>
     </requirements>
     <version_command>
-        perl $__tool_directory__/trim_galore --version
+        trim_galore --version
     </version_command>
-    <command>
-<![CDATA[
-
-        ## trim_galore removes .fastq and .fq file extensions of input files.
-        ## This is essential if Galaxy provides links to files (with real extensions)
-        ## but that behaviour is causing an inconsistency in output filenaming.
-        ## We work around this by linking every file to cwd without file extension
-
+    <command detect_errors="aggressive"><![CDATA[
+        #set compressed = 'no'
         #if $singlePaired.sPaired == "single":
-            #if str($singlePaired.input_singles).endswith(".gz"):
-                ln -s "${singlePaired.input_singles}" ./input_singles.gz;
+            #if $singlePaired.input_singles.is_of_type("fastq.gz"):
+                #set read1 = 'input_1.fastq.gz'
+                #set compressed = 'gz'
             #else
-                ln -s "${singlePaired.input_singles}" ./input_singles;
+                #set read1 = 'input_1.fastq'
             #end if
+            ln -s '${singlePaired.input_singles}' ${read1} &&
         #elif $singlePaired.sPaired == "paired":
-            #if str($singlePaired.input_mate1).endswith(".gz"):
-                ln -s "${singlePaired.input_mate1}" ./input_mate1.gz;
-                ln -s "${singlePaired.input_mate2}" ./input_mate2.gz;
+            #if $singlePaired.input_mate1.is_of_type("fastq.gz"):
+                #set read1 = 'input_1.fastq.gz'
+                #set compressed = 'gz'
             #else
-                ln -s "${singlePaired.input_mate1}" ./input_mate1;
-                ln -s "${singlePaired.input_mate2}" ./input_mate2;
+                #set read1 = 'input_1.fastq'
             #end if
+            ln -s '${singlePaired.input_mate1}' ${read1} &&
+
+            #if $singlePaired.input_mate2.is_of_type("fastq.gz"):
+                #set read2 = 'input_2.fastq.gz'
+            #else
+                #set read2 = 'input_2.fastq'
+            #end if
+            ln -s '${singlePaired.input_mate2}' ${read2} &&
         #else:
-            #if str($singlePaired.input_mate_pairs.forward).endswith(".gz"):
-                ln -s "${singlePaired.input_mate_pairs.forward}" ./input_mate1.gz;
-                ln -s "${singlePaired.input_mate_pairs.reverse}" ./input_mate2.gz;
+            #if $singlePaired.input_mate_pairs.forward.is_of_type("fastq.gz"):
+                #set read1 = 'input_1.fastq.gz'
+                #set compressed = 'gz'
             #else
-                ln -s "${singlePaired.input_mate_pairs.forward}" ./input_mate1;
-                ln -s "${singlePaired.input_mate_pairs.reverse}" ./input_mate2;
+                #set read1 = 'input_1.fastq'
             #end if
+            ln -s '${singlePaired.input_mate_pairs.forward}' ${read1} &&
+
+            #if $singlePaired.input_mate_pairs.reverse.is_of_type("fastq.gz"):
+                #set read2 = 'input_2.fastq.gz'
+            #else
+                #set read2 = 'input_2.fastq'
+            #end if
+            ln -s '${singlePaired.input_mate_pairs.reverse}' ${read2} &&
         #end if
 
-        perl $__tool_directory__/trim_galore
+        trim_galore
 
         ## we only support fastqsanger
         --phred33
@@ -125,7 +132,6 @@
         #end if
 
         --output_dir ./
-        --suppress_warn
 
         #if $params.settingsType == "custom" and not $params.report:
             --no_report_file
@@ -134,12 +140,11 @@
         #if $singlePaired.trimming.trimming_select == 'user':
             ## default 'AGATCGGAAGAGC'
             #if $singlePaired.trimming.adapter.strip() != '':
-               --adapter $singlePaired.trimming.adapter
+               --adapter '$singlePaired.trimming.adapter'
             #end if
         #else:
             $singlePaired.trimming.trimming_select
         #end if
-
 
         #if $singlePaired.three_prime_clip_R1:
             --three_prime_clip_R1 $singlePaired.three_prime_clip_R1
@@ -147,12 +152,7 @@
 
         #if $singlePaired.sPaired == "single":
             ## input sequence
-            #if str($singlePaired.input_singles).endswith(".gz"):
-                ./input_singles.gz
-                --dont_gzip
-            #else
-                ./input_singles
-            #end if
+            ${read1}
         #else:
             --paired
 
@@ -160,7 +160,7 @@
 
             #if $singlePaired.trimming.trimming_select == 'user':
                 #if $singlePaired.trimming.adapter2 and $singlePaired.trimming.adapter2.strip() != '':
-                    --adapter2 $singlePaired.trimming.adapter2
+                    --adapter2 '$singlePaired.trimming.adapter2'
                 #end if
             #end if
 
@@ -169,48 +169,32 @@
             #end if
 
             ## input sequences
-            #if $singlePaired.sPaired == "paired":
-                #if str($singlePaired.input_mate1).endswith(".gz"):
-                    ./input_mate1.gz
-                    ./input_mate2.gz
-                    --dont_gzip
-                #else
-                    ./input_mate1
-                    ./input_mate2
-                #end if
-            #else:
-                #if str($singlePaired.input_mate_pairs.forward).endswith(".gz"):
-                    ./input_mate1.gz
-                    ./input_mate2.gz
-                    --dont_gzip
-                #else
-                    ./input_mate1
-                    ./input_mate2
-                #end if
-            #end if
+            ${read1}
+            ${read2}
+        #end if
 
+        #if $compressed == 'no':
+            --dont_gzip
         #end if
 
         ##  Trim Galore is finished, rename the output if compressed
         &&
-        if [ -f input_singles.gz_trimmed.fq ] ; then mv input_singles.gz_trimmed.fq input_singles_trimmed.fq ; fi
+        if [ -f input_1_trimmed.fq.gz ] ; then mv input_1_trimmed.fq.gz input_1_trimmed.fq ; fi
         &&
-        if [ -f input_mate1.gz_val_1.fq ] ; then mv input_mate1.gz_val_1.fq input_mate1_val_1.fq ; fi
+        if [ -f input_1_val_1.fq.gz ] ; then mv input_1_val_1.fq.gz input_1_val_1.fq ; fi
         &&
-        if [ -f input_mate2.gz_val_2.fq ] ; then mv input_mate2.gz_val_2.fq input_mate2_val_2.fq ; fi
+        if [ -f input_2_val_2.fq.gz ] ; then mv input_2_val_2.fq.gz input_2_val_2.fq ; fi
         &&
-        if [ -f input_mate1.gz_unpaired_1.fq ] ; then mv input_mate1.gz_unpaired_1.fq input_mate1_unpaired_1.fq ; fi
+        if [ -f input_1_unpaired_1.fq.gz ] ; then mv input_1_unpaired_1.fq.gz input_1_unpaired_1.fq ; fi
         &&
-        if [ -f input_mate2.gz_unpaired_2.fq ] ; then mv input_mate2.gz_unpaired_2.fq input_mate2_unpaired_2.fq ; fi
+        if [ -f input_2_unpaired_2.fq.gz ] ; then mv input_2_unpaired_2.fq.gz input_2_unpaired_2.fq ; fi
 
         ##  Trim Galore! run is finished. Move the report files to the proper place
         #if $params.settingsType == "custom" and $params.report:
             &&
-            cat ./*_trimming_report.txt > $report_file;
+            cat ./*_trimming_report.txt > '$report_file'
         #end if
-
-]]>
-    </command>
+    ]]></command>
     <inputs>
         <!-- Input Parameters -->
         <conditional name="singlePaired">
@@ -220,7 +204,7 @@
                 <option value="paired_collection">Paired Collection</option>
             </param>
             <when value="single">
-                <param name="input_singles" type="data" format="fastqsanger" label="Reads in FASTQ format" />
+                <param name="input_singles" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format" />
                 <expand macro="adapter_trimming"/>
 
                 <param name="three_prime_clip_R1" type="integer" value="" optional="True" label="Remove N bp from the 3' end">
@@ -230,12 +214,12 @@
                 </param>
             </when>
             <when value="paired">
-                <param name="input_mate1" type="data" format="fastqsanger" label="Reads in FASTQ format" />
-                <param name="input_mate2" type="data" format="fastqsanger" label="Reads in FASTQ format" />
+                <param name="input_mate1" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format" />
+                <param name="input_mate2" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format" />
                 <expand macro="paired_adapter_trimming" />
             </when>
             <when value="paired_collection">
-                <param name="input_mate_pairs" format="fastqsanger" type="data_collection" collection_type="paired"
+                <param name="input_mate_pairs" format="fastqsanger,fastqsanger.gz" type="data_collection" collection_type="paired"
                     label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
                 <expand macro="paired_adapter_trimming" />
             </when>
@@ -290,45 +274,45 @@
                     label="Screen quality-trimmed sequences for 'CAA' or 'CGA' at the start of the read and, if found, removes the first two basepairs" />
             </when>  <!-- full -->
         </conditional>  <!-- params -->
-
     </inputs>
+
     <outputs>
-        <data format="fastqsanger" name="trimmed_reads_single" from_work_dir="input_singles_trimmed.fq" label="${tool.name} on ${on_string}: trimmed reads">
+        <data format_source="input_singles" name="trimmed_reads_single" from_work_dir="input_1_trimmed.fq" label="${tool.name} on ${on_string}: trimmed reads">
             <filter>singlePaired['sPaired'] == "single"</filter>
         </data>
 
         <collection name="trimmed_reads_paired_collection" type="paired" label="${tool.name} on ${on_string}: paired reads">
-            <data name="forward" format="fastqsanger" from_work_dir="input_mate1_val_1.fq" />
-            <data name="reverse" format="fastqsanger" from_work_dir="input_mate2_val_2.fq" />
+            <data name="forward" format_source="input_mate_pairs['forward']" from_work_dir="input_1_val_1.fq" />
+            <data name="reverse" format_source="input_mate_pairs['forward']" from_work_dir="input_2_val_2.fq" />
             <filter>singlePaired['sPaired'] == "paired_collection"</filter>
         </collection>
 
         <collection name="trimmed_reads_unpaired_collection" type="paired" label="${tool.name} on ${on_string}: unpaired reads">
-            <data name="forward" format="fastqsanger" from_work_dir="input_mate1_unpaired_1.fq" />
-            <data name="reverse" format="fastqsanger" from_work_dir="input_mate2_unpaired_2.fq" />
+            <data name="forward" format_source="input_mate_pairs['forward']" from_work_dir="input_1_unpaired_1.fq" />
+            <data name="reverse" format_source="input_mate_pairs['forward']" from_work_dir="input_2_unpaired_2.fq" />
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
             <filter>singlePaired['sPaired'] == "paired_collection"</filter>
         </collection>
 
-        <data format="fastqsanger" name="trimmed_reads_pair1" from_work_dir="input_mate1_val_1.fq"
+        <data format_source="input_mate1" name="trimmed_reads_pair1" from_work_dir="input_1_val_1.fq"
             label="${tool.name} on ${on_string}: trimmed reads pair 1">
             <filter>singlePaired['sPaired'] == "paired"</filter>
         </data>
 
-        <data format="fastqsanger" name="trimmed_reads_pair2" from_work_dir="input_mate2_val_2.fq"
+        <data format_source="input_mate2" name="trimmed_reads_pair2" from_work_dir="input_2_val_2.fq"
             label="${tool.name} on ${on_string}: trimmed reads pair 2">
             <filter>singlePaired['sPaired'] == "paired"</filter>
         </data>
 
-        <data format="fastqsanger" name="unpaired_reads_1" from_work_dir="input_mate1_unpaired_1.fq"
+        <data format_source="input_mate1" name="unpaired_reads_1" from_work_dir="input_1_unpaired_1.fq"
             label="${tool.name} on ${on_string}: unpaired reads (1)">
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
             <filter>singlePaired['sPaired'] == "paired"</filter>
         </data>
 
-        <data format="fastqsanger" name="unpaired_reads_2" from_work_dir="input_mate2_unpaired_2.fq"
+        <data format_source="input_mate2" name="unpaired_reads_2" from_work_dir="input_2_unpaired_2.fq"
             label="${tool.name} on ${on_string}: unpaired reads (2)">
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
@@ -338,8 +322,8 @@
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['report'] == True</filter>
         </data>
-
     </outputs>
+
     <tests>
         <test>
             <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
@@ -349,6 +333,14 @@
             <output name="trimmed_reads_single" file="sanger_full_range_results1.fastqsanger" ftype="fastqsanger"/>
             <output name="report_file" file="sanger_full_range_report_results1.txt" ftype="txt" lines_diff="8" />
         </test>
+        <test>
+            <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz" />
+            <param name="sPaired" value="single" />
+            <param name="settingsType" value="custom" />
+            <param name="report" value="true" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results1.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+            <output name="report_file" file="sanger_full_range_report_results1gz.txt" ftype="txt" lines_diff="9" />
+        </test>
 
         <test>
             <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
@@ -356,12 +348,24 @@
             <param name="trimming_select" value="--illumina" />
             <output name="trimmed_reads_single" file="sanger_full_range_results2.fastqsanger" ftype="fastqsanger"/>
         </test>
+        <test>
+            <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz" />
+            <param name="sPaired" value="single" />
+            <param name="trimming_select" value="--illumina" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+        </test>
 
         <test>
             <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
             <param name="sPaired" value="single" />
             <param name="adapter" value="AAAGAGC" />
             <output name="trimmed_reads_single" file="sanger_full_range_results3.fastqsanger" ftype="fastqsanger"/>
+        </test>
+        <test>
+            <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz" />
+            <param name="sPaired" value="single" />
+            <param name="adapter" value="AAAGAGC" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
         </test>
 
         <test>
@@ -373,6 +377,16 @@
             <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastqsanger" ftype="fastqsanger"/>
             <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastqsanger" ftype="fastqsanger"/>
             <output name="report_file" file="paired_example_results2.txt" ftype="txt" lines_diff="24" />
+        </test>
+        <test>
+            <param name="input_mate1" value="bwa-mem-fastq1.fq.gz" ftype="fastqsanger.gz" />
+            <param name="input_mate2" value="bwa-mem-fastq2.fq.gz" ftype="fastqsanger.gz" />
+            <param name="sPaired" value="paired" />
+            <param name="settingsType" value="custom" />
+            <param name="report" value="true" />
+            <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+            <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+            <output name="report_file" file="paired_example_results2gz.txt" ftype="txt" lines_diff="24" />
         </test>
 
         <test>
@@ -399,11 +413,34 @@
                 <element name="forward" file="paired_collection_example_unpair1_results3.fastqsanger" ftype="fastqsanger"/>
                 <element name="reverse" file="paired_collection_example_unpair2_results3.fastqsanger" ftype="fastqsanger"/>
             </output_collection>
+        </test>
+        <test>
+            <param name="input_mate_pairs">
+                <collection type="paired">
+                    <element name="forward" value="bwa-mem-fastq1.fq.gz" ftype="fastqsanger.gz" />
+                    <element name="reverse" value="bwa-mem-fastq2.fq.gz" ftype="fastqsanger.gz" />
+                </collection>
+            </param>
 
+            <param name="sPaired" value="paired_collection" />
+            <param name="settingsType" value="custom" />
+            <param name="report" value="true" />
+            <param name="retain_unpaired_select" value="retain_unpaired_output" />
+
+            <output name="report_file" file="paired_collection_example_results3gz.txt" ftype="txt" lines_diff="25" />
+
+            <output_collection name="trimmed_reads_paired_collection" type="paired">
+                <element name="forward" file="paired_collection_example_pair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+                <element name="reverse" file="paired_collection_example_pair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+            </output_collection>
+
+            <output_collection name="trimmed_reads_unpaired_collection" type="paired">
+                <element name="forward" file="paired_collection_example_unpair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+                <element name="reverse" file="paired_collection_example_unpair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+            </output_collection>
         </test>
     </tests>
-    <help>
-<![CDATA[
+    <help><![CDATA[
 **What it does**
 
 `Trim Galore!`_ is a wrapper script to automate quality and adapter trimming as well as quality control, with some added functionality to remove biased methylation positions for RRBS sequence files (for directional, non-directional (or paired-end) sequencing). It's main features are:
@@ -426,7 +463,7 @@ It is developed by Felix Krueger at the Babraham Institute.
 * **Adapter sequence to be trimmed**
 
   * **Automatic detection**
-    
+
       | Adapter sequence to be trimmed. Trim Galore will try to auto-detect whether the Illumina universal, Nextera transposase or Illumina small RNA adapter sequence was used.
 
   * **Illumina universal**
@@ -443,7 +480,7 @@ It is developed by Felix Krueger at the Babraham Institute.
 
   * **Illumina small RNA adapters**
 
-      | Adapter sequence to be trimmed is the first 12bp of the Illumina Small RNA 3' Adapter 'TGGAATTCTCGG' instead of the default auto-detection of adapter sequence. Selecting to trim smallRNA adapters will also lower the --length value to 18bp. If the smallRNA libraries are paired-end then -a2 will be set to the Illumina small RNA 5' adapter automatically (‘GATCGTCGGACT’) unless -a 2 had been defined explicitly.
+      | Adapter sequence to be trimmed is the first 12bp of the Illumina Small RNA 3' Adapter 'TGGAATTCTCGG' instead of the default auto-detection of adapter sequence. Selecting to trim smallRNA adapters will also lower the --length value to 18bp. If the smallRNA libraries are paired-end then -a2 will be set to the Illumina small RNA 5' adapter automatically ('GATCGTCGGACT') unless -a 2 had been defined explicitly.
       |
       | *option --small_rna*
 
@@ -471,7 +508,7 @@ It is developed by Felix Krueger at the Babraham Institute.
       |   R2 <---------------------------
       |
       | or this:
-      | 
+      |
       |   R1 ----------------------->
       |   R2 <-----------------
       |
@@ -553,7 +590,7 @@ It is developed by Felix Krueger at the Babraham Institute.
 
     | Selecting this option for non-directional RRBS libraries will screen quality-trimmed sequences for 'CAA' or 'CGA' at the start of the read and, if found, removes the first two basepairs. Like with the option '--rrbs' this avoids using cytosine positions that were filled-in during the end-repair step. '--non_directional' requires '--rrbs' to be specified as well.
     |
-    | *option --non_directional*]]>
-    </help>
+    | *option --non_directional*
+    ]]></help>
     <citations></citations>
 </tool>
