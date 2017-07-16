@@ -11,7 +11,10 @@ import re
 import sys
 
 from Bio import AlignIO, SeqIO
-from StringIO import StringIO
+try:
+    from StringIO import StringIO
+except ImportError:
+    from io import StringIO
 
 stk_file = sys.argv[1]
 print ("Parsing and splitting stk file:{}".format(stk_file))
