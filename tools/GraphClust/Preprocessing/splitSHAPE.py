@@ -3,7 +3,6 @@ import re
 import sys
 
 shape_file = sys.argv[1]
-win_size = int(sys.argv[2])
 
 pattern = re.compile("^>.*$")
 toWrite = ""
