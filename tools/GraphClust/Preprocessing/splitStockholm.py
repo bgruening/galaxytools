@@ -83,7 +83,7 @@ with open(target_f, 'w') as out_stk_handle:
         siotmp = StringIO()
         AlignIO.write(subalign, siotmp, format="stockholm")
         stk_lines = siotmp.getvalue().split('\n')
-        out_stk_handle.writelines('{}\n'.format(stk_lines[:1]))
+        out_stk_handle.write('{}\n'.format(stk_lines[0]))
         out_stk_handle.write('#=GF ID {}\n'.format(ID))
         out_stk_handle.writelines('\n'.join(stk_lines[1:]))
         #print out_stk_handle.getvalue()
