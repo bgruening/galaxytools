@@ -3,7 +3,6 @@ import re
 import sys
 
 shape_file = sys.argv[1]
-win_size = int(sys.argv[2])
 
 pattern = re.compile("^>.*$")
 toWrite = ""
@@ -18,9 +17,9 @@ orig_id = []
 name_file = "FASTA/data.names"
 array_all_chunks = []
 with open(name_file, 'r') as f:
-    content = f.read()
-    lines = content.split('\n')[:-1]
-    for line in lines:
+    for line in f:
+        if len(line.strip()) == 0:
+            continue
         seq_id.append(int(line.split()[0]))
         seq_string.append(line.split()[1])
         orig_id_srt = line.split()[3]
