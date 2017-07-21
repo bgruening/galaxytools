@@ -8,13 +8,12 @@ from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 import subprocess
 
-
 def main(args):
     """
         Call from galaxy:
         tRNAscan.py $organism $mode $showPrimSecondOpt $disablePseudo $showCodons $tabular_output $inputfile $fasta_output
 
-            tRNAscan-SE $organism $mode $showPrimSecondOpt $disablePseudo $showCodons -d -Q -y -q -b -o $tabular_output $inputfile;
+            tRNAscan-SE $organism $mode $showPrimSecondOpt $disablePseudo $showCodons -Q -y -q -b -o $tabular_output $inputfile;
     """
     cmd = """tRNAscan-SE -Q -y -q -b %s""" % ' '.join( args[:-1] )
     child = subprocess.Popen(cmd.split(),
