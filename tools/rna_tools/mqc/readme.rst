@@ -1,9 +1,13 @@
-# mQC galaxy wrapper (stand-alone version)
+mQC galaxy wrapper (stand-alone version)
+=======================================
+
 This repository contains all the files needed to embed the stand-alone version of MappingQC in a Galaxy environment.
 More information on mQC and the core program files can be found at https://github.com/Biobix/mQC.
 The authors of mQC can be contacted at Steven.Verbruggen@UGent.be or Gerben.Menschaert@UGent.be
 
-## Copyright
+=========
+Copyright
+=========
 
 Copyright (C) 2017 Verbruggen Steven & Menschaert Gerben
 
