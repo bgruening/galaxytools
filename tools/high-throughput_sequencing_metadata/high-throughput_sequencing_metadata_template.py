@@ -1,16 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-__author__ = "Bjoern Gruening"
+__author__ = "Hassan Gamaleldin"
 __version__ = "0.1"
 __date__ = ""
 __license__ = ''
 
 """
-    These script converts a Blast XML Output to the NCBI Feature Table format,
-    required for submission of Serquence data.
-    http://www.ncbi.nlm.nih.gov/WebSub/index.cgi?tool=genbank
-    TODO: include t-RNA results
+    This tool produces a tsv file containing the High-throughput sequencing metadata template (version 2.1).
 """
 import os, sys
 import argparse
