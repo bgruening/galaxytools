@@ -17,28 +17,93 @@ import argparse
 import csv
 
 parser = argparse.ArgumentParser()
-parser.add_argument("-c", "--cutoff", dest="cutoff",
-                  help="", metavar="CUTOFF", type=float)
-parser.add_argument("-f", "--frequency", dest="fs",
-                  help="", metavar="RATE", type=float)
-parser.add_argument("-o", "--order", dest="order", default=5,
-                  help="", metavar="ORDER", type=int)
-parser.add_argument("-t", "--type", dest="filterType", default="LPF",
-                  help=".", metavar="FILTER_TYPE")
 
+parser.add_argument("--raw_file", dest="raw_files", action='append',
+                  help="The raw data files for the sequence.")
+
+parser.add_argument("--processed_file", dest="processed_files", action='append',
+                  help="The processed data files for the sequence.")
+
+parser.add_argument("--title", dest="title",
+                  help="The title for the sequence.")
+
+parser.add_argument("--summary", dest="summary",
+                  help="The summary for the sequence.")
+
+parser.add_argument("--overall_design", dest="overall_design",
+                  help="The overall design for the sequence.")
+
+parser.add_argument("--contributor", dest="contributors", action='append',
+                  help="The contributor for the sequence.")
+
+parser.add_argument("--supplementary_file", dest="supplementary_file",
+                  help="The supplementary file for the sequence.")
+
+parser.add_argument("--sra_center_name_code", dest="sra_center_name_code",
+                  help="The SRA Center Name Code for the sequence.")
+
+parser.add_argument("--growth_protocol", dest="growth_protocol",
+                  help="The growth protocol for the sequence.")
+
+parser.add_argument("--treatment_protocol", dest="treatment_protocol",
+                  help="The treatment protocol for the sequence.")
+
+parser.add_argument("--extract_protocol", dest="extract_protocol",
+                  help="The extract protocol for the sequence.")
+
+parser.add_argument("--library_construction_protocol", dest="library_construction_protocol",
+                  help="The library construction protocol for the sequence.")
+
+parser.add_argument("--library_strategy", dest="library_strategy",
+                  help="The library strategy for the sequence.")
+
+
+parser.add_argument("--data_processing_step", dest="data_processing_steps", action='append',
+                  help="A data processing step for the sequence.")
+
+parser.add_argument("--genome_build", dest="genome_build",
+                  help="The genome build for the sequence.")
+
+parser.add_argument("--processed_data_files_format_content", dest="processed_data_files_format_content",
+                  help="The processed data files format and content for the sequence.")
+
+
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+#parser.add_argument("--title", dest="title", default="",
+#                  help="The title for the sequence..")
+
+parser.add_argument("-o", "--output", dest="output_file", default="records.tsv",
+                  help="The name of the output file.", metavar="file_name")
 
 args = parser.parse_args()
 
-with open('records.tsv','w') as tsvfile:
+with open(args.output_file, 'w') as tsvfile:
     writer = csv.writer(tsvfile, delimiter=',')
     writer.writerow(["SERIES"])
-    writer.writerow(["title"])
-    writer.writerow(["summary"])
-    writer.writerow(["overall design"])
-    writer.writerow(["contributor"])
-    writer.writerow(["contributor"])
-    writer.writerow(["supplementary file"])
-    writer.writerow(["SRA_center_name_code"])
+    writer.writerow(["title", args.title])
+    writer.writerow(["summary", args.summary])
+    writer.writerow(["overall design", args.overall_design])
+    for contributor in args.contributors:
+        writer.writerow(["contributor", contributor])
+    writer.writerow(["supplementary file", args.supplementary_file])
+    writer.writerow(["SRA_center_name_code", args.sra_center_name_code])
     writer.writerow([])
     writer.writerow(["SAMPLES"])
     writer.writerow(["Sample name", "title", "source name", "organism", "characteristics: cell type", "characteristics: passages", "characteristics: strain", "characteristics: ChIP antibody", "molecule", "description", "processed data file", "raw file", "raw file", "raw file", "raw file"])
@@ -47,20 +112,17 @@ with open('records.tsv','w') as tsvfile:
         writer.writerow([])
     writer.writerow([])
     writer.writerow(["PROTOCOLS"])
-    writer.writerow(["growth protocol"])
-    writer.writerow(["treatment protocol"])
-    writer.writerow(["extract protocol"])
-    writer.writerow(["library construction protocol"])
-    writer.writerow(["library strategy"])
+    writer.writerow(["growth protocol", args.growth_protocol])
+    writer.writerow(["treatment protocol", args.treatment_protocol])
+    writer.writerow(["extract protocol", args.extract_protocol])
+    writer.writerow(["library construction protocol", args.library_construction_protocol])
+    writer.writerow(["library strategy", args.library_strategy])
     writer.writerow([])
     writer.writerow(["DATA PROCESSING PIPELINE"])
-    writer.writerow(["data processing step"])
-    writer.writerow(["data processing step"])
-    writer.writerow(["data processing step"])
-    writer.writerow(["data processing step"])
-    writer.writerow(["data processing step"])
-    writer.writerow(["genome build"])
-    writer.writerow(["processed data files format and content"])
+    for data_processing_step in args.data_processing_steps:
+        writer.writerow(["data processing step", data_processing_step])
+    writer.writerow(["genome build", args.genome_build])
+    writer.writerow(["processed data files format and content", args.processed_data_files_format_content])
     writer.writerow([])
     writer.writerow(["PROCESSED DATA FILES"])
     writer.writerow(["file name", "file type", "file checksum"])
@@ -81,3 +143,4 @@ with open('records.tsv','w') as tsvfile:
         writer.writerow(["file name 1", "file name 2", "file name 3", "file name 4", "average insert size", "standard deviation"])
     else:
         writer.writerow(["file name 1", "file name 2", "average insert size", "standard deviation"])
+tsvfile.close()
