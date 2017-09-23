@@ -20,15 +20,14 @@ parser = argparse.ArgumentParser()
 parser.add_argument("--processed_file", dest="processed_files", action='append',
                   help="The processed data files for the sequence.")
 
-parser.add_argument("--processed_file_type", dest="processed_file_types", action='append',
-                  help="The processed file type for the last processed file input.")
-
+parser.add_argument("--processed_file_name", dest="processed_file_names", action='append',
+                  help="The processed file name for the last processed file input.")
 
 parser.add_argument("--raw_file", dest="raw_files", action='append',
                   help="The raw data files for the sequence.")
 
-parser.add_argument("--raw_file_type", dest="raw_file_types", action='append',
-                  help="The raw file type for the last raw file input.")
+parser.add_argument("--raw_file_name", dest="raw_file_names", action='append',
+                  help="The raw file name for the last raw file input.")
 
 parser.add_argument("--raw_file_instrument_model", dest="raw_file_instrument_models", action='append',
                   help="The raw file instrument model for the last raw file input.")
@@ -250,8 +249,8 @@ if __name__ == '__main__':
         if args.processed_files is not None:
             row = []
             for i in range(len(args.processed_files)):
-                row.append(args.processed_files[i])
-                row.append(args.processed_file_types[i])
+                row.append(args.processed_file_names[i])
+                row.append(os.path.splitext(args.processed_file_names[i])[1][1:])
                 row.append(generate_file_md5(args.processed_files[i]))
                 writer.writerow(row)
                 row = []
@@ -261,8 +260,8 @@ if __name__ == '__main__':
         if args.raw_files is not None:
             row = []
             for i in range(len(args.raw_files)):
-                row.append(args.raw_files[i])
-                row.append(args.raw_file_types[i])
+                row.append(args.raw_file_names[i])
+                row.append(os.path.splitext(args.raw_file_names[i])[1][1:])
                 row.append(generate_file_md5(args.raw_files[i]))
                 row.append(args.raw_file_instrument_models[i])
                 row.append(args.raw_file_read_lengths[i])
