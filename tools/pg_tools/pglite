@@ -1,0 +1,211 @@
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+function -h {
+cat <<USAGE
+ USAGE: pglite (-p|--personality <personality>)? (-d|--directory <path>)?
+        pglite setup (-p|--personality <personality>)? (-d|--directory <path>)?
+        pglite url (-d|--directory <path>)?
+        pglite start|stop|status (-d|--directory <path>)?
+        pglite connect (-d|--directory <path>)?
+        pglite rm (-d|--directory <path>)?
+
+  Creates and manages the lifecycle of a Postgres database, using the system
+  server installation.
+
+  This is intended to facilitate embedded applications, ephemeral database for
+  data processing applications, and testing.
+
+ pglite setup
+
+  Create the database directory.
+
+ pglite url
+
+  Obtain the Postgres URL for connecting (always a UNIX socket-based URL).
+
+ pglite start|stop|status
+
+  Start, stop or poll the status of the server.
+
+ pglite connect
+
+  Connect to the database, starting the server if it's not already started.
+
+ pglite rm
+
+  Remove the database directory and its configuration.
+
+ -p|--personality pipeline|postgres
+
+  Defaults to \`postgres\`. The \`pipeline\` personality exists to support
+  PipelineDB.
+
+ -d|--directory /path/to/data
+
+  Defaults to \`$root\`.
+
+USAGE
+}; function --help { -h ;}                 # A nice way to handle -h and --help
+export LC_ALL=en_US.UTF-8                    # A locale that works consistently
+
+args=()
+root=./var
+admin="$(whoami)"
+role=lite
+
+function main {
+  local args=() personality=postgres
+  while [[ $# -gt 0 ]]
+  do
+    case "$1" in
+      start|stop|status) args+=( ctl "$1" ) ;;
+      rm)                args+=( clean ) ;;
+      -p|--personality)  personality="$2" ; shift ;;
+      -d|--directory)    root="$2" ; shift ;;
+      *)                 args+=( "$1" ) ;;
+      --)                args+=( "$@" ) ; break ;;
+    esac
+    shift
+  done
+
+  set_personality "$personality"
+
+  if [[ ${#args[@]} -gt 0 ]]
+  then "${args[@]}"
+  else setup && connect
+  fi
+}
+
+# Database personality: names of administrative commands and files.
+declare ctl=false sql=false init=false conf=/dev/null
+
+function set_personality {
+  case "$1" in
+    postgres)
+      ctl=pg_ctl
+      sql=psql
+      init=initdb
+      conf=postgresql.conf ;;
+    pipeline)
+      ctl=pipeline-ctl
+      sql=pipeline
+      init=pipeline-init
+      conf=pipelinedb.conf ;;
+    *) msg "Unrecognized personality: $1"
+       err 'Please choose from: pipeline postgres'
+  esac
+}
+
+function load_personality {
+  if [[ -f "$root"/personality ]]
+  then set_personality "$(< "$root"/personality)"
+  fi
+}
+
+function setup {
+  if [[ -d "$root" ]]
+  then msg "NB: Skipping setup; dir exists: $root"
+  else initialize
+  fi
+}
+
+function connect {
+  load_personality
+  if ! is_running
+  then
+    ctl start -w
+    trap finalize EXIT
+  fi
+  sql "$@"
+}
+
+function url {
+  out "postgres://$role@[$(absroot)]/$role"
+}
+
+function absroot {
+  cd "$root" && pwd -P
+}
+
+function init_cluster_directory {
+  local tmp=/tmp/pglite~"$(whoami)".$$ abs=
+
+  "$init" -D "$root"/db -A trust --locale en_US.UTF-8
+  abs="$(absroot)"
+
+  ( trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp"
+    sed "s|^#*unix_socket_directory = .*$|unix_socket_directory = '"$abs"'|
+         s|^#*unix_socket_directories = .*$|unix_socket_directories = '"$abs"'|
+         s|^#*listen_addresses = .*$|listen_addresses = ''|
+         s|^#*datestyle = .*$|datestyle = 'iso, ymd'|
+         s|^#*intervalstyle = .*$|intervalstyle = 'iso_8601'|
+         s|^#*timezone = .*$|timezone = 'UTC'|
+        " "$root"/db/"$conf" > "$tmp"/conf
+
+    cat "$tmp"/conf > "$root"/db/"$conf" )
+
+  out "$personality" > "$root"/personality
+}
+
+function init_database_and_user {
+sql_admin -v ON_ERROR_STOP=on <<SQL
+  CREATE ROLE "$role" WITH SUPERUSER LOGIN REPLICATION;
+  CREATE DATABASE "$role" WITH OWNER "$role";
+SQL
+}
+
+function ctl {
+  load_personality
+  "$ctl" -D "$root"/db -l "$root"/log "$@"
+}
+
+function sql {
+  "$sql" -h "$(absroot)" --dbname="user=$role dbname=$role" "$@"
+}
+
+function sql_admin {
+  "$sql" -h "$(absroot)" --dbname="user=$admin dbname=template1" "$@"
+}
+
+function finalize {
+  local code=$?
+  ctl stop -m fast 2>/dev/null || true
+  kill %1 2>/dev/null || true
+  exit $code
+}
+
+function initialize {
+  init_cluster_directory
+  trap finalize EXIT
+  touch "$root"/log
+  tail -qF "$root"/log &
+  ctl start -w
+  init_database_and_user
+  ctl stop -w
+  kill %1
+  wait %1 2>/dev/null || true
+}
+
+function is_running {
+  ctl status | fgrep -q 'server is running'
+}
+
+function clean {
+  msg "Removing: $root"
+  [[ ! -e "$root" ]] || rm -r "$root"
+}
+
+##################################################################### Utilities
+
+function msg { out "$*" >&2 ;}
+function err { local x=$? ; msg "$*" ; return $(( $x == 0 ? 1 : $x )) ;}
+function out { printf '%s\n' "$*" ;}
+
+# Handles "no-match" exit code specified by POSIX for filtering tools.
+function maybe { "$@" || return $(( $? == 1 ? 0 : $? )) ;}
+
+
+######################### Delegates to subcommands or runs main, as appropriate
+
+main "$@"
