@@ -33,7 +33,7 @@ Detailed installation instructions can be found at http://scikit-learn.org/stabl
 Scikit-learn main package groups
 ======
 
-Scikit-learn provides the users with several main groups of related operations. 
+Scikit-learn provides the users with several main groups of related operations.
 These are:
 
 - Classification
@@ -64,7 +64,7 @@ The current release of the wrapper offers a subset of the packages from scikit-l
 - Linear and quadratic discriminant classifiers
 - Random forest and Ada boost classifiers and regressors
 - All the clustering methods
-- All supprt vector machine classifiers
+- All support vector machine classifiers
 - A subset of data preprocessing estimator classes
 - Pairwise metric measurement functions
 
@@ -92,7 +92,7 @@ In practice, there are five steps which we can go through to start from raw inpu
 1. Preprocess the data::
 
     * Change the collected data into the proper format and datatype.
-    * Adjust the data quality by filling the missing values, performing 
+    * Adjust the data quality by filling the missing values, performing
     required scaling and normalizations, etc.
     * Extract features which are the most meaningfull for the learning task.
     * Split the ready dataset into training and test samples.
@@ -107,27 +107,27 @@ In practice, there are five steps which we can go through to start from raw inpu
         - Interpretability of the predictions
 
 3. Choose a validation method
-	
+
 	Every machine learning model should be evaluated before being put into practicical use.
-	There are numerous performance metrics to evaluate machine learning models. 
+	There are numerous performance metrics to evaluate machine learning models.
 	For supervised learning, usually classification or regression metrics are used.
 
 	A validation method helps to evaluate the performance metrics of a trained model in order
-	to optimize its performance or ultimately switch to a more efficient model. 
+	to optimize its performance or ultimately switch to a more efficient model.
 	Cross-validation is a known validation method.
 
 4. Fit a model
 
-   Given the learning algorithm, validation method, and performance metric(s) 
-   repeat the following steps:: 
+   Given the learning algorithm, validation method, and performance metric(s)
+   repeat the following steps::
 
     * Train the model.
-    * Evaluate based on metrics. 
+    * Evaluate based on metrics.
     * Optimize unitl satisfied.
 
 5. Use fitted model for prediction::
 
-	This is a final evaluation in which, the optimzed model is used to make predictions
+	This is a final evaluation in which, the optimized model is used to make predictions
 	on unseen (here test) samples. After this, the model is put into production.
 
 .. _Unsupervised learning workflows:
@@ -140,7 +140,7 @@ Unsupervised machine learning workflows
 
 Unlike supervised learning and more liklely in real life, here the initial data is not labeled.
 The task is to extract the structure from the data and group the samples based on their similarities.
-Clustering and dimensionality reduction are two famous examples of unsupervised learning tasks. 
+Clustering and dimensionality reduction are two famous examples of unsupervised learning tasks.
 
 In this case, the workflow is as follows::
 
@@ -148,4 +148,3 @@ In this case, the workflow is as follows::
     * Train a model.
     * Evaluate and tune parameters.
     * Analyse the model and test on real data.
-
