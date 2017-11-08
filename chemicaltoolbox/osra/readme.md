@@ -1,4 +1,4 @@
-OSRA: Optical Structure Recognition Application
+## OSRA: Optical Structure Recognition Application
 
 OSRA is a utility designed to convert graphical representations of chemical 
 structures, as they appear in journal articles, patent documents, textbooks, 
