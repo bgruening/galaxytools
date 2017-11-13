@@ -1,0 +1,466 @@
+<tool id="pileometh" name="MethylDackel" version="0.3.0">
+    <description>A tool for processing bisulfite sequencing alignments</description>
+    <requirements>
+        <requirement type="package" version="0.3.0">methyldackel</requirement>
+    </requirements>
+    <stdio>
+        <!-- Anything other than zero is an error -->
+        <exit_code range="1:" />
+        <exit_code range=":-1" />
+        <!-- In case the return code has not been set propery check stderr too -->
+        <regex match="Error:" />
+        <regex match="Exception:" />
+    </stdio>
+    <version_command><![CDATA[MethylDackel --version]]></version_command>
+    <command><![CDATA[
+        #if $reference_source.reference_source_selector == "cached":
+            ln -s $reference_source.ref_file.fields.path reference.fasta &&
+        #else:
+            ln -s $reference_source.ref_file reference.fasta &&
+        #end if
+
+        MethylDackel
+            $main_task.task
+
+            -@ \${GALAXY_SLOTS:-4}
+            #if $main_task.task == "extract":
+                -o output
+                $main_task.mergeContext
+                #if str($main_task.OT).strip() != "":
+                    --OT $main_task.OT
+                #end if
+                #if str($main_task.OB).strip() != "":
+                    --OB $main_task.OB
+                #end if
+                #if str($main_task.CTOT).strip() != "":
+                    --CTOT $main_task.CTOT
+                #end if
+                #if str($main_task.CTOB).strip() != "":
+                    --CTOB $main_task.CTOB
+                #end if
+            #end if
+
+            #if $advanced_options.options=="yes":
+                #if $advanced_options.mbias_regionString:
+                    -r $advanced_options.mbias_regionString
+                #end if
+                $advanced_options.keepDupes
+                $advanced_options.keepSingleton
+                $advanced_options.keepDiscordant
+                -q $advanced_options.min_mapq
+                -p $advanced_options.min_phred
+                -D $advanced_options.max_pbdepth
+                #if $main_task.task == "extract":
+                    --minOppositeDepth $advanced_options.minOppositeDepth
+                    --maxVariantFrac $advanced_options.maxVariantFrac
+                    -d $advanced_options.min_pbdepth
+                    --ignoreFlags $advanced_options.ignoreFlags
+                    --requireFlags $advanced_options.requireFlags
+                    $advanced_options.fraction
+                    $advanced_options.counts
+                    $advanced_options.methylKit
+                    $advanced_options.logit
+                    #if str($advanced_options.nOT).strip() != "":
+                        --nOT $advanced_options.nOT
+                    #end if
+                    #if str($advanced_options.nOB).strip() != "":
+                        --nOB $advanced_options.nOB
+                    #end if
+                    #if str($advanced_options.nCTOT).strip() != "":
+                        --nCTOT $advanced_options.nCTOT
+                    #end if
+                    #if str($advanced_options.nCTOB).strip() != "":
+                        --nCTOB $advanced_options.nCTOB
+                    #end if
+                #end if
+                $advanced_options.CHG
+                $advanced_options.CHH
+            #end if
+
+            reference.fasta
+
+            $input_sortedAlignBAM
+
+            #if $main_task.task == "mbias":
+                out_mbias &&
+                touch out_mbias_OT.svg &&
+                touch out_mbias_OB.svg &&
+                touch out_mbias_CTOT.svg &&
+                touch out_mbias_CTOB.svg
+            #end if
+    ]]></command>
+    <inputs>
+        <conditional name="reference_source">
+            <param name="reference_source_selector" type="select" label="Load reference genome from">
+                <option value="cached">Local cache</option>
+                <option value="history">History</option>
+            </param>
+            <when value="cached">
+                <param name="ref_file" type="select" label="Using reference genome" help="Reference sequence">
+                    <options from_data_table="all_fasta"/>
+                    <validator type="no_options" message="A built-in reference genome is not available for the build associated with the selected input file"/>
+                </param>
+            </when>
+            <when value="history">
+                <param name="ref_file" type="data" format="fasta" label="Use the folloing dataset as the reference sequence" help="REFERENCE_SEQUENCE; You can upload a FASTA sequence to the history and use it as reference" />
+            </when>
+        </conditional>
+
+        <param name="input_sortedAlignBAM" multiple="False" type="data" format="bam" label="sorted_alignments.bam"/>
+        <conditional name="main_task">
+            <param name="task" type="select" label="What do you want to do?" >
+                 <option value="extract">Extract methylation metrics from an alignment file in BAM/CRAM format</option>
+                 <option value="mbias">Determine the position-dependent methylation bias in a dataset, producing diagnostic SVG images</option>
+            </param>
+            <when value="extract">
+                <param name="mergeContext" type="boolean" checked="false" truevalue="--mergeContext" falsevalue=""
+                label="Merge per-Cytosine metrics from CpG and CHG contexts into per-CPG or per-CHG metrics" help="(--mergeContext)" />
+                <param name="OT" type="text" value="" label="Original top strand bounds (comma-separated, no spaces)"
+                    help="Inclusion bounds for methylation calls from reads/pairs
+                          origination from the original top strand. Suggested values can
+                          be obtained from the MBias program. Each integer represents a
+                          1-based position on a read. For example --OT A,B,C,D
+                          translates to, 'Include calls at positions from A through B
+                          on read #1 and C through D on read #2'. If a 0 is used a any
+                          position then that is translated to mean start/end of the
+                          alignment, as appropriate. For example, --OT 5,0,0,0 would
+                          include all but the first 4 bases on read #1. Users are
+                          strongly advised to consult a methylation bias plot, for
+                          example by using the MBias program." />
+                <param name="OB" type="text" value="" label="Original bottom strand bounds (comma-separated, no spaces)" />
+                <param name="CTOT" type="text" value="" label="Complementary to the original bottom strand bounds (comma-separated, no spaces)" />
+                <param name="CTOB" type="text" value="" label="Complementary to the original bottom strand bounds (comma-separated, no spaces)" />
+            </when>
+            <when value="mbias"/>
+        </conditional>
+        <conditional name="advanced_options">
+            <param name="options" type="select" label="Advanced options">
+                <option value="">Hide advanced options</option>
+                <option value="yes">Display advanced options</option>
+            </param>
+            <when value="yes">
+                <param name="mbias_regionString" type="text" value="" label="Region string in which to extract methylation"/>
+                <param name="keepDupes" type="boolean" checked="false" truevalue="--keepDupes" falsevalue=""
+                    label="By default, any alignment marked as a duplicate is ignored. This option causes them to be incorporated" />
+                <param name="keepSingleton" type="boolean" checked="false" truevalue="--keepSingleton" falsevalue=""
+                    label="By default, if only one read in a pair aligns (a singleton) then it's ignored." />
+                <param name="keepDiscordant" type="boolean" checked="false" truevalue="--keepDiscordant" falsevalue=""
+                    label="By default, paired-end alignments with the properly-paired bit unset in the FLAG field are ignored. Note that the definition of concordant and discordant is based on your aligner settings." />
+                <param name="min_mapq" type="integer" value="10" label="Minimum MAPQ threshold to include an alignment (default 10)"/>
+                <param name="min_phred" type="integer" value="5" label="Minimum Phred threshold to include a base (default 5). This must be >0."/>
+                <param name="max_pbdepth" type="integer" value="2000" label="Maximum per-base depth (default 2000)"/>
+                <param name="min_pbdepth" type="integer" value="1" min="1" label="Minimum per-base depth"
+                    help="Minimum per-base dpeth for reporting output. If you use --mergeContext (above), then this applies to the merged CpG/CHG (default 1). (-d)" />
+
+                <param name="ignoreFlags" type="integer" value="3840" label="Ignore certain alignments"
+                    help="By deault, any alignment marked as secondary (bit 0x100), failing QC (bit 0x200), a PCR/optical duplicate (0x400) or supplemental (0x800) is ignored. This equates to a value of 0xF00 or 3840 in decimal. If you would like to change that, you can specify a new value here." />
+                <param name="requireFlags" type="integer" value="0" label="Require alignment flags"
+                    help="Require each alignment to have all bits in this value present, or else the alignment is ignored. This is equivalent to the -f option in samtools. The default is 0, which includes all alignments." />
+                <param name="minOppositeDepth" type="integer" value="0" min="0" label="Minimum depth for variant avoidance"
+                    help="The minimum depth on the strand opposite of a C required to flag the position as possibly being a SNP. The default is 0 (ignore possible SNPs). Setting this to a value above 0 will cause the position to be ignored if a given fraction of non-G bases are present on the opposite strand and the overall coverage there is at least what is specified here." />
+                <param name="maxVariantFrac" type="float" value="1.0" min="0.0" max="1.0" label="Maximum tolerated variant fraction"
+                    help="If the depth on the strand opposite of a C is at least that specified by 'Minimum depth for variant avoidance', and the fraction of non-G bases exceeds this value, then methylation extraction is skipped for this position." />
+
+                <param name="fraction" type="boolean" checked="false" truevalue="--fraction" falsevalue=""
+                    label="Extract fractional methylation (only) at each position. This is mutually exclusive with --counts, --logit, and --methylKit" />
+                <param name="counts" type="boolean" checked="false" truevalue="--counts" falsevalue=""
+                    label="Extract base counts (only) at each position. This is mutually exclusive with --fraction, --logit, and --methylKit" />
+                <param name="logit" type="boolean" checked="false" truevalue="--logit" falsevalue=""
+                    label="Extract logit(M/(M+U)) (only) at each position. This is mutually exclusive with --counts, --fraction, and --methylKit" />
+                <param name="methylKit" type="boolean" checked="false" truevalue="--methylKit" falsevalue=""
+                    label="Output in the format required by methylKit. This is mutually exclusive with --counts, --fraction, and --logit" />
+
+                <param name="CHG" type="boolean" checked="false" truevalue="--CHG" falsevalue=""
+                    label="Additional output file with CHG methylation metrics" />
+                <param name="CHH" type="boolean" checked="false" truevalue="--CHH" falsevalue=""
+                    label="Additional output file with CHH methylation metrics" />
+
+                <param name="nOT" type="text" value="" label="Original top strand absolute bounds (comma-separated, no spaces)"
+                    help="Like --OT, but always exclude INT bases from a given end
+                          from inclusion,regardless of the length of an alignment. This
+                          is useful in cases where reads may have already been trimmed
+                          to different lengths, but still none-the-less contain a
+                          certain length bias at one or more ends." />
+                <param name="nOB" type="text" value="" label="Original bottom strand absolute bounds (comma-separated, no spaces)" />
+                <param name="nCTOT" type="text" value="" label="Complementary to the original bottom strand absolute bounds (comma-separated, no spaces)" />
+                <param name="nCTOB" type="text" value="" label="Complementary to the original bottom strand absolute bounds (comma-separated, no spaces)" />
+            </when>
+            <when value=""/>
+        </conditional>
+    </inputs>
+    <outputs>
+            <data  name="outFileExtractCpG" format="bedgraph" from_work_dir="output_CpG.bedGraph" 
+                label="${tool.name} on ${on_string}">
+                <filter>main_task['task']  == "extract"</filter>
+                <filter>not advanced_options['logit']</filter>
+                <filter>not advanced_options['methylKit']</filter>
+                <filter>not advanced_options['counts']</filter>
+                <filter>not advanced_options['fraction']</filter>
+            </data>
+            <data  name="outFileExtractCpGLogit" format="bedgraph" from_work_dir="output_CpG.logit.bedGraph" 
+                label="${tool.name} on ${on_string} (logit)">
+                <filter>main_task['task']  == "extract" and advanced_options['logit']</filter>
+            </data>
+            <data  name="outFileExtractCpGMethylKit" format="text" from_work_dir="output_CpG.methylKit" 
+                label="${tool.name} on ${on_string} (MethylKit)">
+                <filter>main_task['task']  == "extract" and advanced_options['methylKit']</filter>
+            </data>
+            <data  name="outFileExtractCpGCounts" format="bedgraph" from_work_dir="output_CpG.counts.bedGraph" 
+                label="${tool.name} on ${on_string} (counts)">
+                <filter>main_task['task']  == "extract" and advanced_options['counts']</filter>
+            </data>
+            <data  name="outFileExtractCpGFraction" format="bedgraph" from_work_dir="output_CpG.meth.bedGraph" 
+                label="${tool.name} on ${on_string} (fraction)">
+                <filter>main_task['task']  == "extract" and advanced_options['fraction']</filter>
+            </data>
+            <data  name="outFileExtractCHG" format="bedgraph" from_work_dir="output_CHG.bedGraph" 
+                label="${tool.name} on ${on_string} (CHG)">
+                <filter>main_task['task'] == 'extract'</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHG']</filter>
+                <filter>not advanced_options['logit']</filter>
+                <filter>not advanced_options['methylKit']</filter>
+                <filter>not advanced_options['counts']</filter>
+                <filter>not advanced_options['fraction']</filter>
+            </data>
+            <data  name="outFileExtractCHGLogit" format="bedgraph" from_work_dir="output_CHG.logit.bedGraph" 
+                label="${tool.name} on ${on_string} (CHG logit)">
+                <filter>main_task['task']  == "extract" and advanced_options['logit']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHG']</filter>
+            </data>
+            <data  name="outFileExtractCHGMethylKit" format="text" from_work_dir="output_CHG.methylKit" 
+                label="${tool.name} on ${on_string} (CHG MethylKit)">
+                <filter>main_task['task']  == "extract" and advanced_options['methylKit']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHG']</filter>
+            </data>
+            <data  name="outFileExtractCHGCounts" format="bedgraph" from_work_dir="output_CHG.counts.bedGraph" 
+                label="${tool.name} on ${on_string} (CHG counts)">
+                <filter>main_task['task']  == "extract" and advanced_options['counts']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHG']</filter>
+            </data>
+            <data  name="outFileExtractCHGFraction" format="bedgraph" from_work_dir="output_CHG.meth.bedGraph" 
+                label="${tool.name} on ${on_string} (CHG fraction)">
+                <filter>main_task['task']  == "extract" and advanced_options['fraction']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHG']</filter>
+            </data>
+            <data  name="outFileExtractCHH" format="bedgraph" from_work_dir="output_CHH.bedGraph" 
+                label="${tool.name} on ${on_string} (CHH)">
+                <filter>main_task['task']  == 'extract'</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHH']</filter>
+                <filter>not advanced_options['logit']</filter>
+                <filter>not advanced_options['methylKit']</filter>
+                <filter>not advanced_options['counts']</filter>
+                <filter>not advanced_options['fraction']</filter>
+            </data>
+            <data  name="outFileExtractCHHLogit" format="bedgraph" from_work_dir="output_CHH.logit.bedGraph" 
+                label="${tool.name} on ${on_string} (CHH logit)">
+                <filter>main_task['task']  == "extract" and advanced_options['logit']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHH']</filter>
+            </data>
+            <data  name="outFileExtractCHHMethylKit" format="text" from_work_dir="output_CHH.methylKit" 
+                label="${tool.name} on ${on_string} (CHH MethylKit)">
+                <filter>main_task['task']  == "extract" and advanced_options['methylKit']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHH']</filter>
+            </data>
+            <data  name="outFileExtractCHHCounts" format="bedgraph" from_work_dir="output_CHH.counts.bedGraph" 
+                label="${tool.name} on ${on_string} (CHH counts)">
+                <filter>main_task['task']  == "extract" and advanced_options['counts']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHH']</filter>
+            </data>
+            <data  name="outFileExtractCHHFraction" format="bedgraph" from_work_dir="output_CHH.meth.bedGraph" 
+                label="${tool.name} on ${on_string} (CHH fraction)">
+                <filter>main_task['task']  == "extract" and advanced_options['fraction']</filter>
+                <filter>advanced_options['options'] == "yes"</filter>
+                <filter>advanced_options['CHH']</filter>
+            </data>
+            <data  name="outFileMbiasCpGOT" format="svg" from_work_dir="out_mbias_OT.svg"
+                label="${tool.name} on ${on_string} (methylation bias, original top strand)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+            <data  name="outFileMbiasCpGOB" format="svg" from_work_dir="out_mbias_OB.svg"
+                label="${tool.name} on ${on_string} (methylation bias, original bottom strand)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+            <data  name="outFileMbiasCpGCTOT" format="svg" from_work_dir="out_mbias_CTOT.svg"
+                label="${tool.name} on ${on_string} (methylation bias, complementary to the original top strand)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+            <data  name="outFileMbiasCpGCTOB" format="svg" from_work_dir="out_mbias_CTOB.svg"
+                label="${tool.name} on ${on_string} (methylation bias, complementary to the original bottom strand)">
+                <filter>main_task['task']  == 'mbias'</filter>
+            </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="task" value="extract" />
+            <param name="min_mapq" value="2" />
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <param name="mergeContext" value="false"/>
+            <param name="options" value="yes"/>
+            <output name="outFileExtractCpG" file="test_1.bedGraph" ftype="bedgraph" compare="diff"/>
+        </test>
+        <test>
+            <param name="task" value="mbias" />
+            <param name="min_mapq" value="2" />
+            <param name="options" value="yes"/>
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <output name="outFileMbiasCpGOT" file="test_2_output.svg" ftype="svg" compare="diff"/>
+        </test>
+        <test>
+            <param name="task" value="extract" />
+            <param name="min_mapq" value="2" />
+            <param name="options" value="yes"/>
+            <param name="CHH" value="True"/>
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <param name="mergeContext" value="false"/>
+            <param name="options" value="yes"/>
+            <output name="outFileExtractCpG" file="test_1.bedGraph" ftype="bedgraph" compare="diff"/>
+            <output name="outFileExtractCHH" file="test_2.bedGraph" ftype="bedgraph" compare="diff"/>
+        </test>
+        <test>
+            <param name="task" value="extract" />
+            <param name="min_mapq" value="2" />
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <param name="options" value="yes"/>
+            <param name="fraction" value="true" />
+            <output name="outFileExtractCpGFraction" file="test_3.bedGraph" ftype="bedgraph" compare="diff"/>
+        </test>
+        <test>
+            <param name="task" value="extract" />
+            <param name="min_mapq" value="2" />
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <param name="options" value="yes"/>
+            <param name="logit" value="true" />
+            <output name="outFileExtractCpGLogit" file="test_4.bedGraph" ftype="bedgraph" compare="diff"/>
+        </test>
+        <test>
+            <param name="task" value="extract" />
+            <param name="min_mapq" value="2" />
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="cg100.fa" ftype="fasta" />
+            <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
+            <param name="options" value="yes"/>
+            <param name="methylKit" value="true" />
+            <output name="outFileExtractCpGMethylKit" file="test_5.methylKit" ftype="text" compare="diff"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+.. image:: $PATH_TO_IMAGES/MethylDackelLogo.png
+   :align: left
+
+**What it does**
+
+MethylDackel (formerly named PileOMeth, which was a temporary name derived due to it using a PILEup to extract METHylation metrics) will process a coordinate-sorted and indexed BAM or CRAM file containing some form of BS-seq alignments and extract per-base methylation metrics from them. MethylDackel requires an indexed fasta file containing the reference genome as well.
+
+By default, MethylDackel will only calculate metrics for Cytosines in a CpG context, but metrics for those in CHG and CHH contexts are supported as well.
+
+**Methylation context**
+
+MethylDackel groups all Cytosines into one of three sequence contexts: CpG, CHG, and CHH. Here, H is the IUPAC ambiguity code for any nucleotide other than G. If an N is encountered in the reference sequence, then the context will be assigned to CHG or CHH, as appropriate (e.g., CNG would be categorized as in a CHG context and CNC as in a CHH context). If a Cytosine is close enough to the end of a chromosome/contig such that its context can't be inferred, then it is categorized as CHH (e.g., a Cytosine as the last base of a chromosome is considered as being in a CHH context).
+
+
+**Output information**
+
+If no methylation can be found, the output will be empty.
+
+Otherwise a variant of bedGraph that's similar to the "coverage" file is produced.  In short, each line consists of 6 tab separated columns:
+
+1. The chromosome/contig/scaffold name
+2. The start coordinate
+3. The end coordinate
+4. The methylation percentage rounded to an integer
+5. The number of alignments/pairs reporting methylated bases
+6. The number of alignments/pairs reporting unmethylated bases
+
+All coordinates are 0-based half open, which conforms to the bedGraph definition. When paired-end reads are aligned, it can often occur that their alignments overlap. In such cases, MethylDackel will not count both reads of the pair in its output, as doing so would lead to incorrect downstream statistical results.
+
+An example of the output is below::
+
+#track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
+#1   25115   25116   100 3   0
+#1   29336   29337   50  1   1
+
+Note the header line, which starts with "track". The "description" field is used as a label in programs such as IGV. Each of the subsequent lines describe single Cytosines, the 25116th and 29337th base on chromosome 1, respectively. The first position has 3 alignments (or pairs of alignments) indicating methylation and 0 indicating unmethylation (100% methylation) and the second position has 1 alignment each supporting methylation and unmethylation (50% methylation).
+
+**Per-CpG/CHG metrics**
+
+In many circumstances, it's desireable for metrics from individual Cytosines in a CpG to be merged, producing per-CpG metrics rather than per-Cytosine metrics. This can be accomplished with the **Merge per-Cytosine** parameter. If this is used, then this output::
+
+#track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
+#1   25114   25115   100 2   1
+#1   25115   25116   100 3   0
+
+is changed to this::
+
+#track type="bedGraph" description="SRR1182519.sorted merged CpG methylation levels"
+#1   25114   25116   100 5   1
+
+This also works for CHG-level metrics. If bedGraph files containing per-Cytosine metrics already exist, they can be converted to instead contain per-CpG/CHG metrics with MethylDackel mergeContext.
+
+**Methylation bias plotting and correction**
+
+In an ideal experiment, we expect that the probability of observing a methylated C is constant across the length of any given read. In practice, however, there are often increases/decreases in observed methylation rate at the ends of reads and/or more global changes. These are termed methylation bias and including such regions in the extracted methylation metrics will result in noisier and less accurate data. For this reason, users are strongly encouraged to make a methylation bias plot.
+
+That command will create a methylation bias (mbias for short) plot for each of the strands for which there are valid alignments.
+The resulting mbias graphs are in SVG format and can be viewed in most modern web browsers:
+
+.. image:: $PATH_TO_IMAGES/example.svg
+
+
+If you have paired-end data, both reads in the pair will be shown separately, as is the case above. The program will suggest regions for inclusion ("--OT 2,0,0,98" above) and mark them on the plot, if applicable. The format of this output is described in MethylDackel extract -h. These suggestions should not be accepted blindly; users are strongly encouraged to have a look for themselves and tweak the actual bounds as appropriate. The lines indicate the average methylation percentage at a given position and the shaded regions the 99.9% confidence interval around it. This is useful in gauging how many methylation calls a given position has relative to its neighbors. Note the spike in methylation at the end of read #2 and the corresponding dip at the beginning of read #1. This is common and these regions can be ignored with the suggested trimming bounds. Note also that the numbers refer to the first and last base that should be included during methylation extraction, not the last and first base to ignore!.
+
+**Excluding low-coverage regions**
+
+If your downstream analysis requires an absolute minimum coverage (here, defined as the number of methylation calls kept after filtering for MAPQ, phred score, etc.), you can use the `--minDepth` option to achieve this. By default, `MethylDackel extract` will output all methylation metrics as long as the coverage is at least 1. If you use `--minDepth 10`, then only sites covered at least 10x will be output. This works in conjunction with the `--mergeContext` option, above. So if you request per-CpG context output (i.e., with `--mergeContext`) and `--minDepth 10` then only CpGs with a minimum coverage of 10 will be output.
+
+**Logit, fraction, and counts only output**
+
+The standard output described above can be modified if you supply the `--fraction`, `--counts`, or `--logit` options to `MethylDackel extract`.
+
+The `--fraction` option essentially produces the first 4 columns of the standard output described above. The only other difference is that the range of the 4th column is now between 0 and 1, instead of 0 and 100. Instead of producing a file ending simply in `.bedGraph`, one ending in `.meth.bedGraph` will instead be produced.
+
+The `--counts` option produces the first three columns of the standard output followed by a column of total coverage counts. This last column is equivalent to the sum of the 5th and 6th columns of the standard output. The resulting file ends in `.counts.bedGraph` rather than simply `.bedGraph`.
+
+The `--logit` option produces the first three columns of the standard output followed by the logit transformed methylation fraction. The logit transformation is log(Methylation fraction/(1-Methylation fraction)). Note that log uses base e. Logit transformed methylation values range between +/- infinity, rather than [0,1]. The resulting file ends in `.logit.bedGraph` rather than simply `.bedGraph`.
+
+Note that these options may be combined with `--mergeContext`. However, `MethylDackel mergeContext` can not be used after the fact to combine these.
+
+**methylKit-compatible output**
+
+methylKit has its own format, which can be produced with the `--methylKit` option. Merging Cs into CpGs or CHGs is forbidden in this format. Likewise, this option is mutually exclusive with `--logit` et al.
+
+**Excluding likely variant sites**
+
+If your samples are not genetically homogenous, it can sometimes be advantageous to exclude likely variant sites from methylation extraction. As an example, since unmethylated Cs are read as Ts, extracting methylation from a position with a C->T mutation will cause incorrect results. In such a case, the opposite strand will have an A rather than a G (in the non-variant case, there would be a G regardless of methylation status). MethylDackel tracks the number of non-Gs on the strand opposite of Cs in the reference sequence. If the fraction of these exceeds the `--maxVariantFrac` option, then that position will be excluded from output. To exclude cases where the `--maxVariantFrac` value is exceeded only due to low coverage, the opposite strand must have a depth of coverage of at least `--minOppositeDepth`. Note that the default value for `--minOppositeDepth` is 0, indicating that the variant site exclusion process is skipped.
+
+Note that if one additionally specifies `--mergeContext`, that a given CpG or CHG will be excluded from output if either of its individual Cs would be excluded given the specified `--minOppositeDepth` and `--maxVariantFrac`.
+
+
+-----
+
+**MethylDackel** is a Free and Open Source Software, see more details on the MethylDackel_ Website.
+
+.. _MethylDackel: https://github.com/dpryan79/MethylDackel
+    ]]></help>
+    <citations>
+    </citations>
+</tool>

@@ -75,13 +75,13 @@ def filter_new_compounds(args, filters):
     return_code = child.returncode
 
     if return_code:
-        sys.stdout.write(stdout)
-        sys.stderr.write(stderr)
+        sys.stdout.write(stdout.decode('utf-8'))
+        sys.stderr.write(stderr.decode('utf-8'))
         sys.stderr.write("Return error code %i from command:\n" % return_code)
         sys.stderr.write("%s\n" % cmd)
     else:
-        sys.stdout.write(stdout)
-        sys.stdout.write(stderr)
+        sys.stdout.write(stdout.decode('utf-8'))
+        sys.stdout.write(stderr.decode('utf-8'))
 
 
 def __main__():
@@ -95,7 +95,7 @@ def __main__():
     filters = json.loads((args.filters).replace(' ', '').replace(',}', '}'))
     if args.iformat == 'sdf':
         # Check if the sdf file contains all of the required metadata to invoke the precalculation filtering
-        mol = pybel.readfile('sdf', args.input).next()
+        mol = next(pybel.readfile('sdf', args.input))
         for key, elem in filters.items():
             property = cheminfolib.ColumnNames[key]
             if not property in mol.data:

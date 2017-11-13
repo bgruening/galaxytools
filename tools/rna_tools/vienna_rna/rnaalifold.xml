@@ -1,4 +1,4 @@
-<tool id="viennarna_rnaalifold" name="@EXECUTABLE@" version="@VERSION@.0">
+<tool id="viennarna_rnaalifold" name="@EXECUTABLE@" version="@VERSION@.1">
     <description>Calculate minimum free energy secondary structures and partition function on a multiple alignment file</description>
     <macros>
         <token name="@EXECUTABLE@">RNAalifold</token>
@@ -11,6 +11,18 @@
 <![CDATA[
         
         RNAalifold  < '$input' > '$tabularFile'
+        
+        #if $input.ext == 'clustal':
+            -f C
+        #else if $input.ext == 'fasta':
+            -f F
+        #else if $input.ext == 'stockholm':
+            -f S
+        #else if $input.ext == 'maf':
+            -f M
+        #else:
+            -f C
+        #end if
         -T$model_options.temperature -d$model_options.dangling
         $general_options.verbose
         $general_options.color
@@ -50,19 +62,21 @@
                     --shapeMethod=$s
                 #end if		
             #end if
-        #end if		
+        #end if
+
         #if $algorithm_options.pf <> "-1"
             --partfunc=$algorithm_options.pf
+            --pfScale=$algorithm_options.pfScale
+
         #end if
-        #if $algorithm_options.mea <> 1.0
-            --mea=$algorithm_options.mea
+        #if $algorithm_options.measelect.mea == "yes":
+            --MEA=$algorithm_options.measelect.meavalue
+            --pfScale=$algorithm_options.pfScale
         #end if
+
         $algorithm_options.mis
         #if $algorithm_options.stochBT_en <> 1
             --stochBT_en=$algorithm_options.stochBT_en
-        #end if
-        #if $algorithm_options.pfScale <> 1.07
-            --pfScale=$algorithm_options.pfScale
         #end if
         $algorithm_options.circular
         #if $algorithm_options.bppmThreshold <> 1e-6
@@ -92,14 +106,25 @@
 ]]>
     </command>
     <inputs>
-        <param format="txt" name="input" type="data" label="Clustal file"/>        
+        <param format="clustal,fasta,stockholm,maf" name="input" type="data" label="Clustal/AlignmentFasta/Stockholm/MAF file"/>
+
         <section name="algorithm_options" title="Algorithm Options">
             <param name="pf" type="select" label="Calculate partition function" help="Calculate the partition function and base pairing probability matrix in addition to the mfe structure. Default is calculation of mfe structure only." argument="-p">
                 <option value="-1" selected="true">None</option>
                 <option value="0">0: Deactivates the calculation of the pair probabilities, saving about 50% in runtime</option>
                 <option value="1" >1: Calculate the partition function and base pairing probability matrix</option>				
             </param>
-            <param name="mea" type="float" value="1.0" label="Gamma Value" help="Calculate an MEA (maximum expected accuracy) structure. The parameter gamma tunes the importance of correctly predicted pairs versus unpaired bases. Thus, for small values of gamma the MEA structure will contain only pairs with very high probability. where the expected accuracy is computed from the pair probabilities: each base pair (i,j) gets a score 2*gamma*p_ij and the score of an unpaired base is given by the probability of not forming a pair." argument="--MEA"/>
+
+            <conditional name="measelect">
+                <param name="mea" type="select" label="Calculate Maximum Expected accuracy" argument="--MEA">
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                </param>
+                <when value="yes">
+                    <param name="meavalue" type="float" value="1.0" label="Gamma Value" help="Calculate an MEA (maximum expected accuracy) structure. The parameter gamma tunes the importance of correctly predicted pairs versus unpaired bases. Thus, for small values of gamma the MEA structure will contain only pairs with very high probability. where the expected accuracy is computed from the pair probabilities: each base pair (i,j) gets a score 2*gamma*p_ij and the score of an unpaired base is given by the probability of not forming a pair."/>
+                </when>
+            </conditional>
+
             <param argument="--mis" type="boolean" checked="false" truevalue="--mis" falsevalue="" label="Most Informative Sequence" help="Output 'most informative sequence' instead of simple consensu"/>							
             <param name="stochBT_en" type="integer" value="1" label="Number of random structures." help="Compute a certain number of random structures with a probability dependend on the partition function. Print out the energies and probabilities of the backtraced structures. " argument="--stochBT_en"/>	        
             <param name="pfScale" type="float" value="1.07" label="Scaling factor" help="In the calculation of the pf use scale*mfe as an estimate for the ensemble free energy (used to avoid overflows). The default is 1.07, useful values are 1.0 to 1.2. Occasionally needed for long sequences." argument="--pfScale"/>						
@@ -161,7 +186,7 @@
                 <!--	<when value="fromInput"></when> -->
                     <when value="none"></when>
                     <when value="fromFile">
-                        <param name="constraintsFile" type="data" format="*" label="Constraints file"/>
+                        <param name="constraintsFile" type="data" format="txt" label="Constraints file"/>
                         <param name="batch" type="boolean" checked="false" truevalue="--batch" falsevalue="" 
                             label="Use constraints for all alignment records" 
                             help="Usually, constraints provided from input file are only applied to a single sequence alignment. Therefore, RNAalifold will stop its computation and quit after the first input alignment was processed. Using this switch, RNAalifold processes all sequence alignments in the input and applies the same provided constraints to each of them." 
@@ -179,7 +204,7 @@
                         </param>
                         <when value ="isUsed">
                             <repeat name="shape_files" title="Shape File" default="0">
-                                <param type="data" name="shape" format="shape,*" label="Shape file" argument="--shape"/>
+                                <param type="data" name="shape" format="txt" label="Shape file" argument="--shape"/>
                             </repeat>
                                 <param name="m" type="float" value="1.8" label="Slope m" />
                                 <param name="b" type="float" value="-0.6" label="Intercept b" help="Currently, the only data conversion method available is that of to Deigan et al 2009. This method is the default. The slope 'm' and the intercept 'b' can be set to a non−default value if necessary. Otherwise m=1.8 and b=−0.6 as stated in the paper mentioned before."/>
@@ -217,6 +242,21 @@
             <param name="input" value="rnaalifold_input1.clustal"/>
             <output name="output" file="rnaalifold_result1.txt"/>
         </test>
+        <test>
+            <param name="input" value="rnaalifold_input1.fa"/>
+            <output name="output" file="rnaalifold_resultfa.txt"/>
+        </test>
+        <test>
+            <param name="input" value="rnaalifold_input1.stk"/>
+            <output name="output" file="rnaalifold_resultstk.txt"/>
+        </test>       
+        <test>
+            <param name="input" value="rnaalifold_input1.clustal"/>
+            <param name="mea" value="yes"/>
+            <output name="output" file="rnaalifold_result_MEA.txt"/>
+        </test>
+        
+
     </tests>
     <help>
 <![CDATA[
@@ -227,7 +267,7 @@
 **Input format**
 
 RNAalifold requires one input file
-- Clustal file
+- Clustal/AlignmentFasta/Stockholm/MAF file
 
 ------
 

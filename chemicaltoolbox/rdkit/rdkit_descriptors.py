@@ -24,7 +24,6 @@ def get_supplier( infile, format = 'smiles' ):
                 mol.SetProp( '_Name', line.split('\t')[0] )
                 yield mol
 
-
 def get_rdkit_descriptor_functions():
     """
     Returns all descriptor functions under the Chem.Descriptors Module as tuple of (name, function)
