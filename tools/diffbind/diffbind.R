@@ -3,7 +3,11 @@ options( show.error.messages=F, error = function () { cat( geterrmessage(), file
 # we need that to not crash galaxy with an UTF8 error on German LC settings.
 Sys.setlocale("LC_MESSAGES", "en_US.UTF-8")
 
-library('getopt');
+suppressPackageStartupMessages({
+	library('getopt')
+	library('DiffBind')
+})
+
 options(stringAsfactors = FALSE, useFancyQuotes = FALSE)
 args <- commandArgs(trailingOnly = TRUE)
 
@@ -15,7 +19,9 @@ spec = matrix(c(
     'outfile' , 'o', 1, "character",
     'plots' , 'p', 2, "character",
     'infile' , 'i', 1, "character",
-    'format', 'f', 1, 'character'
+    'format', 'f', 1, "character",
+    'th', 't', 1, "double",
+    'bmatrix', 'b', 0, "logical"
 ), byrow=TRUE, ncol=4);
 
 opt = getopt(spec);
@@ -27,12 +33,9 @@ if ( !is.null(opt$help) ) {
     q(status=1);
 }
 
-library('DiffBind')
-
 if ( !is.null(opt$plots) ) {
     pdf(opt$plots)
 }
-
 
 sample = dba(sampleSheet=opt$infile, peakFormat='bed')
 sample_count = dba.count(sample)
@@ -44,6 +47,11 @@ orvals = dba.plotHeatmap(sample_analyze, contrast=1, correlations=FALSE)
 resSorted <- diff_bind[order(diff_bind$FDR),]
 write.table(as.data.frame(resSorted), file = opt$outfile, sep="\t", quote = FALSE, append=TRUE, row.names = FALSE, col.names = FALSE)
 
+# Output binding affinity scores
+if (!is.null(opt$bmatrix)) {
+    bmat <- dba.peakset(sample_count, bRetrieve=TRUE, DataType=DBA_DATA_FRAME)
+    write.table(as.data.frame(bmat), file="bmatrix.tab", sep="\t", quote=FALSE, row.names=FALSE, col.names=FALSE)
+}
 
 dev.off()
 sessionInfo()
