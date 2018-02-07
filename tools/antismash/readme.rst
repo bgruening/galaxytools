@@ -17,28 +17,12 @@ antiSMASH: Rapid identification, annotation and analysis of secondary metabolite
 Installation
 ============
 
-Galaxy should be able to automatically install the dependencies, i.e. the
-'package_hmmer_3_0' or 'package_blast_plus_2_2_28' repository.
-
-You must tell Galaxy about any system level Pfam databases using the configuration
-file antismash.loc.
-
-You can download the Pfam provided databases as compressed archives from here:
-
-* ftp://ftp.sanger.ac.uk/pub/databases/Pfam/current_release/
-
-
-External Data
-=============
-
-The antismash.loc file contains the path to a Pfam database.
-For any other tool that also uses a Pfam database *.log file, you can sync or link both *.loc files.
-
-
+Galaxy should be able to automatically install the dependencies using conda
 
 History
 =======
 
+v0.2 - Antismash update 4.0.2
 v0.1 - Initial public release
 
 
@@ -62,4 +46,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-
