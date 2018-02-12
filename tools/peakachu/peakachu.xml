@@ -14,7 +14,7 @@
     </version_command>
     <command>
     <![CDATA[
-        #if len($gffs) > 0:
+        #if $gffs:
             mkdir gffs &&
             #for $file in $gffs:
                 ln -s '$file' gffs/'$file'.gff &&
@@ -22,25 +22,25 @@
         #end if
         mkdir output && 
         peakachu 
-        --exp_libs #experimentLibs
-        #if len(#controlLibs) > 0:
-            --ctr_libs #controlLibs
-        #endif
+        --exp_libs $experimentLibs
+        #if $controlLibs:
+            --ctr_libs $controlLibs
+        #end if
         $pairwise_replicates
         $paired_end
         --max_insert_size $max_insert_size
-        #if len($gffs) > 0:
+        #if $gffs:
             --gff_folder gffs
         #end if
         --features '$features'
         --sub_features '$sub_features'
-        --max_proc \${GALAXY_SLOTS:-1}
+        --max_proc "\${GALAXY_SLOTS:-1}"
         --output_folder output
-        #if str(mode.mode_selector) == 'adaptive':
-            --min_cluster_expr_frac $mode.min_cluster_expre_frac
+        #if str($mode.mode_selector) == 'adaptive':
+            --min_cluster_expr_frac $mode.min_cluster_expr_frac
             --min_block_overlap $mode.min_block_overlap
             --min_max_block_expr $mode.min_max_block_expr
-        #elif str(mode.mode_selector) == 'window':
+        #elif str($mode.mode_selector) == 'window':
             --window_size $mode.window_size
             --step_size $mode.step_size
             --stat_test $mode.stat_test
@@ -54,20 +54,30 @@
         --padj_threshold $padj_threshold
 
         &&
-        #head -n 1 `ls output/peak_tables | head -n 1` > peaks.tsv
-        #for file in ls `output/peak_tables`; do cat $file >> peaks.tsv
+        head -n 1 `ls output/peak_tables | head -n 1` > peaks.tsv &&
+        for file in `ls output/peak_tables`; do cat $file >> peaks.tsv; done &&
+        mv peaks.tsv $peak_tables
 
 
     ]]>
     </command>
     <inputs>
         <param name="experimentLibs" type="data" format="bam" label="Experiment Libraries"/>
-        <param name="controlLibs" type="data" format="bam" label="Control Libraries"/>
+        <param name="controlLibs" type="data" format="bam" label="Control Libraries" optional="True"/>
         <param argument="--pairwise_replicates" type="boolean" truevalue="--pairwise_replicates" falsevalue="" checked="False" label="Pairwise Replicates" /> 
         <param argument="--paired_end" type="boolean" truevalue="--paired_end" falsevalue="" checked="False" label="Paired End" /> 
         <param argument="--max_insert_size" type="integer" value="50" label="Maximum Insert Size"/>
-        <param name="gff" type="data" format="gff" label="Annotation"/>
-        <param argument="--features" type="text" label="Features"/>
+        <param name="gffs" type="data" format="gff" label="Annotation" optional="True"/>
+        <param argument="--features" type="text" label="Features">
+            <sanitizer>
+                <valid initial="default"/>
+            </sanitizer>
+        </param>
+        <param argument="--sub_features" type="text" label="Sub-Features">
+            <sanitizer>
+                <valid initial="default"/>
+            </sanitizer>
+        </param>
 
         <conditional name="mode">
             <param name="mode_selector" type="select" label="Select Mode" help="These modes work differently.">
@@ -78,9 +88,9 @@
                 <option value="consensus_peak">Consensus Peak</option-->
             </param>
             <when value="adaptive">
-                <param argument="--min_cluster_expr_frac" label="Minimum cluster Expression Fraction" help="Minimum fraction of a block in a cluster for further consideration." type="integer"/>
-                <param argument="--min_block_overlap" label="Minimum Block Overlap" help="Minimum fraction of the width of blocks for merging." type="integer"/>
-                <param argument="--min_max_block_expr" label="Minimum Block Expression" help="Minimum fraction of expression of blocks for merging." type="integer"/>
+                <param argument="--min_cluster_expr_frac" label="Minimum cluster Expression Fraction" help="Minimum fraction of a block in a cluster for further consideration." type="float" value="0.01"/>
+                <param argument="--min_block_overlap" label="Minimum Block Overlap" help="Minimum fraction of the width of blocks for merging." type="float" value="0.5"/>
+                <param argument="--min_max_block_expr" label="Minimum Block Expression" help="Minimum fraction of expression of blocks for merging." type="float" value="0.1"/>
                 <param name="norm_method" type="select" label="Normalisation Method.">
                     <option value="deseq" selected="True">DESeq2</option>
                     <option value="manual">Manual</option>
@@ -88,8 +98,8 @@
                 </param>
             </when>
             <when value="window">
-                <param argument="--window_size" label="Window Size" type="integer"/>
-                <param argument="--step_size" label="Step Size" type="integer"/>
+                <param argument="--window_size" label="Window Size" type="integer" value="25"/>
+                <param argument="--step_size" label="Step Size" type="integer" value="5"/>
                 <param name="stat_test" type="select" label="Statistical Test">
                     <option value="gtest" selected="True">gtest</option>
                     <option value="deseq">DESeq2</option>
@@ -101,20 +111,25 @@
                     <option value="manual">Manual</option>
                     <option value="none">None</option>
                 </param>
-                <param argument="--het_p_val_threshold" label="Heterogeneous p-value Threshold" type="float"/>
-                <param argument="--rep_pair_p_val_threshold" label="Paired p-value Threshold" type="float"/>
+                <param argument="--het_p_val_threshold" label="Heterogeneous p-value Threshold" type="float" value="0.01"/>
+                <param argument="--rep_pair_p_val_threshold" label="Paired p-value Threshold" type="float" value="0.05"/>
             </when>
         </conditional>
-        <param argument="--mad_multiplier" label="Mad Multiplier" type="float"/>
-        <param argument="--fc_cutoff" label="Fold Change Threshold" type="float"/>
-        <param argument="--padj_threshold" type="float" label="Adjusted p-value Threshold"/>  
+        <param argument="--size_factors" label="Size Factors" type="text">
+            <sanitizer>
+                <valid initial="default"/>
+            </sanitizer>
+        </param>
+        <param argument="--mad_multiplier" label="Mad Multiplier" type="float" value="2.0"/>
+        <param argument="--fc_cutoff" label="Fold Change Threshold" type="float" value="2.0"/>
+        <param argument="--padj_threshold" type="float" label="Adjusted p-value Threshold" value="0.05"/>  
     </inputs>
     <outputs>
         <data format="tsv" name="peak_tables"/>
     </outputs>
     <tests>
         <test>
-            <param name="experimentLibs" value="*+XL*.bam"/>
+            <param name="experimentLibs" value="239-Hfq_+XL.bam"/>
             <output name="peak_tables" ftype="tsv" file="out.tsv"/>
         </test>
     </tests>
@@ -127,6 +142,5 @@ calls peaks on CLIP data
     ]]>
     </help>
     <citations>
-        <citation type="doi">10.1093/molbev/mst010</citation>
     </citations>
 </tool>
