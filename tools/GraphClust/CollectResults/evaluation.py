@@ -35,7 +35,7 @@ with open(dataNames, "r") as names:
 blackList = []
 numberOfClusters = 0
 for singleFile in sorted(cluster_seqs_stats_files):
-    singleFile = results_dir+'/'+singleFile
+    singleFile = os.path.join(results_dir,singleFile)
     numberOfClusters += 1
     with open(singleFile, "r") as f:
         for line in f:
@@ -94,8 +94,8 @@ if len(listOfHeaders) > 1: # and  pattern.match(str(listOfHeaders[0])):
 else:
     toWrite = "completeness_score : NA \nhomogeneity_score : NA \nadjusted_rand_score : NA \nadjusted_mutual_info_score : NA \nv_measure_score : NA"
 
-with open(results_dir+"/evaluation.txt", "w") as fOut:
+with open(os.path.join(results_dir,"evaluation.txt"), "w") as fOut:
     fOut.write(toWrite)
 
 
-make_archive('RESULTS', 'zip', root_dir='RESULTS')
+make_archive('RESULTS', 'zip', root_dir=results_dir)
