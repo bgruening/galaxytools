@@ -94,7 +94,6 @@ if len(listOfHeaders) > 1: # and  pattern.match(str(listOfHeaders[0])):
 else:
     toWrite = "completeness_score : NA \nhomogeneity_score : NA \nadjusted_rand_score : NA \nadjusted_mutual_info_score : NA \nv_measure_score : NA"
 
-print (toWrite)
 with open(results_dir+"/evaluation.txt", "w") as fOut:
     fOut.write(toWrite)
 
