@@ -1,25 +1,59 @@
-<tool id="epicseg_segment" name="EpiCSeg - Segment" version="0.1.0">
+<tool id="epicseg_segment" name="EpiCSeg - Segment" version="@VERSION_STRING@">
     <macros>
         <import>macros.xml</import>
     </macros>
-    <requirements>
-        <requirement type="package" version="1.0">epicseg</requirement>
-    </requirements>
+    <expand macro="requirements" />
     <command detect_errors="exit_code"><![CDATA[
-        Rscript '${__tool_directory__}/epicseg.R' segment --regions "$regions"
-           --nstates $nstates
-           --nthreads $nthreads
 
-        #for $dataset in $datasets#
-           --counts ${dataset.name}:${dataset.count_matrix}
-        #end for#
+        ## Acquire the count matrices
+        #for $d, $dataset in enumerate( $datasets ):
+            #for $i, $mark in enumerate( $dataset.marks ):
+                ln -s -f '${mark.reads}' '${d}_${i}.bam' &&
+                ln -s -f '${mark.reads.metadata.bam_index}' '${d}_${i}.bam.bai' &&
+            #end for
+
+            Rscript '${__tool_directory__}/epicseg.R' getcounts
+                --binsize $binsize --nthreads \${GALAXY_SLOTS:-2}
+                --regions '$regions' --target '${d}.tab'
+
+                #for $i, $mark in enumerate( $dataset.marks):
+                    --mark '${mark.label}:${d}_${i}.bam' --mapq ${mark.mapq}
+                        ${mark.pairedend} --shift ${mark.shift}
+                #end for
+
+                &&
+        #end for
+
+        ## Normalize the datasets
+        #if len( $datasets ) == 1:
+            ln -s ${d}.tab ${d}_norm.tab
+        #else:
+            Rscript '${__tool_directory__}/epicseg.R' normalizecounts
+                --nthreads \${GALAXY_SLOTS:-2}
+
+                #for $dataset in $datasets#
+                    --counts '${d}.tab'
+                #end for#
+
+        #end if
+
+        &&
+
+        ## Segment
+        Rscript '${__tool_directory__}/epicseg.R' segment --regions '$regions'
+           --nstates $nstates --nthreads \${GALAXY_SLOTS:-2}
+
+           #for $d, $dataset in enumerate( $datasets ):
+              --counts '${dataset.name}:${d}_norm.tab'
+           #end for
 
            --maxiter $maxiter
 
-        #for $annot in $annotation#
-           --annot ${annot.name}:${annot.annotation}
-        #end for# &&
+           #for $annot in $annots:
+              --annot '${annot.name}:${annot.file}'
+           #end for#  &&
 
+        cp report.html $report;
         mkdir -p '${ report.files_path }' &&
         cp lmeans.txt '${ report.files_path }' &&
         cp lmeans.png '${ report.files_path }' &&
@@ -33,72 +67,289 @@
         cp table.txt '${ report.files_path }' &&
         cp report.html $report &&
 
-        #for $annot in $annotation#
+        #for $annot in $annots#
         cp annot_${annot.name}.* '${ report.files_path }' &&
         #end for#
-        cp segmentation.bed $segmentation
+        cp segmentation*.bed '${ report.files_path }'
     ]]></command>
     <inputs>
-        <param type="data" name="regions" format="bed" label="Regions"
-        help="BED file with the genomic regions of interest.
-              This file should be the same file as was used to
-              construct the count matrix with epicseg_getcounts." />
-        <repeat name="datasets" title="Count matrix">
-            <param type="text" name="name" label="Count matrix name"
-                   value="dataset" />
-            <param type="data" name="count_matrix" label="Count matrix"
-                   format="txt"
-                   help="Count matrix. If multiple count matrices are
-                         used, they must share the same number of
-                         chromatin marks and genomic regions."/>
+        <param type="data" name="regions" format="bed" label="Regions in BED format"
+               help="BED file with the genomic regions of interest.
+                     These regions will be automatically partitioned into
+                     smaller, consecutive bins. Only the first three fields
+                     in the file matter.  If the region lengths are not
+                     multiples of the given binsize a new bed file will be
+                     produced where each coordinate is a multiple of binsize."/>
+        <param type="integer" name="binsize" min="0" value="200"
+            help="Size of a bin in base pairs. Each given region will
+                  be partitioned into bins of this size."/>
+        <repeat name="datasets" title="Datasets"
+                help="Chromatin segmentation may be performed across one or more
+                      datasets (e.g. cell-types) each of which consisting
+                      of a set of chromatin marks (e.g. H3K4me3).
+                      If multiple datasets are used,
+                      they must share the same set of chromatin marks.">
+            <param type="text" name="name" label="Dataset name" value="Treatment" />
+            <repeat name="marks" title="Chromatin mark">
+                <param type="text" name="label" label="Mark name"
+                       value="H3K4me3" />
+                <param type="data" name="reads" label="Reads in BAM format"
+                       format="bam"
+                       help="The bam files must be indexed and the chromosome
+                             names must match with those specified in the
+                             BED file. Multiple bam-files with the same mark
+                             name will be treated as replicates and collapsed
+                             into one experiment."/>
+                <param type="integer" name="mapq" min="0" value="0"
+                       help="Minimum mapping quality for the reads (see the
+                             bam format specification for the mapq field).
+                             Only reads with the mapq field above or equal
+                             to the specified value will be considered."/>
+                <param type="boolean" name="pairedend"
+                       truevalue="--pairedend TRUE" falsevalue="--pairedend FALSE"
+                       help="Set this option to TRUE or FALSE to activate or
+                             deactivate the paired-end mode. Only read pairs
+                             where both ends are mapped will be considered and
+                             assigned to the bin where the midpoint of the
+                             read pair is located. If this flag is set, the
+                             `shift` option will be ignored."/>
+                <param type="integer" name="shift" value="75"
+                       help="Shift the reads in the 5' direction by a fixed
+                             number of base pairs. The read will be assigned
+                             to the bin where the shifted 5' end of the read
+                             is located. This option will be ignored in
+                             paired-end mode."/>
+            </repeat>
         </repeat>
+
+
         <param type="integer" name="nstates" label="Number of states"
-               min="0" value="7"
+               min="0" value="5"
                help="Number of chromatin states."/>
         <param type="integer" name="maxiter" value="200"
                help="Maximum number of iterations in training mode."/>
-        <param type="integer" name="nthreads" value="1"
-               help="Number of threads to use."/>
 
-        <repeat name="annotation" title="Annotation">
+        <repeat name="annots" title="Annotation"
+                help="Optional annotation tracks might be overlayed
+                      with the segmentation results.">
             <param type="text" name="name" label="Annotation name"
                    value="genes" />
-            <param type="data" name="annotation" label="Annotation"
+            <param type="data" name="file" label="Annotation"
                    format="bed"
-                   help="Bed-file containing the annotation. For example,
-                   gene annotation or CpG-islands." />
+                   help="BED-file containing the annotation. For example,
+                         gene annotation or CpG-islands." />
         </repeat>
     </inputs>
     <outputs>
-        <data name="report" format="html" from_work_dir='report.html'/>
-        <data name="segmentation" format="bed"
-              from_work_dir='segmentation.bed'/>
+        <data name="report" format="html" from_work_dir='report.html'>
+
+            <discover_datasets pattern="segmentation" format="bed"
+                               visible="true"/>
+
+        </data>
     </outputs>
     <tests>
-      <test>
-        <param name="regions" value="chr1.bed"/>
-        <repeat name="datasets">
-          <param name="name" value="DS1" />
-          <param name="count_matrix" value="countmatrix.txt" />
-        </repeat>
-        <param name="nstates" value="5" />
-        <output name="report" file="report.html"/>
-        <output name="segmentation" file="segmentation.bed"/>
-      </test>
-      <test>
-        <param name="regions" value="chr1.bed"/>
-        <repeat name="datasets">
-          <param name="name" value="DS1" />
-          <param name="count_matrix" value="countmatrix.txt" />
-        </repeat>
-        <repeat name="annotation">
-          <param name="name" value="cpg" />
-          <param name="annotation" value="cpgIslandExt.hg19.bed" />
-        </repeat>
-        <param name="nstates" value="5" />
-        <output name="report" file="report_w_annot.html"/>
-        <output name="segmentation" file="segmentation.bed"/>
-      </test>
+        <test>
+            <!-- 1 Dataset w/o annotation -->
+            <param name="regions" value="chr1.bed"/>
+                <repeat name="datasets">
+                    <param name="name" value="DS1" />
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1_rep2.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H4K27me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k27me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                </repeat>
+            <param name="binsize" value="200" />
+            <param name="nstates" value="5" />
+            <output name="report" file="report_1ds.html"/>
+            <!--output name="segmentation" file="segmentation_1ds.bed"/-->
+        </test>
+        <test>
+            <!-- 1 Dataset with annotation -->
+            <param name="regions" value="chr1.bed"/>
+                <repeat name="datasets">
+                    <param name="name" value="DS1" />
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1_rep2.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H4K27me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k27me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                </repeat>
+            <param name="binsize" value="200" />
+            <param name="nstates" value="5" />
+            <repeat name="annots">
+              <param name="name" value="cpg" />
+              <param name="file" value="cpgIslandExt.hg19.bed" />
+            </repeat>
+            <output name="report" file="report_1ds_w_annot.html"/>
+            <!--output name="segmentation" file="segmentation_1ds.bed"/-->
+        </test>
+
+        <test>
+            <!-- 2 Datasets w/o annotation -->
+            <param name="regions" value="chr1.bed"/>
+                <repeat name="datasets">
+                    <param name="name" value="DS1" />
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H4K27me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k27me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                </repeat>
+                <repeat name="datasets">
+                    <param name="name" value="DS2" />
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1_rep2.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H4K27me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k27me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                </repeat>
+            <param name="binsize" value="200" />
+            <param name="nstates" value="5" />
+
+            <output name="report" file="report_2ds.html"/>
+            <!--output name="segmentation" file="segmentation_2ds.bed"/-->
+        </test>
+
+        <test>
+            <!-- 2 Datasets with annotation -->
+            <param name="regions" value="chr1.bed"/>
+                <repeat name="datasets">
+                    <param name="name" value="DS1" />
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H4K27me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k27me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                </repeat>
+                <repeat name="datasets">
+                    <param name="name" value="DS2" />
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H3K4me1" />
+                      <param name="reads" value="chr1_h1hesc_h3k4me1_rep2.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                    <repeat name="marks">
+                      <param name="label" value="H4K27me3" />
+                      <param name="reads" value="chr1_h1hesc_h3k27me3.bam" />
+                      <param name="mapq" value="0"/>
+                      <param name="pairedend" value="--pairedend FALSE"/>
+                      <param name="shift" value="75"/>
+                    </repeat>
+                </repeat>
+            <param name="binsize" value="200" />
+            <param name="nstates" value="5" />
+            <repeat name="annotation">
+              <param name="name" value="cpg" />
+              <param name="file" value="cpgIslandExt.hg19.bed" />
+            </repeat>
+            <output name="report" file="report_2ds_w_annot.html"/>
+            <!--output name="segmentation" file="segmentation.bed"/-->
+        </test>
     </tests>
     <help><![CDATA[
 .. class:: infomark
