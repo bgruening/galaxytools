@@ -37,7 +37,7 @@ publication, in addition to citing the invididual underlying tools, please cite:
 Peter Cock, Bjoern Gruening, Konrad Paszkiewicz and Leighton Pritchard (2013).
 Galaxy tools and workflows for sequence analysis with applications
 in molecular plant pathology. PeerJ 1:e167
-http://dx.doi.org/10.7717/peerj.167
+https://doi.org/10.7717/peerj.167
 
 Full reference information is included in the help text.
 
