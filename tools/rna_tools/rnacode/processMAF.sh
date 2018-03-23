@@ -17,22 +17,27 @@
 # breakMAF.pl < chrM.maf | ./processMAF.sh --tabular --eps --eps-dir eps2/ 
 
 # parse the command line options 
-args=$@
+# - removes --outfile, --help, --version, and the input file from the arguments
+# - outfile and infile are stored in variables 
+declare -a args=()
 while [[ $# -gt 0 ]]
 do
 key="$1"
 	case $key in
 		-d|--eps-dir)
 		epsdir=$2
+		args+=($1 $2)
 		shift # past argument
 		shift # past value
 		;;
 		-e|--eps)
 		eps=1
+		args+=($1)
 		shift # past argument
 		;;
 		-t|--tabular)
 		tabular=1
+		args+=($1)
 		shift # past argument
 		;;
 		-o|--outfile)
@@ -40,7 +45,15 @@ key="$1"
 		shift # past argument
 		shift # past value
 		;;
-		-g|--gtf|-b|--best-only|-r|--best-region|-s|--stop-early|-n|--num-samples|-p|--cutoff|-c|--pars|-e|--eps|-i|--eps-cutoff|-h|--help|-v|--version)
+		-g|--gtf|-b|--best-only|-r|--best-region|-s|--stop-early)
+		args+=($1)
+		shift # past argument
+		;;
+		-n|--num-samples|-p|--cutoff|-c|--pars|-i|--eps-cutoff)
+		args+=($1 $2)
+		shift # past argument
+		;;
+		-h|--help|-v|--version)
 		shift # past argument
 		;;
 		*)    # unknown option
@@ -54,7 +67,6 @@ done
 # and move eps files (if present) to tmpdir
 function fix_output {
  	if [[ -z "$last" ]]; then
-		echo "reset LAST"
  		last=0
  	fi
 	while read line
@@ -77,28 +89,22 @@ function run_rnacode {
         >&2 echo -e "processing" `cat ${tmpif} | grep $ref | cut -d" " -f1-6`
 	nl=`cat ${tmpif} | grep "^s" | wc -l`
 	if [[ "$nl" -ge "3" ]]; then
-		stdout=`RNAcode $@ |& egrep -v "^ HSS #|^====|^$"`
+		streams=$(mktemp -p '.')
+		RNAcode $@ &> $streams
 		if [[ "$?" != "0" ]]; then
 			ef=$(mktemp -u -p '.')
 			cat ${tmpif} > ${ef}.maf
 			>&2 echo "RNAcode failed for the alignmentblock \""`cat ${tmpif} | grep $ref | cut -d" " -f 1-6`"\" (${ef}.maf)"
 		fi
-	else
-		>&2 echo "less than 3 sequences in the alignment block \""`cat ${tmpif} | grep $ref | cut -d" " -f 1-6`"\""
-	fi
-	# save content of outfile (otherwise it might be overwritten)
-        if [[ ! -z "$outfile" ]]; then
-		fix_output < "$outfile" >> $tmpof
-		rm "$outfile"
-	else
 		# - filter stdout for lines containing the ref and redirect everything to stderr
 		#   https://github.com/wash/rnacode/issues/9
 		# - we can not pipe stdout | ... | fix_output since then $last can not be used as global variable
-		echo "$stdout" | grep -v $ref 1>&2 
-		tmpf=$(mktemp -p '.')
-		echo "$stdout" | grep $ref > $tmpf
-		fix_output < $tmpf
-		rm $tmpf
+		cat $streams | grep -v $ref | egrep -v "^ HSS #|^====|^$" 1>&2 
+		sed -i -n "/$ref/p" $streams
+		fix_output < $streams 
+		rm $streams
+	else
+		>&2 echo "less than 3 sequences in the alignment block \""`cat ${tmpif} | grep $ref | cut -d" " -f 1-6`"\""
 	fi
 }
 
@@ -107,39 +113,45 @@ last=0
 
 if [[ ! -z "$tabular" ]]; then
 	if [[ ! -z "$outfile"  ]]; then
-		echo -a "HSS #\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP" > "$outfile"
+		echo -e "HSS #\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP" > "$outfile"
 	else
-		echo "HSS #\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP"
+		echo -e "HSS #\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP"
 	fi
 fi
 
 tmpif=$(mktemp -p '.')
 tmpof=$(mktemp -p '.')
 tmpd=$(mktemp -d -p '.')
+
+# process lines of the alignment 
+# - save lines to tmpif 
+# - empty lines: process tmpif (ie. last alignment block) with RNAcode, clear tmpif
+# - on the go the name of the reference species is determined from the 1st line 
+#   of the alignment this is used then for filtering the RNAcode output
 while read line
 do
 	if [[ "$line" =~ ^# ]]; then
-		echo > ${tmpif}
+		echo -n > ${tmpif}
 	elif [[ "$line" =~ ^$ ]]; then
-		run_rnacode $args ${tmpif}
-		echo > ${tmpif}
+		run_rnacode ${args[@]} ${tmpif}
+		echo -n > ${tmpif}
 	else
                 if [[ -z $ref && "$line" =~ ^s ]]; then
 			ref=`echo $line | sed 's/\./ /g' | cut -d" " -f 2`
 		fi
 		echo $line >> ${tmpif}
 	fi
-done < /dev/stdin
-run_rnacode $args ${tmpif}
+done < ${file:-/dev/stdin}
+# if there is something left -> process it
+if [[ "`cat ${tmpif} | wc -l`" -gt "0" ]]; then
+	run_rnacode ${args[@]} ${tmpif}
+fi
 
 if [[ ! -z "$outfile" ]]; then
 	cat $tmpof > "$outfile"
 fi
 
 if [[ ! -z "$eps" ]]; then
-	if [[ -z "$epsdir" ]]; then 
-		mkdir eps
-	fi
 	mv ${tmpd}/*eps ${epsdir:-eps}/
 fi
 
