@@ -42,11 +42,6 @@ if "presort" in options:
         options["presort"] = True
     if options["presort"] == "false":
         options["presort"] = False
-if "selected_loss_fuction" in options:
-    if "alpha" in options["selected_loss_fuction"]:
-        options["alpha"] = options["selected_loss_fuction"]["alpha"]
-    options["loss"] = options["selected_loss_fuction"]["loss"]
-    options.pop("selected_loss_fuction")
 if "min_samples_leaf" in options and options["min_samples_leaf"] == 1.0:
     options["min_samples_leaf"] = 1
 if "min_samples_split" in options and options["min_samples_split"] > 1.0:
@@ -63,7 +58,6 @@ if input_type=="tabular":
     )
 else:
     X = mmread(open("$selected_tasks.selected_algorithms.input_options.infile1", 'r'))
-
 header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header2"] else None
 y = read_columns(
         "$selected_tasks.selected_algorithms.input_options.infile2",
@@ -72,6 +66,7 @@ y = read_columns(
         header=header,
         parse_dates=True
 )
+y=y.ravel()
 
 my_class = getattr(sklearn.ensemble, algorithm)
 estimator = my_class(**options)
@@ -80,7 +75,8 @@ pickle.dump(estimator,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCOL)
 
 #else:
 classifier_object = pickle.load(open("$selected_tasks.infile_model", 'r'))
-data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
+header = 'infer' if params["selected_tasks"]["header"] else None
+data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
 prediction = classifier_object.predict(data)
 prediction_df = pandas.DataFrame(prediction)
 res = pandas.concat([data, prediction_df], axis=1)
@@ -196,25 +192,12 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <when value="GradientBoostingRegressor">
                 <expand macro="sl_mixed_input"/>
                 <section name="options" title="Advanced Options" expanded="False">
-                    <!--base_estimator=None-->
-                    <conditional name="selected_loss_fuction">
-                        <param argument="loss" type="select" label="Loss function">
-                            <option value="ls" selected="true">ls - least squares regression</option>
-                            <option value="lad">lad - least absolute deviation</option>
-                            <option value="huber">huber - combination of least squares regression and least absolute deviation</option>
-                            <option value="quantile">quantile - use alpha to specify the quantile</option>
-                        </param>
-                        <when value="ls">
-                        </when>
-                        <when value="lad">
-                        </when>
-                        <when value="huber">
-                            <param argument="alpha" type="float" value="0.9" label="alpha" help="The alpha-quantile of the huber loss function and the quantile loss function" />
-                        </when>
-                        <when value="quantile">
-                            <param argument="alpha" type="float" value="0.9" label="alpha" help="The alpha-quantile of the huber loss function and the quantile loss function" />
-                        </when>
-                    </conditional>
+                    <param argument="loss" type="select" label="Loss function">
+                        <option value="ls" selected="true">ls - least squares regression</option>
+                        <option value="lad">lad - least absolute deviation</option>
+                        <option value="huber">huber - combination of least squares regression and least absolute deviation</option>
+                        <option value="quantile">quantile - use alpha to specify the quantile</option>
+                    </param>
                     <expand macro="learning_rate" default_value="0.1"/>
                     <expand macro="n_estimators" default_value="100" help="The number of boosting stages to perform"/>
                     <expand macro="max_depth" default_value="3" help="maximum depth of the individual regression estimators"/>
@@ -228,6 +211,8 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
                     <expand macro="max_features"/>
                     <expand macro="max_leaf_nodes"/>
                     <expand macro="min_impurity_decrease"/>
+                    <param argument="alpha" type="float" value="0.9" label="alpha" help="The alpha-quantile of the huber loss function and the quantile loss function" />
+                    <!--base_estimator=None-->
                     <expand macro="verbose"/>
                     <expand macro="warm_start" checked="false"/>
                     <expand macro="random_state"/>
@@ -256,7 +241,6 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="rfc_result01" compare="sim_size" delta="500"/>
         </test>
-
         <test>
             <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
             <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
@@ -272,6 +256,27 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <param name="infile_data" value="regression_test.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="rfr_result01" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/> 
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="header1" value="True"/> 
+            <param name="col2" value="1"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="GradientBoostingRegressor"/>
+            <param name="max_features" value="number_input"/>
+            <param name="num_max_features" value=""/>
+            <param name="random_state" value="42"/>
+            <output name="outfile_fit" file="gbr_model01" compare="sim_size" delta="500"/>
+        </test>
+        <test>
+            <param name="infile_model" value="gbr_model01" ftype="zip"/>
+            <param name="infile_data" value="regression_test_X.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <param name="header" value="True"/>
+            <output name="outfile_predict" file="gbr_prediction_result01.tabular" compare="sim_size" delta="500"/>
         </test>
     </tests>
     <help><![CDATA[
