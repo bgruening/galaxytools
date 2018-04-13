@@ -85,7 +85,6 @@ def main(args):
                         fill_cache()
                     elif ppm_dist > args.distance:
                         _cache.append([_c, value2])
-                    elif ppm_dist < args.distance:
                         fill_cache()
             if args.closest and write_buffer:
                 write_buffer.sort(key=lambda x: x[0])
