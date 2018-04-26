@@ -1,0 +1,220 @@
+<tool id="sklearn_model_validation" name="Model Validation" version="@VERSION@">
+    <description>evaluates estimator performance by cross-validation</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        python "$sklearn_model_validation" '$inputs'
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+        <configfile name="sklearn_model_validation">
+            <![CDATA[
+import sys
+import json
+import pandas
+import pickle
+import numpy as np
+import sklearn.model_selection
+from sklearn import svm, linear_model, ensemble
+
+import logging
+
+logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+    filename='tool.log',
+    datefmt='%d-%m-%Y:%H:%M:%S',
+    level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+@COLUMNS_FUNCTION@
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+logger.info(params)
+
+input_type = params["input_options"]["selected_input"]
+if input_type=="tabular":
+    header = 'infer' if params["input_options"]["header1"] else None
+    X = read_columns(
+            "$input_options.infile1",
+            "$input_options.col1",
+            sep='\t',
+            header=header,
+            parse_dates=True
+    )
+else:
+    X = mmread(open("$input_options.infile1", 'r'))
+logger.info(X)
+header = 'infer' if params["input_options"]["header2"] else None
+y = read_columns(
+        "$input_options.infile2",
+        "$input_options.col2",
+        sep='\t',
+        header=header,
+        parse_dates=True
+)
+y=y.ravel()
+logger.info(y)
+
+validator = params["model_validation_functions"]["selected_function"]
+validator = getattr(sklearn.model_selection, validator)
+logger.info(validator)
+options = params["model_validation_functions"]["options"]
+if 'scoring' in options and options['scoring'] == '':
+    options['scoring'] = None
+logger.info(options)
+
+estimator=params["model_validation_functions"]["estimator"]
+if params["model_validation_functions"]["extra_estimator"]["has_estimator"] == 'no':
+    estimator = params["model_validation_functions"]["extra_estimator"]["new_estimator"]
+estimator = eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+logger.info(estimator)
+rval = validator(estimator, X, y, **options)
+logger.info(rval)
+
+rval = pandas.DataFrame(rval)
+rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
+
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="model_validation_functions">
+            <param name="selected_function" type="select" label="Select a model validation function">
+                <option value="cross_validate">cross_validate - Evaluate metric(s) by cross-validation and also record fit/score times</option>
+                <option value="cross_val_predict">cross_val_predict - Generate cross-validated estimates for each input data point</option>
+                <option value="cross_val_score">cross_val_score - Evaluate a score by cross-validation</option>
+                <option value="learning_curve">learning_curve - Learning curve</option>
+                <option value="permutation_test_score">permutation_test_score - Evaluate the significance of a cross-validated score with permutations</option>
+                <option value="validation_curve">validation_curve - Validation curve</option>
+            </param>
+            <when value="cross_validate">
+                <expand macro="feature_selection_estimator" />
+                <conditional name="extra_estimator">
+                    <expand macro="feature_selection_extra_estimator" />
+                    <expand macro="feature_selection_estimator_choices" />
+                </conditional>
+                <section name="options" title="Other Options" expanded="false">
+                    <!--groups-->
+                    <expand macro="model_validation_common_options"/>
+                    <expand macro="scoring"/>
+                    <!--fit_params-->
+                    <expand macro="pre_dispatch"/>
+                    <expand macro="return_train_score"/>
+                </section>
+            </when>
+            <when value="cross_val_predict">
+                <expand macro="feature_selection_estimator" />
+                <conditional name="extra_estimator">
+                    <expand macro="feature_selection_extra_estimator" />
+                    <expand macro="feature_selection_estimator_choices" />
+                </conditional>
+                <section name="options" title="Other Options" expanded="false">
+                    <!--groups-->
+                    <param argument="cv" type="integer" value="" optional="true" label="cv" help="The number of folds in a (Stratified)KFold" />
+                    <expand macro="n_jobs"/>
+                    <expand macro="verbose"/>
+                    <!--fit_params-->
+                    <param argument="pre_dispatch" type="integer" value="" optional="true" label="pre_dispatch" help="Controls the number of jobs that get dispatched during parallel execution" />
+                    <param argument="method" type="select" label="Invokes the passed method name of the passed estimator">
+                        <option value="predict" selected="true">predict</option>
+                        <option value="predict_proba">predict_proba</option>
+                    </param>
+                </section>
+            </when>
+            <when value="cross_val_score">
+                <expand macro="feature_selection_estimator" />
+                <conditional name="extra_estimator">
+                    <expand macro="feature_selection_extra_estimator" />
+                    <expand macro="feature_selection_estimator_choices" />
+                </conditional>
+                <section name="options" title="Other Options" expanded="false">
+                    <!--groups-->
+                    <expand macro="model_validation_common_options"/>
+                    <expand macro="scoring"/>
+                    <!--fit_params-->
+                    <expand macro="pre_dispatch"/>
+                    <expand macro="return_train_score"/>
+                </section>
+            </when>
+            <when value="learning_curve">
+                <expand macro="feature_selection_estimator" />
+                <conditional name="extra_estimator">
+                    <expand macro="feature_selection_extra_estimator" />
+                    <expand macro="feature_selection_estimator_choices" />
+                </conditional>
+                <section name="options" title="Other Options" expanded="false">
+                    <!--groups-->
+                    <expand macro="model_validation_common_options"/>
+                    <!--train_sizes-->
+                    <expand macro="scoring"/>
+                    <param argument="exploit_incremental_learning" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="exploit_incremental_learning" help="Whether to apply incremental learning to speed up fitting of the estimator if supported"/>
+                    <expand macro="pre_dispatch"/>
+                    <expand macro="shuffle" checked="false" label="shuffle" help="Whether to shuffle training data before taking prefixes"/>
+                    <expand macro="random_state"/>
+                </section>
+            </when>
+            <when value="permutation_test_score">
+                <expand macro="feature_selection_estimator" />
+                <conditional name="extra_estimator">
+                    <expand macro="feature_selection_extra_estimator" />
+                    <expand macro="feature_selection_estimator_choices" />
+                </conditional>
+                <section name="options" title="Other Options" expanded="false">
+                    <!--groups-->
+                    <expand macro="model_validation_common_options"/>
+                    <expand macro="scoring"/>
+                    <param name="n_permutations" type="integer" value="" optional="true" label="n_permutations" help="Number of times to permute y"/>
+                    <expand macro="random_state"/>
+                </section>
+            </when>
+            <when value="validation_curve">
+                <expand macro="feature_selection_estimator" />
+                <conditional name="extra_estimator">
+                    <expand macro="feature_selection_extra_estimator" />
+                    <expand macro="feature_selection_estimator_choices" />
+                </conditional>
+                <section name="options" title="Other Options" expanded="false">
+                    <!--param_name-->
+                    <!--param_range-->
+                    <!--groups-->                    
+                    <expand macro="model_validation_common_options"/>
+                    <expand macro="scoring"/>
+                    <expand macro="pre_dispatch"/>
+                </section>
+            </when>
+        </conditional>
+        <expand macro="sl_mixed_input"/>
+    </inputs>
+    <outputs>
+        <data format="txt" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="selected_function" value="cross_validate"/>
+            <param name="estimator" value="linear_model.LassoCV()"/>
+            <param name="has_estimator" value="yes"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <output name="outfile" file="mv_result01.txt"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+This tool includes model validation functions to evaluate estimator performance in the cross-validation approach. This tool is based on
+sklearn.model_selection package.
+For information about classification metric functions and their parameter settings please refer to `Scikit-learn classification metrics`_.
+
+.. _`Scikit-learn classification metrics`: http://scikit-learn.org/stable/modules/model_evaluation.html#classification-metrics
+        ]]>
+    </help>
+    <expand macro="sklearn_citation"/>
+</tool>
