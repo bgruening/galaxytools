@@ -23,19 +23,10 @@ import numpy as np
 import sklearn.model_selection
 from sklearn import svm, linear_model, ensemble
 
-import logging
-
-logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
-    filename='tool.log',
-    datefmt='%d-%m-%Y:%H:%M:%S',
-    level=logging.DEBUG)
-logger = logging.getLogger(__name__)
-
 @COLUMNS_FUNCTION@
 
 input_json_path = sys.argv[1]
 params = json.load(open(input_json_path, "r"))
-logger.info(params)
 
 input_type = params["input_options"]["selected_input"]
 if input_type=="tabular":
@@ -49,7 +40,7 @@ if input_type=="tabular":
     )
 else:
     X = mmread(open("$input_options.infile1", 'r'))
-logger.info(X)
+
 header = 'infer' if params["input_options"]["header2"] else None
 y = read_columns(
         "$input_options.infile2",
@@ -59,26 +50,44 @@ y = read_columns(
         parse_dates=True
 )
 y=y.ravel()
-logger.info(y)
 
 validator = params["model_validation_functions"]["selected_function"]
 validator = getattr(sklearn.model_selection, validator)
-logger.info(validator)
 options = params["model_validation_functions"]["options"]
 if 'scoring' in options and options['scoring'] == '':
     options['scoring'] = None
-logger.info(options)
 
 estimator=params["model_validation_functions"]["estimator"]
 if params["model_validation_functions"]["extra_estimator"]["has_estimator"] == 'no':
     estimator = params["model_validation_functions"]["extra_estimator"]["new_estimator"]
 estimator = eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
-logger.info(estimator)
+
+#if $model_validation_functions.selected_function == 'cross_validate':
+res = validator(estimator, X, y, **options)
+rval = res["$model_validation_functions.return_type"]
+
+#elif $model_validation_functions.selected_function == 'learning_curve':
+options['train_sizes'] = eval(options['train_sizes'])
+train_sizes_abs, train_scores, test_scores = validator(estimator, X, y, **options)
+rval = eval("$model_validation_functions.return_type")
+
+#elif $model_validation_functions.selected_function == 'permutation_test_score':
+score, permutation_scores, pvalue = validator(estimator, X, y, **options)
+rval = eval("$model_validation_functions.return_type")
+if "$model_validation_functions.return_type" in ["score", "pvalue"]:
+    rval = [rval]
+
+#elif $model_validation_functions.selected_function == 'validation_curve':
+options['param_range'] = eval(options['param_range'])
+train_scores, test_scores = validator(estimator, X, y, **options)
+rval = eval("$model_validation_functions.return_type")
+
+#else:
 rval = validator(estimator, X, y, **options)
-logger.info(rval)
+#end if
 
 rval = pandas.DataFrame(rval)
-rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
+rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
 
             ]]>
         </configfile>
@@ -105,8 +114,13 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
                     <expand macro="scoring"/>
                     <!--fit_params-->
                     <expand macro="pre_dispatch"/>
-                    <expand macro="return_train_score"/>
                 </section>
+                <param name="return_type" type="select" label="Select a return type">
+                    <option value="test_score" selected="true">test_score</option>
+                    <option value="train_score">train_score</option>
+                    <option value="fit_time">fit_time</option>
+                    <option value="score_time">score_time</option>
+                </param>
             </when>
             <when value="cross_val_predict">
                 <expand macro="feature_selection_estimator" />
@@ -139,7 +153,6 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
                     <expand macro="scoring"/>
                     <!--fit_params-->
                     <expand macro="pre_dispatch"/>
-                    <expand macro="return_train_score"/>
                 </section>
             </when>
             <when value="learning_curve">
@@ -151,13 +164,18 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
                 <section name="options" title="Other Options" expanded="false">
                     <!--groups-->
                     <expand macro="model_validation_common_options"/>
-                    <!--train_sizes-->
+                    <param argument="train_sizes" type="text" value="np.linspace(0.1, 1.0, 5)" label="train_sizes" help="Relative or absolute numbers of training examples that will be used to generate the learning curve"/>
                     <expand macro="scoring"/>
                     <param argument="exploit_incremental_learning" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="exploit_incremental_learning" help="Whether to apply incremental learning to speed up fitting of the estimator if supported"/>
                     <expand macro="pre_dispatch"/>
                     <expand macro="shuffle" checked="false" label="shuffle" help="Whether to shuffle training data before taking prefixes"/>
                     <expand macro="random_state"/>
                 </section>
+                <param name="return_type" type="select" label="Select a return type">
+                    <option value="train_sizes_abs" selected="true">train_sizes_abs</option>
+                    <option value="train_scores">train_scores</option>
+                    <option value="test_scores">test_scores</option>
+                </param>
             </when>
             <when value="permutation_test_score">
                 <expand macro="feature_selection_estimator" />
@@ -169,9 +187,14 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
                     <!--groups-->
                     <expand macro="model_validation_common_options"/>
                     <expand macro="scoring"/>
-                    <param name="n_permutations" type="integer" value="" optional="true" label="n_permutations" help="Number of times to permute y"/>
+                    <param name="n_permutations" type="integer" value="100" optional="true" label="n_permutations" help="Number of times to permute y"/>
                     <expand macro="random_state"/>
                 </section>
+                <param name="return_type" type="select" label="Select a return type">
+                    <option value="score" selected="true">score</option>
+                    <option value="permutation_scores">permutation_scores</option>
+                    <option value="pvalue">pvalue</option>
+                </param>
             </when>
             <when value="validation_curve">
                 <expand macro="feature_selection_estimator" />
@@ -180,19 +203,23 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
                     <expand macro="feature_selection_estimator_choices" />
                 </conditional>
                 <section name="options" title="Other Options" expanded="false">
-                    <!--param_name-->
-                    <!--param_range-->
+                    <param name="param_name" type="text" value="gamma" lable="param_name" help="Name of the parameter that will be varied"/>
+                    <param name="param_range" type="text" value="np.logspace(-6, -1, 5)" label="param_range" help="The values of the parameter that will be evaluated."/>
                     <!--groups-->                    
                     <expand macro="model_validation_common_options"/>
                     <expand macro="scoring"/>
                     <expand macro="pre_dispatch"/>
                 </section>
+                <param name="return_type" type="select" label="Select a return type">
+                    <option value="train_scores" selected="true">train_scores</option>
+                    <option value="test_scores">test_scores</option>
+                </param>
             </when>
         </conditional>
         <expand macro="sl_mixed_input"/>
     </inputs>
     <outputs>
-        <data format="txt" name="outfile"/>
+        <data format="tabular" name="outfile"/>
     </outputs>
     <tests>
         <test>
@@ -203,7 +230,63 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', index=False)
             <param name="col1" value="1,2,3,4,5"/>
             <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
             <param name="col2" value="6"/>
-            <output name="outfile" file="mv_result01.txt"/>
+            <output name="outfile" file="mv_result01.tabular"/>
+        </test>
+        <test>
+            <param name="selected_function" value="cross_val_predict"/>
+            <param name="estimator" value="linear_model.LassoCV()"/>
+            <param name="has_estimator" value="yes"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <output name="outfile" file="mv_result02.tabular"/>
+        </test>
+        <test>
+            <param name="selected_function" value="cross_val_score"/>
+            <param name="estimator" value="linear_model.LassoCV()"/>
+            <param name="has_estimator" value="yes"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <output name="outfile" file="mv_result03.tabular"/>
+        </test>
+        <test>
+            <param name="selected_function" value="learning_curve"/>
+            <param name="estimator" value="linear_model.LassoCV()"/>
+            <param name="has_estimator" value="yes"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="col2" value="1"/>
+            <param name="return_type" value="test_scores"/>
+            <output name="outfile" file="mv_result04.tabular"/>
+        </test>
+        <test>
+            <param name="selected_function" value="permutation_test_score"/>
+            <param name="estimator" value="linear_model.LassoCV()"/>
+            <param name="has_estimator" value="yes"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <output name="outfile" file="mv_result05.tabular"/>
+        </test>
+        <test>
+            <param name="selected_function" value="validation_curve"/>
+            <param name="estimator" value="svm.SVC(kernel=&quot;linear&quot;)"/>
+            <param name="has_estimator" value="yes"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="col2" value="1"/>
+            <param name="return_type" value="test_scores"/>
+            <output name="outfile" file="mv_result06.tabular"/>
         </test>
     </tests>
     <help>
