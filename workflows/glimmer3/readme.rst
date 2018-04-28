@@ -68,14 +68,14 @@ For Glimmer3 please cite:
 Delcher, A.L., Bratke, K.A., Powers, E.C., and Salzberg, S.L. (2007)
 Identifying bacterial genes and endosymbiont DNA with Glimmer.
 Bioinformatics 23(6), 673-679.
-http://dx.doi.org/10.1093/bioinformatics/btm009
+https://doi.org/10.1093/bioinformatics/btm009
 
 For EMBOSS please cite:
 
 Rice, P., Longden, I. and Bleasby, A. (2000)
 EMBOSS: The European Molecular Biology Open Software Suite
 Trends in Genetics 16(6), 276-277.
-http://dx.doi.org/10.1016/S0168-9525(00)02024-2
+https://doi.org/10.1016/S0168-9525(00)02024-2
 
 
 Additional References
@@ -84,7 +84,7 @@ Additional References
 Rohde, H., Qin, J., Cui, Y., Li, D., Loman, N.J., et al. (2011)
 Open-source genomic analysis of shiga-toxin-producing E. coli O104:H4.
 New England Journal of Medicine 365, 718-724.
-http://dx.doi.org/10.1056/NEJMoa1107643
+https://doi.org/10.1056/NEJMoa1107643
 
 
 Availability
