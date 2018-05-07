@@ -243,7 +243,7 @@ def __main__():
     if args.skip_reads:
         additional_opts += ' --skip %s ' % args.skip_reads
     if args.qupto:
-        additional_opts += ' --qupto %s ' % args.qupto
+        additional_opts += ' --upto %s ' % args.qupto
     if args.phred64:
         additional_opts += ' --phred64-quals '
     if args.suppress_header:
