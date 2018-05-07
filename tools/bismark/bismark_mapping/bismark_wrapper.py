@@ -321,18 +321,18 @@ def __main__():
         """
             merge all bam files
         """
-        #tmp_out = tempfile.NamedTemporaryFile( dir=output_dir ).name
-        tmp_stdout = open( tmp_out, 'wab' )
-        #tmp_err = tempfile.NamedTemporaryFile( dir=output_dir ).name
-        tmp_stderr = open( tmp_err, 'wab' )
 
         tmp_res = tempfile.NamedTemporaryFile( dir= output_dir).name
 
         bam_files = glob( os.path.join( output_dir, '*.bam') )
         if len( bam_files ) > 1:
+
+            #reopens tmp output files for append
+            tmp_stdout = open( tmp_out, 'ab' )
+            tmp_stderr = open( tmp_err, 'ab' )
             cmd = 'samtools merge -@ %s -f %s %s ' % ( args.num_threads, tmp_res, ' '.join( bam_files ) )
 
-            proc = subprocess.Popen( args=shlex.split( cmd ), stdout=subprocess.PIPE )
+            proc = subprocess.Popen( args=shlex.split( cmd ), stdout=tmp_stdout, stderr=tmp_stderr )
 
             returncode = proc.wait()
             tmp_stdout.close()
