@@ -10,12 +10,20 @@
                 <option value="SR">read 1 (or single-end read) comes from the reverse strand (SR)</option>
             </param>
         </xml>
-        <token name="@VERSION@">0.8.2</token>
+        <xml name="orientation">
+            <param name="orientation" type="select" label="Relative orientation of reads within a pair">
+                <option value="M">Mates are oriented in the same direction (M = matching)</option>
+                <option value="O">Mates are oriented away from each other (O = outward)</option>
+                <option value="I" selected="True">Mates are oriented toward each other (I = inward)</option>
+            </param>
+        </xml>
+        <token name="@VERSION@">0.9.1</token>
     </macros>
 
     <requirements>
         <requirement type="package" version="1.0.6">bzip2</requirement>
         <requirement type="package" version="@VERSION@">salmon</requirement>
+        <requirement type="package" version="1.2">seqtk</requirement>
     </requirements>
 
     <stdio>
@@ -52,27 +60,52 @@
             #if $single_or_paired.input_singles.ext == 'fasta':
                 #set $ext = 'fasta'
             #else:
-                #if $single_or_paired.input_singles.is_of_type('fastq.gz'):
+                #if $single_or_paired.input_singles.is_of_type("fastq.gz", "fastqsanger.gz"):
                     #set compressed = 'GZ'
-                #else if $single_or_paired.input_singles.is_of_type('fastq.bz2'):
+                #else if $single_or_paired.input_singles.is_of_type("fastq.bz2", "fastqsanger.bz2"):
                     #set compressed = 'BZ2'
                 #end if
                 #set $ext = 'fastq'
             #end if
             ln -s $single_or_paired.input_singles ./single.$ext &&
-        #else:
+        #else if $single_or_paired.single_or_paired_opts == 'paired':
             #if $single_or_paired.input_mate1.ext == 'fasta':
                 #set $ext = 'fasta'
             #else:
-                #if $single_or_paired.input_mate1.is_of_type('fastq.gz'):
+                #if $single_or_paired.input_mate1.is_of_type("fastq.gz", "fastqsanger.gz"):
                     #set compressed = 'GZ'
-                #else if $single_or_paired.input_mate1.is_of_type('fastq.bz2'):
+                #else if $single_or_paired.input_mate1.is_of_type("fastq.bz2", "fastqsanger.bz2"):
                     #set compressed = 'BZ2'
                 #end if
                 #set $ext = 'fastq'
             #end if
             ln -s $single_or_paired.input_mate1 ./mate1.$ext &&
             ln -s $single_or_paired.input_mate2 ./mate2.$ext &&
+        #else if $single_or_paired.single_or_paired_opts == 'paired_collection':
+            #if $single_or_paired.input_1.forward.ext == 'fasta':
+                #set $ext = 'fasta'
+            #else:
+                #if $single_or_paired.input_1.forward.is_of_type("fastq.gz", "fastqsanger.gz"):
+                    #set compressed = 'GZ'
+                #else if $single_or_paired.input_1.forward.is_of_type("fastq.bz2", "fastqsanger.bz2"):
+                    #set compressed = 'BZ2'
+                #end if
+                #set $ext = 'fastq'
+            #end if              
+            ln -s ${single_or_paired.input_1.forward} ./mate1.$ext &&
+            ln -s ${single_or_paired.input_1.reverse} ./mate2.$ext &&
+        #else if $single_or_paired.single_or_paired_opts == 'paired_interleaved':
+            #if $single_or_paired.input_1.ext == 'fasta':
+                #set $ext = 'fasta'
+            #else:
+                #if $single_or_paired.input_1.is_of_type("fastq.gz", "fastqsanger.gz"):
+                    #set compressed = 'GZ'
+                #else if $single_or_paired.input_1.is_of_type("fastq.bz2", "fastqsanger.bz2"):
+                    #set compressed = 'BZ2'
+                #end if
+                #set $ext = 'fastq'
+            #end if     
+            ln -s $single_or_paired.input_1 ./mate1.$ext && 
         #end if
         #if $geneMap:
             ln -s "$geneMap" ./geneMap.${geneMap.ext} &&
@@ -82,22 +115,32 @@
             #if $single_or_paired.single_or_paired_opts == 'single':
                 --libType ${single_or_paired.strandedness}
                 #if $compressed == 'GZ':
-                    --unmatedReads <(zcat ./single.$ext)
+                    --unmatedReads <(zcat < ./single.$ext)
                 #else if $compressed == 'BZ2':
-                    --unmatedReads <(bzcat ./single.$ext)
+                    --unmatedReads <(bzcat < ./single.$ext)
                 #else:
                     --unmatedReads ./single.$ext
                 #end if
             #else:
-                #if $compressed == 'GZ':
-                    --mates1 <(zcat ./mate1.$ext)
-                    --mates2 <(zcat ./mate2.$ext)
-                #else if $compressed == 'BZ2':
-                    --mates1 <(bzcat ./mate1.$ext)
-                    --mates2 <(bzcat ./mate2.$ext)
+                #if $single_or_paired.single_or_paired_opts == 'paired_interleaved':
+                    #if $compressed == 'BZ2':
+                        --mates1 <(bzcat < ./mate1.$ext | seqtk seq -1)
+                        --mates2 <(bzcat < ./mate1.$ext | seqtk seq -2)
+                    #else: 
+                        --mates1 <(seqtk seq -1 ./mate1.$ext)
+                        --mates2 <(seqtk seq -2 ./mate1.$ext)
+                    #end if
                 #else:
-                    --mates1 ./mate1.$ext
-                    --mates2 ./mate2.$ext
+                    #if $compressed == 'GZ':
+                        --mates1 <(zcat < ./mate1.$ext)
+                        --mates2 <(zcat < ./mate2.$ext)
+                    #else if $compressed == 'BZ2':
+                        --mates1 <(bzcat < ./mate1.$ext)
+                        --mates2 <(bzcat < ./mate2.$ext)
+                    #else:
+                        --mates1 ./mate1.$ext
+                        --mates2 ./mate2.$ext
+                    #end if
                 #end if
                 --libType "${single_or_paired.orientation}${single_or_paired.strandedness}"
             #end if
@@ -113,9 +156,7 @@
             --incompatPrior $adv.incompatPrior
             $adv.consistentHits
             $adv.dumpEq
-            #if str($adv.gcSizeSamp):
-                --gcSizeSamp $adv.gcSizeSamp
-            #end if
+            $adv.reduceGCMemory
             #if str($adv.biasSpeedSamp):
                 --biasSpeedSamp $adv.biasSpeedSamp
             #end if
@@ -195,20 +236,28 @@
             <param name="single_or_paired_opts" type="select" label="Is this library mate-paired?">
                 <option value="single">Single-end</option>
                 <option value="paired">Paired-end</option>
+                <option value="paired_collection">Paired-end Dataset Collection</option>
+                <option value="paired_interleaved">Paired-end data from single interleaved dataset</option>
             </param>
             <when value="single">
-                <param name="input_singles" type="data" format="fastq,fasta,fastq.gz" label="FASTQ/FASTA file" help="FASTQ file." />
+                <param name="input_singles" type="data" format="fastq,fasta,fastq.gz,fastq.bz2" label="FASTQ/FASTA file" help="FASTQ file." />
                 <expand macro="strandedness" />
             </when>
             <when value="paired">
-                <param name="input_mate1" type="data" format="fastq,fasta,fastq.gz" label="Mate pair 1" help="FASTQ file." />
-                <param name="input_mate2" type="data" format="fastq,fasta,fastq.gz" label="Mate pair 2" help="FASTQ file." />
-                <param name="orientation" type="select" label="Relative orientation of reads within a pair">
-                    <option value="M">Mates are oriented in the same direction (M = matching)</option>
-                    <option value="O">Mates are oriented away from each other (O = outward)</option>
-                    <option value="I" selected="True">Mates are oriented toward each other (I = inward)</option>
-                </param>
+                <param name="input_mate1" type="data" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" label="Mate pair 1" help="FASTQ file." />
+                <param name="input_mate2" type="data" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" label="Mate pair 2" help="FASTQ file." />
+                <expand macro="orientation" /> 
                 <expand macro="strandedness" />
+            </when>
+            <when value="paired_collection">
+                <param name="input_1" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" type="data_collection" collection_type="paired" label="FASTQ Paired Dataset" help="Must be of datatype &quot;fastqsanger&quot; or &quot;fasta&quot;" />
+               <expand macro="orientation" /> 
+               <expand macro="strandedness" />
+            </when>
+            <when value="paired_interleaved">
+               <param name="input_1" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" type="data" label="Interleaved FASTQ file" help="Must be of datatype &quot;fastqsanger&quot; or &quot;fasta&quot;. --interleaved"/>
+               <expand macro="orientation" /> 
+               <expand macro="strandedness" />
             </when>
         </conditional>
         <conditional name="quasi_orphans">
@@ -247,8 +296,9 @@
                 help="This option sets the prior probability that an alignment that disagrees with the specified library type (--libType) results from the true fragment origin. Setting this to 0 specifies that alignments that disagree with the library type should be 'impossible', while setting it to 1 says that alignments that disagree with the library type are no less likely than those that do" />
             <param argument="--dumpEq" type="boolean" truevalue="--dumpEq" falsevalue="" checked="False"
                 label="Dump the equivalence class counts that were computed during quasi-mapping." help=""/>
-            <param argument="--gcSizeSamp" type="integer" value="1" optional="True"
-                label="The value by which to down-sample transcripts when representing the GC content" help="Larger values will reduce memory usage, but may decrease the fidelity of bias modeling results."/>
+            <param argument="--reduceGCMemory" type="boolean" truevalue="--reduceGCMemory" falsevalue="" optional="True" checked="False"
+                label="If this option is selected, a more memory efficient (but slightly slower representation is used to compute fragment GC content."
+                help="Enabling this will reduce memory usage, but can also reduce speed.  However, the results themselves will remain the same."/>
             <param argument="--biasSpeedSamp" type="integer" value="1" optional="True"
                 label="The value at which the fragment length PMF is down-sampled when evaluating GC fragment bias." help="Larger values speed up effective length correction, but may decrease the fidelity of bias modeling results."/>
             <param argument="--strictIntersect" type="boolean" truevalue="--strictIntersect" falsevalue="" checked="False"
@@ -388,10 +438,111 @@
                 </assert_contents>
             </output>
         </test>
+        <test> <!-- bzipped input -->
+            <param name="single_or_paired_opts" value="paired" />
+            <param name="input_mate1" value="reads_1.fastq.bz2" ftype="fastqsanger.bz2" />
+            <param name="input_mate2" value="reads_2.fastq.bz2" ftype="fastqsanger.bz2" />
+            <param name="biasCorrect" value="False" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test> <!-- interleaved bz2 input -->
+            <param name="single_or_paired_opts" value="paired_interleaved" />
+            <param name="input_1" value="reads_both.fastq.bz2" ftype="fastqsanger.bz2" />
+            <param name="biasCorrect" value="False" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test> <!-- interleaved gz input -->
+            <param name="single_or_paired_opts" value="paired_interleaved" />
+            <param name="input_1" value="reads_both.fastq.gz" ftype="fastqsanger.gz" />
+            <param name="biasCorrect" value="False" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
         <test>
             <param name="single_or_paired_opts" value="paired" />
             <param name="input_mate1" value="reads_1.fastq" />
             <param name="input_mate2" value="reads_2.fastq" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+            <output name="output_gene_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="baz" />
+                    <has_text text="bar" />
+                    <has_text text="2283" />
+                    <has_text text="1640" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired_collection" />
+            <param name="input_1">
+                <collection type="paired">
+                    <element name="forward" value="reads_1.fastq" ftype="fastqsanger" />
+                    <element name="reverse" value="reads_2.fastq" ftype="fastqsanger" />
+                </collection>    
+            </param> 
             <param name="TranscriptSource" value="history" />
             <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
             <param name="geneMap" value="gene_map.tab" ftype="tabular" />
