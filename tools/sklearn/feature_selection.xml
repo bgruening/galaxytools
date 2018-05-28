@@ -1,0 +1,246 @@
+<tool id="sklearn_feature_selection" name="Feature Selection" version="@VERSION@.1">
+    <description>module, including univariate filter selection methods and recursive feature elimination algorithm</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        python "$feature_selection_script" '$inputs'
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+        <configfile name="feature_selection_script">
+            <![CDATA[
+import sys
+import json
+import pandas
+import pickle
+import numpy as np
+import sklearn.feature_selection
+from sklearn import svm, linear_model, ensemble
+
+@COLUMNS_FUNCTION@
+
+input_json_path = sys.argv[1]
+params = json.load(open(input_json_path, "r"))
+
+## Read features
+features_has_header = params["input_options"]["header1"]
+input_type = params["input_options"]["selected_input"]
+if input_type=="tabular":
+    header = 'infer' if features_has_header else None
+    header = 'infer' if params["input_options"]["header1"] else None
+    X, input_df = read_columns(
+            "$input_options.infile1",
+            "$input_options.col1",
+            return_df = True,
+            sep='\t',
+            header=header,
+            parse_dates=True
+    )
+else:
+    X = mmread(open("$input_options.infile1", 'r'))
+
+## Read labels
+header = 'infer' if params["input_options"]["header2"] else None
+y = read_columns(
+        "$input_options.infile2",
+        "$input_options.col2",
+        sep='\t',
+        header=header,
+        parse_dates=True
+)
+y=y.ravel()
+
+## Create feature selector
+selector = params["feature_selection_algorithms"]["selected_algorithm"]
+selector = getattr(sklearn.feature_selection, selector)
+options = params["feature_selection_algorithms"]["options"]
+
+if params['feature_selection_algorithms']['selected_algorithm'] == 'SelectFromModel':
+    if not options['threshold'] or options['threshold'] == 'None':
+        options['threshold'] = None
+        if 'extra_estimator' in params['feature_selection_algorithms'] and params['feature_selection_algorithms']['extra_estimator']['has_estimator'] == 'no_load':
+            fitted_estimator = pickle.load(open("params['feature_selection_algorithms']['extra_estimator']['fitted_estimator']", 'r'))
+            new_selector = selector(fitted_estimator, prefit=True, **options)
+        else:
+            estimator=params["feature_selection_algorithms"]["estimator"]
+            if params["feature_selection_algorithms"]["extra_estimator"]["has_estimator"]=='no':
+                estimator=params["feature_selection_algorithms"]["extra_estimator"]["new_estimator"]
+            estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+            new_selector = selector(estimator, **options)
+            new_selector.fit(X, y)
+
+elif params['feature_selection_algorithms']['selected_algorithm'] in ['RFE', 'RFECV']:
+    if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
+        options['scoring'] = None
+    estimator=params["feature_selection_algorithms"]["estimator"]
+    if params["feature_selection_algorithms"]["extra_estimator"]["has_estimator"]=='no':
+        estimator=params["feature_selection_algorithms"]["extra_estimator"]["new_estimator"]
+    estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+    new_selector = selector(estimator, **options)
+    new_selector.fit(X, y)
+
+elif params['feature_selection_algorithms']['selected_algorithm'] == "VarianceThreshold":
+    new_selector = selector(**options)
+    new_selector.fit(X, y)
+
+else:
+    score_func = params["feature_selection_algorithms"]["score_func"]
+    score_func = getattr(sklearn.feature_selection, score_func)
+    new_selector = selector(score_func, **options)
+    new_selector.fit(X, y)
+
+## Transform to select features
+selected_names = None
+if "$select_methods.selected_method" == "fit_transform":
+    res = new_selector.transform(X)
+    if features_has_header:
+        selected_names = input_df.columns[new_selector.get_support(indices=True)]
+else:
+    res = new_selector.get_support(params["select_methods"]["indices"])
+
+res = pandas.DataFrame(res, columns = selected_names)
+res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
+
+
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="feature_selection_all" />
+        <expand macro="feature_selection_methods" />
+        <expand macro="sl_mixed_input"/>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="selected_algorithm" value="SelectFromModel"/>
+            <param name="has_estimator" value="no"/>
+            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result01"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="GenericUnivariateSelect"/>
+            <param name="param" value="20"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result02"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectPercentile"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result03"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectKBest"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result04"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectFpr"/>
+            <param name="alpha" value="0.05"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result05"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectFdr"/>
+            <param name="alpha" value="0.05"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result06"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectFwe"/>
+            <param name="alpha" value="0.05"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result07"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="RFE"/>
+            <param name="has_estimator" value="no"/>
+            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result08"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="RFECV"/>
+            <param name="has_estimator" value="no"/>
+            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result09"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="VarianceThreshold"/>
+            <param name="threshold" value="0.1"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="True"/>
+            <output name="outfile" file="feature_selection_result10"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+This tool provides several loss, score, and utility functions to measure classification performance. Some metrics might require probability estimates of the positive class, confidence values, or binary decisions values. This tool is based on
+sklearn.metrics package.
+For information about classification metric functions and their parameter settings please refer to `Scikit-learn classification metrics`_.
+
+.. _`Scikit-learn classification metrics`: http://scikit-learn.org/stable/modules/model_evaluation.html#classification-metrics
+        ]]>
+    </help>
+    <expand macro="sklearn_citation"/>
+</tool>

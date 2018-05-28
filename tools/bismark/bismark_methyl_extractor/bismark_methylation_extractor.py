@@ -148,7 +148,7 @@ def __main__():
         tmp_stdout.close()
         tmp_stderr.close()
         if returncode != 0:
-            raise Exception, stderr
+            raise Exception(stderr)
             
         # TODO: look for errors in program output.
     except Exception, e:
