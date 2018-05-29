@@ -1,0 +1,76 @@
+<tool id="nanopolish_methylation" name="Nanopolish methylation" version="0.1.0">
+    <description>- Classify nucleotides as methylated or not. </description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="exit_code"><![CDATA[
+        ln -s '$input_merged' reads.fasta && 
+        
+        #if $input_reads_raw.extension == 'fast5':
+            mkdir fast5_files && ln -s '$input_reads_raw' fast5_files/read1.fast5 &&
+        #else
+            ln -s '$input_reads_raw' fast5_files.tar.gz &&
+            mkdir fast5_files && tar -xzf fast5_files.tar.gz -C fast5_files &&
+        #end if
+
+        nanopolish index -d fast5_files/ reads.fasta &&
+        ln -s '$input_reads_bam' reads.bam &&
+        ln -s '${input_reads_bam.metadata.bam_index}' reads.bam.bai &&
+        ln -s '$input_genome_fa' genome.fa &&
+        
+        nanopolish call-methylation
+        -r reads.fasta
+        -b reads.bam
+        -g genome.fa
+        $verbose
+        #if $window and str($window).strip():
+          -w "${window}"
+        #end if  
+        > methylation_calls.tsv
+    ]]></command>
+    <inputs>
+      <!-- index inputs -->
+        <param type="data" name="input_merged" format="fasta,fastq" label="Basecalled merged reads.fa"/>
+        <param type="data" name="input_reads_raw" format="h5,fast5.tar.gz" label="Flat archive file of raw fast5 files"/>
+
+        <!-- variants consensus inputs -->
+        <param type="data" name="input_reads_bam" format="bam" label="Reads aligned to the reference genome" help="(-b)" />
+        <param type="data" name="input_genome_fa" format="fasta" label="The reference genome" help="(-g)"/>
+
+        <param name="window" type="text" optional="true" label="find variants in window chromsome_name:start-end" help="(-w)"/>
+
+        <!-- optional flags -->
+        <param name="verbose" type="boolean" truevalue="--verbose" falsevalue="" checked="false" label="verbose output" help="(-v)" />
+    </inputs>
+
+    <outputs>
+      <!-- variants consensus outputs -->
+        <data name="output_methylation_calls" format="tabular" from_work_dir="methylation_calls.tsv" label="called methylation sites" />
+    </outputs>
+    <tests>
+        <test>
+      <!-- index test -->
+            <param name="input_merged" ftype="fasta" value="reads.fasta" />
+            <param name="input_reads_raw" ftype="fast5.tar.gz" value="fast5_files.tar.gz" />
+            
+      <!-- variants consensus test -->
+            <param name="input_reads_bam" value="reads.sorted.bam" />
+            <param name="input_genome_fa" value="draft.fa" />
+            <param name="window" value="tig00000001:200000-202000" />
+            
+            <output name="output_methylation_calls" file="methylation_calls.tsv" />
+        </test>
+    </tests>
+    <help><![CDATA[
+        Usage: nanopolish call-methylation [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa
+        Classify nucleotides as methylated or not.
+
+          -v, --verbose                        display verbose output
+          -r, --reads=FILE                     the ONT reads are in fasta FILE
+          -b, --bam=FILE                       the reads aligned to the genome assembly are in bam FILE
+          -g, --genome=FILE                    the genome we are computing a consensus for is in FILE
+
+    ]]></help>
+    <expand macro="citations" />
+</tool>
