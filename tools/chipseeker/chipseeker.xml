@@ -1,89 +1,75 @@
-<tool id="chipseeker" name="ChIPseeker" version="1.14.2">
+<tool id="chipseeker" name="ChIPseeker" version="1.14.2.1">
     <description>for ChIP peak annotation and visualization</description>
     <requirements>
         <requirement type="package" version="1.14.2">bioconductor-chipseeker</requirement>
-        <requirement type="package" version="3.4.0">bioconductor-txdb.hsapiens.ucsc.hg38.knowngene</requirement>
-        <requirement type="package" version="3.2.2">bioconductor-txdb.hsapiens.ucsc.hg19.knowngene</requirement>
-        <requirement type="package" version="3.4.0">bioconductor-txdb.Mmusculus.UCSC.mm10.knownGene</requirement>
-        <requirement type="package" version="3.5.0">bioconductor-org.hs.eg.db</requirement>
-        <requirement type="package" version="3.5.0">bioconductor-org.mm.eg.db</requirement>
+        <requirement type="package" version="1.4.4">r-optparse</requirement>
     </requirements>
     <version_command><![CDATA[
-echo $(R --version | grep version | grep -v GNU)", ChIPseeker version" $(R --vanilla --slave -e "library(ChIPseeker); cat(sessionInfo()\$otherPkgs\$ChIPseeker\$Version)" 2> /dev/null | grep -v -i "WARNING: ")", TxDb.Hsapiens.UCSC.hg38.knownGene version" $(R --vanilla --slave -e "library(TxDb.Hsapiens.UCSC.hg38.knownGene); cat(sessionInfo()\$otherPkgs\$TxDb.Hsapiens.UCSC.hg38.knownGene\$Version)" 2> /dev/null | grep -v -i "WARNING: ")", TxDb.Hsapiens.UCSC.hg19.knownGene version" $(R --vanilla --slave -e "library(TxDb.Hsapiens.UCSC.hg19.knownGene); cat(sessionInfo()\$otherPkgs\$TxDb.Hsapiens.UCSC.hg19.knownGene\$Version)" 2> /dev/null | grep -v -i "WARNING: ")", TxDb.Mmusculus.UCSC.mm10.knownGene version" $(R --vanilla --slave -e "library(TxDb.Mmusculus.UCSC.mm10.knownGene); cat(sessionInfo()\$otherPkgs\$TxDb.Mmusculus.UCSC.mm10.knownGene\$Version)" 2> /dev/null | grep -v -i "WARNING: ")", org.Hs.eg.db version" $(R --vanilla --slave -e "library(org.Hs.eg.db); cat(sessionInfo()\$otherPkgs\$org.Hs.eg.db\$Version)" 2> /dev/null | grep -v -i "WARNING: ")", org.Mm.eg.db version" $(R --vanilla --slave -e "library(org.Mm.eg.db); cat(sessionInfo()\$otherPkgs\$org.Mm.eg.db\$Version)" 2> /dev/null | grep -v -i "WARNING: ")
+echo $(R --version | grep version | grep -v GNU)", ChIPseeker version" $(R --vanilla --slave -e "library(ChIPseeker); cat(sessionInfo()\$otherPkgs\$ChIPseeker\$Version)" 2> /dev/null | grep -v -i "WARNING: ")", optparse version" $(R --vanilla --slave -e "library(optparse); cat(sessionInfo()\$otherPkgs\$optparse\$Version)" 2> /dev/null | grep -v -i "WARNING: ")
     ]]></version_command>
     <command detect_errors="exit_code"><![CDATA[
-        #if $rscript:
-            cp '${chipseeker_script}' '${out_rscript}' &&
+        #set gtf = "refgtf"
+        #if $gtf_source.gtf_source_select == "history":
+            ln -s '${gtf_source.gtf_hist}' $gtf &&
+        #else if $gtf_source.gtf_source_select == "cached":
+            ln -s '${gtf_source.gtf_builtin.fields.path}' $gtf &&
         #end if
-        Rscript '${chipseeker_script}'
+
+        #if $rscript:
+            cp '$__tool_directory__/chipseeker.R' '$out_rscript' &&
+        #end if
+
+        Rscript '$__tool_directory__/chipseeker.R'
+
+        -i '$peaks'
+        -G '$gtf'
+        -u $upstream
+        -d $downstream
+        #if $flankgeneinfo:
+            -F $flankgeneinfo
+            -D $flankgenedist
+        #end if
+        -f $format
+        -p $pdf
     ]]>
     </command>
-    <configfiles>
-        <configfile name="chipseeker_script"><![CDATA[
-options( show.error.messages=F, error = function () { cat( geterrmessage(), file=stderr() ); q( "no", 1, F ) } )
-
-# we need that to not crash galaxy with an UTF8 error on German LC settings.
-loc <- Sys.setlocale("LC_MESSAGES", "en_US.UTF-8")
-
-suppressPackageStartupMessages(library(ChIPseeker))
-
-genome <- "${genome}"
-
-if (genome == "hg38") {
-    suppressPackageStartupMessages({
-        library(TxDb.Hsapiens.UCSC.hg38.knownGene)
-        library(org.Hs.eg.db)
-    })
-    txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
-    annodb <- "org.Hs.eg.db"
-} else if (genome == "hg19") {
-    suppressPackageStartupMessages({
-        library(TxDb.Hsapiens.UCSC.hg19.knownGene)
-        library(org.Hs.eg.db)
-    })
-    txdb <- TxDb.Hsapiens.UCSC.hg19.knownGene
-    annodb <- "org.Hs.eg.db"
-} else if (genome == "mm10") {
-    suppressPackageStartupMessages({
-        library(TxDb.Mmusculus.UCSC.mm10.knownGene)
-        library(org.Mm.eg.db)
-    })
-    txdb <- TxDb.Mmusculus.UCSC.mm10.knownGene
-    annodb <- "org.Mm.eg.db"
-} else {
-    cat(paste("Genome not supported", genome))
-}
-
-peaks <- readPeakFile('$peaks_file')
-peakAnno <-  annotatePeak(peaks, TxDb=txdb, annoDb=annodb)
-write.table(peakAnno, file='$out_tab', sep="\t", row.names=FALSE, quote=FALSE)
-
-if (!is.null("${pdf}")) {
-    pdf("out.pdf", width=14)
-    plotAnnoPie(peakAnno)
-    plotAnnoBar(peakAnno)
-    vennpie(peakAnno)
-    upsetplot(peakAnno)
-    plotDistToTSS(peakAnno, title="Distribution of transcription factor-binding loci\nrelative to TSS")
-    dev.off()
-}
-    ]]></configfile>
-    </configfiles>
-
     <inputs>
-        <param name="peaks_file" type="data" format="bed" label="Peaks file" help="A peaks file in BED format." />
-        <param name="genome" type="select" label="Genome" help="Select the genome. Options are hg38, hg19 or mm10.">
-            <option value="hg38">hg38</option>
-            <option value="hg19">hg19</option>
-            <option value="mm10">mm10</option>
+        <param name="peaks" type="data" format="bed,interval" label="Peaks file" help="A peaks file in BED format." />
+        <conditional name="gtf_source">
+            <param name="gtf_source_select" type="select" label="Annotation source" help="Select a GTF to use for annotation source.">
+                <option value="cached" selected="true">Use a built-in GTF</option>
+                <option value="history">Use a GTF from history</option>
+            </param>
+            <when value="cached">
+                 <param name="gtf_builtin" type="select" label="Select a built-in GTF" help="If the GTF file for your transcriptome of interest is not listed, contact your Galaxy administrator">
+                     <options from_data_table="gene_sets">
+                         <filter type="sort_by" column="2" />
+                         <validator type="no_options" message="No GTF file is available." />
+                     </options>
+                 </param>
+            </when>
+            <when value="history">
+                <param name="gtf_hist" type="data" format="gtf" label="Select a history GTF" />
+            </when>
+        </conditional>
+        <param name="upstream" type="integer" min="0" value="3000" label="TSS upstream region" help="User can define TSS (transcription start site) region, by default TSS is defined from -3kb to +3kb." />
+        <param name="downstream" type="integer" min="0" value="3000" label="TSS downstream region" help="User can define TSS (transcription start site) region, by default TSS is defined from -3kb to +3kb."/>
+        <param name="flankgeneinfo" type="boolean" truevalue="True" falsevalue="False" checked="False" label="Add flanking gene information?" help="If specified all genes within the flanking gene distance are reported for each peak. Default: No."/>
+        <param name="flankgenedist" type="integer" min="0" value="5000" label="Flanking gene distance" help="If flanking gene info is turned on the flanking distance can be specified. Default: 5000."/>
+        <param name="format" type="select" label="Output Format">
+            <option value="interval" selected="True">Interval</option>
+            <option value="tabular">Tabular (tab-separated)</option>
         </param>
-
-        <param name="pdf" type="boolean" truevalue="True" falsevalue="" checked="True" label="Output a PDF file of plots?" help="Default: Yes" />
+        <param name="pdf" type="boolean" truevalue="True" falsevalue="" checked="True" label="Output PDF of plots?" help="Default: Yes" />
         <param name="rscript" type="boolean" truevalue="TRUE" falsevalue="FALSE" checked="False" label="Output Rscript?" help="If this option is set to Yes, the Rscript used to annotate the IDs will be provided as a text file in the output. Default: No" />
     </inputs>
 
         <outputs>
-            <data name="out_tab" format="tabular" from_work_dir="out.tab" label="${tool.name} on ${on_string}: Annotated Peaks" />
+            <data name="out_tab" format="interval" from_work_dir="out.tab" label="${tool.name} on ${on_string}: Annotated Peaks" >
+                <change_format>
+                    <when input="format" value="tabular" format="tabular" />
+                </change_format>
+            </data>
             <data name="out_plots" format="pdf" from_work_dir="out.pdf" label="${tool.name} on ${on_string}: Plots">
                 <filter>pdf</filter>
             </data>
@@ -93,18 +79,56 @@ if (!is.null("${pdf}")) {
         </outputs>
 
     <tests>
-        <!-- Ensure outputs work -->
+        <!-- Ensure bed and GTF inputs and all outputs work -->
         <test expect_num_outputs="3">
-            <param name="peaks_file" value="in.diffbind" ftype="bed"/>
-            <param name="genome" value="hg19"/>
+            <param name="peaks" value="in.bed" ftype="bed"/>
+            <param name="gtf_source_select" value="history"/>
+            <param name="gtf_hist" value="in.gtf"/>
             <param name="rscript" value="True"/>
-            <output name="out_tab" file="out.tab" />
+            <output name="out_tab" ftype="interval" file="out.int" />
             <output name="out_plots" file="out.pdf" compare="sim_size"/>
             <output name="out_rscript" >
                 <assert_contents>
                     <has_text_matching expression="peakAnno.*annotatePeak" />
                 </assert_contents>
             </output>
+        </test>
+        <!-- Ensure built-in GTF works -->
+        <test expect_num_outputs="2">
+            <param name="peaks" value="in.interval" ftype="interval"/>
+            <param name="gtf_source_select" value="cached"/>
+            <output name="out_tab" ftype="interval" file="outint.int" />
+            <output name="out_plots" file="out.pdf" compare="sim_size"/>
+        </test>
+        <!-- Ensure tabular output works -->
+        <test expect_num_outputs="2">
+            <param name="peaks" value="in.interval" ftype="interval"/>
+            <param name="gtf_source_select" value="history"/>
+            <param name="gtf_hist" value="in.gtf"/>
+            <param name="format" value="tabular"/>
+            <output name="out_tab" ftype="tabular" file="outint.tab" />
+            <output name="out_plots" file="out.pdf" compare="sim_size"/>
+        </test>
+        <!-- Ensure TSS region specification works -->
+        <test expect_num_outputs="2">
+            <param name="peaks" value="in.interval" ftype="interval"/>
+            <param name="gtf_source_select" value="history"/>
+            <param name="gtf_hist" value="in.gtf"/>
+            <param name="upstream" value="1000" />
+            <param name="downstream" value="1000" />
+            <param name="format" value="tabular"/>
+            <output name="out_tab" ftype="tabular" file="outtss.tab" />
+            <output name="out_plots" file="out.pdf" compare="sim_size"/>
+        </test>
+        <!-- Ensure flanking genes works -->
+        <test expect_num_outputs="2">
+            <param name="peaks" value="in.interval" ftype="interval"/>
+            <param name="gtf_source_select" value="history"/>
+            <param name="gtf_hist" value="in.gtf"/>
+            <param name="flankgeneinfo" value="True" />
+            <param name="format" value="tabular"/>
+            <output name="out_tab" ftype="tabular" file="outflank.tab" />
+            <output name="out_plots" file="out.pdf" compare="sim_size"/>
         </test>
     </tests>
     <help><![CDATA[
@@ -120,7 +144,21 @@ the `ChIPseeker vignette`_ for more information.
 
 **Inputs**
 
-A peaks file in BED format e.g from MACS2 or DiffBind.
+A peaks file in BED or Interval format e.g from MACS2 or DiffBind.
+
+Example:
+
+    =====  ======  ======  ========  =====  ======
+    Chrom  Start   End     Name      Score  Strand
+    =====  ======  ======  ========  =====  ======
+    18     394599  396513  DiffBind  0      .
+    18     111566  112005  DiffBind  0      .
+    18     346463  347342  DiffBind  0      .
+    18     399013  400382  DiffBind  0      .
+    18     371109  372102  DiffBind  0      .
+    =====  ======  ======  ========  =====  ======
+
+A GTF file for annotation.
 
 -----
 
@@ -128,9 +166,55 @@ A peaks file in BED format e.g from MACS2 or DiffBind.
 
 This tool outputs
 
-    * a table of annotated peaks
+    * a file of annotated peaks in Interval or Tabular format
     * a PDF of plots
     * the R script used by this tool
+
+**Annotated peaks**
+
+Annotation similar to below will be added to the input file.
+
+Example - **Interval format**:
+
+    =====  ======  ======  =====================================================================================================================================================
+    Chrom  Start   End     Comment
+    =====  ======  ======  =====================================================================================================================================================
+    18     394599  396513  DiffBind|0|.|Intron (ENST00000400256/ENSG00000158270, intron 1 of 1)|1|346465|400382|53918|2|ENSG00000158270|ENST00000400256| 3869
+    18     111566  112005  DiffBind|0|.|Promoter (<=1kb)|1|111568|112005|  438|1|ENSG00000263006|ENST00000608049|    0
+    18     346463  347342  DiffBind|0|.|Exon (ENST00000400256/ENSG00000158270, exon 1 of 1)|1|346465|400382|53918|2|ENSG00000158270|ENST00000400256|53040
+    18     399013  400382  DiffBind|0|.|Promoter (<=1kb)|1|346465|400382|53918|2|ENSG00000158270|ENST00000400256|    0
+    18     371109  372102  DiffBind|0|.|Intron (ENST00000400256/ENSG00000158270, intron 1 of 1)|1|346465|400382|53918|2|ENSG00000158270|ENST00000400256|28280
+    =====  ======  ======  =====================================================================================================================================================
+
+    Columns contain the following data:
+
+* **Chrom**: Chromosome name
+* **Start**: Start position of site
+* **End**: End position of site
+* **Comment**: The pipe ("|") separated values in this column correspond to:
+
+    * *<Any additional input columns>*
+    * *annotation* (Promoter, 5’ UTR, 3’ UTR, Exon, Intron, Downstream, Intergenic)
+    * *geneChr*
+    * *geneStart*
+    * *geneEnd*
+    * *geneLength*
+    * *geneStrand*
+    * *geneId*
+    * *transcriptId*
+    * *distanceToTSS*
+
+Example - **Tabular format**:
+
+    =====  ======  ======  ========  ====== ======  ===========================================  ======================================================= ======= ========= ======= ========== ========== =============== =============== =============
+    Chrom  Start   End     Name      Score  Strand  Comment                                      annotation                                              geneChr geneStart geneEnd geneLength geneStrand geneId          transcriptId    distanceToTSS
+    =====  ======  ======  ========  ====== ======  ===========================================  ======================================================= ======= ========= ======= ========== ========== =============== =============== =============
+    18     394599  396513  DiffBind    0     .      1914|7.15|5.55|7.89|-2.35|7.06e-24|9.84e-21  Intron (ENST00000400256/ENSG00000158270, intron 1 of 1)  1       346465    400382   53918      2        ENSG00000158270 ENST00000400256 3869
+    18     111566  112005  DiffBind    0     .      439|5.71|6.53|3.63|2.89|1.27e-08|8.88e-06    Promoter (<=1kb)                                         1       111568    112005   438        1        ENSG00000263006 ENST00000608049 0
+    18     346463  347342  DiffBind    0     .      879|5|5.77|3.24|2.52|6.51e-06|0.00303        Exon (ENST00000400256/ENSG00000158270, exon 1 of 1)      1       346465    400382   53918      2        ENSG00000158270 ENST00000400256 53040
+    18     399013  400382  DiffBind    0     .      1369|7.62|7|8.05|-1.04|1.04e-05|0.00364      Promoter (<=1kb)                                         1       346465    400382   53918      2        ENSG00000158270 ENST00000400256 0
+    18     371109  372102  DiffBind    0     .      993|4.63|3.07|5.36|-2.3|8.1e-05|0.0226       Intron (ENST00000400256/ENSG00000158270, intron 1 of 1)  1       346465    400382   53918      2        ENSG00000158270 ENST00000400256 28280
+    =====  ======  ======  ========  ====== ======  ===========================================  ======================================================= ======= ========= ======= ========== ========== =============== =============== =============
 
 .. _ChIPseeker: https://bioconductor.org/packages/release/bioc/html/ChIPseeker.html
 .. _`ChIPseeker vignette`: http://bioconductor.org/packages/release/bioc/vignettes/ChIPseeker/inst/doc/ChIPseeker.html
