@@ -30,17 +30,21 @@ peaks <- readPeakFile(peaks)
 txdb <- makeTxDbFromGFF(gtf, format="gtf")
 peakAnno <-  annotatePeak(peaks, TxDb=txdb)
 
+# format for output
+res <- as.GRanges(peakAnno)
+metacols <- mcols(res)
 if (format == "interval") {
-    # Convert from 1-based to Interval 0-based format
-    res <- as.GRanges(peakAnno)
-    metacols <- mcols(res)
+# Convert from 1-based to Interval 0-based format
     metacols <- apply(as.data.frame(metacols), 1, function(col) paste(col, collapse="|"))
     resout  <- data.frame(Chrom=seqnames(res),
+                        Start=start(res) - 1,
+                        End=end(res),
+                        Comment=metacols)
+} else {
+    resout <- data.frame(Chrom=seqnames(res),
                     Start=start(res) - 1,
                     End=end(res),
-                    Comment=metacols)
-} else {
-    resout <- peakAnno
+                    metacols)
 }
 
 write.table(resout, file="out.tab", sep="\t", row.names=FALSE, quote=FALSE)
