@@ -5,11 +5,18 @@
     <expand macro="requirements" />
     <command detect_errors="exit_code"><![CDATA[
         ln -s '$input_merged' reads.fasta && 
-        ln -s '$input_reads_tar' fast5_files.tar.gz &&
-        mkdir fast5_files && tar -xzf fast5_files.tar.gz -C fast5_files &&
+        
+        #if $input_reads_raw.extension == 'fast5':
+            mkdir fast5_files && ln -s '$input_reads_raw' fast5_files/read1.fast5 &&
+        #else
+            ln -s '$input_reads_raw' fast5_files.tar.gz &&
+            mkdir fast5_files && tar -xzf fast5_files.tar.gz -C fast5_files &&
+        #end if
+
         nanopolish index -d fast5_files/ reads.fasta &&
         ln -s '$input_reads_bam' reads.bam &&
         ln -s '${input_reads_bam.metadata.bam_index}' reads.bam.bai &&
+        
         nanopolish variants
         --consensus polished.fa
         -w "tig00000001:200000-202000"
@@ -17,16 +24,84 @@
         -b reads.bam
         -g '$input_genome_fa'
         -o variants.vcf
+        $snps
+        $verbose
+        $homopolymer
+        $faster
+        $all_bases
+
+        -m $min_candidate_frequency
+        -d $min_candidate_depth
+        -x $max_haplotypes
+        --max-rounds $max_rounds
+        #if $ploidy != -1:
+            -p $ploidy
+        #end if
+
+        #if $window and str($window).strip():
+          -w "${window}"
+        #end if  
+        #if $methylation_aware and str($methylation_aware).strip():
+          -q "${methylation_aware}"
+        #end if           
+        
+        #if $input_events_bam:
+          -e '$input_events_bam'
+        #end if
+        #if $input_genotype:
+          --genotype '$input_genotype'
+        #end if
+        #if $input_candidates:
+          -c '$input_candidates'
+        #end if
+        #if $input_alt_bc_bam:
+          -a '$input_alt_bc_bam'
+        #end if
+        #if $input_models_fofn:
+          --models-fofn '$input_models_fofn'
+        #end if
+       
+
+
     ]]></command>
     <inputs>
       <!-- index inputs -->
         <param type="data" name="input_merged" format="fasta,fastq" label="Basecalled merged reads.fa"/>
-        <param type="data" name="input_reads_tar" format="fast5.tar.gz" label="Flat archive file of raw fast5 files"/>
+        <param type="data" name="input_reads_raw" format="h5,fast5.tar.gz" label="Flat archive file of raw fast5 files"/>
         <param type="data" name="input_seq_summary" format="txt" optional="true" label="Sequencing summary file from albacore" help="(-s)"/>       
 
-      <!-- variants consensus inputs -->
+        <!-- variants consensus inputs -->
         <param type="data" name="input_reads_bam" format="bam" label="Reads aligned to the reference genome" help="(-b)" />
         <param type="data" name="input_genome_fa" format="fasta" label="The reference genome" help="(-g)"/>
+
+        <!-- optional inputs -->
+        <param type="data" name="input_events_bam" format="bam" optional="true" label="Events aligned to the reference genome" help="(-e)" />
+        <param type="data" name="input_genotype" format="vcf" optional="true" label="Call genotypes for the variants in the vcf file" help="(--genotype)" />
+        <param type="data" name="input_candidates" format="vcf" optional="true" 
+                label="Use variant candidates, rather than discovering them from aligned reads" help="(-c)" />
+        <param type="data" name="input_alt_bc_bam" format="bam" optional="true" label="Alternative basecaller used that does not output event annotations" help="(-a)" />
+        <param type="data" name="input_models_fofn" format="txt" optional="true" label="Read alternative k-mer models" help="(--models-fofn)" />
+
+
+        <!-- optional flags -->
+        <param name="snps" type="boolean" truevalue="--snps" falsevalue="" checked="false" label="only call SNPs" help="(--snps)" />
+        <param name="verbose" type="boolean" truevalue="--verbose" falsevalue="" checked="false" label="verbose output" help="(-v)" />
+        <param name="homopolymer" type="boolean" truevalue="--fix-homopolymers" falsevalue="" checked="false" label="homopolymer caller" help="(-v)" />
+        <param name="faster" type="boolean" truevalue="--faster" falsevalue="" checked="false" 
+                label="speedup while slightly reducing consensus accuracy" help="(--faster)" />
+        <param name="all_bases" type="boolean" truevalue="--calculate-all-support" falsevalue="" checked="false" 
+                label="calculate the support of the 3 other possible bases" help="(--calculate-all-support)" />
+
+        <!-- optional params -->
+        <param name="window" type="text" optional="true" label="find variants in window chromsome_name:start-end" help="(-w)"/>
+        <param name="methylation_aware" type="text" optional="true" label="methylation aware polishing and test motifs given" help="(-q)"/>
+        <param name="min_candidate_frequency" type="float" optional="true" value="0.2" label="Extarct if the variant frequency is at least F" help="(-m)"/>
+        <param name="min_candidate_depth" type="integer" optional="true" value="20" label="Extarct if the depth is at least D" help="(-d)"/>
+        <param name="max_haplotypes" type="integer" optional="true" value="1000" label="Consider at most N haplotype combinations" help="(-x)"/>
+        <param name="max_rounds" type="integer" optional="true" value="50" label="Perform N rounds of consensus sequence improvement" help="(--max_rounds)"/>
+        <param name="ploidy" type="integer" optional="true" value="-1" label="The ploidy level of the sequenced genome. -1:ignored" help="(-p)"/>
+
+
     </inputs>
     <outputs>
       <!-- variants consensus outputs -->
@@ -37,7 +112,7 @@
         <test>
       <!-- index test -->
             <param name="input_merged" ftype="fasta" value="reads.fasta" />
-            <param name="input_reads_tar" ftype="fast5.tar.gz" value="fast5_files.tar.gz" />
+            <param name="input_reads_raw" ftype="fast5.tar.gz" value="fast5_files.tar.gz" />
             
       <!-- variants consensus test -->
             <param name="input_reads_bam" value="reads.sorted.bam" />
