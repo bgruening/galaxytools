@@ -12,6 +12,8 @@ suppressPackageStartupMessages({
 option_list <- list(
     make_option(c("-i","--infile"), type="character", help="Peaks file to be annotated"),
     make_option(c("-G","--gtf"), type="character", help="GTF to create TxDb."),
+    make_option(c("-u","--upstream"), type="integer", help="TSS upstream region"),
+    make_option(c("-d","--downstream"), type="integer", help="TSS downstream region"),
     make_option(c("-f","--format"), type="character", help="Output format (interval or tabular)."),
     make_option(c("-p","--plots"), type="character", help="PDF of plots.")
   )
@@ -21,6 +23,8 @@ args = parse_args(parser)
 
 peaks = args$infile
 gtf = args$gtf
+up = args$upstream
+down = args$downstream
 format = args$format
 plots = args$plots
 
@@ -28,7 +32,7 @@ peaks <- readPeakFile(peaks)
 
 # Make TxDb from GTF
 txdb <- makeTxDbFromGFF(gtf, format="gtf")
-peakAnno <-  annotatePeak(peaks, TxDb=txdb)
+peakAnno <-  annotatePeak(peaks, TxDb=txdb, tssRegion=c(-up, down))
 
 # Convert from 1-based to 0-based format
 res <- as.GRanges(peakAnno)
