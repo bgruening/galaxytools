@@ -14,6 +14,8 @@ option_list <- list(
     make_option(c("-G","--gtf"), type="character", help="GTF to create TxDb."),
     make_option(c("-u","--upstream"), type="integer", help="TSS upstream region"),
     make_option(c("-d","--downstream"), type="integer", help="TSS downstream region"),
+    make_option(c("-F","--flankgeneinfo"), type="logical", help="Add flanking gene info"),
+    make_option(c("-D","--flankgenedist"), type="integer", help="Flanking gene distance"),
     make_option(c("-f","--format"), type="character", help="Output format (interval or tabular)."),
     make_option(c("-p","--plots"), type="character", help="PDF of plots.")
   )
@@ -32,7 +34,11 @@ peaks <- readPeakFile(peaks)
 
 # Make TxDb from GTF
 txdb <- makeTxDbFromGFF(gtf, format="gtf")
-peakAnno <-  annotatePeak(peaks, TxDb=txdb, tssRegion=c(-up, down))
+if (!is.null(args$flankgeneinfo)) {
+    peakAnno <-  annotatePeak(peaks, TxDb=txdb, tssRegion=c(-up, down), addFlankGeneInfo=args$flankgeneinfo, flankDistance=args$flankgenedist)
+} else {
+    peakAnno <-  annotatePeak(peaks, TxDb=txdb, tssRegion=c(-up, down))
+}
 
 # Convert from 1-based to 0-based format
 res <- as.GRanges(peakAnno)
