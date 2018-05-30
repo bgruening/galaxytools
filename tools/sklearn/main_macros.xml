@@ -16,6 +16,47 @@ def read_columns(f, c, return_df=False, **args):
   return y
   </token>
 
+## generate an instance for one of sklearn.feature_selection classes
+## must call "@COLUMNS_FUNCTION@"
+  <token name="@FEATURE_SELECTOR_FUNCTION@">
+def feature_selector(inputs):
+  selector = inputs["selected_algorithm"]
+  selector = getattr(sklearn.feature_selection, selector)
+  options = inputs["options"]
+
+  if inputs['selected_algorithm'] == 'SelectFromModel':
+    if not options['threshold'] or options['threshold'] == 'None':
+      options['threshold'] = None
+      if 'extra_estimator' in inputs and inputs['extra_estimator']['has_estimator'] == 'no_load':
+        fitted_estimator = pickle.load(open("inputs['extra_estimator']['fitted_estimator']", 'r'))
+        new_selector = selector(fitted_estimator, prefit=True, **options)
+      else:
+        estimator=inputs["estimator"]
+        if inputs["extra_estimator"]["has_estimator"]=='no':
+          estimator=inputs["extra_estimator"]["new_estimator"]
+        estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+        new_selector = selector(estimator, **options)
+
+  elif inputs['selected_algorithm'] in ['RFE', 'RFECV']:
+    if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
+      options['scoring'] = None
+    estimator=inputs["estimator"]
+    if inputs["extra_estimator"]["has_estimator"]=='no':
+      estimator=inputs["extra_estimator"]["new_estimator"]
+    estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+    new_selector = selector(estimator, **options)
+
+  elif inputs['selected_algorithm'] == "VarianceThreshold":
+    new_selector = selector(**options)
+
+  else:
+    score_func = inputs["score_func"]
+    score_func = getattr(sklearn.feature_selection, score_func)
+    new_selector = selector(score_func, **options)
+
+  return new_selector
+  </token>
+
   <xml name="python_requirements">
       <requirements>
           <requirement type="package" version="2.7">python</requirement>
@@ -794,6 +835,13 @@ def read_columns(f, c, return_df=False, **args):
     </when>
     <yield/>
   </xml>
+  <xml name="estimator_input_no_fit">
+    <expand macro="feature_selection_estimator" />
+    <conditional name="extra_estimator">
+      <expand macro="feature_selection_extra_estimator" />
+      <expand macro="feature_selection_estimator_choices" />
+    </conditional>
+  </xml>
   <xml name="feature_selection_all">
     <conditional name="feature_selection_algorithms">
       <param name="selected_algorithm" type="select" label="Select a feature selection algorithm">
@@ -975,8 +1023,8 @@ def read_columns(f, c, return_df=False, **args):
     <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A metric used to evaluate the estimator"/>
   </xml>
 
-  <xml name="pre_dispatch">
-    <param argument="pre_dispatch" type="text" value="all" optional="true" label="pre_dispatch" help="Number of predispatched jobs for parallel execution"/>
+  <xml name="pre_dispatch" token_type="text" token_default_value="all" token_help="Number of predispatched jobs for parallel execution">
+    <param argument="pre_dispatch" type="@TYPE@" value="@DEFAULT_VALUE@" optional="true" label="pre_dispatch" help="@HELP@"/>
   </xml>
 
   <!-- Outputs -->
