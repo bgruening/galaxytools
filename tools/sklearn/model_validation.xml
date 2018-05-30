@@ -18,12 +18,16 @@
 import sys
 import json
 import pandas
+import ast
 import pickle
 import numpy as np
 import sklearn.model_selection
 from sklearn import svm, linear_model, ensemble
+from sklearn.pipeline import Pipeline
 
 @COLUMNS_FUNCTION@
+
+@FEATURE_SELECTOR_FUNCTION@
 
 input_json_path = sys.argv[1]
 params = json.load(open(input_json_path, "r"))
@@ -51,50 +55,90 @@ y = read_columns(
 )
 y=y.ravel()
 
-validator = params["model_validation_functions"]["selected_function"]
-validator = getattr(sklearn.model_selection, validator)
 options = params["model_validation_functions"]["options"]
 if 'scoring' in options and options['scoring'] == '':
     options['scoring'] = None
+if 'pre_dispatch' in options and options['pre_dispatch'] == '':
+    options['pre_dispatch'] = None
 
+pipeline_steps = []
+
+## Set up feature selector and add to pipeline steps.
+if params['feature_selection']['do_feature_selection'] == 'Yes':
+    feature_selector = feature_selector(params['feature_selection']['feature_selection_algorithms'])
+    pipeline_steps.append( ('feature_selector', feature_selector))
+
+## Set up estimator and add to pipeline.
 estimator=params["model_validation_functions"]["estimator"]
 if params["model_validation_functions"]["extra_estimator"]["has_estimator"] == 'no':
     estimator = params["model_validation_functions"]["extra_estimator"]["new_estimator"]
 estimator = eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
 
-#if $model_validation_functions.selected_function == 'cross_validate':
-res = validator(estimator, X, y, **options)
-rval = res["$model_validation_functions.return_type"]
+pipeline_steps.append( ('estimator', estimator) )
 
-#elif $model_validation_functions.selected_function == 'learning_curve':
-options['train_sizes'] = eval(options['train_sizes'])
-train_sizes_abs, train_scores, test_scores = validator(estimator, X, y, **options)
-rval = eval("$model_validation_functions.return_type")
+pipeline = Pipeline(pipeline_steps)
 
-#elif $model_validation_functions.selected_function == 'permutation_test_score':
-score, permutation_scores, pvalue = validator(estimator, X, y, **options)
-rval = eval("$model_validation_functions.return_type")
-if "$model_validation_functions.return_type" in ["score", "pvalue"]:
-    rval = [rval]
+## Set up validator, run pipeline through validator and return results.
 
-#elif $model_validation_functions.selected_function == 'validation_curve':
-options['param_range'] = eval(options['param_range'])
-train_scores, test_scores = validator(estimator, X, y, **options)
-rval = eval("$model_validation_functions.return_type")
+validator = params["model_validation_functions"]["selected_function"]
+validator = getattr(sklearn.model_selection, validator)
 
-#else:
-rval = validator(estimator, X, y, **options)
-#end if
+selected_function = params["model_validation_functions"]["selected_function"]
+rval_type = params["model_validation_functions"].get("return_type", None)
+
+if selected_function == 'cross_validate':
+    res = validator(pipeline, X, y, **options)
+    rval = res[rval_type]
+elif selected_function == 'learning_curve':
+    options['train_sizes'] = eval(options['train_sizes'])
+    train_sizes_abs, train_scores, test_scores = validator(pipeline, X, y, **options)
+    rval = eval(rval_type)
+elif selected_function == 'permutation_test_score':
+    score, permutation_scores, pvalue = validator(pipeline, X, y, **options)
+    rval = eval(rval_type)
+    if rval_type in ["score", "pvalue"]:
+        rval = [rval]
+elif selected_function == 'validation_curve':
+    options['param_name'] = 'estimator__' + options['param_name']
+    options['param_range'] = eval(options['param_range'])
+    train_scores, test_scores = validator(pipeline, X, y, **options)
+    rval = eval(rval_type)
+elif selected_function == 'GridSearchCV':
+    param_grid = params["model_validation_functions"]["param_grid"].replace("__sq__","'")\
+        .replace('__dq__','"').replace("__oc__", "{").replace("__cc__", "}")\
+        .replace("__ob__", "[").replace("__cb__", "]")
+    param_grid = ast.literal_eval(param_grid)
+    grid = validator(pipeline, param_grid, **options)
+    grid.fit(X, y)
+    rval = getattr(grid, rval_type)
+    if rval_type in ["best_estimator_", "best_score_", "best_index_"]:
+        rval = [rval]     
+else:
+    rval = validator(pipeline, X, y, **options)
 
 rval = pandas.DataFrame(rval)
-rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
+if rval_type and rval_type == "cv_results_":
+    rval.to_csv(path_or_buf="$outfile", sep='\t', header=True, index=False)
+else:
+    rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
 
             ]]>
         </configfile>
     </configfiles>
     <inputs>
+        <conditional name="feature_selection">
+            <param name="do_feature_selection" type="select" label="Do feature selection?">
+                <option value="No" selected="true"/>
+                <option value="Yes"/>
+            </param>
+            <when value="No"/>
+            <when value="Yes">
+                <expand macro="feature_selection_all"/>
+            </when>
+        </conditional>
         <conditional name="model_validation_functions">
             <param name="selected_function" type="select" label="Select a model validation function">
+                <option value="GridSearchCV">GridSearchCV - Exhaustive search over specified parameter values for an estimator </option>
                 <option value="cross_validate">cross_validate - Evaluate metric(s) by cross-validation and also record fit/score times</option>
                 <option value="cross_val_predict">cross_val_predict - Generate cross-validated estimates for each input data point</option>
                 <option value="cross_val_score">cross_val_score - Evaluate a score by cross-validation</option>
@@ -102,12 +146,28 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
                 <option value="permutation_test_score">permutation_test_score - Evaluate the significance of a cross-validated score with permutations</option>
                 <option value="validation_curve">validation_curve - Validation curve</option>
             </param>
+            <when value="GridSearchCV">
+                <expand macro="estimator_input_no_fit" />
+                <param argument="param_grid" type="text" value="[{'feature_selector__k': [3, 5, 7, 9], 'estimator__C': [1, 10, 100, 1000]}]" label="param_grid" help="Dictionary with parameters names (string) as keys and lists of parameter settings to try as values, or a list of such dictionaries, in which case the grids spanned by each dictionary in the list are explored"/>
+                <section name="options" title="Other Options" expanded="false">
+                    <expand macro="scoring"/>
+                    <expand macro="model_validation_common_options"/>
+                    <expand macro="pre_dispatch" value="2*n_jobs" help="Controls the number of jobs that get dispatched during parallel execution"/>
+                    <param argument="iid" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="iid" help="Data is identically distributed?"/>
+                    <param argument="refit" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="refit" help="Refit an estimator using the best found parameters on the whole dataset."/>
+                    <!--error_score-->
+                    <param argument="return_train_score" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="return_train_score" help=""/>
+                </section>
+                <param name="return_type" type="select" label="Select a return type">
+                    <option value="cv_results_" selected="true">cv_results_</option>
+                    <option value="best_estimator_">best_estimator_</option>
+                    <option value="best_score_">best_score_</option>
+                    <option value="best_params_">best_params_</option>
+                    <option value="best_index_">best_index_</option>
+                </param>
+            </when>
             <when value="cross_validate">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
+                <expand macro="estimator_input_no_fit" />
                 <section name="options" title="Other Options" expanded="false">
                     <!--groups-->
                     <expand macro="model_validation_common_options"/>
@@ -123,18 +183,12 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
                 </param>
             </when>
             <when value="cross_val_predict">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
+                <expand macro="estimator_input_no_fit" />
                 <section name="options" title="Other Options" expanded="false">
                     <!--groups-->
-                    <param argument="cv" type="integer" value="" optional="true" label="cv" help="The number of folds in a (Stratified)KFold" />
-                    <expand macro="n_jobs"/>
-                    <expand macro="verbose"/>
+                    <expand macro="model_validation_common_options" />
                     <!--fit_params-->
-                    <param argument="pre_dispatch" type="integer" value="" optional="true" label="pre_dispatch" help="Controls the number of jobs that get dispatched during parallel execution" />
+                    <expand macro="pre_dispatch" value="2*n_jobs’" help="Controls the number of jobs that get dispatched during parallel execution"/>
                     <param argument="method" type="select" label="Invokes the passed method name of the passed estimator">
                         <option value="predict" selected="true">predict</option>
                         <option value="predict_proba">predict_proba</option>
@@ -142,11 +196,7 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
                 </section>
             </when>
             <when value="cross_val_score">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
+                <expand macro="estimator_input_no_fit" />
                 <section name="options" title="Other Options" expanded="false">
                     <!--groups-->
                     <expand macro="model_validation_common_options"/>
@@ -156,11 +206,7 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
                 </section>
             </when>
             <when value="learning_curve">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
+                <expand macro="estimator_input_no_fit" />
                 <section name="options" title="Other Options" expanded="false">
                     <!--groups-->
                     <expand macro="model_validation_common_options"/>
@@ -178,11 +224,7 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
                 </param>
             </when>
             <when value="permutation_test_score">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
+                <expand macro="estimator_input_no_fit" />
                 <section name="options" title="Other Options" expanded="false">
                     <!--groups-->
                     <expand macro="model_validation_common_options"/>
@@ -197,11 +239,7 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
                 </param>
             </when>
             <when value="validation_curve">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
+                <expand macro="estimator_input_no_fit" />
                 <section name="options" title="Other Options" expanded="false">
                     <param name="param_name" type="text" value="gamma" label="param_name" help="Name of the parameter that will be varied"/>
                     <param name="param_range" type="text" value="np.logspace(-6, -1, 5)" label="param_range" help="The values of the parameter that will be evaluated."/>
@@ -286,6 +324,23 @@ rval.to_csv(path_or_buf="$outfile", sep='\t', header=False, index=False)
             <param name="col2" value="1"/>
             <param name="return_type" value="test_scores"/>
             <output name="outfile" file="mv_result06.tabular"/>
+        </test>
+        <test>
+            <param name="do_feature_selection" value="Yes"/>
+            <param name="selected_algorithm" value="SelectKBest"/>
+            <param name="score_func" value="chi2"/>
+            <param name="selected_function" value="GridSearchCV"/>
+            <param name="estimator" value="svm.SVR(kernel=&quot;linear&quot;)"/>
+            <param name="has_estimator" value="yes"/>
+            <param name="param_grid" value="[{'feature_selector__k': [3, 7], 'estimator__C': [1, 100]}]"/>
+            <param name="return_type" value="best_score_"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="col2" value="1"/>
+            <output name="outfile" file="mv_result07.tabular"/>
         </test>
     </tests>
     <help>
