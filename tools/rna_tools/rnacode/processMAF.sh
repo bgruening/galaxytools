@@ -151,8 +151,7 @@ do
 	if [[ "$line" =~ ^# ]]; then
 		echo -n > ${tmpif}
 	elif [[ "$line" =~ ^$ ]]; then
-		run_rnacode ${args[@]} ${tmpif}
-		# >> ${outfile:-/dev/stdout}
+		run_rnacode ${args[@]} ${tmpif} >> ${outfile:-/dev/stdout}
 		echo -n > ${tmpif}
 	else
                 if [[ -z $ref && "$line" =~ ^s ]]; then
@@ -167,8 +166,7 @@ do
 done < ${file:-/dev/stdin}
 # if there is something left -> process it
 if [[ "`cat ${tmpif} | wc -l`" -gt "0" ]]; then
-	run_rnacode ${args[@]} ${tmpif}
-       #	>> ${outfile:-/dev/stdout} 
+	run_rnacode ${args[@]} ${tmpif} >> ${outfile:-/dev/stdout} 
 fi
 
 if [[ ! -z "$eps" ]]; then
