@@ -17,7 +17,8 @@ option_list <- list(
     make_option(c("-F","--flankgeneinfo"), type="logical", help="Add flanking gene info"),
     make_option(c("-D","--flankgenedist"), type="integer", help="Flanking gene distance"),
     make_option(c("-f","--format"), type="character", help="Output format (interval or tabular)."),
-    make_option(c("-p","--plots"), type="character", help="PDF of plots.")
+    make_option(c("-p","--plots"), type="logical", help="PDF of plots."),
+    make_option(c("-r","--rdata"), type="logical", help="Output RData file.")
   )
 
 parser <- OptionParser(usage = "%prog [options] file", option_list=option_list)
@@ -28,7 +29,6 @@ gtf = args$gtf
 up = args$upstream
 down = args$downstream
 format = args$format
-plots = args$plots
 
 peaks <- readPeakFile(peaks)
 
@@ -58,7 +58,7 @@ if (format == "interval") {
 
 write.table(resout, file="out.tab", sep="\t", row.names=FALSE, quote=FALSE)
 
-if (!is.null(plots)) {
+if (!is.null(args$plots)) {
     pdf("out.pdf", width=14)
     plotAnnoPie(peakAnno)
     plotAnnoBar(peakAnno)
@@ -66,4 +66,10 @@ if (!is.null(plots)) {
     upsetplot(peakAnno)
     plotDistToTSS(peakAnno, title="Distribution of transcription factor-binding loci\nrelative to TSS")
     dev.off()
+}
+
+## Output RData file
+
+if (!is.null(args$rdata)) {
+  save.image(file = "ChIPseeker_analysis.RData")
 }
