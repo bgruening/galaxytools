@@ -6,6 +6,7 @@ loc <- Sys.setlocale("LC_MESSAGES", "en_US.UTF-8")
 suppressPackageStartupMessages({
     library(ChIPseeker)
     library(GenomicFeatures)
+    library(rtracklayer)
     library(optparse)
 })
 
@@ -40,19 +41,26 @@ if (!is.null(args$flankgeneinfo)) {
     peakAnno <-  annotatePeak(peaks, TxDb=txdb, tssRegion=c(-up, down))
 }
 
+# Add gene name
+features <- import(gtf, format="gtf")
+ann <- unique(mcols(features)[, c("gene_id", "gene_name")])
+res <- as.data.frame(peakAnno)
+res <- merge(res, ann, by.x="geneId", by.y="gene_id")
+names(res)[names(res) == "gene_name"] <- "geneName"
+
+#Extract metadata cols, 1st is geneId, rest should be from col 7 to end
+metacols <- res[, c(7:ncol(res), 1)]
 # Convert from 1-based to 0-based format
-res <- as.GRanges(peakAnno)
-metacols <- mcols(res)
 if (format == "interval") {
     metacols <- apply(as.data.frame(metacols), 1, function(col) paste(col, collapse="|"))
-    resout  <- data.frame(Chrom=seqnames(res),
-                    Start=start(res) - 1,
-                    End=end(res),
+    resout <- data.frame(Chrom=res$seqnames,
+                    Start=res$start - 1,
+                    End=res$end,
                     Comment=metacols)
 } else {
-    resout <- data.frame(Chrom=seqnames(res),
-                    Start=start(res) - 1,
-                    End=end(res),
+    resout <- data.frame(Chrom=res$seqnames,
+                    Start=res$start - 1,
+                    End=res$end,
                     metacols)
 }
 
