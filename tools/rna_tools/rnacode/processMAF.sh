@@ -133,7 +133,7 @@ ref=""
 last=0
 
 if [[ ! -z "$tabular" ]]; then
-	echo -e "HSS #\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP" >> ${outfile:-/dev/stdout}
+	echo -e "HSS #\tStrand\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP" >> ${outfile:-/dev/stdout}
 fi
 
 tmpif=$(mktemp -p '.')
