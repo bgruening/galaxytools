@@ -17,12 +17,20 @@
         nanopolish index -d fast5_files/ reads.fasta &&
         ln -s '$b' reads.bam &&
         ln -s '${b.metadata.bam_index}' reads.bam.bai &&
-        ln -s '$g' genome.fa &&
+        #if $reference_source.reference_source_selector == 'history':
+            ln -f -s '$reference_source.ref_file' genome.fa &&
+        #else:
+            ln -f -s '$reference_source.ref_file.fields.path' genome.fa &&
+        #end if
         
         nanopolish eventalign
         -r reads.fasta
         -b reads.bam
         -g genome.fa
+        #if str($min_mapping_quality):
+            -q $min_mapping_quality
+        #end if
+        --threads "\${GALAXY_SLOTS:-4}"        
         $samples
         $scale_events
         $sam
@@ -47,7 +55,22 @@
 
         <!-- variants consensus inputs -->
         <param type="data" argument="-b" format="bam" label="Reads aligned to the reference genome" />
-        <param type="data" argument="-g" format="fasta" label="The reference genome"/>
+        <conditional name="reference_source">
+          <param name="reference_source_selector" type="select" label="Load reference genome from">
+            <option value="cached">Local cache</option>
+            <option value="history">History</option>
+          </param>
+          <when value="cached">
+            <param name="ref_file" type="select" label="Using reference genome" help="REFERENCE_SEQUENCE">
+              <options from_data_table="all_fasta">
+              </options>
+              <validator type="no_options" message="A built-in reference genome is not available for the build associated with the selected input file"/>
+            </param>
+          </when>
+          <when value="history">
+            <param name="ref_file" type="data" format="fasta" label="Use the following dataset as the reference sequence" help="REFERENCE_SEQUENCE; You can upload a FASTA sequence to the history and use it as reference" />
+          </when>
+        </conditional>
 
         <!-- optional inputs -->
         <param type="data" name="input_models_fofn" argument="--models-fofn" format="txt" optional="true"
@@ -56,6 +79,8 @@
         <!-- optional params -->
         <param argument="-w" type="text" optional="true"
             label="find variants in window of region chromsome:start-end" />
+        <param name="min_mapping_quality" type="integer" optional="true" value=""
+            label="Only use reads with mapping quality of at least this value" help="(-q)"/>
 
         <!-- optional flags -->
         <param argument="--summary" type="boolean" truevalue="--summary" falsevalue="" checked="true"
@@ -74,37 +99,55 @@
     <outputs>
       <!-- variants consensus outputs -->
         <data name="output_summary" format="txt" from_work_dir="eventalign-summary.txt" label="eventalign summary of reads/strands" />
-        <data name="output_eventalign" format="txt" from_work_dir="eventalign.out" label="Computed variants"/>
+        <data name="output_eventalign" format="txt" from_work_dir="eventalign.out" label="Aligned squiggles"/>
     </outputs>
     <tests>
         <test>
-      <!-- index test -->
             <param name="input_merged" ftype="fasta" value="reads.fasta" />
             <param name="input_reads_raw" ftype="fast5.tar.gz" value="fast5_files.tar.gz" />
-            
-      <!-- variants consensus test -->
             <param name="b" value="reads.sorted.bam" />
-            <param name="g" value="draft.fa" />
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="draft.fa" />
             <param name="w" value="tig00000001:200000-200010" />
             <param name="sam" value="true" />
-
             <output name="output_summary" file="eventalign-summary.txt" />
             <output name="output_eventalign" file="reads-draft.eventalign.sam"/>
         </test>
         <test>
-      <!-- index test -->
             <param name="input_merged" ftype="fasta" value="reads.fasta" />
             <param name="input_reads_raw" ftype="fast5.tar.gz" value="fast5_files.tar.gz" />
-            
-      <!-- variants consensus test -->
             <param name="b" value="reads.sorted.bam" />
-            <param name="g" value="draft.fa" />
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="draft.fa" />
             <param name="w" value="tig00000001:200000-200010" />
             <param name="sam" value="false" />
             <param name="summary" value="false" />
             <param name="scale_events" value="true" />
             <param name="print_read_names" value="true" />
-
+            <param name="min_mapping_quality" value="0" />
+            <output name="output_summary" file="t2-eventalign-summary.txt" />
+            <output name="output_eventalign"> 
+                <assert_contents>
+                    <has_text text="contig" />
+                    <has_text text="position" />
+                    <has_text text="event_index" />
+                    <has_text text="tig00000001" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <!-- test data table reference -->
+            <param name="input_merged" ftype="fasta" value="reads.fasta" />
+            <param name="input_reads_raw" ftype="fast5.tar.gz" value="fast5_files.tar.gz" />
+            <param name="b" value="reads.sorted.bam" />
+            <param name="reference_source_selector" value="cached" />
+            <param name="ref_file" value="draft"/>
+            <param name="w" value="tig00000001:200000-200010" />
+            <param name="sam" value="false" />
+            <param name="summary" value="false" />
+            <param name="scale_events" value="true" />
+            <param name="print_read_names" value="true" />
+            <param name="min_mapping_quality" value="0" />
             <output name="output_summary" file="t2-eventalign-summary.txt" />
             <output name="output_eventalign"> 
                 <assert_contents>
