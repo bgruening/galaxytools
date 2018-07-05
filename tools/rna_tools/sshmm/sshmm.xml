@@ -1,0 +1,238 @@
+<tool id="sshmm" name="ssHMM" version="1.0.7">
+    <description>- RNA sequence-structure motif finder</description>
+    <requirements>
+        <requirement type="package" version="1.0.7">sshmm</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+    python '$__tool_directory__/fasta_report_sequence_lengths.py' $genome_fasta_file > chrom.sizes &&
+    mkdir prepro_out &&
+    preprocess_dataset 
+        prepro_out 
+        prepro_id 
+        $input_bed_file 
+        $genome_fasta_file 
+        chrom.sizes 
+        #if $str_pred_method == 'rnashapes':
+            --disable_RNAstructure 
+        #elif $str_pred_method == 'rnastructures':
+            --disable_RNAshapes 
+        #end if
+        #if $advanced_prepro_params.advanced_prepro_params_selector == 'ap_specify':
+            $advanced_prepro_params.disable_filtering
+            --min_score $advanced_prepro_params.min_score
+            --min_length $advanced_prepro_params.min_length
+            --max_length $advanced_prepro_params.max_length
+            --elongation $advanced_prepro_params.elongation
+        #end if
+    &&
+    mkdir results
+    &&
+    train_seqstructhmm 
+        prepro_out/fasta/prepro_id/positive.fasta
+        #if $str_pred_method == 'rnashapes':
+            prepro_out/shapes/prepro_id/positive.txt
+        #elif $str_pred_method == 'rnastructures':
+            prepro_out/structures/prepro_id/positive.txt
+        #end if
+        -o results
+        #if $advanced_train_params.advanced_train_params_selector == 'ap_specify':
+            --motif_length $advanced_train_params.motif_length
+            $advanced_train_params.init_random
+            --flexibility $advanced_train_params.flexibility
+            --block_size $advanced_train_params.block_size
+            --threshold $advanced_train_params.threshold
+            $advanced_train_params.only_best_shape
+        #end if
+    &&
+    mv results/job_* results/res_out
+    &&
+    cp -R ./ /home/uhlm/Dokumente/Projekte/ssHMM_Galaxy/tool_results
+    ]]></command>
+    <inputs>
+        <param name="input_bed_file" type="data" format="bed"
+               label="Genomic binding sites BED file"
+               help="Genomic BED file containing protein binding sites"/>
+        <param name="genome_fasta_file" type="data" format="fasta"
+               label="Genome reference FASTA file"
+               help="Genomic FASTA file for extracting sequences defined in BED file"/>
+        <param name="str_pred_method" type="select" label="Select structure prediction method">
+            <option value="rnashapes" selected="true">RNAshapes</option>
+            <option value="rnastructures">RNAstructures</option>
+        </param>
+        <conditional name="advanced_prepro_params">
+            <param name="advanced_prepro_params_selector" type="select" label="Advanced preprocessing parameters">
+                <option value="ap_not_specify" selected="true">Do not specify</option>
+                <option value="ap_specify">Manually specify</option>
+            </param>
+            <when value="ap_not_specify" />
+            <when value="ap_specify">
+                <param name="disable_filtering" truevalue="--disable_filtering" falsevalue="" checked="False"
+                       label="Skip the filtering step?" type="boolean"/>
+                <param name="min_score" type="float" value="0.0"
+                       label="Filtering: minimum score for binding site" />
+                <param name="min_length" type="integer" value="8"
+                       label="Filtering: minimum binding site length" />
+                <param name="max_length" type="integer" value="75"
+                       label="Filtering: maximum binding site length" />
+                <param name="elongation" type="integer" value="20"
+                       label="Elongation: span for up- and downstream elongation of binding sites" />
+            </when>
+        </conditional>
+        <conditional name="advanced_train_params">
+            <param name="advanced_train_params_selector" type="select" label="Advanced training parameters">
+                <option value="ap_not_specify" selected="true">Do not specify</option>
+                <option value="ap_specify">Manually specify</option>
+            </param>
+            <when value="ap_not_specify" />
+            <when value="ap_specify">
+                <param name="motif_length" type="integer" value="6" 
+                       label="Length of the motif that shall be found"/>
+                <param name="init_random" truevalue="--random" falsevalue="" checked="False"
+                       label="Initialize the model randomly?" type="boolean"
+                       help="By default model is initialized with Baum-Welch optimized sequence motif"/>
+                <param name="flexibility" type="integer" value="10"
+                       label="Greediness of Gibbs sampler" 
+                       help="Model parameters are sampled from among the top f configurations (default: 10); set f to 0 in order to include all possible configurations"/>
+                <param name="block_size" type="integer" value="1"
+                       label="Number of sequences to be held out in each iteration"/>
+                <param name="threshold" type="integer" value="10"
+                       label="Termination threshold"
+                       help="The iterative algorithm is terminated if the given reduction in sequence structure log-likelihood is not reached for any of the 3 last measurements (default: 10)"/>
+                <param name="only_best_shape" truevalue="--only-best-shape" falsevalue="" checked="False"
+                       label="Use only best structure for each sequence?" type="boolean"
+                       help="Train only using best structure for each sequence (default: use all structures)"/>
+            </when>
+        </conditional>
+        <section name="output_options" title="Output options">
+            <param name="output_prepro_files" type="boolean" value="False" 
+                   help="Set to output FASTA file and corresponding structures file for the extracted genomic regions"
+                   label="Output FASTA file and corresponding structures file?"/>
+            <param name="output_logo_files" type="boolean" value="False" 
+                   help="Set to output logo_global.png, logo_hairpin.png, and logo_best_sequences.png files"
+                   label="Output logo files?"/>
+            <param name="output_raw_files" type="boolean" value="False" 
+                   help="Set to output final_model.xml, logo_best_sequences.txt, logo_global.txt, logo_hairpin.txt files"
+                   label="Output raw logo and model files?"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data format="fasta" name="positive_fasta_out_file" 
+              label="${tool.name} on ${on_string} FASTA sequences (fasta)"
+              from_work_dir="prepro_out/fasta/prepro_id/positive.fasta">
+        <filter>
+            output_options['output_prepro_files'] is True
+        </filter>
+        </data>
+        <data format="txt" name="positive_rnashapes_out_file" 
+              label="${tool.name} on ${on_string} RNAshapes structures for sequences (txt)" 
+              from_work_dir="prepro_out/shapes/prepro_id/positive.txt">
+        <filter>
+            output_options['output_prepro_files'] is True and str_pred_method == 'rnashapes'
+        </filter>
+        </data>
+        <data format="txt" name="positive_rnastructures_out_file" 
+              label="${tool.name} on ${on_string} RNAstructures structures for sequences (txt)" 
+              from_work_dir="prepro_out/structure/prepro_id/positive.txt">
+        <filter>
+            output_options['output_prepro_files'] is True and str_pred_method == 'rnastructures'
+        </filter>
+        </data>
+        <data format="png" name="final_graph_png" 
+              label="${tool.name} on ${on_string} final graph (png)"
+              from_work_dir="results/res_out/final_graph.png"/>
+        <data format="png" name="logo_best_sequences_png" 
+              label="${tool.name} on ${on_string} logo best sequences (png)"
+              from_work_dir="results/res_out/logo_best_sequences.png">
+        <filter>
+            output_options['output_logo_files'] is True
+        </filter>
+        </data>
+        <data format="png" name="logo_global_png" 
+              label="${tool.name} on ${on_string} logo global (png)"
+              from_work_dir="results/res_out/logo_global.png">
+        <filter>
+            output_options['output_logo_files'] is True
+        </filter>
+        </data>
+        <data format="png" name="logo_hairpin_png" 
+              label="${tool.name} on ${on_string} logo hairpin (png)"
+              from_work_dir="results/res_out/logo_hairpin.png">
+        <filter>
+            output_options['output_logo_files'] is True
+        </filter>
+        </data>
+        <data format="txt" name="logo_best_sequences_txt" 
+              label="${tool.name} on ${on_string} logo best sequences (txt)"
+              from_work_dir="results/res_out/logo_best_sequences.txt">
+        <filter>
+            output_options['output_raw_files'] is True
+        </filter>
+        </data>
+        <data format="txt" name="logo_global_txt" 
+              label="${tool.name} on ${on_string} logo global (txt)"
+              from_work_dir="results/res_out/logo_global.txt">
+        <filter>
+            output_options['output_raw_files'] is True
+        </filter>
+        </data>
+        <data format="txt" name="logo_hairpin_txt" 
+              label="${tool.name} on ${on_string} logo hairpin (txt)"
+              from_work_dir="results/res_out/logo_hairpin.txt">
+        <filter>
+            output_options['output_raw_files'] is True
+        </filter>
+        </data>
+
+        <data format="xml" name="final_model_xml" 
+              label="${tool.name} on ${on_string} final model (xml)"
+              from_work_dir="results/res_out/final_model.xml">
+        <filter>
+            output_options['output_raw_files'] is True
+        </filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_bed_file" value="PUM2_sites_hsa_chrM.bed" ftype="bed"/>
+            <param name="genome_fasta_file" value="hsa_chrM.fa" ftype="fasta"/>
+            <param name="str_pred_method" value="rnastructures"/>
+            <param name="advanced_prepro_params_selector" value="ap_specify"/>
+            <param name="elongation" value="20"/>
+            <param name="output_logo_files" value="True"/>
+            <param name="output_raw_files" value="True"/>
+            <output name="positive_fasta_out_file" file="hsa_chrM_positive.fasta" ftype="fasta"/>
+            <output name="positive_rnastructures_out_file" file="hsa_chrM_structures_positive.txt" ftype="txt"/>
+            <output name="final_graph_png" file="test_structure_final_graph.png" ftype="png" compare="sim_size" delta="40000"/>
+            <output name="logo_global_png" file="test_structure_logo_global.png" ftype="png" compare="sim_size" delta="5000"/>
+            <output name="logo_hairpin_png" file="test_structure_logo_hairpin.png" ftype="png" compare="sim_size" delta="5000"/>
+            <output name="logo_best_sequences_png" file="test_structure_logo_best_sequences.png" ftype="png" compare="sim_size" delta="5000"/>
+        </test>
+        <test>
+            <param name="input_bed_file" value="PUM2_sites_hsa_chrM.bed" ftype="bed"/>
+            <param name="genome_fasta_file" value="hsa_chrM.fa" ftype="fasta"/>
+            <param name="str_pred_method" value="rnashapes"/>
+            <param name="output_logo_files" value="True"/>
+            <param name="output_raw_files" value="True"/>
+            <output name="positive_fasta_out_file" file="hsa_chrM_positive.fasta" ftype="fasta"/>
+            <output name="positive_rnashapes_out_file" file="hsa_chrM_shapes_positive.txt" ftype="txt"/>
+            <output name="final_graph_png" file="test_shapes_final_graph.png" ftype="png" compare="sim_size" delta="40000"/>
+            <output name="logo_global_png" file="test_shapes_logo_global.png" ftype="png" compare="sim_size" delta="5000"/>
+            <output name="logo_hairpin_png" file="test_shapes_logo_hairpin.png" ftype="png" compare="sim_size" delta="5000"/>
+            <output name="logo_best_sequences_png" file="test_shapes_logo_best_sequences.png" ftype="png" compare="sim_size" delta="5000"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+    ssHMM is an RNA motif finder that recovers sequence-structure motifs from RNA-binding protein data, such as CLIP-Seq data. The tool input consists of a BED file with genomic binding regions and the corresponding genome reference FASTA file. For structure prediction, the user can select between RNAshapes and RNAstructures. Advanced parameters can be set for both the preprocessing and the training stage.
+    
+    The output consists of a graph showing the found sequence motifs for the 5 structural contexts multiloop, hairpin, stem, internal loop, and exterior loop (output in .png format). The height of the nucleotides corresponds to their emission probabilities, while the thickness of the arrows corresponds to their transition probabilities. Additional files (intermediate, logo, model, raw) can be selected for output in the "Output options" section.
+
+    For more details have a look at the online documentation:
+
+    http://sshmm.readthedocs.io/en/latest/index.html
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1093/nar/gkx756</citation>
+    </citations>
+</tool>
