@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 
 import sys
 
@@ -29,14 +29,13 @@ with open(fasta_file) as f:
         if line.startswith(">"):
             new_id = line[1:].strip()
             if seq_len:
-                print "%s\t%i" % (seq_id, seq_len)
+                print("%s\t%i" % (seq_id, seq_len))
             seq_len = 0
             seq_id = new_id
         else:
             seq_len += len(line.strip())
-f.closed
 
 # Print last sequence length.
 if seq_len:
-    print "%s\t%i" % (seq_id, seq_len)
+    print("%s\t%i" % (seq_id, seq_len))
 
