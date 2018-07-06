@@ -22,6 +22,15 @@ import sklearn.svm
 import pandas
 import pickle
 
+import logging
+logging.basicConfig(format='%(asctime)s,%(msecs)d %(levelname)-8s [%(filename)s:%(lineno)d] %(message)s',
+    filename='tool.log',
+    datefmt='%d-%m-%Y:%H:%M:%S',
+    level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+@COLUMNS_FUNCTION@
+
 input_json_path = sys.argv[1]
 params = json.load(open(input_json_path, "r"))
 
@@ -29,18 +38,54 @@ params = json.load(open(input_json_path, "r"))
 
 classifier_object = pickle.load(open("$infile_model", 'rb'))
 
-data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+header = 'infer' if params["selected_tasks"]["header"] else None
+data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
+logger.info(data)
 prediction = classifier_object.predict(data)
 prediction_df = pandas.DataFrame(prediction)
+logger.info(prediction_df)
 res = pandas.concat([data, prediction_df], axis=1)
+logger.info(res)
 res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
 
 #else:
 
-data_train = pandas.read_csv("$selected_tasks.infile_train", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+input_type = params["selected_tasks"]["selected_algorithms"]["input_options"]["selected_input"]
+if input_type=="tabular":
+    header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header1"] else None
+    column_option = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
+    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+        c = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_1"]["col1"]
+    else:
+        c = None
+    X = read_columns(
+            "$selected_tasks.selected_algorithms.input_options.infile1",
+            c = c,
+            c_option = column_option,
+            sep='\t',
+            header=header,
+            parse_dates=True
+    )
+else:
+    X = mmread("$selected_tasks.selected_algorithms.input_options.infile1")
+logger.info(X)
 
-data = data_train.ix[:,0:len(data_train.columns)-1]
-labels = np.array(data_train[data_train.columns[len(data_train.columns)-1]])
+header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header2"] else None
+column_option = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
+if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+    c = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_2"]["col2"]
+else:
+    c = None
+y = read_columns(
+        "$selected_tasks.selected_algorithms.input_options.infile2",
+        c = c,
+        c_option = column_option,
+        sep='\t',
+        header=header,
+        parse_dates=True
+)
+y=y.ravel()
+logger.info(y)
 
 options = params["selected_tasks"]["selected_algorithms"]["options"]
 selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
@@ -48,10 +93,11 @@ selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_a
 if not(selected_algorithm=="LinearSVC"):
     if options["kernel"]:
         options["kernel"] = str(options["kernel"])
+logger.info(options)
 
 my_class = getattr(sklearn.svm, selected_algorithm)
 classifier_object = my_class(**options)
-classifier_object.fit(data,labels)
+classifier_object.fit(X, y)
 
 pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
 
@@ -61,23 +107,26 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
         </configfile>
     </configfiles>
     <inputs>
-        <expand macro="train_loadConditional" model="zip">
+        <expand macro="sl_Conditional" model="zip">
             <param name="selected_algorithm" type="select" label="Classifier type">
                 <option value="SVC">C-Support Vector Classification</option>
                 <option value="NuSVC">Nu-Support Vector Classification</option>
                 <option value="LinearSVC">Linear Support Vector Classification</option>
             </param>
             <when value="SVC">
+                <expand macro="sl_mixed_input"/>
                 <expand macro="svc_advanced_options">
                     <expand macro="C"/>
                 </expand>
             </when>
             <when value="NuSVC">
+                <expand macro="sl_mixed_input"/>
                 <expand macro="svc_advanced_options">
                     <param argument="nu" type="float" optional="true" value="0.5" label="Nu control parameter" help="Controls the number of support vectors. Should be in the interval (0, 1]. "/>
                 </expand>
             </when>
             <when value="LinearSVC">
+                <expand macro="sl_mixed_input"/>
                 <section name="options" title="Advanced Options" expanded="False">
                     <expand macro="C"/>
                     <expand macro="tol" default_value="0.001" help_text="Tolerance for stopping criterion. "/>
@@ -108,21 +157,30 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
 
     <tests>
         <test>
-            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile1" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile2" value="train_set.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="SVC"/>
             <param name="random_state" value="5"/>
             <output name="outfile_fit" file="svc_model01.txt"/>
         </test>
         <test>
-            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile1" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile2" value="train_set.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="NuSVC"/>
             <param name="random_state" value="5"/>
             <output name="outfile_fit" file="svc_model02.txt"/>
         </test>
         <test>
-            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile1" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile2" value="train_set.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="LinearSVC"/>
             <param name="random_state" value="5"/>
