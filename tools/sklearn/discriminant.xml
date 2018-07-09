@@ -22,6 +22,9 @@ import sklearn.discriminant_analysis
 import pandas
 import pickle
 
+@COLUMNS_FUNCTION@
+@GET_X_y_FUNCTION@
+
 input_json_path = sys.argv[1]
 params = json.load(open(input_json_path, "r"))
 
@@ -30,7 +33,8 @@ params = json.load(open(input_json_path, "r"))
 
 classifier_object = pickle.load(open("$infile_model", 'r'))
 
-data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+header = 'infer' if params["selected_tasks"]["header"] else None
+data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
 prediction = classifier_object.predict(data)
 prediction_df = pandas.DataFrame(prediction)
 res = pandas.concat([data, prediction_df], axis=1)
@@ -38,17 +42,14 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
 
 #else:
 
-data_train = pandas.read_csv("$selected_tasks.infile_train", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
-
-data = data_train.ix[:,0:len(data_train.columns)-1]
-labels = np.array(data_train[data_train.columns[len(data_train.columns)-1]])
+X, y = get_X_y(params, "$selected_tasks.selected_algorithms.input_options.infile1" ,"$selected_tasks.selected_algorithms.input_options.infile2")
 
 options = params["selected_tasks"]["selected_algorithms"]["options"]
 selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
 
 my_class = getattr(sklearn.discriminant_analysis, selected_algorithm)
 classifier_object = my_class(**options)
-classifier_object.fit(data,labels)
+classifier_object.fit(X, y)
 pickle.dump(classifier_object,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCOL)
 
 #end if
@@ -56,12 +57,13 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCO
         </configfile>
     </configfiles>
     <inputs>
-        <expand macro="train_loadConditional" model="zip">
+        <expand macro="sl_Conditional" model="zip">
             <param name="selected_algorithm" type="select" label="Classifier type">
                 <option value="LinearDiscriminantAnalysis" selected="true">Linear Discriminant Classifier</option>
                 <option value="QuadraticDiscriminantAnalysis">Quadratic Discriminant Classifier</option>
             </param>
             <when value="LinearDiscriminantAnalysis">
+                <expand macro="sl_mixed_input"/>
                 <section name="options" title="Advanced Options" expanded="False">
                     <param argument="solver" type="select" optional="true" label="Solver" help="">
                         <option value="svd" selected="true">Singular Value Decomposition</option>
@@ -78,6 +80,7 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCO
                 </section>
             </when>
             <when value="QuadraticDiscriminantAnalysis">
+                <expand macro="sl_mixed_input"/>
                 <section name="options" title="Advanced Options" expanded="False">
                     <!--expand macro="priors"/-->
                     <param argument="reg_param" type="float" optional="true" value="0.0" label="Regularization coefficient" help="Covariance estimate regularizer."/>
@@ -91,7 +94,12 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCO
     <expand macro="output"/>
     <tests>
         <test>
-            <param name="infile_train" value="train.tabular" ftype="tabular"/>
+            <param name="infile1" value="train.tabular" ftype="tabular"/>
+            <param name="infile2" value="train.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="header2" value="True"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="LinearDiscriminantAnalysis"/>
             <param name="solver" value="svd" />
@@ -99,33 +107,46 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCO
             <output name="outfile_fit" file="lda_model01" compare="sim_size" delta="500"/>
         </test>
         <test>
-            <param name="infile_train" value="train.tabular" ftype="tabular"/>
+            <param name="infile1" value="train.tabular" ftype="tabular"/>
+            <param name="infile2" value="train.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="header2" value="True"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="LinearDiscriminantAnalysis"/>
             <param name="solver" value="lsqr"/>
             <output name="outfile_fit" file="lda_model02" compare="sim_size" delta="500"/>
         </test>
         <test>
-            <param name="infile_train" value="train.tabular" ftype="tabular"/>
+            <param name="infile1" value="train.tabular" ftype="tabular"/>
+            <param name="infile2" value="train.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="header2" value="True"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
-            <param name="selected_algorithm" value="QuadraticAnalysis"/>
+            <param name="selected_algorithm" value="QuadraticDiscriminantAnalysis"/>
             <output name="outfile_fit" file="qda_model01" compare="sim_size" delta="500"/>
         </test>
         <test>
             <param name="infile_model" value="lda_model01" ftype="zip"/>
             <param name="infile_data" value="test.tabular" ftype="tabular"/>
+            <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="lda_prediction_result01.tabular"/>
         </test>
         <test>
             <param name="infile_model" value="lda_model02" ftype="zip"/>
             <param name="infile_data" value="test.tabular" ftype="tabular"/>
+            <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="lda_prediction_result02.tabular"/>
         </test>
         <test>
             <param name="infile_model" value="qda_model01" ftype="zip"/>
             <param name="infile_data" value="test.tabular" ftype="tabular"/>
+            <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="qda_prediction_result01.tabular"/>
         </test>

@@ -21,6 +21,9 @@ import sklearn.neighbors
 import pandas
 import pickle
 
+@COLUMNS_FUNCTION@
+@GET_X_y_FUNCTION@
+
 input_json_path = sys.argv[1]
 params = json.load(open(input_json_path, "r"))
 
@@ -29,7 +32,8 @@ params = json.load(open(input_json_path, "r"))
 
 classifier_object = pickle.load(open("$infile_model", 'r'))
 
-data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+header = 'infer' if params["selected_tasks"]["header"] else None
+data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
 prediction = classifier_object.predict(data)
 prediction_df = pandas.DataFrame(prediction)
 res = pandas.concat([data, prediction_df], axis=1)
@@ -37,10 +41,7 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
 
 #else:
 
-data_train = pandas.read_csv("$selected_tasks.infile_train", sep='\t', header=0, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
-
-data = data_train.ix[:,0:len(data_train.columns)-1]
-labels = np.array(data_train[data_train.columns[len(data_train.columns)-1]])
+X, y = get_X_y(params, "$selected_tasks.selected_algorithms.input_options.infile1" ,"$selected_tasks.selected_algorithms.input_options.infile2")
 
 selected_algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
 
@@ -55,7 +56,7 @@ elif selected_algorithm == "ncentroid":
 
 my_class = getattr(sklearn.neighbors, classifier)
 classifier_object = my_class(**options)
-classifier_object.fit(data,labels)
+classifier_object.fit(X, y)
 
 pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
 
@@ -65,12 +66,13 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
         </configfile>
     </configfiles>
     <inputs>
-        <expand macro="train_loadConditional" model="zip"><!--Todo: add sparse to targets-->
+        <expand macro="sl_Conditional" model="zip"><!--Todo: add sparse to targets-->
             <param name="selected_algorithm" type="select" label="Classifier type">
                 <option value="nneighbors">Nearest Neighbors</option>
                 <option value="ncentroid">Nearest Centroid</option>
             </param>
             <when value="nneighbors">
+                <expand macro="sl_mixed_input"/>
                 <conditional name="sampling_methods">
                     <param name="sampling_method" type="select" label="Neighbor selection method">
                         <option value="KNeighborsClassifier" selected="true">K-nearest neighbors</option>
@@ -90,6 +92,7 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
                 </conditional>
             </when>
             <when value="ncentroid">
+                 <expand macro="sl_mixed_input"/>
                 <section name="options" title="Advanced Options" expanded="False">
                     <param argument="metric" type="text" optional="true" value="euclidean" label="Metric"
                         help="The metric to use when calculating distance between instances in a feature array."/>
@@ -104,7 +107,12 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
 
     <tests>
         <test>
-            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile1" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile2" value="train_set.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="header2" value="True"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="nneighbors"/>
             <param name="sampling_method" value="KNeighborsClassifier" />
@@ -112,7 +120,12 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
             <output name="outfile_fit" file="nn_model01.txt"/>
         </test>
         <test>
-            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile1" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile2" value="train_set.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="header2" value="True"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value=""/>
             <param name="selected_algorithm" value="nneighbors"/>
@@ -120,7 +133,12 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
             <output name="outfile_fit" file="nn_model02.txt"/>
         </test>
         <test>
-            <param name="infile_train" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile1" value="train_set.tabular" ftype="tabular"/>
+            <param name="infile2" value="train_set.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="header2" value="True"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="ncentroid"/>
             <output name="outfile_fit" file="nn_model03.txt"/>
@@ -128,18 +146,21 @@ pickle.dump(classifier_object,open("$outfile_fit", 'w+'))
         <test>
             <param name="infile_model" value="nn_model01.txt" ftype="txt"/>
             <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="nn_prediction_result01.tabular"/>
         </test>
         <test>
             <param name="infile_model" value="nn_model02.txt" ftype="txt"/>
             <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="nn_prediction_result02.tabular"/>
         </test>
         <test>
             <param name="infile_model" value="nn_model03.txt" ftype="txt"/>
             <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="nn_prediction_result03.tabular"/>
         </test>
