@@ -25,6 +25,8 @@ from sklearn import svm, linear_model, ensemble
 
 @COLUMNS_FUNCTION@
 
+@FEATURE_SELECTOR_FUNCTION@
+
 input_json_path = sys.argv[1]
 params = json.load(open(input_json_path, "r"))
 
@@ -33,10 +35,15 @@ features_has_header = params["input_options"]["header1"]
 input_type = params["input_options"]["selected_input"]
 if input_type=="tabular":
     header = 'infer' if features_has_header else None
-    header = 'infer' if params["input_options"]["header1"] else None
+    column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
+    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+        c = params["input_options"]["column_selector_options_1"]["col1"]
+    else:
+        c = None
     X, input_df = read_columns(
             "$input_options.infile1",
-            "$input_options.col1",
+            c = c,
+            c_option = column_option,
             return_df = True,
             sep='\t',
             header=header,
@@ -47,9 +54,15 @@ else:
 
 ## Read labels
 header = 'infer' if params["input_options"]["header2"] else None
+column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
+if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+    c = params["input_options"]["column_selector_options_2"]["col2"]
+else:
+    c = None
 y = read_columns(
         "$input_options.infile2",
-        "$input_options.col2",
+        c = c,
+        c_option = column_option,
         sep='\t',
         header=header,
         parse_dates=True
@@ -57,42 +70,10 @@ y = read_columns(
 y=y.ravel()
 
 ## Create feature selector
-selector = params["feature_selection_algorithms"]["selected_algorithm"]
-selector = getattr(sklearn.feature_selection, selector)
-options = params["feature_selection_algorithms"]["options"]
-
-if params['feature_selection_algorithms']['selected_algorithm'] == 'SelectFromModel':
-    if not options['threshold'] or options['threshold'] == 'None':
-        options['threshold'] = None
-        if 'extra_estimator' in params['feature_selection_algorithms'] and params['feature_selection_algorithms']['extra_estimator']['has_estimator'] == 'no_load':
-            fitted_estimator = pickle.load(open("params['feature_selection_algorithms']['extra_estimator']['fitted_estimator']", 'r'))
-            new_selector = selector(fitted_estimator, prefit=True, **options)
-        else:
-            estimator=params["feature_selection_algorithms"]["estimator"]
-            if params["feature_selection_algorithms"]["extra_estimator"]["has_estimator"]=='no':
-                estimator=params["feature_selection_algorithms"]["extra_estimator"]["new_estimator"]
-            estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
-            new_selector = selector(estimator, **options)
-            new_selector.fit(X, y)
-
-elif params['feature_selection_algorithms']['selected_algorithm'] in ['RFE', 'RFECV']:
-    if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
-        options['scoring'] = None
-    estimator=params["feature_selection_algorithms"]["estimator"]
-    if params["feature_selection_algorithms"]["extra_estimator"]["has_estimator"]=='no':
-        estimator=params["feature_selection_algorithms"]["extra_estimator"]["new_estimator"]
-    estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
-    new_selector = selector(estimator, **options)
-    new_selector.fit(X, y)
-
-elif params['feature_selection_algorithms']['selected_algorithm'] == "VarianceThreshold":
-    new_selector = selector(**options)
-    new_selector.fit(X, y)
-
-else:
-    score_func = params["feature_selection_algorithms"]["score_func"]
-    score_func = getattr(sklearn.feature_selection, score_func)
-    new_selector = selector(score_func, **options)
+new_selector = feature_selector(params['feature_selection_algorithms'])
+if params['feature_selection_algorithms']['selected_algorithm'] != 'SelectFromModel' or \
+        'extra_estimator' not in params['feature_selection_algorithms'] or \
+        params['feature_selection_algorithms']['extra_estimator']['has_estimator'] != 'no_load' :
     new_selector.fit(X, y)
 
 ## Transform to select features
@@ -230,6 +211,19 @@ res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
             <param name="col2" value="1"/>
             <param name="header2" value="True"/>
             <output name="outfile" file="feature_selection_result10"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectKBest"/>
+            <param name="k" value="3"/>
+            <param name="infile1" value="test3.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="selected_column_selector_option" value="all_but_by_header_name"/>
+            <param name="col1" value="target"/>
+            <param name="infile2" value="test3.tabular" ftype="tabular"/>
+            <param name="header2" value="True"/>
+            <param name="selected_column_selector_option2" value="by_header_name"/>
+            <param name="col2" value="target"/>
+            <output name="outfile" file="feature_selection_result11"/>
         </test>
     </tests>
     <help>

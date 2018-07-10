@@ -2,18 +2,105 @@
   <token name="@VERSION@">0.9</token>
 
   <token name="@COLUMNS_FUNCTION@">
-def read_columns(f, c, return_df=False, **args):
+def read_columns(f, c=None, c_option='by_index_number', return_df=False, **args):
   data = pandas.read_csv(f, **args)
-  cols = c.split (',')
-  cols = map(int, cols)
-  cols = list(map(lambda x: x - 1, cols))
-  data = data.iloc[:,cols]
+  if c_option == 'by_index_number':
+    cols = list(map(lambda x: x - 1, c))
+    data = data.iloc[:,cols]
+  if c_option == 'all_but_by_index_number':
+    cols = list(map(lambda x: x - 1, c))
+    data.drop(data.columns[cols], axis=1, inplace=True)
+  if c_option == 'by_header_name':
+    cols = [e.strip() for e in c.split(',')]
+    data = data[cols]
+  if c_option == 'all_but_by_header_name':
+    cols = [e.strip() for e in c.split(',')]
+    data.drop(cols, axis=1, inplace=True)
   y = data.values
   if return_df:
     return y, data
   else:
     return y
   return y
+  </token>
+
+## generate an instance for one of sklearn.feature_selection classes
+  <token name="@FEATURE_SELECTOR_FUNCTION@">
+def feature_selector(inputs):
+  selector = inputs["selected_algorithm"]
+  selector = getattr(sklearn.feature_selection, selector)
+  options = inputs["options"]
+
+  if inputs['selected_algorithm'] == 'SelectFromModel':
+    if not options['threshold'] or options['threshold'] == 'None':
+      options['threshold'] = None
+      if 'extra_estimator' in inputs and inputs['extra_estimator']['has_estimator'] == 'no_load':
+        fitted_estimator = pickle.load(open("inputs['extra_estimator']['fitted_estimator']", 'r'))
+        new_selector = selector(fitted_estimator, prefit=True, **options)
+      else:
+        estimator=inputs["estimator"]
+        if inputs["extra_estimator"]["has_estimator"]=='no':
+          estimator=inputs["extra_estimator"]["new_estimator"]
+        estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+        new_selector = selector(estimator, **options)
+
+  elif inputs['selected_algorithm'] in ['RFE', 'RFECV']:
+    if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
+      options['scoring'] = None
+    estimator=inputs["estimator"]
+    if inputs["extra_estimator"]["has_estimator"]=='no':
+      estimator=inputs["extra_estimator"]["new_estimator"]
+    estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+    new_selector = selector(estimator, **options)
+
+  elif inputs['selected_algorithm'] == "VarianceThreshold":
+    new_selector = selector(**options)
+
+  else:
+    score_func = inputs["score_func"]
+    score_func = getattr(sklearn.feature_selection, score_func)
+    new_selector = selector(score_func, **options)
+
+  return new_selector
+  </token>
+
+  <token name="@GET_X_y_FUNCTION@">
+def get_X_y(params, file1, file2):
+  input_type = params["selected_tasks"]["selected_algorithms"]["input_options"]["selected_input"]
+  if input_type=="tabular":
+    header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header1"] else None
+    column_option = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
+    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+      c = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_1"]["col1"]
+    else:
+      c = None
+    X = read_columns(
+      file1,
+      c = c,
+      c_option = column_option,
+      sep='\t',
+      header=header,
+      parse_dates=True
+    )
+  else:
+    X = mmread(open(file1, 'r'))
+
+  header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header2"] else None
+  column_option = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
+  if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+    c = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_2"]["col2"]
+  else:
+    c = None
+  y = read_columns(
+    file2,
+    c = c,
+    c_option = column_option,
+    sep='\t',
+    header=header,
+    parse_dates=True
+  )
+  y=y.ravel()
+  return X, y
   </token>
 
   <xml name="python_requirements">
@@ -33,34 +120,6 @@ def read_columns(f, c, return_df=False, **args):
 
 
   <!--Generic interface-->
-  <xml name="train_loadConditional" token_train="tabular" token_data="tabular" token_model="txt">
-    <conditional name="selected_tasks">
-        <param name="selected_task" type="select" label="Select a Classification Task">
-            <option value="train" selected="true">Train a model</option>
-            <option value="load">Load a model and predict</option>
-        </param>
-        <when value="load">
-            <param name="infile_model" type="data" format="@MODEL@" label="Models" help="Select a model file."/>
-            <param name="infile_data" type="data" format="@DATA@" label="Data (tabular)" help="Select the dataset you want to classify."/>
-            <conditional name="prediction_options">
-                <param name="prediction_option" type="select" label="Select the type of prediction">
-                    <option value="predict">Predict class labels</option>
-                    <option value="advanced">Include advanced options</option>
-                </param>
-                <when value="predict">
-                </when>
-                <when value="advanced">
-                </when>
-            </conditional>
-        </when>
-        <when value="train">
-            <param name="infile_train" type="data" format="@TRAIN@" label="Training samples (tabular)"/>
-            <conditional name="selected_algorithms">
-                <yield />
-            </conditional>
-        </when>
-    </conditional>
-  </xml>
 
   <xml name="sl_Conditional" token_train="tabular" token_data="tabular" token_model="txt">
     <conditional name="selected_tasks">
@@ -387,14 +446,42 @@ def read_columns(f, c, return_df=False, **args):
     <yield/>
   </xml>
 
-  <xml name="samples_tabular" token_multiple1="False" token_multiple2="False">
+  <xml name="samples_tabular" token_multiple1="false" token_multiple2="false">
     <param name="infile1" type="data" format="tabular" label="Training samples dataset:"/>
-    <param name="header1" type="boolean" optional="True" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
-    <param name="col1" multiple="@MULTIPLE1@" type="data_column" data_ref="infile1" label="Select target column(s):"/>
+    <param name="header1" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
+    <conditional name="column_selector_options_1">
+      <expand macro="samples_column_selector_options" multiple="@MULTIPLE1@"/>
+    </conditional>
     <param name="infile2" type="data" format="tabular" label="Dataset containing class labels:"/>
-    <param name="header2" type="boolean" optional="True" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
-    <param name="col2" multiple="@MULTIPLE2@" type="data_column" data_ref="infile2" label="Select target column(s):"/>
+    <param name="header2" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
+    <conditional name="column_selector_options_2">
+      <expand macro="samples_column_selector_options" column_option="selected_column_selector_option2" col_name="col2" multiple="@MULTIPLE2@" infile="infile2"/>
+    </conditional>
     <yield/>
+  </xml>
+
+  <xml name="samples_column_selector_options" token_column_option="selected_column_selector_option" token_col_name="col1" token_multiple="False" token_infile="infile1">
+    <param name="@COLUMN_OPTION@" type="select" label="Choose how to select data by column:">
+      <option value="by_index_number" selected="true">Select columns by column index number(s)</option>
+      <option value="by_header_name">Select columns by column header name(s)</option>
+      <option value="all_but_by_index_number">All columns but by column index number(s)</option>
+      <option value="all_but_by_header_name">All columns but by column header name(s)</option>
+      <option value="all_columns">All columns</option>
+    </param>
+    <when value="by_index_number">
+      <param name="@COL_NAME@" multiple="@MULTIPLE@" type="data_column" data_ref="@INFILE@" label="Select target column(s):"/>
+    </when>
+    <when value="by_header_name">
+      <param name="@COL_NAME@" type="text" value="" label="Type header name(s):" help="String seperate by colon. For example: target1,target2"/>
+    </when>
+    <when value="all_but_by_index_number">
+      <param name="@COL_NAME@" multiple="@MULTIPLE@" type="data_column" data_ref="@INFILE@" label="Select target column(s):"/>
+    </when>
+    <when value="all_but_by_header_name">
+      <param name="@COL_NAME@" type="text" value="" label="Type header name(s):" help="String seperate by colon. For example: target1,target2"/>
+    </when>
+    <when value="all_columns">
+    </when>
   </xml>
 
   <xml name="clf_inputs_extended" token_label1=" " token_label2=" " token_multiple="False">
@@ -429,10 +516,14 @@ def read_columns(f, c, return_df=False, **args):
   <xml name="clf_inputs" token_label1="Dataset containing true labels (tabular):" token_label2="Dataset containing predicted values (tabular):" token_multiple1="False" token_multiple="False">
     <param name="infile1" type="data" format="tabular" label="@LABEL1@"/>
     <param name="header1" type="boolean" optional="True" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
-    <param name="col1" multiple="@MULTIPLE1@" type="data_column" data_ref="infile1" label="Select the target column:"/>
+    <conditional name="column_selector_options_1">
+      <expand macro="samples_column_selector_options" multiple="@MULTIPLE1@"/>
+    </conditional>
     <param name="infile2" type="data" format="tabular" label="@LABEL2@"/>
     <param name="header2" type="boolean" optional="True" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
-    <param name="col2" multiple="@MULTIPLE@" type="data_column" data_ref="infile2" label="Select target column(s):"/>
+    <conditional name="column_selector_options_2">
+      <expand macro="samples_column_selector_options" column_option="selected_column_selector_option2" col_name="col2" multiple="@MULTIPLE@" infile="infile2"/>
+    </conditional>
   </xml>
 
   <xml name="multiple_input" token_name="input_files" token_max_num="10" token_format="txt" token_label="Sparse matrix file (.mtx, .txt)" token_help_text="Specify a sparse matrix file in .txt format.">
@@ -794,6 +885,13 @@ def read_columns(f, c, return_df=False, **args):
     </when>
     <yield/>
   </xml>
+  <xml name="estimator_input_no_fit">
+    <expand macro="feature_selection_estimator" />
+    <conditional name="extra_estimator">
+      <expand macro="feature_selection_extra_estimator" />
+      <expand macro="feature_selection_estimator_choices" />
+    </conditional>
+  </xml>
   <xml name="feature_selection_all">
     <conditional name="feature_selection_algorithms">
       <param name="selected_algorithm" type="select" label="Select a feature selection algorithm">
@@ -975,8 +1073,8 @@ def read_columns(f, c, return_df=False, **args):
     <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A metric used to evaluate the estimator"/>
   </xml>
 
-  <xml name="pre_dispatch">
-    <param argument="pre_dispatch" type="text" value="all" optional="true" label="pre_dispatch" help="Number of predispatched jobs for parallel execution"/>
+  <xml name="pre_dispatch" token_type="text" token_default_value="all" token_help="Number of predispatched jobs for parallel execution">
+    <param argument="pre_dispatch" type="@TYPE@" value="@DEFAULT_VALUE@" optional="true" label="pre_dispatch" help="@HELP@"/>
   </xml>
 
   <!-- Outputs -->
