@@ -24,6 +24,8 @@ from scipy.io import mmread
 from scipy.io import mmwrite
 from sklearn import preprocessing
 
+@COLUMNS_FUNCTION@
+
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
     params = json.load(param_handler)
@@ -31,13 +33,23 @@ with open(input_json_path, "r") as param_handler:
 #if $input_type.selected_input_type == "sparse":
 X = mmread("$infile")
 #else:
-X = pandas.read_csv("$infile", sep='\t', header=None, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
-#end if
-
-#if $input_type.pre_processors.infile_transform.ext == 'txt':
-y = mmread("$infile")
-#else:
-y = pandas.read_csv("$infile", sep='\t', header=None, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
+header = 'infer' if params["input_type"]["header1"] else None
+column_option = params["input_type"]["column_selector_options_1"]["selected_column_selector_option"]
+if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+    c = params["input_type"]["column_selector_options_1"]["col1"]
+else:
+    c = None
+X = read_columns(
+        "$input_type.infile",
+        c = c,
+        c_option = column_option,
+        sep='\t',
+        header=header,
+        parse_dates=True,
+        encoding=None,
+        index_col=None,
+        tupleize_cols=False
+)
 #end if
 
 preprocessor = params["input_type"]["pre_processors"]["selected_pre_processor"]
@@ -46,9 +58,9 @@ options = params["input_type"]["pre_processors"]["options"]
 my_class = getattr(preprocessing, preprocessor)
 estimator = my_class(**options)
 estimator.fit(X)
-result = estimator.transform(y)
+result = estimator.transform(X)
 
-#if $input_type.pre_processors.infile_transform.ext == 'txt':
+#if $input_type.selected_input_type == "sparse":
 with open("$outfile_transform", "w+") as transform_handler:
     mmwrite(transform_handler, result)
 #else:
@@ -70,49 +82,14 @@ with open("$outfile_fit", 'wb') as out_handler:
                 <option value="sparse">Sparse</option>
             </param>
             <when value="tabular">
-                <param name="infile" type="data" format="tabular" label="Select a tabular file you want to train your preprocessor on its data:"/>
+                <param name="infile" type="data" format="tabular" label="Select a tabular file you want to train your preprocessor on its data:" />
+                <param name="header1" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Does the dataset contain header:" />
+                <conditional name="column_selector_options_1">
+                    <expand macro="samples_column_selector_options" multiple="true" column_option="selected_column_selector_option" col_name="col1" infile="infile"/>
+                </conditional>
                 <conditional name="pre_processors">
-                    <expand macro="sparse_preprocessors">
-                        <option value="KernelCenterer">Kernel Centerer (Centers a kernel matrix)</option>
-                        <option value="MinMaxScaler">Minmax Scaler (Scales features to a range)</option>
-                        <option value="PolynomialFeatures">Polynomial Features (Generates polynomial and interaction features)</option>
-                        <option value="RobustScaler">Robust Scaler (Scales features using outlier-invariance statistics)</option>
-                    </expand>
-                    <expand macro="sparse_preprocessor_options">
-                        <when value="KernelCenterer">
-                            <expand macro="multitype_input"/>
-                            <section name="options" title="Advanced Options" expanded="False">
-                            </section>
-                        </when>
-                        <when value="MinMaxScaler">
-                            <expand macro="multitype_input"/>
-                            <section name="options" title="Advanced Options" expanded="False">
-                                <!--feature_range-->
-                                <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true"
-                                    label="Use a copy of data for precomputing normalization" help=" "/>
-                            </section>
-                        </when>            
-                        <when value="PolynomialFeatures">
-                            <expand macro="multitype_input"/>
-                            <section name="options" title="Advanced Options" expanded="False">
-                                <param argument="degree" type="integer" optional="true" value="2" label="The degree of the polynomial features " help=""/>
-                                <param argument="interaction_only" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="false" label="Produce interaction features only" help="(Features that are products of at most degree distinct input features) "/>
-                                <param argument="include_bias" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Include a bias column" help="Feature in which all polynomial powers are zero "/>
-                            </section>
-                        </when>
-                        <when value="RobustScaler">
-                            <expand macro="multitype_input"/>
-                            <section name="options" title="Advanced Options" expanded="False">
-                                <!--=True, =True, copy=True-->
-                                <param argument="with_centering" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true"
-                                    label="Center the data before scaling" help=" "/>
-                                <param argument="with_scaling" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true"
-                                    label="Scale the data to interquartile range" help=" "/>
-                                <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true"
-                                    label="Use a copy of data for inplace scaling" help=" "/>
-                            </section>
-                        </when>
-                    </expand>
+                    <expand macro="sparse_preprocessors_ext" />
+                    <expand macro="sparse_preprocessor_options_ext" />
                 </conditional>
             </when>
             <when value="sparse">
@@ -136,7 +113,7 @@ with open("$outfile_fit", 'wb') as out_handler:
     <tests>
         <test>
             <param name="infile" value="train.tabular" ftype="tabular"/>
-            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_column_selector_option" value="all_columns"/>
             <param name="selected_input_type" value="tabular"/>
             <param name="selected_pre_processor" value="KernelCenterer"/>
             <param name="save" value="true"/>
@@ -145,7 +122,7 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="train.tabular" ftype="tabular"/>
-            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_column_selector_option" value="all_columns"/>
             <param name="selected_input_type" value="tabular"/>
             <param name="selected_pre_processor" value="MinMaxScaler"/>
             <param name="save" value="true"/>
@@ -154,7 +131,7 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="train.tabular" ftype="tabular"/>
-            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_column_selector_option" value="all_columns"/>
             <param name="selected_input_type" value="tabular"/>
             <param name="selected_pre_processor" value="PolynomialFeatures"/>
             <param name="save" value="true"/>
@@ -163,7 +140,7 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="train.tabular" ftype="tabular"/>
-            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
+            <param name="selected_column_selector_option" value="all_columns"/>
             <param name="selected_input_type" value="tabular"/>
             <param name="selected_pre_processor" value="RobustScaler"/>
             <param name="save" value="true"/>
@@ -172,7 +149,6 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
-            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
             <param name="selected_input_type" value="sparse"/>
             <param name="selected_pre_processor" value="Binarizer"/>
             <param name="save" value="true"/>
@@ -181,7 +157,6 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
-            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
             <param name="selected_input_type" value="sparse"/>
             <param name="selected_pre_processor" value="Imputer"/>
             <param name="save" value="true"/>
@@ -191,8 +166,8 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="train.tabular" ftype="tabular"/>
-            <param name="infile_transform" value="train.tabular" ftype="tabular"/>
             <param name="selected_input_type" value="tabular"/>
+            <param name="selected_column_selector_option" value="all_columns"/>
             <param name="selected_pre_processor" value="StandardScaler"/>
             <param name="save" value="true"/>
             <output name="outfile_transform" file="prp_result07" ftype="tabular"/>
@@ -200,7 +175,6 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
-            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
             <param name="selected_input_type" value="sparse"/>
             <param name="selected_pre_processor" value="MaxAbsScaler"/>
             <param name="save" value="true"/>
@@ -209,7 +183,6 @@ with open("$outfile_fit", 'wb') as out_handler:
         </test>
         <test>
             <param name="infile" value="csr_sparse2.mtx" ftype="txt"/>
-            <param name="infile_transform" value="csr_sparse2.mtx" ftype="txt"/>
             <param name="selected_input_type" value="sparse"/>
             <param name="selected_pre_processor" value="Normalizer"/>
             <param name="save" value="true"/>
