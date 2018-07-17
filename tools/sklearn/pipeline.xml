@@ -17,19 +17,43 @@
             <![CDATA[
 import sys
 import json
-import pandas
-import ast
 import pickle
-import numpy as np
 import sklearn.model_selection
 from sklearn import svm, linear_model, ensemble, preprocessing
 from sklearn.pipeline import Pipeline
 
-@COLUMNS_FUNCTION@
+@FEATURE_SELECTOR_FUNCTION@
 
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
     params = json.load(param_handler)
+
+pipeline_steps = []
+
+# Set up pre_processor and add to pipeline steps.
+if params['pre_processing']['do_pre_processing'] == 'Yes':
+    preprocessor = params["pre_processing"]["pre_processors"]["selected_pre_processor"]
+    pre_processor_options = params["pre_processing"]["pre_processors"]["options"]
+    my_class = getattr(preprocessing, preprocessor)
+    pipeline_steps.append( ('pre_processor', my_class(**pre_processor_options)) )
+
+# Set up feature selector and add to pipeline steps.
+if params['feature_selection']['do_feature_selection'] == 'Yes':
+    feature_selector = feature_selector(params['feature_selection']['feature_selection_algorithms'])
+    pipeline_steps.append( ('feature_selector', feature_selector) )
+
+# Set up estimator and add to pipeline.
+estimator=params["main_estimator"]["estimator"]
+if params["main_estimator"]["extra_estimator"]["has_estimator"] == 'no':
+    estimator = params["main_estimator"]["extra_estimator"]["new_estimator"]
+estimator = eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+
+pipeline_steps.append( ('estimator', estimator) )
+
+pipeline = Pipeline(pipeline_steps)
+
+with open("$outfile", 'wb') as out_handler:
+    pickle.dump(pipeline, out_handler, pickle.HIGHEST_PROTOCOL)
 
             ]]>
         </configfile>
@@ -63,9 +87,26 @@ with open(input_json_path, "r") as param_handler:
         </section>
     </inputs>
     <outputs>
-        <data format="tabular" name="outfile"/>
+        <data format="zip" name="outfile"/>
     </outputs>
     <tests>
+        <test>
+            <param name="do_pre_processing" value="Yes"/>
+            <param name="selected_pre_processor" value="RobustScaler"/>
+            <param name="do_feature_selection" value="Yes"/>
+            <param name="selected_algorithm" value="SelectKBest"/>
+            <param name="score_func" value="f_classif"/>
+            <param name="estimator" value="svm.SVR(kernel=&quot;linear&quot;)"/>
+            <param name="has_estimator" value="yes"/>
+            <output name="outfile" file="pipeline01" compare="sim_size" data="500"/>
+        </test>
+        <test>
+            <param name="do_pre_processing" value="Yes"/>
+            <param name="selected_pre_processor" value="RobustScaler"/>
+            <param name="estimator" value="linear_model.LassoCV()"/>
+            <param name="has_estimator" value="yes"/>
+            <output name="outfile" file="pipeline02" compare="sim_size" data="500"/>
+        </test>
     </tests>
     <help>
         <![CDATA[
