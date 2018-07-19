@@ -104,72 +104,69 @@ def get_X_y(params, file1, file2):
   <token name="@GET_SEARCH_PARAMS_FUNCTION@">
 def get_search_params(params_builder, in_pipeline=False):
 
-    search_params = {}
+  search_params = {}
 
+  if not in_pipeline:
     for ep in params_builder['estimator_param_set']:
-        if ep['estimator_param'].strip() == '':
-            continue
-        lst = ep['estimator_param'].split(":")
-        if len(lst) >2:
-            exec lst[2].strip()
-        literal = lst[1].strip().replace("__sq__","'")\
-            .replace('__dq__','"').replace("__oc__", "{").replace("__cc__", "}")\
-            .replace("__ob__", "[").replace("__cb__", "]")
-        try:
-            ev = ast.literal_eval(literal)
-        except ValueError:
+      if ep['estimator_param'].strip() == '':
+        continue
+      lst = ep['estimator_param'].split(":")
+      assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
+      literal = lst[1].strip().replace("__sq__","'")\
+          .replace('__dq__','"').replace("__oc__", "{").replace("__cc__", "}")\
+          .replace("__ob__", "[").replace("__cb__", "]")
+      try:
+        ev = ast.literal_eval(literal)
+      except ValueError:
+        valid = ['np.', 'numpy.', 'scipy.']
+        for v in valid:
+          if literal.startswith(v):
             ev = eval(literal)
-        if in_pipeline:
-            search_params['estimator__' + lst[0].strip()] = ev
+            break
         else:
-            search_params[lst[0].strip()] = ev
-    if not in_pipeline:
-        return search_params
-    
-    for ep in params_builder['prep_param_set']:
-        if ep['prep_param'].strip() == '':
-            continue
-        lst = ep['prep_param'].split(":")
-        if len(lst) >2:
-            exec lst[2].strip()
-        literal = lst[1].strip().replace("__sq__","'")\
-            .replace('__dq__','"').replace("__oc__", "{").replace("__cc__", "}")\
-            .replace("__ob__", "[").replace("__cb__", "]")
-        try:
-            ev = ast.literal_eval(literal)
-        except ValueError:
-            ev = eval(literal)
-        search_params['pre_processor__' + lst[0].strip()] = ev
-
-    for ep in params_builder['fs_param_set']:
-        if ep['fs_param'].strip() == '':
-            continue
-        lst = ep['fs_param'].split(":")
-        if len(lst) >2:
-            exec lst[2].strip()
-        literal = lst[1].strip().replace("__sq__","'")\
-            .replace('__dq__','"').replace("__oc__", "{").replace("__cc__", "}")\
-            .replace("__ob__", "[").replace("__cb__", "]")
-        try:
-            ev = ast.literal_eval(literal)
-        except ValueError:
-            ev = eval(literal)
-        search_params['feature_selector__' + lst[0].strip()] = ev
-
+          sys.exit("invalid search parameter input for %s" %ep['estimator_param'])
+      search_params[lst[0].strip()] = ev
     return search_params
+
+  def add_pipeline_params(search_params, param_set, param_name, param_pre):
+    for p in params_builder[param_set]:
+      if p[param_name].strip() == '':
+        continue
+      lst = p[param_name].split(":")
+      assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
+      literal = lst[1].strip().replace("__sq__","'")\
+          .replace('__dq__','"').replace("__oc__", "{").replace("__cc__", "}")\
+          .replace("__ob__", "[").replace("__cb__", "]")
+      try:
+        ev = ast.literal_eval(literal)
+      except ValueError:
+        valid = ['np.', 'numpy.', 'scipy.']
+        for v in valid:
+          if literal.startswith(v):
+            ev = eval(literal)
+            break
+        else:
+          sys.exit("invalid parameter input for %s" %p[param_name])
+      search_params[param_pre + lst[0].strip()] = ev
+
+  add_pipeline_params(search_params, 'estimator_param_set', 'estimator_param', 'estimator__')
+  add_pipeline_params(search_params, 'prep_param_set', 'prep_param', 'pre_processor__')
+  add_pipeline_params(search_params, 'fs_param_set', 'fs_param', 'feature_selector__')
+  return search_params
   </token>
 
   <token name="@GET_ESTIMATOR_FUNCTION@">
 def get_estimator(estimator_json):
-    estimator_str=estimator_json["estimator"]
+    estimator_str = estimator_json["estimator"]
     if estimator_json["extra_estimator"]["has_estimator"] == 'no':
         literal = estimator_json["extra_estimator"]["new_estimator"]
-        literal_list = literal.split(":")
-        if len(literal_list) >1:
-            exec literal_list[1].strip()
-        estimator_str = literal_list[0].strip()
-    estimator = eval(estimator_str.replace('__dq__', '"').replace("__sq__","'"))
-    return estimator
+        estimator_str = literal.strip()
+    # sanitize string for security reason
+    valid = ['xgboost.', 'svm.', 'linear_model.', 'ensemble.', 'naive_bayes.', 'tree.', 'neighbors.']
+    for v in valid:
+        if estimator_str.startswith(v):
+            estimator = eval(estimator_str.replace('__dq__', '"').replace("__sq__","'"))
+            return estimator
   </token>
 
   <xml name="python_requirements">
@@ -177,6 +174,7 @@ def get_estimator(estimator_json):
           <requirement type="package" version="2.7">python</requirement>
           <requirement type="package" version="0.19.1">scikit-learn</requirement>
           <requirement type="package" version="0.22.0">pandas</requirement>
+          <requirement type="package" version="0.72.1">xgboost</requirement>
           <yield />
       </requirements>
   </xml>
@@ -1226,7 +1224,6 @@ def get_estimator(estimator_json):
       </data>
     </outputs>
   </xml>
-
 
   <!--Citations-->
   <xml name="eden_citation">
