@@ -26,7 +26,7 @@ def read_columns(f, c=None, c_option='by_index_number', return_df=False, **args)
 
 ## generate an instance for one of sklearn.feature_selection classes
   <token name="@FEATURE_SELECTOR_FUNCTION@">
-def feature_selector(inputs):
+def feature_selector(inputs, model_file=None):
   selector = inputs["selected_algorithm"]
   selector = getattr(sklearn.feature_selection, selector)
   options = inputs["options"]
@@ -34,21 +34,19 @@ def feature_selector(inputs):
   if inputs['selected_algorithm'] == 'SelectFromModel':
     if not options['threshold'] or options['threshold'] == 'None':
       options['threshold'] = None
-      if 'extra_estimator' in inputs and inputs['extra_estimator']['has_estimator'] == 'no_load':
-        with open("inputs['extra_estimator']['fitted_estimator']", 'rb') as model_handler:
-          fitted_estimator = pickle.load(model_handler)
-        new_selector = selector(fitted_estimator, prefit=True, **options)
-      else:
-        estimator=inputs["estimator"]
-        if inputs["extra_estimator"]["has_estimator"]=='no':
-          estimator=inputs["extra_estimator"]["new_estimator"]
-        estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
-        new_selector = selector(estimator, **options)
+    if inputs['model_inputter']['input_mode'] == 'prefitted':
+      with open(model_file, 'rb') as model_handler:
+        fitted_estimator = pickle.load(model_handler)
+      new_selector = selector(fitted_estimator, prefit=True, **options)
+    else:
+      estimator_json = inputs['model_inputter']["estimator_selector"]
+      estimator = get_estimator(estimator_json)
+      new_selector = selector(estimator, **options)
 
   elif inputs['selected_algorithm'] in ['RFE', 'RFECV']:
     if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
       options['scoring'] = None
-    estimator=get_estimator(inputs)
+    estimator=get_estimator(inputs["estimator_selector"])
     new_selector = selector(estimator, **options)
 
   elif inputs['selected_algorithm'] == "VarianceThreshold":
@@ -102,31 +100,9 @@ def get_X_y(params, file1, file2):
   </token>
 
   <token name="@GET_SEARCH_PARAMS_FUNCTION@">
-def get_search_params(params_builder, in_pipeline=False):
+def get_search_params(params_builder):
 
   search_params = {}
-
-  if not in_pipeline:
-    for ep in params_builder['estimator_param_set']:
-      if ep['estimator_param'].strip() == '':
-        continue
-      lst = ep['estimator_param'].split(":")
-      assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
-      literal = lst[1].strip().replace("__sq__","'")\
-          .replace('__dq__','"').replace("__oc__", "{").replace("__cc__", "}")\
-          .replace("__ob__", "[").replace("__cb__", "]")
-      try:
-        ev = ast.literal_eval(literal)
-      except ValueError:
-        valid = ['np.', 'numpy.', 'scipy.']
-        for v in valid:
-          if literal.startswith(v):
-            ev = eval(literal)
-            break
-        else:
-          sys.exit("invalid search parameter input for %s" %ep['estimator_param'])
-      search_params[lst[0].strip()] = ev
-    return search_params
 
   def add_pipeline_params(search_params, param_set, param_name, param_pre):
     for p in params_builder[param_set]:
@@ -155,21 +131,7 @@ def get_search_params(params_builder, in_pipeline=False):
   return search_params
   </token>
 
-    <token name="@GET_ESTIMATOR_FUNCTION@">
-def get_estimator(estimator_json):
-    estimator_str = estimator_json["estimator"]
-    if estimator_json["extra_estimator"]["has_estimator"] == 'no':
-        literal = estimator_json["extra_estimator"]["new_estimator"]
-        estimator_str = literal.strip()
-    # sanitize string for security reason
-    valid = ['xgboost.', 'svm.', 'linear_model.', 'ensemble.', 'naive_bayes.', 'tree.', 'neighbors.']
-    for v in valid:
-        if estimator_str.startswith(v):
-            estimator = eval(estimator_str.replace('__dq__', '"').replace("__sq__","'"))
-            return estimator
-  </token>
-
-  <token name="@GET_ESTIMATOR_FUNCTION_NEW@">
+  <token name="@GET_ESTIMATOR_FUNCTION@">
 def get_estimator(estimator_json):
   estimator_module = estimator_json['selected_module']
   estimator_cls = estimator_json['selected_estimator']
@@ -997,21 +959,13 @@ def get_estimator(estimator_json):
     </expand>
   </xml>
 
-  <xml name="estimator_input_no_fit">
-    <expand macro="feature_selection_estimator" />
-    <conditional name="extra_estimator">
-      <expand macro="feature_selection_extra_estimator" />
-      <expand macro="feature_selection_estimator_choices" />
-    </conditional>
-  </xml>
-
   <xml name="feature_selection_all">
-    <conditional name="feature_selection_algorithms">
+    <conditional name="fs_algorithm_selector">
       <param name="selected_algorithm" type="select" label="Select a feature selection algorithm">
-        <option value="SelectFromModel" selected="true">SelectFromModel - Meta-transformer for selecting features based on importance weights</option>
-        <option value="GenericUnivariateSelect" selected="true">GenericUnivariateSelect - Univariate feature selector with configurable strategy</option>
+        <option value="SelectKBest" selected="true">SelectKBest - Select features according to the k highest scores</option>
+        <option value="SelectFromModel">SelectFromModel - Meta-transformer for selecting features based on importance weights</option>
+        <option value="GenericUnivariateSelect">GenericUnivariateSelect - Univariate feature selector with configurable strategy</option>
         <option value="SelectPercentile">SelectPercentile - Select features according to a percentile of the highest scores</option>
-        <option value="SelectKBest">SelectKBest - Select features according to the k highest scores</option>
         <option value="SelectFpr">SelectFpr - Filter: Select the p-values below alpha based on a FPR test</option>
         <option value="SelectFdr">SelectFdr - Filter: Select the p-values for an estimated false discovery rate</option>
         <option value="SelectFwe">SelectFwe - Filter: Select the p-values corresponding to Family-wise error rate</option>
@@ -1025,25 +979,26 @@ def get_estimator(estimator_json):
         <!--option value="mutual_info_regression">Estimate mutual information for a continuous target variable</option-->
       </param>
       <when value="SelectFromModel">
-        <expand macro="feature_selection_estimator" />
-        <conditional name="extra_estimator">
-          <expand macro="feature_selection_extra_estimator" >
-            <option value="no_load">No, I will load a prefitted estimator</option>
-          </expand>
-          <expand macro="feature_selection_estimator_choices" >
-            <when value="no_load">
-              <param name="fitted_estimator" type="data" format='zip' label="Load a prefitted estimator" />
-            </when>
-          </expand>
+        <conditional name="model_inputter">
+          <param name="input_mode" type="select" label="Do you want to construct a new estimator from a selection list?" >
+            <option value="new">Yes</option>
+            <option value="prefitted">No, I want to load a prefitted estimator</option>
+          </param>
+          <when value="new">
+            <expand macro="estimator_selector_all"/>
+          </when>
+          <when value="prefitted">
+            <param name="fitted_estimator" type="data" format='zip' label="Load a prefitted estimator" />
+          </when>
         </conditional>
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="threshold" type="text" value="" optional="true" label="threshold" help="The threshold value to use for feature selection. e.g. 'mean', 'median', '1.25*mean'." />
           <param argument="norm_order" type="integer" value="1" label="norm_order" help="Order of the norm used to filter the vectors of coefficients below threshold in the case where the coef_ attribute of the estimator is of dimension 2. " />
         </section>
       </when>
       <when value="GenericUnivariateSelect">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="mode" type="select" label="Feature selection mode">
             <option value="percentile">percentile</option>
             <option value="k_best">k_best</option>
@@ -1056,53 +1011,45 @@ def get_estimator(estimator_json):
       </when>
       <when value="SelectPercentile">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="percentile" type="integer" value="10" optional="True" label="Percent of features to keep" />
         </section>
       </when>
       <when value="SelectKBest">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="k" type="integer" value="10" optional="True" label="Number of top features to select" help="No 'all' option is supported." />
         </section>
       </when>
       <when value="SelectFpr">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest p-value for features to be kept."/>
         </section>
       </when>
       <when value="SelectFdr">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest uncorrected p-value for features to keep."/>
         </section>
       </when>
       <when value="SelectFwe">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest uncorrected p-value for features to keep."/>
         </section>
       </when>
       <when value="RFE">
-        <expand macro="feature_selection_estimator" />
-        <conditional name="extra_estimator">
-          <expand macro="feature_selection_extra_estimator" />
-          <expand macro="feature_selection_estimator_choices" />
-        </conditional>
-        <section name="options" title="Other Options" expanded="True">
+        <expand macro="estimator_selector_all"/>
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="n_features_to_select" type="integer" value="" optional="true" label="n_features_to_select" help="The number of features to select. If None, half of the features are selected." />
           <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
           <param argument="verbose" type="integer" value="0" label="verbose" help="Controls verbosity of output." />
         </section>
       </when>
       <when value="RFECV">
-        <expand macro="feature_selection_estimator" />
-        <conditional name="extra_estimator">
-          <expand macro="feature_selection_extra_estimator" />
-          <expand macro="feature_selection_estimator_choices" />
-        </conditional>
-        <section name="options" title="Other Options" expanded="True">
+        <expand macro="estimator_selector_all"/>
+        <section name="options" title="Advanced Options" expanded="True">
           <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
           <param argument="cv" type="integer" value="" optional="true" label="cv" help="Determines the cross-validation splitting strategy" />
           <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A string (see model evaluation documentation) or a scorer callable object / function with signature scorer(estimator, X, y)."/>
@@ -1138,36 +1085,9 @@ def get_estimator(estimator_json):
     </param>
   </xml>
 
-  <xml name="feature_selection_estimator">
-    <param argument="estimator" type="select" label="Select an estimator:" help="The base estimator from which the transformer is built.">
-      <option value="svm.SVR(kernel=&quot;linear&quot;)">svm.SVR(kernel=&quot;linear&quot;)</option>
-      <option value="svm.SVC(kernel=&quot;linear&quot;)">svm.SVC(kernel=&quot;linear&quot;)</option>
-      <option value="svm.LinearSVC(penalty=&quot;l1&quot;, dual=False, tol=1e-3)">svm.LinearSVC(penalty=&quot;l1&quot;, dual=False, tol=1e-3)</option>
-      <option value="linear_model.LassoCV()">linear_model.LassoCV()</option>
-      <option value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)">ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)</option>
-    </param>
-  </xml>
-
-  <xml name="feature_selection_extra_estimator">   
-      <param name="has_estimator" type="select" label="Does your estimator on the list above?">
-        <option value="yes">Yes, my estimator is on the list</option>
-        <option value="no">No, I need make a new estimator</option>
-        <yield/>
-      </param>
-  </xml>
-
-  <xml name="feature_selection_estimator_choices">
-    <when value="yes">
-    </when>
-    <when value="no">
-      <param name="new_estimator" type="text" value="" label="Make a new estimator:" />
-    </when>
-    <yield/>
-  </xml>
-
-  <xml name="feature_selection_methods">
-    <conditional name="select_methods">
-      <param name="selected_method" type="select" label="Select an operation">
+  <xml name="feature_selection_output_mothods">
+    <conditional name="output_method_selector">
+      <param name="selected_method" type="select" label="Select an output method:">
           <option value="fit_transform">fit_transform - Fit to data, then transform it</option>
           <option value="get_support">get_support - Get a mask, or integer index, of the features selected</option>
       </param>
@@ -1196,34 +1116,18 @@ def get_estimator(estimator_json):
   </xml>
 
   <xml name="search_cv_estimator">
-    <conditional name="estimator_config">
-        <param name="estimator_or_pipeline" type="select" label="Choose to configure an estimator or load from a built pipeline:">
-            <option value="configure_an_estimator">Estimator - No pipeline</option>
-            <option value="load_pipeline">Pipeline - A list of estimators which could include pre-processor and feature selector</option>
-        </param>
-        <when value="configure_an_estimator">
-            <expand macro="estimator_input_no_fit" />
-            <section name="search_params_builder" title="Search parameters Builder" expanded="true">
-                <repeat name="estimator_param_set" min="1" max="10" title="Estimator parameter for search:">
-                    <param name="estimator_param" type="text" value="" optional="true" label="Estimator parameter" help="Optional. For example: C: [1, 10, 100, 1000]"/>
-                </repeat>
-            </section>
-        </when>
-        <when value="load_pipeline">
-            <param name="infile_pipeline" type="data" format="zip" label="Choose the dataset containing pipeline object:"/>
-            <section name="search_params_builder" title="Search parameters Builder" expanded="true">
-                <repeat name="prep_param_set" min="1" max="5" title="Pre_processing parameter for search:">
-                    <param name="prep_param" type="text" value="" optional="true" label="Pre_processing parameter" help="Optional. For example: with_centering: [True, False]"/>
-                </repeat>
-                <repeat name="fs_param_set" min="1" max="10" title="Feature selection parameter for search:">
-                    <param name="fs_param" type="text" value="" optional="true" label="Feature selection parameter" help="Optional. For example: k: [3, 5, 7, 9]"/>
-                </repeat>
-                <repeat name="estimator_param_set" min="1" max="10" title="Estimator parameter for search:">
-                    <param name="estimator_param" type="text" value="" optional="true" label="Estimator parameter" help="Optional. For example: C: [1, 10, 100, 1000]"/>
-                </repeat>
-            </section>
-        </when>
-    </conditional>
+    <param name="infile_pipeline" type="data" format="zip" label="Choose the dataset containing pipeline object:"/>
+    <section name="search_params_builder" title="Search parameters Builder" expanded="true">
+      <repeat name="prep_param_set" min="1" max="5" title="Pre_processing parameter for search:">
+        <param name="prep_param" type="text" value="" optional="true" label="Pre_processing parameter" help="Optional. For example: with_centering: [True, False]"/>
+      </repeat>
+      <repeat name="fs_param_set" min="1" max="10" title="Feature selection parameter for search:">
+        <param name="fs_param" type="text" value="" optional="true" label="Feature selection parameter" help="Optional. For example: k: [3, 5, 7, 9]"/>
+      </repeat>
+      <repeat name="estimator_param_set" min="1" max="10" title="Estimator parameter for search:">
+        <param name="estimator_param" type="text" value="" optional="true" label="Estimator parameter" help="Optional. For example: C: [1, 10, 100, 1000]"/>
+      </repeat>
+    </section>
   </xml>
 
   <xml name="search_cv_options">
