@@ -21,7 +21,8 @@ import pickle
 import xgboost
 import ast
 import sklearn.feature_selection
-from sklearn import preprocessing, svm, linear_model, ensemble, naive_bayes, tree, neighbors
+from sklearn import ( preprocessing, svm, linear_model, ensemble, naive_bayes,
+                    tree, neighbors, decomposition, kernel_approximation, cluster)
 from sklearn.pipeline import Pipeline
 
 @GET_ESTIMATOR_FUNCTION@
@@ -44,10 +45,35 @@ def get_component(input_json):
     if input_json['component_type'] == 'feature_selection':
         fs_obj = feature_selector(input_json['fs_algorithm_selector'])
         return ('feature_selector', fs_obj)
+    if input_json['component_type'] == 'decomposition':
+        algorithm = input_json['matrix_decomposition_selector']['select_algorithm']
+        obj = getattr(decomposition, algorithm)()
+        options = input_json['matrix_decomposition_selector']['text_params'].strip()
+        if options != "":
+            options = ast.literal_eval('{' + options + '}')
+            obj.set_params(**options)
+        return ('decomposition', obj)
+    if input_json['component_type'] == 'kernel_approximation':
+        algorithm = input_json['kernel_approximation_selector']['select_algorithm']
+        obj = getattr(kernel_approximation, algorithm)()
+        options = input_json['kernel_approximation_selector']['text_params'].strip()
+        if options != "":
+            options = ast.literal_eval('{' + options + '}')
+            obj.set_params(**options)
+        return ('kernel_approximation', obj)
+    if input_json['component_type'] == 'FeatureAgglomeration':
+        algorithm = input_json['FeatureAgglomeration_selector']['select_algorithm']
+        obj = getattr(cluster, algorithm)()
+        options = input_json['FeatureAgglomeration_selector']['text_params'].strip()
+        if options != "":
+            options = ast.literal_eval('{' + options + '}')
+            obj.set_params(**options)
+        return ('feature_agglomeration', obj)
 
 for c in params['pipeline_component']:
-    (c_name, c_object) = get_component( c['component_selector'] )
-    pipeline_steps.append( (c_name, c_object) )
+    step = get_component( c['component_selector'] )
+    if step:
+        pipeline_steps.append( step )
 
 # Set up final estimator and add to pipeline.
 estimator_json = params["final_estimator"]['estimator_selector']
@@ -70,7 +96,9 @@ with open("$outfile", 'wb') as out_handler:
                     <option value="none" selected="true">None</option>
                     <option value="pre_processor">Pre-processing</option>
                     <option value="feature_selection">Feature selection</option>
-                    <option value="others">Others</option>
+                    <option value="decomposition">Matrix Decomposition</option>
+                    <option value="kernel_approximation">Kernel Approximation</option>
+                    <option value="FeatureAgglomeration">Agglomerate features</option>
                 </param>
                 <when value="none"/>
                 <when value="pre_processor">
@@ -84,7 +112,14 @@ with open("$outfile", 'wb') as out_handler:
                         <expand macro="fs_selectfrommodel_no_prefitted"/>
                     </expand>
                 </when>
-                <when value="others">
+                <when value="decomposition">
+                    <expand macro="matrix_decomposition_all"/>
+                </when>
+                <when value="kernel_approximation">
+                    <expand macro="kernel_approximation_all"/>
+                </when>
+                <when value="FeatureAgglomeration">
+                    <expand macro="FeatureAgglomeration"/>
                 </when>
             </conditional>
         </repeat>
@@ -112,7 +147,7 @@ with open("$outfile", 'wb') as out_handler:
             </conditional>
             <param name="selected_module" value="svm"/>
             <param name="selected_estimator" value="SVR"/>
-            <param name="estimator_params" value="'kernel': 'linear'"/>
+            <param name="text_params" value="'kernel': 'linear'"/>
             <output name="outfile" file="pipeline01" compare="sim_size" delta="5"/>
         </test>
         <test>
