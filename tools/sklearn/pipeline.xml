@@ -27,34 +27,29 @@ from sklearn.pipeline import Pipeline
 @GET_ESTIMATOR_FUNCTION@
 @FEATURE_SELECTOR_FUNCTION@
 
-#handle cheetah
-#if $feature_selection.do_feature_selection == 'Yes' \
-        and $feature_selection.fs_algorithm_selector.selected_algorithm == "SelectFromModel"\
-        and $feature_selection.fs_algorithm_selector.model_inputter.input_mode == "prefitted":
-prefitted_model = "$feature_selection.fs_algorithm_selector.model_inputter.fitted_estimator"
-#else:
-prefitted_model = None
-#end if
-
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
     params = json.load(param_handler)
 
 pipeline_steps = []
 
-# Set up pre_processor and add to pipeline steps.
-if params['pre_processing']['do_pre_processing'] == 'Yes':
-    preprocessor = params["pre_processing"]["pre_processors"]["selected_pre_processor"]
-    pre_processor_options = params["pre_processing"]["pre_processors"]["options"]
-    my_class = getattr(preprocessing, preprocessor)
-    pipeline_steps.append( ('pre_processor', my_class(**pre_processor_options)) )
+def get_component(input_json):
+    if input_json['component_type'] == 'None':
+        return
+    if input_json['component_type'] == 'pre_processor':
+        preprocessor = input_json["pre_processors"]["selected_pre_processor"]
+        pre_processor_options = input_json["pre_processors"]["options"]
+        my_class = getattr(preprocessing, preprocessor)
+        return ('pre_processor', my_class(**pre_processor_options))
+    if input_json['component_type'] == 'feature_selection':
+        fs_obj = feature_selector(input_json['fs_algorithm_selector'])
+        return ('feature_selector', fs_obj)
 
-# Set up feature selector and add to pipeline steps.
-if params['feature_selection']['do_feature_selection'] == 'Yes':
-    feature_selector = feature_selector(params['feature_selection']['fs_algorithm_selector'], prefitted_model)
-    pipeline_steps.append( ('feature_selector', feature_selector) )
+for c in params['pipeline_component']:
+    (c_name, c_object) = get_component( c['component_selector'] )
+    pipeline_steps.append( (c_name, c_object) )
 
-# Set up estimator and add to pipeline.
+# Set up final estimator and add to pipeline.
 estimator_json = params["final_estimator"]['estimator_selector']
 estimator = get_estimator(estimator_json)
 
@@ -69,29 +64,30 @@ with open("$outfile", 'wb') as out_handler:
         </configfile>
     </configfiles>
     <inputs>
-        <conditional name="pre_processing">
-            <param name="do_pre_processing" type="select" label="Do pre_processing?">
-                <option value="No" selected="true"/>
-                <option value="Yes"/>
-            </param>
-            <when value="No"/>
-            <when value="Yes">
-                <conditional name="pre_processors">
-                    <expand macro="sparse_preprocessors_ext" />
-                    <expand macro="sparse_preprocessor_options_ext" />
-                </conditional>
-            </when>
-        </conditional>
-        <conditional name="feature_selection">
-            <param name="do_feature_selection" type="select" label="Do feature selection?">
-                <option value="No" selected="true"/>
-                <option value="Yes"/>
-            </param>
-            <when value="No"/>
-            <when value="Yes">
-                <expand macro="feature_selection_all"/>
-            </when>
-        </conditional>
+        <repeat name="pipeline_component" min="1" max="5" title="Pre-fitting component">
+            <conditional name="component_selector">
+                <param name="component_type" type="select" label="Choose the type of component:">
+                    <option value="none" selected="true">None</option>
+                    <option value="pre_processor">Pre-processing</option>
+                    <option value="feature_selection">Feature selection</option>
+                    <option value="others">Others</option>
+                </param>
+                <when value="none"/>
+                <when value="pre_processor">
+                    <conditional name="pre_processors">
+                        <expand macro="sparse_preprocessors_ext" />
+                        <expand macro="sparse_preprocessor_options_ext" />
+                    </conditional>
+                </when>
+                <when value="feature_selection">
+                    <expand macro="feature_selection_all">
+                        <expand macro="fs_selectfrommodel_no_prefitted"/>
+                    </expand>
+                </when>
+                <when value="others">
+                </when>
+            </conditional>
+        </repeat>
         <section name="final_estimator" title="Final Estimator" expanded="true">
             <expand macro="estimator_selector_all" />
         </section>
@@ -101,35 +97,59 @@ with open("$outfile", 'wb') as out_handler:
     </outputs>
     <tests>
         <test>
-            <param name="do_pre_processing" value="Yes"/>
-            <param name="selected_pre_processor" value="RobustScaler"/>
-            <param name="do_feature_selection" value="Yes"/>
-            <param name="selected_algorithm" value="SelectKBest"/>
-            <param name="score_func" value="f_classif"/>
+            <conditional name="component_selector">
+                <param name="component_type" value="pre_processor"/>
+                <conditional name="pre_processors">
+                    <param name="selected_pre_processor" value="RobustScaler"/>
+                    </conditional>
+            </conditional>
+            <conditional name="component_selector">
+                <param name="component_type" value="feature_selection"/>
+                <conditional name="fs_algorithm_selector">
+                    <param name="selected_algorithm" value="SelectKBest"/>
+                    <param name="score_func" value="f_classif"/>
+                </conditional>
+            </conditional>
             <param name="selected_module" value="svm"/>
             <param name="selected_estimator" value="SVR"/>
             <param name="estimator_params" value="'kernel': 'linear'"/>
             <output name="outfile" file="pipeline01" compare="sim_size" delta="5"/>
         </test>
         <test>
-            <param name="do_pre_processing" value="Yes"/>
-            <param name="selected_pre_processor" value="RobustScaler"/>
+            <conditional name="component_selector">
+                <param name="component_type" value="pre_processor"/>
+                <conditional name="pre_processors">
+                    <param name="selected_pre_processor" value="RobustScaler"/>
+                    </conditional>
+            </conditional>
             <param name="selected_module" value="linear_model"/>
             <param name="selected_estimator" value="LassoCV"/>
             <output name="outfile" file="pipeline02" compare="sim_size" delta="5"/>
         </test>
         <test>
-            <param name="do_pre_processing" value="Yes"/>
-            <param name="selected_pre_processor" value="RobustScaler"/>
+            <conditional name="component_selector">
+                <param name="component_type" value="pre_processor"/>
+                <conditional name="pre_processors">
+                    <param name="selected_pre_processor" value="RobustScaler"/>
+                    </conditional>
+            </conditional>
             <param name="selected_module" value="xgboost"/>
             <param name="selected_estimator" value="XGBClassifier"/>
             <output name="outfile" file="pipeline03" compare="sim_size" delta="5"/>
         </test>
         <test>
-            <param name="do_feature_selection" value="Yes"/>
-            <param name="selected_algorithm" value="SelectFromModel"/>
-            <param name="selected_module" value="ensemble"/>
-            <param name="selected_estimator" value="AdaBoostClassifier"/>
+            <conditional name="component_selector">
+                <param name="component_type" value="feature_selection"/>
+                <conditional name="fs_algorithm_selector">
+                    <param name="selected_algorithm" value="SelectFromModel"/>
+                    <conditional name="model_inputter">
+                        <conditional name="estimator_selector">
+                            <param name="selected_module" value="ensemble"/>
+                            <param name="selected_estimator" value="AdaBoostClassifier"/>
+                        </conditional>
+                    </conditional>
+                </conditional>
+            </conditional>
             <section name="final_estimator">
                 <param name="selected_module" value="svm"/>
                 <param name="selected_estimator" value="LinearSVC"/>
