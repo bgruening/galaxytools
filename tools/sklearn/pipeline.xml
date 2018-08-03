@@ -18,6 +18,7 @@
 import sys
 import json
 import pickle
+import pprint
 import xgboost
 import ast
 import sklearn.feature_selection
@@ -34,17 +35,20 @@ with open(input_json_path, "r") as param_handler:
 
 pipeline_steps = []
 
-def get_component(input_json):
+def get_component(input_json, check_none=False):
     if input_json['component_type'] == 'None':
-        return
+        if not check_none:
+            return
+        else:
+            sys.exit("The pre-processing component type can't be None when the number of components is greater than 1.")
     if input_json['component_type'] == 'pre_processor':
         preprocessor = input_json["pre_processors"]["selected_pre_processor"]
         pre_processor_options = input_json["pre_processors"]["options"]
         my_class = getattr(preprocessing, preprocessor)
-        return ('pre_processor', my_class(**pre_processor_options))
+        return my_class(**pre_processor_options)
     if input_json['component_type'] == 'feature_selection':
         fs_obj = feature_selector(input_json['fs_algorithm_selector'])
-        return ('feature_selector', fs_obj)
+        return fs_obj
     if input_json['component_type'] == 'decomposition':
         algorithm = input_json['matrix_decomposition_selector']['select_algorithm']
         obj = getattr(decomposition, algorithm)()
@@ -52,7 +56,7 @@ def get_component(input_json):
         if options != "":
             options = ast.literal_eval('{' + options + '}')
             obj.set_params(**options)
-        return ('decomposition', obj)
+        return obj
     if input_json['component_type'] == 'kernel_approximation':
         algorithm = input_json['kernel_approximation_selector']['select_algorithm']
         obj = getattr(kernel_approximation, algorithm)()
@@ -60,7 +64,7 @@ def get_component(input_json):
         if options != "":
             options = ast.literal_eval('{' + options + '}')
             obj.set_params(**options)
-        return ('kernel_approximation', obj)
+        return obj
     if input_json['component_type'] == 'FeatureAgglomeration':
         algorithm = input_json['FeatureAgglomeration_selector']['select_algorithm']
         obj = getattr(cluster, algorithm)()
@@ -68,12 +72,15 @@ def get_component(input_json):
         if options != "":
             options = ast.literal_eval('{' + options + '}')
             obj.set_params(**options)
-        return ('feature_agglomeration', obj)
-
-for c in params['pipeline_component']:
-    step = get_component( c['component_selector'] )
-    if step:
-        pipeline_steps.append( step )
+        return obj
+if len(params['pipeline_component']) == 1:
+    step_obj = get_component( params['pipeline_component'][0]['component_selector'])
+    if step_obj:
+        pipeline_steps.append( ('preprocessing_1', step_obj) )
+else:
+    for i, c in enumerate(params['pipeline_component']):
+        step_obj = get_component( c['component_selector'], check_none=True )
+        pipeline_steps.append( ('preprocessing_' + str(i+1), step_obj) )
 
 # Set up final estimator and add to pipeline.
 estimator_json = params["final_estimator"]['estimator_selector']
@@ -82,6 +89,7 @@ estimator = get_estimator(estimator_json)
 pipeline_steps.append( ('estimator', estimator) )
 
 pipeline = Pipeline(pipeline_steps)
+pprint.pprint(pipeline.named_steps)
 
 with open("$outfile", 'wb') as out_handler:
     pickle.dump(pipeline, out_handler, pickle.HIGHEST_PROTOCOL)
@@ -90,15 +98,15 @@ with open("$outfile", 'wb') as out_handler:
         </configfile>
     </configfiles>
     <inputs>
-        <repeat name="pipeline_component" min="1" max="5" title="Pre-fitting component">
+        <repeat name="pipeline_component" min="1" max="5" title="Pre-processing step">
             <conditional name="component_selector">
-                <param name="component_type" type="select" label="Choose the type of component:">
+                <param name="component_type" type="select" label="Choose the type of transformation:">
                     <option value="none" selected="true">None</option>
-                    <option value="pre_processor">Pre-processing</option>
-                    <option value="feature_selection">Feature selection</option>
+                    <option value="pre_processor">Sklearn Preprocessor</option>
+                    <option value="feature_selection">Feature Selection</option>
                     <option value="decomposition">Matrix Decomposition</option>
                     <option value="kernel_approximation">Kernel Approximation</option>
-                    <option value="FeatureAgglomeration">Agglomerate features</option>
+                    <option value="FeatureAgglomeration">Agglomerate Features</option>
                 </param>
                 <when value="none"/>
                 <when value="pre_processor">
@@ -132,45 +140,49 @@ with open("$outfile", 'wb') as out_handler:
     </outputs>
     <tests>
         <test>
-            <conditional name="component_selector">
-                <param name="component_type" value="pre_processor"/>
-                <conditional name="pre_processors">
-                    <param name="selected_pre_processor" value="RobustScaler"/>
+            <repeat name="pipeline_component">
+                <conditional name="component_selector">
+                    <param name="component_type" value="pre_processor"/>
+                    <conditional name="pre_processors">
+                        <param name="selected_pre_processor" value="RobustScaler"/>
                     </conditional>
-            </conditional>
-            <conditional name="component_selector">
-                <param name="component_type" value="feature_selection"/>
-                <conditional name="fs_algorithm_selector">
-                    <param name="selected_algorithm" value="SelectKBest"/>
-                    <param name="score_func" value="f_classif"/>
                 </conditional>
-            </conditional>
+            </repeat>
+            <repeat name="pipeline_component">
+                <conditional name="component_selector">
+                    <param name="component_type" value="feature_selection"/>
+                    <conditional name="fs_algorithm_selector">
+                        <param name="selected_algorithm" value="SelectKBest"/>
+                        <param name="score_func" value="f_classif"/>
+                    </conditional>
+                </conditional>
+            </repeat>
             <param name="selected_module" value="svm"/>
             <param name="selected_estimator" value="SVR"/>
             <param name="text_params" value="'kernel': 'linear'"/>
-            <output name="outfile" file="pipeline01" compare="sim_size" delta="5"/>
+            <output name="outfile" file="pipeline01" compare="sim_size" delta="1"/>
         </test>
         <test>
             <conditional name="component_selector">
                 <param name="component_type" value="pre_processor"/>
                 <conditional name="pre_processors">
                     <param name="selected_pre_processor" value="RobustScaler"/>
-                    </conditional>
+                </conditional>
             </conditional>
             <param name="selected_module" value="linear_model"/>
             <param name="selected_estimator" value="LassoCV"/>
-            <output name="outfile" file="pipeline02" compare="sim_size" delta="5"/>
+            <output name="outfile" file="pipeline02" compare="sim_size" delta="1"/>
         </test>
         <test>
             <conditional name="component_selector">
                 <param name="component_type" value="pre_processor"/>
                 <conditional name="pre_processors">
                     <param name="selected_pre_processor" value="RobustScaler"/>
-                    </conditional>
+                </conditional>
             </conditional>
             <param name="selected_module" value="xgboost"/>
             <param name="selected_estimator" value="XGBClassifier"/>
-            <output name="outfile" file="pipeline03" compare="sim_size" delta="5"/>
+            <output name="outfile" file="pipeline03" compare="sim_size" delta="1"/>
         </test>
         <test>
             <conditional name="component_selector">
@@ -189,7 +201,51 @@ with open("$outfile", 'wb') as out_handler:
                 <param name="selected_module" value="svm"/>
                 <param name="selected_estimator" value="LinearSVC"/>
             </section>
-            <output name="outfile" file="pipeline04" compare="sim_size" delta="5"/>
+            <output name="outfile" file="pipeline04" compare="sim_size" delta="1"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="None"/>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="'n_estimators': 100, 'random_state': 42"/>
+            <output name="outfile" file="pipeline05" compare="sim_size" delta="1"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="decomposition"/>
+                    <conditional name="matrix_decomposition_selector">
+                        <param name="select_algorithm" value="PCA"/>
+                    </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="AdaBoostRegressor"/>
+            <output name="outfile" file="pipeline06" compare="sim_size" delta="1"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="kernel_approximation"/>
+                    <conditional name="kernel_approximation_selector">
+                        <param name="select_algorithm" value="RBFSampler"/>
+                        <param name="text_params" value="'n_components': 10, 'gamma': 2.0"/>
+                    </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="AdaBoostClassifier"/>
+            <output name="outfile" file="pipeline07" compare="sim_size" delta="1"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="FeatureAgglomeration"/>
+                    <conditional name="FeatureAgglomeration_selector">
+                        <param name="select_algorithm" value="FeatureAgglomeration"/>
+                        <param name="text_params" value="'n_clusters': 3, 'affinity': 'euclidean'"/>
+                    </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="AdaBoostClassifier"/>
+            <output name="outfile" file="pipeline08" compare="sim_size" delta="1"/>
         </test>
     </tests>
     <help>
@@ -199,6 +255,7 @@ Constructs a pipeline that contains a list of transfroms and a final estimator. 
 that can be cross-validated together while setting different parameters.
 please refer to `Scikit-learn pipeline Pipeline`_.
 
+**Pre-processing components** allow None, one or a combination of up to 5 transformations from `sklearn.preprocessing`_, `feature_selection`_, `decomposition`_, `kernel_approximation`_ and/or `cluster.FeatureAgglomeration`_.
 
 **Estimator** selector supports estimators from `xgboost`_ and many scikit-learn modules, including `svm`_, `linear_model`_, `ensemble`_, `naive_bayes`_, `tree`_ and `neighbors`_.
 
@@ -211,6 +268,12 @@ please refer to `Scikit-learn pipeline Pipeline`_.
 .. _`tree`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.tree
 .. _`neighbors`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.neighbors
 .. _`xgboost`: https://xgboost.readthedocs.io/en/latest/python/python_api.html
+
+.. _`sklearn.preprocessing`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.preprocessing
+.. _`feature_selection`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.feature_selection
+.. _`decomposition`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.decomposition
+.. _`kernel_approximation`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.kernel_approximation
+.. _`cluster.FeatureAgglomeration`: http://scikit-learn.org/stable/modules/generated/sklearn.cluster.FeatureAgglomeration.html
 
         ]]>
     </help>
