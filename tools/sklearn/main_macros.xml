@@ -34,24 +34,20 @@ def feature_selector(inputs):
   if inputs['selected_algorithm'] == 'SelectFromModel':
     if not options['threshold'] or options['threshold'] == 'None':
       options['threshold'] = None
-      if 'extra_estimator' in inputs and inputs['extra_estimator']['has_estimator'] == 'no_load':
-        with open("inputs['extra_estimator']['fitted_estimator']", 'rb') as model_handler:
-          fitted_estimator = pickle.load(model_handler)
-        new_selector = selector(fitted_estimator, prefit=True, **options)
-      else:
-        estimator=inputs["estimator"]
-        if inputs["extra_estimator"]["has_estimator"]=='no':
-          estimator=inputs["extra_estimator"]["new_estimator"]
-        estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
-        new_selector = selector(estimator, **options)
+    if inputs['model_inputter']['input_mode'] == 'prefitted':
+      model_file = inputs['model_inputter']['fitted_estimator']
+      with open(model_file, 'rb') as model_handler:
+        fitted_estimator = pickle.load(model_handler)
+      new_selector = selector(fitted_estimator, prefit=True, **options)
+    else:
+      estimator_json = inputs['model_inputter']["estimator_selector"]
+      estimator = get_estimator(estimator_json)
+      new_selector = selector(estimator, **options)
 
   elif inputs['selected_algorithm'] in ['RFE', 'RFECV']:
     if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
       options['scoring'] = None
-    estimator=inputs["estimator"]
-    if inputs["extra_estimator"]["has_estimator"]=='no':
-      estimator=inputs["extra_estimator"]["new_estimator"]
-    estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
+    estimator=get_estimator(inputs["estimator_selector"])
     new_selector = selector(estimator, **options)
 
   elif inputs['selected_algorithm'] == "VarianceThreshold":
@@ -104,11 +100,101 @@ def get_X_y(params, file1, file2):
   return X, y
   </token>
 
+  <token name="@GET_SEARCH_PARAMS_FUNCTION@">
+def get_search_params(params_builder):
+  search_params = {}
+
+  def safe_eval(literal):
+
+    FROM_SCIPY_STATS = [  'bernoulli', 'binom', 'boltzmann', 'dlaplace', 'geom', 'hypergeom',
+                          'logser', 'nbinom', 'planck', 'poisson', 'randint', 'skellam', 'zipf' ]
+
+    FROM_NUMPY_RANDOM = [ 'beta', 'binomial', 'bytes', 'chisquare', 'choice', 'dirichlet', 'division',
+                          'exponential', 'f', 'gamma', 'geometric', 'gumbel', 'hypergeometric',
+                          'laplace', 'logistic', 'lognormal', 'logseries', 'mtrand', 'multinomial',
+                          'multivariate_normal', 'negative_binomial', 'noncentral_chisquare', 'noncentral_f',
+                          'normal', 'pareto', 'permutation', 'poisson', 'power', 'rand', 'randint',
+                          'randn', 'random', 'random_integers', 'random_sample', 'ranf', 'rayleigh',
+                          'sample', 'seed', 'set_state', 'shuffle', 'standard_cauchy', 'standard_exponential',
+                          'standard_gamma', 'standard_normal', 'standard_t', 'triangular', 'uniform',
+                          'vonmises', 'wald', 'weibull', 'zipf' ]
+
+    # File opening and other unneeded functions could be dropped
+    UNWANTED = ['open', 'type', 'dir', 'id', 'str', 'repr']
+
+    # Allowed symbol table. Add more if needed.
+    new_syms = {
+      'np_arange': getattr(np, 'arange'),
+      'ensemble_ExtraTreesClassifier': getattr(ensemble, 'ExtraTreesClassifier')
+    }
+
+    syms = make_symbol_table(use_numpy=False, **new_syms)
+
+    for method in FROM_SCIPY_STATS:
+      syms['scipy_stats_' + method] = getattr(scipy.stats, method)
+
+    for func in FROM_NUMPY_RANDOM:
+      syms['np_random_' + func] = getattr(np.random, func)
+
+    for key in UNWANTED:
+      syms.pop(key, None)
+
+    aeval = Interpreter(symtable=syms, use_numpy=False, minimal=False,
+                      no_if=True, no_for=True, no_while=True, no_try=True,
+                      no_functiondef=True, no_ifexp=True, no_listcomp=False,
+                      no_augassign=False, no_assert=True, no_delete=True,
+                      no_raise=True, no_print=True)
+
+    return aeval(literal)
+
+  for p in params_builder['param_set']:
+    search_p = p['search_param_selector']['search_p']
+    if search_p.strip() == '':
+      continue
+    param_type = p['search_param_selector']['selected_param_type']
+
+    lst = search_p.split(":")
+    assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
+    literal = lst[1].strip()
+    ev = safe_eval(literal)
+    if param_type == "final_estimator_p":
+      search_params["estimator__" + lst[0].strip()] = ev
+    else:
+      search_params["preprocessing_" + param_type[5:6] + "__" + lst[0].strip()] = ev
+
+  return search_params
+  </token>
+
+  <token name="@GET_ESTIMATOR_FUNCTION@">
+def get_estimator(estimator_json):
+  estimator_module = estimator_json['selected_module']
+  estimator_cls = estimator_json['selected_estimator']
+
+  if estimator_module == "xgboost":
+    cls = getattr(xgboost, estimator_cls)
+  else:
+    module = getattr(sklearn, estimator_module)
+    cls = getattr(module, estimator_cls)
+
+  estimator = cls()
+
+  estimator_params = estimator_json['text_params'].strip()
+  if estimator_params != "":
+    try:
+      params = ast.literal_eval('{' + estimator_params + '}')
+    except ValueError:
+      sys.exit("Unsupported parameter input: `%s`" %estimator_params)
+    estimator.set_params(**params)
+
+  return estimator
+  </token>
+
   <xml name="python_requirements">
       <requirements>
           <requirement type="package" version="2.7">python</requirement>
           <requirement type="package" version="0.19.1">scikit-learn</requirement>
           <requirement type="package" version="0.22.0">pandas</requirement>
+          <requirement type="package" version="0.72.1">xgboost</requirement>
           <yield />
       </requirements>
   </xml>
@@ -907,53 +993,54 @@ def get_X_y(params, file1, file2):
     </expand>
   </xml>
 
-  <xml name="estimator_input_no_fit">
-    <expand macro="feature_selection_estimator" />
-    <conditional name="extra_estimator">
-      <expand macro="feature_selection_extra_estimator" />
-      <expand macro="feature_selection_estimator_choices" />
-    </conditional>
+  <xml name="fs_selectfrommodel_prefitted">
+    <param name="input_mode" type="select" label="Construct a new estimator from a selection list?" >
+      <option value="new" selected="true">Yes</option>
+      <option value="prefitted">No. Load a prefitted estimator</option>
+    </param>
+    <when value="new">
+      <expand macro="estimator_selector_all"/>
+    </when>
+    <when value="prefitted">
+      <param name="fitted_estimator" type="data" format='zip' label="Load a prefitted estimator" />
+    </when>
+  </xml>
+
+  <xml name="fs_selectfrommodel_no_prefitted">
+    <param name="input_mode" type="select" label="Construct a new estimator from a selection list?" >
+      <option value="new" selected="true">Yes</option>
+    </param>
+    <when value="new">
+      <expand macro="estimator_selector_all"/>
+    </when>
   </xml>
 
   <xml name="feature_selection_all">
-    <conditional name="feature_selection_algorithms">
+    <conditional name="fs_algorithm_selector">
       <param name="selected_algorithm" type="select" label="Select a feature selection algorithm">
-        <option value="SelectFromModel" selected="true">SelectFromModel - Meta-transformer for selecting features based on importance weights</option>
-        <option value="GenericUnivariateSelect" selected="true">GenericUnivariateSelect - Univariate feature selector with configurable strategy</option>
+        <option value="SelectKBest" selected="true">SelectKBest - Select features according to the k highest scores</option>
+        <option value="SelectFromModel">SelectFromModel - Meta-transformer for selecting features based on importance weights</option>
+        <option value="GenericUnivariateSelect">GenericUnivariateSelect - Univariate feature selector with configurable strategy</option>
         <option value="SelectPercentile">SelectPercentile - Select features according to a percentile of the highest scores</option>
-        <option value="SelectKBest">SelectKBest - Select features according to the k highest scores</option>
         <option value="SelectFpr">SelectFpr - Filter: Select the p-values below alpha based on a FPR test</option>
         <option value="SelectFdr">SelectFdr - Filter: Select the p-values for an estimated false discovery rate</option>
         <option value="SelectFwe">SelectFwe - Filter: Select the p-values corresponding to Family-wise error rate</option>
         <option value="RFE">RFE - Feature ranking with recursive feature elimination</option>
         <option value="RFECV">RFECV - Feature ranking with recursive feature elimination and cross-validated selection of the best number of features</option>
         <option value="VarianceThreshold">VarianceThreshold - Feature selector that removes all low-variance features</option>
-        <!--option value="chi2">Compute chi-squared stats between each non-negative feature and class</option-->
-        <!--option value="f_classif">Compute the ANOVA F-value for the provided sample</option-->
-        <!--option value="f_regression">Univariate linear regression tests</option-->
-        <!--option value="mutual_info_classif">Estimate mutual information for a discrete target variable</option-->
-        <!--option value="mutual_info_regression">Estimate mutual information for a continuous target variable</option-->
       </param>
       <when value="SelectFromModel">
-        <expand macro="feature_selection_estimator" />
-        <conditional name="extra_estimator">
-          <expand macro="feature_selection_extra_estimator" >
-            <option value="no_load">No, I will load a prefitted estimator</option>
-          </expand>
-          <expand macro="feature_selection_estimator_choices" >
-            <when value="no_load">
-              <param name="fitted_estimator" type="data" format='zip' label="Load a prefitted estimator" />
-            </when>
-          </expand>
+        <conditional name="model_inputter">
+          <yield/>
         </conditional>
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="threshold" type="text" value="" optional="true" label="threshold" help="The threshold value to use for feature selection. e.g. 'mean', 'median', '1.25*mean'." />
           <param argument="norm_order" type="integer" value="1" label="norm_order" help="Order of the norm used to filter the vectors of coefficients below threshold in the case where the coef_ attribute of the estimator is of dimension 2. " />
         </section>
       </when>
       <when value="GenericUnivariateSelect">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="mode" type="select" label="Feature selection mode">
             <option value="percentile">percentile</option>
             <option value="k_best">k_best</option>
@@ -966,53 +1053,45 @@ def get_X_y(params, file1, file2):
       </when>
       <when value="SelectPercentile">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="percentile" type="integer" value="10" optional="True" label="Percent of features to keep" />
         </section>
       </when>
       <when value="SelectKBest">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="k" type="integer" value="10" optional="True" label="Number of top features to select" help="No 'all' option is supported." />
         </section>
       </when>
       <when value="SelectFpr">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest p-value for features to be kept."/>
         </section>
       </when>
       <when value="SelectFdr">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest uncorrected p-value for features to keep."/>
         </section>
       </when>
       <when value="SelectFwe">
         <expand macro="feature_selection_score_function" />
-        <section name="options" title="Other Options" expanded="True">
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest uncorrected p-value for features to keep."/>
         </section>
       </when>
       <when value="RFE">
-        <expand macro="feature_selection_estimator" />
-        <conditional name="extra_estimator">
-          <expand macro="feature_selection_extra_estimator" />
-          <expand macro="feature_selection_estimator_choices" />
-        </conditional>
-        <section name="options" title="Other Options" expanded="True">
+        <expand macro="estimator_selector_all"/>
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="n_features_to_select" type="integer" value="" optional="true" label="n_features_to_select" help="The number of features to select. If None, half of the features are selected." />
           <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
           <param argument="verbose" type="integer" value="0" label="verbose" help="Controls verbosity of output." />
         </section>
       </when>
       <when value="RFECV">
-        <expand macro="feature_selection_estimator" />
-        <conditional name="extra_estimator">
-          <expand macro="feature_selection_extra_estimator" />
-          <expand macro="feature_selection_estimator_choices" />
-        </conditional>
-        <section name="options" title="Other Options" expanded="True">
+        <expand macro="estimator_selector_all"/>
+        <section name="options" title="Advanced Options" expanded="False">
           <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
           <param argument="cv" type="integer" value="" optional="true" label="cv" help="Determines the cross-validation splitting strategy" />
           <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A string (see model evaluation documentation) or a scorer callable object / function with signature scorer(estimator, X, y)."/>
@@ -1021,7 +1100,7 @@ def get_X_y(params, file1, file2):
         </section>
       </when>
       <when value="VarianceThreshold">
-        <section name="options" title="Options" expanded="True">
+        <section name="options" title="Options" expanded="False">
           <param argument="threshold" type="float" value="" optional="True" label="Threshold" help="Features with a training-set variance lower than this threshold will be removed."/>
         </section>
       </when>
@@ -1048,36 +1127,9 @@ def get_X_y(params, file1, file2):
     </param>
   </xml>
 
-  <xml name="feature_selection_estimator">
-    <param argument="estimator" type="select" label="Select an estimator" help="The base estimator from which the transformer is built.">
-      <option value="svm.SVR(kernel=&quot;linear&quot;)">svm.SVR(kernel=&quot;linear&quot;)</option>
-      <option value="svm.SVC(kernel=&quot;linear&quot;)">svm.SVC(kernel=&quot;linear&quot;)</option>
-      <option value="svm.LinearSVC(penalty=&quot;l1&quot;, dual=False, tol=1e-3)">svm.LinearSVC(penalty=&quot;l1&quot;, dual=False, tol=1e-3)</option>
-      <option value="linear_model.LassoCV()">linear_model.LassoCV()</option>
-      <option value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)">ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)</option>
-    </param>
-  </xml>
-
-  <xml name="feature_selection_extra_estimator">   
-      <param name="has_estimator" type="select" label="Does your estimator on the list above?">
-        <option value="yes">Yes, my estimator is on the list</option>
-        <option value="no">No, I need make a new estimator</option>
-        <yield/>
-      </param>
-  </xml>
-
-  <xml name="feature_selection_estimator_choices">
-    <when value="yes">
-    </when>
-    <when value="no">
-      <param name="new_estimator" type="text" value="" label="Make a new estimator" />
-    </when>
-    <yield/>
-  </xml>
-
-  <xml name="feature_selection_methods">
-    <conditional name="select_methods">
-      <param name="selected_method" type="select" label="Select an operation">
+  <xml name="feature_selection_output_mothods">
+    <conditional name="output_method_selector">
+      <param name="selected_method" type="select" label="Select an output method:">
           <option value="fit_transform">fit_transform - Fit to data, then transform it</option>
           <option value="get_support">get_support - Get a mask, or integer index, of the features selected</option>
       </param>
@@ -1101,10 +1153,312 @@ def get_X_y(params, file1, file2):
     <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A metric used to evaluate the estimator"/>
   </xml>
 
-  <xml name="pre_dispatch" token_type="text" token_default_value="all" token_help="Number of predispatched jobs for parallel execution">
+  <xml name="pre_dispatch" token_type="hidden" token_default_value="all" token_help="Number of predispatched jobs for parallel execution">
     <param argument="pre_dispatch" type="@TYPE@" value="@DEFAULT_VALUE@" optional="true" label="pre_dispatch" help="@HELP@"/>
   </xml>
 
+  <xml name="search_cv_estimator">
+    <param name="infile_pipeline" type="data" format="zip" label="Choose the dataset containing pipeline object:"/>
+    <section name="search_params_builder" title="Search parameters Builder" expanded="true">
+      <repeat name="param_set" min="1" max="20" title="Parameter setting for search:">
+        <conditional name="search_param_selector">
+          <param name="selected_param_type" type="select" label="Choose the transformation the parameter belongs to">
+            <option value="final_estimator_p" selected="true">Final estimator</option>
+            <option value="prep_1_p">Pre-processing step #1</option>
+            <option value="prep_2_p">Pre-processing step #2</option>
+            <option value="prep_3_p">Pre-processing step #3</option>
+            <option value="prep_4_p">Pre-processing step #4</option>
+            <option value="prep_5_p">Pre-processing step #5</option>
+          </param>
+          <when value="final_estimator_p">
+            <expand macro="search_param_input" />
+          </when>
+          <when value="prep_1_p">
+            <expand macro="search_param_input" label="Pre_processing component #1  parameter:" help="One parameter per box. For example: with_centering: [True, False]."/>
+          </when>
+          <when value="prep_2_p">
+            <expand macro="search_param_input" label="Pre_processing component #2 parameter:" help="One parameter per box. For example: k: [3, 5, 7, 9]. See bottom for more examples"/>
+          </when>
+          <when value="prep_3_p">
+            <expand macro="search_param_input" label="Pre_processing component #3 parameter:" help="One parameter per box. For example: n_components: [1, 10, 100, 1000]. See bottom for more examples"/>
+          </when>
+          <when value="prep_4_p">
+            <expand macro="search_param_input" label="Pre_processing component #4 parameter:" help="One parameter per box. For example: n_components: [1, 10, 100, 1000]. See bottom for more examples"/>
+          </when>
+          <when value="prep_5_p">
+            <expand macro="search_param_input" label="Pre_processing component #5 parameter:" help="One parameter per box. For example: affinity: ['euclidean', 'l1', 'l2', 'manhattan']. See bottom for more examples"/>
+          </when>
+        </conditional>
+      </repeat>
+    </section>
+  </xml>
+
+  <xml name="search_param_input" token_label="Estimator parameter:" token_help="One parameter per box. For example: C: [1, 10, 100, 1000]. See bottom for more examples">
+    <param name="search_p" type="text" value="" size="100" optional="true" label="@LABEL@" help="@HELP@">
+      <sanitizer>
+        <valid initial="default">
+          <add value="&apos;"/>
+          <add value="&quot;"/>
+          <add value="["/>
+          <add value="]"/>
+        </valid>
+      </sanitizer>
+    </param>
+  </xml>
+
+  <xml name="search_cv_options">
+      <expand macro="scoring"/>
+      <expand macro="model_validation_common_options"/>
+      <expand macro="pre_dispatch" value="2*n_jobs" help="Controls the number of jobs that get dispatched during parallel execution"/>
+      <param argument="iid" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="iid" help="If True, data is identically distributed across the folds"/>
+      <param argument="refit" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="refit" help="Refit an estimator using the best found parameters on the whole dataset."/>
+      <!--error_score-->
+      <param argument="return_train_score" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="return_train_score" help=""/>
+  </xml>
+
+  <xml name="estimator_selector_all">
+    <conditional name="estimator_selector">
+      <param name="selected_module" type="select" label="Choose the module that contains target estimator:" >
+        <option value="svm" selected="true">sklearn.svm</option>
+        <option value="linear_model">sklearn.linear_model</option>
+        <option value="ensemble">sklearn.ensemble</option>
+        <option value="naive_bayes">sklearn.naive_bayes</option>
+        <option value="tree">sklearn.tree</option>
+        <option value="neighbors">sklearn.neighbors</option>
+        <option value="xgboost">xgboost</option>
+        <!--more-->
+      </param>
+      <when value="svm">
+        <param name="selected_estimator" type="select" label="Choose estimator class:">
+          <option value="LinearSVC" selected="true">LinearSVC</option>
+          <option value="LinearSVR">LinearSVR</option>
+          <option value="NuSVC">NuSVC</option>
+          <option value="NuSVR">NuSVR</option>
+          <option value="OneClassSVM">OneClassSVM</option>
+          <option value="SVC">SVC</option>
+          <option value="SVR">SVR</option>
+        </param>
+        <expand macro="estimator_params_text"/>
+      </when>
+      <when value="linear_model">
+        <param name="selected_estimator" type="select" label="Choose estimator class:">
+          <option value="ARDRegression" selected="true">ARDRegression</option>
+          <option value="BayesianRidge">BayesianRidge</option>
+          <option value="ElasticNet">ElasticNet</option>
+          <option value="ElasticNetCV">ElasticNetCV</option>
+          <option value="HuberRegressor">HuberRegressor</option>
+          <option value="Lars">Lars</option>
+          <option value="LarsCV">LarsCV</option>
+          <option value="Lasso">Lasso</option>
+          <option value="LassoCV">LassoCV</option>
+          <option value="LassoLars">LassoLars</option>
+          <option value="LassoLarsCV">LassoLarsCV</option>
+          <option value="LassoLarsIC">LassoLarsIC</option>
+          <option value="LinearRegression">LinearRegression</option>
+          <option value="LogisticRegression">LogisticRegression</option>
+          <option value="LogisticRegressionCV">LogisticRegressionCV</option>
+          <option value="MultiTaskLasso">MultiTaskLasso</option>
+          <option value="MultiTaskElasticNet">MultiTaskElasticNet</option>
+          <option value="MultiTaskLassoCV">MultiTaskLassoCV</option>
+          <option value="MultiTaskElasticNetCV">MultiTaskElasticNetCV</option>
+          <option value="OrthogonalMatchingPursuit">OrthogonalMatchingPursuit</option>
+          <option value="OrthogonalMatchingPursuitCV">OrthogonalMatchingPursuitCV</option>
+          <option value="PassiveAggressiveClassifier">PassiveAggressiveClassifier</option>
+          <option value="PassiveAggressiveRegressor">PassiveAggressiveRegressor</option>
+          <option value="Perceptron">Perceptron</option>
+          <option value="RANSACRegressor">RANSACRegressor</option>
+          <option value="Ridge">Ridge</option>
+          <option value="RidgeClassifier">RidgeClassifier</option>
+          <option value="RidgeClassifierCV">RidgeClassifierCV</option>
+          <option value="RidgeCV">RidgeCV</option>
+          <option value="SGDClassifier">SGDClassifier</option>
+          <option value="SGDRegressor">SGDRegressor</option>
+          <option value="TheilSenRegressor">TheilSenRegressor</option>
+        </param>
+        <expand macro="estimator_params_text"/>
+      </when>
+      <when value="ensemble">
+        <param name="selected_estimator" type="select" label="Choose estimator class:">
+          <option value="AdaBoostClassifier" selected="true">AdaBoostClassifier</option>
+          <option value="AdaBoostRegressor">AdaBoostRegressor</option>
+          <option value="BaggingClassifier">BaggingClassifier</option>
+          <option value="BaggingRegressor">BaggingRegressor</option>
+          <option value="ExtraTreesClassifier">ExtraTreesClassifier</option>
+          <option value="ExtraTreesRegressor">ExtraTreesRegressor</option>
+          <option value="GradientBoostingClassifier">GradientBoostingClassifier</option>
+          <option value="GradientBoostingRegressor">GradientBoostingRegressor</option>
+          <option value="IsolationForest">IsolationForest</option>
+          <option value="RandomForestClassifier">RandomForestClassifier</option>
+          <option value="RandomForestRegressor">RandomForestRegressor</option>
+          <option value="RandomTreesEmbedding">RandomTreesEmbedding</option>
+          <option value="VotingClassifier">VotingClassifier</option>
+        </param>
+        <expand macro="estimator_params_text"/>
+      </when>
+      <when value="naive_bayes">
+        <param name="selected_estimator" type="select" label="Choose estimator class:">
+          <option value="BernoulliNB" selected="true">BernoulliNB</option>
+          <option value="GaussianNB">GaussianNB</option>
+          <option value="MultinomialNB">MultinomialNB</option>
+        </param>
+        <expand macro="estimator_params_text"/>
+      </when>
+      <when value="tree">
+        <param name="selected_estimator" type="select" label="Choose estimator class:">
+          <option value="DecisionTreeClassifier" selected="true">DecisionTreeClassifier</option>
+          <option value="DecisionTreeRegressor">DecisionTreeRegressor</option>
+          <option value="ExtraTreeClassifier">ExtraTreeClassifier</option>
+          <option value="ExtraTreeRegressor">ExtraTreeRegressor</option>
+        </param>
+        <expand macro="estimator_params_text"/>
+      </when>
+      <when value="neighbors">
+        <param name="selected_estimator" type="select" label="Choose estimator class:">
+          <option value="BallTree" selected="true">BallTree</option>
+          <option value="DistanceMetric">DistanceMetric</option>
+          <option value="KDTree">KDTree</option>
+          <option value="KernelDensity">KernelDensity</option>
+          <option value="KNeighborsClassifier">KNeighborsClassifier</option>
+          <option value="KNeighborsRegressor">KNeighborsRegressor</option>
+          <option value="LocalOutlierFactor">LocalOutlierFactor</option>
+          <option value="RadiusNeighborsClassifier">RadiusNeighborsClassifier</option>
+          <option value="RadiusNeighborsRegressor">RadiusNeighborsRegressor</option>
+          <option value="NearestCentroid">NearestCentroid</option>
+          <option value="NearestNeighbors">NearestNeighbors</option>
+        </param>
+        <expand macro="estimator_params_text"/>
+      </when>
+      <when value="xgboost">
+        <param name="selected_estimator" type="select" label="Choose estimator class:">
+          <option value="XGBRegressor" selected="true">XGBRegressor</option>
+          <option value="XGBClassifier">XGBClassifier</option>
+        </param>
+        <expand macro="estimator_params_text"/>
+      </when>
+    </conditional>
+  </xml>
+
+  <xml name="estimator_params_text" token_label="Type in estimator parameters:"
+        token_help="Parameters in dictionary without braces ('{}'), e.g., 'C': 1, 'kernel': 'linear'. No double quotes. Leave this box blank for default estimator.">
+    <param name="text_params" type="text" value="" size="50" optional="true" label="@LABEL@" help="@HELP@">
+      <sanitizer>
+        <valid initial="default">
+          <add value="&apos;"/>
+        </valid>
+      </sanitizer>
+    </param>
+  </xml>
+
+  <xml name="kernel_approximation_all">
+    <conditional name="kernel_approximation_selector">
+      <param name="select_algorithm" type="select" label="Choose a kernel approximation algorithm:">
+        <option value="Nystroem" selected="true">Nystroem</option>
+        <option value="RBFSampler">RBFSampler</option>
+        <option value="AdditiveChi2Sampler">AdditiveChi2Sampler</option>
+        <option value="SkewedChi2Sampler">SkewedChi2Sampler</option>
+      </param>
+      <when value="Nystroem">
+        <expand macro="estimator_params_text" label="Type in kernel approximater parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'kernel': 'rbf'. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="RBFSampler">
+        <expand macro="estimator_params_text" label="Type in kernel approximater parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'gamma': 1.0. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="AdditiveChi2Sampler">
+        <expand macro="estimator_params_text" label="Type in kernel approximater parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'sample_steps': 2, 'sample_interval': None. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="SkewedChi2Sampler">
+        <expand macro="estimator_params_text" label="Type in kernel approximater parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'skewedness': 1.0. No double quotes. Leave this box blank for class default."/>
+      </when>
+    </conditional>
+  </xml>
+
+  <xml name="matrix_decomposition_all">
+    <conditional name="matrix_decomposition_selector">
+      <param name="select_algorithm" type="select" label="Choose a matrix decomposition algorithm:">
+        <option value="DictionaryLearning" selected="true">DictionaryLearning</option>
+        <option value="FactorAnalysis">FactorAnalysis</option>
+        <option value="FastICA">FastICA</option>
+        <option value="IncrementalPCA">IncrementalPCA</option>
+        <option value="KernelPCA">KernelPCA</option>
+        <option value="LatentDirichletAllocation">LatentDirichletAllocation</option>
+        <option value="MiniBatchDictionaryLearning">MiniBatchDictionaryLearning</option>
+        <option value="MiniBatchSparsePCA">MiniBatchSparsePCA</option>
+        <option value="NMF">NMF</option>
+        <option value="PCA">PCA</option>
+        <option value="SparsePCA">SparsePCA</option>
+        <option value="SparseCoder">SparseCoder</option>
+        <option value="TruncatedSVD">TruncatedSVD</option>
+      </param>
+      <when value="DictionaryLearning">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': None, 'alpha': 1.0. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="FactorAnalysis">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="FastICA">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="IncrementalPCA">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'whiten': False. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="KernelPCA">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="LatentDirichletAllocation">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="MiniBatchDictionaryLearning">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="MiniBatchSparsePCA">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="NMF">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'init': 'random'. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="PCA">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="SparsePCA">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 100, 'random_state': 42. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="SparseCoder">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'transform_algorithm': 'omp', 'transform_alpha': 1.0. No double quotes. Leave this box blank for class default."/>
+      </when>
+      <when value="TruncatedSVD">
+        <expand macro="estimator_params_text" label="Type in maxtrix decomposition parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_components': 2, 'algorithm': 'randomized'. No double quotes. Leave this box blank for default estimator."/>
+      </when>
+    </conditional>
+  </xml>
+
+  <xml name="FeatureAgglomeration">
+    <conditional name="FeatureAgglomeration_selector">
+      <param name="select_algorithm" type="select" label="Choose the algorithm:">
+        <option value="FeatureAgglomeration" selected="true">FeatureAgglomeration</option>
+      </param>
+      <when value="FeatureAgglomeration">
+        <expand macro="estimator_params_text" label="Type in parameters:"
+              help="Parameters in dictionary without braces ('{}'), e.g., 'n_clusters': 2, 'affinity': 'euclidean'. No double quotes. Leave this box blank for class default."/>
+      </when>
+    </conditional>
+  </xml>
   <!-- Outputs -->
 
   <xml name="output">
@@ -1117,7 +1471,6 @@ def get_X_y(params, file1, file2):
       </data>
     </outputs>
   </xml>
-
 
   <!--Citations-->
   <xml name="eden_citation">

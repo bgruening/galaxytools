@@ -19,19 +19,28 @@ import sys
 import json
 import pandas
 import pickle
+import ast
 import numpy as np
+import xgboost
 import sklearn.feature_selection
-from sklearn import svm, linear_model, ensemble
+from sklearn import svm, linear_model, ensemble, naive_bayes, tree, neighbors
 
 @COLUMNS_FUNCTION@
-
+@GET_ESTIMATOR_FUNCTION@
 @FEATURE_SELECTOR_FUNCTION@
 
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
     params = json.load(param_handler)
 
-## Read features
+#handle cheetah
+#if $fs_algorithm_selector.selected_algorithm == "SelectFromModel"\
+        and $fs_algorithm_selector.model_inputter.input_mode == "prefitted":
+params['fs_algorithm_selector']['model_inputter']['fitted_estimator'] =\
+        "$fs_algorithm_selector.model_inputter.fitted_estimator"
+#end if
+
+# Read features
 features_has_header = params["input_options"]["header1"]
 input_type = params["input_options"]["selected_input"]
 if input_type=="tabular":
@@ -53,7 +62,7 @@ if input_type=="tabular":
 else:
     X = mmread("$input_options.infile1")
 
-## Read labels
+# Read labels
 header = 'infer' if params["input_options"]["header2"] else None
 column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
 if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
@@ -70,21 +79,20 @@ y = read_columns(
 )
 y=y.ravel()
 
-## Create feature selector
-new_selector = feature_selector(params['feature_selection_algorithms'])
-if params['feature_selection_algorithms']['selected_algorithm'] != 'SelectFromModel' or \
-        'extra_estimator' not in params['feature_selection_algorithms'] or \
-        params['feature_selection_algorithms']['extra_estimator']['has_estimator'] != 'no_load' :
+# Create feature selector
+new_selector = feature_selector(params['fs_algorithm_selector'])
+if params['fs_algorithm_selector']['selected_algorithm'] != 'SelectFromModel'\
+        or params['fs_algorithm_selector']['model_inputter']['input_mode'] != 'prefitted' :
     new_selector.fit(X, y)
 
 ## Transform to select features
 selected_names = None
-if "$select_methods.selected_method" == "fit_transform":
+if "$output_method_selector.selected_method" == "fit_transform":
     res = new_selector.transform(X)
     if features_has_header:
         selected_names = input_df.columns[new_selector.get_support(indices=True)]
 else:
-    res = new_selector.get_support(params["select_methods"]["indices"])
+    res = new_selector.get_support(params["output_method_selector"]["indices"])
 
 res = pandas.DataFrame(res, columns = selected_names)
 res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
@@ -94,8 +102,10 @@ res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
         </configfile>
     </configfiles>
     <inputs>
-        <expand macro="feature_selection_all" />
-        <expand macro="feature_selection_methods" />
+        <expand macro="feature_selection_all">
+            <expand macro="fs_selectfrommodel_prefitted"/>
+        </expand>
+        <expand macro="feature_selection_output_mothods" />
         <expand macro="sl_mixed_input"/>
     </inputs>
     <outputs>
@@ -104,14 +114,16 @@ res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
     <tests>
         <test>
             <param name="selected_algorithm" value="SelectFromModel"/>
-            <param name="has_estimator" value="no"/>
-            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="True"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="col2" value="1"/>
-            <param name="header2" value="True"/>
+            <param name="input_mode" value="new"/>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="'n_estimators': 10, 'random_state': 10"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <param name="header2" value="false"/>
             <output name="outfile" file="feature_selection_result01"/>
         </test>
         <test>
@@ -180,26 +192,30 @@ res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
         </test>
         <test>
             <param name="selected_algorithm" value="RFE"/>
-            <param name="has_estimator" value="no"/>
-            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="True"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="col2" value="1"/>
-            <param name="header2" value="True"/>
+            <param name="input_mode" value="new"/>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="'n_estimators': 10, 'random_state':10"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <param name="header2" value="false"/>
             <output name="outfile" file="feature_selection_result08"/>
         </test>
         <test>
             <param name="selected_algorithm" value="RFECV"/>
-            <param name="has_estimator" value="no"/>
-            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="True"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="col2" value="1"/>
-            <param name="header2" value="True"/>
+            <param name="input_mode" value="new"/>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="'n_estimators': 10, 'random_state':10"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <param name="header2" value="false"/>
             <output name="outfile" file="feature_selection_result09"/>
         </test>
         <test>
@@ -225,6 +241,18 @@ res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
             <param name="selected_column_selector_option2" value="by_header_name"/>
             <param name="col2" value="target"/>
             <output name="outfile" file="feature_selection_result11"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectFromModel"/>
+            <param name="input_mode" value="prefitted"/>
+            <param name="fitted_estimator" value="rfr_model01" ftype="zip"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="false"/>
+            <output name="outfile" file="feature_selection_result12"/>
         </test>
     </tests>
     <help>
