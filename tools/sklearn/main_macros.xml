@@ -44,9 +44,15 @@ def feature_selector(inputs):
       estimator = get_estimator(estimator_json)
       new_selector = selector(estimator, **options)
 
-  elif inputs['selected_algorithm'] in ['RFE', 'RFECV']:
-    if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
+  elif inputs['selected_algorithm'] == 'RFE':
+    estimator=get_estimator(inputs["estimator_selector"])
+    new_selector = selector(estimator, **options)
+
+  elif inputs['selected_algorithm'] == 'RFECV':
+    if not options['scoring'] or options['scoring'] == 'None':
       options['scoring'] = None
+    options['n_jobs'] = int( os.environ.get('GALAXY_SLOTS', 1) )
+    options['cv'] = get_cv( options['cv'].strip() )
     estimator=get_estimator(inputs["estimator_selector"])
     new_selector = selector(estimator, **options)
 
@@ -195,7 +201,7 @@ def get_estimator(estimator_json):
 def get_cv(literal):
   if literal == "":
     return None
-  if re.match(r'^\d+$', literal):
+  if literal.isdigit():
     return int(literal)
   m = re.match(r'^(?P&lt;method&gt;\w+)\((?P&lt;args&gt;.*)\)$', literal)
   if m:
@@ -211,6 +217,7 @@ def get_cv(literal):
           <requirement type="package" version="0.19.1">scikit-learn</requirement>
           <requirement type="package" version="0.22.0">pandas</requirement>
           <requirement type="package" version="0.72.1">xgboost</requirement>
+          <requirement type="package" version="0.9.12">asteval</requirement>
           <yield />
       </requirements>
   </xml>
@@ -439,10 +446,6 @@ def get_cv(literal):
     <param argument="fit_intercept" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="@CHECKED@" label="Estimate the intercept" help="If false, the data is assumed to be already centered."/>
   </xml>
 
-  <xml name="n_jobs" token_default_value="1" token_label="The number of jobs to run in parallel for both fit and predict">
-    <param argument="n_jobs" type="integer" value="@DEFAULT_VALUE@" optional="true" label="@LABEL@" help="If -1, then the number of jobs is set to the number of cores"/>
-  </xml>
-
   <xml name="n_iter" token_default_value="5" token_help_text="The number of passes over the training data (aka epochs). ">
     <param argument="n_iter" type="integer" optional="true" value="@DEFAULT_VALUE@" label="Number of iterations" help="@HELP_TEXT@"/>
   </xml>
@@ -542,7 +545,7 @@ def get_cv(literal):
     <conditional name="column_selector_options_1">
       <expand macro="samples_column_selector_options" multiple="@MULTIPLE1@"/>
     </conditional>
-    <param name="infile2" type="data" format="tabular" label="Dataset containing class labels:"/>
+    <param name="infile2" type="data" format="tabular" label="Dataset containing class labels or target values:"/>
     <param name="header2" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
     <conditional name="column_selector_options_2">
       <expand macro="samples_column_selector_options" column_option="selected_column_selector_option2" col_name="col2" multiple="@MULTIPLE2@" infile="infile2"/>
@@ -1031,6 +1034,16 @@ def get_cv(literal):
     </when>
   </xml>
 
+  <xml name="cv">
+    <param argument="cv" type="text" value="" size="50" optional="true" label="cv" help="Optional. Integer or evalable splitter object, e.g., StratifiedKFold(n_splits=3, shuffle=True, random_state=10). Leave blank for default." >
+      <sanitizer>
+        <valid initial="default">
+          <add value="&apos;"/>
+        </valid>
+      </sanitizer>
+    </param>
+  </xml>
+
   <xml name="feature_selection_all">
     <conditional name="fs_algorithm_selector">
       <param name="selected_algorithm" type="select" label="Select a feature selection algorithm">
@@ -1109,10 +1122,9 @@ def get_cv(literal):
         <expand macro="estimator_selector_all"/>
         <section name="options" title="Advanced Options" expanded="False">
           <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
-          <param argument="cv" type="integer" value="" optional="true" label="cv" help="Determines the cross-validation splitting strategy" />
+          <expand macro="cv"/>
           <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A string (see model evaluation documentation) or a scorer callable object / function with signature scorer(estimator, X, y)."/>
           <param argument="verbose" type="integer" value="0" label="verbose" help="Controls verbosity of output." />
-          <param argument="n_jobs" type="integer" value="1" label="n_jobs" help="Number of cores to run in parallel while fitting across folds. Defaults to 1 core."/>
         </section>
       </when>
       <when value="VarianceThreshold">
@@ -1159,8 +1171,7 @@ def get_cv(literal):
   </xml>
 
   <xml name="model_validation_common_options">
-    <param argument="cv" type="text" value="" size="50" optional="true" label="cv" help="Optional. Integer or evalable splitter object, e.g., StratifiedKFold(n_splits=3, shuffle=True, random_state=10). Leave blank for default." />
-    <expand macro="n_jobs"/>
+    <expand macro="cv"/>
     <expand macro="verbose"/>
     <yield/>
   </xml>
