@@ -44,9 +44,14 @@ def feature_selector(inputs):
       estimator = get_estimator(estimator_json)
       new_selector = selector(estimator, **options)
 
-  elif inputs['selected_algorithm'] in ['RFE', 'RFECV']:
-    if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
-      options['scoring'] = None
+  elif inputs['selected_algorithm'] == 'RFE':
+    estimator=get_estimator(inputs["estimator_selector"])
+    new_selector = selector(estimator, **options)
+
+  elif inputs['selected_algorithm'] == 'RFECV':
+    options['scoring'] = get_scoring(options['scoring'])
+    options['n_jobs'] = int( os.environ.get('GALAXY_SLOTS', 1) )
+    options['cv'] = get_cv( options['cv'].strip() )
     estimator=get_estimator(inputs["estimator_selector"])
     new_selector = selector(estimator, **options)
 
@@ -195,7 +200,7 @@ def get_estimator(estimator_json):
 def get_cv(literal):
   if literal == "":
     return None
-  if re.match(r'^\d+$', literal):
+  if literal.isdigit():
     return int(literal)
   m = re.match(r'^(?P&lt;method&gt;\w+)\((?P&lt;args&gt;.*)\)$', literal)
   if m:
@@ -205,12 +210,20 @@ def get_cv(literal):
   sys.exit("Unsupported CV input: %s" %literal)
   </token>
 
+  <token name="@GET_SCORING_FUNCTION@">
+def get_scoring(scorer):
+  if scorer == "default":
+    return None
+  return scorer
+  </token>
+
   <xml name="python_requirements">
       <requirements>
           <requirement type="package" version="2.7">python</requirement>
           <requirement type="package" version="0.19.1">scikit-learn</requirement>
           <requirement type="package" version="0.22.0">pandas</requirement>
           <requirement type="package" version="0.72.1">xgboost</requirement>
+          <requirement type="package" version="0.9.12">asteval</requirement>
           <yield />
       </requirements>
   </xml>
@@ -439,10 +452,6 @@ def get_cv(literal):
     <param argument="fit_intercept" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="@CHECKED@" label="Estimate the intercept" help="If false, the data is assumed to be already centered."/>
   </xml>
 
-  <xml name="n_jobs" token_default_value="1" token_label="The number of jobs to run in parallel for both fit and predict">
-    <param argument="n_jobs" type="integer" value="@DEFAULT_VALUE@" optional="true" label="@LABEL@" help="If -1, then the number of jobs is set to the number of cores"/>
-  </xml>
-
   <xml name="n_iter" token_default_value="5" token_help_text="The number of passes over the training data (aka epochs). ">
     <param argument="n_iter" type="integer" optional="true" value="@DEFAULT_VALUE@" label="Number of iterations" help="@HELP_TEXT@"/>
   </xml>
@@ -542,7 +551,7 @@ def get_cv(literal):
     <conditional name="column_selector_options_1">
       <expand macro="samples_column_selector_options" multiple="@MULTIPLE1@"/>
     </conditional>
-    <param name="infile2" type="data" format="tabular" label="Dataset containing class labels:"/>
+    <param name="infile2" type="data" format="tabular" label="Dataset containing class labels or target values:"/>
     <param name="header2" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="False" label="Does the dataset contain header:" />
     <conditional name="column_selector_options_2">
       <expand macro="samples_column_selector_options" column_option="selected_column_selector_option2" col_name="col2" multiple="@MULTIPLE2@" infile="infile2"/>
@@ -1031,6 +1040,16 @@ def get_cv(literal):
     </when>
   </xml>
 
+  <xml name="cv">
+    <param argument="cv" type="text" value="" optional="true" label="cv" help="Optional. Integer or evalable splitter object, e.g., StratifiedKFold(n_splits=3, shuffle=True, random_state=10). Leave blank for default." >
+      <sanitizer>
+        <valid initial="default">
+          <add value="&apos;"/>
+        </valid>
+      </sanitizer>
+    </param>
+  </xml>
+
   <xml name="feature_selection_all">
     <conditional name="fs_algorithm_selector">
       <param name="selected_algorithm" type="select" label="Select a feature selection algorithm">
@@ -1109,10 +1128,9 @@ def get_cv(literal):
         <expand macro="estimator_selector_all"/>
         <section name="options" title="Advanced Options" expanded="False">
           <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
-          <param argument="cv" type="integer" value="" optional="true" label="cv" help="Determines the cross-validation splitting strategy" />
-          <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A string (see model evaluation documentation) or a scorer callable object / function with signature scorer(estimator, X, y)."/>
+          <expand macro="cv"/>
+          <expand macro="scoring_selection"/>
           <param argument="verbose" type="integer" value="0" label="verbose" help="Controls verbosity of output." />
-          <param argument="n_jobs" type="integer" value="1" label="n_jobs" help="Number of cores to run in parallel while fitting across folds. Defaults to 1 core."/>
         </section>
       </when>
       <when value="VarianceThreshold">
@@ -1159,14 +1177,40 @@ def get_cv(literal):
   </xml>
 
   <xml name="model_validation_common_options">
-    <param argument="cv" type="text" value="" size="50" optional="true" label="cv" help="Optional. Integer or evalable splitter object, e.g., StratifiedKFold(n_splits=3, shuffle=True, random_state=10). Leave blank for default." />
-    <expand macro="n_jobs"/>
+    <expand macro="cv"/>
     <expand macro="verbose"/>
     <yield/>
   </xml>
 
-  <xml name="scoring">
-    <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A metric used to evaluate the estimator"/>
+  <xml name="scoring_selection">
+    <param argument="scoring" type="select" multiple="false" label="Select scoring metric(s)">
+      <option value="default" selected="true">default</option>
+      <option value="accuracy">Classification -- 'accuracy'</option>
+      <option value="average_precision">Classification -- 'average_precision'</option>
+      <option value="f1">Classification -- 'f1'</option>
+      <option value="f1_micro">Classification -- 'f1_micro'</option>
+      <option value="f1_macro">Classification -- 'f1_macro'</option>
+      <option value="f1_weighted">Classification -- 'f1_weighted'</option>
+      <option value="f1_samples">Classification -- 'f1_samples'</option>
+      <option value="neg_log_loss">Classification -- 'neg_log_loss'</option>
+      <option value="precision">Classification -- 'precision'</option>
+      <option value="precision_micro">Classification -- 'precision_micro'</option>
+      <option value="precision_macro">Classification -- 'precision_macro'</option>
+      <option value="precision_wighted">Classification -- 'precision_wighted'</option>
+      <option value="precision_samples">Classification -- 'precision_samples'</option>
+      <option value="recall">Classification -- 'recall'</option>
+      <option value="recall_micro">Classification -- 'recall_micro'</option>
+      <option value="recall_macro">Classification -- 'recall_macro'</option>
+      <option value="recall_wighted">Classification -- 'recall_wighted'</option>
+      <option value="recall_samples">Classification -- 'recall_samples'</option>
+      <option value="roc_auc">Classification -- 'roc_auc'</option>
+      <option value="explained_variance">Regression -- 'explained_variance'</option>
+      <option value="neg_mean_absolute_error">Regression -- 'neg_mean_absolute_error'</option>
+      <option value="neg_mean_squared_error">Regression -- 'neg_mean_squared_error'</option>
+      <option value="neg_mean_squared_log_error">Regression -- 'neg_mean_squared_log_error'</option>
+      <option value="neg_median_absolute_error">Regression -- 'neg_median_absolute_error'</option>
+      <option value="r2">Regression -- 'r2'</option>
+    </param>
   </xml>
 
   <xml name="pre_dispatch" token_type="hidden" token_default_value="all" token_help="Number of predispatched jobs for parallel execution">
@@ -1210,7 +1254,7 @@ def get_cv(literal):
   </xml>
 
   <xml name="search_param_input" token_label="Estimator parameter:" token_help="One parameter per box. For example: C: [1, 10, 100, 1000]. See bottom for more examples">
-    <param name="search_p" type="text" value="" size="100" optional="true" label="@LABEL@" help="@HELP@">
+    <param name="search_p" type="text" value="" optional="true" label="@LABEL@" help="@HELP@">
       <sanitizer>
         <valid initial="default">
           <add value="&apos;"/>
@@ -1223,7 +1267,7 @@ def get_cv(literal):
   </xml>
 
   <xml name="search_cv_options">
-      <expand macro="scoring"/>
+      <expand macro="scoring_selection"/>
       <expand macro="model_validation_common_options"/>
       <expand macro="pre_dispatch" value="2*n_jobs" help="Controls the number of jobs that get dispatched during parallel execution"/>
       <param argument="iid" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="iid" help="If True, data is identically distributed across the folds"/>
@@ -1356,7 +1400,7 @@ def get_cv(literal):
 
   <xml name="estimator_params_text" token_label="Type in estimator parameters:"
         token_help="Parameters in dictionary without braces ('{}'), e.g., 'C': 1, 'kernel': 'linear'. No double quotes. Leave this box blank for default estimator.">
-    <param name="text_params" type="text" value="" size="50" optional="true" label="@LABEL@" help="@HELP@">
+    <param name="text_params" type="text" value="" optional="true" label="@LABEL@" help="@HELP@">
       <sanitizer>
         <valid initial="default">
           <add value="&apos;"/>
