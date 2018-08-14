@@ -13,7 +13,7 @@ import sys
 
 import requests
 
-url = 'http://www.uniprot.org/'
+url = 'https://www.uniprot.org/'
 
 
 def _retrieve(query, format='txt'):
