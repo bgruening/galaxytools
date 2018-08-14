@@ -2,33 +2,27 @@
     <description>Plotting suite for Oxford Nanopore sequencing data and alignments</description>
     <requirements>
         <requirement type="package" version="1.13.0">nanoplot</requirement>
+        <requirement type="package" version="0.12.3">wkhtmltopdf</requirement>
+        <!-- <requirement type="package" version="7.0.7">imagemagick</requirement> -->
     </requirements>
     <command detect_errors="exit_code">
         <![CDATA[
-        #if $reads.type == 'pickle'
-            ln -s '$reads.files' './read.$reads.files.ext' &&
-        #else
 
-            reads='' &&
-            #for $i, $f in enumerate($reads.files)
-                #if $f
-                    #set $extension = $f.ext
-                    #if $extension == 'fastqsanger'
-                        #set $extension = 'fastq'
-                    #end if
-                    ln -s '$f' './read_${i}.$extension' &&
-                    reads="\$reads read_${i}.$extension" &&
+        reads='' &&
+        #for $i, $f in enumerate($reads.files)
+            #if $f
+                #set $extension = $f.ext
+                #if $extension == 'fastqsanger'
+                    #set $extension = 'fastq'
                 #end if
-            #end for
-            reads=\$(echo \$reads | xargs) &&
-        #end if
+                ln -s '$f' './read_${i}.$extension' &&
+                reads="\$reads read_${i}.$extension" &&
+            #end if
+        #end for
+        reads=\$(echo \$reads | xargs) &&
 
         NanoPlot
-            #if $reads.type == 'pickle'
-                --pickle './read.$reads.files.ext'
-            #else
-                --$reads.type \$reads
-            #end if
+            --$reads.type \$reads
 
             #if $filter.maxlength
                 --maxlength $filter.maxlength
@@ -48,9 +42,6 @@
             #if $customization.color
                 --color $customization.color
             #end if
-            #if $customization.format
-                --format $customization.format
-            #end if
             #if $customization.plots
                 --plots ${str($customization.plots).replace(',', ' ')}
             #end if
@@ -61,14 +52,10 @@
             $filter.barcoded
             $customization.noN50
             $customization.N50
-            #if $customization.title
-                --title '$customization.title'
-            #end if
-            $store
-            $raw
             -o outputs &&
-            mv outputs/*.log outputs/NanoPlot_log.txt &&
-            if [[ -e outputs/NanoPlot-data.pickle ]]; then mv outputs/NanoPlot-data.pickle outputs/NanoPlot-data-pickle.binary; fi
+            ## convert outputs/*.png output.pdf &&
+            wkhtmltopdf outputs/NanoPlot-report.html output.pdf &&
+            cat outputs/*.log
     ]]>
     </command>
     <inputs>
@@ -81,7 +68,6 @@
                 <option value="summary">summary</option>
                 <option value="bam">bam</option>
                 <option value="cram">cram</option>
-                <option value="pickle">pickle</option>
             </param>
             <when value="fastq">
                 <param
@@ -89,17 +75,15 @@
                     argument="--fastq"
                     name="files"
                     format="fastq,fastq.gz,fastq.bz2,vcf_bgzip"
-                    multiple="true"
-                    optional="true"/>
+                    multiple="true"/>
             </when>
             <when value="fasta">
                 <param
                     type="data"
                     argument="--fasta"
                     name="files"
-                    format="fasta,fasta.gz,fasta.bz2,vcf_bgzip"
-                    multiple="true"
-                    optional="true"/>
+                    format="fasta,fasta.gz,vcf_bgzip"
+                    multiple="true"/>
             </when>
             <when value="fastq_rich">
                 <param
@@ -107,8 +91,7 @@
                     argument="--fastq_rich"
                     name="files"
                     format="fastq,fastq.gz,fastq.bz2,vcf_bgzip"
-                    multiple="true"
-                    optional="true"/>
+                    multiple="true"/>
             </when>
             <when value="fastq_minimal">
                 <param
@@ -116,17 +99,15 @@
                     argument="--fastq_minimal"
                     name="files"
                     format="fastq,fastq.gz,fastq.bz2,vcf_bgzip"
-                    multiple="true"
-                    optional="true"/>
+                    multiple="true"/>
             </when>
             <when value="summary">
                 <param
                     type="data"
                     argument="--summary"
                     name="files"
-                    format="txt,gz,bz2,zip,xz"
-                    multiple="true"
-                    optional="true"/>
+                    format="txt,zip"
+                    multiple="true"/>
             </when>
             <when value="bam">
                 <param
@@ -134,8 +115,7 @@
                     argument="--bam"
                     name="files"
                     format="bam"
-                    multiple="true"
-                    optional="true"/>
+                    multiple="true"/>
             </when>
             <when value="cram">
                 <param
@@ -143,11 +123,7 @@
                     argument="--cram"
                     name="files"
                     format="cram"
-                    multiple="true"
-                    optional="true"/>
-            </when>
-            <when value="pickle">
-                <param type="data" argument="--pickle" name="files" format="binary" optional="true"/>
+                    multiple="true"/>
             </when>
         </conditional>
         <section
@@ -374,25 +350,6 @@
             </param>
             <param
                 type="select"
-                argument="--format"
-                optional="true"
-                label="Specify the output format of the plots.">
-                <option value="eps">eps</option>
-                <option value="jpeg">jpeg</option>
-                <option value="jpg">jpg</option>
-                <option value="pdf">pdf</option>
-                <option value="pgf">pgf</option>
-                <option value="png">png</option>
-                <option value="ps">ps</option>
-                <option value="raw">raw</option>
-                <option value="rgba">rgba</option>
-                <option value="svg">svg</option>
-                <option value="svgz">svgz</option>
-                <option value="tif">tif</option>
-                <option value="tiff">tiff</option>
-            </param>
-            <param
-                type="select"
                 argument="--plots"
                 optional="true"
                 multiple="true"
@@ -415,19 +372,10 @@
                 truevalue="--N50"
                 falsevalue=""
                 label="Show the N50 mark in the read length histogram."/>
-            <param
-                type="text"
-                argument="--title"
-                optional="true"
-                label="Add a title to all plots, requires quoting if using spaces."/>
         </section>
-        <param type="boolean" argument="--store" truevalue="--store" falsevalue="" label="Store the extracted data in a pickle file for future plotting."/>
-        <param type="boolean" argument="--raw" truevalue="--raw" falsevalue="" label="Store the extracted data in tab separated file."/>
     </inputs>
     <outputs>
-        <data name="output" format="txt">
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.(?!html)(?P&lt;ext&gt;[^\._]+)?" directory="outputs" visible="true"/>
-        </data>
+        <data name="output" format="pdf" from_work_dir="output.pdf"/>
     </outputs>
     <tests>
         <test>
@@ -443,23 +391,7 @@
                 <param name="title" value="My Plot"/>
                 <param name="format" value="jpg"/>
             </section>
-            <param name="raw" value="true"/>
-            <output name="output">
-                <discovered_dataset designation="ActivityMap_ReadsPerChannel" ftype="jpg" file="ActivityMap_ReadsPerChannel.jpg"/>
-                <discovered_dataset designation="Downsampled_LengthvsQualityScatterPlot_hex" ftype="jpg" file="Downsampled_LengthvsQualityScatterPlot_hex.jpg"/>
-                <discovered_dataset designation="NanoStats" ftype="txt" file="NanoStats.txt"/>
-            </output>
-        </test>
-        <test>
-            <conditional name="reads">
-                <param name="type" value="summary"/>
-                <param name="files" value="sequencing_summary.txt" ftype="txt"/>
-            </conditional>
-            <param name="loglength" value="true"/>
-            <output name="output">
-                <discovered_dataset designation="NanoStats" ftype="txt" file="NanoStats2.txt"/>
-                <discovered_dataset designation="Log_LengthvsQualityScatterPlot_kde" ftype="png" file="Log_LengthvsQualityScatterPlot_kde.png"/>
-            </output>
+            <output name="output" file="output.pdf" ftype="pdf"/>
         </test>
 
     </tests>
@@ -477,13 +409,13 @@
 
         NanoPlot requires 1 or more files as input. They can either be fastq (can be generated
         by albacore, guppy or MinKNOW containing additional information), fasta, sorted bam,
-        sorted cram, sequencing summary or a pickle file stored earlier by NanoPlot.
+        sorted cram or sequencing summary.
 
         **Output**
 
         NanoPlot produces different number of plots depending on the data and customizations.
         A detailed view can be seen on here_. Additionally a file showing the statistics
-        and a log file is generated.
+        is generated.
 
         .. _here: https://github.com/wdecoster/NanoPlot#plots-generated
     ]]>
