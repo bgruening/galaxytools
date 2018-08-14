@@ -116,21 +116,10 @@ def get_X_y(params, file1, file2):
 class SafeEval(Interpreter):
 
   def __init__(self, load_scipy=False, load_numpy=False):
-    from_scipy_stats = [  'bernoulli', 'binom', 'boltzmann', 'dlaplace', 'geom', 'hypergeom',
-                      'logser', 'nbinom', 'planck', 'poisson', 'randint', 'skellam', 'zipf' ]
-
-    from_numpy_random = [ 'beta', 'binomial', 'bytes', 'chisquare', 'choice', 'dirichlet', 'division',
-                          'exponential', 'f', 'gamma', 'geometric', 'gumbel', 'hypergeometric',
-                          'laplace', 'logistic', 'lognormal', 'logseries', 'mtrand', 'multinomial',
-                          'multivariate_normal', 'negative_binomial', 'noncentral_chisquare', 'noncentral_f',
-                          'normal', 'pareto', 'permutation', 'poisson', 'power', 'rand', 'randint',
-                          'randn', 'random', 'random_integers', 'random_sample', 'ranf', 'rayleigh',
-                          'sample', 'seed', 'set_state', 'shuffle', 'standard_cauchy', 'standard_exponential',
-                          'standard_gamma', 'standard_normal', 'standard_t', 'triangular', 'uniform',
-                          'vonmises', 'wald', 'weibull', 'zipf' ]
 
     # File opening and other unneeded functions could be dropped
     unwanted = ['open', 'type', 'dir', 'id', 'str', 'repr']
+
     # Allowed symbol table. Add more if needed.
     new_syms = {
       'np_arange': getattr(np, 'arange'),
@@ -140,10 +129,21 @@ class SafeEval(Interpreter):
     syms = make_symbol_table(use_numpy=False, **new_syms)
 
     if load_scipy:
-      for d in from_scipy_stats:
-        syms['scipy_stats_' + d] = getattr(scipy.stats, d)
+      scipy_distributions = scipy.stats.distributions.__dict__
+      for key in scipy_distributions.keys():
+        if isinstance(scipy_distributions[key], (scipy.stats.rv_continuous, scipy.stats.rv_discrete)):
+          syms['scipy_stats_' + key] = scipy_distributions[key]
 
     if load_numpy:
+      from_numpy_random = [ 'beta', 'binomial', 'bytes', 'chisquare', 'choice', 'dirichlet', 'division',
+                            'exponential', 'f', 'gamma', 'geometric', 'gumbel', 'hypergeometric',
+                            'laplace', 'logistic', 'lognormal', 'logseries', 'mtrand', 'multinomial',
+                            'multivariate_normal', 'negative_binomial', 'noncentral_chisquare', 'noncentral_f',
+                            'normal', 'pareto', 'permutation', 'poisson', 'power', 'rand', 'randint',
+                            'randn', 'random', 'random_integers', 'random_sample', 'ranf', 'rayleigh',
+                            'sample', 'seed', 'set_state', 'shuffle', 'standard_cauchy', 'standard_exponential',
+                            'standard_gamma', 'standard_normal', 'standard_t', 'triangular', 'uniform',
+                            'vonmises', 'wald', 'weibull', 'zipf' ]
       for f in from_numpy_random:
         syms['np_random_' + f] = getattr(np.random, f)
 
