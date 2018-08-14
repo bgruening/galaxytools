@@ -113,52 +113,53 @@ def get_X_y(params, file1, file2):
   return X, y
 
 
-def safe_eval(literal):
+class SafeEval(Interpreter):
 
-  FROM_SCIPY_STATS = [  'bernoulli', 'binom', 'boltzmann', 'dlaplace', 'geom', 'hypergeom',
-                        'logser', 'nbinom', 'planck', 'poisson', 'randint', 'skellam', 'zipf' ]
+  def __init__(self, load_scipy=False, load_numpy=False):
+    from_scipy_stats = [  'bernoulli', 'binom', 'boltzmann', 'dlaplace', 'geom', 'hypergeom',
+                      'logser', 'nbinom', 'planck', 'poisson', 'randint', 'skellam', 'zipf' ]
 
-  FROM_NUMPY_RANDOM = [ 'beta', 'binomial', 'bytes', 'chisquare', 'choice', 'dirichlet', 'division',
-                        'exponential', 'f', 'gamma', 'geometric', 'gumbel', 'hypergeometric',
-                        'laplace', 'logistic', 'lognormal', 'logseries', 'mtrand', 'multinomial',
-                        'multivariate_normal', 'negative_binomial', 'noncentral_chisquare', 'noncentral_f',
-                        'normal', 'pareto', 'permutation', 'poisson', 'power', 'rand', 'randint',
-                        'randn', 'random', 'random_integers', 'random_sample', 'ranf', 'rayleigh',
-                        'sample', 'seed', 'set_state', 'shuffle', 'standard_cauchy', 'standard_exponential',
-                        'standard_gamma', 'standard_normal', 'standard_t', 'triangular', 'uniform',
-                        'vonmises', 'wald', 'weibull', 'zipf' ]
+    from_numpy_random = [ 'beta', 'binomial', 'bytes', 'chisquare', 'choice', 'dirichlet', 'division',
+                          'exponential', 'f', 'gamma', 'geometric', 'gumbel', 'hypergeometric',
+                          'laplace', 'logistic', 'lognormal', 'logseries', 'mtrand', 'multinomial',
+                          'multivariate_normal', 'negative_binomial', 'noncentral_chisquare', 'noncentral_f',
+                          'normal', 'pareto', 'permutation', 'poisson', 'power', 'rand', 'randint',
+                          'randn', 'random', 'random_integers', 'random_sample', 'ranf', 'rayleigh',
+                          'sample', 'seed', 'set_state', 'shuffle', 'standard_cauchy', 'standard_exponential',
+                          'standard_gamma', 'standard_normal', 'standard_t', 'triangular', 'uniform',
+                          'vonmises', 'wald', 'weibull', 'zipf' ]
 
-  # File opening and other unneeded functions could be dropped
-  UNWANTED = ['open', 'type', 'dir', 'id', 'str', 'repr']
+    # File opening and other unneeded functions could be dropped
+    unwanted = ['open', 'type', 'dir', 'id', 'str', 'repr']
+    # Allowed symbol table. Add more if needed.
+    new_syms = {
+      'np_arange': getattr(np, 'arange'),
+      'ensemble_ExtraTreesClassifier': getattr(ensemble, 'ExtraTreesClassifier')
+    }
 
-  # Allowed symbol table. Add more if needed.
-  new_syms = {
-    'np_arange': getattr(np, 'arange'),
-    'ensemble_ExtraTreesClassifier': getattr(ensemble, 'ExtraTreesClassifier')
-  }
+    syms = make_symbol_table(use_numpy=False, **new_syms)
 
-  syms = make_symbol_table(use_numpy=False, **new_syms)
+    if load_scipy:
+      for d in from_scipy_stats:
+        syms['scipy_stats_' + d] = getattr(scipy.stats, d)
 
-  for method in FROM_SCIPY_STATS:
-    syms['scipy_stats_' + method] = getattr(scipy.stats, method)
+    if load_numpy:
+      for f in from_numpy_random:
+        syms['np_random_' + f] = getattr(np.random, f)
 
-  for func in FROM_NUMPY_RANDOM:
-    syms['np_random_' + func] = getattr(np.random, func)
+    for key in unwanted:
+      syms.pop(key, None)
 
-  for key in UNWANTED:
-    syms.pop(key, None)
-
-  aeval = Interpreter(symtable=syms, use_numpy=False, minimal=False,
-                    no_if=True, no_for=True, no_while=True, no_try=True,
-                    no_functiondef=True, no_ifexp=True, no_listcomp=False,
-                    no_augassign=False, no_assert=True, no_delete=True,
-                    no_raise=True, no_print=True)
-
-  return aeval(literal)
+    super(SafeEval, self).__init__(symtable=syms, use_numpy=False, minimal=False,
+                                  no_if=True, no_for=True, no_while=True, no_try=True,
+                                  no_functiondef=True, no_ifexp=True, no_listcomp=False,
+                                  no_augassign=False, no_assert=True, no_delete=True,
+                                  no_raise=True, no_print=True)
 
 
 def get_search_params(params_builder):
   search_params = {}
+  safe_eval = SafeEval(load_scipy=True, load_numpy=True)
 
   for p in params_builder['param_set']:
     search_p = p['search_param_selector']['search_p']
@@ -202,6 +203,7 @@ def get_estimator(estimator_json):
 
 
 def get_cv(literal):
+  safe_eval = SafeEval()
   if literal == "":
     return None
   if literal.isdigit():
