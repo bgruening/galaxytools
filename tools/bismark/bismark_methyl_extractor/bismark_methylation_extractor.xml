@@ -1,23 +1,20 @@
-<tool id="bismark_methylation_extractor" name="Bismark Meth. Extractor" version="0.16.3.1">
+<tool id="bismark_methylation_extractor" name="Bismark Meth. Extractor" version="0.19.1" profile="17.01">
 
     <description>Reports on methylation status of reads mapped by Bismark</description>
-    <!--<version_command>bismark_methylation_extractor version</version_command>-->
 
     <requirements>
-        <requirement type="package" version="0.1.19">samtools</requirement>
-        <requirement type="package" version="2.1.0">bowtie2</requirement>
+        <requirement type="package" version="0.19.1">bismark</requirement>
+        <requirement type="package" version="1.8">samtools</requirement>
+        <requirement type="package" version="2.3.4.2">bowtie2</requirement>
     </requirements>
 
-    <parallelism method="basic"></parallelism>
-
     <command interpreter="python">
-<![CDATA[
-        bismark_methylation_extractor.py
+        <![CDATA[
+        $__tool_directory__/bismark_methylation_extractor.py
+
+        --multicore "\${GALAXY_SLOTS:-4}"
 
         --infile "$input"
-
-        ##--bismark_path \$SCRIPT_PATH
-        --bismark_path "$__tool_directory__"
 
         #if $singlePaired.sPaired == "single":
             --single-end
@@ -52,7 +49,11 @@
 
         #if $cytosine_report['cytosine_report_selector']:
           --cytosine_report "$output_cytosine_report"
-          --genome_file "${cytosine_report.built_in_fasta.fields.path}"
+          #if $cytosine_report.refGenomeSource.genomeSource == "built_in_fasta":
+            --genome_file "${cytosine_report.refGenomeSource.built_in_fasta.fields.path}"
+          #else:
+            --genome_file "$cytosine_report.refGenomeSource['own_fasta']"
+          #end if
           #if not $cytosine_report['cpg_context']:
             --cx_context
           #end if
@@ -67,48 +68,82 @@
         #end if
 
         --compress "$compressed_output"
+
+        #if $output_settings['separate_logfile']:
+           --log_report "$log_report"
+        #end if
 ]]>
     </command>
 
     <inputs>
         <!-- Input Parameters -->
-        <param name="input" type="data" format="sam,bam" label="SAM/BAM file from Bismark bisulfite mapper" />
+        <param name="input" type="data" format="sam,bam,native_bam" label="SAM/BAM file from Bismark bisulfite mapper"/>
         <conditional name="singlePaired">
             <param name="sPaired" type="select" label="Is this library mate-paired?">
-              <option value="single">Single-end</option>
-              <option value="paired">Paired-end</option>
+                <option value="single">Single-end</option>
+                <option value="paired">Paired-end</option>
             </param>
             <when value="single">
-              <param name="ignore_r1" type="integer" value="0" label="Ignore the first N bp from the 5’ end of single-end read when processing the methylation call string." />
-              <param name="ignore_3prime_r1" type="integer" value="0" label="Ignore the last N bp from the 3' end of single-end read when processing the methylation call string."/>
+                <param name="ignore_r1" type="integer" value="0"
+                       label="Ignore the first N bp from the 5’ end of single-end read when processing the methylation call string."/>
+                <param name="ignore_3prime_r1" type="integer" value="0"
+                       label="Ignore the last N bp from the 3' end of single-end read when processing the methylation call string."/>
             </when>
             <when value="paired">
-                <param name="ignore_r1" type="integer" value="0" label="Ignore the first N bp from the 5’ end of Read 1 when processing the methylation call string." />
-                <param name="ignore_3prime_r1" type="integer" value="0" label="Ignore the last N bp from the 3' end of Read 1 when processing the methylation call string."/>
-                <param name="ignore_r2" type="integer" value="0" label="Ignore the first N bp from the 5' end of Read 2 of paired-end sequencing results" />
-                <param name="ignore_3prime_r2" type="integer" value="0" label="Ignore the last N bp from the 3' end of Read 2 of paired-end sequencing results"/>
-                <param name="no_overlap" type="boolean" truevalue="--no-overlap" falsevalue="" checked="False" label="This option avoids scoring overlapping methylation calls twice, in case of overlapping read one and read two" help="" />
+                <param name="ignore_r1" type="integer" value="0"
+                       label="Ignore the first N bp from the 5’ end of Read 1 when processing the methylation call string."/>
+                <param name="ignore_3prime_r1" type="integer" value="0"
+                       label="Ignore the last N bp from the 3' end of Read 1 when processing the methylation call string."/>
+                <param name="ignore_r2" type="integer" value="0"
+                       label="Ignore the first N bp from the 5' end of Read 2 of paired-end sequencing results"/>
+                <param name="ignore_3prime_r2" type="integer" value="0"
+                       label="Ignore the last N bp from the 3' end of Read 2 of paired-end sequencing results"/>
+                <param name="no_overlap" type="boolean" truevalue="--no-overlap" falsevalue="" checked="False"
+                       label="This option avoids scoring overlapping methylation calls twice, in case of overlapping read one and read two"
+                       help=""/>
             </when>
         </conditional>
-        <param name="splitting_report" type="boolean" truevalue="true" falsevalue="false" checked="True" label="Short methylation summary output (Splitting Report)" />
-        <param name="mbias_report" type="boolean" truevalue="true" falsevalue="false" checked="True" label="Methylation proportion report for each possible position in the read (Mbias Report)" />
+        <param name="splitting_report" type="boolean" truevalue="true" falsevalue="false" checked="True"
+               label="Short methylation summary output (Splitting Report)"/>
+        <param name="mbias_report" type="boolean" truevalue="true" falsevalue="false" checked="True"
+               label="Methylation proportion report for each possible position in the read (Mbias Report)"/>
         <conditional name="cytosine_report">
-          <param name="cytosine_report_selector" type="boolean" truevalue="true" falsevalue="false" checked="True" label="Genome-wide methylation report for all cytosines in the genome (Cytosine Report)" />
-          <when value="true">
-            <param name="built_in_fasta" type="select" label="Select  the Reference Genome (fasta) used for the mapping">
-              <options from_data_table="all_fasta">
-                <filter type="sort_by" column="name"/>
-                <validator type="no_options" message="No genomes in fasta are available for the selected input dataset"/>
-              </options>
-            </param>
-            <param name="cpg_context" type="boolean" truevalue="true" falsevalue="false" checked="False" label="Reports Cpg Context only" />
-          </when>
-          <when value="false"></when>
+            <param name="cytosine_report_selector" type="boolean" truevalue="true" falsevalue="false" checked="True"
+                   label="Genome-wide methylation report for all cytosines in the genome (Cytosine Report)"/>
+            <when value="true">
+                <conditional name="refGenomeSource">
+                    <param name="genomeSource" type="select"
+                           label="Will you select a reference genome from your history or use a built-in index?"
+                           help="Built-ins were indexed using default options">
+                        <option value="built_in_fasta">From built-in Reference Genome (fasta)</option>
+                        <option value="own_fasta">From Genome (fasta) in your Galaxy history</option>
+                    </param>
+                    <when value="built_in_fasta">
+                        <param name="built_in_fasta" type="select" label="Select Reference Genome (fasta)">
+                            <options from_data_table="all_fasta">
+                                <filter type="sort_by" column="name"/>
+                                <validator type="no_options"
+                                           message="No genomes in fasta are available for the selected input dataset"/>
+                            </options>
+                        </param>
+                    </when>
+                    <when value="own_fasta">
+                        <param name="own_fasta" type="data" format="fasta" label="Select the reference genome"/>
+                    </when>
+                </conditional>
+                <param name="cpg_context" type="boolean" truevalue="true" falsevalue="false" checked="False"
+                       label="Reports Cpg Context only"/>
+            </when>
+            <when value="false"></when>
         </conditional>
         <section name="output_settings" title="Advanced output settings" expanded="False">
-          <param name="comprehensive" type="boolean" truevalue="true" falsevalue="false" checked="True" label="Merge all four possible strand-specific methylation info
-into context-dependent output files" help="" />
-          <param name="merge_non_cpg" type="boolean" truevalue="true" falsevalue="false" checked="False" label="Merge all non-CpG contexts into one file" help="This will produce eight strand-specific output files, or two output files in comprehensive mode." />
+            <param name="comprehensive" type="boolean" truevalue="true" falsevalue="false" checked="True" label="Merge all four possible strand-specific methylation info
+into context-dependent output files" help=""/>
+            <param name="merge_non_cpg" type="boolean" truevalue="true" falsevalue="false" checked="False"
+                   label="Merge all non-CpG contexts into one file"
+                   help="This will produce eight strand-specific output files, or two output files in comprehensive mode."/>
+            <param name="separate_logfile" type="boolean" truevalue="true" falsevalue="false" checked="False"
+                   label="Create a separate logfile, otherwise logs are added to the dataset info."/>
         </section>
     </inputs>
     <outputs>
@@ -119,16 +154,18 @@ into context-dependent output files" help="" />
             CTOB – complementary to original bottom strand
         -->
         <data format="tabular" name="output_splitting_report" label="${tool.name} on ${on_string}: Splitting Report">
-          <filter> ( splitting_report is True ) </filter>
+            <filter>( splitting_report is True )</filter>
         </data>
         <data format="txt" name="output_mbias_report" label="${tool.name} on ${on_string}: Mbias Report">
-          <filter> ( mbias_report is True ) </filter>
+            <filter>( mbias_report is True )</filter>
         </data>
-         <data format="txt" name="output_cytosine_report" label="${tool.name} on ${on_string}: Genome-wide methylation report.">
-          <filter> ( cytosine_report['cytosine_report_selector'] ) </filter>
+        <data format="txt" name="output_cytosine_report"
+              label="${tool.name} on ${on_string}: Genome-wide methylation report.">
+            <filter>( cytosine_report['cytosine_report_selector'] )</filter>
         </data>
-        <data format="tar" name="compressed_output" label="${tool.name} on ${on_string}: Result archive.">
-          <filter> ( output_settings['compress'] ) </filter>
+        <data format="zip" name="compressed_output" label="${tool.name} on ${on_string}: Result archive."/>
+        <data name="log_report" format="txt" label="${tool.name} on ${on_string}: log report (tool stdout)">
+            <filter>( output_settings['separate_logfile'] is True )</filter>
         </data>
     </outputs>
 
@@ -136,7 +173,7 @@ into context-dependent output files" help="" />
     </tests>
 
     <help>
-<![CDATA[
+        <![CDATA[
 
 **What it does**
 
@@ -208,7 +245,7 @@ into context-dependent output files" help="" />
 
       | This can remove unwanted biases from the end of reads.
       |
-      | *Input option --ignore_3prime <INT>* 
+      | *Input option --ignore_3prime <INT>*
 
 * **If Paired-End Reads**
 
@@ -258,7 +295,7 @@ into context-dependent output files" help="" />
 
 * **Genome-wide methylation report for all cytosines in the genome**
 
-    | the option --cytosine_report produces a genome-wide methylation report for all cytosines in the genome. 
+    | the option --cytosine_report produces a genome-wide methylation report for all cytosines in the genome.
 
   * **If CpG Context only**
 
@@ -296,9 +333,9 @@ into context-dependent output files" help="" />
     | *Output option --gzip*
 
 ]]>
-  </help>
+    </help>
 
-  <citations>
-      <citation type="doi">10.1093/bioinformatics/btr167</citation>
-  </citations>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btr167</citation>
+    </citations>
 </tool>
