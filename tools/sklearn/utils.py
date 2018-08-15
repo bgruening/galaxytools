@@ -11,6 +11,7 @@ import ast
 from asteval import Interpreter, make_symbol_table
 from sklearn import metrics, model_selection, ensemble, svm, linear_model, naive_bayes, tree, neighbors
 
+N_JOBS = int( os.environ.get('GALAXY_SLOTS', 1) )
 
 def read_columns(f, c=None, c_option='by_index_number', return_df=False, **args):
     data = pandas.read_csv(f, **args)
@@ -59,7 +60,7 @@ def feature_selector(inputs):
 
     elif inputs['selected_algorithm'] == 'RFECV':
         options['scoring'] = get_scoring(options['scoring'])
-        options['n_jobs'] = int( os.environ.get('GALAXY_SLOTS', 1) )
+        options['n_jobs'] = N_JOBS
         options['cv'] = get_cv( options['cv'].strip() )
         estimator=get_estimator(inputs["estimator_selector"])
         new_selector = selector(estimator, **options)
@@ -198,6 +199,8 @@ def get_estimator(estimator_json):
         except ValueError:
             sys.exit("Unsupported parameter input: `%s`" %estimator_params)
         estimator.set_params(**params)
+    if 'n_jobs' in estimator.get_params():
+        estimator.set_params( n_jobs=N_JOBS )
 
     return estimator
 
