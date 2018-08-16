@@ -195,7 +195,7 @@ def get_estimator(estimator_json):
     estimator_params = estimator_json['text_params'].strip()
     if estimator_params != "":
         try:
-            params = ast.literal_eval('{' + estimator_params + '}')
+            params = safe_eval('dict(' + estimator_params + ')')
         except ValueError:
             sys.exit("Unsupported parameter input: `%s`" %estimator_params)
         estimator.set_params(**params)

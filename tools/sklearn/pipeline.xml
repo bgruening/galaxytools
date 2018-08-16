@@ -22,13 +22,14 @@ import os
 import json
 import pickle
 import pprint
-import ast
 import skrebate
 from sklearn import (preprocessing, svm, linear_model, ensemble, naive_bayes,
                     tree, neighbors, decomposition, kernel_approximation, cluster)
 from sklearn.pipeline import Pipeline
 
 execfile("$__tool_directory__/utils.py")
+
+safe_eval = SafeEval()
 
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
@@ -46,35 +47,31 @@ def get_component(input_json, check_none=False):
         preprocessor = input_json["pre_processors"]["selected_pre_processor"]
         pre_processor_options = input_json["pre_processors"]["options"]
         my_class = getattr(preprocessing, preprocessor)
-        return my_class(**pre_processor_options)
-    if input_json['component_type'] == 'feature_selection':
-        fs_obj = feature_selector(input_json['fs_algorithm_selector'])
-        return fs_obj
-    if input_json['component_type'] == 'decomposition':
+        obj = my_class(**pre_processor_options)
+    elif input_json['component_type'] == 'feature_selection':
+        obj = feature_selector(input_json['fs_algorithm_selector'])
+    elif input_json['component_type'] == 'decomposition':
         algorithm = input_json['matrix_decomposition_selector']['select_algorithm']
         obj = getattr(decomposition, algorithm)()
         options = input_json['matrix_decomposition_selector']['text_params'].strip()
         if options != "":
-            options = ast.literal_eval('{' + options + '}')
+            options = safe_eval('dict(' + options + ')')
             obj.set_params(**options)
-        return obj
-    if input_json['component_type'] == 'kernel_approximation':
+    elif input_json['component_type'] == 'kernel_approximation':
         algorithm = input_json['kernel_approximation_selector']['select_algorithm']
         obj = getattr(kernel_approximation, algorithm)()
         options = input_json['kernel_approximation_selector']['text_params'].strip()
         if options != "":
-            options = ast.literal_eval('{' + options + '}')
+            options = safe_eval('dict(' + options + ')')
             obj.set_params(**options)
-        return obj
-    if input_json['component_type'] == 'FeatureAgglomeration':
+    elif input_json['component_type'] == 'FeatureAgglomeration':
         algorithm = input_json['FeatureAgglomeration_selector']['select_algorithm']
         obj = getattr(cluster, algorithm)()
         options = input_json['FeatureAgglomeration_selector']['text_params'].strip()
         if options != "":
-            options = ast.literal_eval('{' + options + '}')
+            options = safe_eval('dict(' + options + ')')
             obj.set_params(**options)
-        return obj
-    if input_json['component_type'] == 'skrebate':
+    elif input_json['component_type'] == 'skrebate':
         algorithm = input_json['skrebate_selector']['select_algorithm']
         if algorithm == 'TuRF':
             obj = getattr(skrebate, algorithm)(core_algorithm='ReliefF')
@@ -82,10 +79,11 @@ def get_component(input_json, check_none=False):
             obj = getattr(skrebate, algorithm)()
         options = input_json['skrebate_selector']['text_params'].strip()
         if options != "":
-            options = ast.literal_eval('{' + options + '}')
+            options = safe_eval('dict(' + options + ')')
             obj.set_params(**options)
+    if 'n_jobs' in obj.get_params():
         obj.set_params( n_jobs=N_JOBS )
-        return obj
+    return obj
 
 if len(params['pipeline_component']) == 1:
     step_obj = get_component( params['pipeline_component'][0]['component_selector'])
@@ -115,7 +113,7 @@ with open("$outfile", 'wb') as out_handler:
         <repeat name="pipeline_component" min="1" max="5" title="Pre-processing step">
             <conditional name="component_selector">
                 <param name="component_type" type="select" label="Choose the type of transformation:">
-                    <option value="none" selected="true">None</option>
+                    <option value="None" selected="true">None</option>
                     <option value="pre_processor">Sklearn Preprocessor</option>
                     <option value="feature_selection">Feature Selection</option>
                     <option value="decomposition">Matrix Decomposition</option>
@@ -123,7 +121,7 @@ with open("$outfile", 'wb') as out_handler:
                     <option value="FeatureAgglomeration">Agglomerate Features</option>
                     <option value="skrebate">Skrebate algorithm</option>
                 </param>
-                <when value="none"/>
+                <when value="None"/>
                 <when value="pre_processor">
                     <conditional name="pre_processors">
                         <expand macro="sparse_preprocessors_ext" />
@@ -177,7 +175,7 @@ with open("$outfile", 'wb') as out_handler:
             </repeat>
             <param name="selected_module" value="svm"/>
             <param name="selected_estimator" value="SVR"/>
-            <param name="text_params" value="'kernel': 'linear'"/>
+            <param name="text_params" value="kernel='linear'"/>
             <output name="outfile" file="pipeline01" compare="sim_size" delta="1"/>
         </test>
         <test>
@@ -227,7 +225,7 @@ with open("$outfile", 'wb') as out_handler:
             </conditional>
             <param name="selected_module" value="ensemble"/>
             <param name="selected_estimator" value="RandomForestRegressor"/>
-            <param name="text_params" value="'n_estimators': 100, 'random_state': 42"/>
+            <param name="text_params" value="n_estimators=100, random_state=42"/>
             <output name="outfile" file="pipeline05" compare="sim_size" delta="1"/>
         </test>
         <test>
@@ -246,7 +244,7 @@ with open("$outfile", 'wb') as out_handler:
                 <param name="component_type" value="kernel_approximation"/>
                     <conditional name="kernel_approximation_selector">
                         <param name="select_algorithm" value="RBFSampler"/>
-                        <param name="text_params" value="'n_components': 10, 'gamma': 2.0"/>
+                        <param name="text_params" value="n_components=10, gamma=2.0"/>
                     </conditional>
             </conditional>
             <param name="selected_module" value="ensemble"/>
@@ -258,7 +256,7 @@ with open("$outfile", 'wb') as out_handler:
                 <param name="component_type" value="FeatureAgglomeration"/>
                     <conditional name="FeatureAgglomeration_selector">
                         <param name="select_algorithm" value="FeatureAgglomeration"/>
-                        <param name="text_params" value="'n_clusters': 3, 'affinity': 'euclidean'"/>
+                        <param name="text_params" value="n_clusters=3, affinity='euclidean'"/>
                     </conditional>
             </conditional>
             <param name="selected_module" value="ensemble"/>
@@ -270,7 +268,7 @@ with open("$outfile", 'wb') as out_handler:
                 <param name="component_type" value="skrebate"/>
                     <conditional name="skrebate_selector">
                         <param name="select_algorithm" value="ReliefF"/>
-                        <param name="text_params" value="'n_features_to_select': 3, 'n_neighbors': 100"/>
+                        <param name="text_params" value="n_features_to_select=3, n_neighbors=100"/>
                     </conditional>
             </conditional>
             <param name="selected_module" value="ensemble"/>
