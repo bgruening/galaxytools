@@ -3,6 +3,7 @@
 import argparse
 import fileinput
 import logging
+import math
 import os
 import shutil
 import subprocess
@@ -13,7 +14,7 @@ from glob import glob
 
 def stop_err(logger, msg):
     logger.critical(msg)
-    sys.exit()
+    sys.exit(1)
 
 
 def log_subprocess_output(logger, pipe):
@@ -130,12 +131,12 @@ def __main__():
         except Exception as e:
             if os.path.exists(tmp_index_dir):
                 shutil.rmtree(tmp_index_dir)
-            stop_err(logger, 'Error in linking the reference database.\n%s' % e)
+            stop_err(logger, 'Error in linking the reference database!\n%s' % e)
         # bismark_genome_preparation needs the complete path to the folder in which the database is stored
-        cmd_index = 'bismark_genome_preparation --bowtie2 %s ' % (tmp_index_dir)
+        cmd_index = ['bismark_genome_preparation', '--bowtie2', 'tmp_index_dir']
         try:
-            logger.info("Generating index with: '%s'" % cmd_index)
-            process = subprocess.Popen(cmd_index, shell=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+            logger.info("Generating index with: '%s'", " ".join(cmd_index))
+            process = subprocess.Popen(cmd_index, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
             with process.stdout:
                 log_subprocess_output(logger, process.stdout)
             exitcode = process.wait()
@@ -144,7 +145,7 @@ def __main__():
         except Exception as e:
             if os.path.exists(tmp_index_dir):
                 shutil.rmtree(tmp_index_dir)
-            stop_err(logger, 'Error indexing reference sequence\n%s' % e)
+            stop_err(logger, 'Error indexing reference sequence!\n%s' % e)
         index_dir = tmp_index_dir
     else:
         # bowtie path is the path to the index directory and the first path of the index file name
@@ -162,23 +163,23 @@ def __main__():
         cmd.append('--fastq')
 
     # alignment options
-
-    # divide num_threads by 2 here since bismark will spawn 2 jobs with -p threads each
-    cmd.extend(['-p', str(args.num_threads/2), '--bowtie2'])
+    if args.num_threads > 2:
+        # divide num_threads by 2 here since bismark will spawn 2 jobs with -p threads each
+        cmd.extend(['-p', str(math.ceil(args.num_threads / 2)), '--bowtie2'])
     if args.seed_mismatches:
-        cmd.extend(['-N', args.seed_mismatches])
+        cmd.extend(['-N', str(args.seed_mismatches)])
     if args.seed_len:
-        cmd.extend(['-L', args.seed_len])
+        cmd.extend(['-L', str(args.seed_len)])
     if args.seed_extention_attempts:
-        cmd.extend(['-D', args.seed_extention_attempts])
+        cmd.extend(['-D', str(args.seed_extention_attempts)])
     if args.max_reseed:
-        cmd.extend(['-R', args.max_reseed])
+        cmd.extend(['-R', str(args.max_reseed)])
     if args.no_discordant:
         cmd.append('--no-discordant')
     if args.no_mixed:
         cmd.append('--no-mixed')
     if args.skip_reads:
-        cmd.extend(['--skip', args.skip_reads])
+        cmd.extend(['--skip', str(args.skip_reads)])
     if args.qupto:
         cmd.extend(['--upto', 'args.qupto'])
     if args.phred64:
@@ -194,13 +195,14 @@ def __main__():
     # Set up the reads
     if args.mate_paired:
         # paired-end reads library
-        cmd.extend(['-1', args.mate1, '-2', args.mate2, '-I', args.min_insert, '-X', args.max_insert])
+        cmd.extend(['-1', args.mate1, '-2', args.mate2, '-I', str(args.min_insert), '-X', str(args.max_insert)])
     else:
         # single paired reads library
-        cmd.extend(args.single_paired)
+        cmd.append(args.single_paired)
 
     # Run
     try:
+        logger.info("Running bismark with: '%s'", " ".join(cmd))
         process = subprocess.Popen(args=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         with process.stdout:
             log_subprocess_output(logger, process.stdout)
@@ -208,7 +210,7 @@ def __main__():
         if exitcode != 0:
             raise Exception(process.stderr)
     except Exception as e:
-        stop_err(logger, 'Error in bismark:\n%s' % e)
+        stop_err(logger, 'Error in running bismark!\n%s' % e)
 
     # collect and copy output files
     if args.output_report_file:
@@ -273,7 +275,7 @@ def __main__():
             stop_err(logger, 'BAM file no found:\n%s' % bam_path)
 
     except Exception as e:
-        stop_err(logger, 'Error in merging bam files:\n%s' % e)
+        stop_err(logger, 'Error in merging bam files!\n%s' % e)
 
     # Clean up temp dirs
     if tmp_index_dir and os.path.exists(tmp_index_dir):

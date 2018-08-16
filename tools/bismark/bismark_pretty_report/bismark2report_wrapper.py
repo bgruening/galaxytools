@@ -83,7 +83,7 @@ def __main__():
         log_subprocess_output(logger, process.stdout)
     exitcode = process.wait()
     if exitcode != 0:
-        stop_err("Bismark pretty report error (also check the log file if any):\n%s" % process.stderr)
+        stop_err("Bismark pretty report error (also check the log file if any)!\n%s" % process.stderr)
 
 
 if __name__ == "__main__": __main__()

@@ -70,7 +70,7 @@ def __main__():
         log_subprocess_output(logger, process.stdout)
     exitcode = process.wait()
     if exitcode != 0:
-        stop_err(logger, "Bismark deduplication error (also check the log file if any):\n%s" % process.stderr)
+        stop_err(logger, "Bismark deduplication error (also check the log file if any)!\n%s" % process.stderr)
 
     shutil.move( glob('*deduplicated.bam')[0], args.output_bam )
     shutil.move( glob('*deduplication_report.txt')[0], args.output_report)
