@@ -219,7 +219,7 @@ def get_cv(literal):
     sys.exit("Unsupported CV input: %s" %literal)
 
 
-def get_scoring(scorer):
+def get_scoring(scoring_json):
     import warnings
     def balanced_accuracy_score(y_true, y_pred):
         C = metrics.confusion_matrix(y_true, y_pred)
@@ -231,13 +231,19 @@ def get_scoring(scorer):
         score = np.mean(per_class)
         return score
 
-    if scorer == "default":
+    if scoring_json['primary_scoring'] == "default":
         return None
-    if scorer == "balanced_accuracy":
-        sk_version = tuple([int(x) for x in sklearn.__version__.split('.')])
-        if sk_version < (0, 20):
-            return metrics.make_scorer(balanced_accuracy_score)
-        else:
-            return scorer
-    return scorer
+
+    my_scorers = metrics.SCORERS
+    if 'balanced_accuracy' not in my_scorers:
+        my_scorers['balanced_accuracy'] = metrics.make_scorer(balanced_accuracy_score)
+
+    if scoring_json['secondary_scoring'] != 'None'\
+            and scoring_json['secondary_scoring'] != scoring_json['primary_scoring']:
+        scoring = {}
+        scoring['secondary'] = my_scorers[ scoring_json['secondary_scoring'] ]
+        scoring['primary'] = my_scorers[ scoring_json['primary_scoring'] ]
+        return scoring
+
+    return my_scorers[ scoring_json['primary_scoring'] ]
 
