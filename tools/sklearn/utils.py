@@ -241,8 +241,10 @@ def get_scoring(scoring_json):
     if scoring_json['secondary_scoring'] != 'None'\
             and scoring_json['secondary_scoring'] != scoring_json['primary_scoring']:
         scoring = {}
-        scoring['secondary'] = my_scorers[ scoring_json['secondary_scoring'] ]
         scoring['primary'] = my_scorers[ scoring_json['primary_scoring'] ]
+        for scorer in scoring_json['secondary_scoring'].split(','):
+            if scorer != scoring_json['primary_scoring']:
+                scoring[scorer] = my_scorers[scorer]
         return scoring
 
     return my_scorers[ scoring_json['primary_scoring'] ]
