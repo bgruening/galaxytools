@@ -3,7 +3,9 @@
     <macros>
         <import>main_macros.xml</import>
     </macros>
-    <expand macro="python_requirements"/>
+    <expand macro="python_requirements">
+        <requirement type="package" version="0.6">skrebate</requirement>
+    </expand>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
     <command>
@@ -19,21 +21,13 @@ import sys
 import os
 import json
 import pandas
-import re
 import pickle
-import numpy as np
-import xgboost
-import scipy
-from asteval import Interpreter, make_symbol_table
-from sklearn import metrics, preprocessing, model_selection, ensemble
-from sklearn.pipeline import Pipeline
+from sklearn import model_selection
+from sklearn.exceptions import FitFailedWarning
 
-@COLUMNS_FUNCTION@
-@GET_ESTIMATOR_FUNCTION@
-@SAFE_EVAL_FUNCTION@
-@GET_SEARCH_PARAMS_FUNCTION@
-@GET_CV_FUNCTION@
-@GET_SCORING_FUNCTION@
+execfile("$__tool_directory__/utils.py")
+
+warnings.simplefilter('ignore')
 
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
@@ -88,8 +82,14 @@ optimizers = getattr(model_selection, optimizers)
 
 options = params["search_schemes"]["options"]
 options['cv'] = get_cv( options['cv'].strip() )
-options['n_jobs'] = int( os.environ.get('GALAXY_SLOTS', 1) )
+options['n_jobs'] = N_JOBS
 options['scoring'] = get_scoring(options['scoring'])
+if options['error_score']:
+    options['error_score'] = 'raise'
+else:
+    options['error_score'] = 0
+if options['refit'] and isinstance(options['scoring'], dict):
+    options['refit'] = 'primary'
 if 'pre_dispatch' in options and options['pre_dispatch'] == '':
     options['pre_dispatch'] = None
 
@@ -98,7 +98,14 @@ with open(infile_pipeline, 'rb') as pipeline_handler:
 search_params = get_search_params(params_builder)
 searcher = optimizers(pipeline, search_params, **options)
 
-searcher.fit(X, y)
+warnings.simplefilter('always', FitFailedWarning)
+with warnings.catch_warnings(record=True) as w:
+    try:
+        searcher.fit(X, y)
+    except ValueError:
+        pass
+    for warning in w:
+        print(repr(warning.message))
 
 cv_result = pandas.DataFrame(searcher.cv_results_)
 cv_result.to_csv(path_or_buf=outfile_result, sep='\t', header=True, index=False)
@@ -150,9 +157,10 @@ with open(outfile_estimator, "wb") as output_handler:
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
             <conditional name="search_param_selector">
-                <param name="search_p" value="k: [3, 5, 7, 9]"/>
+                <param name="search_p" value="k: [-1, 3, 5, 7, 9]"/>
                 <param name="selected_param_type" value="prep_2_p"/>
             </conditional>
+            <param name="error_score" value="false"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -162,6 +170,7 @@ with open(outfile_estimator, "wb") as output_handler:
             <output name="outfile_result" >
                 <assert_contents>
                     <has_text_matching expression="[^/d]+0.7938837807353147[^/d]+{u'estimator__C': 1, u'preprocessing_2__k': 9}[^/d]+1" />
+                    <has_text text="0.0"/>
                 </assert_contents>
             </output>
         </test>
@@ -209,7 +218,7 @@ with open(outfile_estimator, "wb") as output_handler:
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
             <conditional name="search_param_selector">
-                <param name="search_p" value="gamma: np_random_uniform(low=0., high=1., size=2)"/>
+                <param name="search_p" value="gamma: scipy_stats_uniform(0., 1.)"/>
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
             <conditional name="search_param_selector">
@@ -363,6 +372,61 @@ with open(outfile_estimator, "wb") as output_handler:
             <param name="selected_column_selector_option2" value="all_columns"/>
             <output name="outfile_estimator" file="searchCV01" compare="sim_size" delta="1"/>
         </test>
+        <test>
+            <param name="selected_search_scheme" value="GridSearchCV"/>
+            <param name="infile_pipeline" value="pipeline03"/>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="n_estimators: [10, 50, 200, 1000]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="random_state: [324089]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <param name="primary_scoring" value="balanced_accuracy"/>
+            <param name="cv" value="StratifiedKFold(n_splits=3, shuffle=True, random_state=10)"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result" >
+                <assert_contents>
+                    <has_n_columns n="13" />
+                    <has_text text="0.05366527890058046"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="selected_search_scheme" value="GridSearchCV"/>
+            <param name="infile_pipeline" value="pipeline09"/>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="n_neighbors: [50, 100, 150, 200]"/>
+                <param name="selected_param_type" value="prep_1_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="random_state: [324089]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <param name="primary_scoring" value="explained_variance"/>
+            <param name="secondary_scoring" value="neg_mean_squared_error,r2"/>
+            <param name="cv" value="StratifiedKFold(n_splits=3, shuffle=True, random_state=10)"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result" >
+                <assert_contents>
+                    <has_n_columns n="25" />
+                    <has_text text="0.7881203921915186"/>
+                    <has_text text="0.7880692034558879"/>
+                    <has_text text="-29.381892762877825"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help>
         <![CDATA[
@@ -373,7 +437,7 @@ please refer to `Scikit-learn model_selection GridSearchCV`_, `Scikit-learn mode
 **How to choose search patameters?**
 
 Please refer to `svm`_, `linear_model`_, `ensemble`_, `naive_bayes`_, `tree`_, `neighbors`_ and `xgboost`_ for estimator parameters.
-Refer to `sklearn.preprocessing`_, `feature_selection`_, `decomposition`_, `kernel_approximation`_ and `cluster.FeatureAgglomeration`_ for parameter in the pre-processing steps.
+Refer to `sklearn.preprocessing`_, `feature_selection`_, `decomposition`_, `kernel_approximation`_, `cluster.FeatureAgglomeration`_ and `skrebate`_ for parameter in the pre-processing steps.
 
 **Search parameter input** accepts parameter and setting in key:value pair. One pair per input box. Setting can be list, numpy array, or distribution.
 The evaluation of settings supports operations in Math, list comprehension, numpy.arange(np_arange), most numpy.random(e.g., np_random_uniform) and some scipy.stats(e.g., scipy_stats_zipf) classes or functions, and others.
@@ -410,6 +474,7 @@ The evaluation of settings supports operations in Math, list comprehension, nump
 .. _`decomposition`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.decomposition
 .. _`kernel_approximation`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.kernel_approximation
 .. _`cluster.FeatureAgglomeration`: http://scikit-learn.org/stable/modules/generated/sklearn.cluster.FeatureAgglomeration.html
+.. _`skrebate`: https://epistasislab.github.io/scikit-rebate/using/
 
         ]]>
     </help>
