@@ -3,6 +3,7 @@ import os
 import pandas
 import re
 import pickle
+import warnings
 import numpy as np
 import xgboost
 import scipy
@@ -220,7 +221,6 @@ def get_cv(literal):
 
 
 def get_scoring(scoring_json):
-    import warnings
     def balanced_accuracy_score(y_true, y_pred):
         C = metrics.confusion_matrix(y_true, y_pred)
         with np.errstate(divide='ignore', invalid='ignore'):

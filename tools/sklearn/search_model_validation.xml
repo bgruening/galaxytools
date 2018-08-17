@@ -23,8 +23,11 @@ import json
 import pandas
 import pickle
 from sklearn import model_selection
+from sklearn.exceptions import FitFailedWarning
 
 execfile("$__tool_directory__/utils.py")
+
+warnings.simplefilter('ignore')
 
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
@@ -81,6 +84,10 @@ options = params["search_schemes"]["options"]
 options['cv'] = get_cv( options['cv'].strip() )
 options['n_jobs'] = N_JOBS
 options['scoring'] = get_scoring(options['scoring'])
+if options['error_score']:
+    options['error_score'] = 'raise'
+else:
+    options['error_score'] = 0
 if options['refit'] and isinstance(options['scoring'], dict):
     options['refit'] = 'primary'
 if 'pre_dispatch' in options and options['pre_dispatch'] == '':
@@ -91,7 +98,14 @@ with open(infile_pipeline, 'rb') as pipeline_handler:
 search_params = get_search_params(params_builder)
 searcher = optimizers(pipeline, search_params, **options)
 
-searcher.fit(X, y)
+warnings.simplefilter('always', FitFailedWarning)
+with warnings.catch_warnings(record=True) as w:
+    try:
+        searcher.fit(X, y)
+    except ValueError:
+        pass
+    for warning in w:
+        print(repr(warning.message))
 
 cv_result = pandas.DataFrame(searcher.cv_results_)
 cv_result.to_csv(path_or_buf=outfile_result, sep='\t', header=True, index=False)
@@ -143,9 +157,10 @@ with open(outfile_estimator, "wb") as output_handler:
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
             <conditional name="search_param_selector">
-                <param name="search_p" value="k: [3, 5, 7, 9]"/>
+                <param name="search_p" value="k: [-1, 3, 5, 7, 9]"/>
                 <param name="selected_param_type" value="prep_2_p"/>
             </conditional>
+            <param name="error_score" value="false"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -155,6 +170,7 @@ with open(outfile_estimator, "wb") as output_handler:
             <output name="outfile_result" >
                 <assert_contents>
                     <has_text_matching expression="[^/d]+0.7938837807353147[^/d]+{u'estimator__C': 1, u'preprocessing_2__k': 9}[^/d]+1" />
+                    <has_text text="0.0"/>
                 </assert_contents>
             </output>
         </test>
