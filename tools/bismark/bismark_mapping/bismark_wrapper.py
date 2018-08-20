@@ -133,7 +133,7 @@ def __main__():
                 shutil.rmtree(tmp_index_dir)
             stop_err(logger, 'Error in linking the reference database!\n%s' % e)
         # bismark_genome_preparation needs the complete path to the folder in which the database is stored
-        cmd_index = ['bismark_genome_preparation', '--bowtie2', 'tmp_index_dir']
+        cmd_index = ['bismark_genome_preparation', '--bowtie2', tmp_index_dir]
         try:
             logger.info("Generating index with: '%s'", " ".join(cmd_index))
             process = subprocess.Popen(cmd_index, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
