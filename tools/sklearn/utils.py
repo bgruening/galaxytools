@@ -2,17 +2,66 @@ import sys
 import os
 import pandas
 import re
-import pickle
+import cPickle as pickle
 import warnings
 import numpy as np
 import xgboost
+import skrebate
 import scipy
 import sklearn
 import ast
 from asteval import Interpreter, make_symbol_table
-from sklearn import metrics, model_selection, ensemble, svm, linear_model, naive_bayes, tree, neighbors
+from sklearn import (cluster, decomposition, ensemble, feature_extraction, feature_selection,
+                    gaussian_process, kernel_approximation, linear_model, metrics,
+                    model_selection, naive_bayes, neighbors, pipeline, preprocessing,
+                    svm, linear_model, tree, discriminant_analysis)
 
 N_JOBS = int( os.environ.get('GALAXY_SLOTS', 1) )
+
+def sk_names():
+    names = []
+    for m in sklearn.__all__:
+        try:
+            names.extend(getattr(sklearn, m).__all__)
+        except:
+            continue
+    other_modules = [sklearn.kernel_approximation, sklearn.tree._tree]
+    for m in other_modules:
+        for item in dir(m):
+            if item[0].isupper():
+                names.append(item)
+    return names
+
+SK_NAMES = sk_names()
+
+
+class SafePickler(object):
+    """
+    Used to safely deserialize scikit-learn model objects serialized by cPickle.dump
+    Usage:
+        eg.: SafePickler.load(pickled_file_object)
+    """
+    @classmethod
+    def find_class(self, module, name):
+        skr_names = ['MultiSURF', 'MultiSURFstar', 'ReliefF', 'SURF', 'SURFstar', 'TuRF']
+        xbg_names = ['XGBClassifier', 'XGBRegressor']
+        np_names = np.__all__ + dir(np.core.multiarray)
+        other_names = ['copy_reg._reconstructor', '__builtin__.object']
+
+        if (module.startswith('sklearn.') and (name in SK_NAMES))\
+                or (module.startswith('xgboost.') and (name in xbg_names))\
+                or (module.startswith('skrebate.') and (name in skr_names))\
+                or (module.startswith('numpy') and (name in np_names))\
+                or (module+'.'+name in other_names):
+            mod = sys.modules[module]
+            return getattr(mod, name)
+        raise pickle.UnpicklingError("global '%s.%s' is forbidden" %(module, name))
+
+    @classmethod
+    def load(self, file):
+        obj = pickle.Unpickler(file)
+        obj.find_global = self.find_class
+        return obj.load()
 
 def read_columns(f, c=None, c_option='by_index_number', return_df=False, **args):
     data = pandas.read_csv(f, **args)
@@ -48,7 +97,7 @@ def feature_selector(inputs):
         if inputs['model_inputter']['input_mode'] == 'prefitted':
             model_file = inputs['model_inputter']['fitted_estimator']
             with open(model_file, 'rb') as model_handler:
-                fitted_estimator = pickle.load(model_handler)
+                fitted_estimator = SafePickler.load(model_handler)
             new_selector = selector(fitted_estimator, prefit=True, **options)
         else:
             estimator_json = inputs['model_inputter']["estimator_selector"]
@@ -132,9 +181,9 @@ class SafeEval(Interpreter):
 
         if load_scipy:
             scipy_distributions = scipy.stats.distributions.__dict__
-            for key in scipy_distributions.keys():
-                if isinstance(scipy_distributions[key], (scipy.stats.rv_continuous, scipy.stats.rv_discrete)):
-                    syms['scipy_stats_' + key] = scipy_distributions[key]
+            for k, v in scipy_distributions.items():
+                if isinstance(v, (scipy.stats.rv_continuous, scipy.stats.rv_discrete)):
+                    syms['scipy_stats_' + k] = v
 
         if load_numpy:
             from_numpy_random = ['beta', 'binomial', 'bytes', 'chisquare', 'choice', 'dirichlet', 'division',
