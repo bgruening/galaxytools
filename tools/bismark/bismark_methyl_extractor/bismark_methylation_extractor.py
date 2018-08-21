@@ -2,6 +2,7 @@
 
 import argparse
 import logging
+import math
 import os
 import re
 import shutil
@@ -70,7 +71,7 @@ def __main__():
     parser.add_argument('--comprehensive', action="store_true")
     parser.add_argument('--merge-non-cpg', dest='merge_non_cpg', action="store_true")
     parser.add_argument('--no-overlap', dest='no_overlap', action="store_true")
-    parser.add_argument('--compress')
+    parser.add_argument('--compress', dest='compress')
     parser.add_argument('--ignore', dest='ignore', type=int)
     parser.add_argument('--ignore_r2', dest='ignore_r2', type=int)
     parser.add_argument('--ignore_3prime', dest='ignore_3prime', type=int)
@@ -92,9 +93,11 @@ def __main__():
 
     # Build methylation extractor command
     output_dir = tempfile.mkdtemp()
-    cmd = ['bismark_methylation_extractor', '--multicore', str(args.multicore), '--no_header', '-o', output_dir]
-
+    cmd = ['bismark_methylation_extractor', '--no_header', '-o', output_dir]
     # Set up all options
+    if args.multicore > 3:
+        # divide multicore by 3 here since bismark will spawn ~3 jobs.
+        cmd.extend(['--multicore', str(math.ceil(args.multicore / 3))])
     if args.single_end:
         cmd.append('--single-end')
     else:
@@ -120,41 +123,49 @@ def __main__():
         tmp_genome_dir = build_genome_dir(args.genome_file)
         if args.cx_context:
             cmd.extend(
-                ['--bedgraph', '--CX_context', '--cytosine_report', '--CX_context', '--genome_folder', tmp_genome_dir])
+                ['--bedGraph', '--CX_context', '--cytosine_report', '--CX_context', '--genome_folder', tmp_genome_dir])
         else:
-            cmd.extend(['--bedgraph', '--cytosine_report', '--genome_folder', tmp_genome_dir])
+            cmd.extend(['--bedGraph', '--cytosine_report', '--genome_folder', tmp_genome_dir])
 
     cmd.append(args.infile)
 
     # Run
     logger.info("Methylation extractor run with: '%s'", " ".join(cmd))
+    prev_dir = os.getcwd()
+    os.chdir(output_dir) # needed due to a bug in bismark where the coverage file cannot be found
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
         log_subprocess_output(logger, process.stdout)
     exitcode = process.wait()
     if exitcode != 0:
         stop_err(logger, "Bismark methylation extractor error (also check the log file if any)!\n%s" % process.stderr)
-
+    logger.info("Finished methylation extractor.")
     # collect and copy output files
+    logger.debug("Zip output files to '%s'.", args.compress)
+    os.chdir(prev_dir)
     zipper(output_dir, args.compress)
 
     # cytosine report
     if args.cytosine_report:
+        logger.debug("Collecting cytosine report.")
         if args.cx_context:
             shutil.move(glob(os.path.join(output_dir, '*CX_report.txt'))[0], args.cytosine_report)
         else:
             shutil.move(glob(os.path.join(output_dir, '*CpG_report.txt'))[0], args.cytosine_report)
     # splitting report
     if args.splitting_report:
+        logger.debug("Collecting splitting report.")
         shutil.move(glob(os.path.join(output_dir, '*_splitting_report.txt'))[0], args.splitting_report)
     if args.mbias_report:
+        logger.debug("Collecting M-Bias file.")
         shutil.move(glob(os.path.join(output_dir, '*M-bias.txt'))[0], args.mbias_report)
 
     # Clean up temp dirs
+    logger.debug("Cleanup temp dirs.")
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     if tmp_genome_dir and os.path.exists(tmp_genome_dir):
         shutil.rmtree(tmp_genome_dir)
-
+    logger.info("Done.")
 
 if __name__ == "__main__": __main__()
