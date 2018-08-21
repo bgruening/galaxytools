@@ -18,23 +18,6 @@ from sklearn import (cluster, decomposition, ensemble, feature_extraction, featu
 
 N_JOBS = int( os.environ.get('GALAXY_SLOTS', 1) )
 
-def sk_names():
-    names = []
-    for m in sklearn.__all__:
-        try:
-            names.extend(getattr(sklearn, m).__all__)
-        except:
-            continue
-    other_modules = [sklearn.kernel_approximation, sklearn.tree._tree]
-    for m in other_modules:
-        for item in dir(m):
-            if item[0].isupper():
-                names.append(item)
-    return names
-
-SK_NAMES = sk_names()
-
-
 class SafePickler(object):
     """
     Used to safely deserialize scikit-learn model objects serialized by cPickle.dump
@@ -43,18 +26,34 @@ class SafePickler(object):
     """
     @classmethod
     def find_class(self, module, name):
-        skr_names = ['MultiSURF', 'MultiSURFstar', 'ReliefF', 'SURF', 'SURFstar', 'TuRF']
-        xbg_names = ['XGBClassifier', 'XGBRegressor']
-        np_names = np.__all__ + dir(np.core.multiarray)
-        other_names = ['copy_reg._reconstructor', '__builtin__.object']
 
-        if (module.startswith('sklearn.') and (name in SK_NAMES))\
-                or (module.startswith('xgboost.') and (name in xbg_names))\
-                or (module.startswith('skrebate.') and (name in skr_names))\
-                or (module.startswith('numpy') and (name in np_names))\
-                or (module+'.'+name in other_names):
-            mod = sys.modules[module]
-            return getattr(mod, name)
+        bad_names = ('and', 'as', 'assert', 'break', 'class', 'continue',
+                    'def', 'del', 'elif', 'else', 'except', 'exec',
+                    'finally', 'for', 'from', 'global', 'if', 'import',
+                    'in', 'is', 'lambda', 'not', 'or', 'pass', 'print',
+                    'raise', 'return', 'try', 'system', 'while', 'with',
+                    'True', 'False', 'None', 'eval', 'execfile', '__import__',
+                    '__package__', '__subclasses__', '__bases__', '__globals__',
+                    '__code__', '__closure__', '__func__', '__self__', '__module__',
+                    '__dict__', '__class__', '__call__', '__get__',
+                    '__getattribute__', '__subclasshook__', '__new__',
+                    '__init__', 'func_globals', 'func_code', 'func_closure',
+                    'im_class', 'im_func', 'im_self', 'gi_code', 'gi_frame',
+                    '__asteval__', 'f_locals', '__mro__')
+        good_names = ('copy_reg._reconstructor', '__builtin__.object')
+
+        if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
+            if  (   (   module.startswith('sklearn.')
+                        or module.startswith('xgboost.')
+                        or module.startswith('skrebate.')
+                        or module.startswith('numpy.')
+                        or module == 'numpy'
+                    )
+                    and (name not in bad_names)
+                )       or (module+'.'+name in good_names):
+                mod = sys.modules[module]
+                return getattr(mod, name)
+
         raise pickle.UnpicklingError("global '%s.%s' is forbidden" %(module, name))
 
     @classmethod
