@@ -47,43 +47,25 @@ def __main__():
         ch.setLevel(logging.DEBUG)
     logger.addHandler(ch)
 
-    alignment_option = '--alignment_report'
-    alignment_report = args.alignment_report
-    if args.dedup_report:
-        dedup_option = '--dedup_report'
-        dedup_report = args.dedup_report
-    else:
-        dedup_option = ''
-        dedup_report = ''
-    if args.splitting_report:
-        splitting_option = '--splitting_report'
-        splitting_report = args.splitting_report
-    else:
-        splitting_option = ''
-        splitting_report = ''
-    if args.mbias_report:
-        mbias_option = '--mbias_report'
-        mbias_report = args.mbias_report
-    else:
-        mbias_option = ''
-        mbias_report = ''
-    if args.nucleotide_report:
-        nucleotide_option = '--nucleotide_report'
-        nucleotide_report = args.nucleotide_report
-    else:
-        nucleotide_option = ''
-        nucleotide_report = ''
-
-    cmd = ['bismark2report', alignment_option, alignment_report, dedup_option, dedup_report, splitting_option,
-           splitting_report, mbias_option, mbias_report, nucleotide_option, nucleotide_report,
+    cmd = ['bismark2report', '--verbose', '--alignment_report', args.alignment_report,
            '--output', args.output_html_report]
+
+    if args.dedup_report:
+        cmd.extend(['--dedup_report', args.dedup_report])
+    if args.splitting_report:
+        cmd.extend(['--splitting_report', args.splitting_report])
+    if args.mbias_report:
+        cmd.extend(['--mbias_report', args.mbias_report])
+    if args.nucleotide_report:
+        cmd.extend(['--nucleotide_report', args.nucleotide_report])
+
     logger.info("Generating report with: '%s'", " ".join(cmd))
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
         log_subprocess_output(logger, process.stdout)
     exitcode = process.wait()
     if exitcode != 0:
-        stop_err("Bismark pretty report error (also check the log file if any)!\n%s" % process.stderr)
+        stop_err(logger, "Bismark pretty report error (also check the log file if any)!\n%s" % process.stderr)
 
 
 if __name__ == "__main__": __main__()
