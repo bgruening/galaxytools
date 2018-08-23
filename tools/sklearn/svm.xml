@@ -19,6 +19,8 @@ import sys
 import json
 import sklearn.svm
 import pandas
+import pickle
+import h5py
 
 execfile("$__tool_directory__/sk_whitelist.py")
 execfile("$__tool_directory__/utils.py", globals())
@@ -29,12 +31,20 @@ with open(input_json_path, "r") as param_handler:
 
 #if $selected_tasks.selected_task == "load":
 
-with open("$infile_model", 'rb') as model_handler:
-    classifier_object = SafePickler.load(model_handler)
-
 header = 'infer' if params["selected_tasks"]["header"] else None
 data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
-prediction = classifier_object.predict(data)
+
+h5file = h5py.File("$infile_model", 'r')
+class_name = h5file.get("class_name").value
+class_path = h5file.get("class_path").value
+class_module = __import__(class_path, fromlist=[class_name])
+classifier = getattr(class_module, class_name)
+classifier_obj = classifier()
+for key in h5file.keys():
+    key_val = h5file.get(key).value
+    setattr(classifier_obj, key, key_val)
+print(data.shape)
+prediction = classifier_obj.predict(data)
 prediction_df = pandas.DataFrame(prediction)
 res = pandas.concat([data, prediction_df], axis=1)
 res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
@@ -54,8 +64,18 @@ my_class = getattr(sklearn.svm, selected_algorithm)
 classifier_object = my_class(**options)
 classifier_object.fit(X, y)
 
-with open("$outfile_fit", 'wb') as out_handler:
-    pickle.dump(classifier_object, out_handler, pickle.HIGHEST_PROTOCOL)
+classifier_dict = classifier_object.__dict__
+classifier_dict["class_path"] = classifier_object.__module__ 
+classifier_dict["class_name"] = classifier_object.__class__.__name__
+
+with h5py.File("$outfile_fit", 'w') as h5file:
+    for dict_item, val in classifier_dict.items():
+        if val is not None:
+            type_name = type(val).__name__
+            if type_name in ['ndarray']:
+                h5file.create_dataset(dict_item, (val.shape), data=np.array(val, dtype=val.dtype.name))
+            else:
+                h5file.create_dataset(dict_item, data=val)
 
 #end if
 
@@ -63,7 +83,7 @@ with open("$outfile_fit", 'wb') as out_handler:
         </configfile>
     </configfiles>
     <inputs>
-        <expand macro="sl_Conditional" model="zip">
+        <expand macro="sl_Conditional" model="h5">
             <param name="selected_algorithm" type="select" label="Classifier type">
                 <option value="SVC">C-Support Vector Classification</option>
                 <option value="NuSVC">Nu-Support Vector Classification</option>
@@ -109,8 +129,15 @@ with open("$outfile_fit", 'wb') as out_handler:
         </expand>
     </inputs>
 
-    <expand macro="output"/>
-
+    <!-- <expand macro="output"/> -->
+    <outputs>
+      <data format="tabular" name="outfile_predict">
+          <filter>selected_tasks['selected_task'] == 'load'</filter>
+      </data>
+      <data format="h5" name="outfile_fit">
+          <filter>selected_tasks['selected_task'] == 'train'</filter>
+      </data>
+    </outputs>
     <tests>
         <test>
             <param name="infile1" value="train_set.tabular" ftype="tabular"/>
