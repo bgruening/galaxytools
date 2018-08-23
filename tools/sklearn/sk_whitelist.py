@@ -707,7 +707,7 @@ SKR_NAMES = (
 
 
 # class or function names from xgboost
-XGB_NAMES = ( 
+XGB_NAMES = (
     'xgboost.Booster', 'xgboost.DMatrix',
     'xgboost.VERSION_FILE', 'xgboost.XGBClassifier',
     'xgboost.XGBModel', 'xgboost.XGBRegressor',
