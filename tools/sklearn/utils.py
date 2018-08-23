@@ -6,7 +6,6 @@ import cPickle as pickle
 import warnings
 import numpy as np
 import xgboost
-import skrebate
 import scipy
 import sklearn
 import ast
@@ -43,18 +42,23 @@ class SafePickler(object):
         good_names = ('copy_reg._reconstructor', '__builtin__.object')
 
         if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
-            if  (   (   module.startswith('sklearn.')
-                        or module.startswith('xgboost.')
-                        or module.startswith('skrebate.')
-                        or module.startswith('numpy.')
-                        or module == 'numpy'
-                    )
-                    and (name not in bad_names)
-                )       or (module+'.'+name in good_names):
+            fullname = module + '.' + name
+            if  (fullname in good_names)\
+                or  (   (   module.startswith('sklearn.')
+                            or module.startswith('xgboost.')
+                            or module.startswith('skrebate.')
+                            or module.startswith('numpy.')
+                            or module == 'numpy'
+                        )
+                        and (name not in bad_names)
+                    ) :
+                # TODO: replace with a whitelist checker
+                if fullname not in SK_NAMES + SKR_NAMES + XGB_NAMES + NUMPY_NAMES + good_names:
+                    print("Warning: global %s is not in pickler whitelist yet and will loss support soon. Contact tool author or leave a message at github.com" % fullname)
                 mod = sys.modules[module]
                 return getattr(mod, name)
 
-        raise pickle.UnpicklingError("global '%s.%s' is forbidden" %(module, name))
+        raise pickle.UnpicklingError("global '%s' is forbidden" % fullname)
 
     @classmethod
     def load(self, file):
