@@ -9,12 +9,22 @@
         <configfile name="replaceColumnScript">
             <![CDATA[
 import sys
+import re
+
+class UnknownValueError(Exception):
+    '''Raise this when there is a lookup error'''
+    def __init__(self, code, message):
+        self.code = code
+        self.message = "ERROR: %s\n" % message
+        super(UnknownValueError, self).__init__(message)
 
 replace_file = '$replace_information'
 original_file = '$original_file'
 column = int("$column_replace") - 1
 ignore_start_lines = int("$skip_lines")
-delimiter_local = "\t" if str("$delimiter") == "" else str("$delimiter")
+delimiter_local = "\t" if str("$delimiter") == "" or str("$delimiter") == " " else str("$delimiter")
+comment_str = str("$pass_comments")
+unk_strat = str("$unknowns_strategy")
 
 ## read conversion information to index
 conversion = {}
@@ -35,31 +45,27 @@ with open("output_file", 'w') as output:
 
             if str("$delimiter") == "":
                 line_content = line.split()
+            elif str("$delimiter") == " ":
+                line_content = re.split(r'\t', line.rstrip())
             else:
                 line_content = line.split(str("$delimiter"))
 
             out = list()
             for j, line_content_column in enumerate(line_content):
-                if (j == column and (pass_comments == "" or
-                    !line_content_column.startswith(pass_comments))):
+                if (j == column and (comment_str == "" or
+                    not line_content_column.startswith(comment_str))):
 
                     if line_content_column in conversion:
                         out.append(conversion[line_content_column])
-                    else if str("unknowns_strategy") == "print":
+                    elif unk_strat == "print":
                         out.append(line_content_column)
-                    else if str("unknowns_strategy") == "error":
-                        raise UnknownValueError(2,'Encountered a value [%s] in the file that is not in the replacements file' % line_content_column)
+                    elif unk_strat == "error":
+                        raise UnknownValueError(2,'Encountered a value [%s] in the file that is not in the replacements file and is not commented with [%s]' % (line_content_column, comment_str))
                 else:
                     out.append(line_content_column)
 
             if len(out) == len(line_content):
                 output.write('%s\n' % delimiter_local.join(out))
-
-class UnknownValueError(LookupError):
-    '''Raise this when there's a lookup error'''
-    def __init__(self, code, message):
-        self.code = code
-        self.message = "ERROR: %s\n" % message
 
 ]]>
         </configfile>
@@ -75,8 +81,8 @@ class UnknownValueError(LookupError):
                label="Which column should be replaced?" />
         <param name="skip_lines" type='integer' value='0' label="Skip this many starting lines" />
         <param name="delimiter" type="select" label="Delimited by">
-            <option value="" selected="True">Tab</option>
-            <option value=" ">Whitespace</option>
+            <option value="" selected="True">Whitespace</option>
+            <option value=" ">Tab</option>
             <option value=".">Dot</option>
             <option value=",">Comma</option>
             <option value="-">Dash</option>
@@ -84,11 +90,17 @@ class UnknownValueError(LookupError):
             <option value="|">Pipe</option>
         </param>
         <param name="unknowns_strategy" type="select" label="When an unknown value is encountered">
-            <option value="print" selected="True">Print without modification</option>
-            <option value="skip">Skip / Do not print</option>
+            <option value="skip" selected="True">Skip / Do not print</option>
+            <option value="print">Print without modification</option>
             <option value="error">Exit with an error</option>
         </param>
-        <param name="pass_comments" type='text' value='#' label="Pass lines commented with this character through unchanged" help="An empty string will cause a replacement attempt to be made on all lines." />
+        <param name="pass_comments" type='text' value='#' label="Pass lines commented with this character through unchanged" help="An empty string will cause a replacement attempt to be made on all lines.">
+            <sanitizer>
+                <valid>
+                    <add value="#" />
+                </valid>
+            </sanitizer>
+        </param>
     </inputs>
     <outputs>
         <data  name="outfile_replace" format="txt" from_work_dir="output_file"/>
@@ -100,6 +112,8 @@ class UnknownValueError(LookupError):
             <param name="column_replace" value="1"/>
             <param name="skip_lines" value="1"/>
             <param name="delimiter" value="" />
+            <param name="unknowns_strategy" value="skip"/>
+            <param name="pass_comments" value="#"/>
             <output name="outfile_replace" file="result_file"/>
         </test>
         <test>
@@ -108,7 +122,28 @@ class UnknownValueError(LookupError):
             <param name="column_replace" value="1"/>
             <param name="skip_lines" value="1"/>
             <param name="delimiter" value="" />
+            <param name="unknowns_strategy" value="skip"/>
+            <param name="pass_comments" value="#"/>
             <output name="outfile_replace" file="result_file_empty_mapping"/>
+        </test>
+        <test expect_failure="True">
+            <param name="replace_information" value="neg_test_map.txt" ftype="tabular" />
+            <param name="original_file" value="neg_test_commented.txt" ftype="tabular" />
+            <param name="column_replace" value="1"/>
+            <param name="skip_lines" value="0"/>
+            <param name="delimiter" value=" " />
+            <param name="unknowns_strategy" value="error"/>
+            <param name="pass_comments" value="#"/>
+        </test>
+        <test>
+            <param name="replace_information" value="neg_test_map.txt" ftype="tabular" />
+            <param name="original_file" value="neg_test_commented.txt" ftype="tabular" />
+            <param name="column_replace" value="1"/>
+            <param name="skip_lines" value="0"/>
+            <param name="delimiter" value=" " />
+            <param name="unknowns_strategy" value="print"/>
+            <param name="pass_comments" value="#"/>
+            <output name="outfile_replace" file="neg_test_commented.txt"/>
         </test>
     </tests>
     <help>
