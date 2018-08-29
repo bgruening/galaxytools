@@ -19,7 +19,7 @@ import json
 import numpy as np
 import sklearn.neighbors
 import pandas
-import h5py
+from deepdish import io
 
 execfile("$__tool_directory__/sk_whitelist.py")
 execfile("$__tool_directory__/utils.py", globals())
@@ -30,27 +30,7 @@ with open(input_json_path, "r") as param_handler:
 
 #if $selected_tasks.selected_task == "load":
 
-h5file = h5py.File("$infile_model", 'r')
-class_name = h5file.get("class_name").value
-class_path = h5file.get("class_path").value
-classifier = SafePickler.find_class(class_path, class_name)
-classifier_object = classifier()
-for key in h5file.keys():
-    if h5file.get(key).__class__.__name__ == 'Group':
-        train_data = h5file.get(key+'/data').value
-        class_name = h5file.get(key+'/class_name').value
-        class_path_modules = class_path.split('.')
-        for index, item in enumerate(class_path_modules):
-            path = ".".join(class_path_modules[:len(class_path_modules) - index])
-            try:
-                module_obj = SafePickler.find_class(path, class_name)
-                val = module_obj(train_data)
-                setattr(classifier_object, key, val)
-            except:
-                continue
-    else:
-        data = h5file.get(key).value
-        setattr(classifier_object, key, data)
+classifier_object = io.load("$infile_model")
 
 header = 'infer' if params["selected_tasks"]["header"] else None
 data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
@@ -78,29 +58,7 @@ my_class = getattr(sklearn.neighbors, classifier)
 classifier_object = my_class(**options)
 classifier_object.fit(X, y)
 
-classifier_dict = classifier_object.__dict__
-classifier_dict["class_path"] = classifier_object.__module__ 
-classifier_dict["class_name"] = classifier_object.__class__.__name__
-
-with h5py.File("$outfile_fit", 'w') as h5file:
-    for dict_item, val in classifier_dict.items():
-        if val is not None:
-            type_name = type(val).__name__
-            try:
-                if type_name in ['ndarray']:
-                    h5file.create_dataset(dict_item, (val.shape), data=np.array(val, dtype=val.dtype.name))
-                else:
-                    h5file.create_dataset(dict_item, data=val)
-            except:
-                if val:
-                    class_name = val.__class__.__name__
-                    train_data = np.array(val.data)
-                    dict_group = h5file.create_group(dict_item)
-                    dict_group.create_dataset("class_name", data=class_name)
-                    dict_group.create_dataset("data", (train_data.shape), data=np.array(train_data, dtype=train_data.dtype.name))
-                else:
-                    h5file.create_dataset(dict_item, data=json.dumps(val))
-                    continue
+io.save("$outfile_fit", classifier_object, compression='blosc')
 
 #end if
 
