@@ -1,4 +1,4 @@
-<tool id="segemehl" name="segemehl" version="0.2.0.3">
+<tool id="segemehl" name="segemehl" version="0.2.0.4">
   <description>short read mapping with gaps</description>
   <requirements>
     <requirement type="package" version="0.2.0">segemehl</requirement>
@@ -10,7 +10,7 @@
            description="Execution halted." />
   </stdio>
   <command>
-	<!--
+<!--
         ## check for single/pair-end
         #if str( $library.type ) == "single":
             #set $query_list = list()
@@ -33,9 +33,16 @@
         
             -I $library.maxinsertsize
         #end if
-		-->
-	<![CDATA[
-        ## prepare segemehl index if no reference genome is supplied
+-->
+    <![CDATA[
+## UNIMPLEMENTED    
+## [SEEDEXTENSIONPARAMS]           
+## -e, --extensionscore <n>        score of a match during extension (default:2)
+## -n, --extensionpenalty <n>      penalty for a mismatch during extension (default:4)
+## -X, --dropoff <n>               dropoff parameter for extension (default:8)
+##  --showalign
+
+## prepare segemehl index if no reference genome is supplied
         #if $refGenomeSource.genomeSource == "history":
             mkdir ./temp_index/ &&
             #set $temp_index = './temp_index/temp.idx'
@@ -60,13 +67,15 @@
         
         ## check for single/pair-end
         #if str( $library.type ) == "single":
-        ## prepare inputs
+            ## prepare inputs
             -q ${library.input_query}
         #else       
             -q ${mate_pair.first_strand_query}
             -p ${mate_pair.second_strand_query}
-        
             -I ${library.maxinsertsize}
+        #end if
+        #if str( $bisulfite ) != "0":
+            -F $bisulfite
         #end if
         -m $minsize
         -A $accuracy
@@ -77,10 +86,11 @@
         #if str( $prime3 ).strip():
             -Q "$prime3"
         #end if
-            $polyA
-            $autoclip
-            $hardclip
-            $order
+        -R $clipacc
+        $polyA
+        $autoclip
+        $hardclip
+        $order
         #if $maxout:
             --maxout $maxout
         #end if
@@ -89,13 +99,18 @@
             --minsplicecover $splitreads.minsplicecover
             --minfragscore $splitreads.minfragscore
             --minfraglen $splitreads.minfraglen
-            --splicescorescale $splitreads.splicescorescale
+	    --splicescorescale $splitreads.splicescorescale
+	    --maxsplitevalue $splitreads.maxsplitevalue
         #end if
         -M $maxinterval
         -E $evalue
         -D $differences
+        -J $jump
         -s
         -o '$segemehl_out'
+        #if str( $nomatchfilename ) == 'yes':
+           -u '$segemehl_outunmatched'
+        #end if
     ]]>
   </command>
   <inputs>
@@ -137,47 +152,57 @@
           <param name="first_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads from first strand" />
           <param name="second_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads from second strand" />
         </repeat>
-        <param name="maxinsertsize" type="integer" value="5000" label="Maximum size of the inserts (paired end)" help="default: 5000 (-I)" />
+        <param argument="--maxinsertsize" type="integer" value="5000" label="Maximum size of the inserts (paired end)" help="default: 5000" />
       </when>
     </conditional>
 
     <conditional name="splitreads">
-      <param name="splits" type="select" label="Detect split/spliced reads" help="(--splits)">
+      <param argument="splits" type="select" label="Detect split/spliced reads">
         <option value="nosplit">No splits</option>
         <option value="splits">Split reads</option>
       </param>
       <when value="splits">
-        <param name="minsplicecover" type="integer" value="80" label="Min coverage for spliced transcripts" help="(--minsplicecover)" />
-        <param name="minfragscore" type="integer" value="18" label="Min coverage for spliced transcripts" help="(--minfragscore)" />
-        <param name="minfraglen" type="integer" value="20" label="Min length of a spliced fragment" help="(--minfraglen)" />
-        <param name="splicescorescale" type="float" value="1.0" label="Report spliced alignment with score greater than this scale times the score"
-               help="Report only if this value x score is larger than next best spliced alignment (--splicescorescale)" />
-        <param name="sevalue" type="float" min="0" value="50.000000" label="max split evalue" help="(--maxsplitevalue)"/>
+        <param argument="--minsplicecover" type="integer" value="80" label="Min coverage for spliced transcripts" />
+        <param argument="--minfragscore" type="integer" value="18" label="Min coverage for spliced transcripts" />
+        <param argument="--minfraglen" type="integer" value="20" label="Min length of a spliced fragment"  />
+        <param argument="--splicescorescale" type="float" value="1.0" label="Report spliced alignment with score greater than this scale times the score"
+               help="Report only if this value x score is larger than next best spliced alignment" />
+       <param argument="--maxsplitevalue" type="float" min="0" value="50.000000" label="max evalue for splits"/>
       </when>
       <when value="nosplit">
       </when>     
     </conditional>
-    
-    <param name="minsize" type="integer" value="12" min="1" label="Minimum size of queries" help="(-m)" />
-    <param name="maxout" type="integer" min="0" value="0" optional="True" 
-           label="Maximum number of alignments that will be reported" help="(--maxout)" />
-    <param name="accuracy" type="integer" value="85" min="1" max="100" label="Min percentage of matches per read in semi-global alignment" help="(-A)" />
-    <param name="hitstrategy" type="select" label="Hits to report?" help="(-H)">
+    <param argument="--bisulfite" type="select" label="Bisulfite mapping">
+      <option value="0">No bisulfite mapping</option>
+      <option value="1">bisulfite mapping with methylC-seq/Lister et al.</option>
+      <option value="2">bs-seq/Cokus et al. protocol</option>
+    </param>
+    <param argument="--minsize" type="integer" value="12" min="1" label="Minimum size of queries" />
+    <param argument="--maxout" type="integer" min="0" value="0" optional="True" 
+           label="Maximum number of alignments that will be reported"/>
+    <param argument="--accuracy" type="integer" value="85" min="1" max="100" label="Min percentage of matches per read in semi-global alignment" />
+    <param argument="--hitstrategy" type="select" label="Hits to report?">
       <option value="1">report only best scoring hits</option>
       <option value="0">report all scoring hits</option>
     </param>
-    <param name="prime5" type="text" label="add 5' adapter" help="default: none (-Q)" />
-    <param name="prime3" type="text" label="add 3' adapter" help="default: none (-P)"/>
-    <param name="polyA" type="boolean" truevalue="--polyA" falsevalue="" checked="false" label="Clip polyA tail" help="(-T)"/>
-    <param name="autoclip" type="boolean" truevalue="--autoclip" falsevalue="" checked="false" label="Autoclip unknown 3prime adapter" help="(-Y)"/>
-    <param name="hardclip" type="boolean" truevalue="--hardclip" falsevalue="" checked="false" label="Enable hard clipping" help="(-C)"/>
-    <param name="order" type="boolean" truevalue="--order" falsevalue="" checked="false" label="Sorts the output by chromsome and position" help="(-O)"/>
-    <param name="differences" type="integer" min="0" value="1" label="search seeds initially with n differences" help="(--differences)"/>
-    <param name="evalue" type="float" min="0" value="5.000000" label="max evalue" help="(--evalue)"/>
-    <param name="maxinterval" type="integer" min="1" value="100" label="maximum width of a suffix array interval, i.e. a query seed will be omitted if it matches more than n times" help="(--maxinterval)"/>
+    <param argument="--prime5" type="text" label="add 5' adapter" help="default: none" />
+    <param argument="--prime3" type="text" label="add 3' adapter" help="default: none"/>
+    <param argument="--clipacc" value="70" type="integer" label="clipping accuracy" />
+    <param argument="--polyA" type="boolean" truevalue="--polyA" falsevalue="" checked="false" label="Clip polyA tail" />
+    <param argument="--autoclip" type="boolean" truevalue="--autoclip" falsevalue="" checked="false" label="Autoclip unknown 3prime adapter"/>
+    <param argument="--hardclip" type="boolean" truevalue="--hardclip" falsevalue="" checked="false" label="Enable hard clipping"/>
+    <param argument="--order" type="boolean" truevalue="--order" falsevalue="" checked="false" label="Sorts the output by chromsome and position" />
+    <param argument="--differences" type="integer" min="0" value="1" label="search seeds initially with n differences"/>
+    <param argument="--jump" type="integer" value="0" min="0" label="search seeds with jump size" help="(0=automatic) (default:0)?"/>
+    <param argument="--evalue" type="float" min="0" value="5.000000" label="max evalue"/>
+    <param argument="--maxinterval" type="integer" min="1" value="100" label="maximum width of a suffix array interval, i.e. a query seed will be omitted if it matches more than n times"/>
+    <param argument="--nomatchfilename" type="boolean" truevalue="yes" falsevalue="no" checked="false" label="Output unmatched reads"/>
   </inputs>
   <outputs>
-    <data format="sam" name="segemehl_out" label="Read alignments on ${on_string}"/>
+    <data format="sam" name="segemehl_out" label="${tool.name} on ${on_string}"/>
+    <data format="fastq" name="segemehl_outunmatched" label="${tool.name} unaligned reads ${on_string}">
+      <filter>output_unmatched</filter>
+    </data>
   </outputs>
   <tests>
     <test>
@@ -194,8 +219,10 @@
       <param name="library" value="single" />
       <param name="input_query" value="test.fastq" />   
       <param name="splits" value="splits" />
-	  <param name="minsplicecover" value="40" />
+      <param name="minsplicecover" value="40" />
+      <param name="nomatchfilename" value="yes" />
       <output name="segemehl_out" file="testmap2.sam" lines_diff="2" />
+      <output name="segemehl_outunmatched" file="testmap2.fastq" />
     </test>
   </tests>
   <help>
