@@ -39,7 +39,7 @@ class SafePickler(object):
                     '__init__', 'func_globals', 'func_code', 'func_closure',
                     'im_class', 'im_func', 'im_self', 'gi_code', 'gi_frame',
                     '__asteval__', 'f_locals', '__mro__')
-        good_names = ('copy_reg._reconstructor', '__builtin__.object')
+        good_names = ['copy_reg._reconstructor', '__builtin__.object']
 
         if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
             fullname = module + '.' + name
@@ -53,7 +53,7 @@ class SafePickler(object):
                         and (name not in bad_names)
                     ) :
                 # TODO: replace with a whitelist checker
-                if fullname not in SK_NAMES + SKR_NAMES + XGB_NAMES + NUMPY_NAMES + good_names:
+                if fullname not in sk_whitelist['SK_NAMES'] + sk_whitelist['SKR_NAMES'] + sk_whitelist['XGB_NAMES'] + sk_whitelist['NUMPY_NAMES'] + good_names:
                     print("Warning: global %s is not in pickler whitelist yet and will loss support soon. Contact tool author or leave a message at github.com" % fullname)
                 mod = sys.modules[module]
                 return getattr(mod, name)
