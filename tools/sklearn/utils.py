@@ -301,3 +301,52 @@ def get_scoring(scoring_json):
 
     return my_scorers[ scoring_json['primary_scoring'] ]
 
+
+class ModelDictionary(object):
+
+    @classmethod
+    def to_dict(cls, obj):
+        primitive_types = [bool, int, long, float, complex, str, unicode, bytearray]
+        dtypes = [numpy.bool_, numpy.int_, numpy.intc, numpy.intp, numpy.int8, numpy.int16,
+                numpy.int32, numpy.int64, numpy.uint8, numpy.uint16, numpy.uint32, numpy.uint64,
+                numpy.uint8, numpy.float_, numpy.float16, numpy.float32, numpy.float64,
+                numpy.complex_, numpy.complex64, numpy.complex128]
+
+        t = type(obj)
+        if obj is None or t in primitive_types:
+            return obj
+        if t is list:
+            newlist = []
+            for e in obj:
+                newlist.append( cls.to_dict(e) )
+            return newlist
+        if t is tuple:
+            return tuple(cls.to_dict(list(obj)))
+        if t is set:
+            return set(cls.to_dict(list(obj)))
+        if t is dict:
+            newdict = {}
+            for k, v in obj.items():
+                newdict[k] = cls.to_dict(v)
+            return newdict
+
+        name = getattr(obj, '__name__', None)
+        if name is None:
+            name = obj.__class__.__name__
+
+        module_name = getattr(obj, '__module__', None)
+        if module_name is None:
+            module_name = obj.__class__.__module__
+
+        _attributes_ = getattr(obj, '__dict__', None)
+        if t is numpy.ndarray:
+            _attributes_ = obj.tolist()
+        elif t in dtypes:
+            _attributes_ = obj.item()
+
+        _attributes_ = cls.to_dict(_attributes_)
+        retv = {}
+        retv['_module_'] = module_name
+        retv['_name_'] = name
+        retv['_attributes_'] = _attributes_
+        return retv
