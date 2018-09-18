@@ -2,7 +2,7 @@ import sys
 import os
 import pandas
 import re
-import cPickle as pickle
+import pickle as pickle
 import warnings
 import numpy as np
 import xgboost
