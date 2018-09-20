@@ -99,8 +99,7 @@ def feature_selector(inputs):
             options['threshold'] = None
         if inputs['model_inputter']['input_mode'] == 'prefitted':
             model_file = inputs['model_inputter']['fitted_estimator']
-            with open(model_file, 'rb') as model_handler:
-                fitted_estimator = SafePickler.load(model_handler)
+            fitted_estimator = H5Model().load_model(model_file)
             new_selector = selector(fitted_estimator, prefit=True, **options)
         else:
             estimator_json = inputs['model_inputter']["estimator_selector"]
