@@ -456,6 +456,8 @@ class H5Model:
                         else:
                             self._create_dataset(h5file_obj, model_key, model_value)
                     elif type_name in ['dict']:
+                        if isinstance(model_key, (int, numpy.int16, numpy.int32, numpy.int64)) is True:
+                            model_key = str(model_key)
                         if model_key in h5file_obj:
                             recursive_save_model(h5file_obj[model_key], model_value)
                         else:
