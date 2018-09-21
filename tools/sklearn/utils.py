@@ -14,6 +14,7 @@ from sklearn import (cluster, decomposition, ensemble, feature_extraction, featu
                     gaussian_process, kernel_approximation, linear_model, metrics,
                     model_selection, naive_bayes, neighbors, pipeline, preprocessing,
                     svm, linear_model, tree, discriminant_analysis)
+from deepdish import io
 
 N_JOBS = int( os.environ.get('GALAXY_SLOTS', 1) )
 
@@ -99,8 +100,7 @@ def feature_selector(inputs):
             options['threshold'] = None
         if inputs['model_inputter']['input_mode'] == 'prefitted':
             model_file = inputs['model_inputter']['fitted_estimator']
-            with open(model_file, 'rb') as model_handler:
-                fitted_estimator = SafePickler.load(model_handler)
+            fitted_estimator = io.load(model_file)
             new_selector = selector(fitted_estimator, prefit=True, **options)
         else:
             estimator_json = inputs['model_inputter']["estimator_selector"]
