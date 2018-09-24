@@ -353,11 +353,6 @@ class DictToModel:
             newdict[k] = self.load_all(v)
         return newdict
 
-    def find_class(self, module, name):
-        __import__(module, level=0)
-        mod = sys.modules[module]
-        return getattr(mod, name)
-
     def load_global(self, data):
         module = data[0]
         name = data[1]
