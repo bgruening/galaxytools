@@ -335,12 +335,10 @@ class DictToModel:
 
     def load_tuple(self, data):
         obj = self.load_all( data )
-        #self.memoize(obj)
         return tuple(obj)
 
     def load_set(self, data):
         obj = self.load_all( data )
-        #self.memoize(obj)
         return set(obj)
 
     def load_dict(self, data):
@@ -353,7 +351,6 @@ class DictToModel:
             except KeyError:
                 v = data[str(k)]
             newdict[k] = self.load_all(v)
-        #self.memoize( newdict )
         return newdict
 
     def find_class(self, module, name):
@@ -364,7 +361,7 @@ class DictToModel:
     def load_global(self, data):
         module = data[0]
         name = data[1]
-        func = self.find_class(module, name)
+        func = SafePickler.find_class(module, name)
         self.memoize(func)
         return func
 
