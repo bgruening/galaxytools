@@ -40,11 +40,12 @@ _DATATYPE = '-datatype-'
 _VALUE = '-value-'
 _TUPLE = '-tuple-'
 _SET = '-set-'
-_BYTES ='-bytes-'
+_BYTES = '-bytes-'
 
 
 class JsonPicklerError(Exception):
     pass
+
 
 class ModelToDict:
     """
@@ -59,7 +60,7 @@ class ModelToDict:
         Clears the `memo`
         """
         self.memo.clear()
-    
+
     def memoize(self, obj):
         """
         Store an object id in the `memo`
@@ -112,8 +113,8 @@ class ModelToDict:
         if reduce:
             rv = reduce()
         else:
-            raise JsonPicklerError("Can't reduce %r object: %r" %(t.__name__, obj))
-        assert (type(rv) is tuple),\
+            raise JsonPicklerError("Can't reduce %r object: %r" % (obj.__name__, obj))
+        assert (type(rv) is tuple), \
             "%s must return a tuple, but got %s" % (reduce, type(rv))
         l = len(rv)
         assert (l in [2, 3]),\
@@ -129,7 +130,7 @@ class ModelToDict:
 
         args = rv[1]
         assert (type(args) is tuple)
-        retv[_ARGS] = {_TUPLE: save(list(args)) }
+        retv[_ARGS] = {_TUPLE: save(list(args))}
 
         if l == 3:
             state = rv[2]
@@ -137,12 +138,12 @@ class ModelToDict:
 
         self.memoize(obj)
         return {_REDUCE: retv}
-    
+
     dispatch = {}
 
     def save_primitive(self, obj):
         return obj
-    
+
     dispatch[type(None)] = save_primitive
     dispatch[bool] = save_primitive
     dispatch[int] = save_primitive
@@ -219,7 +220,7 @@ class ModelToDict:
 
     def save_np_datatype(self, obj):
         newdict = {}
-        newdict[_DATATYPE] = self.save( type(obj) )
+        newdict[_DATATYPE] = self.save(type(obj))
         newdict[_VALUE] = self.save(obj.item())
         return {_NP_DATATYPE: newdict}
 
@@ -290,7 +291,7 @@ class DictToModel:
         if f:
             return f(self, data)
         else:
-            raise JsonPicklerError("Unsupported data found: %s" %str(data))
+            raise JsonPicklerError("Unsupported data found: %s" % str(data))
 
     dispatch = {}
 
@@ -334,11 +335,11 @@ class DictToModel:
     dispatch[list] = load_list
 
     def load_tuple(self, data):
-        obj = self.load_all( data )
+        obj = self.load_all(data)
         return tuple(obj)
 
     def load_set(self, data):
-        obj = self.load_all( data )
+        obj = self.load_all(data)
         return set(obj)
 
     def load_dict(self, data):
@@ -365,11 +366,11 @@ class DictToModel:
         Build object
         """
         _func = data[_FUNC]
-        func = self.load_all( _func)
+        func = self.load_all(_func)
         assert callable(func), "%r" % func
 
         _args = data[_ARGS][_TUPLE]
-        args = tuple( self.load_all( _args) )
+        args = tuple(self.load_all(_args))
 
         try:
             obj = args[0].__new__(args[0], * args)
@@ -378,7 +379,7 @@ class DictToModel:
 
         _state = data.get(_STATE)
         if _state:
-            state = self.load_all( _state)
+            state = self.load_all(_state)
             setstate = getattr(obj, "__setstate__", None)
             if setstate:
                 setstate(state)
@@ -391,14 +392,14 @@ class DictToModel:
         return obj
 
     def load_np_ndarray(self, data):
-        _dtype = self.load_all( data[_DTYPE] )
-        _values = self.load_all( data[_VALUES] )
+        _dtype = self.load_all(data[_DTYPE])
+        _values = self.load_all(data[_VALUES])
         obj = numpy.array(_values, dtype=_dtype)
         return obj
 
     def load_np_datatype(self, data):
-        _datatype = self.load_all( data[_DATATYPE] )
-        _value = self.load_all( data[_VALUE] )
+        _datatype = self.load_all(data[_DATATYPE])
+        _value = self.load_all(data[_VALUE])
         obj = _datatype(_value)
         return obj
 
@@ -416,7 +417,7 @@ class H5Model:
             file_obj.create_dataset(key, data=json.dumps(value))
         except:
             file_obj.create_dataset(key, data=value)
-    
+
     def save_model(self, model, file_name):
         """
         Save the dictionary model to h5 file
