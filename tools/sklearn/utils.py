@@ -2,7 +2,7 @@ import sys
 import os
 import pandas
 import re
-import pickle as pickle
+import pickle
 import warnings
 import numpy as np
 import xgboost
@@ -54,7 +54,6 @@ class SafePickler(object):
                 # TODO: replace with a whitelist checker
                 if fullname not in sk_whitelist['SK_NAMES'] + sk_whitelist['SKR_NAMES'] + sk_whitelist['XGB_NAMES'] + sk_whitelist['NUMPY_NAMES'] + good_names:
                     print("Warning: global %s is not in pickler whitelist yet and will loss support soon. Contact tool author or leave a message at github.com" % fullname)
-                __import__(module, level=0)
                 mod = sys.modules[module]
                 return getattr(mod, name)
 
