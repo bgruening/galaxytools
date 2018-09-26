@@ -500,10 +500,7 @@ class H5Model:
                         key_value = h5file_obj.get(key).value
                         reconstructed_model[key] = json.loads(key_value)
                     except Exception:
-                        if type(key_value).__name__ is 'ndarray':
-                            reconstructed_model[key] = key_value.tolist()
-                        else:
-                            reconstructed_model[key] = key_value
+                        reconstructed_model[key] = key_value
                         continue
         recursive_load_model(h5file, reconstructed_model)
         H5Model()._restore_list_in_model(reconstructed_model)
