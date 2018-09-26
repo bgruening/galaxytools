@@ -428,9 +428,9 @@ class H5Model:
         # nested method for recursion
         def recursive_save_model(h5file_obj, dictionary):
             for model_key, model_value in dictionary.items():
-                type_name = type(model_value).__name__
+                type_name = type(model_value)
                 try:
-                    if type_name in ['list']:
+                    if type_name is list:
                         if len(model_value) > 0:
                             list_obj = all(isinstance(x, dict) for x in model_value)
                             if list_obj is False:
@@ -448,8 +448,8 @@ class H5Model:
                                         self._create_dataset(h5file_obj, model_key_item, model_item)
                         else:
                             self._create_dataset(h5file_obj, model_key, model_value)
-                    elif type_name in ['dict']:
-                        if isinstance(model_key, (int, numpy.int16, numpy.int32, numpy.int64)) is True:
+                    elif type_name is dict:
+                        if isinstance(model_key, (int, numpy.int16, numpy.int32, numpy.int64)):
                             model_key = str(model_key)
                         if model_key in h5file_obj:
                             recursive_save_model(h5file_obj[model_key], model_value)
@@ -466,9 +466,9 @@ class H5Model:
         """
         Convert the model dictionary to list if the keys are represented as numbers
         """
-        if isinstance(model_object, dict) is True:
+        if isinstance(model_object, dict):
             for key, value in model_object.items():
-                if type(value).__name__ in ['dict']:
+                if type(value) is dict:
                     keys = value.keys()
                     all_keys_number = all(str.isnumeric(x) for x in keys)
                     if all_keys_number is True:
@@ -477,8 +477,8 @@ class H5Model:
                         for idx in range(len(keys)):
                             model_object[key].append(value[str(idx)])
                 self._restore_list_in_model(value)
-        elif isinstance(model_object, list) is True:
-            for k, v in enumerate(model_object):
+        elif isinstance(model_object, list):
+            for v in model_object:
                 self._restore_list_in_model(v)
 
     def load_model(self, file_name):
@@ -492,7 +492,7 @@ class H5Model:
         def recursive_load_model(h5file_obj, reconstructed_model):
             for key in h5file_obj.keys():
                 # recurse if the item is a group
-                if h5file_obj.get(key).__class__.__name__ in ['Group']:
+                if h5file_obj.get(key).__class__.__name__ is 'Group':
                     reconstructed_model[key] = dict()
                     recursive_load_model(h5file_obj[key], reconstructed_model[key])
                 else:
@@ -500,7 +500,7 @@ class H5Model:
                         key_value = h5file_obj.get(key).value
                         reconstructed_model[key] = json.loads(key_value)
                     except Exception:
-                        if type(key_value).__name__ in ['ndarray']:
+                        if type(key_value).__name__ is 'ndarray':
                             reconstructed_model[key] = key_value.tolist()
                         else:
                             reconstructed_model[key] = key_value
