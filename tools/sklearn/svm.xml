@@ -23,7 +23,7 @@ import h5py
 
 with open("$__tool_directory__/sk_whitelist.json", "r") as f:
     sk_whitelist = json.load(f)
-execfile("$__tool_directory__/utils.py", globals())
+exec(open("$__tool_directory__/utils.py").read(), globals())
 
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
@@ -34,15 +34,10 @@ with open(input_json_path, "r") as param_handler:
 header = 'infer' if params["selected_tasks"]["header"] else None
 data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
 
-h5file = h5py.File("$infile_model", 'r')
-class_name = h5file.get("class_name").value
-class_path = h5file.get("class_path").value
-classifier = SafePickler.find_class(class_path, class_name)
-classifier_obj = classifier()
-for key in h5file.keys():
-    key_val = h5file.get(key).value
-    setattr(classifier_obj, key, key_val)
-prediction = classifier_obj.predict(data)
+with open("$infile_model", 'rb') as model_handler:
+    classifier_object = SafePickler.load(model_handler)
+
+prediction = classifier_object.predict(data)
 prediction_df = pandas.DataFrame(prediction)
 res = pandas.concat([data, prediction_df], axis=1)
 res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
@@ -62,18 +57,8 @@ my_class = getattr(sklearn.svm, selected_algorithm)
 classifier_object = my_class(**options)
 classifier_object.fit(X, y)
 
-classifier_dict = classifier_object.__dict__
-classifier_dict["class_path"] = classifier_object.__module__
-classifier_dict["class_name"] = classifier_object.__class__.__name__
-
-with h5py.File("$outfile_fit", 'w') as h5file:
-    for dict_item, val in classifier_dict.items():
-        if val is not None:
-            type_name = type(val).__name__
-            if type_name in ['ndarray']:
-                h5file.create_dataset(dict_item, (val.shape), data=np.array(val, dtype=val.dtype.name))
-            else:
-                h5file.create_dataset(dict_item, data=val)
+with open("$outfile_fit", 'wb') as out_handler:
+    pickle.dump(classifier_object, out_handler)
 
 #end if
 

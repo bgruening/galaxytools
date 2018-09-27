@@ -2,13 +2,12 @@ import sys
 import os
 import pandas
 import re
-import cPickle as pickle
+import pickle
 import warnings
 import numpy as np
 import xgboost
 import scipy
 import sklearn
-import ast
 from asteval import Interpreter, make_symbol_table
 from sklearn import (cluster, decomposition, ensemble, feature_extraction, feature_selection,
                     gaussian_process, kernel_approximation, linear_model, metrics,
@@ -300,4 +299,3 @@ def get_scoring(scoring_json):
         return scoring
 
     return my_scorers[ scoring_json['primary_scoring'] ]
-
