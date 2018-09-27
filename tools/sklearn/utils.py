@@ -16,13 +16,12 @@ from sklearn import (cluster, decomposition, ensemble, feature_extraction, featu
 
 N_JOBS = int( os.environ.get('GALAXY_SLOTS', 1) )
 
-class SafePickler(object):
+class SafePickler(pickle.Unpickler):
     """
     Used to safely deserialize scikit-learn model objects serialized by cPickle.dump
     Usage:
         eg.: SafePickler.load(pickled_file_object)
     """
-    @classmethod
     def find_class(self, module, name):
 
         bad_names = ('and', 'as', 'assert', 'break', 'class', 'continue',
@@ -59,11 +58,8 @@ class SafePickler(object):
 
         raise pickle.UnpicklingError("global '%s' is forbidden" % fullname)
 
-    @classmethod
-    def load(self, file):
-        obj = pickle.Unpickler(file)
-        obj.find_global = self.find_class
-        return obj.load()
+def load_model(file):
+    return SafePickler(file).load()
 
 def read_columns(f, c=None, c_option='by_index_number', return_df=False, **args):
     data = pandas.read_csv(f, **args)
