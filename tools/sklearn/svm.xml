@@ -19,11 +19,10 @@ import sys
 import json
 import sklearn.svm
 import pandas
-import h5py
 
 with open("$__tool_directory__/sk_whitelist.json", "r") as f:
     sk_whitelist = json.load(f)
-execfile("$__tool_directory__/utils.py", globals())
+exec(open("$__tool_directory__/utils.py").read(), globals())
 
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
@@ -34,15 +33,10 @@ with open(input_json_path, "r") as param_handler:
 header = 'infer' if params["selected_tasks"]["header"] else None
 data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
 
-h5file = h5py.File("$infile_model", 'r')
-class_name = h5file.get("class_name").value
-class_path = h5file.get("class_path").value
-classifier = SafePickler.find_class(class_path, class_name)
-classifier_obj = classifier()
-for key in h5file.keys():
-    key_val = h5file.get(key).value
-    setattr(classifier_obj, key, key_val)
-prediction = classifier_obj.predict(data)
+with open("$infile_model", 'rb') as model_handler:
+    classifier_object = load_model(model_handler)
+
+prediction = classifier_object.predict(data)
 prediction_df = pandas.DataFrame(prediction)
 res = pandas.concat([data, prediction_df], axis=1)
 res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
@@ -62,18 +56,8 @@ my_class = getattr(sklearn.svm, selected_algorithm)
 classifier_object = my_class(**options)
 classifier_object.fit(X, y)
 
-classifier_dict = classifier_object.__dict__
-classifier_dict["class_path"] = classifier_object.__module__
-classifier_dict["class_name"] = classifier_object.__class__.__name__
-
-with h5py.File("$outfile_fit", 'w') as h5file:
-    for dict_item, val in classifier_dict.items():
-        if val is not None:
-            type_name = type(val).__name__
-            if type_name in ['ndarray']:
-                h5file.create_dataset(dict_item, (val.shape), data=np.array(val, dtype=val.dtype.name))
-            else:
-                h5file.create_dataset(dict_item, data=val)
+with open("$outfile_fit", 'wb') as out_handler:
+    pickle.dump(classifier_object, out_handler)
 
 #end if
 
@@ -81,7 +65,7 @@ with h5py.File("$outfile_fit", 'w') as h5file:
         </configfile>
     </configfiles>
     <inputs>
-        <expand macro="sl_Conditional" model="h5">
+        <expand macro="sl_Conditional" model="zip">
             <param name="selected_algorithm" type="select" label="Classifier type">
                 <option value="SVC">C-Support Vector Classification</option>
                 <option value="NuSVC">Nu-Support Vector Classification</option>
@@ -126,15 +110,7 @@ with h5py.File("$outfile_fit", 'w') as h5file:
             </when>
         </expand>
     </inputs>
-
-    <outputs>
-      <data format="tabular" name="outfile_predict">
-          <filter>selected_tasks['selected_task'] == 'load'</filter>
-      </data>
-      <data format="h5" name="outfile_fit" label="${tool.name}.${selected_tasks.selected_algorithms.selected_algorithm}">
-          <filter>selected_tasks['selected_task'] == 'train'</filter>
-      </data>
-    </outputs>
+    <expand macro="output"/>
     <tests>
         <test>
             <param name="infile1" value="train_set.tabular" ftype="tabular"/>
@@ -146,7 +122,7 @@ with h5py.File("$outfile_fit", 'w') as h5file:
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="SVC"/>
             <param name="random_state" value="5"/>
-            <output name="outfile_fit" file="svc_model01.h5" compare="sim_size"/>
+            <output name="outfile_fit" file="svc_model01" compare="sim_size"/>
         </test>
         <test>
             <param name="infile1" value="train_set.tabular" ftype="tabular"/>
@@ -158,7 +134,7 @@ with h5py.File("$outfile_fit", 'w') as h5file:
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="NuSVC"/>
             <param name="random_state" value="5"/>
-            <output name="outfile_fit" file="svc_model02.h5" compare="sim_size"/>
+            <output name="outfile_fit" file="svc_model02" compare="sim_size"/>
         </test>
         <test>
             <param name="infile1" value="train_set.tabular" ftype="tabular"/>
@@ -170,28 +146,36 @@ with h5py.File("$outfile_fit", 'w') as h5file:
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="LinearSVC"/>
             <param name="random_state" value="5"/>
-            <output name="outfile_fit" file="svc_model03.h5" compare="sim_size"/>
+            <output name="outfile_fit" file="svc_model03" compare="sim_size"/>
         </test>
         <test>
-            <param name="infile_model" value="svc_model01.h5" ftype="h5"/>
+            <param name="infile_model" value="svc_model01" ftype="zip"/>
             <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
             <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="svc_prediction_result01.tabular"/>
         </test>
         <test>
-            <param name="infile_model" value="svc_model02.h5" ftype="h5"/>
+            <param name="infile_model" value="svc_model02" ftype="zip"/>
             <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
             <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="svc_prediction_result02.tabular"/>
         </test>
         <test>
-            <param name="infile_model" value="svc_model03.h5" ftype="h5"/>
+            <param name="infile_model" value="svc_model03" ftype="zip"/>
             <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
             <param name="header" value="True"/>
             <param name="selected_task" value="load"/>
             <output name="outfile_predict" file="svc_prediction_result03.tabular"/>
+        </test>
+        <!-- The following test is expected to fail, it is testing the whitelist/blacklist filtering.
+        It loads a pickle with malicious content that we do not accept. -->
+        <test expect_failure="true">
+            <param name="infile_model" value="pickle_blacklist" ftype="zip"/>
+            <param name="infile_data" value="test_set.tabular" ftype="tabular"/>
+            <param name="header" value="True"/>
+            <param name="selected_task" value="load"/>
         </test>
     </tests>
     <help><![CDATA[
