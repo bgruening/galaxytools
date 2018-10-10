@@ -9,10 +9,11 @@ from sklearn.preprocessing import label_binarize
 
 def main(infile_input, infile_output, infile_trained_model):
     """
-    Produce an interactive confusion matrix (heatmap) plot
+    Produce an interactive confusion matrix (heatmap), precision, recall, fscore and auc plots
     Args:
-        infile_input: str, input tabular file
-        infile_output: str, output tabular file
+        infile_input: str, input tabular file with true labels
+        infile_output: str, input tabular file with predicted labels
+        infile_trained_model: str, input trained model file (zip)
     """
 
     df_input = pd.read_csv(infile_input, sep='\t', parse_dates=True)
@@ -41,7 +42,7 @@ def main(infile_input, infile_output, infile_trained_model):
 
     # plot precision, recall and f_score for each class label
     precision, recall, f_score, _ = precision_recall_fscore_support(true_labels, predicted_labels)
-    
+
     trace_precision = go.Scatter(
         x=axis_labels,
         y=precision,
@@ -76,6 +77,8 @@ def main(infile_input, infile_output, infile_trained_model):
     # plot roc and auc curves for different classes
     with open(infile_trained_model, 'rb') as model_file:
         model = pickle.load(model_file)
+
+    # remove the last column (label column)
     test_data = df_input.iloc[:, :-1]
     model_items = dir(model)
 
@@ -85,7 +88,7 @@ def main(infile_input, infile_output, infile_trained_model):
             y_score = model.predict_proba(test_data)
         elif 'decision_function' in model_items:
             y_score = model.decision_function(test_data)
-        
+
         true_labels_list = true_labels.tolist()
         one_hot_labels = label_binarize(true_labels_list, classes=axis_labels)
         data_roc = list()
@@ -135,8 +138,8 @@ def main(infile_input, infile_output, infile_trained_model):
 
         fig_roc = go.Figure(data=data_roc, layout=layout_roc)
         plotly.offline.plot(fig_roc, filename="output_roc.html", auto_open=False)
-        
-    except Exception:
+
+    except Exception as exp:
         pass
 
 
