@@ -32,8 +32,8 @@ def main(infile_input, infile_output, infile_trained_model):
 
     layout = go.Layout(
         title='Confusion Matrix between true and predicted class labels',
-        xaxis=dict(title='Predicted class labels'),
-        yaxis=dict(title='True class labels')
+        xaxis=dict(title='True class labels'),
+        yaxis=dict(title='Predicted class labels')
     )
 
     fig = go.Figure(data=data, layout=layout)
@@ -41,7 +41,7 @@ def main(infile_input, infile_output, infile_trained_model):
 
     # plot precision, recall and f_score for each class label
     precision, recall, f_score, _ = precision_recall_fscore_support(true_labels, predicted_labels)
-
+    
     trace_precision = go.Scatter(
         x=axis_labels,
         y=precision,
@@ -76,63 +76,68 @@ def main(infile_input, infile_output, infile_trained_model):
     # plot roc and auc curves for different classes
     with open(infile_trained_model, 'rb') as model_file:
         model = pickle.load(model_file)
-    test_data = df_input.drop("target", axis=1)
+    test_data = df_input.iloc[:, :-1]
     model_items = dir(model)
 
-    # find the probability estimating method
-    if 'predict_proba' in model_items:
-        y_score = model.predict_proba(test_data)
-    elif 'decision_function' in model_items:
-        y_score = model.decision_function(test_data)
-    else:
-        raise AttributeError('Probability estimating method is not present')
+    try:
+        # find the probability estimating method
+        if 'predict_proba' in model_items:
+            y_score = model.predict_proba(test_data)
+        elif 'decision_function' in model_items:
+            y_score = model.decision_function(test_data)
+        
+        true_labels_list = true_labels.tolist()
+        one_hot_labels = label_binarize(true_labels_list, classes=axis_labels)
+        data_roc = list()
 
-    true_labels_list = true_labels.tolist()
-    one_hot_labels = label_binarize(true_labels_list, classes=axis_labels)
-    data_roc = list()
-
-    if len(axis_labels) > 2:
-        fpr = dict()
-        tpr = dict()
-        roc_auc = dict()
-        for i in axis_labels:
-            fpr[i], tpr[i], _ = roc_curve(one_hot_labels[:, i], y_score[:, i])
-            roc_auc[i] = auc(fpr[i], tpr[i])
-        for i in range(len(axis_labels)):
+        if len(axis_labels) > 2:
+            fpr = dict()
+            tpr = dict()
+            roc_auc = dict()
+            for i in axis_labels:
+                fpr[i], tpr[i], _ = roc_curve(one_hot_labels[:, i], y_score[:, i])
+                roc_auc[i] = auc(fpr[i], tpr[i])
+            for i in range(len(axis_labels)):
+                trace = go.Scatter(
+                    x=fpr[i],
+                    y=tpr[i],
+                    mode='lines+markers',
+                    name='ROC curve of class {0} (AUC = {1:0.2f})'.format(i, roc_auc[i])
+                )
+                data_roc.append(trace)
+        else:
+            try:
+                y_score_binary = y_score[:, 1]
+            except:
+                y_score_binary = y_score
+            fpr, tpr, _ = roc_curve(one_hot_labels, y_score_binary, pos_label=1)
+            roc_auc = auc(fpr, tpr)
             trace = go.Scatter(
-                x=fpr[i],
-                y=tpr[i],
+                x=fpr,
+                y=tpr,
                 mode='lines+markers',
-                name='ROC curve of class {0} (AUC = {1:0.2f})'.format(i, roc_auc[i])
+                name='ROC curve (AUC = {0:0.2f})'.format(roc_auc)
             )
             data_roc.append(trace)
-    else:
-        y_score_binary = y_score[:, 0]
-        fpr, tpr, _ = roc_curve(one_hot_labels, y_score_binary)
-        roc_auc = auc(fpr, tpr)
-        trace = go.Scatter(
-            x=fpr,
-            y=tpr,
-            mode='lines+markers',
-            name='ROC curve (AUC = {0:0.2f})'.format(roc_auc)
+
+        trace_diag = go.Scatter(
+            x=[0, 1],
+            y=[0, 1],
+            mode='lines',
+            name='Chance'
         )
-        data_roc.append(trace)
+        data_roc.append(trace_diag)
+        layout_roc = go.Layout(
+            title='Receiver operating characteristics (ROC) and area under curve (AUC)',
+            xaxis=dict(title='False positive rate'),
+            yaxis=dict(title='True positive rate')
+        )
 
-    trace_diag = go.Scatter(
-        x=[0, 1],
-        y=[0, 1],
-        mode='lines',
-        name='Chance'
-    )
-    data_roc.append(trace_diag)
-    layout_roc = go.Layout(
-        title='Receiver operating characteristics (ROC) and area under curve (AUC)',
-        xaxis=dict(title='False positive rate'),
-        yaxis=dict(title='True positive rate')
-    )
-
-    fig_roc = go.Figure(data=data_roc, layout=layout_roc)
-    plotly.offline.plot(fig_roc, filename="output_roc.html", auto_open=False)
+        fig_roc = go.Figure(data=data_roc, layout=layout_roc)
+        plotly.offline.plot(fig_roc, filename="output_roc.html", auto_open=False)
+        
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":
