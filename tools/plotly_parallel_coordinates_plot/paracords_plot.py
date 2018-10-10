@@ -4,7 +4,7 @@ import plotly
 import plotly.graph_objs as go
 import pandas as pd
 
-def main(infile, col_dimensions, col_color):
+def main(infile, col_dimensions, categorized, col_color):
     """
     Produce an interactive paracords plotting html
     Args:
@@ -18,13 +18,13 @@ def main(infile, col_dimensions, col_color):
     col_dimensions = [int(x)-1 for x in col_dimensions.split(',')]
     for col in col_dimensions:
         values = df[df.columns[col]]
-        if all(type(e) is int for e in values ):
+        if categorized == 'boolfalse' and all(type(e) is int for e in values ):
             dimensions.append(
                 dict(   values = values,
                         tickformat = ",.2r",
                         label = df.columns[col])
             )
-        elif all(type(e) is float for e in values ):
+        elif categorized == 'boolfalse' and all(type(e) is float for e in values ):
             dimensions.append(
                 dict(   values = values,
                         tickformat = "g",
@@ -32,6 +32,7 @@ def main(infile, col_dimensions, col_color):
             )
         else:
             unique_values = list(set(values))
+            unique_values.sort()
             dimensions.append(
                 dict(   range = [0, len(unique_values)-1],
                         tickvals = list(range(len(unique_values))),
@@ -77,7 +78,8 @@ if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument( "-i", "--input", dest="infile", required=True)
     aparser.add_argument( "-d", "--col_dimensions", dest="col_dimensions")
+    aparser.add_argument( "-t", "--categorized_datatype", dest="categorized")
     aparser.add_argument( "-c", "--col_color", dest="col_color")
     args = aparser.parse_args()
 
-    main(args.infile, args.col_dimensions, args.col_color)
+    main(args.infile, args.col_dimensions, args.categorized, args.col_color)
