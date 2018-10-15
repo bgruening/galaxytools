@@ -113,15 +113,8 @@ def feature_selector(inputs):
         options['scoring'] = get_scoring(options['scoring'])
         options['n_jobs'] = N_JOBS
         splitter, groups = get_cv(options.pop('cv_selector'))
-        if groups is not None:
-            groups = groups.strip()
-            if groups == "":
-                groups = None
-            else:
-                groups = ast.literal_eval(groups)
-            options['cv'] = list( splitter.split(X, y, groups=groups) )
-        else:
-            options['cv'] = splitter
+        # TODO support groupgi cv splitters
+        options['cv'] = splitter
         estimator = get_estimator(inputs["estimator_selector"])
         new_selector = selector(estimator, **options)
 
