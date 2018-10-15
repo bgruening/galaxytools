@@ -112,7 +112,16 @@ def feature_selector(inputs):
     elif inputs['selected_algorithm'] == 'RFECV':
         options['scoring'] = get_scoring(options['scoring'])
         options['n_jobs'] = N_JOBS
-        options['cv'] = get_cv(options['cv'].strip())
+        splitter, groups = get_cv(options.pop('cv_selector'))
+        if groups is not None:
+            groups = groups.strip()
+            if groups == "":
+                groups = None
+            else:
+                groups = ast.literal_eval(groups)
+            options['cv'] = list( splitter.split(X, y, groups=groups) )
+        else:
+            options['cv'] = splitter
         estimator = get_estimator(inputs["estimator_selector"])
         new_selector = selector(estimator, **options)
 
@@ -256,18 +265,39 @@ def get_estimator(estimator_json):
     return estimator
 
 
-def get_cv(literal):
-    safe_eval = SafeEval()
-    if literal == "":
-        return None
-    if literal.isdigit():
-        return int(literal)
-    m = re.match(r'^(?P<method>\w+)\((?P<args>.*)\)$', literal)
-    if m:
-        my_class = getattr(model_selection, m.group('method'))
-        args = safe_eval('dict('+ m.group('args') + ')')
-        return my_class(**args)
-    sys.exit("Unsupported CV input: %s" % literal)
+def get_cv(cv_json):
+    """
+    cv_json:
+            e.g.:
+            {
+                "selected_cv": "StratifiedKFold",
+                "n_splits": 3,
+                "shuffle": True,
+                "random_state": 0
+            }
+    """
+    cv = cv_json.pop('selected_cv')
+    if cv == "default":
+        return cv_json['n_splits'], None
+
+    groups = cv_json.pop('groups', None)
+
+    for k, v in cv_json.items():
+        if v == "":
+            cv_json[k] = None
+
+    test_fold = cv_json.get('test_fold', None)
+    if test_fold:
+        cv_json['test_fold'] = ast.literal_eval(test_fold.strip())
+
+    test_size = cv_json.get('test_size', None)
+    if test_size and test_size > 1.0:
+        cv_json['test_size'] = int(test_size)
+
+    cv_class = getattr(model_selection, cv)
+    splitter = cv_class(**cv_json)
+
+    return splitter, groups
 
 
 def get_scoring(scoring_json):
