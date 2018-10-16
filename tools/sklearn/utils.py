@@ -113,7 +113,7 @@ def feature_selector(inputs):
         options['scoring'] = get_scoring(options['scoring'])
         options['n_jobs'] = N_JOBS
         splitter, groups = get_cv(options.pop('cv_selector'))
-        # TODO support groupgi cv splitters
+        # TODO support group cv splitters
         options['cv'] = splitter
         estimator = get_estimator(inputs["estimator_selector"])
         new_selector = selector(estimator, **options)
@@ -281,7 +281,11 @@ def get_cv(cv_json):
 
     test_fold = cv_json.get('test_fold', None)
     if test_fold:
-        cv_json['test_fold'] = ast.literal_eval(test_fold.strip())
+        if test_fold.startswith("__ob__"):
+            test_fold = test_fold[6:]
+        if test_fold.endswith("__cb__"):
+            test_fold = test_fold[:-6]
+        cv_json['test_fold'] = [int(x.strip()) for x in test_fold.split(',')]
 
     test_size = cv_json.get('test_size', None)
     if test_size and test_size > 1.0:
