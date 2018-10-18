@@ -83,7 +83,6 @@ def read_columns(f, c=None, c_option='by_index_number', return_df=False, **args)
         return y, data
     else:
         return y
-    return y
 
 
 ## generate an instance for one of sklearn.feature_selection classes
@@ -169,7 +168,7 @@ def get_X_y(params, file1, file2):
 
 class SafeEval(Interpreter):
 
-    def __init__(self, load_scipy=False, load_numpy=False):
+    def __init__(self, load_scipy=False, load_numpy=False, load_estimators=False):
 
         # File opening and other unneeded functions could be dropped
         unwanted = ['open', 'type', 'dir', 'id', 'str', 'repr']
@@ -201,6 +200,30 @@ class SafeEval(Interpreter):
             for f in from_numpy_random:
                 syms['np_random_' + f] = getattr(np.random, f)
 
+        if load_estimators:
+            estimator_table = {
+                'sklearn_svm' : getattr(sklearn, 'svm'),
+                'sklearn_tree' : getattr(sklearn, 'tree'),
+                'sklearn_ensemble' : getattr(sklearn, 'ensemble'),
+                'sklearn_neighbors' : getattr(sklearn, 'neighbors'),
+                'sklearn_naive_bayes' : getattr(sklearn, 'naive_bayes'),
+                'sklearn_linear_model' : getattr(sklearn, 'linear_model'),
+                'sklearn_cluster' : getattr(sklearn, 'cluster'),
+                'sklearn_decomposition' : getattr(sklearn, 'decomposition'),
+                'sklearn_preprocessing' : getattr(sklearn, 'preprocessing'),
+                'sklearn_feature_selection' : getattr(sklearn, 'feature_selection'),
+                'sklearn_kernel_approximation' : getattr(sklearn, 'kernel_approximation'),
+                'skrebate_ReliefF': getattr(skrebate, 'ReliefF'),
+                'skrebate_SURF': getattr(skrebate, 'SURF'),
+                'skrebate_SURFstar': getattr(skrebate, 'SURFstar'),
+                'skrebate_MultiSURF': getattr(skrebate, 'MultiSURF'),
+                'skrebate_MultiSURFstar': getattr(skrebate, 'MultiSURFstar'),
+                'skrebate_TuRF': getattr(skrebate, 'TuRF'),
+                'xgboost_XGBClassifier' : getattr(xgboost, 'XGBClassifier'),
+                'xgboost_XGBRegressor' : getattr(xgboost, 'XGBRegressor')
+            }
+            syms.update(estimator_table)
+
         for key in unwanted:
             syms.pop(key, None)
 
@@ -213,7 +236,7 @@ class SafeEval(Interpreter):
 
 def get_search_params(params_builder):
     search_params = {}
-    safe_eval = SafeEval(load_scipy=True, load_numpy=True)
+    safe_eval = SafeEval(load_scipy=True, load_numpy=True, load_estimators=True)
 
     for p in params_builder['param_set']:
         search_p = p['search_param_selector']['search_p']
