@@ -236,7 +236,8 @@ class SafeEval(Interpreter):
 
 def get_search_params(params_builder):
     search_params = {}
-    safe_eval = SafeEval(load_scipy=True, load_numpy=True, load_estimators=True)
+    safe_eval = SafeEval(load_scipy=True, load_numpy=True)
+    safe_eval_es = SafeEval(load_scipy=True, load_numpy=True, load_estimators=True)
 
     for p in params_builder['param_set']:
         search_p = p['search_param_selector']['search_p']
@@ -247,56 +248,80 @@ def get_search_params(params_builder):
         lst = search_p.split(":")
         assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
         literal = lst[1].strip()
-        ev = safe_eval(literal)
         param_name = lst[0].strip()
-        if param_type == "final_estimator_p":
-            search_params["estimator__" + param_name] = ev
-        elif param_name:
-            search_params["preprocessing_" + param_type[5:6] + "__" + param_name] = ev
-        else:
+        if param_name:
+            if not param_name.endswith('-'):
+                ev = safe_eval(literal)
+                if param_type == "final_estimator_p":
+                    search_params["estimator__" + param_name] = ev
+                else:
+                    search_params["preprocessing_" + param_type[5:6] + "__" + param_name] = ev
+            else:
+                # only for estimator eval, add `-` to the end of param
+                #TODO maybe add regular express check
+                ev = safe_eval_es(literal)
+                for obj in ev:
+                    if 'n_jobs' in obj.get_params():
+                        obj.set_params( n_jobs=N_JOBS )
+                if param_type == "final_estimator_p":
+                    search_params["estimator__" + param_name[:-1]] = ev
+                else:
+                    search_params["preprocessing_" + param_type[5:6] + "__" + param_name[:-1]] = ev
+        elif param_type != "final_estimator_p":
+            #TODO regular express check ?
+            ev = safe_eval_es(literal)
             preprocessors = [preprocessing.StandardScaler(), preprocessing.Binarizer(), preprocessing.Imputer(),
                             preprocessing.MaxAbsScaler(), preprocessing.Normalizer(), preprocessing.MinMaxScaler(),
                             preprocessing.PolynomialFeatures(),preprocessing.RobustScaler(),
                             feature_selection.SelectKBest(), feature_selection.GenericUnivariateSelect(),
                             feature_selection.SelectPercentile(), feature_selection.SelectFpr(), feature_selection.SelectFdr(),
                             feature_selection.SelectFwe(), feature_selection.VarianceThreshold(),
-                            decomposition.FactorAnalysis(random_state=0), decomposition.FastICA(random_state=0),
-                            decomposition.IncrementalPCA(), decomposition.KernelPCA(random_state=0),
-                            decomposition.LatentDirichletAllocation(random_state=0), decomposition.MiniBatchDictionaryLearning(random_state=0),
-                            decomposition.MiniBatchSparsePCA(random_state=0), decomposition.NMF(random_state=0),
-                            decomposition.PCA(random_state=0), decomposition.SparsePCA(random_state=0),
+                            decomposition.FactorAnalysis(random_state=0), decomposition.FastICA(random_state=0), decomposition.IncrementalPCA(),
+                            decomposition.KernelPCA(random_state=0, n_jobs=N_JOBS), decomposition.LatentDirichletAllocation(random_state=0, n_jobs=N_JOBS),
+                            decomposition.MiniBatchDictionaryLearning(random_state=0, n_jobs=N_JOBS),
+                            decomposition.MiniBatchSparsePCA(random_state=0, n_jobs=N_JOBS), decomposition.NMF(random_state=0),
+                            decomposition.PCA(random_state=0), decomposition.SparsePCA(random_state=0, n_jobs=N_JOBS),
                             decomposition.TruncatedSVD(random_state=0),
                             kernel_approximation.Nystroem(random_state=0), kernel_approximation.RBFSampler(random_state=0),
                             kernel_approximation.AdditiveChi2Sampler(), kernel_approximation.SkewedChi2Sampler(random_state=0),
                             cluster.FeatureAgglomeration(),
-                            skrebate.ReliefF(), skrebate.SURF(), skrebate.SURFstar(), skrebate.MultiSURF(),
-                            skrebate.MultiSURFstar()]
+                            skrebate.ReliefF(n_jobs=N_JOBS), skrebate.SURF(n_jobs=N_JOBS), skrebate.SURFstar(n_jobs=N_JOBS),
+                            skrebate.MultiSURF(n_jobs=N_JOBS), skrebate.MultiSURFstar(n_jobs=N_JOBS)]
             i = 0
             while i < len(ev):
-                if ev[i] == 'all':
-                    ev = preprocessors
-                    continue
-                if ev[i] == 'sk_prep_all':      # no KernalCenter()
+                obj = ev[i]
+                if obj is None:
+                    i = i + 1
+                elif obj == 'all':
+                    ev[i:i+1] = preprocessors
+                    i = i + len(preprocessors)
+                elif obj == 'sk_prep_all':      # no KernalCenter()
                     ev[i:i+1] = preprocessors[0:8]
                     i = i + 8
-                elif ev[i] == 'fs_all':
+                elif obj == 'fs_all':
                     ev[i:i+1] = preprocessors[8:15]
                     i = i + 7
-                elif ev[i] == 'decomp_all':
+                elif obj == 'decomp_all':
                     ev[i:i+1] = preprocessors[15:26]
                     i = i + 11
-                elif ev[i] == 'k_appr_all':
+                elif obj == 'k_appr_all':
                     ev[i:i+1] = preprocessors[26:30]
                     i = i + 4
-                elif ev[i] == "reb_all":
+                elif obj == "reb_all":
                     ev[i:i+1] = preprocessors[31:36]
                     i = i + 5
-                elif  type(ev[i]) is int and -1 < ev[i] < len(preprocessors):
-                    ev[i] = preprocessors[ev[i]]
+                elif  type(obj) is int and -1 < obj < len(preprocessors):
+                    ev[i] = preprocessors[obj]
                     i = i + 1
-                else:
+                else:       # user object
+                    if not hasattr(obj, 'get_params'):
+                        sys.exit("Unsupported preprocessor type: %r" %(obj))
+                    if 'n_jobs' in obj.get_params():
+                        obj.set_params( n_jobs=N_JOBS )
                     i = i + 1
             search_params["preprocessing_" + param_type[5:6]] = ev
+        else:
+            sys.exit("Parameter name of the final estimator can't be skipped!")
 
     return search_params
 
