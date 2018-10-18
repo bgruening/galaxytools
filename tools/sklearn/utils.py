@@ -254,6 +254,48 @@ def get_search_params(params_builder):
         elif param_name:
             search_params["preprocessing_" + param_type[5:6] + "__" + param_name] = ev
         else:
+            preprocessors = [preprocessing.StandardScaler(), preprocessing.Binarizer(), preprocessing.Imputer(),
+                            preprocessing.MaxAbsScaler(), preprocessing.Normalizer(), preprocessing.MinMaxScaler(),
+                            preprocessing.PolynomialFeatures(),preprocessing.RobustScaler(),
+                            feature_selection.SelectKBest(), feature_selection.GenericUnivariateSelect(),
+                            feature_selection.SelectPercentile(), feature_selection.SelectFpr(), feature_selection.SelectFdr(),
+                            feature_selection.SelectFwe(), feature_selection.VarianceThreshold(),
+                            decomposition.FactorAnalysis(random_state=0), decomposition.FastICA(random_state=0),
+                            decomposition.IncrementalPCA(), decomposition.KernelPCA(random_state=0),
+                            decomposition.LatentDirichletAllocation(random_state=0), decomposition.MiniBatchDictionaryLearning(random_state=0),
+                            decomposition.MiniBatchSparsePCA(random_state=0), decomposition.NMF(random_state=0),
+                            decomposition.PCA(random_state=0), decomposition.SparsePCA(random_state=0),
+                            decomposition.TruncatedSVD(random_state=0),
+                            kernel_approximation.Nystroem(random_state=0), kernel_approximation.RBFSampler(random_state=0),
+                            kernel_approximation.AdditiveChi2Sampler(), kernel_approximation.SkewedChi2Sampler(random_state=0),
+                            cluster.FeatureAgglomeration(),
+                            skrebate.ReliefF(), skrebate.SURF(), skrebate.SURFstar(), skrebate.MultiSURF(),
+                            skrebate.MultiSURFstar()]
+            i = 0
+            while i < len(ev):
+                if ev[i] == 'all':
+                    ev = preprocessors
+                    continue
+                if ev[i] == 'sk_prep_all':      # no KernalCenter()
+                    ev[i:i+1] = preprocessors[0:8]
+                    i = i + 8
+                elif ev[i] == 'fs_all':
+                    ev[i:i+1] = preprocessors[8:15]
+                    i = i + 7
+                elif ev[i] == 'decomp_all':
+                    ev[i:i+1] = preprocessors[15:26]
+                    i = i + 11
+                elif ev[i] == 'k_appr_all':
+                    ev[i:i+1] = preprocessors[26:30]
+                    i = i + 4
+                elif ev[i] == "reb_all":
+                    ev[i:i+1] = preprocessors[31:36]
+                    i = i + 5
+                elif  type(ev[i]) is int and -1 < ev[i] < len(preprocessors):
+                    ev[i] = preprocessors[ev[i]]
+                    i = i + 1
+                else:
+                    i = i + 1
             search_params["preprocessing_" + param_type[5:6]] = ev
 
     return search_params
