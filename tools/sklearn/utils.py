@@ -248,10 +248,13 @@ def get_search_params(params_builder):
         assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
         literal = lst[1].strip()
         ev = safe_eval(literal)
+        param_name = lst[0].strip()
         if param_type == "final_estimator_p":
-            search_params["estimator__" + lst[0].strip()] = ev
+            search_params["estimator__" + param_name] = ev
+        elif param_name:
+            search_params["preprocessing_" + param_type[5:6] + "__" + param_name] = ev
         else:
-            search_params["preprocessing_" + param_type[5:6] + "__" + lst[0].strip()] = ev
+            search_params["preprocessing_" + param_type[5:6]] = ev
 
     return search_params
 
