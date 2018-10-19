@@ -1,0 +1,196 @@
+<tool id="sequenza_pipeline" name="Allele-specific copy number and mutation profiles" version="2.1.2">
+    <description>
+        from tumor sequencing data
+    </description>
+    <requirements>
+        <requirement type="package" version="2.1.2">r-sequenza</requirement>
+        <requirement type="package" version="1.8">samtools</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+
+
+    ln -s '$normal' normal.bam &&
+    ln -s '$normal.metadata.bam_index' normal.bam.bai &&
+    ln -s '$tumour' tumour.bam &&
+    ln -s '$tumour.metadata.bam_index' tumour.bam.bai &&
+
+    #if $reference_source.reference_source_selector == "history":
+        ln -s '$reference_source.ref_file' reference.fa &&
+        samtools faidx reference.fa &&
+    #elif $reference_source.reference_source_selector == "cached":
+        ln -s '${reference_source.ref_file.fields.path}' reference.fa &&
+    #end if
+
+    #if $interval
+        for int in \$( cat $interval ); do
+    #end if
+
+    #if $interval and $order_file
+        if [ "\$int" != "\$( cat $order_file | head -n1)" ] ; then
+            skip=2;
+        else
+            skip=1;
+        fi ;
+    #end if
+
+    python sequenza-utils.py bam2seqz 
+        -n normal.bam 
+        -t tumour.bam
+        -gc '$gc_file'
+        -F reference.fa 
+
+        #if $interval
+            -C \$int
+        #end if
+
+      --hom $geno.hom
+      --het $geno.het
+      -q $qual.qlimit
+      -f $qual.qformat
+      -N $qual.depth
+      
+    | python sequenza-utils.py seqz-binning
+      -s -
+      -w $window
+
+    | awk '{ if (\$4 >= $min_depth && \$5 >= $min_depth) print \$_ }'
+
+    >> ./pre_processing_output.tabular &&
+
+    #if $interval
+        done &&
+    #end if
+
+    Rscript '$script'
+    ]]></command>
+    <configfiles>
+        <configfile name="script"><![CDATA[
+
+#import re
+
+## Setup R error handling to go to stderr
+options(show.error.messages=F, error=function(){cat(geterrmessage(),file=stderr());q("no",1,F)})
+
+
+#if $sampleid_source.sampleid_selector == "bamfile":
+    sample_id <- '${re.sub('[^\w\-_]', '_', $sampleid_source.id.element_identifier)}'
+#else:
+    sample_id <- $sampleid_source.id
+#end if
+
+# Script to Run Sequenza Pipeline in Galaxy
+library(sequenza)
+
+#if $choose_fit_option.fit_option == "manual":
+ploidy <- $ploidy
+cellularity <- $cellularity
+#end if
+
+# STEP ONE
+extract.data <- sequenza.extract(file='./pre_processing_output.tabular')
+
+# STEP TWO
+fit.data <- sequenza.fit(extract.data)
+
+# STEP THREE
+if(length(args)>3){
+    results.data <- sequenza.results(extract.data, cellularity=cellularity, ploidy=ploidy, out.dir = './output/', sample.id = sample_id);
+}else{
+    results.data <- sequenza.results(extract.data, fit.data, out.dir  = './output/', sample.id = sample_id)
+}
+
+        ]]></configfile>
+</configfiles>
+    <inputs>
+
+        <conditional name="reference_source">
+            <param label="Choose the source for the reference files" name="reference_source_selector" type="select">
+                <option value="cached">Locally Cached</option>
+                <option value="history">History</option>
+            </param>
+            <when value="cached">
+                <param label="Genome" name="ref_file" type="select">
+                    <options from_data_table="fasta_indexes"/>
+                </param>
+            </when>
+            <when value="history">
+                <param label="Genome" name="ref_file" type="data" format="fasta"/>
+            </when>
+        </conditional>
+        <param name="normal" label="Normal Alignment File (BAM)" type="data" format="data"/>
+        <param name="tumour" label="Tumour Alignment File (BAM)" type="data" format="data"/>
+        <param label="GC Window File" name="gc_file" type="data" format="tabular"/>
+        <param label="Bin Output by Window" name="window" type="integer" min="1" max="50" value="50"/>
+        <param name="min_depth" label="Minimum coverage for variant to be used in model" type="integer" min="1" max="50" value="12"/>
+        <param name="interval" optional="true" label="Restrict Computation to a particular Interval"
+            help="Must be present in the BAM" type="data" format="txt"/>
+        <param name="order_file" optional="true" label="Order File" help="Should be Present with Interval File" type="data" format="txt"/>
+        <section name="geno" title="Genotyping Options" expanded="False">
+            <param name="hom" label="Threshold to Select Homozygous Positions" type="float" value="0.9" min="0" max="1"/>
+            <param name="het" label="Threshold to Select Heterozygous Positions" type="float" value="0.25" min="0" max="1"/>
+        </section>
+        <section name="qual" title="Quality Threshold Options" expanded="False">
+            <param name="depth" label="Treshold to Filter Positions" help="The sum of read depth in both samples" value="20" type="integer"/>
+            <param name="qlimit" label="Minimum Nucleotide Quality Score" value="20" type="integer"/>
+            <param name="qformat" label="Quality Format" type="select">
+                <option value="sanger">Sanger</option>
+                <option value="illumina">Illumina</option>
+            </param>
+        </section>
+
+
+        <conditional name="sampleid_source">
+            <param label="Choose the source for the Sample ID" name="sampleid_selector" type="select">
+                <option value="bamfile">BAM File Name</option>
+                <option value="manual">Manual</option>
+            </param>
+            <when value="manual">
+                <param name="id" type="text" label="Tumour ID (Name)"/>
+            </when>
+            <when value="bamfile">
+                <param type="data" format="bam" name="id" label="Sequence Alignment File"/>
+            </when>
+        </conditional>
+        <conditional name="choose_fit_option">
+            <param label="Use the best fit or manually set the ploidy and cellularity" name="fit_option" type="select">
+                <option value="bestfit">Best fit</option>
+                <option value="manual">Manually specify</option>
+            </param>
+            <when value="bestfit"/>
+            <when value="manual">
+                <param name="ploidy" type="float" value="2" label="Ploidy" />
+                <param name="cellularity" type="float" value="1" label="Cellularity" />
+            </when>
+        </conditional>
+
+    </inputs>
+    <outputs>
+        <data name="output" format="txt" from_work_dir="./output/*segments.txt"/>
+    </outputs>
+    <help><![CDATA[
+**What it does**
+
+WTDBG is a de novo assembler for long noisy sequences, based on fuzzy Bruijn graphs (FBG).
+
+**Alignment**
+
+KBM (Kmer-BIN-Mapping) groups k-mers from each non-overlapped sliding 256 bp fragments in long reads into bins.
+Bins of which most k-mers are high frequency, are filtered as highly repetitive ones.
+Then, KBM searches synteny of matched bin pairs in sequences in a dynamic programming way.
+A matched bin pair in two sequences is defined as two bins different by original but share a set of k-mers.
+The result of alignments in KBM have the same features of traditional sequence alignment, excepting the unit of
+KBM alignments is 256 bp bin instead of single base.
+
+**Assembly**
+
+FBG (Fuzzy Bruijn Graph) is composed of vertices in length of 1024 bp from reads, and edges connecting vertices
+in their order on read paths. Comparing with DBG, the size of vertices in FBG are much bigger, thus won't be
+sensitive to small repeat. To tolerate high sequencing errors, FBG's vertices are found using gapped
+sequence alignments from KBM or other aligners, comparing with searching identical k-mers in DBG.
+
+  ]]></help>
+    <citations>
+        <citation type="doi">10.1093/gigascience/gix015</citation>
+        <citation type="doi">10.1093/annonc/mdu479</citation>
+    </citations>
+</tool>
