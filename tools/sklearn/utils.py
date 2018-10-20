@@ -367,6 +367,14 @@ def get_cv(cv_json):
         return cv_json['n_splits'], None
 
     groups = cv_json.pop('groups', None)
+    if groups:
+        groups = groups.strip()
+        if groups != "":
+            if groups.startswith("__ob__"):
+                groups = groups[6:]
+            if groups.endswith("__cb__"):
+                groups = groups[:-6]
+            groups = [int(x.strip()) for x in groups.split(',')]
 
     for k, v in cv_json.items():
         if v == "":
