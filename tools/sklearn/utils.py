@@ -250,7 +250,9 @@ def get_search_params(params_builder):
         literal = lst[1].strip()
         param_name = lst[0].strip()
         if param_name:
-            if not param_name.endswith('-'):
+            if param_name.lower() == 'n_jobs':
+                sys.exit("Parameter `%s` is invalid for search." %param_name)
+            elif not param_name.endswith('-'):
                 ev = safe_eval(literal)
                 if param_type == "final_estimator_p":
                     search_params["estimator__" + param_name] = ev
@@ -292,33 +294,41 @@ def get_search_params(params_builder):
                 obj = ev[i]
                 if obj is None:
                     i = i + 1
+                    continue
                 elif obj == 'all':
                     ev[i:i+1] = preprocessors
                     i = i + len(preprocessors)
+                    continue
                 elif obj == 'sk_prep_all':      # no KernalCenter()
                     ev[i:i+1] = preprocessors[0:8]
                     i = i + 8
+                    continue
                 elif obj == 'fs_all':
                     ev[i:i+1] = preprocessors[8:15]
                     i = i + 7
+                    continue
                 elif obj == 'decomp_all':
                     ev[i:i+1] = preprocessors[15:26]
                     i = i + 11
+                    continue
                 elif obj == 'k_appr_all':
                     ev[i:i+1] = preprocessors[26:30]
                     i = i + 4
+                    continue
                 elif obj == "reb_all":
                     ev[i:i+1] = preprocessors[31:36]
                     i = i + 5
+                    continue
                 elif  type(obj) is int and -1 < obj < len(preprocessors):
                     ev[i] = preprocessors[obj]
                     i = i + 1
-                else:       # user object
-                    if not hasattr(obj, 'get_params'):
-                        sys.exit("Unsupported preprocessor type: %r" %(obj))
+                    continue
+                elif hasattr(obj, 'get_params'):       # user object
                     if 'n_jobs' in obj.get_params():
                         obj.set_params( n_jobs=N_JOBS )
                     i = i + 1
+                else:
+                    sys.exit("Unsupported preprocessor type: %r" %(obj))
             search_params["preprocessing_" + param_type[5:6]] = ev
         else:
             sys.exit("Parameter name of the final estimator can't be skipped!")
