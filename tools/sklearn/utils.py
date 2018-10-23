@@ -94,6 +94,11 @@ def feature_selector(inputs):
     if inputs['selected_algorithm'] == 'SelectFromModel':
         if not options['threshold'] or options['threshold'] == 'None':
             options['threshold'] = None
+        else:
+            try:
+                options['threshold'] = float(options['threshold'])
+            except ValueError:
+                pass
         if inputs['model_inputter']['input_mode'] == 'prefitted':
             model_file = inputs['model_inputter']['fitted_estimator']
             with open(model_file, 'rb') as model_handler:
