@@ -243,7 +243,7 @@ class SafeEval(Interpreter):
 def get_search_params(params_builder):
     search_params = {}
     safe_eval = SafeEval(load_scipy=True, load_numpy=True)
-    safe_eval_es = SafeEval(load_scipy=True, load_numpy=True, load_estimators=True)
+    safe_eval_es = SafeEval(load_estimators=True)
 
     for p in params_builder['param_set']:
         search_p = p['search_param_selector']['search_p']
@@ -294,7 +294,25 @@ def get_search_params(params_builder):
                             kernel_approximation.AdditiveChi2Sampler(), kernel_approximation.SkewedChi2Sampler(random_state=0),
                             cluster.FeatureAgglomeration(),
                             skrebate.ReliefF(n_jobs=N_JOBS), skrebate.SURF(n_jobs=N_JOBS), skrebate.SURFstar(n_jobs=N_JOBS),
-                            skrebate.MultiSURF(n_jobs=N_JOBS), skrebate.MultiSURFstar(n_jobs=N_JOBS)]
+                            skrebate.MultiSURF(n_jobs=N_JOBS), skrebate.MultiSURFstar(n_jobs=N_JOBS),
+                            imblearn.under_sampling.ClusterCentroids(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.CondensedNearestNeighbour(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.EditedNearestNeighbours(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.RepeatedEditedNearestNeighbours(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.AllKNN(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.InstanceHardnessThreshold(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.NearMiss(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.NeighbourhoodCleaningRule(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.OneSidedSelection(random_state=0, n_jobs=N_JOBS),
+                            imblearn.under_sampling.RandomUnderSampler(random_state=0),
+                            imblearn.under_sampling.TomekLinks(random_state=0, n_jobs=N_JOBS),
+                            imblearn.over_sampling.ADASYN(random_state=0, n_jobs=N_JOBS),
+                            imblearn.over_sampling.RandomOverSampler(random_state=0),
+                            imblearn.over_sampling.SMOTE(random_state=0, n_jobs=N_JOBS),
+                            imblearn.over_sampling.SVMSMOTE(random_state=0, n_jobs=N_JOBS),
+                            imblearn.over_sampling.BorderlineSMOTE(random_state=0, n_jobs=N_JOBS),
+                            imblearn.over_sampling.SMOTENC(categorical_features=[], random_state=0, n_jobs=N_JOBS),
+                            imblearn.combine.SMOTEENN(random_state=0), imblearn.combine.SMOTETomek(random_state=0)]
             i = 0
             while i < len(ev):
                 obj = ev[i]
@@ -324,6 +342,10 @@ def get_search_params(params_builder):
                 elif obj == "reb_all":
                     ev[i:i+1] = preprocessors[31:36]
                     i = i + 5
+                    continue
+                elif obj == 'imb_all':
+                    ev[i:i+1] = preprocessors[36:55]
+                    i = i + 19
                     continue
                 elif  type(obj) is int and -1 < obj < len(preprocessors):
                     ev[i] = preprocessors[obj]
