@@ -313,51 +313,34 @@ def get_search_params(params_builder):
                             imblearn.over_sampling.BorderlineSMOTE(random_state=0, n_jobs=N_JOBS),
                             imblearn.over_sampling.SMOTENC(categorical_features=[], random_state=0, n_jobs=N_JOBS),
                             imblearn.combine.SMOTEENN(random_state=0), imblearn.combine.SMOTETomek(random_state=0)]
-            i = 0
-            while i < len(ev):
-                obj = ev[i]
+            newlist = []
+            for obj in ev:
                 if obj is None:
-                    i = i + 1
-                    continue
-                elif obj == 'all':
-                    ev[i:i+1] = preprocessors
-                    i = i + len(preprocessors)
-                    continue
+                    newlist.append(None)
+                elif obj == 'all_0':
+                    newlist.extend(preprocessors[0:36])
                 elif obj == 'sk_prep_all':      # no KernalCenter()
-                    ev[i:i+1] = preprocessors[0:8]
-                    i = i + 8
-                    continue
+                    newlist.extend(preprocessors[0:8])
                 elif obj == 'fs_all':
-                    ev[i:i+1] = preprocessors[8:15]
-                    i = i + 7
-                    continue
+                    newlist.extend(preprocessors[8:15])
                 elif obj == 'decomp_all':
-                    ev[i:i+1] = preprocessors[15:26]
-                    i = i + 11
-                    continue
+                    newlist.extend(preprocessors[15:26])
                 elif obj == 'k_appr_all':
-                    ev[i:i+1] = preprocessors[26:30]
-                    i = i + 4
-                    continue
+                    newlist.extend(preprocessors[26:30])
                 elif obj == "reb_all":
-                    ev[i:i+1] = preprocessors[31:36]
-                    i = i + 5
-                    continue
+                    newlist.extend(preprocessors[31:36])
                 elif obj == 'imb_all':
-                    ev[i:i+1] = preprocessors[36:55]
-                    i = i + 19
-                    continue
+                    newlist.extend(preprocessors[36:55])
                 elif  type(obj) is int and -1 < obj < len(preprocessors):
-                    ev[i] = preprocessors[obj]
-                    i = i + 1
-                    continue
+                    newlist.append(preprocessors[obj])
                 elif hasattr(obj, 'get_params'):       # user object
                     if 'n_jobs' in obj.get_params():
-                        obj.set_params( n_jobs=N_JOBS )
-                    i = i + 1
+                        newlist.append( obj.set_params(n_jobs=N_JOBS) )
+                    else:
+                        newlist.append(obj)
                 else:
                     sys.exit("Unsupported preprocessor type: %r" %(obj))
-            search_params["preprocessing_" + param_type[5:6]] = ev
+            search_params["preprocessing_" + param_type[5:6]] = newlist
         else:
             sys.exit("Parameter name of the final estimator can't be skipped!")
 
