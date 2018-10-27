@@ -72,8 +72,8 @@ with open(dataNames, "r") as names:
 
 toWrite = ""
 for i in range(len(listOfClusters)):
-    toWrite += listOfHeaders[i] + "\t" + listOfClusters[i] + '\n'
-
+    toWrite += "%s\t%s\n" % (listOfHeaders[i], listOfClusters[i]) 
+ 
 with open(os.path.join(results_dir,"fullTab.tabular"), "w") as full:
     full.write(toWrite)
 
