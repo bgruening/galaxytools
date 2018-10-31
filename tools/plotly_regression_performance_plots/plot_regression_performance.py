@@ -17,8 +17,7 @@ def main(infile_input, infile_output):
     true_values = df_input.iloc[:, -1].copy()
     predicted_values = df_output.iloc[:, -1].copy()
     axis_labels = list(range(1, len(true_values)+1))
-    print(true_values)
-    print(predicted_values)
+
     # true vs predicted curves
     trace_true = go.Scatter(
         x=axis_labels,
@@ -45,10 +44,21 @@ def main(infile_input, infile_output):
     plotly.offline.plot(fig_tp, filename="output_actual_vs_pred.html", auto_open=False)
 
     # scatter plot
+    max_tv = int(max(true_values))
+    x_y_values = list(range(0, max_tv))
+    
+    trace_x_eq_y = go.Scatter(
+        x=x_y_values,
+        y=x_y_values,
+        mode='lines',
+        name='X = Y curve'
+    )
+    
     trace_true_pred = go.Scatter(
         x=true_values,
         y=predicted_values,
-        mode='markers'
+        mode='markers',
+        name='True and predicted values'
     )
 
     layout_true_pred = go.Layout(
@@ -57,7 +67,7 @@ def main(infile_input, infile_output):
         yaxis=dict(title='Predicted values')
     )
 
-    data_true_pred = [trace_true_pred]
+    data_true_pred = [trace_true_pred, trace_x_eq_y]
     fig_true_pred = go.Figure(data=data_true_pred, layout=layout_true_pred)
     plotly.offline.plot(fig_true_pred, filename="output_scatter_plot.html", auto_open=False)
 
