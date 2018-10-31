@@ -46,14 +46,14 @@ def main(infile_input, infile_output):
     # scatter plot
     max_tv = int(max(true_values))
     x_y_values = list(range(0, max_tv))
-    
+
     trace_x_eq_y = go.Scatter(
         x=x_y_values,
         y=x_y_values,
         mode='lines',
         name='X = Y curve'
     )
-    
+
     trace_true_pred = go.Scatter(
         x=true_values,
         y=predicted_values,
