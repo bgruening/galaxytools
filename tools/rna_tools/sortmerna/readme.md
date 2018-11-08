@@ -1,33 +1,27 @@
-=========
-SortMeRNA
-=========
+## SortMeRNA
 
 SortMeRNA, a fast and accurate filtering of ribosomal RNAs in metatranscriptomic data.
 
 For more information, please see http://bioinfo.lifl.fr/RNA/sortmerna/.
 
 
-============
-Installation
-============
+## Installation
 
 It is recommended to install this wrapper via the `Galaxy Tool Shed`.
 
-.. _`Galaxy Tool Shed`:  https://testtoolshed.g2.bx.psu.edu/view/bgruening/sortmerna
+.. _`Galaxy Tool Shed`:  https://toolshed.g2.bx.psu.edu/view/bgruening/sortmerna
 
 To install the databases, we recommend to use the dedicated data manager available in the `Galaxy Tool Shed`
 
 
-=======
-History
-=======
+## History
+
 - 0.1: First version of the wrapper from Jean-Frédéric
 - 1.9.0: First version with data tables, new dependency definition, generall restructuring
 
 
-===============================
-Wrapper Licence (MIT/BSD style)
-===============================
+## Wrapper Licence (MIT/BSD style)
+
 
 Permission to use, copy, modify, and distribute this software and its
 documentation with or without modifications and for any purpose and
