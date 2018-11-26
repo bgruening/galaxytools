@@ -53,17 +53,18 @@ metacols <- res[, c(7:ncol(res), 1)]
 # Convert from 1-based to 0-based format
 if (format == "interval") {
     metacols <- apply(as.data.frame(metacols), 1, function(col) paste(col, collapse="|"))
-    resout <- data.frame(Chrom=res$seqnames,
-                    Start=res$start - 1,
-                    End=res$end,
-                    Comment=metacols)
+    resout <- data.frame(res$seqnames,
+                    res$start - 1,
+                    res$end,
+                    metacols)
+    colnames(resout)[1:4] <- c("Chrom", "Start", "End", "Comment")
 } else {
     resout <- data.frame(res$seqnames,
                     res$start - 1,
                     res$end,
                     metacols)
+    colnames(resout)[1:3] <- c("Chrom", "Start", "End")
 }
-
 write.table(resout, file="out.tab", sep="\t", row.names=FALSE, quote=FALSE)
 
 if (!is.null(args$plots)) {
