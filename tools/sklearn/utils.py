@@ -112,6 +112,9 @@ def feature_selector(inputs):
 
     elif inputs['selected_algorithm'] == 'RFE':
         estimator = get_estimator(inputs["estimator_selector"])
+        step = options.get('step', None)
+        if step and step >= 1.0:
+            options['step'] = int(step)
         new_selector = selector(estimator, **options)
 
     elif inputs['selected_algorithm'] == 'RFECV':
@@ -120,6 +123,9 @@ def feature_selector(inputs):
         splitter, groups = get_cv(options.pop('cv_selector'))
         # TODO support group cv splitters
         options['cv'] = splitter
+        step = options.get('step', None)
+        if step and step >= 1.0:
+            options['step'] = int(step)
         estimator = get_estimator(inputs["estimator_selector"])
         new_selector = selector(estimator, **options)
 
