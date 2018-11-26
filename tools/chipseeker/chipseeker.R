@@ -58,9 +58,9 @@ if (format == "interval") {
                     End=res$end,
                     Comment=metacols)
 } else {
-    resout <- data.frame(Chrom=res$seqnames,
-                    Start=res$start - 1,
-                    End=res$end,
+    resout <- data.frame(res$seqnames,
+                    res$start - 1,
+                    res$end,
                     metacols)
 }
 
