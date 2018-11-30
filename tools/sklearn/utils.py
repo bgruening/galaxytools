@@ -1,20 +1,33 @@
-import sys
+import json
+import numpy as np
 import os
 import pandas
-import re
 import pickle
-import warnings
-import numpy as np
-import xgboost
+import re
 import scipy
 import sklearn
+import sys
+import warnings
+import xgboost
+
 from asteval import Interpreter, make_symbol_table
 from sklearn import (cluster, decomposition, ensemble, feature_extraction, feature_selection,
                     gaussian_process, kernel_approximation, metrics,
                     model_selection, naive_bayes, neighbors, pipeline, preprocessing,
                     svm, linear_model, tree, discriminant_analysis)
 
+try:
+    import skrebate
+except ModuleNotFoundError:
+    pass
+
+
 N_JOBS = int(os.environ.get('GALAXY_SLOTS', 1))
+
+try:
+    sk_whitelist
+except NameError:
+    sk_whitelist = None
 
 
 class SafePickler(pickle.Unpickler):
@@ -24,6 +37,13 @@ class SafePickler(pickle.Unpickler):
         eg.: SafePickler.load(pickled_file_object)
     """
     def find_class(self, module, name):
+
+        # sk_whitelist could be read from tool
+        global sk_whitelist
+        if not sk_whitelist:
+            whitelist_file = os.path.join(os.path.dirname(__file__), 'sk_whitelist.json')
+            with open(whitelist_file, "r") as f:
+                sk_whitelist = json.load(f)
 
         bad_names = ('and', 'as', 'assert', 'break', 'class', 'continue',
                     'def', 'del', 'elif', 'else', 'except', 'exec',
@@ -246,112 +266,6 @@ class SafeEval(Interpreter):
                                         no_raise=True, no_print=True)
 
 
-def get_search_params(params_builder):
-    search_params = {}
-    safe_eval = SafeEval(load_scipy=True, load_numpy=True)
-    safe_eval_es = SafeEval(load_estimators=True)
-
-    for p in params_builder['param_set']:
-        search_p = p['search_param_selector']['search_p']
-        if search_p.strip() == '':
-            continue
-        param_type = p['search_param_selector']['selected_param_type']
-
-        lst = search_p.split(":")
-        assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
-        literal = lst[1].strip()
-        param_name = lst[0].strip()
-        if param_name:
-            if param_name.lower() == 'n_jobs':
-                sys.exit("Parameter `%s` is invalid for search." %param_name)
-            elif not param_name.endswith('-'):
-                ev = safe_eval(literal)
-                if param_type == "final_estimator_p":
-                    search_params["estimator__" + param_name] = ev
-                else:
-                    search_params["preprocessing_" + param_type[5:6] + "__" + param_name] = ev
-            else:
-                # only for estimator eval, add `-` to the end of param
-                #TODO maybe add regular express check
-                ev = safe_eval_es(literal)
-                for obj in ev:
-                    if 'n_jobs' in obj.get_params():
-                        obj.set_params( n_jobs=N_JOBS )
-                if param_type == "final_estimator_p":
-                    search_params["estimator__" + param_name[:-1]] = ev
-                else:
-                    search_params["preprocessing_" + param_type[5:6] + "__" + param_name[:-1]] = ev
-        elif param_type != "final_estimator_p":
-            #TODO regular express check ?
-            ev = safe_eval_es(literal)
-            preprocessors = [preprocessing.StandardScaler(), preprocessing.Binarizer(), preprocessing.Imputer(),
-                            preprocessing.MaxAbsScaler(), preprocessing.Normalizer(), preprocessing.MinMaxScaler(),
-                            preprocessing.PolynomialFeatures(),preprocessing.RobustScaler(),
-                            feature_selection.SelectKBest(), feature_selection.GenericUnivariateSelect(),
-                            feature_selection.SelectPercentile(), feature_selection.SelectFpr(), feature_selection.SelectFdr(),
-                            feature_selection.SelectFwe(), feature_selection.VarianceThreshold(),
-                            decomposition.FactorAnalysis(random_state=0), decomposition.FastICA(random_state=0), decomposition.IncrementalPCA(),
-                            decomposition.KernelPCA(random_state=0, n_jobs=N_JOBS), decomposition.LatentDirichletAllocation(random_state=0, n_jobs=N_JOBS),
-                            decomposition.MiniBatchDictionaryLearning(random_state=0, n_jobs=N_JOBS),
-                            decomposition.MiniBatchSparsePCA(random_state=0, n_jobs=N_JOBS), decomposition.NMF(random_state=0),
-                            decomposition.PCA(random_state=0), decomposition.SparsePCA(random_state=0, n_jobs=N_JOBS),
-                            decomposition.TruncatedSVD(random_state=0),
-                            kernel_approximation.Nystroem(random_state=0), kernel_approximation.RBFSampler(random_state=0),
-                            kernel_approximation.AdditiveChi2Sampler(), kernel_approximation.SkewedChi2Sampler(random_state=0),
-                            cluster.FeatureAgglomeration(),
-                            skrebate.ReliefF(n_jobs=N_JOBS), skrebate.SURF(n_jobs=N_JOBS), skrebate.SURFstar(n_jobs=N_JOBS),
-                            skrebate.MultiSURF(n_jobs=N_JOBS), skrebate.MultiSURFstar(n_jobs=N_JOBS),
-                            imblearn.under_sampling.ClusterCentroids(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.CondensedNearestNeighbour(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.EditedNearestNeighbours(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.RepeatedEditedNearestNeighbours(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.AllKNN(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.InstanceHardnessThreshold(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.NearMiss(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.NeighbourhoodCleaningRule(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.OneSidedSelection(random_state=0, n_jobs=N_JOBS),
-                            imblearn.under_sampling.RandomUnderSampler(random_state=0),
-                            imblearn.under_sampling.TomekLinks(random_state=0, n_jobs=N_JOBS),
-                            imblearn.over_sampling.ADASYN(random_state=0, n_jobs=N_JOBS),
-                            imblearn.over_sampling.RandomOverSampler(random_state=0),
-                            imblearn.over_sampling.SMOTE(random_state=0, n_jobs=N_JOBS),
-                            imblearn.over_sampling.SVMSMOTE(random_state=0, n_jobs=N_JOBS),
-                            imblearn.over_sampling.BorderlineSMOTE(random_state=0, n_jobs=N_JOBS),
-                            imblearn.over_sampling.SMOTENC(categorical_features=[], random_state=0, n_jobs=N_JOBS),
-                            imblearn.combine.SMOTEENN(random_state=0), imblearn.combine.SMOTETomek(random_state=0)]
-            newlist = []
-            for obj in ev:
-                if obj is None:
-                    newlist.append(None)
-                elif obj == 'all_0':
-                    newlist.extend(preprocessors[0:36])
-                elif obj == 'sk_prep_all':      # no KernalCenter()
-                    newlist.extend(preprocessors[0:8])
-                elif obj == 'fs_all':
-                    newlist.extend(preprocessors[8:15])
-                elif obj == 'decomp_all':
-                    newlist.extend(preprocessors[15:26])
-                elif obj == 'k_appr_all':
-                    newlist.extend(preprocessors[26:30])
-                elif obj == "reb_all":
-                    newlist.extend(preprocessors[31:36])
-                elif obj == 'imb_all':
-                    newlist.extend(preprocessors[36:55])
-                elif  type(obj) is int and -1 < obj < len(preprocessors):
-                    newlist.append(preprocessors[obj])
-                elif hasattr(obj, 'get_params'):       # user object
-                    if 'n_jobs' in obj.get_params():
-                        newlist.append( obj.set_params(n_jobs=N_JOBS) )
-                    else:
-                        newlist.append(obj)
-                else:
-                    sys.exit("Unsupported preprocessor type: %r" %(obj))
-            search_params["preprocessing_" + param_type[5:6]] = newlist
-        else:
-            sys.exit("Parameter name of the final estimator can't be skipped!")
-
-    return search_params
-
 
 def get_estimator(estimator_json):
     estimator_module = estimator_json['selected_module']
@@ -425,16 +339,19 @@ def get_cv(cv_json):
     return splitter, groups
 
 
+# needed when sklearn < v0.20
+def balanced_accuracy_score(y_true, y_pred):
+    C = metrics.confusion_matrix(y_true, y_pred)
+    with np.errstate(divide='ignore', invalid='ignore'):
+        per_class = np.diag(C) / C.sum(axis=1)
+    if np.any(np.isnan(per_class)):
+        warnings.warn('y_pred contains classes not in y_true')
+        per_class = per_class[~np.isnan(per_class)]
+    score = np.mean(per_class)
+    return score
+
+
 def get_scoring(scoring_json):
-    def balanced_accuracy_score(y_true, y_pred):
-        C = metrics.confusion_matrix(y_true, y_pred)
-        with np.errstate(divide='ignore', invalid='ignore'):
-            per_class = np.diag(C) / C.sum(axis=1)
-        if np.any(np.isnan(per_class)):
-            warnings.warn('y_pred contains classes not in y_true')
-            per_class = per_class[~np.isnan(per_class)]
-        score = np.mean(per_class)
-        return score
 
     if scoring_json['primary_scoring'] == "default":
         return None
