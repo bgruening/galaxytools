@@ -268,7 +268,15 @@ class SafeEval(Interpreter):
 
 
 def get_estimator(estimator_json):
+
     estimator_module = estimator_json['selected_module']
+
+    if estimator_module == 'customer_estimator':
+        c_estimator = estimator_json['c_estimator']
+        with open(c_estimator, 'rb') as model_handler:
+            new_model = load_model(model_handler)
+        return new_model
+
     estimator_cls = estimator_json['selected_estimator']
 
     if estimator_module == "xgboost":
