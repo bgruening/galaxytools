@@ -11,8 +11,8 @@ import warnings
 import xgboost
 
 from asteval import Interpreter, make_symbol_table
-from sklearn import (cluster, decomposition, ensemble, feature_extraction, feature_selection,
-                    gaussian_process, kernel_approximation, metrics,
+from sklearn import (cluster, compose, decomposition, ensemble, feature_extraction,
+                    feature_selection, gaussian_process, kernel_approximation, metrics,
                     model_selection, naive_bayes, neighbors, pipeline, preprocessing,
                     svm, linear_model, tree, discriminant_analysis)
 
