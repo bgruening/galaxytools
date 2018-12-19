@@ -34,7 +34,7 @@ def get_search_params(params_builder):
             continue
         param_type = p['search_param_selector']['selected_param_type']
 
-        lst = search_p.split(":")
+        lst = search_p.split(':')
         assert (len(lst) == 2), "Error, make sure there is one and only one colon in search parameter input."
         literal = lst[1].strip()
         param_name = lst[0].strip()
@@ -43,10 +43,10 @@ def get_search_params(params_builder):
                 sys.exit("Parameter `%s` is invalid for search." %param_name)
             elif not param_name.endswith('-'):
                 ev = safe_eval(literal)
-                if param_type == "final_estimator_p":
-                    search_params["estimator__" + param_name] = ev
+                if param_type == 'final_estimator_p':
+                    search_params['estimator__' + param_name] = ev
                 else:
-                    search_params["preprocessing_" + param_type[5:6] + "__" + param_name] = ev
+                    search_params['preprocessing_' + param_type[5:6] + '__' + param_name] = ev
             else:
                 # only for estimator eval, add `-` to the end of param
                 #TODO maybe add regular express check
@@ -54,11 +54,11 @@ def get_search_params(params_builder):
                 for obj in ev:
                     if 'n_jobs' in obj.get_params():
                         obj.set_params( n_jobs=N_JOBS )
-                if param_type == "final_estimator_p":
-                    search_params["estimator__" + param_name[:-1]] = ev
+                if param_type == 'final_estimator_p':
+                    search_params['estimator__' + param_name[:-1]] = ev
                 else:
-                    search_params["preprocessing_" + param_type[5:6] + "__" + param_name[:-1]] = ev
-        elif param_type != "final_estimator_p":
+                    search_params['preprocessing_' + param_type[5:6] + '__' + param_name[:-1]] = ev
+        elif param_type != 'final_estimator_p':
             #TODO regular express check ?
             ev = safe_eval_es(literal)
             preprocessors = [preprocessing.StandardScaler(), preprocessing.Binarizer(), preprocessing.Imputer(),
@@ -110,7 +110,7 @@ def get_search_params(params_builder):
                     newlist.extend(preprocessors[15:26])
                 elif obj == 'k_appr_all':
                     newlist.extend(preprocessors[26:30])
-                elif obj == "reb_all":
+                elif obj == 'reb_all':
                     newlist.extend(preprocessors[31:36])
                 elif obj == 'imb_all':
                     newlist.extend(preprocessors[36:55])
@@ -123,7 +123,7 @@ def get_search_params(params_builder):
                         newlist.append(obj)
                 else:
                     sys.exit("Unsupported preprocessor type: %r" %(obj))
-            search_params["preprocessing_" + param_type[5:6]] = newlist
+            search_params['preprocessing_' + param_type[5:6]] = newlist
         else:
             sys.exit("Parameter name of the final estimator can't be skipped!")
 
@@ -135,7 +135,7 @@ if __name__ == '__main__':
     warnings.simplefilter('ignore')
 
     input_json_path = sys.argv[1]
-    with open(input_json_path, "r") as param_handler:
+    with open(input_json_path, 'r') as param_handler:
         params = json.load(param_handler)
 
     infile_pipeline = sys.argv[2]
@@ -149,12 +149,12 @@ if __name__ == '__main__':
 
     params_builder = params['search_schemes']['search_params_builder']
 
-    input_type = params["input_options"]["selected_input"]
-    if input_type=="tabular":
-        header = 'infer' if params["input_options"]["header1"] else None
-        column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
-        if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-            c = params["input_options"]["column_selector_options_1"]["col1"]
+    input_type = params['input_options']['selected_input']
+    if input_type == 'tabular':
+        header = 'infer' if params['input_options']['header1'] else None
+        column_option = params['input_options']['column_selector_options_1']['selected_column_selector_option']
+        if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+            c = params['input_options']['column_selector_options_1']['col1']
         else:
             c = None
         X = read_columns(
@@ -168,10 +168,10 @@ if __name__ == '__main__':
     else:
         X = mmread(open(infile1, 'r'))
 
-    header = 'infer' if params["input_options"]["header2"] else None
-    column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
-    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-        c = params["input_options"]["column_selector_options_2"]["col2"]
+    header = 'infer' if params['input_options']['header2'] else None
+    column_option = params['input_options']['column_selector_options_2']['selected_column_selector_option2']
+    if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+        c = params['input_options']['column_selector_options_2']['col2']
     else:
         c = None
     y = read_columns(
@@ -182,16 +182,16 @@ if __name__ == '__main__':
             header=header,
             parse_dates=True
     )
-    y=y.ravel()
+    y = y.ravel()
 
-    optimizers = params["search_schemes"]["selected_search_scheme"]
-    optimizers = getattr(model_selection, optimizers)
+    optimizer = params['search_schemes']['selected_search_scheme']
+    optimizer = getattr(model_selection, optimizer)
 
-    options = params["search_schemes"]["options"]
+    options = params['search_schemes']['options']
     splitter, groups = get_cv(options.pop('cv_selector'))
     if groups is None:
         options['cv'] = splitter
-    elif groups == "":
+    elif groups == '':
         options['cv'] = list( splitter.split(X, y, groups=None) )
     else:
         options['cv'] = list( splitter.split(X, y, groups=groups) )
@@ -211,7 +211,7 @@ if __name__ == '__main__':
         pipeline = load_model(pipeline_handler)
 
     search_params = get_search_params(params_builder)
-    searcher = optimizers(pipeline, search_params, **options)
+    searcher = optimizer(pipeline, search_params, **options)
 
     if options['error_score'] == 'raise':
         searcher.fit(X, y)
@@ -226,9 +226,9 @@ if __name__ == '__main__':
                 print(repr(warning.message))
 
     cv_result = pandas.DataFrame(searcher.cv_results_)
-    cv_result.rename(inplace=True, columns={"mean_test_primary": "mean_test_"+primary_scoring, "rank_test_primary": "rank_test_"+primary_scoring})
+    cv_result.rename(inplace=True, columns={'mean_test_primary': 'mean_test_'+primary_scoring, 'rank_test_primary': 'rank_test_'+primary_scoring})
     cv_result.to_csv(path_or_buf=outfile_result, sep='\t', header=True, index=False)
 
     if outfile_estimator:
-        with open(outfile_estimator, "wb") as output_handler:
+        with open(outfile_estimator, 'wb') as output_handler:
             pickle.dump(searcher.best_estimator_, output_handler, pickle.HIGHEST_PROTOCOL)

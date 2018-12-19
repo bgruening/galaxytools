@@ -42,7 +42,7 @@ class SafePickler(pickle.Unpickler):
         global sk_whitelist
         if not sk_whitelist:
             whitelist_file = os.path.join(os.path.dirname(__file__), 'sk_whitelist.json')
-            with open(whitelist_file, "r") as f:
+            with open(whitelist_file, 'r') as f:
                 sk_whitelist = json.load(f)
 
         bad_names = ('and', 'as', 'assert', 'break', 'class', 'continue',
@@ -108,9 +108,9 @@ def read_columns(f, c=None, c_option='by_index_number', return_df=False, **args)
 
 ## generate an instance for one of sklearn.feature_selection classes
 def feature_selector(inputs):
-    selector = inputs["selected_algorithm"]
+    selector = inputs['selected_algorithm']
     selector = getattr(sklearn.feature_selection, selector)
-    options = inputs["options"]
+    options = inputs['options']
 
     if inputs['selected_algorithm'] == 'SelectFromModel':
         if not options['threshold'] or options['threshold'] == 'None':
@@ -126,12 +126,12 @@ def feature_selector(inputs):
                 fitted_estimator = load_model(model_handler)
             new_selector = selector(fitted_estimator, prefit=True, **options)
         else:
-            estimator_json = inputs['model_inputter']["estimator_selector"]
+            estimator_json = inputs['model_inputter']['estimator_selector']
             estimator = get_estimator(estimator_json)
             new_selector = selector(estimator, **options)
 
     elif inputs['selected_algorithm'] == 'RFE':
-        estimator = get_estimator(inputs["estimator_selector"])
+        estimator = get_estimator(inputs['estimator_selector'])
         step = options.get('step', None)
         if step and step >= 1.0:
             options['step'] = int(step)
@@ -146,14 +146,14 @@ def feature_selector(inputs):
         step = options.get('step', None)
         if step and step >= 1.0:
             options['step'] = int(step)
-        estimator = get_estimator(inputs["estimator_selector"])
+        estimator = get_estimator(inputs['estimator_selector'])
         new_selector = selector(estimator, **options)
 
-    elif inputs['selected_algorithm'] == "VarianceThreshold":
+    elif inputs['selected_algorithm'] == 'VarianceThreshold':
         new_selector = selector(**options)
 
     else:
-        score_func = inputs["score_func"]
+        score_func = inputs['score_func']
         score_func = getattr(sklearn.feature_selection, score_func)
         new_selector = selector(score_func, **options)
 
@@ -161,12 +161,12 @@ def feature_selector(inputs):
 
 
 def get_X_y(params, file1, file2):
-    input_type = params["selected_tasks"]["selected_algorithms"]["input_options"]["selected_input"]
-    if input_type == "tabular":
-        header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header1"] else None
-        column_option = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
-        if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-            c = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_1"]["col1"]
+    input_type = params['selected_tasks']['selected_algorithms']['input_options']['selected_input']
+    if input_type == 'tabular':
+        header = 'infer' if params['selected_tasks']['selected_algorithms']['input_options']['header1'] else None
+        column_option = params['selected_tasks']['selected_algorithms']['input_options']['column_selector_options_1']['selected_column_selector_option']
+        if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+            c = params['selected_tasks']['selected_algorithms']['input_options']['column_selector_options_1']['col1']
         else:
             c = None
         X = read_columns(
@@ -180,10 +180,10 @@ def get_X_y(params, file1, file2):
     else:
         X = mmread(file1)
 
-    header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header2"] else None
-    column_option = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
-    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-        c = params["selected_tasks"]["selected_algorithms"]["input_options"]["column_selector_options_2"]["col2"]
+    header = 'infer' if params['selected_tasks']['selected_algorithms']['input_options']['header2'] else None
+    column_option = params['selected_tasks']['selected_algorithms']['input_options']['column_selector_options_2']['selected_column_selector_option2']
+    if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+        c = params['selected_tasks']['selected_algorithms']['input_options']['column_selector_options_2']['col2']
     else:
         c = None
     y = read_columns(
@@ -279,7 +279,7 @@ def get_estimator(estimator_json):
 
     estimator_cls = estimator_json['selected_estimator']
 
-    if estimator_module == "xgboost":
+    if estimator_module == 'xgboost':
         cls = getattr(xgboost, estimator_cls)
     else:
         module = getattr(sklearn, estimator_module)
@@ -288,7 +288,7 @@ def get_estimator(estimator_json):
     estimator = cls()
 
     estimator_params = estimator_json['text_params'].strip()
-    if estimator_params != "":
+    if estimator_params != '':
         try:
             params = safe_eval('dict(' + estimator_params + ')')
         except ValueError:
@@ -305,35 +305,35 @@ def get_cv(cv_json):
     cv_json:
             e.g.:
             {
-                "selected_cv": "StratifiedKFold",
-                "n_splits": 3,
-                "shuffle": True,
-                "random_state": 0
+                'selected_cv': 'StratifiedKFold',
+                'n_splits': 3,
+                'shuffle': True,
+                'random_state': 0
             }
     """
     cv = cv_json.pop('selected_cv')
-    if cv == "default":
+    if cv == 'default':
         return cv_json['n_splits'], None
 
     groups = cv_json.pop('groups', None)
     if groups:
         groups = groups.strip()
-        if groups != "":
-            if groups.startswith("__ob__"):
+        if groups != '':
+            if groups.startswith('__ob__'):
                 groups = groups[6:]
-            if groups.endswith("__cb__"):
+            if groups.endswith('__cb__'):
                 groups = groups[:-6]
             groups = [int(x.strip()) for x in groups.split(',')]
 
     for k, v in cv_json.items():
-        if v == "":
+        if v == '':
             cv_json[k] = None
 
     test_fold = cv_json.get('test_fold', None)
     if test_fold:
-        if test_fold.startswith("__ob__"):
+        if test_fold.startswith('__ob__'):
             test_fold = test_fold[6:]
-        if test_fold.endswith("__cb__"):
+        if test_fold.endswith('__cb__'):
             test_fold = test_fold[:-6]
         cv_json['test_fold'] = [int(x.strip()) for x in test_fold.split(',')]
 
@@ -361,7 +361,7 @@ def balanced_accuracy_score(y_true, y_pred):
 
 def get_scoring(scoring_json):
 
-    if scoring_json['primary_scoring'] == "default":
+    if scoring_json['primary_scoring'] == 'default':
         return None
 
     my_scorers = metrics.SCORERS
