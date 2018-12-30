@@ -15,41 +15,53 @@
         <inputs name="inputs" />
         <configfile name="feature_selection_script">
             <![CDATA[
-import sys
-import os
 import json
-import pandas
 import sklearn.feature_selection
 
-with open("$__tool_directory__/sk_whitelist.json", "r") as f:
+with open('$__tool_directory__/sk_whitelist.json', 'r') as f:
     sk_whitelist = json.load(f)
-exec(open("$__tool_directory__/utils.py").read(), globals())
+exec(open('$__tool_directory__/utils.py').read(), globals())
+
+warnings.simplefilter('ignore')
 
 safe_eval = SafeEval()
 
 input_json_path = sys.argv[1]
-with open(input_json_path, "r") as param_handler:
+with open(input_json_path, 'r') as param_handler:
     params = json.load(param_handler)
 
 #handle cheetah
-#if $fs_algorithm_selector.selected_algorithm == "SelectFromModel"\
-        and $fs_algorithm_selector.model_inputter.input_mode == "prefitted":
+#if $fs_algorithm_selector.selected_algorithm == 'SelectFromModel'\
+        and $fs_algorithm_selector.model_inputter.input_mode == 'prefitted':
 params['fs_algorithm_selector']['model_inputter']['fitted_estimator'] =\
-        "$fs_algorithm_selector.model_inputter.fitted_estimator"
+        '$fs_algorithm_selector.model_inputter.fitted_estimator'
+#end if
+
+#if $fs_algorithm_selector.selected_algorithm == 'SelectFromModel'\
+        and $fs_algorithm_selector.model_inputter.input_mode == 'new'\
+        and $fs_algorithm_selector.model_inputter.estimator_selector.selected_module == 'customer_estimator':
+params['fs_algorithm_selector']['model_inputter']['estimator_selector']['c_estimator'] =\
+        '$fs_algorithm_selector.model_inputter.estimator_selector.c_estimator'
+#end if
+
+#if $fs_algorithm_selector.selected_algorithm in ['RFE', 'RFECV']\
+        and $fs_algorithm_selector.estimator_selector.selected_module == 'customer_estimator':
+params['fs_algorithm_selector']['estimator_selector']['c_estimator'] =\
+        '$fs_algorithm_selector.estimator_selector.c_estimator'
 #end if
 
 # Read features
-features_has_header = params["input_options"]["header1"]
-input_type = params["input_options"]["selected_input"]
-if input_type=="tabular":
+features_has_header = params['input_options']['header1']
+input_type = params['input_options']['selected_input']
+if input_type == 'tabular':
     header = 'infer' if features_has_header else None
-    column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
-    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-        c = params["input_options"]["column_selector_options_1"]["col1"]
+    column_option = params['input_options']['column_selector_options_1']['selected_column_selector_option']
+    if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+        c = params['input_options']['column_selector_options_1']['col1']
     else:
         c = None
     X, input_df = read_columns(
-            "$input_options.infile1",
+            '$input_options.infile1',
             c = c,
             c_option = column_option,
             return_df = True,
@@ -58,17 +70,17 @@ if input_type=="tabular":
             parse_dates=True
     )
 else:
-    X = mmread("$input_options.infile1")
+    X = mmread('$input_options.infile1')
 
 # Read labels
-header = 'infer' if params["input_options"]["header2"] else None
-column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
-if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-    c = params["input_options"]["column_selector_options_2"]["col2"]
+header = 'infer' if params['input_options']['header2'] else None
+column_option = params['input_options']['column_selector_options_2']['selected_column_selector_option2']
+if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+    c = params['input_options']['column_selector_options_2']['col2']
 else:
     c = None
 y = read_columns(
-        "$input_options.infile2",
+        '$input_options.infile2',
         c = c,
         c_option = column_option,
         sep='\t',
@@ -85,29 +97,31 @@ if params['fs_algorithm_selector']['selected_algorithm'] != 'SelectFromModel'\
 
 ## Transform to select features
 selected_names = None
-if "$output_method_selector.selected_method" == "fit_transform":
-    res = new_selector.transform(X)
-    if features_has_header:
-        selected_names = input_df.columns[new_selector.get_support(indices=True)]
-else:
-    res = new_selector.get_support(params["output_method_selector"]["indices"])
 
+res = new_selector.transform(X)
+if features_has_header:
+    selected_names = input_df.columns[new_selector.get_support(indices=True)]
 res = pandas.DataFrame(res, columns = selected_names)
-res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
+res.to_csv(path_or_buf='$outfile', sep='\t', index=False)
 
+#if $save:
+with open('$outfile_selector', 'wb') as output_handler:
+    pickle.dump(new_selector, output_handler, pickle.HIGHEST_PROTOCOL)
+#end if
 
             ]]>
         </configfile>
     </configfiles>
     <inputs>
-        <expand macro="feature_selection_all">
-            <expand macro="fs_selectfrommodel_prefitted"/>
-        </expand>
-        <expand macro="feature_selection_output_mothods" />
+        <expand macro="feature_selection_fs"/>
+        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Save the fitted selector?"/>
         <expand macro="sl_mixed_input"/>
     </inputs>
     <outputs>
-        <data format="tabular" name="outfile"/>
+        <data format="tabular" name="outfile" />
+        <data format="zip" name="outfile_selector" label="${fs_algorithm_selector.selected_algorithm}">
+            <filter>save</filter>
+        </data>
     </outputs>
     <tests>
         <test>

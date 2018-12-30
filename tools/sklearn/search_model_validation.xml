@@ -5,126 +5,25 @@
     </macros>
     <expand macro="python_requirements">
         <requirement type="package" version="0.6">skrebate</requirement>
+        <requirement type="package" version="0.4.2">imbalanced-learn</requirement>
     </expand>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
     <command>
         <![CDATA[
-        python "$sklearn_search_model_validation_script" '$inputs'
+        python '$__tool_directory__/search_model_validation.py'
+            '$inputs'
+            '$search_schemes.infile_pipeline'
+            '$input_options.infile1'
+            '$input_options.infile2'
+            '$outfile_result'
+            #if $save:
+            '$outfile_estimator'
+            #end if
         ]]>
     </command>
     <configfiles>
         <inputs name="inputs" />
-        <configfile name="sklearn_search_model_validation_script">
-            <![CDATA[
-import sys
-import os
-import json
-import pandas
-import skrebate
-from sklearn import model_selection
-from sklearn.exceptions import FitFailedWarning
-
-with open("$__tool_directory__/sk_whitelist.json", "r") as f:
-    sk_whitelist = json.load(f)
-exec(open("$__tool_directory__/utils.py").read(), globals())
-
-warnings.simplefilter('ignore')
-
-input_json_path = sys.argv[1]
-with open(input_json_path, "r") as param_handler:
-    params = json.load(param_handler)
-
-#handle cheatah
-infile1 = "$input_options.infile1"
-infile2 = "$input_options.infile2"
-infile_pipeline = "$search_schemes.infile_pipeline"
-outfile_result = "$outfile_result"
-outfile_estimator = "$outfile_estimator"
-
-params_builder = params['search_schemes']['search_params_builder']
-
-input_type = params["input_options"]["selected_input"]
-if input_type=="tabular":
-    header = 'infer' if params["input_options"]["header1"] else None
-    column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
-    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-        c = params["input_options"]["column_selector_options_1"]["col1"]
-    else:
-        c = None
-    X = read_columns(
-            infile1,
-            c = c,
-            c_option = column_option,
-            sep='\t',
-            header=header,
-            parse_dates=True
-    )
-else:
-    X = mmread(open("$input_options.infile1", 'r'))
-
-header = 'infer' if params["input_options"]["header2"] else None
-column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
-if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
-    c = params["input_options"]["column_selector_options_2"]["col2"]
-else:
-    c = None
-y = read_columns(
-        infile2,
-        c = c,
-        c_option = column_option,
-        sep='\t',
-        header=header,
-        parse_dates=True
-)
-y=y.ravel()
-
-optimizers = params["search_schemes"]["selected_search_scheme"]
-optimizers = getattr(model_selection, optimizers)
-
-options = params["search_schemes"]["options"]
-options['cv'] = get_cv( options['cv'].strip() )
-options['n_jobs'] = N_JOBS
-primary_scoring = options['scoring']['primary_scoring']
-options['scoring'] = get_scoring(options['scoring'])
-if options['error_score']:
-    options['error_score'] = 'raise'
-else:
-    options['error_score'] = 0
-if options['refit'] and isinstance(options['scoring'], dict):
-    options['refit'] = 'primary'
-if 'pre_dispatch' in options and options['pre_dispatch'] == '':
-    options['pre_dispatch'] = None
-
-with open(infile_pipeline, 'rb') as pipeline_handler:
-    pipeline = load_model(pipeline_handler)
-
-search_params = get_search_params(params_builder)
-searcher = optimizers(pipeline, search_params, **options)
-
-if options['error_score'] == 'raise':
-    searcher.fit(X, y)
-else:
-    warnings.simplefilter('always', FitFailedWarning)
-    with warnings.catch_warnings(record=True) as w:
-        try:
-            searcher.fit(X, y)
-        except ValueError:
-            pass
-        for warning in w:
-            print(repr(warning.message))
-
-cv_result = pandas.DataFrame(searcher.cv_results_)
-cv_result.rename(inplace=True, columns={"mean_test_primary": "mean_test_"+primary_scoring, "rank_test_primary": "rank_test_"+primary_scoring})
-cv_result.to_csv(path_or_buf=outfile_result, sep='\t', header=True, index=False)
-
-#if $save:
-with open(outfile_estimator, "wb") as output_handler:
-    pickle.dump(searcher.best_estimator_, output_handler, pickle.HIGHEST_PROTOCOL)
-#end if
-
-            ]]>
-        </configfile>
     </configfiles>
     <inputs>
         <conditional name="search_schemes">
@@ -147,12 +46,12 @@ with open(outfile_estimator, "wb") as output_handler:
                 </section>
             </when>
         </conditional>
-        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Save the best estimator/pipeline?"/>
+        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Save the best estimator/pipeline?"/>
         <expand macro="sl_mixed_input"/>
     </inputs>
     <outputs>
         <data format="tabular" name="outfile_result"/>
-        <data format="zip" name="outfile_estimator">
+        <data format="zip" name="outfile_estimator" label="${tool.name}: best estimator on ${on_string}">
             <filter>save</filter>
         </data>
     </outputs>
@@ -274,7 +173,7 @@ with open(outfile_estimator, "wb") as output_handler:
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
             <conditional name="search_param_selector">
-                <param name="search_p" value="estimator: [ensemble_ExtraTreesClassifier(n_estimators=100, random_state=324089)]"/>
+                <param name="search_p" value="estimator-: [sklearn_ensemble.ExtraTreesClassifier(n_estimators=100, random_state=324089)]"/>
                 <param name="selected_param_type" value="prep_1_p"/>
             </conditional>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
@@ -325,7 +224,7 @@ with open(outfile_estimator, "wb") as output_handler:
             <output name="outfile_result">
                 <assert_contents>
                     <has_n_columns n="13"/>
-                    <has_text_matching expression=".+0.7772355090078996[^/w]+1000[^/d]" />
+                    <has_text_matching expression=".+0.7772355090078996" />
                 </assert_contents>
             </output>
         </test>
@@ -344,6 +243,8 @@ with open(outfile_estimator, "wb") as output_handler:
                 <param name="search_p" value="gamma: [1.0, 2.0]"/>
                 <param name="selected_param_type" value="prep_1_p"/>
             </conditional>
+            <param name='selected_cv' value="default"/>
+            <param name="n_splits" value="3"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -391,7 +292,10 @@ with open(outfile_estimator, "wb") as output_handler:
                 <param name="search_p" value="C: [1, 10, 100, 1000]"/>
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
-            <param name='cv' value="StratifiedKFold(n_splits=3, shuffle=True, random_state=10)"/>
+            <param name='selected_cv' value="StratifiedKFold"/>
+            <param name="n_splits" value="3"/>
+            <param name="shuffle" value="true" />
+            <param name="random_state" value="10"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -412,7 +316,10 @@ with open(outfile_estimator, "wb") as output_handler:
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
             <param name="primary_scoring" value="balanced_accuracy"/>
-            <param name="cv" value="StratifiedKFold(n_splits=3, shuffle=True, random_state=10)"/>
+            <param name='selected_cv' value="StratifiedKFold"/>
+            <param name="n_splits" value="3"/>
+            <param name="shuffle" value="true" />
+            <param name="random_state" value="10"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -439,7 +346,10 @@ with open(outfile_estimator, "wb") as output_handler:
             </conditional>
             <param name="primary_scoring" value="explained_variance"/>
             <param name="secondary_scoring" value="neg_mean_squared_error,r2"/>
-            <param name="cv" value="StratifiedKFold(n_splits=3, shuffle=True, random_state=10)"/>
+            <param name='selected_cv' value="StratifiedKFold"/>
+            <param name="n_splits" value="3"/>
+            <param name="shuffle" value="true" />
+            <param name="random_state" value="10"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -449,9 +359,9 @@ with open(outfile_estimator, "wb") as output_handler:
             <output name="outfile_result" >
                 <assert_contents>
                     <has_n_columns n="25" />
-                    <has_text text="0.7881203921915186"/>
-                    <has_text text="0.7880692034558879"/>
-                    <has_text text="-29.381892762877825"/>
+                    <has_text text="0.7879267424165166"/>
+                    <has_text text="0.787865425577799"/>
+                    <has_text text="-29.40436189868029"/>
                 </assert_contents>
             </output>
         </test>
@@ -491,7 +401,7 @@ with open(outfile_estimator, "wb") as output_handler:
             <output name="outfile_result">
                 <assert_contents>
                     <has_n_columns n="12"/>
-                    <has_text text="0.8176497587057971" />
+                    <has_text text="0.8176576686816003" />
                 </assert_contents>
             </output>
         </test>
@@ -509,20 +419,140 @@ with open(outfile_estimator, "wb") as output_handler:
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
         </test>
-        <test expect_failure="true">
+        <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline01" ftype="zip"/>
+            <param name="infile_pipeline" value="pipeline10" ftype="zip"/>
             <conditional name="search_param_selector">
-                <param name="search_p" value="C: [1, 10, 100, 1000]"/>
+                <param name="search_p" value="base_estimator-: [sklearn_tree.DecisionTreeRegressor(random_state=0), sklearn_tree.ExtraTreeRegressor(random_state=0)]"/>
                 <param name="selected_param_type" value="final_estimator_p"/>
             </conditional>
-            <param name="cv" value="__import__('os').system('ls ~')"/>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="random_state: [10]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="13"/>
+                    <has_text text="0.8165699136618538"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="selected_search_scheme" value="GridSearchCV"/>
+            <param name="infile_pipeline" value="pipeline09" ftype="zip"/>
+            <conditional name="search_param_selector">
+                <param name="search_p" value=": [sklearn_feature_selection.SelectKBest(),
+                        sklearn_feature_selection.VarianceThreshold(), skrebate_ReliefF(), sklearn_preprocessing.RobustScaler()]"/>
+                <param name="selected_param_type" value="prep_1_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="random_state: [10]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="13"/>
+                    <has_text text="0.8151250518677202"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="selected_search_scheme" value="GridSearchCV"/>
+            <param name="infile_pipeline" value="pipeline09" ftype="zip"/>
+            <conditional name="search_param_selector">
+                <param name="search_p" value=": [None,'sk_prep_all', 8, 14, skrebate_ReliefF(n_features_to_select=12)]"/>
+                <param name="selected_param_type" value="prep_1_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="random_state: [10]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="13"/>
+                    <has_text text="0.8151250518677202"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="selected_search_scheme" value="GridSearchCV"/>
+            <param name="infile_pipeline" value="pipeline11" ftype="zip"/>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="n_neighbors: [3,4,5]"/>
+                <param name="selected_param_type" value="prep_1_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="random_state: [10]"/>
+                <param name="selected_param_type" value="prep_1_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="n_estimators:[10, 50, 100, 500]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="random_state: [10]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <param name="primary_scoring" value="f1_macro"/>
+            <param name="secondary_scoring" value="balanced_accuracy,accuracy"/>
+            <param name="n_splits" value="5"/>
+            <param name="infile1" value="imblearn_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="imblearn_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="33"/>
+                    <has_text text="0.9945648481554453"/>
+                    <has_text text="0.9988888888888889"/>
+                    <has_text text="0.998"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="selected_search_scheme" value="GridSearchCV"/>
+            <param name="infile_pipeline" value="pipeline12" ftype="zip"/>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="estimator__n_estimators: [10, 100, 200]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <conditional name="search_param_selector">
+                <param name="search_p" value="n_features_to_select: [10, None]"/>
+                <param name="selected_param_type" value="final_estimator_p"/>
+            </conditional>
+            <param name="primary_scoring" value="r2"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="13"/>
+                    <has_text text="0.8149439619875293"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help>
@@ -551,7 +581,79 @@ The evaluation of settings supports operations in Math, list comprehension, nump
 
 - max_depth: scipy_stats_randin(1, 11)
 
-- estimator: [ensemble_ExtraTreesClassifier(n_estimators=100, random_state=324089)]
+**Estimator search/eval (additional '-')**::
+
+     base_estimator-: [sklearn_tree.DecisionTreeRegressor(), sklearn_tree.ExtraTreeRegressor()]
+
+**Preprocessors search/swap**::
+
+     : [sklearn_feature_selection.SelectKBest(), sklearn_feature_selection.VarianceThreshold(),
+        skrebate_ReliefF(), sklearn_preprocessing.RobustScaler()]
+
+**Hot number/keyword for preprocessors**::
+
+    0   sklearn_preprocessing.StandardScaler(copy=True, with_mean=True, with_std=True)
+    1   sklearn_preprocessing.Binarizer(copy=True, threshold=0.0)
+    2   sklearn_preprocessing.Imputer(axis=0, copy=True, missing_values='NaN', strategy='mean', verbose=0)
+    3   sklearn_preprocessing.MaxAbsScaler(copy=True)
+    4   sklearn_preprocessing.Normalizer(copy=True, norm='l2')
+    5   sklearn_preprocessing.MinMaxScaler(copy=True, feature_range=(0, 1))
+    6   sklearn_preprocessing.PolynomialFeatures(degree=2, include_bias=True, interaction_only=False)
+    7   sklearn_preprocessing.RobustScaler(copy=True, quantile_range=(25.0, 75.0), with_centering=True, with_scaling=True)
+    8   sklearn_feature_selection.SelectKBest(k=10, score_func=<function f_classif at 0x113806d90>)
+    9   sklearn_feature_selection.GenericUnivariateSelect(mode='percentile', param=1e-05, score_func=<function f_classif at 0x113806d90>)
+    10  sklearn_feature_selection.SelectPercentile(percentile=10, score_func=<function f_classif at 0x113806d90>)
+    11  sklearn_feature_selection.SelectFpr(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
+    12  sklearn_feature_selection.SelectFdr(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
+    13  sklearn_feature_selection.SelectFwe(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
+    14  sklearn_feature_selection.VarianceThreshold(threshold=0.0)
+    15  sklearn_decomposition.FactorAnalysis(copy=True, iterated_power=3, max_iter=1000, n_components=None,
+        noise_variance_init=None, random_state=0, svd_method='randomized', tol=0.01)
+    16  sklearn_decomposition.FastICA(algorithm='parallel', fun='logcosh', fun_args=None,
+        max_iter=200, n_components=None, random_state=0, tol=0.0001, w_init=None, whiten=True)
+    17  sklearn_decomposition.IncrementalPCA(batch_size=None, copy=True, n_components=None, whiten=False)
+    18  sklearn_decomposition.KernelPCA(alpha=1.0, coef0=1, copy_X=True, degree=3, eigen_solver='auto',
+        fit_inverse_transform=False, gamma=None, kernel='linear', kernel_params=None, max_iter=None,
+        n_components=None, random_state=0, remove_zero_eig=False, tol=0)
+    19  sklearn_decomposition.LatentDirichletAllocation(batch_size=128, doc_topic_prior=None, evaluate_every=-1, learning_decay=0.7,
+        learning_method=None, learning_offset=10.0, max_doc_update_iter=100, max_iter=10, mean_change_tol=0.001, n_components=10,
+        n_topics=None, perp_tol=0.1, random_state=0, topic_word_prior=None, total_samples=1000000.0, verbose=0)
+    20  sklearn_decomposition.MiniBatchDictionaryLearning(alpha=1, batch_size=3, dict_init=None, fit_algorithm='lars',
+        n_components=None, n_iter=1000, random_state=0, shuffle=True, split_sign=False, transform_algorithm='omp',
+        transform_alpha=None, transform_n_nonzero_coefs=None, verbose=False)
+    21  sklearn_decomposition.MiniBatchSparsePCA(alpha=1, batch_size=3, callback=None, method='lars', n_components=None,
+        n_iter=100, random_state=0, ridge_alpha=0.01, shuffle=True, verbose=False)
+    22  sklearn_decomposition.NMF(alpha=0.0, beta_loss='frobenius', init=None, l1_ratio=0.0, max_iter=200,
+        n_components=None, random_state=0, shuffle=False, solver='cd', tol=0.0001, verbose=0)
+    23  sklearn_decomposition.PCA(copy=True, iterated_power='auto', n_components=None, random_state=0, svd_solver='auto', tol=0.0, whiten=False)
+    24  sklearn_decomposition.SparsePCA(U_init=None, V_init=None, alpha=1, max_iter=1000, method='lars',
+        n_components=None, random_state=0, ridge_alpha=0.01, tol=1e-08, verbose=False)
+    25  sklearn_decomposition.TruncatedSVD(algorithm='randomized', n_components=2, n_iter=5, random_state=0, tol=0.0)
+    26  sklearn_kernel_approximation.Nystroem(coef0=None, degree=None, gamma=None, kernel='rbf',
+        kernel_params=None, n_components=100, random_state=0)
+    27  sklearn_kernel_approximation.RBFSampler(gamma=1.0, n_components=100, random_state=0)
+    28  sklearn_kernel_approximation.AdditiveChi2Sampler(sample_interval=None, sample_steps=2)
+    29  sklearn_kernel_approximation.SkewedChi2Sampler(n_components=100, random_state=0, skewedness=1.0)
+    30  sklearn_cluster.FeatureAgglomeration(affinity='euclidean', compute_full_tree='auto', connectivity=None,
+        linkage='ward', memory=None, n_clusters=2, pooling_func=<function mean at 0x113078ae8>)
+    31  skrebate_ReliefF(discrete_threshold=10, n_features_to_select=10, n_neighbors=100, verbose=False)
+    32  skrebate_SURF(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    33  skrebate_SURFstar(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    34  skrebate_MultiSURF(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    35  skrebate_MultiSURFstar(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    'sk_prep_all':   All sklearn preprocessing estimators, i.e., 0-7
+    'fs_all':        All feature_selection estimators, i.e., 8-14
+    'decomp_all':    All decomposition estimators, i.e., 15-25
+    'k_appr_all':    All kernel_approximation estimators, i.e., 26-29
+    'reb_all':       All skrebate estimators, i.e., 31-35
+    'all_0':         All except the imbalanced-learn samplers, i.e., 0-35
+    'imb_all':       All imbalanced-learn sampling methods, i.e., 36-54.
+                     **CAUTION**: Mix of imblearn and other preprocessors may not work.
+     None:           opt out of preprocessor
+
+Support mix (CAUTION: Mix of imblearn and other preprocessors may not work), e.g.::
+
+     : [None, 'sk_prep_all', 22, 'k_appr_all', sklearn_feature_selection.SelectKBest(k=50)]
 
 
 .. _`Scikit-learn model_selection GridSearchCV`: http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
@@ -578,5 +680,6 @@ The evaluation of settings supports operations in Math, list comprehension, nump
     <expand macro="sklearn_citation">
         <expand macro="skrebate_citation"/>
         <expand macro="xgboost_citation"/>
+        <expand macro="imblearn_citation"/>
     </expand>
 </tool>
