@@ -175,8 +175,7 @@ def get_X_y(params, file1, file2):
             c_option=column_option,
             sep='\t',
             header=header,
-            parse_dates=True
-        )
+            parse_dates=True).astype(float)
     else:
         X = mmread(file1)
 
@@ -192,9 +191,8 @@ def get_X_y(params, file1, file2):
         c_option=column_option,
         sep='\t',
         header=header,
-        parse_dates=True
-    )
-    y = y.ravel()
+        parse_dates=True)
+
     return X, y
 
 
