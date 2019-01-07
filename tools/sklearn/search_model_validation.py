@@ -134,9 +134,12 @@ if __name__ == '__main__':
 
     warnings.simplefilter('ignore')
 
-    input_json_path = sys.argv[1]
+    inputs = sys.argv[1].split(',')
+    input_json_path = inputs[0]
     with open(input_json_path, 'r') as param_handler:
         params = json.load(param_handler)
+    if len(inputs) > 1:
+        params['search_schemes']['options']['cv_selector']['groups_selector']['infile_g'] = inputs[1]
 
     infile_pipeline = sys.argv[2]
     infile1 = sys.argv[3]
@@ -185,13 +188,9 @@ if __name__ == '__main__':
     optimizer = getattr(model_selection, optimizer)
 
     options = params['search_schemes']['options']
+
     splitter, groups = get_cv(options.pop('cv_selector'))
-    if groups is None:
-        options['cv'] = splitter
-    elif groups == '':
-        options['cv'] = list( splitter.split(X, y, groups=None) )
-    else:
-        options['cv'] = list( splitter.split(X, y, groups=groups) )
+    options['cv'] = list( splitter.split(X, y, groups=groups) )
     options['n_jobs'] = N_JOBS
     primary_scoring = options['scoring']['primary_scoring']
     options['scoring'] = get_scoring(options['scoring'])

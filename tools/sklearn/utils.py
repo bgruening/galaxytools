@@ -313,15 +313,22 @@ def get_cv(cv_json):
     if cv == 'default':
         return cv_json['n_splits'], None
 
-    groups = cv_json.pop('groups', None)
-    if groups:
-        groups = groups.strip()
-        if groups != '':
-            if groups.startswith('__ob__'):
-                groups = groups[6:]
-            if groups.endswith('__cb__'):
-                groups = groups[:-6]
-            groups = [int(x.strip()) for x in groups.split(',')]
+    groups_selector = cv_json.pop('groups_selector', None)
+    if groups_selector:
+        infile_g = groups_selector['infile_g']
+        header = 'infer' if groups_selector['header_g'] else None
+        column_option = groups_selector['column_selector_options_g']['selected_column_selector_option_g']
+        if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+            c = groups_selector['column_selector_options_g']['col_g']
+        else:
+            c = None
+        groups = read_columns(
+                infile_g,
+                c = c,
+                c_option = column_option,
+                sep='\t',
+                header=header,
+                parse_dates=True)
 
     for k, v in cv_json.items():
         if v == '':
