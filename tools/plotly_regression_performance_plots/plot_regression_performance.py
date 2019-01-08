@@ -69,7 +69,7 @@ def main(infile_input, infile_output):
     )
 
     layout_true_pred = go.Layout(
-        title='True vs predicted values (RMSE: ' + str(np.round(rmse, 2)) + ', R2: ' + str(np.round(r2, 2)) + ')',
+        title='True vs predicted values (RMSE: %s, R2: %s)' % (str(np.round(rmse, 2)), str(np.round(r2, 2))),
         xaxis=dict(title='True values'),
         yaxis=dict(title='Predicted values')
     )
