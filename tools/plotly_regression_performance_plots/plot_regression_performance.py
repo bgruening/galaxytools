@@ -1,5 +1,6 @@
 import argparse
 import pandas as pd
+import numpy as np
 import plotly
 import plotly.graph_objs as go
 
@@ -47,6 +48,12 @@ def main(infile_input, infile_output):
     max_tv = int(max(true_values))
     x_y_values = list(range(0, max_tv))
 
+    true_mean = np.mean(true_values)
+    res_true_predicted = np.sum((true_values - predicted_values) ** 2)
+    res_total = np.sum((true_values - true_mean) ** 2)
+    r2 = 1 - (res_true_predicted / float(res_total))
+    rmse = np.sqrt(np.mean([(x - y) ** 2 for x, y in zip(true_values, predicted_values)]))
+
     trace_x_eq_y = go.Scatter(
         x=x_y_values,
         y=x_y_values,
@@ -62,7 +69,7 @@ def main(infile_input, infile_output):
     )
 
     layout_true_pred = go.Layout(
-        title='True vs predicted values',
+        title='True vs predicted values (RMSE: ' + str(np.round(rmse, 2)) + ', R2: ' + str(np.round(r2, 2)) + ')',
         xaxis=dict(title='True values'),
         yaxis=dict(title='Predicted values')
     )
