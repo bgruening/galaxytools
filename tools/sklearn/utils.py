@@ -141,10 +141,10 @@ def feature_selector(inputs):
         options['scoring'] = get_scoring(options['scoring'])
         options['n_jobs'] = N_JOBS
         splitter, groups = get_cv(options.pop('cv_selector'))
-        if groups:
-            options['cv'] = list( splitter.split(X, y, groups=groups) )
-        else:
+        if groups is None:
             options['cv'] = splitter
+        else:
+            options['cv'] = list( splitter.split(X, y, groups=groups) )
         step = options.get('step', None)
         if step and step >= 1.0:
             options['step'] = int(step)
@@ -317,7 +317,7 @@ def get_cv(cv_json):
         return cv_json['n_splits'], None
 
     groups = cv_json.pop('groups_selector', None)
-    if groups:
+    if groups is not None:
         infile_g = groups['infile_g']
         header = 'infer' if groups['header_g'] else None
         column_option = groups['column_selector_options_g']['selected_column_selector_option_g']

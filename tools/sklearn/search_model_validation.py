@@ -183,6 +183,7 @@ if __name__ == '__main__':
             sep='\t',
             header=header,
             parse_dates=True)
+    y = y.ravel()
 
     optimizer = params['search_schemes']['selected_search_scheme']
     optimizer = getattr(model_selection, optimizer)
@@ -190,10 +191,7 @@ if __name__ == '__main__':
     options = params['search_schemes']['options']
 
     splitter, groups = get_cv(options.pop('cv_selector'))
-    if groups:
-        options['cv'] = list( splitter.split(X, y, groups=groups) )
-    else:
-        options['cv'] = splitter
+    options['cv'] = splitter
     options['n_jobs'] = N_JOBS
     primary_scoring = options['scoring']['primary_scoring']
     options['scoring'] = get_scoring(options['scoring'])
@@ -213,12 +211,12 @@ if __name__ == '__main__':
     searcher = optimizer(pipeline, search_params, **options)
 
     if options['error_score'] == 'raise':
-        searcher.fit(X, y)
+        searcher.fit(X, y, groups=groups)
     else:
         warnings.simplefilter('always', FitFailedWarning)
         with warnings.catch_warnings(record=True) as w:
             try:
-                searcher.fit(X, y)
+                searcher.fit(X, y, groups=groups)
             except ValueError:
                 pass
             for warning in w:
