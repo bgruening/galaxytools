@@ -141,8 +141,10 @@ def feature_selector(inputs):
         options['scoring'] = get_scoring(options['scoring'])
         options['n_jobs'] = N_JOBS
         splitter, groups = get_cv(options.pop('cv_selector'))
-        # TODO support group cv splitters
-        options['cv'] = splitter
+        if groups:
+            options['cv'] = list( splitter.split(X, y, groups=groups) )
+        else:
+            options['cv'] = splitter
         step = options.get('step', None)
         if step and step >= 1.0:
             options['step'] = int(step)
@@ -192,6 +194,7 @@ def get_X_y(params, file1, file2):
         sep='\t',
         header=header,
         parse_dates=True)
+    y = y.ravel()
 
     return X, y
 
@@ -313,13 +316,13 @@ def get_cv(cv_json):
     if cv == 'default':
         return cv_json['n_splits'], None
 
-    groups_selector = cv_json.pop('groups_selector', None)
-    if groups_selector:
-        infile_g = groups_selector['infile_g']
-        header = 'infer' if groups_selector['header_g'] else None
-        column_option = groups_selector['column_selector_options_g']['selected_column_selector_option_g']
+    groups = cv_json.pop('groups_selector', None)
+    if groups:
+        infile_g = groups['infile_g']
+        header = 'infer' if groups['header_g'] else None
+        column_option = groups['column_selector_options_g']['selected_column_selector_option_g']
         if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
-            c = groups_selector['column_selector_options_g']['col_g']
+            c = groups['column_selector_options_g']['col_g']
         else:
             c = None
         groups = read_columns(
@@ -329,6 +332,7 @@ def get_cv(cv_json):
                 sep='\t',
                 header=header,
                 parse_dates=True)
+        groups = groups.ravel()
 
     for k, v in cv_json.items():
         if v == '':
