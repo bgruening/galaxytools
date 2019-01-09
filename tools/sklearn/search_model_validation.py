@@ -190,7 +190,10 @@ if __name__ == '__main__':
     options = params['search_schemes']['options']
 
     splitter, groups = get_cv(options.pop('cv_selector'))
-    options['cv'] = list( splitter.split(X, y, groups=groups) )
+    if groups:
+        options['cv'] = list( splitter.split(X, y, groups=groups) )
+    else:
+        options['cv'] = splitter
     options['n_jobs'] = N_JOBS
     primary_scoring = options['scoring']['primary_scoring']
     options['scoring'] = get_scoring(options['scoring'])
