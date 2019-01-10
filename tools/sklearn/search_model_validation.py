@@ -223,7 +223,11 @@ if __name__ == '__main__':
                 print(repr(warning.message))
 
     cv_result = pandas.DataFrame(searcher.cv_results_)
-    cv_result.rename(inplace=True, columns={'mean_test_primary': 'mean_test_'+primary_scoring, 'rank_test_primary': 'rank_test_'+primary_scoring})
+    col_rename = {}
+    for col in cv_result.columns:
+        if col.endswith('_primary'):
+            col_rename[col] = col[:-7] + primary_scoring
+    cv_result.rename(inplace=True, columns=col_rename)
     cv_result.to_csv(path_or_buf=outfile_result, sep='\t', header=True, index=False)
 
     if outfile_estimator:
