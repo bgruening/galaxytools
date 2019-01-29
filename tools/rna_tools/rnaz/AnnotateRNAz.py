@@ -7,9 +7,9 @@
 # Created: Sat Jan 26 12:45:25 2019 (+0100)
 # Version:
 # Package-Requires: ()
-# Last-Updated: Sat Jan 26 16:21:54 2019 (+0100)
+# Last-Updated: Tue Jan 29 13:52:57 2019 (+0100)
 #           By: Joerg Fallmann
-#     Update #: 185
+#     Update #: 188
 # URL:
 # Doc URL:
 # Keywords:
@@ -53,7 +53,6 @@ import argparse
 from io import StringIO
 import gzip
 import traceback as tb
-from pybedtools import *
 import pybedtools
 import re
 import tempfile
@@ -70,7 +69,7 @@ def annotate(bed, input, bedout, rnazout):
     try:
 
         pybedtools.set_tempdir('.')  # Make sure we do not write somewhere we are not supposed to
-        anno = BedTool(bed)
+        anno = pybedtools.BedTool(bed)
         rnaz=readrnaz(input)
         tmpbed = pybedtools.BedTool(rnaztobed(rnaz), from_string=True)
 
