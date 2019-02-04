@@ -1,0 +1,240 @@
+<tool id="graphclust_align_cluster" name="Align GraphClust cluster " version="0.1" >
+<description>structural alignment and conservation analysis of predicted clusters</description> 
+  <requirements>
+      <requirement type="package" version="0.6.0">graphclust-wrappers</requirement>
+      <requirement type="package" version='0.5'>perl-array-utils</requirement>
+      <requirement type="package" version='0.18.1'>scikit-learn</requirement>
+      <requirement type="package" version='1.8.10'>locarna</requirement>
+      <requirement type="package" version='2.1'>rnaz</requirement>
+      <requirement type="package" version="1.1.2">infernal</requirement>
+      <requirement type="package" version='2.2.10'>viennarna</requirement>
+      <requirement type="package" version='1.3.30'>graphicsmagick</requirement>
+      <requirement type="package" version='0.6.1'>rscape</requirement>
+      <requirement type="package" version='6.0'>unzip</requirement>
+      <requirement type="package" version='0.1'>evofold2</requirement>
+      <requirement type="package" version='1.70'>biopython</requirement>
+      <requirement type="package" version='0.23.0'>pandas</requirement>
+  </requirements>
+  <command detect_errors="aggressive">
+  <![CDATA[
+      #set $alignment_clustal = 'cluster.aln'
+      mkdir ./RESULTS/ &&
+      'gc_align_clusters.pl'
+      '$cluster_all_fa'
+      ./RESULTS/ C1 
+      $results_top_num
+
+      "
+        #if  str($advanced_opts.advanced_opts_selector) == "show":
+            #if  str($advanced_opts.param_type.param_type_selector) == "gclust":
+                  $advanced_opts.param_type.p
+                  $advanced_opts.param_type.max_diff_am
+                  $advanced_opts.param_type.max_diff
+                  $advanced_opts.param_type.tau
+                  $advanced_opts.param_type.struct_weight
+                  $advanced_opts.param_type.indel_opening
+                  $advanced_opts.param_type.indel
+                  $advanced_opts.param_type.alifold_consensus_dp
+            #end if
+        #end if
+      "
+      &&
+      '$__tool_directory__/call_rscape.sh' ./RESULTS/ result.aln.sth &&
+      RNAz --locarnate '$alignment_clustal' > alignment.rnaz.out &&
+      #if  str($genomic_cons_opts.genomic_cons_opts_selector) != "no":
+          clustal_to_alma.py '$alignment_clustal' $cluster_all &&
+          EvoFoldV2.sh -o alignment.evofold.out '${alignment_clustal}.ama'
+          #if  str($genomic_cons_opts.genomic_cons_opts_selector) == "hg38_100way":
+             '$__tool_directory__/hg38.100way.nh'
+          #elif str($genomic_cons_opts.genomic_cons_opts_selector) == "hg38_20way":
+             '$__tool_directory__/hg38.20way.nh'
+          #else 
+         '$alignment_clustal'.ama '$genomic_cons_opts.phylo_tree'
+      #end if
+      &&
+    #else
+      touch alignment.evofold.out &&
+    #end if
+    
+    extract_conservation_metrics.py 
+    '$alignment_clustal' alignment.rnaz.out RESULTS/result.aln.sum alignment.evofold.out  
+    '$cluster_all' 
+    #if  str($bed_opts.bed_opts_selector) == "yes":
+        '$bed_opts.transcript_loci_fasta' 
+    '$bed_opts.transcript_loci_bed' 
+    '$bed_opts.genome_version' 
+  #else  
+    '' '' ''
+  #end if
+  conservation_metrics.tsv
+   
+]]>
+  </command>
+  <inputs>
+      <param type="data" name="cluster_all_fa" label="cluster-sequences-sorted" format="fasta"
+        help="Cluster sequences from the collect-result step"/>
+      <param type="data" name="cluster_all" label="cmsearch-results" format="txt"
+        help="Tabular cmsearch results of the cluster-collection step (CLUSTERS-cmsearch)"/>
+      <param name="results_top_num" type="integer" value="5" size="5" label="results_top_num" 
+        help="Top number of cmsearch hit sequences are used for structural alignment and metrics"/>
+
+      <conditional name="genomic_cons_opts">
+          <param type="select" name="genomic_cons_opts_selector" label="Phylo tree for evofold" 
+              help="For MAF genomic alignments as input data, corresponding phylo tree is required to perform Evofold2 structural conservation predcition. For other genomic alignemnts, please upload the tree file.">
+              <option value="no">No</option>
+              <option value="hg38_100way">hg38-100way</option>
+              <option value="hg38_20way">hg38-20way</option>
+              <option value="user_phylo_tree">from history</option>
+          </param>
+          <when value="no" />
+          <when value="hg38_100way" />
+          <when value="hg38_20way" />                
+          <when value="user_phylo_tree">
+              <param format="newick" name="phylo_tree" type="data" label="Newick phylo-tree" />
+          </when>
+      </conditional>
+      <conditional name="bed_opts">
+          <param type="select" name="bed_opts_selector" label="Extract genomic coordinates of the clusters" >
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+          </param>
+          <when value="no" />
+          <when value="yes" >
+              <param format="fasta" name="transcript_loci_fasta" type="data" label="Loci reference sequence"
+                help="Sequence of reference species (human) for the genomic loci (precursor mRNA/lncRNA) to locate the clusters" />
+              <param name='transcript_loci_bed' type="text" value="chr1 0 100000 gene 0 +" 
+                help="bed entry string of the reference transcript loci for bed/ucsc-track output. 'chrom start end name score strand' white-space separated.">
+                <validator type="regex" message="one-line bed string must have at least 6 entries as BED6 format (chrom start end name 0 strand) 
+                (space and tab allowed)">^\S+\s+[0-9]+\s+[0-9]+\s+\S+\s+\S+\s+[-+]\s*$</validator> 
+              </param>
+              <param name='genome_version' value="hg38" type="text" label="reference genome assembly"
+                help="ucsc reference genome assembly version used in the input MAF alignments (e.g. hg38, hg19, mm10). To identify the reference in clusters">
+                  <validator type="regex" message="ucsc genome assembly version has an alphabet prefix and a number suffix">^[a-zA-Z]+[0-9]+$</validator> 
+              </param>
+          </when>
+      </conditional> 
+      <conditional name="advanced_opts">
+          <param name="advanced_opts_selector" type="select" label="Locarna alignment options">
+              <option value="hide" selected="True">Hide</option>
+              <option value="show">Show</option>
+          </param>
+          <when value="hide"></when>
+          <when value="show">
+              <conditional name="param_type">
+                  <param name="param_type_selector" type="select" label="Choose the type of parameters">
+                      <option value="locarna">LocARNA defaults</option>
+                      <option value="gclust" selected="True">GrapClust defaults(changeable)</option>
+                  </param>
+                  <when value="gclust">
+                      <param name="p" type="float" value="0.001" size="5" label="minimal probability" help="-p"/>
+                      <param name="max_diff_am" type="integer" value="50" size="5" label=" maximal difference for sizes of matched arcs" help="--max-diff-am"/>
+                      <param argument="tau" type="integer" value="50" min="0" max="200" label="Sequence contribution at structure match in percent"/>
+                      <param name="max_diff" type="integer" value="100" size="5" label="maximal difference for alignment traces" help="--max-diff"/>
+                      <param name="struct_weight" argument="struct-weight"
+                              label="Structure weight" type="integer"
+                              value="180" min="0" max="800" />
+                       <param name="indel_opening" argument="indel-opening"
+                              label="Indel opening score" type="integer"
+                              value="-400" max="0" min="-1500" />
+                       <param argument="indel" label="Indel score" type="integer"
+                              value="-200" min="-1000" max="0" />
+                       <param  name="alifold_consensus_dp"
+                               type="boolean" checked="True"
+                               truevalue="--alifold-consensus-dp" falsevalue=" "
+                               label="Compute consensus dot plot by alifold" />
+                  </when>
+                  <when value="locarna">
+                  </when>
+              </conditional>
+          </when>
+      </conditional>
+  </inputs>
+  <outputs>
+      <data name="alignment_ps" format="data" from_work_dir="cluster.aln.ps" label="alignment.ps"  />
+      <data name="alignment_png" format="png" from_work_dir="cluster.aln.png" label="alignment.png"  />
+      <data name="structure_ps" format="data" from_work_dir="cluster.alirna.ps" label="structure.ps"  />
+      <data name="structure_png" format="png" from_work_dir="cluster.alirna.png" label="structure.png"  /> 
+      <data name="alignment_sth" format="stockholm" from_work_dir="result.aln.sth" label="alignment.sth"  />
+      <data name="alignment_clustal_out" format="clustal" from_work_dir="cluster.aln" label="alignment.clustal"  />
+      <data name="Rscape_R2R" format="pdf" from_work_dir="RESULTS/result.aln_1.R2R.sto.pdf" label="Rscape-R2R"  />
+      <data name="rnaz_out" format="txt" from_work_dir="alignment.rnaz.out" label="rnaz.out"  />
+      <data name="rscape_out" format="txt" from_work_dir="alignment.sum" label="Rscape.summary"  />
+      <data name="evofold_out" format="txt" from_work_dir="alignment.evofold.out" label="evofold.out"  />
+      <data name="cons_tsv" format="tabular" from_work_dir="conservation_metrics.tsv" label="conservation_metrics.tsv"  />    
+  </outputs>
+ 
+  <tests>
+        <test>
+            <param name="cluster_all_fa" value="cluster3.all.fa"/>
+            <param name="cluster_all" value="cluster3.all"/>
+            <output name="cons_tsv" file="alignment3.cons.tsv"   compare="sim_size" delta="0"/>
+            <output name="rscape_out" file="rscape3.out" compare="sim_size"  delta="10"/>
+            <output name="structure_png" file="structure3.png" compare="sim_size" /> 
+            <output name="Rscape_R2R" file="alignment3_R2R.sto.pdf" compare="sim_size" />
+            <output name="alignment_sth" file="alignment3.sth"  compare="sim_size" delta="100" />
+            <conditional name="genomic_cons_opts">
+                <param name="genomic_cons_opts_selector" value="no"/>
+            </conditional>
+            <param name="results_top_num" value="5"/>
+        </test>
+  
+        <test>
+            <param name="cluster_all_fa" value="cluster1.all.fa"/>
+            <param name="cluster_all" value="cluster1.all"/>
+            <output name="alignment_ps" file="alignment1.ps" compare="sim_size" />
+            <output name="alignment_png" file="alignment1.png" compare="sim_size" />
+            <output name="structure_ps" file="structure1.ps" compare="sim_size" />
+            <output name="rscape_out" file="rscape1.out" compare="sim_size"  delta="10"/>
+            <output name="structure_png" file="structure1.png" compare="sim_size" /> 
+            <output name="alignment_sth" file="alignment1.sth"  compare="sim_size" delta="100" />
+            <output name="alignment_clustal_out" file="alignment1.clustal" />
+            <output name="Rscape_R2R" file="alignment1_R2R.sto.pdf" compare="sim_size" />
+            <output name="rnaz_out" file="alignment1.rnaz.out"  compare="sim_size" delta="10"/>
+            <output name="evofold_out" file="alignment1.evofold.out"  />
+            <output name="cons_tsv" file="alignment1.cons.tsv"   compare="sim_size" delta="0"/>
+            <conditional name="genomic_cons_opts">
+                <param name="genomic_cons_opts_selector" value="no"/>
+            </conditional>
+            <param name="results_top_num" value="5"/>
+
+        </test>
+        
+        <test>
+            <param name="cluster_all_fa" value="cluster2.all.fa"/>
+            <param name="cluster_all" value="cluster2.all"/>
+            <output name="alignment_png" file="alignment2.png" compare="sim_size" />
+            <output name="structure_png" file="structure2.png" compare="sim_size" /> 
+            <output name="alignment_sth" file="alignment2.sth"  compare="sim_size" delta="100" />
+            <output name="alignment_clustal_out" file="alignment2.clustal" />
+            <output name="rnaz_out" file="alignment2.rnaz.out"  />
+            <output name="evofold_out" file="alignment2.evofold.out"  />
+            <output name="cons_tsv" file="alignment2.cons.tsv"  />
+            <conditional name="genomic_cons_opts">
+                <param name="genomic_cons_opts_selector" value="hg38_20way"/>
+            </conditional>
+        </test>  
+
+        <test>
+            <param name="cluster_all_fa" value="cluster2.all.fa"/>
+            <param name="cluster_all" value="cluster2.all"/>
+            <output name="cons_tsv" file="alignment2b.cons.tsv"  />
+            <conditional name="genomic_cons_opts">
+                <param name="genomic_cons_opts_selector" value="hg38_20way"/>
+            </conditional>
+            <conditional name="bed_opts">
+                <param name="bed_opts_selector" value="yes"/>
+                <param name="transcript_loci_fasta" value="alignment2b-transcript.fa"/>
+                <param name="transcript_loci_bed" value="chr7 27162434 27166719 Hoxa9-Xtend5UTR 2 -"/>
+            </conditional>
+        </test> 
+    </tests>
+    <help>
+    <![CDATA[
+        Align predicted clusters of glob_report_no_align step with locarna and conservation analysis and visualizations. 
+
+    ]]>
+  </help>
+  <citations>
+    <citation type="doi">10.5281/zenodo.597695</citation>
+  </citations>
+</tool>

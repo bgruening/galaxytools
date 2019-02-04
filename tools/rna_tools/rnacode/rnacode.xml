@@ -1,7 +1,8 @@
-<tool id="rbc_rnacode" name="RNAcode" version="0.3.1">
+<tool id="rbc_rnacode" name="RNAcode" version="0.3.2">
     <description>Analyze the protein coding potential in MSA.</description>
     <requirements>
         <requirement type="package" version="0.3">rnacode</requirement>
+        <requirement type="package" version="9.22">ghostscript</requirement>
     </requirements>
     <version_command>RNAcode --version</version_command>
     <command detect_errors="exit_code">
@@ -52,11 +53,22 @@
         #elif $outputFormat.value == '--gtf'
             --outfile $outFileGTF
         #end if
-        
+
+        ## add missing header 
+        #if $cond_breakmaf.select_breakmaf != 'breakmaf' and $outputFormat.value == '--tabular':
+            && sed -i -e "1 i\HSS #\tStrand\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP" $outFileDefault        #end if
+
+        #if $cond_generateEPS.generateEPS == 'create'
+            #if $cond_generateEPS.imgoutfmt == 'zipeps'
+                 && tar -czf '$out_eps_zip' eps
+            #else if $cond_generateEPS.imgoutfmt == 'eps'
+                 && gs -sDEVICE=eps2write -dNOPAUSE -dBATCH -dSAFER -sOutputFile='$out_eps_mp' `ls -v eps/*.eps`
+            #end if     
+        #end if     
     ]]>
     </command>
     <inputs>
-        <param name="alignment" type="data" format="clustal,maf" label="Multiple Alignment" help="Alignment needs to be formatted in ClustalW or MAF format"/>
+        <param name="alignment" type="data" format="maf" label="Multiple Alignment" help="Alignment needs to be formatted in ClustalW or MAF format"/>
         <conditional name="cond_breakmaf">
             <param name="select_breakmaf" type="select" label="Break long alignment blocks" help="If your alignments contain blocks of long genomic regions it is usually not reasonable to score these long regions as a whole.">
                 <option value="keepmaf" selected="true">Process original alignment</option>
@@ -85,13 +97,18 @@
             </when>
         </conditional>
         <conditional name="cond_generateEPS">
-            <param name="generateEPS" type="select" label="Create colored plots in EPS format" help="The generated plots are resolution independent vector graphics that can be included in any graphics software. For each high scoring segment below a given cutoff (see --eps-cutoff) a file named hss-N.eps is created (N is the running number of the high scoring segment)">
-                <option value="create" selected="true">Create Plots</option>
-                <option value="nocreate">Do not generate EPS plots</option>
+            <param name="generateEPS" type="select" label="Create plots" help="The generated plots are resolution independent vector graphics that can be included in any graphics software. For each high scoring segment below a given cutoff (see --eps-cutoff) a file named hss-N.eps is created (N is the running number of the high scoring segment)">
+                <option value="create">Create Plots</option>
+                <option value="nocreate" selected="true">Do not generate EPS plots</option>
             </param>
             <when value="create">
                 <param argument="--eps_cutoff" name="eps_cutoff" type="float" optional="true" value="0.05" label="Create plots only for high scoring segments with p better than:" help=""/>
-            </when>
+                <param name="imgoutfmt" type="select" label="Output format" help="For larger numbers of high scoring segments output to a collection can be slow. Choose zipped or single page eps in this case.">
+                    <option value="sepeps" selected="true">separate eps in collection</option>
+                    <option value="zipeps">zipped eps</option>
+                    <option value="eps">multi page eps</option>
+                </param>
+	    </when>
             <when value="nocreate"/>
         </conditional>
 
@@ -107,24 +124,43 @@
         <data name="outFileGTF" format="gtf" label="${tool.name} on ${on_string}">
             <filter>outputFormat == '--gtf'</filter>
         </data>
-        <collection name="output_eps" type="list" label="Plots for ${tool.name} on ${on_string}">
-            <filter>cond_generateEPS['generateEPS'] == "create"</filter>
+        <collection name="output_eps" type="list" label="Plots for ${tool.name} on ${on_string} (plots)">
+            <filter>cond_generateEPS['generateEPS'] == "create" and cond_generateEPS['imgoutfmt'] == "sepeps"</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;.*)\.eps" directory="eps" ext="eps"/>
         </collection>
+        <data name="out_eps_zip" format="zip" label="${tool.name} on ${on_string} (plots)">
+            <filter>cond_generateEPS['generateEPS'] == "create" and cond_generateEPS['imgoutfmt'] == "zipeps"</filter>
+        </data>
+        <data name="out_eps_mp" format="eps" label="${tool.name} on ${on_string} (plots)">
+            <filter>cond_generateEPS['generateEPS'] == "create" and cond_generateEPS['imgoutfmt'] == "eps"</filter>
+        </data>
     </outputs>
     <tests>
         <test>
             <param name="alignment" value="coding.aln"/>
-            <param name="generateEPS" value="nocreate"/>
             <param name="outputFormat" value="--tabular"/>
             <output name="outFileDefault" ftype="tabular" file="rnacode_result1.tabular" compare="sim_size"/>
+            <conditional name="cond_generateEPS">
+                <param name="generateEPS" value="create"/>
+                <param name="eps_cutoff" value="0.05"/>
+                <param name="imgoutfmt" value="sepeps" />
+            </conditional>
+            <output_collection name="output_eps" type="list" count="2">
+                <element name="hss-0" file="hss-0.eps" ftype="eps" compare="sim_size" delta="50000"/>
+                <element name="hss-1" file="hss-1.eps" ftype="eps" compare="sim_size" delta="50000"/>
+            </output_collection>
             <!-- sim_size is needed due to rnacode using random sampling: result files differ, better tests should be implemented -->
         </test>
         <test>
             <param name="alignment" value="coding.aln"/>
-            <param name="generateEPS" value="nocreate"/>
+            <conditional name="cond_generateEPS">
+                <param name="generateEPS" value="create"/>
+                <param name="eps_cutoff" value="0.05"/>
+                <param name="imgoutfmt" value="zipeps" />
+            </conditional>
             <param name="outputFormat" value="--tabular"/>
             <output name="outFileDefault" ftype="tabular" file="rnacode_result1.tabular" compare="sim_size"/>
+            <output name="out_eps_zip" ftype="zip" file="eps.tar.gz" compare="sim_size" delta="50000"/>
             <!-- sim_size is needed due to rnacode using random sampling: result files differ, better tests should be implemented -->
         </test>
         <test>
@@ -132,9 +168,14 @@
             <conditional name="cond_breakmaf">
                 <param name="select_breakmaf" value="breakmaf"/>
             </conditional>
-            <param name="generateEPS" value="nocreate"/>
+            <conditional name="cond_generateEPS">
+                <param name="generateEPS" value="create"/>
+                <param name="eps_cutoff" value="0.05"/>
+                <param name="imgoutfmt" value="eps" />
+            </conditional>
             <param name="outputFormat" value="--gtf"/>
             <output name="outFileGTF" ftype="gtf" file="rnacode_result2.gtf" compare="sim_size"/>
+            <output name="out_eps_mp" ftype="eps" file="eps.eps" compare="sim_size" delta="50000"/>
             <!-- sim_size is needed due to rnacode using random sampling: result files differ, better tests should be implemented -->
         </test>
         <test>

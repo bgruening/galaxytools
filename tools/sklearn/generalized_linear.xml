@@ -19,51 +19,35 @@ import json
 import numpy as np
 import sklearn.linear_model
 import pandas
-import pickle
 from scipy.io import mmread
 
-@COLUMNS_FUNCTION@
+with open("$__tool_directory__/sk_whitelist.json", "r") as f:
+    sk_whitelist = json.load(f)
+exec(open("$__tool_directory__/utils.py").read(), globals())
 
 input_json_path = sys.argv[1]
-params = json.load(open(input_json_path, "r"))
+with open(input_json_path, "r") as param_handler:
+    params = json.load(param_handler)
 
 #if $selected_tasks.selected_task == "train":
+
+X, y = get_X_y(params, "$selected_tasks.selected_algorithms.input_options.infile1" ,"$selected_tasks.selected_algorithms.input_options.infile2")
 
 algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
 options = params["selected_tasks"]["selected_algorithms"]["options"]
 
-#if $selected_tasks.selected_algorithms.input_options.selected_input=="tabular":
-header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header1"] else None
-X = read_columns(
-        "$selected_tasks.selected_algorithms.input_options.infile1",
-        "$selected_tasks.selected_algorithms.input_options.col1",
-        sep='\t',
-        header=header,
-        parse_dates=True
-)
-#else:
-X = mmread(open("$selected_tasks.selected_algorithms.input_options.infile1", 'r'))
-#end if
-
-header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header2"] else None
-y = read_columns(
-        "$selected_tasks.selected_algorithms.input_options.infile2",
-        "$selected_tasks.selected_algorithms.input_options.col2",
-        sep='\t',
-        header=header,
-        parse_dates=True
-)
-
 my_class = getattr(sklearn.linear_model, algorithm)
 estimator = my_class(**options)
 estimator.fit(X,y)
-pickle.dump(estimator,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCOL)
+with open("$outfile_fit", 'wb') as out_handler:
+    pickle.dump(estimator, out_handler, pickle.HIGHEST_PROTOCOL)
 
 #else:
-classifier_object = pickle.load(open("$selected_tasks.infile_model", 'r'))
+with open("$selected_tasks.infile_model", 'rb') as model_handler:
+    classifier_object = load_model(model_handler)
 data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=None, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False )
 prediction = classifier_object.predict(data)
-prediction_df = pandas.DataFrame(prediction)
+prediction_df = pandas.DataFrame(prediction, columns=["predicted"])
 res = pandas.concat([data, prediction_df], axis=1)
 res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
 #end if
@@ -216,30 +200,24 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             </when>
         </expand>
     </inputs>
-    <outputs>
-        <data format="tabular" name="outfile_predict">
-            <filter>selected_tasks['selected_task'] == 'load'</filter>
-        </data>
-        <data format="zip" name="outfile_fit">
-            <filter>selected_tasks['selected_task'] == 'train'</filter>
-        </data>
-    </outputs>
+    <expand macro="output"/>
     <tests>
         <test>
             <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
             <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
-            <param name="col1" value="1,2,3,4,5"/>
+            <param name="selected_column_selector_option" value="all_but_by_index_number"/>
+            <param name="col1" value="6"/>
             <param name="col2" value="6"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="SGDRegressor"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model01" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model01" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model01" ftype="zip"/>
             <param name="infile_data" value="regression_test.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
-            <output name="outfile_predict" file="glm_result01" compare="sim_size" delta="500"/>
+            <output name="outfile_predict" file="glm_result01" lines_diff="4"/>
         </test>
         <test>
             <param name="infile1" value="train.tabular" ftype="tabular"/>
@@ -249,7 +227,7 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="SGDClassifier"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model02" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model02" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model02" ftype="zip"/>
@@ -265,7 +243,7 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="RidgeClassifier"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model03" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model03" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model03" ftype="zip"/>
@@ -280,14 +258,13 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             <param name="col2" value="6"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="LinearRegression"/>
-            <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model04" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model04" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model04" ftype="zip"/>
             <param name="infile_data" value="regression_test.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
-            <output name="outfile_predict" file="glm_result04" compare="sim_size"/>
+            <output name="outfile_predict" file="glm_result04" lines_diff="8"/>
         </test>
         <test>
             <param name="infile1" value="train.tabular" ftype="tabular"/>
@@ -297,7 +274,7 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="LogisticRegression"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model05" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model05" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model05" ftype="zip"/>
@@ -313,7 +290,7 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="LogisticRegressionCV"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model06" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model06" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model06" ftype="zip"/>
@@ -329,13 +306,13 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="Ridge"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model07" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model07" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model07" ftype="zip"/>
             <param name="infile_data" value="regression_test.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
-            <output name="outfile_predict" file="glm_result07" compare="sim_size"/>
+            <output name="outfile_predict" file="glm_result07"/>
         </test>
         <test>
             <param name="infile1" value="train.tabular" ftype="tabular"/>
@@ -343,9 +320,9 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False, header=None)
             <param name="col1" value="1,2,3,4"/>
             <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
-            <param name="selected_algorithm" value="LogisticRegressionCV"/>
+            <param name="selected_algorithm" value="Perceptron"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="glm_model08" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="glm_model08" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="glm_model08" ftype="zip"/>

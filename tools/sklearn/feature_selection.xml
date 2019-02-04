@@ -1,4 +1,4 @@
-<tool id="sklearn_feature_selection" name="Feature Selection" version="@VERSION@">
+<tool id="sklearn_feature_selection" name="Feature Selection" version="@VERSION@.1">
     <description>module, including univariate filter selection methods and recursive feature elimination algorithm</description>
     <macros>
         <import>main_macros.xml</import>
@@ -15,234 +15,127 @@
         <inputs name="inputs" />
         <configfile name="feature_selection_script">
             <![CDATA[
-import sys
 import json
-import pandas
-import pickle
-import numpy as np
 import sklearn.feature_selection
-from sklearn import svm, linear_model, ensemble
 
-@COLUMNS_FUNCTION@
+with open('$__tool_directory__/sk_whitelist.json', 'r') as f:
+    sk_whitelist = json.load(f)
+exec(open('$__tool_directory__/utils.py').read(), globals())
+
+warnings.simplefilter('ignore')
+
+safe_eval = SafeEval()
 
 input_json_path = sys.argv[1]
-params = json.load(open(input_json_path, "r"))
+with open(input_json_path, 'r') as param_handler:
+    params = json.load(param_handler)
 
-input_type = params["input_options"]["selected_input"]
-if input_type=="tabular":
-    header = 'infer' if params["input_options"]["header1"] else None
-    X = read_columns(
-            "$input_options.infile1",
-            "$input_options.col1",
+#handle cheetah
+#if $fs_algorithm_selector.selected_algorithm == 'SelectFromModel'\
+        and $fs_algorithm_selector.model_inputter.input_mode == 'prefitted':
+params['fs_algorithm_selector']['model_inputter']['fitted_estimator'] =\
+        '$fs_algorithm_selector.model_inputter.fitted_estimator'
+#end if
+
+#if $fs_algorithm_selector.selected_algorithm == 'SelectFromModel'\
+        and $fs_algorithm_selector.model_inputter.input_mode == 'new'\
+        and $fs_algorithm_selector.model_inputter.estimator_selector.selected_module == 'customer_estimator':
+params['fs_algorithm_selector']['model_inputter']['estimator_selector']['c_estimator'] =\
+        '$fs_algorithm_selector.model_inputter.estimator_selector.c_estimator'
+#end if
+
+#if $fs_algorithm_selector.selected_algorithm in ['RFE', 'RFECV']\
+        and $fs_algorithm_selector.estimator_selector.selected_module == 'customer_estimator':
+params['fs_algorithm_selector']['estimator_selector']['c_estimator'] =\
+        '$fs_algorithm_selector.estimator_selector.c_estimator'
+#end if
+
+# Read features
+features_has_header = params['input_options']['header1']
+input_type = params['input_options']['selected_input']
+if input_type == 'tabular':
+    header = 'infer' if features_has_header else None
+    column_option = params['input_options']['column_selector_options_1']['selected_column_selector_option']
+    if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+        c = params['input_options']['column_selector_options_1']['col1']
+    else:
+        c = None
+    X, input_df = read_columns(
+            '$input_options.infile1',
+            c = c,
+            c_option = column_option,
+            return_df = True,
             sep='\t',
             header=header,
             parse_dates=True
     )
 else:
-    X = mmread(open("$input_options.infile1", 'r'))
+    X = mmread('$input_options.infile1')
 
-header = 'infer' if params["input_options"]["header2"] else None
+# Read labels
+header = 'infer' if params['input_options']['header2'] else None
+column_option = params['input_options']['column_selector_options_2']['selected_column_selector_option2']
+if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+    c = params['input_options']['column_selector_options_2']['col2']
+else:
+    c = None
 y = read_columns(
-        "$input_options.infile2",
-        "$input_options.col2",
+        '$input_options.infile2',
+        c = c,
+        c_option = column_option,
         sep='\t',
         header=header,
         parse_dates=True
 )
 y=y.ravel()
 
-selector = params["feature_selection_algorithms"]["selected_algorithm"]
-selector = getattr(sklearn.feature_selection, selector)
-options = params["feature_selection_algorithms"]["options"]
+# Create feature selector
+new_selector = feature_selector(params['fs_algorithm_selector'])
+if params['fs_algorithm_selector']['selected_algorithm'] != 'SelectFromModel'\
+        or params['fs_algorithm_selector']['model_inputter']['input_mode'] != 'prefitted' :
+    new_selector.fit(X, y)
 
-#if $feature_selection_algorithms.selected_algorithm == 'SelectFromModel':
-if not options['threshold'] or options['threshold'] == 'None':
-    options['threshold'] = None
-#if $feature_selection_algorithms.extra_estimator.has_estimator == 'no_load':
-fitted_estimator = pickle.load(open("$feature_selection_algorithms.extra_estimator.fitted_estimator", 'r'))
-new_selector = selector(fitted_estimator, prefit=True, **options)
-#else:    
-estimator=params["feature_selection_algorithms"]["estimator"]
-if params["feature_selection_algorithms"]["extra_estimator"]["has_estimator"]=='no':
-    estimator=params["feature_selection_algorithms"]["extra_estimator"]["new_estimator"]
-estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
-new_selector = selector(estimator, **options)
-new_selector.fit(X, y)
-#end if
+## Transform to select features
+selected_names = None
 
-#elif $feature_selection_algorithms.selected_algorithm in ['RFE', 'RFECV']:
-if 'scoring' in options and (not options['scoring'] or options['scoring'] == 'None'):
-    options['scoring'] = None
-estimator=params["feature_selection_algorithms"]["estimator"]
-if params["feature_selection_algorithms"]["extra_estimator"]["has_estimator"]=='no':
-    estimator=params["feature_selection_algorithms"]["extra_estimator"]["new_estimator"]
-estimator=eval(estimator.replace('__dq__', '"').replace("__sq__","'"))
-new_selector = selector(estimator, **options)
-new_selector.fit(X, y)
-
-#elif $feature_selection_algorithms.selected_algorithm == "VarianceThreshold":
-new_selector = selector(**options)
-new_selector.fit(X, y)
-
-#else:
-score_func = params["feature_selection_algorithms"]["score_func"]
-score_func = getattr(sklearn.feature_selection, score_func)
-new_selector = selector(score_func, **options)
-new_selector.fit(X, y)
-#end if
-
-#if $select_methods.selected_method == "fit_transform":
 res = new_selector.transform(X)
+if features_has_header:
+    selected_names = input_df.columns[new_selector.get_support(indices=True)]
+res = pandas.DataFrame(res, columns = selected_names)
+res.to_csv(path_or_buf='$outfile', sep='\t', index=False)
 
-#else:
-res = new_selector.get_support(params["select_methods"]["indices"])
+#if $save:
+with open('$outfile_selector', 'wb') as output_handler:
+    pickle.dump(new_selector, output_handler, pickle.HIGHEST_PROTOCOL)
 #end if
-
-res = pandas.DataFrame(res)
-res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
-
 
             ]]>
         </configfile>
     </configfiles>
     <inputs>
-        <conditional name="feature_selection_algorithms">
-            <param name="selected_algorithm" type="select" label="Select a feature selection algorithm">
-                <option value="SelectFromModel" selected="true">SelectFromModel - Meta-transformer for selecting features based on importance weights</option>
-                <option value="GenericUnivariateSelect" selected="true">GenericUnivariateSelect - Univariate feature selector with configurable strategy</option>
-                <option value="SelectPercentile">SelectPercentile - Select features according to a percentile of the highest scores</option>
-                <option value="SelectKBest">SelectKBest - Select features according to the k highest scores</option>
-                <option value="SelectFpr">SelectFpr - Filter: Select the p-values below alpha based on a FPR test</option>
-                <option value="SelectFdr">SelectFdr - Filter: Select the p-values for an estimated false discovery rate</option>
-                <option value="SelectFwe">SelectFwe - Filter: Select the p-values corresponding to Family-wise error rate</option>
-                <option value="RFE">RFE - Feature ranking with recursive feature elimination</option>
-                <option value="RFECV">RFECV - Feature ranking with recursive feature elimination and cross-validated selection of the best number of features</option>
-                <option value="VarianceThreshold">VarianceThreshold - Feature selector that removes all low-variance features</option>
-                <!--option value="chi2">Compute chi-squared stats between each non-negative feature and class</option-->
-                <!--option value="f_classif">Compute the ANOVA F-value for the provided sample</option-->
-                <!--option value="f_regression">Univariate linear regression tests</option-->
-                <!--option value="mutual_info_classif">Estimate mutual information for a discrete target variable</option-->
-                <!--option value="mutual_info_regression">Estimate mutual information for a continuous target variable</option-->
-            </param>
-            <when value="SelectFromModel">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" >
-                        <option value="no_load">No, I will load a prefitted estimator</option>
-                    </expand>
-                    <expand macro="feature_selection_estimator_choices" >
-                        <when value="no_load">
-                            <param name="fitted_estimator" type="data" format='zip' label="Load a prefitted estimator" />
-                        </when>
-                    </expand>
-                </conditional>
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="threshold" type="text" value="" optional="true" label="threshold" help="The threshold value to use for feature selection. e.g. 'mean', 'median', '1.25*mean'." />
-                    <param argument="norm_order" type="integer" value="1" label="norm_order" help="Order of the norm used to filter the vectors of coefficients below threshold in the case where the coef_ attribute of the estimator is of dimension 2. " />
-                </section>
-            </when>
-            <when value="GenericUnivariateSelect">
-                <expand macro="feature_selection_score_function" />
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="mode" type="select" label="Feature selection mode">
-                        <option value="percentile">percentile</option>
-                        <option value="k_best">k_best</option>
-                        <option value="fpr">fpr</option>
-                        <option value="fdr">fdr</option>
-                        <option value="fwe">fwe</option>
-                    </param>
-                    <param argument="param" type="float" value="" optional="true" label="Parameter of the corresponding mode" help="float or int depending on the feature selection mode" />
-                </section>
-            </when>
-            <when value="SelectPercentile">
-                <expand macro="feature_selection_score_function" />
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="percentile" type="integer" value="10" optional="True" label="Percent of features to keep" />
-                </section>
-            </when>
-            <when value="SelectKBest">
-                <expand macro="feature_selection_score_function" />
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="k" type="integer" value="10" optional="True" label="Number of top features to select" help="No 'all' option is supported." />
-                </section>
-            </when>
-            <when value="SelectFpr">
-                <expand macro="feature_selection_score_function" />
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest p-value for features to be kept."/>
-                </section>
-            </when>
-            <when value="SelectFdr">
-                <expand macro="feature_selection_score_function" />
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest uncorrected p-value for features to keep."/>
-                </section>
-            </when>
-            <when value="SelectFwe">
-                <expand macro="feature_selection_score_function" />
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="alpha" type="float" value="" optional="True" label="Alpha" help="The highest uncorrected p-value for features to keep."/>
-                </section>
-            </when>
-            <when value="RFE">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="n_features_to_select" type="integer" value="" optional="true" label="n_features_to_select" help="The number of features to select. If None, half of the features are selected." />
-                    <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
-                    <param argument="verbose" type="integer" value="0" label="verbose" help="Controls verbosity of output." />
-                </section>
-            </when>
-            <when value="RFECV">
-                <expand macro="feature_selection_estimator" />
-                <conditional name="extra_estimator">
-                    <expand macro="feature_selection_extra_estimator" />
-                    <expand macro="feature_selection_estimator_choices" />
-                </conditional>
-                <section name="options" title="Other Options" expanded="True">
-                    <param argument="step" type="float" value="1" label="step" optional="true" help="Default = 1. " />
-                    <param argument="cv" type="integer" value="" optional="true" label="cv" help="Determines the cross-validation splitting strategy" />
-                    <param argument="scoring" type="text" value="" optional="true" label="scoring" help="A string (see model evaluation documentation) or a scorer callable object / function with signature scorer(estimator, X, y)."/>
-                    <param argument="verbose" type="integer" value="0" label="verbose" help="Controls verbosity of output." />
-                    <param argument="n_jobs" type="integer" value="1" label="n_jobs" help="Number of cores to run in parallel while fitting across folds. Defaults to 1 core."/>
-                </section>
-            </when>
-            <when value="VarianceThreshold">
-                <section name="options" title="Options" expanded="True">
-                    <param argument="threshold" type="float" value="" optional="True" label="Threshold" help="Features with a training-set variance lower than this threshold will be removed."/>
-                </section>
-            </when>
-            <!--when value="chi2">
-            </when>
-            <when value="f_classif">
-            </when>
-            <when value="f_regression">
-            </when>
-            <when value="mutual_info_classif">
-            </when>
-            <when value="mutual_info_regression">
-            </when-->
-        </conditional>
-        <expand macro="feature_selection_methods" />
+        <expand macro="feature_selection_fs"/>
+        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Save the fitted selector?"/>
         <expand macro="sl_mixed_input"/>
     </inputs>
     <outputs>
-        <data format="txt" name="outfile"/>
+        <data format="tabular" name="outfile" />
+        <data format="zip" name="outfile_selector" label="${fs_algorithm_selector.selected_algorithm}">
+            <filter>save</filter>
+        </data>
     </outputs>
     <tests>
         <test>
             <param name="selected_algorithm" value="SelectFromModel"/>
-            <param name="has_estimator" value="no"/>
-            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="True"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="col2" value="1"/>
-            <param name="header2" value="True"/>
+            <param name="input_mode" value="new"/>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="n_estimators=10, random_state=10"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <param name="header2" value="false"/>
             <output name="outfile" file="feature_selection_result01"/>
         </test>
         <test>
@@ -311,26 +204,30 @@ res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
         </test>
         <test>
             <param name="selected_algorithm" value="RFE"/>
-            <param name="has_estimator" value="no"/>
-            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="True"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="col2" value="1"/>
-            <param name="header2" value="True"/>
+            <param name="input_mode" value="new"/>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="n_estimators=10, random_state=10"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <param name="header2" value="false"/>
             <output name="outfile" file="feature_selection_result08"/>
         </test>
         <test>
             <param name="selected_algorithm" value="RFECV"/>
-            <param name="has_estimator" value="no"/>
-            <param name="new_estimator" value="ensemble.RandomForestRegressor(n_estimators = 1000, random_state = 42)"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="True"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="col2" value="1"/>
-            <param name="header2" value="True"/>
+            <param name="input_mode" value="new"/>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="n_estimators=10, random_state=10"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="6"/>
+            <param name="header2" value="false"/>
             <output name="outfile" file="feature_selection_result09"/>
         </test>
         <test>
@@ -344,6 +241,31 @@ res.to_csv(path_or_buf="$outfile", sep='\t', index=False)
             <param name="header2" value="True"/>
             <output name="outfile" file="feature_selection_result10"/>
         </test>
+        <test>
+            <param name="selected_algorithm" value="SelectKBest"/>
+            <param name="k" value="3"/>
+            <param name="infile1" value="test3.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="selected_column_selector_option" value="all_but_by_header_name"/>
+            <param name="col1" value="target"/>
+            <param name="infile2" value="test3.tabular" ftype="tabular"/>
+            <param name="header2" value="True"/>
+            <param name="selected_column_selector_option2" value="by_header_name"/>
+            <param name="col2" value="target"/>
+            <output name="outfile" file="feature_selection_result11"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="SelectFromModel"/>
+            <param name="input_mode" value="prefitted"/>
+            <param name="fitted_estimator" value="rfr_model01" ftype="zip"/>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="header1" value="false"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="false"/>
+            <output name="outfile" file="feature_selection_result12"/>
+        </test>
     </tests>
     <help>
         <![CDATA[
@@ -355,5 +277,8 @@ For information about classification metric functions and their parameter settin
 .. _`Scikit-learn classification metrics`: http://scikit-learn.org/stable/modules/model_evaluation.html#classification-metrics
         ]]>
     </help>
-    <expand macro="sklearn_citation"/>
+    <expand macro="sklearn_citation">
+        <expand macro="skrebate_citation"/>
+        <expand macro="xgboost_citation"/>
+    </expand>
 </tool>

@@ -1,0 +1,412 @@
+<tool id="sklearn_build_pipeline" name="Pipeline Builder" version="@VERSION@">
+    <description>constructs a list of transforms and a final estimator</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements">
+        <requirement type="package" version="0.6">skrebate</requirement>
+        <requirement type="package" version="0.4.2">imbalanced-learn</requirement>
+    </expand>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        python "$sklearn_pipeline_script" '$inputs'
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+        <configfile name="sklearn_pipeline_script">
+            <![CDATA[
+import json
+import pprint
+import skrebate
+import imblearn
+from imblearn import under_sampling, over_sampling, combine
+from imblearn.pipeline import Pipeline as imbPipeline
+from sklearn import (preprocessing, svm, linear_model, ensemble, naive_bayes,
+                    tree, neighbors, decomposition, kernel_approximation, cluster)
+from sklearn.pipeline import Pipeline
+
+with open('$__tool_directory__/sk_whitelist.json', 'r') as f:
+    sk_whitelist = json.load(f)
+exec(open('$__tool_directory__/utils.py').read(), globals())
+
+warnings.filterwarnings('ignore')
+
+safe_eval = SafeEval()
+
+input_json_path = sys.argv[1]
+with open(input_json_path, 'r') as param_handler:
+    params = json.load(param_handler)
+
+#if $final_estimator.estimator_selector.selected_module == 'customer_estimator':
+params['final_estimator']['estimator_selector']['c_estimator'] =\
+        '$final_estimator.estimator_selector.c_estimator'
+#end if
+
+pipeline_steps = []
+
+def get_component(input_json, check_none=False):
+    is_imblearn = False
+    if input_json['component_type'] == 'None':
+        if not check_none:
+            return None, False
+        else:
+            sys.exit("The pre-processing component type can't be None when the number of components is greater than 1.")
+    if input_json['component_type'] == 'pre_processor':
+        preprocessor = input_json['pre_processors']['selected_pre_processor']
+        pre_processor_options = input_json['pre_processors']['options']
+        my_class = getattr(preprocessing, preprocessor)
+        obj = my_class(**pre_processor_options)
+    elif input_json['component_type'] == 'feature_selection':
+        obj = feature_selector(input_json['fs_algorithm_selector'])
+    elif input_json['component_type'] == 'decomposition':
+        algorithm = input_json['matrix_decomposition_selector']['select_algorithm']
+        obj = getattr(decomposition, algorithm)()
+        options = input_json['matrix_decomposition_selector']['text_params'].strip()
+        if options != '':
+            options = safe_eval( 'dict(' + options + ')' )
+            obj.set_params(**options)
+    elif input_json['component_type'] == 'kernel_approximation':
+        algorithm = input_json['kernel_approximation_selector']['select_algorithm']
+        obj = getattr(kernel_approximation, algorithm)()
+        options = input_json['kernel_approximation_selector']['text_params'].strip()
+        if options != '':
+            options = safe_eval( 'dict(' + options + ')' )
+            obj.set_params(**options)
+    elif input_json['component_type'] == 'FeatureAgglomeration':
+        algorithm = input_json['FeatureAgglomeration_selector']['select_algorithm']
+        obj = getattr(cluster, algorithm)()
+        options = input_json['FeatureAgglomeration_selector']['text_params'].strip()
+        if options != '':
+            options = safe_eval( 'dict(' + options + ')' )
+            obj.set_params(**options)
+    elif input_json['component_type'] == 'skrebate':
+        algorithm = input_json['skrebate_selector']['select_algorithm']
+        if algorithm == 'TuRF':
+            obj = getattr(skrebate, algorithm)(core_algorithm='ReliefF')
+        else:
+            obj = getattr(skrebate, algorithm)()
+        options = input_json['skrebate_selector']['text_params'].strip()
+        if options != '':
+            options = safe_eval( 'dict(' + options + ')' )
+            obj.set_params(**options)
+    elif input_json['component_type'] == 'imblearn':
+        is_imblearn = True
+        algorithm = input_json['imblearn_selector']['select_algorithm']
+        if algorithm == 'over_sampling.SMOTENC':
+            obj = over_sampling.SMOTENC(categorical_features=[])
+        else:
+            globals = algorithm.split('.')
+            mod, klass = globals[0], globals[1]
+            obj = getattr(getattr(imblearn, mod), klass)()
+        options = input_json['imblearn_selector']['text_params'].strip()
+        if options != '':
+            options = safe_eval( 'dict(' + options + ')' )
+            obj.set_params(**options)
+    if 'n_jobs' in obj.get_params():
+        obj.set_params( n_jobs=N_JOBS )
+    return obj, is_imblearn
+
+has_imblearn = False
+if len(params['pipeline_component']) == 1:
+    step_obj, is_imblearn = get_component( params['pipeline_component'][0]['component_selector'])
+    if step_obj:
+        pipeline_steps.append( ('preprocessing_1', step_obj) )
+        if is_imblearn:
+            has_imblearn = True
+else:
+    for i, c in enumerate(params['pipeline_component']):
+        step_obj, is_imblearn = get_component( c['component_selector'], check_none=True )
+        pipeline_steps.append( ('preprocessing_' + str(i+1), step_obj) )
+        if is_imblearn:
+            has_imblearn = True
+
+# Set up final estimator and add to pipeline.
+estimator_json = params['final_estimator']['estimator_selector']
+if estimator_json['selected_module'] == 'none':
+    if len(pipeline_steps) == 0:
+        sys.exit("No pipeline steps specified!")
+    else:   # turn the last pre-process component to final estimator
+        pipeline_steps[-1] = ('estimator', pipeline_steps[-1][-1])
+else:
+    estimator = get_estimator(estimator_json)
+    pipeline_steps.append( ('estimator', estimator) )
+
+if has_imblearn:
+    pipeline = imbPipeline(pipeline_steps)
+else:
+    pipeline = Pipeline(pipeline_steps)
+pprint.pprint(pipeline.named_steps)
+
+with open('$outfile', 'wb') as out_handler:
+    pickle.dump(pipeline, out_handler, pickle.HIGHEST_PROTOCOL)
+
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <repeat name="pipeline_component" min="1" max="5" title="Pre-processing step">
+            <conditional name="component_selector">
+                <param name="component_type" type="select" label="Choose the type of transformation:">
+                    <option value="None" selected="true">None</option>
+                    <option value="pre_processor">Sklearn Preprocessor</option>
+                    <option value="feature_selection">Feature Selection</option>
+                    <option value="decomposition">Matrix Decomposition</option>
+                    <option value="kernel_approximation">Kernel Approximation</option>
+                    <option value="FeatureAgglomeration">Agglomerate Features</option>
+                    <option value="skrebate">SK-rebate feature selection</option>
+                    <option value="imblearn">imbalanced-learn sampling</option>
+                </param>
+                <when value="None"/>
+                <when value="pre_processor">
+                    <conditional name="pre_processors">
+                        <expand macro="sparse_preprocessors_ext" />
+                        <expand macro="sparse_preprocessor_options_ext" />
+                    </conditional>
+                </when>
+                <when value="feature_selection">
+                    <expand macro="feature_selection_pipeline"/>
+                </when>
+                <when value="decomposition">
+                    <expand macro="matrix_decomposition_all"/>
+                </when>
+                <when value="kernel_approximation">
+                    <expand macro="kernel_approximation_all"/>
+                </when>
+                <when value="FeatureAgglomeration">
+                    <expand macro="FeatureAgglomeration"/>
+                </when>
+                <when value="skrebate">
+                    <expand macro="skrebate"/>
+                </when>
+                <when value="imblearn">
+                    <expand macro="imbalanced_learn_sampling"/>
+                </when>
+            </conditional>
+        </repeat>
+        <section name="final_estimator" title="Final Estimator" expanded="true">
+            <conditional name="estimator_selector">
+                <param name="selected_module" type="select" label="Choose the module that contains target estimator:" >
+                    <expand macro="estimator_module_options">
+                        <option value="customer_estimator">Load a customer estimator</option>
+                        <option value="none">none -- The last component of pre-processing step will turn to a final estimator</option>
+                    </expand>
+                </param>
+                <expand macro="estimator_suboptions">
+                    <when value="customer_estimator">
+                        <param name="c_estimator" type="data" format="zip" label="Choose the dataset containing the customer estimator or pipeline:"/>
+                    </when>
+                    <when value="none"/>
+                </expand>
+            </conditional>
+        </section>
+    </inputs>
+    <outputs>
+        <data format="zip" name="outfile"/>
+    </outputs>
+    <tests>
+        <test>
+            <repeat name="pipeline_component">
+                <conditional name="component_selector">
+                    <param name="component_type" value="pre_processor"/>
+                    <conditional name="pre_processors">
+                        <param name="selected_pre_processor" value="RobustScaler"/>
+                    </conditional>
+                </conditional>
+            </repeat>
+            <repeat name="pipeline_component">
+                <conditional name="component_selector">
+                    <param name="component_type" value="feature_selection"/>
+                    <conditional name="fs_algorithm_selector">
+                        <param name="selected_algorithm" value="SelectKBest"/>
+                        <param name="score_func" value="f_classif"/>
+                    </conditional>
+                </conditional>
+            </repeat>
+            <param name="selected_module" value="svm"/>
+            <param name="selected_estimator" value="SVR"/>
+            <param name="text_params" value="kernel='linear'"/>
+            <output name="outfile" file="pipeline01" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="pre_processor"/>
+                <conditional name="pre_processors">
+                    <param name="selected_pre_processor" value="RobustScaler"/>
+                </conditional>
+            </conditional>
+            <param name="selected_module" value="linear_model"/>
+            <param name="selected_estimator" value="LassoCV"/>
+            <output name="outfile" file="pipeline02" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="pre_processor"/>
+                <conditional name="pre_processors">
+                    <param name="selected_pre_processor" value="RobustScaler"/>
+                </conditional>
+            </conditional>
+            <param name="selected_module" value="xgboost"/>
+            <param name="selected_estimator" value="XGBClassifier"/>
+            <output name="outfile" file="pipeline03" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="feature_selection"/>
+                <conditional name="fs_algorithm_selector">
+                    <param name="selected_algorithm" value="SelectFromModel"/>
+                    <conditional name="model_inputter">
+                        <conditional name="estimator_selector">
+                            <param name="selected_module" value="ensemble"/>
+                            <param name="selected_estimator" value="AdaBoostClassifier"/>
+                        </conditional>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <section name="final_estimator">
+                <param name="selected_module" value="svm"/>
+                <param name="selected_estimator" value="LinearSVC"/>
+            </section>
+            <output name="outfile" file="pipeline04" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="None"/>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="n_estimators=100, random_state=42"/>
+            <output name="outfile" file="pipeline05" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="decomposition"/>
+                    <conditional name="matrix_decomposition_selector">
+                        <param name="select_algorithm" value="PCA"/>
+                    </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="AdaBoostRegressor"/>
+            <output name="outfile" file="pipeline06" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="kernel_approximation"/>
+                    <conditional name="kernel_approximation_selector">
+                        <param name="select_algorithm" value="RBFSampler"/>
+                        <param name="text_params" value="n_components=10, gamma=2.0"/>
+                    </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="AdaBoostClassifier"/>
+            <output name="outfile" file="pipeline07" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="FeatureAgglomeration"/>
+                    <conditional name="FeatureAgglomeration_selector">
+                        <param name="select_algorithm" value="FeatureAgglomeration"/>
+                        <param name="text_params" value="n_clusters=3, affinity='euclidean'"/>
+                    </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="AdaBoostClassifier"/>
+            <output name="outfile" file="pipeline08" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="skrebate"/>
+                    <conditional name="skrebate_selector">
+                        <param name="select_algorithm" value="ReliefF"/>
+                        <param name="text_params" value="n_features_to_select=3, n_neighbors=100"/>
+                    </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <output name="outfile" file="pipeline09" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="None"/>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="AdaBoostRegressor"/>
+            <output name="outfile" file="pipeline10" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="imblearn"/>
+                <conditional name="imblearn_selector">
+                    <param name="select_algorithm" value="under_sampling.EditedNearestNeighbours"/>
+                </conditional>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestClassifier"/>
+            <output name="outfile" file="pipeline11" compare="sim_size" delta="5"/>
+        </test>
+        <test expect_failure="true">
+            <conditional name="component_selector">
+                <param name="component_type" value="None"/>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="n_estimators=__import__('os').system('ls ~')"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="feature_selection"/>
+                <conditional name="fs_algorithm_selector">
+                    <param name="selected_algorithm" value="RFE"/>
+                    <conditional name="estimator_selector">
+                        <param name="selected_module" value="xgboost"/>
+                        <param name="selected_estimator" value="XGBRegressor"/>
+                        <param name="text_params" value="random_state=0"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <section name="final_estimator">
+                <conditional name="estimator_selector">
+                    <param name="selected_module" value="none"/>
+                </conditional>
+            </section>
+            <output name="outfile" file="pipeline12" compare="sim_size" delta="5"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+Constructs a pipeline that contains a list of transfroms and a final estimator. Pipeline assembles several steps
+that can be cross-validated together while setting different parameters.
+please refer to `Scikit-learn pipeline Pipeline`_.
+
+**Pre-processing components** allow None, one or a combination of up to 5 transformations from `sklearn.preprocessing`_, `feature_selection`_, `decomposition`_, `kernel_approximation`_, `cluster.FeatureAgglomeration`_ and/or `skrebate`_.
+
+**Estimator** selector supports estimators from `xgboost`_ and many scikit-learn modules, including `svm`_, `linear_model`_, `ensemble`_, `naive_bayes`_, `tree`_ and `neighbors`_.
+
+
+.. _`Scikit-learn pipeline Pipeline`: http://scikit-learn.org/stable/modules/generated/sklearn.pipeline.Pipeline.html
+.. _`svm`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.svm
+.. _`linear_model`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.linear_model
+.. _`ensemble`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.ensemble
+.. _`naive_bayes`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.naive_bayes
+.. _`tree`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.tree
+.. _`neighbors`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.neighbors
+.. _`xgboost`: https://xgboost.readthedocs.io/en/latest/python/python_api.html
+
+.. _`sklearn.preprocessing`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.preprocessing
+.. _`feature_selection`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.feature_selection
+.. _`decomposition`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.decomposition
+.. _`kernel_approximation`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.kernel_approximation
+.. _`cluster.FeatureAgglomeration`: http://scikit-learn.org/stable/modules/generated/sklearn.cluster.FeatureAgglomeration.html
+.. _`skrebate`: https://epistasislab.github.io/scikit-rebate/using/
+
+        ]]>
+    </help>
+    <expand macro="sklearn_citation">
+        <expand macro="skrebate_citation"/>
+        <expand macro="xgboost_citation"/>
+        <expand macro="imblearn_citation"/>
+    </expand>
+</tool>

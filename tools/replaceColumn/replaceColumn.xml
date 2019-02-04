@@ -1,4 +1,4 @@
-<tool id="replace_column_with_key_value_file" name="Replace column" version="0.1">
+<tool id="replace_column_with_key_value_file" name="Replace column" version="0.2">
     <description>by values which are defined in a convert file</description>
     <command>
         <![CDATA[
@@ -14,35 +14,39 @@ replace_file = '$replace_information'
 original_file = '$original_file'
 column = int("$column_replace") - 1
 ignore_start_lines = int("$skip_lines")
-delimiter_local = "\t" if str("$delimiter") == "" else str("$delimiter")
+delimiter_local = "\t" if str("$delimiter") == "tab" else str("$delimiter")
+comment_str = str("$pass_comments")
+unk_strat = str("$unknowns_strategy")
 
-## read conversion information to index 
+## read conversion information to index
 conversion = {}
 
 with open(replace_file, 'r') as conversion_file:
     for line in conversion_file:
         conv_key_value = line.strip().split()
         if len(conv_key_value) == 2:
-            conversion[conv_key_value[0]] = conv_key_value[1]                
+            conversion[conv_key_value[0]] = conv_key_value[1]
 
 ## read file line by line, search for column entry if it can be replaced. Otherwise it will be skipped.
 with open("output_file", 'w') as output:
     with open(original_file) as original:
         for i, line in enumerate(original):
-            if i < ignore_start_lines:
+            if i < ignore_start_lines or (comment_str and line.startswith(comment_str)):
                 output.write(line)
                 continue
 
-            if str("$delimiter") == "":
-                line_content = line.split()
-            else:
-                line_content = line.split(str("$delimiter"))
+            line_content = line.rstrip().split(delimiter_local)
 
             out = list()
             for j, line_content_column in enumerate(line_content):
                 if j == column:
+
                     if line_content_column in conversion:
                         out.append(conversion[line_content_column])
+                    elif unk_strat == "print":
+                        out.append(line_content_column)
+                    elif unk_strat == "error":
+                        raise Exception('ERROR: Encountered a value [%s] in the file that is not in the replacements file and is not commented with [%s]' % (line_content_column, comment_str))
                 else:
                     out.append(line_content_column)
 
@@ -63,13 +67,25 @@ with open("output_file", 'w') as output:
                label="Which column should be replaced?" />
         <param name="skip_lines" type='integer' value='0' label="Skip this many starting lines" />
         <param name="delimiter" type="select" label="Delimited by">
-            <option value="" selected="True">Tab</option>
-            <option value=" ">Whitespace</option>
+            <option value="tab" selected="True">Tab</option>
+            <option value=" ">Space</option>
             <option value=".">Dot</option>
             <option value=",">Comma</option>
             <option value="-">Dash</option>
             <option value="_">Underscore</option>
             <option value="|">Pipe</option>
+        </param>
+        <param name="unknowns_strategy" type="select" label="When an unknown value is encountered">
+            <option value="skip" selected="True">Skip / Do not print</option>
+            <option value="print">Print without modification</option>
+            <option value="error">Exit with an error</option>
+        </param>
+        <param name="pass_comments" type="text" value="#" label="Do not perform replacement on lines starting with">
+            <sanitizer>
+                <valid>
+                    <add value="#" />
+                </valid>
+            </sanitizer>
         </param>
     </inputs>
     <outputs>
@@ -81,7 +97,9 @@ with open("output_file", 'w') as output:
             <param name="original_file" value="original_file" ftype="tabular" />
             <param name="column_replace" value="1"/>
             <param name="skip_lines" value="1"/>
-            <param name="delimiter" value="" />
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="skip"/>
+            <param name="pass_comments" value="#"/>
             <output name="outfile_replace" file="result_file"/>
         </test>
         <test>
@@ -89,16 +107,37 @@ with open("output_file", 'w') as output:
             <param name="original_file" value="empty_mapping" ftype="tabular" />
             <param name="column_replace" value="1"/>
             <param name="skip_lines" value="1"/>
-            <param name="delimiter" value="" />
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="skip"/>
+            <param name="pass_comments" value="#"/>
             <output name="outfile_replace" file="result_file_empty_mapping"/>
+        </test>
+        <test expect_failure="True">
+            <param name="replace_information" value="neg_test_map.txt" ftype="tabular" />
+            <param name="original_file" value="neg_test_commented.txt" ftype="tabular" />
+            <param name="column_replace" value="1"/>
+            <param name="skip_lines" value="0"/>
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="error"/>
+            <param name="pass_comments" value="#"/>
+        </test>
+        <test>
+            <param name="replace_information" value="neg_test_map.txt" ftype="tabular" />
+            <param name="original_file" value="neg_test_commented.txt" ftype="tabular" />
+            <param name="column_replace" value="1"/>
+            <param name="skip_lines" value="0"/>
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="print"/>
+            <param name="pass_comments" value="#"/>
+            <output name="outfile_replace" file="neg_test_commented.txt"/>
         </test>
     </tests>
     <help>
         <![CDATA[
 **What it does**
 
-This tool replaces the entries of a defined column with entries given by a replacement file. 
-For example the replacement file holds the information of the naming scheme of ensembl annotated chromosomes in the frist column and in the second the UCSC annotation. 
+This tool replaces the entries of a defined column with entries given by a replacement file.
+For example the replacement file holds the information of the naming scheme of ensembl annotated chromosomes in the frist column and in the second the UCSC annotation.
 A file which is having information about chromosomes in ensembl notation in column x can now be converted to a file which holds the same information but in UCSC annotation.
 
 A useful repository for ensembl and UCSC chromosomes mapping is: https://github.com/dpryan79/ChromosomeMappings

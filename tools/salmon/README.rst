@@ -1,10 +1,10 @@
 Galaxy wrappers for salmon
 =====================================
 
-These wrappers are copyright 2014, updated 2016 by Björn Grüning, Mhd Ramez Alrawas and additional contributors.
+These wrappers are copyright 2014, updated 2018 by Björn Grüning, Mhd Ramez Alrawas and additional contributors.
 All rights reserved. See the licence text below.
 
-Currently tested with salmon 0.7.2.
+Currently tested with salmon 0.11.2.
 
 
 Automated Installation
@@ -23,6 +23,12 @@ Version  Changes
 v0.6.3.0  - First release
 -------- ----------------------------------------------------------------------
 v0.7.2    - Second release
+-------- ----------------------------------------------------------------------
+v0.8.2    - Third release
+-------- ----------------------------------------------------------------------
+v0.9.1    - Fourth release
+-------- ----------------------------------------------------------------------
+v0.11.2   - Fifth release
 
 ======== ======================================================================
 

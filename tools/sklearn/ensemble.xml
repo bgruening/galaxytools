@@ -15,74 +15,74 @@
         <configfile name="ensemble_script">
 <![CDATA[
 import sys
+import os
 import json
 import numpy as np
 import sklearn.ensemble
 import pandas
-import pickle
 from scipy.io import mmread
 
-@COLUMNS_FUNCTION@
+with open("$__tool_directory__/sk_whitelist.json", "r") as f:
+    sk_whitelist = json.load(f)
+exec(open("$__tool_directory__/utils.py").read(), globals())
 
+# Get inputs, outputs.
 input_json_path = sys.argv[1]
-params = json.load(open(input_json_path, "r"))
+with open(input_json_path, "r") as param_handler:
+    params = json.load(param_handler)
+print(params)
 
+# Put all cheetah up here to avoid confusion.
 #if $selected_tasks.selected_task == "train":
-
-algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
-options = params["selected_tasks"]["selected_algorithms"]["options"]
-if "select_max_features" in options:
-    if options["select_max_features"]["max_features"] == "number_input":
-        options["select_max_features"]["max_features"] = options["select_max_features"]["num_max_features"]
-        options["select_max_features"].pop("num_max_features")
-    options["max_features"] = options["select_max_features"]["max_features"]
-    options.pop("select_max_features")
-if "presort" in options:
-    if options["presort"] == "true":
-        options["presort"] = True
-    if options["presort"] == "false":
-        options["presort"] = False
-if "min_samples_leaf" in options and options["min_samples_leaf"] == 1.0:
-    options["min_samples_leaf"] = 1
-if "min_samples_split" in options and options["min_samples_split"] > 1.0:
-    options["min_samples_split"] = int(options["min_samples_split"])
-input_type = params["selected_tasks"]["selected_algorithms"]["input_options"]["selected_input"]
-if input_type=="tabular":
-    header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header1"] else None
-    X = read_columns(
-            "$selected_tasks.selected_algorithms.input_options.infile1",
-            "$selected_tasks.selected_algorithms.input_options.col1",
-            sep='\t',
-            header=header,
-            parse_dates=True
-    )
-else:
-    X = mmread(open("$selected_tasks.selected_algorithms.input_options.infile1", 'r'))
-
-header = 'infer' if params["selected_tasks"]["selected_algorithms"]["input_options"]["header2"] else None
-y = read_columns(
-        "$selected_tasks.selected_algorithms.input_options.infile2",
-        "$selected_tasks.selected_algorithms.input_options.col2",
-        sep='\t',
-        header=header,
-        parse_dates=True
-)
-y=y.ravel()
-
-my_class = getattr(sklearn.ensemble, algorithm)
-estimator = my_class(**options)
-estimator.fit(X,y)
-pickle.dump(estimator,open("$outfile_fit", 'w+'), pickle.HIGHEST_PROTOCOL)
-
+infile1 = "$selected_tasks.selected_algorithms.input_options.infile1"
+infile2 = "$selected_tasks.selected_algorithms.input_options.infile2"
 #else:
-classifier_object = pickle.load(open("$selected_tasks.infile_model", 'r'))
-header = 'infer' if params["selected_tasks"]["header"] else None
-data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
-prediction = classifier_object.predict(data)
-prediction_df = pandas.DataFrame(prediction)
-res = pandas.concat([data, prediction_df], axis=1)
-res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
+infile_model = "$selected_tasks.infile_model"
+infile_data = "$selected_tasks.infile_data"
 #end if
+outfile_fit = "$outfile_fit"
+outfile_predict = "$outfile_predict"
+
+# All Python from here on out:
+
+if params["selected_tasks"]["selected_task"] == "train":
+    algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
+    options = params["selected_tasks"]["selected_algorithms"]["options"]
+    if algorithm in ['RandomForestClassifier', 'RandomForestRegressor']:
+        options['n_jobs'] = N_JOBS
+    if "select_max_features" in options:
+        if options["select_max_features"]["max_features"] == "number_input":
+            options["select_max_features"]["max_features"] = options["select_max_features"]["num_max_features"]
+            options["select_max_features"].pop("num_max_features")
+        options["max_features"] = options["select_max_features"]["max_features"]
+        options.pop("select_max_features")
+    if "presort" in options:
+        if options["presort"] == "true":
+            options["presort"] = True
+        if options["presort"] == "false":
+            options["presort"] = False
+    if "min_samples_leaf" in options and options["min_samples_leaf"] == 1.0:
+        options["min_samples_leaf"] = 1
+    if "min_samples_split" in options and options["min_samples_split"] > 1.0:
+        options["min_samples_split"] = int(options["min_samples_split"])
+
+    X, y = get_X_y(params, infile1, infile2)
+
+    my_class = getattr(sklearn.ensemble, algorithm)
+    estimator = my_class(**options)
+    estimator.fit(X,y)
+    with open(outfile_fit, 'wb') as out_handler:
+        pickle.dump(estimator, out_handler, pickle.HIGHEST_PROTOCOL)
+
+else:
+    with open(infile_model, 'rb') as model_handler:
+        classifier_object = load_model(model_handler)
+    header = 'infer' if params["selected_tasks"]["header"] else None
+    data = pandas.read_csv(infile_data, sep='\t', header=header, index_col=None, parse_dates=True, encoding=None, tupleize_cols=False)
+    prediction = classifier_object.predict(data)
+    prediction_df = pandas.DataFrame(prediction, columns=["predicted"])
+    res = pandas.concat([data, prediction_df], axis=1)
+    res.to_csv(path_or_buf = outfile_predict, sep="\t", index=False)
 
 ]]>
         </configfile>
@@ -100,7 +100,7 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <when value="RandomForestClassifier">
                 <expand macro="sl_mixed_input"/>
                 <section name="options" title="Advanced Options" expanded="False">
-                    <expand macro="n_estimators"/>
+                    <expand macro="n_estimators" default_value="100"/>
                     <expand macro="criterion"/>
                     <expand macro="max_features"/>
                     <expand macro="max_depth"/>
@@ -110,7 +110,6 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
                     <expand macro="max_leaf_nodes"/>
                     <expand macro="bootstrap"/>
                     <expand macro="warm_start" checked="false"/>
-                    <expand macro="n_jobs"/>
                     <expand macro="random_state"/>
                     <expand macro="oob_score"/>
                     <!--class_weight=None-->
@@ -159,7 +158,7 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <when value="RandomForestRegressor">
                 <expand macro="sl_mixed_input"/>
                 <section name="options" title="Advanced Options" expanded="False">
-                    <expand macro="n_estimators"/>
+                    <expand macro="n_estimators" default_value="100"/>
                     <expand macro="criterion2"/>
                     <expand macro="max_features"/>
                     <expand macro="max_depth"/>
@@ -170,7 +169,6 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
                     <expand macro="min_impurity_decrease"/>
                     <expand macro="bootstrap"/>
                     <expand macro="oob_score"/>
-                    <expand macro="n_jobs"/>
                     <expand macro="random_state"/>
                     <expand macro="verbose"/>
                     <expand macro="warm_start" checked="false"/>
@@ -234,13 +232,13 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="RandomForestClassifier"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="rfc_model01" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="rfc_model01" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="rfc_model01" ftype="zip"/>
             <param name="infile_data" value="test.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
-            <output name="outfile_predict" file="rfc_result01" compare="sim_size" delta="500"/>
+            <output name="outfile_predict" file="rfc_result01"/>
         </test>
         <test>
             <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
@@ -250,34 +248,34 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="RandomForestRegressor"/>
             <param name="random_state" value="10"/>
-            <output name="outfile_fit" file="rfr_model01" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="rfr_model01" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="rfr_model01" ftype="zip"/>
             <param name="infile_data" value="regression_test.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
-            <output name="outfile_predict" file="rfr_result01" compare="sim_size" delta="500"/>
+            <output name="outfile_predict" file="rfr_result01"/>
         </test>
         <test>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header1" value="True"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="selected_column_selector_option" value="all_columns"/>
             <param name="header2" value="True"/>
             <param name="col2" value="1"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="GradientBoostingRegressor"/>
             <param name="max_features" value="number_input"/>
-            <param name="num_max_features" value=""/>
+            <param name="num_max_features" value="0.5"/>
             <param name="random_state" value="42"/>
-            <output name="outfile_fit" file="gbr_model01" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="gbr_model01" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="gbr_model01" ftype="zip"/>
             <param name="infile_data" value="regression_test_X.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
             <param name="header" value="True"/>
-            <output name="outfile_predict" file="gbr_prediction_result01.tabular" compare="sim_size" delta="500"/>
+            <output name="outfile_predict" file="gbr_prediction_result01.tabular"/>
         </test>
         <test>
             <param name="infile1" value="train.tabular" ftype="tabular"/>
@@ -286,13 +284,45 @@ res.to_csv(path_or_buf = "$outfile_predict", sep="\t", index=False)
             <param name="col2" value="5"/>
             <param name="selected_task" value="train"/>
             <param name="selected_algorithm" value="GradientBoostingClassifier"/>
-            <output name="outfile_fit" file="gbc_model01" compare="sim_size" delta="500"/>
+            <output name="outfile_fit" file="gbc_model01" compare="sim_size" delta="5"/>
         </test>
         <test>
             <param name="infile_model" value="gbc_model01" ftype="zip"/>
             <param name="infile_data" value="test.tabular" ftype="tabular"/>
             <param name="selected_task" value="load"/>
-            <output name="outfile_predict" file="gbc_result01" compare="sim_size" delta="500"/>
+            <output name="outfile_predict" file="gbc_result01"/>
+        </test>
+        <test>
+            <param name="infile1" value="train.tabular" ftype="tabular"/>
+            <param name="infile2" value="train.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="AdaBoostClassifier"/>
+            <param name="random_state" value="10"/>
+            <output name="outfile_fit" file="abc_model01" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <param name="infile_model" value="abc_model01" ftype="zip"/>
+            <param name="infile_data" value="test.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile_predict" file="abc_result01"/>
+        </test>
+        <test>
+            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
+            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4,5"/>
+            <param name="col2" value="6"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="AdaBoostRegressor"/>
+            <param name="random_state" value="10"/>
+            <output name="outfile_fit" file="abr_model01" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <param name="infile_model" value="abr_model01" ftype="zip"/>
+            <param name="infile_data" value="regression_test.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <output name="outfile_predict" file="abr_result01"/>
         </test>
     </tests>
     <help><![CDATA[
