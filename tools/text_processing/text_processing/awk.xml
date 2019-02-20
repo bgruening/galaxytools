@@ -9,6 +9,7 @@
     <version_command>awk --version | head -n 1</version_command>
     <command>
 <![CDATA[
+        #set $tool_input = 1
         env -i
         awk
             --sandbox
@@ -16,14 +17,21 @@
             -v OFS='	'
             --re-interval
             -f "$awk_script"
-            #if $infile
+            #if $infile and not $last
+                tool_input=0
                 "$infile"
             #end if
             #for group in $infiles
+                tool_input=$tool_input
+                #set $tool_input+=1
                 #for file in $group.infile
                     "$file"
                 #end for
             #end for
+            #if $infile and $last
+                tool_input=0
+                "$infile"
+            #end if
         > "$outfile"
 ]]>
     </command>
@@ -32,6 +40,7 @@
     </configfiles>
     <inputs>
         <param name="infile" format="txt" type="data" optional="true" label="Single file to process" help="A seperate execution will occur for each provided file"/>
+        <param name="last" type="boolean" checked="false" label="Include the above file last" help="Include the above input after any of the below inputs" />
         <repeat name="infiles" title="Multiple input files">
             <param name="infile" format="txt" type="data" multiple="true" label="File to process" />
         </repeat>
@@ -53,6 +62,32 @@
             <param name="code" value='$2>0.5 { print $2*9"\t"$1 }' />
             <output name="outfile" file="awk_results1.txt" />
         </test>
+        <test>
+            <param name="infile">
+                <collection type="list">
+                    <element name="one" value="awk2.newick" ftype="newick" />
+                    <element name="two" value="awk2.txt" ftype="txt" />
+                </collection>
+            </param>
+            <repeat name="infiles">
+                <param name="infile">
+                    <collection type="list">
+                        <element name="one" value="awk2.1.fa" ftype="fasta" />
+                        <element name="two" value="awk2.2.fa" ftype="fasta" />
+                    </collection>
+                </param>
+            </repeat>
+            <param name="last" value="true" />
+            <param name="code" value="BEGIN {delete seq[0]} match($0, /^>([^ ]+)/, a), tool_input>0 { seq[length(seq)+1] = a[1]; nextfile } tool_input==0 { for (i in seq) gsub("seq" i-1, seq[i]); print $0}" />
+            <output name="outfile" file="" >
+                <assert_contents>
+                    <has_text text="NC_002516"/>
+                    <has_text text="NC_018080"/>
+                    <not_has_text text="seq0"/>
+                    <not_has_text text="seq1"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help>
 <![CDATA[
@@ -67,6 +102,9 @@ This tool runs the unix **awk** command on the selected data file.
 This tool uses the **extended regular** expression syntax (not the perl syntax).
 **\\d**, **\\w**, **\\s** etc. are **not** supported.
 
+A variable 'tool_input' will be set to the index of the inputs, in order. The single input will always be tool_input=0.
+You can combine this with ARGIND to determine which file you are currently operating on and its position in any possible input collection.
+Beware that ARGIND will increment 2 between inputs as one is consumed setting tool_input.
 
 **Further reading**
 
