@@ -1,7 +1,9 @@
 #!/usr/bin/python3
-"""Initialize MaxQuant tool for use with a new version or
-modified modifications/enzymes.xml.
+"""Initialize MaxQuant tool for use with a new version of
+modifications/enzymes.xml.
 
+TODO: Append function: only add modifications that are not
+already present, add modification entries to conda maxquant
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
@@ -10,13 +12,11 @@ import xml.etree.ElementTree as ET
 import os
 import sys
 import re
-import subprocess
 from xml.dom import minidom
 
 usage = '\n'.join(("Usage: {} MODS_FILE ENZYMES_FILE".format(sys.argv[0]),
                    "FILES are the modifications/enzymes.xml of MaxQuant.",
-                   "Writes a template.xml in the tool dir and updates "
-                   + "modification parameters in macros.xml."))
+                   "Updates modification parameters in macros.xml."))
 
 
 if len(sys.argv) != 3 or not (os.path.isfile(sys.argv[1])
@@ -71,8 +71,3 @@ pretty = reparsed.toprettyxml(indent="\t")
 even_prettier = re.sub(r"\n\s+\n", r"\n", pretty)
 with open('./macros.xml', 'w') as f:
     print(even_prettier, file=f)
-
-
-# create template file if necessary
-if not (os.path.isfile('./template')):
-    subprocess.run(('maxquant', '-c', './template.xml'))

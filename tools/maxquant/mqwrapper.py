@@ -1,10 +1,7 @@
 """
 Run MaxQuant on a modified mqpar.xml.
 Use maxquant conda package.
-TODO: - extend outputs
-      (- add support for protein groups)
-      - use file.displayname to match raw file names
-      - create scripts to read modifications.xml and edit mqwrapper.xml
+TODO: add support for protein groups
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
 
@@ -25,7 +22,7 @@ arguments = ["--raw_files", "--fasta_files", "--fixed_mods",
              "--missed_cleavages", "--min_unique_pep", "--mqpar_in",
              "--num_threads", "--tool_dir", "--output_all", "--mqpar_out",
              "--raw_file_names", "--mzTab", "--light_mods", "--medium_mods",
-             "--heavy_mods"]
+             "--heavy_mods", "--version"]
 
 flags = ("--calc_peak_properties", "--silac", "--write_mztab")
 
@@ -66,6 +63,16 @@ mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
 mqpar_out = args['mqpar_out'] if args['mqpar_out'] else mqpar_temp
 
 m = mqparam.MQParam(mqpar_out, mqpar_in, args['exp_design'])
+if m.version != args['version']:
+    if args['mqpar_in']:
+        raise Exception('mqpar version is ' + m.version +
+                        '. Tool uses version {}.'.format(args['version']))
+    else:
+        # update the template
+        os.remove(template_name)
+        subprocess.run(('maxquant', '-c', template_name))
+
+# modify parameters
 m.add_rawfiles([os.path.join(os.getcwd(), name) for name in filenames])
 m.add_fasta_files(args['fasta_files'].split(','))
 

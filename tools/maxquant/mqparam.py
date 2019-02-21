@@ -1,7 +1,7 @@
 """
 Create a project-specific MaxQuant parameter file.
 
-TODO: make FASTA-template dynamic
+TODO: load FASTA-template from template
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
          Franziska Elsaesser <fels@leute.server.de>
@@ -16,9 +16,7 @@ from itertools import zip_longest
 
 class MQParam:
     """Represents a mqpar.xml and provides methods to modify
-    some of its parameters. Useful to either create a working
-    mqpar.xml from a template or to just modify the file paths
-    in an already complete mqpar-file.
+    some of its parameters.
     """
 
     fasta_template = """<FastaFileInfo>
@@ -30,15 +28,6 @@ class MQParam:
     <modificationParseRule></modificationParseRule>
     <taxonomyId></taxonomyId>
     </FastaFileInfo>"""
-
-    version = '1.6.3.4'
-    # map simple params to their node in the xml tree
-    simple_params = {'missed_cleavages':
-                     '.parameterGroups/parameterGroup/maxMissedCleavages',
-                     'min_unique_pep': '.minUniquePeptides',
-                     'num_threads': 'numThreads',
-                     'calc_peak_properties': '.calcPeakProperties',
-                     'write_mztab': 'writeMzTab'}
 
     def __init__(self, mqpar_out, mqpar_in, exp_design):
         """Initialize MQParam class. mqpar_in can either be a template
@@ -54,11 +43,7 @@ class MQParam:
         self.exp_design = exp_design
         self.mqpar_out = mqpar_out
         self.root = ET.parse(mqpar_in).getroot()
-        v = self.root.find('maxQuantVersion').text
-        if v != self.version:
-            raise Exception("This tool is designed for MaxQuant "
-                            + "{}.\n".format(self.version)
-                            + "Your mqpar.xml is from MaxQuant {}".format(v))
+        self.version = self.root.find('maxQuantVersion').text
 
     @staticmethod
     def _add_child(el, name, text, attrib=None):
@@ -126,13 +111,12 @@ class MQParam:
         '3'
         """
 
-        # choose experimental design template
         if not self.exp_design:  # no experimentalDesignTemplate.txt given
             names = rawfiles
             fracs = ('32767',) * len(rawfiles)
             exps = [os.path.split(r)[1] for r in rawfiles]
             PTMs = ['False'] * len(rawfiles)
-        else:  # experimentalDesignTemplate.txt given
+        else:  # parse experimentalDesignTemplate
             with open(self.exp_design) as design_file:
                 design = {}
                 index = []
@@ -224,9 +208,16 @@ class MQParam:
         >>> t.root.find('.minUniquePeptides').text
         '4'
         """
+        # map simple params to their node in the xml tree
+        simple_params = {'missed_cleavages':
+                         '.parameterGroups/parameterGroup/maxMissedCleavages',
+                         'min_unique_pep': '.minUniquePeptides',
+                         'num_threads': 'numThreads',
+                         'calc_peak_properties': '.calcPeakProperties',
+                         'write_mztab': 'writeMzTab'}
 
-        if key in self.simple_params:
-            node = self.root.find(self.simple_params[key])
+        if key in simple_params:
+            node = self.root.find(simple_params[key])
             node.text = str(value)
         else:
             raise ValueError("Parameter not found.")
@@ -281,6 +272,7 @@ class MQParam:
                   '.parameterGroups/parameterGroup/fixedModifications',
                   'proteases':
                   '.parameterGroups/parameterGroup/enzymes'}
+
         if key in params:
             node = self.root.find(params[key])
             node.clear()
