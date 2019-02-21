@@ -33,12 +33,12 @@ class MQParam:
 
     version = '1.6.3.4'
     # map simple params to their node in the xml tree
-    simple_params = {'missed_cleavages' :
+    simple_params = {'missed_cleavages':
                      '.parameterGroups/parameterGroup/maxMissedCleavages',
-                     'min_unique_pep' : '.minUniquePeptides',
-                     'num_threads' : 'numThreads',
-                     'calc_peak_properties' : '.calcPeakProperties',
-                     'write_mztab' : 'writeMzTab'}
+                     'min_unique_pep': '.minUniquePeptides',
+                     'num_threads': 'numThreads',
+                     'calc_peak_properties': '.calcPeakProperties',
+                     'write_mztab': 'writeMzTab'}
 
     def __init__(self, mqpar_out, mqpar_in, exp_design):
         """Initialize MQParam class. mqpar_in can either be a template
@@ -138,7 +138,8 @@ class MQParam:
                 index = []
                 for line in design_file:
                     if design:
-                        for e, i in zip_longest(line.strip().split('\t'), index):
+                        row = line.strip().split('\t')
+                        for e, i in zip_longest(row, index):
                             design[i].append(e)
                     else:
                         for i in line.strip().split('\t'):
@@ -269,15 +270,16 @@ class MQParam:
         >>> len(t.root.find('.parameterGroups/parameterGroup/enzymes'))
         2
         >>> t.set_list_params('var_mods', ('Oxidation (M)', ))
-        >>> t.root.find('.parameterGroups/parameterGroup/variableModifications')[0].text
+        >>> var_mods = '.parameterGroups/parameterGroup/variableModifications'
+        >>> t.root.find(var_mods)[0].text
         'Oxidation (M)'
         """
 
-        params = {'var_mods' :
+        params = {'var_mods':
                   '.parameterGroups/parameterGroup/variableModifications',
-                  'fixed_mods' :
+                  'fixed_mods':
                   '.parameterGroups/parameterGroup/fixedModifications',
-                  'proteases' :
+                  'proteases':
                   '.parameterGroups/parameterGroup/enzymes'}
         if key in params:
             node = self.root.find(params[key])

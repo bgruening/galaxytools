@@ -13,7 +13,6 @@ https://github.com/galaxyproteomics/tools-galaxyp/tree/master/tools/maxquant
 """
 
 import os
-import sys
 import argparse
 import subprocess
 import shutil
@@ -33,9 +32,9 @@ flags = ("--calc_peak_properties", "--silac", "--write_mztab")
 
 txt_output = ("evidence", "msms", "parameters",
               "peptides", "proteinGroups", "allPeptides",
-              "libraryMatch", "matchedFeatures", "modificationSpecificPeptides",
-              "ms3Scans", "msmsScans", "mzRange",
-              "peptideSection", "summary")
+              "libraryMatch", "matchedFeatures",
+              "modificationSpecificPeptides", "ms3Scans",
+              "msmsScans", "mzRange", "peptideSection", "summary")
 
 for el in txt_output:
     arguments.append('--' + el)
@@ -63,8 +62,9 @@ list_args = ('fixed_mods', 'var_mods', 'proteases')
 # build mqpar.xml
 template_name = os.path.join(args['tool_dir'], 'template.xml')
 mqpar_in = args['mqpar_in'] if args['mqpar_in'] else template_name
-mqpar_out = args['mqpar_out'] if args['mqpar_out'] else os.path.join(os.getcwd(),
-                                                                     'mqpar.xml')
+mqpar_temp = os.path.join(os.getcwd(), 'mqpar.xml')
+mqpar_out = args['mqpar_out'] if args['mqpar_out'] else mqpar_temp
+
 m = mqparam.MQParam(mqpar_out, mqpar_in, args['exp_design'])
 m.add_rawfiles([os.path.join(os.getcwd(), name) for name in filenames])
 m.add_fasta_files(args['fasta_files'].split(','))

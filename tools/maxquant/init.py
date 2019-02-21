@@ -1,9 +1,7 @@
 #!/usr/bin/python3
-"""Initialize MaxQuant tool for use with a new Version.
+"""Initialize MaxQuant tool for use with a new version or
+modified modifications/enzymes.xml.
 
-Not a guarantee to get it working right away, but will 
-hopefully save some time. The correct conda package of maxquant
-must be installed before running this tool.
 
 Authors: Damian Glaetzer <d.glaetzer@mailbox.org>
 """
@@ -12,11 +10,12 @@ import xml.etree.ElementTree as ET
 import os
 import sys
 import re
+import subprocess
 from xml.dom import minidom
 
 usage = '\n'.join(("Usage: {} MODS_FILE ENZYMES_FILE".format(sys.argv[0]),
-                  "FILES should be the modifications/enzymes xml of MaxQuant.",
-                  "Writes a template.xml in the tool dir and updates "
+                   "FILES are the modifications/enzymes.xml of MaxQuant.",
+                   "Writes a template.xml in the tool dir and updates "
                    + "modification parameters in macros.xml."))
 
 
@@ -39,7 +38,7 @@ for m in mods:
 enzymes_root = ET.parse(sys.argv[2]).getroot()
 
 enzymes = enzymes_root.findall('enzyme')
-enzymes_list = [ e.get('title') for e in enzymes ]
+enzymes_list = [e.get('title') for e in enzymes]
 
 macros_root = ET.parse('./macros.xml').getroot()
 for child in macros_root:
@@ -48,23 +47,23 @@ for child in macros_root:
         child.tag = 'xml'
         child.set('name', 'modification')
         for m in standard_mods:
-            ET.SubElement(child, 'expand', attrib={'macro' : 'mod_option',
-                                                   'value' : m})
+            ET.SubElement(child, 'expand', attrib={'macro': 'mod_option',
+                                                   'value': m})
     elif child.get('name') == 'label':
         child.clear()
         child.tag = 'xml'
         child.set('name', 'label')
         for m in label_mods:
-            ET.SubElement(child, 'expand', attrib={'macro' : 'mod_option',
-                                                   'value' : m})
+            ET.SubElement(child, 'expand', attrib={'macro': 'mod_option',
+                                                   'value': m})
 
     elif child.get('name') == 'proteases':
         child.clear()
         child.tag = 'xml'
         child.set('name', 'proteases')
         for e in enzymes_list:
-            ET.SubElement(child, 'expand', attrib={'macro' : 'mod_option',
-                                                   'value' : e})
+            ET.SubElement(child, 'expand', attrib={'macro': 'mod_option',
+                                                   'value': e})
 
 rough_string = ET.tostring(macros_root, 'utf-8')
 reparsed = minidom.parseString(rough_string)
@@ -76,5 +75,4 @@ with open('./macros.xml', 'w') as f:
 
 # create template file if necessary
 if not (os.path.isfile('./template')):
-    subprocess.run(('maxquant', '-c', template_name))
-
+    subprocess.run(('maxquant', '-c', './template.xml'))
