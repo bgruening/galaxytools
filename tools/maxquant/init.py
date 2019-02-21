@@ -1,4 +1,4 @@
-#!/usr/bin/python3
+#!/usr/bin/env python3
 """Initialize MaxQuant tool for use with a new version of
 modifications/enzymes.xml.
 
