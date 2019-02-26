@@ -68,6 +68,7 @@ def __main__():
     parser.add_argument('--fastq', action='store_true', help='Query filetype is in FASTQ format')
     parser.add_argument('--fasta', action='store_true', help='Query filetype is in FASTA format')
     parser.add_argument('--phred64-quals', dest='phred64', action="store_true")
+    parser.add_argument('--non-directional', dest='non_directional', action="store_true")
 
     parser.add_argument('--skip-reads', dest='skip_reads', type=int)
     parser.add_argument('--qupto', type=int)
@@ -184,6 +185,8 @@ def __main__():
         cmd.extend(['--upto', 'args.qupto'])
     if args.phred64:
         cmd.append('--phred64-quals')
+    if args.non_directional:
+       cmd.append('--non-directional')
     if args.suppress_header:
         cmd.append('--sam-no-hd')
     if args.output_unmapped_reads or (args.output_unmapped_reads_l and args.output_unmapped_reads_r):
