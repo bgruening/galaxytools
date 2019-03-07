@@ -146,9 +146,9 @@ if __name__ == '__main__':
     infile2 = sys.argv[4]
     outfile_result = sys.argv[5]
     if len(sys.argv) > 6:
-        outfile_estimator = sys.argv[6]
+        outfile_object = sys.argv[6]
     else:
-        outfile_estimator = None
+        outfile_object = None
 
     params_builder = params['search_schemes']['search_params_builder']
 
@@ -230,6 +230,6 @@ if __name__ == '__main__':
     cv_result.rename(inplace=True, columns=col_rename)
     cv_result.to_csv(path_or_buf=outfile_result, sep='\t', header=True, index=False)
 
-    if outfile_estimator:
-        with open(outfile_estimator, 'wb') as output_handler:
-            pickle.dump(searcher.best_estimator_, output_handler, pickle.HIGHEST_PROTOCOL)
+    if outfile_object:
+        with open(outfile_object, 'wb') as output_handler:
+            pickle.dump(searcher, output_handler, pickle.HIGHEST_PROTOCOL)
