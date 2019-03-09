@@ -58,7 +58,7 @@ class SafePickler(pickle.Unpickler):
                     '__init__', 'func_globals', 'func_code', 'func_closure',
                     'im_class', 'im_func', 'im_self', 'gi_code', 'gi_frame',
                     '__asteval__', 'f_locals', '__mro__')
-        good_names = ['copy_reg._reconstructor', '__builtin__.object']
+        good_names = ['copy_reg._reconstructor', '__builtin__.object', 'builtins.bytearray']
 
         if re.match(r'^[a-zA-Z_][a-zA-Z0-9_]*$', name):
             fullname = module + '.' + name

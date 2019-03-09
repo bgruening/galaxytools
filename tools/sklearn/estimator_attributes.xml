@@ -1,0 +1,198 @@
+<tool id="sklearn_estimator_attributes" name="Estimator attributes" version="@VERSION@">
+    <description>get important attributes from an estimator or scikit object</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements">
+        <requirement type="package" version="0.6">skrebate</requirement>
+        <requirement type="package" version="0.4.2">imbalanced-learn</requirement>
+    </expand>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        python '$main_script'
+        ]]>
+    </command>
+    <configfiles>
+        <configfile name="main_script">
+            <![CDATA[
+import json
+from imblearn.pipeline import Pipeline as imbPipeline
+from sklearn.pipeline import Pipeline
+
+with open('$__tool_directory__/sk_whitelist.json', 'r') as f:
+    sk_whitelist = json.load(f)
+exec(open('$__tool_directory__/utils.py').read(), globals())
+
+warnings.simplefilter('ignore')
+
+infile_object = '$infile_object'
+attribute = '$attributes_selection.attribute_type'
+output_type = '$attributes_selection.output_type'
+
+with open(infile_object, 'rb') as f:
+    est_obj = load_model(f)
+if attribute == 'final_estimator':
+    res = est_obj.steps[-1][-1]
+else:
+    res = getattr(est_obj, attribute)
+
+if output_type == 'number' or type(res) in [int, float, str]:
+    res = pandas.DataFrame([res], columns=[attribute])
+    res.to_csv('$outfile_result', sep='\t', index=False)
+elif output_type == 'zip':
+    print(repr(res))
+    with open('$outfile_object', 'wb') as f:
+        pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
+elif output_type == 'text':
+    with open('$outfile_text', 'w') as f:
+        f.write(repr(res))
+else:
+    columns = []
+    if res.ndim == 1 or res.shape[-1] == 1:
+        columns = [attribute]
+    else:
+        for i in range(res.shape[-1]):
+            columns.append(attribute + '_' + str(i))
+    res = pandas.DataFrame(res, columns=columns)
+    res.to_csv('$outfile_result', sep='\t', index=False)
+
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile_object" type="data" format="zip" label="Choose the dataset containing estimator/pipeline object"/>
+        <conditional name="attributes_selection">
+            <param name="attribute_type" type="select" label="Select an attribute retrival type">
+                <option value="feature_importances_" selected="true">Fitted estimator - feature_importances_ </option>
+                <option value="coef_">Fitted estimator - coef_ </option>
+                <option value="train_score_">Fitted estimator - train_score_ </option>
+                <option value="oob_score_">Fitted estimator - oob_score_ </option>
+                <option value="init_">Fitted estimator - init_ </option>
+                <option value="named_steps">Pipeline - named_steps </option>
+                <option value="final_estimator">Pipeline - final_estimator </option>
+                <option value="best_estimator_">SearchCV - best_estimator_ </option>
+                <option value="best_score_">SearchCV - best_score_ </option>
+                <option value="best_params_">SearchCV - best_params_ </option>
+                <option value="scores_">Feature_selection - scores_ </option>
+                <option value="pvalues_">Feature_selection - pvalues_ </option>
+                <option value="ranking_">Feature_selection - ranking_ </option>
+                <option value="n_features_">Feature_selection - n_features_ </option>
+                <option value="grid_scores_">Feature_selection - grid_scores_ </option>
+            </param>
+            <when value="feature_importances_">
+                <param name="output_type" type="hidden" value="tab"/>
+            </when>
+            <when value="coef_">
+                <param name="output_type" type="hidden" value="tab"/>
+            </when>
+            <when value="train_score_">
+                <param name="output_type" type="hidden" value="tab"/>
+            </when>
+            <when value="oob_score_">
+                <param name="output_type" type="hidden" value="number"/>
+            </when>
+            <when value="init_">
+                <param name="output_type" type="hidden" value="zip"/>
+            </when>
+            <when value="named_steps">
+                <param name="output_type" type="hidden" value="text"/>
+            </when>
+            <when value="final_estimator">
+                <param name="output_type" type="hidden" value="zip"/>
+            </when>
+            <when value="best_estimator_">
+                <param name="output_type" type="hidden" value="zip"/>
+            </when>
+            <when value="best_score_">
+                <param name="output_type" type="hidden" value="number"/>
+            </when>
+            <when value="best_params_">
+                <param name="output_type" type="hidden" value="text"/>
+            </when>
+            <when value="scores_">
+                <param name="output_type" type="hidden" value="tab"/>
+            </when>
+            <when value="pvalues_">
+                <param name="output_type" type="hidden" value="tab"/>
+            </when>
+            <when value="ranking_">
+                <param name="output_type" type="hidden" value="tab"/>
+            </when>
+            <when value="n_features_">
+                <param name="output_type" type="hidden" value="number"/>
+            </when>
+            <when value="grid_scores_">
+                <param name="output_type" type="hidden" value="tab"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile_result" label="${attributes_selection.attribute_type} from ${on_string}">
+            <filter>attributes_selection['output_type'] in ['tab', 'number']</filter>
+        </data>
+        <data format="txt" name="outfile_text" label="${attributes_selection.attribute_type} from ${on_string}">
+            <filter>attributes_selection['output_type'] == 'text'</filter>
+        </data>
+        <data format="zip" name="outfile_object" label="${attributes_selection.attribute_type} object from ${on_string}">
+            <filter>attributes_selection['output_type'] == 'zip'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile_object" value="GridSearchCV.zip" ftype="zip"/>
+            <param name="attribute_type" value="best_score_"/>
+            <output name="outfile_result" file="best_score_.tabular"/>
+        </test>
+        <test>
+            <param name="infile_object" value="GridSearchCV.zip" ftype="zip"/>
+            <param name="attribute_type" value="best_params_"/>
+            <output name="outfile_text" file="best_params_.txt"/>
+        </test>
+        <test>
+            <param name="infile_object" value="GridSearchCV.zip" ftype="zip"/>
+            <param name="attribute_type" value="best_estimator_"/>
+            <output name="outfile_object" file="best_estimator_.zip" compare="sim_size" delta="10"/>
+        </test>
+         <test>
+            <param name="infile_object" value="best_estimator_.zip" ftype="zip"/>
+            <param name="attribute_type" value="final_estimator"/>
+            <output name="outfile_object" file="final_estimator.zip" compare="sim_size" delta="10"/>
+        </test>
+        <test>
+            <param name="infile_object" value="best_estimator_.zip" ftype="zip"/>
+            <param name="attribute_type" value="named_steps"/>
+            <output name="outfile_text" file="named_steps.txt" compare="sim_size" delta="10"/>
+        </test>
+        <test>
+            <param name="infile_object" value="final_estimator.zip" ftype="zip"/>
+            <param name="attribute_type" value="feature_importances_"/>
+            <output name="outfile_result" file="feature_importances_.tabular"/>
+        </test>
+        <test>
+            <param name="infile_object" value="RFE.zip" ftype="zip"/>
+            <param name="attribute_type" value="ranking_"/>
+            <output name="outfile_result" file="ranking_.tabular"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+Output attribute from an estimator or any scikit object.
+
+Common attributes are :
+
+  - ``estimator.`` *feature_importances_*
+  - ``RFE``. *ranking_*
+  - ``RFECV``. *grid_scores_*
+  - ``GridSearchCV``. *best_estimator_*
+
+        ]]>
+    </help>
+    <expand macro="sklearn_citation">
+        <expand macro="skrebate_citation"/>
+        <expand macro="xgboost_citation"/>
+        <expand macro="imblearn_citation"/>
+    </expand>
+</tool>
