@@ -59,8 +59,8 @@ txdb <- makeTxDbFromGFF(gtf, format="gtf")
 # Annotate peaks
 peakAnno <-  annotatePeak(peaks, TxDb=txdb,
     tssRegion=c(-up, down),
-    addFlankGeneInfo=args$flankgeneinfo,
-    flankDistance=flankgenedist,
+    addFlankGeneInfo=flankgeneinfo,
+    flankDistance=args$flankgenedist,
     ignoreUpstream=ignoreUpstream,
     ignoreDownstream=ignoreDownstream)
 
