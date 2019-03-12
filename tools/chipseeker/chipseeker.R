@@ -17,8 +17,8 @@ option_list <- list(
     make_option(c("-d","--downstream"), type="integer", help="TSS downstream region"),
     make_option(c("-F","--flankgeneinfo"), type="logical", help="Add flanking gene info"),
     make_option(c("-D","--flankgenedist"), type="integer", help="Flanking gene distance"),
-    make_option(c("-iu","--ignoreUpstream"), type="logical", help="Ignore upstream"),
-    make_option(c("-id","--ignoreDownstream"), type="logical", help="Ignore downstream"),
+    make_option(c("-j","--ignoreUpstream"), type="logical", help="Ignore upstream"),
+    make_option(c("-k","--ignoreDownstream"), type="logical", help="Ignore downstream"),
     make_option(c("-f","--format"), type="character", help="Output format (interval or tabular)."),
     make_option(c("-p","--plots"), type="logical", help="PDF of plots."),
     make_option(c("-r","--rdata"), type="logical", help="Output RData file.")
