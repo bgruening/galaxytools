@@ -17,6 +17,8 @@ option_list <- list(
     make_option(c("-d","--downstream"), type="integer", help="TSS downstream region"),
     make_option(c("-F","--flankgeneinfo"), type="logical", help="Add flanking gene info"),
     make_option(c("-D","--flankgenedist"), type="integer", help="Flanking gene distance"),
+    make_option(c("-iu","--ignoreUpstream"), type="logical", help="Ignore upstream"),
+    make_option(c("-id","--ignoreDownstream"), type="logical", help="Ignore downstream"),
     make_option(c("-f","--format"), type="character", help="Output format (interval or tabular)."),
     make_option(c("-p","--plots"), type="logical", help="PDF of plots."),
     make_option(c("-r","--rdata"), type="logical", help="Output RData file.")
@@ -31,15 +33,36 @@ up = args$upstream
 down = args$downstream
 format = args$format
 
+if (!is.null(args$flankgeneinfo)) {
+    flankgeneinfo <- TRUE
+} else {
+    flankgeneinfo <- FALSE
+}
+
+if (!is.null(args$ignoreUpstream)) {
+    ignoreUpstream <- TRUE
+} else {
+    ignoreUpstream <- FALSE
+}
+
+if (!is.null(args$ignoreDownstream)) {
+    ignoreDownstream <- TRUE
+} else {
+    ignoreDownstream <- FALSE
+}
+
 peaks <- readPeakFile(peaks)
 
 # Make TxDb from GTF
 txdb <- makeTxDbFromGFF(gtf, format="gtf")
-if (!is.null(args$flankgeneinfo)) {
-    peakAnno <-  annotatePeak(peaks, TxDb=txdb, tssRegion=c(-up, down), addFlankGeneInfo=args$flankgeneinfo, flankDistance=args$flankgenedist)
-} else {
-    peakAnno <-  annotatePeak(peaks, TxDb=txdb, tssRegion=c(-up, down))
-}
+
+# Annotate peaks
+peakAnno <-  annotatePeak(peaks, TxDb=txdb,
+    tssRegion=c(-up, down),
+    addFlankGeneInfo=args$flankgeneinfo,
+    flankDistance=flankgenedist,
+    ignoreUpstream=ignoreUpstream,
+    ignoreDownstream=ignoreDownstream)
 
 # Add gene name
 features <- import(gtf, format="gtf")
