@@ -14,68 +14,55 @@ mkdir -p ./fast5s_basedir/ &&
     tar -xjf $raw_signals -C ./fast5s_basedir/ &&
 #end if
 
-## Raw read FAST5 files must contain basecalls. Add basecalls from a set of FASTQs to raw read files with the tombo preprocess annotate_raw_with_fastqs command.
-## If $fastqs are provided we run tombo preprocessing
-#if $fastqs:
-    tombo preprocess annotate_raw_with_fastqs
-    --fast5-basedir ./fast5s_basedir/
-    --fastq-filenames #' '.join([$f for $f in $fastqs])#
-    --processes \${GALAXY_SLOTS:-1}
-#end if
-
-#if $reference_source.reference_source_selector == 'history':
-    ln -f -s '$reference_source.ref_file' genome.fa &&
-#else:
-    ln -f -s '$reference_source.ref_file.fields.path' genome.fa &&
-#end if
-
-tombo resquiggle
-    ./fast5s_basedir/
-    genome.fa
-
+tombo detect_modifications
+    $mode.mode_selector
+    --fast5-basedirs ./fast5s_basedir/
+    --statistics-file-basename tdm_result
     $canonical_model
     --processes \${GALAXY_SLOTS:-1}
-    #if $q_score
-        --q-score $q_score
+
+    #if $fishers_method_context
+        --fishers-method-context $fishers_method_context
     #end if
-    #if $signal_matching_score
-        --signal-matching-score
+    #if $minimum_test_reads
+        --minimum-test-reads $minimum_test_reads
     #end if
-    #if len($obs_per_base_filter) > 0:
-        --obs-per-base-filter
-        #for $filter in $obs_per_base_filter:
-            ${filter.percentile}:${filter.threshold}
-        #end for
+    #if str($single_read_threshold).strip():
+        --single-read-threshold '$single_read_threshold'
+    #end if
+    #if str($coverage_dampen_counts).strip():
+        --coverage-dampen-counts $coverage_dampen_counts
     #end if
 
 &&
 
-tar cfvz archiv.tar.gz ./fast5s_basedir/*
+ls -l tdm_result* &&
+mv tdm_result* save_result.h5
+
+##  --per-read-statistics-basename PER_READ_STATISTICS_BASENAME
+##                        Base for binary files containing per-read statistics
+##                        from statistical testing. Filenames will be [--per-
+##                        read-statistics-basename].[--alternate-
+##                        bases]?.tombo.per_read_stats
 
     ]]></command>
     <inputs>
         <param name="raw_signals" type="data" format="fast5.tar.gz" label="Raw ONT singnals"
             help="Raw read FAST5 files must contain basecalls. If you do not have basecalls in your Raw reads add them by providing the corresponding FASTQ file."/>
-        <param name="fastqs" type="data" format="fastq" multiple="true" optional="true" label="FASTQ files"
-            help="FASTQ files containing basecalls to be added to raw FAST5 files"/>
-        <conditional name="reference_source">
-            <param name="reference_source_selector" type="select" label="Load reference genome or transcriptome from">
-                <option value="cached">Local cache</option>
-                <option value="history">History</option>
+
+        <conditional name="mode">
+            <param name="mode_selector" type="select" label="Select detection mode">
+                <option value="de_novo">Test for shifts in raw signal against a canonical base model.</option>
+                <option value="alternative_model">Test for shifts in raw signal which match those of a specific known non-canonical base.</option>
+                <option value="model_sample_compare">Test for shifts in raw signal against levels estimated from a canonical/control sample (PCR/IVT) at each reference position.</option>
+                <option value="level_sample_compare">Test for shifts in raw signal against signal level distributions from a canonical/control sample (PCR/IVT) at each reference position.</option>
+                <option value="aggregate_per_read_stats">Aggregate Tombo per-read statistics to produce a genomic base statistics file.</option>
             </param>
-            <when value="cached">
-                <param name="ref_file" type="select" label="Using reference genome" help="REFERENCE_SEQUENCE">
-                    <options from_data_table="all_fasta"/>
-                    <validator type="no_options" message="A built-in reference genome is not available for the build associated with the selected input file"/>
-                </param>
+            <when value="de_novo">
             </when>
-            <when value="history">
-                <param name="ref_file" type="data" format="fasta" label="Use the following dataset as the reference sequence"
-                    help="REFERENCE_SEQUENCE; You can upload a FASTA sequence to the history and use it as reference" />
+            <when value="alternative_model">
             </when>
         </conditional>
-
-
 
         <param name="canonical_model" type="select" label="Select canonical model">
             <option value="">Automatically determine from FAST5s</option>
@@ -83,59 +70,47 @@ tar cfvz archiv.tar.gz ./fast5s_basedir/*
             <option value="--dna">RNA</option>
         </param>
 
-        <param argument="--q-score" name="q_score" type="float" value="" optional="true" label="Q-score" help="Threshold for filtering low quality reads."/>
-        <param argument="--signal-matching-score" name="signal_matching_score" type="float" value="" optional="true"
-            label="Observed to expected signal matching score" help="Higher score indicates poor matching. Defaults for RNA: 2 and DNA: 1.1"/>
+        <param argument="--fishers-method-context" name="fishers_method_context" type="integer" value="" optional="true"
+            label="Number of context bases up and downstream over which to compute Fisher's method combined p-values"
+            help="Not applicable for alternative model likelihood ratio tests."/>
+        <param argument="--minimum-test-reads" name="minimum_test_reads" type="integer" value="" optional="true"
+            label="Number of reads required at a position to perform significance testing or contribute to model estimation"
+            help=""/>
+        <param argument="--single-read-threshold" name="single_read_threshold" type="text" value="" optional="true"
+            label="P-value threshold when computing fraction of significant reads at each genomic position"
+            help="If two values are provided, statistics between these values are not considered. Default thresholds: DNA:0.15-0.5, RNA:0.05-0.4">
+            <sanitizer>
+                <valid initial="string.digits">
+                    <add value="." />
+                    <add value="-" />
+                </valid>
+            </sanitizer>
+        </param>
 
-        <repeat name="obs_per_base_filter" title="Filter reads based on observations per base percentile thresholds">
-            <param name="percentile" type="integer" value="" label="Percentile"
-                help="For example to filter reads with 99th pctl > 200 obs/base use 99 here and 200 as threshold below."/>
-            <param name="threshold" type="integer" value="" label="Threshold"/>
-        </repeat>
+        <param argument="--coverage-dampen-counts" name="coverage_dampen_counts" type="text" value="" optional="true"
+            label="Dampen fraction modified estimates for low coverage sites"
+            help="Two parameters are unmodified and modified pseudo read counts. This is equivalent to a beta prior on the fraction estimate. Set to '0 0' to disable dampened fraction estimation. Default: '2 0'">
+            <sanitizer>
+                <valid initial="string.digits">
+                    <add value=" " />
+                </valid>
+            </sanitizer>
+        </param>
+        <param argument="--consensus" type="boolean" truevalue="--consensus" falsevalue="" checked="true" label="Consensus calling mode and output polished sequence" />
     </inputs>
 
     <outputs>
-        <data name="output" format_source="raw_signals" from_work_dir="archiv.tar.gz" label="" />
+        <data name="output" format="h5" from_work_dir="save_result.h5" label="" />
     </outputs>
     <tests>
         <test>
-            <param name="raw_signals" value="fast5_files.tar.gz" ftype="fast5.tar.gz" />
+            <param name="raw_signals" value="fast5_resquiggle.tar.gz" ftype="fast5.tar.gz" />
             <param name="canonical_mode" value="--dna" />
-            <param name="reference_source_selector" value="history" />
-            <param name="ref_file" value="draft.fa"/>
-            <output name="output" file="fast5_resquiggle.tar.gz" />
-        </test>
-        <test>
-            <param name="raw_signals" value="fast5_files.tar.gz" ftype="fast5.tar.gz" />
-            <param name="canonical_mode" value="--dna" />
-            <param name="reference_source_selector" value="cached" />
-            <param name="ref_file" value="draft"/>
-            <output name="output" file="fast5_resquiggle.tar.gz" />
+            <param name="mode_selector" value="de_novo" />
+            <output name="output" file="detect_modifications_de_novo.h5" compare="sim_size" />
         </test>
     </tests>
     <help><![CDATA[
-
-The electric current signal level data produced from a nanopore read is referred to as a squiggle.
-Base calling this squiggle information generally contains some errors compared to a reference sequence.
-The re-squiggle algorithm defines a new assignment from squiggle to reference sequence, hence a re-squiggle.
-
-One of the major assumptions of the re-squiggle algorithm is that the provided reference sequence is correct.
-Thus for a poorly assembled reference or divergent sample, an assembly polishing step (possibly from the same data/sample) may improve results.
-
-The re-squiggle algorithm is the basis for the Tombo framework. The re-squiggle algorithm takes as input a
-read file (in FAST5 format) containing raw signal and associated base calls.
-The base calls are mapped to a genome or transcriptome reference and then the raw signal is assigned to the reference sequence based on an expected current level model.
-
-The resquiggle command must be run before any further processing by Tombo commands.
-
-RNA processing
---------------
-
-Processing RNA data within the Tombo framework requires some extra care. The major item to consider when performing RNA processing is that a transcriptome reference must be supplied as spliced mapping is not supported. The lack of spliced mapping support within the Tombo framework is a conscious decision for identification of modified RNA bases. This is because the transcriptome is the natural setting for the detection of modified RNA bases. When modified RNA bases are projected onto the genome reference any potential transcript isoform-specfic modification information is lost or the signal diluted. Leaving open the potential for isoform-specific modified base detection is one reason for the choice to force mapping modified bases to a transcriptome. Regions at the edge of alternative exons also have divergent expected signal levels and thus genome statistics computed at these positions would be very difficult to process into a logical output. Processing would also be very sensetive to shifts in the mapped splice boundaries which can be variable with nanopore reads.
-
-Tools to investigate isoform-specific modified bases is a future goal within the Tombo framework. This does pose some informatic challenges for downstream processing of Tombo RNA data. A recommended Tombo RNA processing pipeline will be posted here soon to help make integrative modified RNA processing more streamlined with other genome bioinformatic tools.
-
-A second minor note is that since RNA is currently sequenced in the 3’ to 5’ direction; thus special care must be taken when accessing Tombo re-squiggled raw signal data. The raw signal (from MinKNOW) and albacore basecalled events are stored in the reverse direction from the genome (3’ to 5’ for reads mapping to the plus genome strand). Tombo events for RNA data are stored in the opposite direction (corresponding to the genome strand sequence direction, not sequencing time direction) for several practical reasons. Thus if Tombo events are to be compared to the raw signal, the raw signal must be reversed. Tombo RNA models are stored in this direction as well and thus may be considered inverted as compared to some other RNA HMM signal level models processing data in the sequencing time direction.
 
 
     ]]></help>
