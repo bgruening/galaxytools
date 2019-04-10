@@ -18,7 +18,6 @@ import shutil
 import logging
 import argparse
 import tempfile
-import cStringIO
 import subprocess
 import multiprocessing
 
@@ -46,7 +45,7 @@ def unique_files( file_paths, unique_file, temp = False ):
             shutil.copyfileobj(open(filename, 'rb'), concat)
         concat.close()
         p2 = subprocess.Popen(['sort', '-u', '-k', '1,1'], stdin=open(concat.name), stdout=unique_file) #send p1's output to p2
-    except Exception, err:
+    except Exception as err:
         sys.stderr.write("Error invoking command:\n%s\n" % (err))
         raise
     stdout, stderr = p2.communicate()
@@ -390,10 +389,10 @@ def filter_input_files( input_file ):
         mol = mol.strip()
         if mol:
             if is_fragment(mol):
-                unique_input.write('%s\n' % mol)
+                unique_input.write(bytes('%s\n' % mol, 'utf-8'))
             else:
                 non_fragment_counter += 1
-                unique_input_non_fragments.write('%s\n' % mol)
+                unique_input_non_fragments.write(bytes('%s\n' % mol, 'utf-8'))
     logging.info('Your input file contains %s non-fragment molecules. These molecules will be merged back in the end-results.' % non_fragment_counter)
     trash_list.append( unique_input_raw.name )
     unique_input.close()
@@ -436,7 +435,6 @@ if __name__ == '__main__':
         default=multiprocessing.cpu_count())
 
     options = parser.parse_args()
-
     log_level = logging.WARNING
 
     verb_level = 0
@@ -462,6 +460,8 @@ if __name__ == '__main__':
     # adding the non-fragments to the results
     # result_files.append( unique_input_non_fragments.name )
     splitted_files = split_smi_library( unique_input.name, 1 )
+    print(splitted_files)
+    print(unique_input.name)
     trash_list.extend( splitted_files )
 
 
@@ -487,12 +487,14 @@ if __name__ == '__main__':
             Every single fragment against each of the other fragments, including itself
         """
         for counter, fragment_file_one in enumerate( splitted_files ):
+            print(counter, fragment_file_one)
             logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
             res = mp_helper_special_mode( [fragment_file_one], splitted_files, options )
             if res:
+                print(res)
                 result_files.append( res )
 
-
+    print(result_files)
     temp_final_result = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
     trash_list.append(temp_final_result.name)
     unique_files( result_files, temp_final_result )

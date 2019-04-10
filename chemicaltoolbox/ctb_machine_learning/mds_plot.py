@@ -9,7 +9,7 @@ import pylab
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="""2D multidimenisnal scaling of NxN matrices with scatter plot"""
+        description="""2D multidimensional scaling of NxN matrices with scatter plot"""
         )
 
     parser.add_argument("-i", "--input", dest="sm",
@@ -21,9 +21,10 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
     mds = sklearn.manifold.MDS( n_components=2, max_iter=300, eps=1e-6, dissimilarity='precomputed' )
-    data = numpy.fromfile( args.sm )
-    d = math.sqrt( len(data) )
+    data = numpy.loadtxt(args.sm)
+    d = len(data)
     sm = numpy.reshape( data, ( d,d ))
     pos = mds.fit( sm ).embedding_
     pylab.scatter( pos[:,0],pos[:,1] )
+    pylab.axis('off')
     pylab.savefig( args.output_path, format=args.oformat )

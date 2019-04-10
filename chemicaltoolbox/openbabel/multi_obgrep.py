@@ -36,6 +36,7 @@ def parse_command_line():
 
 results = list()
 def mp_callback(res):
+    print (res)
     results.append(res)
 
 def mp_helper( query, args ):
@@ -58,10 +59,12 @@ def mp_helper( query, args ):
 
     tmp = tempfile.NamedTemporaryFile(delete=False)
     cmd = 'obgrep %s "%s" %s' % (' '.join(cmd_list), query, args.infile)
+    print(cmd)
     child = subprocess.Popen(shlex.split(cmd),
         stdout=open(tmp.name, 'w+'), stderr=subprocess.PIPE)
 
     stdout, stderr = child.communicate()
+    print (tmp.name, query)
     return (tmp.name, query)
 
 
@@ -80,6 +83,7 @@ def obgrep( args ):
     pool.close()
     pool.join()
 
+    print(results)
     out_handle = open( args.outfile, 'wb' )
     for result_file, query in results:
         res_handle = open(result_file,'rb')
