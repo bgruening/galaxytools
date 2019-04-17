@@ -56,7 +56,7 @@ if __name__ == "__main__":
     """)
     parser.add_argument('--ligand', dest='ligand_path', help='The input ligand (mol file)')
     parser.add_argument('--config', dest='output', help='The output file containing calculated params (txt)')
-    parser.add_argument('--exh', dest='exhaustiveness', default=10, type=float, help='The number of poses '
+    parser.add_argument('--exh', dest='exhaustiveness', default=10, type=int, help='The number of poses '
                                                                                      'to return from docking job')
     parser.add_argument('--bufx', dest='bufx', default=0, type=float, help='the buffer in the x direction '
                                                                            '(float - in angs.)')
