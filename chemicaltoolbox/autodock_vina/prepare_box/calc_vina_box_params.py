@@ -22,7 +22,7 @@ def get_params(options):
     center = np.mean((coords1, coords2), axis=0)
 
     # calculate box dimensions
-    dims = np.abs(coords1 - coords2) + (options.tolerance,) * 3
+    dims = np.abs(coords1 - coords2)
 
     # optionally add buffers in each direction - expansion
     box_dims = [dims[0] + options.bufx, dims[1] + options.bufy, dims[2] + options.bufz]
@@ -49,7 +49,6 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--ligand', dest='ligand_path')
     parser.add_argument('--config', dest='output')
-    parser.add_argument('--tol', dest='tolerance', default=0, type=float)
     parser.add_argument('--exh', dest='exhaustiveness', default=10, type=float)
     parser.add_argument('--bufx', dest='bufx', default=0, type=float)
     parser.add_argument('--bufy', dest='bufy', default=0, type=float)
