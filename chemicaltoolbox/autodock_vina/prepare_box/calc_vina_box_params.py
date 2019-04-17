@@ -46,13 +46,24 @@ seed = 1
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--ligand', dest='ligand_path')
-    parser.add_argument('--config', dest='output')
-    parser.add_argument('--exh', dest='exhaustiveness', default=10, type=float)
-    parser.add_argument('--bufx', dest='bufx', default=0, type=float)
-    parser.add_argument('--bufy', dest='bufy', default=0, type=float)
-    parser.add_argument('--bufz', dest='bufz', default=0, type=float)
+    parser = argparse.ArgumentParser(description="""
+    This tool calculates a confounding box around an input ligand (mol file), and uses it to
+    generate the input parameters for an autodock vina job. The output file can be fed into
+    the autodock vina tool as an alternative to creating the parameter file manually. 
+    
+    Optionally, you can include a 'buffer' in each of the x,y and z directions (in angstroms),
+    which will be added to the confounding box in the appropriate direction.
+    """)
+    parser.add_argument('--ligand', dest='ligand_path', help='The input ligand (mol file)')
+    parser.add_argument('--config', dest='output', help='The output file containing calculated params (txt)')
+    parser.add_argument('--exh', dest='exhaustiveness', default=10, type=float, help='The number of poses '
+                                                                                     'to return from docking job')
+    parser.add_argument('--bufx', dest='bufx', default=0, type=float, help='the buffer in the x direction '
+                                                                           '(float - in angs.)')
+    parser.add_argument('--bufy', dest='bufy', default=0, type=float, help='the buffer in the y direction '
+                                                                           '(float - in angs.)')
+    parser.add_argument('--bufz', dest='bufz', default=0, type=float, help='the buffer in the z direction '
+                                                                           '(float - in angs.)')
 
     options = parser.parse_args()
     get_params(options)
