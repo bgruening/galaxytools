@@ -27,6 +27,11 @@ def get_params(options):
     # optionally add buffers in each direction - expansion
     box_dims = [dims[0] + options.bufx, dims[1] + options.bufy, dims[2] + options.bufz]
 
+    # if no seed set, then randomly generate one between 0 and 2**31
+    if options.seed == None:
+        from random import randint
+        options.seed = randint(0, 2147483647)
+
     with open(options.output, 'w') as f:
         f.write(
             """
@@ -40,8 +45,8 @@ num_modes = 9999
 energy_range = 9999
 exhaustiveness = {}
 cpu = 4
-seed = 1
-            """.format(box_dims[0], box_dims[1], box_dims[2], center[0], center[1], center[2], options.exhaustiveness)
+seed = {}
+            """.format(box_dims[0], box_dims[1], box_dims[2], center[0], center[1], center[2], options.exhaustiveness, options.seed)
         )
 
 
@@ -64,6 +69,7 @@ if __name__ == "__main__":
                                                                            '(float - in angs.)')
     parser.add_argument('--bufz', dest='bufz', default=0, type=float, help='the buffer in the z direction '
                                                                            '(float - in angs.)')
+    parser.add_argument('--seed', dest='seed', default=None, type=int, help='Random seed for reproducibility')
 
     options = parser.parse_args()
     get_params(options)
