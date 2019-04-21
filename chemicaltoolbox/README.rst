@@ -39,8 +39,6 @@ By combinating the various tools many more powerful applications can be designed
 ChemicalToolBox is based on open-source software, web-accessible, freely available, and easily expandable. 
 It can be downloaded and easily deployed locally or on a large scale cluster.
 
-CTB is available as a public test instance @ http://ctb.pharmaceutical-bioinformatics.org.
-
 
 .. _About Galaxy:
 

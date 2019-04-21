@@ -1,0 +1,287 @@
+<tool id="split_file_to_collection" name="Split file" version="0.1.1">
+    <description>to dataset collection</description>
+    <macros>
+        <xml name="numnew_fname">
+            <param name="numnew" type="integer" label="Number of new files" min="1" value="1"/>
+            <param name="newfilenames" type="text" label="Base name for new files in collection"
+                help="This will increment automatically - if input is 'file', then output is 'file0', 'file1', etc." value="split_file"/>
+            <conditional name="select_allocate">
+                <param name="allocate" type="select" label="Method to allocate records to new files" help="See the information section for a diagram">
+                    <option value="random">At random</option>
+                    <option value="batch">Maintain record order</option>
+                    <option value="byrow" selected="true">Alternate output files</option>
+                </param>
+                <when value="random">
+                    <param name="seed" type="integer" label="Random number seed" help="For reproducibility, set this to some arbitrary integer (i.e. '1010')" value="1010"/>
+                </when>
+                <when value="batch">
+                </when>
+                <when value="byrow">
+                </when>
+            </conditional>
+        </xml>
+    </macros>
+    <requirements>
+        <requirement type="package" version="3.5">python</requirement>
+    </requirements>
+    <command detect_errors="aggressive"><![CDATA[
+        mkdir ./out &&
+        python '$__tool_directory__/split_file_to_collection.py'
+            --out ./out
+            --in '$split_parms.input'
+            --ftype '$split_parms.select_ftype'
+            #if $split_parms.select_ftype == "tabular":
+                --top '$split_parms.top'
+                --by '$split_parms.split_by.select_split_by'
+                #if $split_parms.split_by.select_split_by == "col":
+                    --id_column '$split_parms.split_by.id_col'
+                    --match '$split_parms.split_by.match_regex'
+                    --sub '$split_parms.split_by.sub_regex'
+                #else 
+                    --numnew '$split_parms.split_by.numnew' 
+                    #if $split_parms.split_by.select_allocate.allocate == "random":
+                        --rand
+                        --seed '$split_parms.split_by.rand.seed'
+                    #end if
+                    #if $split_parms.split_by.select_allocate.allocate == "batch":
+                        --batch
+                    #end if
+                #end if
+            #else
+                --numnew '$split_parms.numnew'
+                #if $split_parms.select_allocate.allocate == "random":
+                    --rand
+                    --seed '$split_parms.select_allocate.seed'
+                #end if
+                #if $split_parms.select_allocate.allocate == "batch":
+                    --batch
+                #end if
+            #end if
+        #if ($split_parms.select_ftype == "tabular" and $split_parms.split_by.select_split_by == "row"):
+             --file_names '$split_parms.split_by.newfilenames'
+             --file_ext '$split_parms.select_ftype'
+        #end if
+        #if $split_parms.select_ftype != "tabular":
+            --file_names '$split_parms.newfilenames'
+            --file_ext '$split_parms.select_ftype'
+        #end if
+    ]]></command>
+    <inputs>
+        <conditional name="split_parms">
+            <param name="select_ftype" type="select" label="Select the file type to split">
+                <option value="mgf">MGF</option>
+                <option value="fastq">FASTQ</option>
+                <option value="tabular">Tabular</option>
+                <option value="fasta">FASTA</option>
+            </param>
+            <when value="tabular">
+                <param name="input" type="data" format="tabular" label="Tabular file to split"/>
+                <param name="top" type="integer" value="0" min="0" label="Number of header lines to transfer to new files"/>
+                <conditional name="split_by">
+                    <param name="select_split_by" type="select" label="Split by row or by a column?">
+                        <option value="row">By row</option>
+                        <option value="col">By column</option>
+                    </param>
+                    <when value="col">
+                        <param name="id_col" type="data_column" label="Column to split on" data_ref="input"/>
+                        <param name="match_regex" type="text" label="Regex to match contents of id column" value="(.*)">
+	 		                <sanitizer>
+          		                <valid>
+            		                <add preset="string.printable"/>
+            		                <remove value="&#92;" />
+           		                    <remove value="&apos;" />
+          			            </valid>
+          		                <mapping initial="none">
+            		                <add source="&#92;" target="__backslash__" />
+            		                <add source="&apos;" target="__sq__"/>
+          		                </mapping>
+			                </sanitizer>
+		                </param>
+                        <param name="sub_regex" type="text" label="Pattern to replace match with" value="\1">
+                            <sanitizer>
+                                <valid>
+                                    <add preset="string.printable"/>
+                                    <remove value="&#92;" />
+                                    <remove value="&apos;" />
+                                </valid>
+                                <mapping initial="none">
+                                    <add source="&#92;" target="__backslash__" />
+                                    <add source="&apos;" target="__sq__"/>
+                                </mapping>
+			                </sanitizer>
+                        </param>
+                    </when>
+                    <when value="row">
+                        <expand macro="numnew_fname"/>
+                    </when>
+                </conditional>
+            </when>
+            <when value="mgf">
+                <param name="input" type="data" format="mgf" label="MGF file to split"/>
+                <expand macro="numnew_fname"/>
+            </when>
+            <when value="fastq">
+                <param name="input" type="data" format="fastq" label="FASTQ file to split"/>
+                <expand macro="numnew_fname"/>
+            </when>
+            <when value="fasta">
+                <param name="input" type="data" format="fasta" label="FASTA file to split"/>
+                <expand macro="numnew_fname"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="list_output_tab" type="list" label="${tool.name} on ${on_string}: output collection">
+            <discover_datasets pattern="__name__" directory="out" visible="false" format="tabular"/>
+            <filter>split_parms['select_ftype'] == "tabular"</filter>
+        </collection>
+        <collection name="list_output_mgf" type="list" label="${tool.name} on ${on_string}: output collection">
+            <discover_datasets pattern="__name__" directory="out" visible="false" format="mgf"/>
+            <filter>split_parms['select_ftype'] == "mgf"</filter>
+        </collection>
+        <collection name="list_output_fasta" type="list" label="${tool.name} on ${on_string}: output collection">
+            <discover_datasets pattern="__name__" directory="out" visible="false" format="fasta"/>
+            <filter>split_parms['select_ftype'] == "fasta"</filter>
+        </collection>
+        <collection name="list_output_fastq" type="list" label="${tool.name} on ${on_string}: output collection">
+            <discover_datasets pattern="__name__" directory="out" visible="false" format="fastq"/>
+            <filter>split_parms['select_ftype'] == "fastq"</filter>
+        </collection>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="test.tabular" ftype="tabular"/>
+            <param name="select_ftype" value="tabular"/>
+            <param name="select_split_by" value="col"/>
+            <param name="id_col" value="1"/>
+            <param name="match_regex" value="(.*)\.mgf"/>
+            <param name="sub_regex" value="\1.tab"/>
+            <param name="top" value="2"/>
+            <output_collection name="list_output_tab" type="list">
+                <element name="foo.tab"  file="foo.tab" ftype="tabular"/>
+                <element name="foo2.tab" file="foo2.tab" ftype="tabular"/>
+                <element name="foo3.tab" file="foo3.tab" ftype="tabular"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.tabular" ftype="tabular"/>
+            <param name="select_ftype" value="tabular"/>
+            <param name="select_split_by" value="row"/>
+            <param name="top" value="2"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="test"/> 
+            <output_collection name="list_output_tab" type="list">
+                <element name="test_0.tabular" file="test_0.tabular" ftype="tabular"/>
+                <element name="test_1.tabular" file="test_1.tabular" ftype="tabular"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.tabular" ftype="tabular"/>
+            <param name="select_ftype" value="tabular"/>
+            <param name="select_split_by" value="row"/>
+            <param name="top" value="2"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="batch_tab"/>
+            <param name="allocate" value="batch"/> 
+            <output_collection name="list_output_tab" type="list">
+                <element name="batch_tab_0.tabular" file="batch_tab_0.tabular" ftype="tabular"/>
+                <element name="batch_tab_1.tabular" file="batch_tab_1.tabular" ftype="tabular"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="psm.tabular" ftype="tabular"/>
+            <param name="select_ftype" value="tabular"/>
+            <param name="select_split_by" value="col"/>
+            <param name="id_col" value="10"/>
+            <param name="match_regex" value="(.*)\.mgf"/>
+            <param name="sub_regex" value="\1.tab"/>
+            <param name="top" value="1"/>
+            <output_collection name="list_output_tab" type="list">
+                <element name="file1.tab" file="file1.tab" ftype="tabular"/>
+                <element name="file2.tab" file="file2.tab" ftype="tabular"/>
+                <element name="file3.tab" file="file3.tab" ftype="tabular"/>
+                <element name="file4.tab" file="file4.tab" ftype="tabular"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="demo758Dacentroid.mgf" ftype="mgf"/>
+            <param name="select_ftype" value="mgf"/>
+            <param name="numnew" value="3"/>
+            <param name="newfilenames" value="demo"/>
+            <output_collection name="list_output_mgf" type="list">
+                <element name="demo_0.mgf" file="demo_0.mgf" ftype="mgf"/>
+                <element name="demo_1.mgf" file="demo_1.mgf" ftype="mgf"/>
+                <element name="demo_2.mgf" file="demo_2.mgf" ftype="mgf"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.fasta" ftype="fasta"/>
+            <param name="select_ftype" value="fasta"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="test"/> 
+            <output_collection name="list_output_fasta" type="list">
+                <element name="test_0.fasta" file="test_0.fasta" ftype="fasta"/>
+                <element name="test_1.fasta" file="test_1.fasta" ftype="fasta"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.fastq" ftype="fastq"/>
+            <param name="select_ftype" value="fastq"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="test"/> 
+            <output_collection name="list_output_fastq" type="list">
+                <element name="test_0.fastq" file="test_0.fastq" ftype="fastq"/>
+                <element name="test_1.fastq" file="test_1.fastq" ftype="fastq"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.fasta" ftype="fasta"/>
+            <param name="select_ftype" value="fasta"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="rand"/>
+            <param name="allocate" value="random"/>
+            <param name="seed" value="1010"/> 
+            <output_collection name="list_output_fasta" type="list">
+                <element name="rand_0.fasta" file="rand_0.fasta" ftype="fasta"/>
+                <element name="rand_1.fasta" file="rand_1.fasta" ftype="fasta"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.fasta" ftype="fasta"/>
+            <param name="select_ftype" value="fasta"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="fasta_batch"/>
+            <param name="allocate" value="batch"/>
+            <output_collection name="list_output_fasta" type="list">
+                <element name="fasta_batch_0.fasta" file="fasta_batch_0.fasta" ftype="fasta"/>
+                <element name="fasta_batch_1.fasta" file="fasta_batch_1.fasta" ftype="fasta"/>
+            </output_collection>
+        </test> 
+    </tests>
+    <help><![CDATA[
+**Split file into a dataset collection**
+
+This tool can split five types of files into a separate files within a dataset collection: MGF, FASTA, FASTQ, and tabular.
+If a tabular file is used as input, you may choose to split by line or by column. If split by column, a new file is created for each unique value in the column.
+In addition, (Python) regular expressions may be used to transform the value in the column to a new value. Caution should be used with this feature, as it could transform all values to the same value, or other unexpected behavior.
+The default regular expression uses each value in the column without modifying it. 
+
+If splitting by line (or by some other item, like a FASTA entry or an MGF section), the splitting can be either done sequentially or at random. 
+Note that there are no guarantees when splitting at random that every result file will be non-empty, so downstream tools should be able to gracefully handle empty files. 
+
+**Note**
+
+Due to current limitations with dataset collections, a log file is produced when running this tool. It will usually be empty, but if the tool fails, any errors will be printed to the log file. 
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+@misc{githubsplit,
+  author = {Easterly, Caleb},
+  year = {2018},
+  title = {A Galxy tool for splitting a file into a collection},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  url = {https://github.com/bgruening/galaxytools/tools/text_processing/split_file_to_collection},
+}</citation>
+    </citations>
+</tool>

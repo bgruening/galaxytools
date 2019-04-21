@@ -1,206 +1,246 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<tool id="rcas" name="RNA Centric Annotation System" version="1.1.1">
+<tool id="rcas" name="RCAS" version="1.5.4">
+    <description>- RNA Centric Annotation System</description>
     <requirements>
-        <requirement type="package" version="1.1.1">bioconductor-rcas</requirement>
+        <requirement type="package" version="1.5.4">bioconductor-rcas</requirement>
     </requirements>
     <stdio>
         <regex match="Execution halted" source="both" level="fatal" description="Execution halted." />
         <exit_code range="1:" />
     </stdio>
-    <command><![CDATA[Rscript '$script_file'
+    <command><![CDATA[
+        cat '$script_file' &&
+            #if $analysis_type.analysis_type_selector == 'single_set_analysis':
+                Rscript '$script_file' &&
+                mv *RCAS.report.html RCAS.report.html
+                #if $run_annot == "TRUE":
+                    &&
+                    mv Figure*summarizeQueryRegions.data.tsv summarizeQueryRegions.data.tsv &&
+                    mv Figure*query_gene_types.data.tsv query_gene_types.data.tsv &&
+                    mv Figure*transcriptBoundaryCoverage.fiveprime.data.tsv transcriptBoundaryCoverage.fiveprime.data.tsv &&
+                    mv Figure*transcriptBoundaryCoverage.threeprime.data.tsv transcriptBoundaryCoverage.threeprime.data.tsv &&
+                    mv Figure*exonIntronBoundaryCoverage.fiveprime.data.tsv exonIntronBoundaryCoverage.fiveprime.data.tsv &&
+                    mv Figure*exonIntronBoundaryCoverage.threeprime.data.tsv exonIntronBoundaryCoverage.threeprime.data.tsv &&
+                    mv Figure*coverageprofilelist.data.tsv coverageprofilelist.data.tsv &&
+                    mv Table*getTargetedGenesTable.data.tsv getTargetedGenesTable.data.tsv
+                #end if
+                #if $analysis_type.run_go == "TRUE":
+                    &&
+                    mv Table*goBP.data.tsv goBP.data.tsv &&
+                    mv Table*goMF.data.tsv goMF.data.tsv &&
+                    mv Table*goCC.data.tsv goCC.data.tsv
+                #end if
 
-            &&
-            mv *RCAS.report.html RCAS.report.html
-
-
-            #if $run_anot == "TRUE":
-                &&
-                mv Figure*summarizeQueryRegions.data.tsv summarizeQueryRegions.data.tsv &&
-                mv Figure*query_gene_types.data.tsv query_gene_types.data.tsv &&
-                mv Figure*transcriptBoundaryCoverage.fiveprime.data.tsv transcriptBoundaryCoverage.fiveprime.data.tsv &&
-                mv Figure*transcriptBoundaryCoverage.threeprime.data.tsv transcriptBoundaryCoverage.threeprime.data.tsv &&
-                mv Figure*exonIntronBoundaryCoverage.fiveprime.data.tsv exonIntronBoundaryCoverage.fiveprime.data.tsv &&
-                mv Figure*exonIntronBoundaryCoverage.threeprime.data.tsv exonIntronBoundaryCoverage.threeprime.data.tsv &&
-                mv Figure*coverageprofilelist.data.tsv coverageprofilelist.data.tsv &&
-                mv Table*getTargetedGenesTable.data.tsv getTargetedGenesTable.data.tsv
+                #if $analysis_type.gsea_set.run_gsea == "TRUE":
+                    &&
+                    mv Table*GSEA.data.tsv GSEA.data.tsv
+                #end if
+            #else:
+                 Rscript '$script_file'
             #end if
-
-
-            #if $run_GOrich == "TRUE":
-                &&
-                mv Table*goBP.data.tsv goBP.data.tsv &&
-                mv Table*goMF.data.tsv goMF.data.tsv &&
-                mv Table*goCC.data.tsv goCC.data.tsv
-            #end if
-
-
-            #if $choice.run_PATHrich == "TRUE":
-                &&
-                mv Table*GSEA.data.tsv GSEA.data.tsv
-            #end if
-
-
-            #if $run_motif == "TRUE":
-                &&
-                mv Table*motif_analysis_table.data.tsv motif_analysis_table.data.tsv
-            #end if]]></command>
+    ]]></command>
     <configfiles>
-        <configfile name="script_file">library("RCAS")
-
-           runReport(queryFilePath = '${input_BED}',
-
-           gffFilePath = '${input_GTF}',
-
-           #if $choice.run_PATHrich == "TRUE":
-                msigdbFilePath = '${choice.input_human_msigdb_gmt}',
-           #end if
-
-           annotationSummary = ${run_anot},
-
-           goAnalysis = ${run_GOrich},
-
-           msigdbAnalysis = ${choice.run_PATHrich},
-
-           motifAnalysis = ${run_motif},
-
-           genomeVersion = '${genomeVersion}',
-
-           outDir = getwd(),
-
-           printProcessedTables = TRUE,
-
-           sampleN = '${downsampling}',
-
-           selfContained = TRUE)</configfile>
+        <configfile name="script_file"><![CDATA[
+        #import re
+        library("RCAS")
+            #if $analysis_type.analysis_type_selector == 'single_set_analysis':
+                runReport(queryFilePath = '${analysis_type.single_bed_file}',
+                gffFilePath = '${input_gtf_file}',
+                genomeVersion = '${genome_version}',
+                #if $analysis_type.run_go
+                    goAnalysis = TRUE,
+                #end if
+                #if $analysis_type.gsea_set.run_gsea
+                    msigdbAnalysis = TRUE,
+                    msigdbFilePath = '${$analysis_type.gsea_set.input_human_msigdb_gmt}',
+                #end if
+                sampleN = '${analysis_type.downsampling}',
+                annotationSummary = ${run_annot},
+                motifAnalysis = ${run_motif},
+                outDir = getwd(),
+                #if $analysis_type.output_raw_tables
+                    printProcessedTables = TRUE,
+                #end if
+                selfContained = TRUE)
+            #elif $analysis_type.analysis_type_selector == 'multi_set_analysis':
+                library("mgcv")
+                paths <- c('#echo "','".join(map(str, $analysis_type.multi_bed_file))#')
+                #set $ids = [re.sub('[^\w\-]', '_', str($bed_file.element_identifier)) for $bed_file in $analysis_type.multi_bed_file]
+                ids <- c('#echo "','".join($ids)#')
+                projData <- data.frame('sampleName' = ids, 'bedFilePath' = paths, stringsAsFactors = FALSE)
+                projDataFile <- file.path(getwd(), 'myProjDataFile.tsv')
+                write.table(projData, projDataFile, sep = '\t', quote =FALSE, row.names = FALSE)
+                gtfFilePath = '${input_gtf_file}'
+                databasePath <- file.path(getwd(), 'myProject.sqlite')
+                invisible(createDB(dbPath = databasePath, projDataFile = projDataFile, gtfFilePath = gtfFilePath, 
+                    motifAnalysis = ${run_motif},
+                    annotationSummary = ${run_annot},
+                    genomeVersion = '${genome_version}'))
+                sampleData <- data.frame('sampleName' = ids, 'sampleGroup' = ids, stringsAsFactors = FALSE)
+                sampleDataFile <- file.path(getwd(), 'mySampleDataTable.tsv')
+                write.table(sampleData, sampleDataFile, sep = '\t', quote =FALSE, row.names = FALSE)
+                runReportMetaAnalysis(dbPath = databasePath, sampleTablePath = sampleDataFile, outFile = file.path(getwd(), 'RCAS.multi_sample_report.html'))
+            #end if
+         ]]></configfile>
     </configfiles>
     <inputs>
-        <param name="genomeVersion" type="select" label="Genome Version">
+        <param name="genome_version" type="select" label="Genome Version">
             <option value="hg19" selected="true">hg19</option>
+            <option value="hg38">hg38</option>
+            <option value="mm9">mm9</option>
+            <option value="mm10">mm10</option>
             <option value="dm3">dm3</option>
             <option value="ce10">ce10</option>
-            <option value="mm9">mm9</option>
         </param>
-        <param name="input_BED" type="data" format="BED" label="Target regions in BED format" help="The coordinates should be in accord with Genome Version." />
-        <param name="input_GTF" type="data" format="GTF" label="Reference annotation in ENSEMBL GTF format" />
-        <param name="run_anot" label="Run annotation." type="boolean" falsevalue="FALSE" truevalue="TRUE" checked="True" help="Use this option if you want to run annotation." />
-        <param name="run_GOrich" label="Run GO term enrichment" type="boolean" falsevalue="FALSE" truevalue="TRUE" checked="False" help="Use this option if you want to run GO term enrichment (supported genome versions: hg19, mm9, dm3)." />
-        <conditional name="choice">
-            <param name="run_PATHrich" type="select" label="Run gene set enrichment" help="Use this option if you want to run gene set enrichment.">
-                <option value="FALSE" selected="True">No</option>
-                <option value="TRUE">Yes</option>
+
+        <param name="input_gtf_file" type="data" format="GTF" label="Reference annotation in ENSEMBL GTF format" />
+
+        <conditional name="analysis_type">
+            <param name="analysis_type_selector" type="select" label="Select analysis type">
+                <option value="single_set_analysis" selected="true">Single sample analysis</option>
+                <option value="multi_set_analysis">Multi sample analysis</option>
             </param>
-            <when value="TRUE">
-                <param name="input_human_msigdb_gmt" type="data" format="tabular" label="Human Molecular Signatures Database (MSigDB)" help="The database is usesd for gene set enrichment (supported genome versions: hg19, mm9, dm3). For non-human species, the human MSigDB will be automatically converted accordingly." />
+            <!-- Single dataset analysis -->
+            <when value="single_set_analysis">
+                <param name="single_bed_file" type="data" format="bed"
+                       label="Single sample analysis BED file"
+                       help="Genomic BED file used for single sample analysis"/>
+                <param name="run_go" label="Run GO term enrichment analysis" 
+                       type="boolean" falsevalue="FALSE" truevalue="TRUE" checked="False" 
+                       help="Run GO term enrichment analysis (supported genome versions: hg19, hg38, mm9, mm10, dm3)" />
+                <conditional name="gsea_set">
+                    <param name="run_gsea" type="boolean" falsevalue="FALSE" truevalue="TRUE" checked="false" label="Run gene set enrichment analysis"/>
+                    <when value="FALSE" />
+                    <when value="TRUE">
+                        <param name="input_human_msigdb_gmt" type="data" format="tabular"
+                               label="Provide human Molecular Signatures Database (MSigDB) file" 
+                               help="This database file is needed for gene set enrichment analysis (supported genome versions: hg19, hg38, mm9, mm10, dm3). For non-human species, the human MSigDB will be automatically converted." />
+                    </when>
+                </conditional>
+                <param name="downsampling" label="Downsampling (N)" type="text" value="0" 
+                       help="Randomly sample down query regions to (N). To activate sampling a positive integer value smaller than the total number of query regions should be given. Default value is 0 (i.e. no downsampling applied)" />
+                <param name="output_raw_tables" type="boolean" falsevalue="FALSE" truevalue="TRUE" value="False" 
+                       label="Output raw data tables"
+                       help="Output single sample analysis raw data tables that are used for plots/tables as text files"/>
             </when>
-            <when value="FALSE" />
+            <!-- Multiple datasets meta analysis -->
+            <when value="multi_set_analysis">
+                <param name="multi_bed_file" type="data" format="bed"
+                       label="Multi sample analysis BED files" multiple="true"
+                       help="Genomic BED files used for multi sample analysis. NOTE that the dataset name inside the Galaxy history is used as identifier for each set, resulting in plots with the Galaxy dataset names corresponding to their respective input BED files."/>
+            </when>
         </conditional>
-        <param name="run_motif" label="Run motif search" type="boolean" falsevalue="FALSE" truevalue="TRUE" checked="False" help="Use this option if you want to run motif search." />
-        <param name="downsampling" label="Downsampling (N)" type="text" value="0" help="Randomly sample query regions down to (N)" />
+
+        <!-- Parameters common to multi and single set analysis -->
+        <param name="run_annot" label="Output annotation summaries" type="boolean" falsevalue="FALSE" truevalue="TRUE" checked="True" help="Output annotation summaries from overlap operations" />
+        <param name="run_motif" label="Run motif analysis" type="boolean" falsevalue="FALSE" truevalue="TRUE" checked="False" help="Run motif analysis for each input dataset and each transcript region" />
     </inputs>
     <outputs>
-        <data name="report" format="html" from_work_dir="RCAS.report.html" label="${tool.name} on ${on_string}: dynamic HTML" />
+        <data name="report" format="html" from_work_dir="RCAS.report.html" label="${tool.name} on ${on_string}: single sample analysis report HTML">
+            <filter>analysis_type["analysis_type_selector"] == "single_set_analysis"</filter>
+        </data>
         <data name="summarizeQueryRegions" format="tsv" from_work_dir="summarizeQueryRegions.data.tsv" label="${tool.name} on ${on_string}: Query regions summary">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="query_gene_types" format="tsv" from_work_dir="query_gene_types.data.tsv" label="${tool.name} on ${on_string}: Query gene types">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="transcriptBoundaryCoverage.fiveprime" format="tsv" from_work_dir="transcriptBoundaryCoverage.fiveprime.data.tsv" label="${tool.name} on ${on_string}: Transcript boundary coverage (5')">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="transcriptBoundaryCoverage.threeprime" format="tsv" from_work_dir="transcriptBoundaryCoverage.threeprime.data.tsv" label="${tool.name} on ${on_string}: Transcript boundary coverage (3')">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="exonIntronBoundaryCoverage.fiveprime" format="tsv" from_work_dir="exonIntronBoundaryCoverage.fiveprime.data.tsv" label="${tool.name} on ${on_string}: Exon-intron boundary coverage (5')">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="exonIntronBoundaryCoverage.threeprime" format="tsv" from_work_dir="exonIntronBoundaryCoverage.threeprime.data.tsv" label="${tool.name} on ${on_string}: Exon-intron boundary coverage (3')">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="coverageprofilelist" format="tsv" from_work_dir="coverageprofilelist.data.tsv" label="${tool.name} on ${on_string}: Coverage profile list">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="getTargetedGenesTable" format="tsv" from_work_dir="getTargetedGenesTable.data.tsv" label="${tool.name} on ${on_string}: Targeted genes">
-            <filter>run_anot == True</filter>
+            <filter>run_annot is True and analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="goCC" format="tsv" from_work_dir="goCC.data.tsv" label="${tool.name} on ${on_string}: GO term enrichment (cellular compartments)">
-            <filter>run_GOrich == True</filter>
+            <filter>analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['run_go'] is True and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="goBP" format="tsv" from_work_dir="goBP.data.tsv" label="${tool.name} on ${on_string}: GO term enrichment (biological processes)">
-            <filter>run_GOrich == True</filter>
+            <filter>analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['run_go'] is True and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="goMF" format="tsv" from_work_dir="goMF.data.tsv" label="${tool.name} on ${on_string}: GO term enrichment (molecular functions)">
-            <filter>run_GOrich == True</filter>
+            <filter>analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['run_go'] is True and analysis_type['output_raw_tables'] is True</filter>
         </data>
         <data name="GSEA" format="tsv" from_work_dir="GSEA.data.tsv" label="${tool.name} on ${on_string}: Gene set enrichment analysis">
-            <filter>choice['run_PATHrich'] == "TRUE"</filter>
+            <filter>analysis_type["analysis_type_selector"] == "single_set_analysis" and analysis_type['gsea_set']['run_gsea'] is True and analysis_type['output_raw_tables'] is True</filter>
         </data>
-        <data name="motif" format="tsv" from_work_dir="motif_analysis_table.data.tsv" label="${tool.name} on ${on_string}: Motif">
-            <filter>run_motif == True</filter>
+        <data name="multi_report" format="html" from_work_dir="RCAS.multi_sample_report.html" label="${tool.name} on ${on_string}: multi sample analysis report HTML">
+            <filter>analysis_type["analysis_type_selector"] == "multi_set_analysis"</filter>
         </data>
     </outputs>
     <tests>
         <test>
-            <param name="input_BED" value="input.TIA1.bed" />
-            <param name="input_GTF" value="input.Homo_sapiens.GRCh37-chr1-f10k.75.gtf" />
-            <param name="input_human_msigdb_gmt" value="input.msigdb_test.gmt" />
-            <param name="run_anot" value="TRUE" />
-            <param name="run_GOrich" value="TRUE" />
-            <param name="run_PATHrich" value="TRUE" />
-            <param name="run_motif" value="TRUE" />
-            <param name="genomeVersion" value="hg19" />
-            <output name="report" file="output.TIA1.bed.RCAS.report.html" ftype="html" compare="sim_size" />
-            <output name="summarizeQueryRegions" file="summarizeQueryRegions.data.tsv" ftype="tsv" />
-            <output name="query_gene_types" file="query_gene_types.data.tsv" ftype="tsv" />
-            <output name="transcriptBoundaryCoverage.fiveprime" file="transcriptBoundaryCoverage.fiveprime.data.tsv" ftype="tsv" />
-            <output name="transcriptBoundaryCoverage.threeprime" file="transcriptBoundaryCoverage.threeprime.data.tsv" ftype="tsv" />
-            <output name="exonIntronBoundaryCoverage.fiveprime" file="exonIntronBoundaryCoverage.fiveprime.data.tsv" ftype="tsv" />
-            <output name="exonIntronBoundaryCoverage.threeprime" file="exonIntronBoundaryCoverage.threeprime.data.tsv" ftype="tsv" />
-            <output name="coverageprofilelist" file="coverageprofilelist.data.tsv" ftype="tsv" />
-            <output name="getTargetedGenesTable" file="getTargetedGenesTable.data.tsv" ftype="tsv" />
+            <param name="analysis_type_selector" value="single_set_analysis"/>
+            <param name="single_bed_file" value="input.TIA1.bed"/>
+            <param name="input_gtf_file" value="input.Homo_sapiens.GRCh37-chr1-f10k.75.gtf"/>
+            <param name="input_human_msigdb_gmt" value="input.msigdb_test.gmt"/>
+            <param name="run_annot" value="TRUE"/>
+            <param name="run_go" value="TRUE"/>
+            <param name="run_gsea" value="TRUE"/>
+            <param name="run_motif" value="TRUE"/>
+            <param name="output_raw_tables" value="TRUE"/>
+            <param name="genome_version" value="hg19" />
+            <output name="report" file="input.TIA1.bed.RCAS.report.html" ftype="html" compare="sim_size"/>
+            <output name="summarizeQueryRegions" file="summarizeQueryRegions.data.tsv" ftype="tsv"/>
+            <output name="query_gene_types" file="query_gene_types.data.tsv" ftype="tsv"/>
+            <output name="transcriptBoundaryCoverage.fiveprime" file="transcriptBoundaryCoverage.fiveprime.data.tsv" ftype="tsv"/>
+            <output name="transcriptBoundaryCoverage.threeprime" file="transcriptBoundaryCoverage.threeprime.data.tsv" ftype="tsv"/>
+            <output name="exonIntronBoundaryCoverage.fiveprime" file="exonIntronBoundaryCoverage.fiveprime.data.tsv" ftype="tsv"/>
+            <output name="exonIntronBoundaryCoverage.threeprime" file="exonIntronBoundaryCoverage.threeprime.data.tsv" ftype="tsv"/>
+            <output name="coverageprofilelist" file="coverageprofilelist.data.tsv" ftype="tsv"/>
+            <output name="getTargetedGenesTable" file="getTargetedGenesTable.data.tsv" ftype="tsv"/>
             <output name="goCC" file="goCC.data.tsv" ftype="tsv" compare="sim_size"/>
             <output name="goBP" file="goBP.data.tsv" ftype="tsv" compare="sim_size"/>
             <output name="goMF" file="goMF.data.tsv" ftype="tsv" compare="sim_size"/>
-            <output name="GSEA" file="GSEA.data.tsv" ftype="tsv" />
-            <output name="motif" file="motif_analysis_table.data.tsv" ftype="tsv" compare="sim_size" />
+            <output name="GSEA" file="GSEA.data.tsv" ftype="tsv"/>
+        </test>
+        <test>
+            <param name="analysis_type_selector" value="multi_set_analysis"/>
+            <param name="multi_bed_file" value="EIF4A3Sauliere20121a.bed,EIF4A3Sauliere20121b.bed,FMR1_Ascano2012a_hg19.bed,FMR1_Ascano2012b_hg19.bed,FUS_Nakaya2013c_hg19.bed,FUS_Nakaya2013d_hg19.bed"/>
+            <param name="input_gtf_file" value="hg19.sample.gtf"/>
+            <param name="run_annot" value="TRUE"/>
+            <param name="run_motif" value="TRUE"/>
+            <param name="genome_version" value="hg19" />
+            <output name="multi_report" file="test2_multi_set_analysis_report.html" ftype="html" compare="sim_size" delta="20000"/>
         </test>
     </tests>
-    <help><![CDATA[.. class:: infomark
+    <help><![CDATA[
 
-**Purpose**
+**Introduction**
 
-RNA Centric Annotation System (RCAS) automatically generates
-dynamic annotations for custom input files
-that contain transcriptomic target regions.
-RCAS automatically summarizes annotated features
-that overlap with targets in the BED file,
-and perform enrichment analysis of
-Gene Ontology (GO) terms, gene set and motifs.
+RCAS is an R/Bioconductor package designed as a generic reporting tool for the functional analysis of transcriptome-wide regions of interest detected by high-throughput experiments. Such transcriptomic regions could be, for instance, signal peaks detected by CLIP-Seq analysis for protein-RNA interaction sites, RNA modification sites (alias the epitranscriptome), CAGE-tag locations, or any other collection of query regions at the level of the transcriptome. RCAS produces in-depth annotation summaries and coverage profiles based on the distribution of the query regions with respect to transcript features (exons, introns, 5’/3’ UTR regions, exon-intron boundaries, promoter regions). Moreover, RCAS can carry out functional enrichment analyses of annotated gene sets, GO terms, and de novo motif discovery. RCAS is available in the Bioconductor repository, packaged in multiple environments including Conda, Galaxy, and Guix, and as a webservice at http://rcas.mdc-berlin.de/.
+
+Currently supported genome builds are hg19 and hg38 (human), mm9 and mm10 (mouse), dm3 (fly), and ce10 (worm). Modules for annotation summaries and motif analysis are supported for each of these genome builds. GO term and gene-set enrichment analyses are supported for hg19, hg38, mm9, mm10, and dm3. ce10 is currently not supportedfor GO/GSEA modules.
+
 
 -----
-
-.. class:: infomark
 
 **Inputs**
 
-1. A target region file in BED format
-2. A reference annotation file in GTF format
-3. A Human Molecular Signatures Database (MSigDB) (only needed for gene set enrichment)
+1. One (single sample analysis) or several (multi sample analysis) genomic target region files in BED format
+2. A genome reference annotation file in GTF format
+3. A human Molecular Signatures Database (MSigDB) (only in single sample analysis for gene set enrichment analysis)
 
 -----
 
-.. class:: infomark
-
 **Outputs**
 
-The outputs consist of a dynamic HTML file and
-a dozen of tabular files.
-The dynamic HTML file is composed of the interactive tables and figures,
+The outputs consist of a dynamic HTML file (both for single and multi sample analysis) and optionally a number (depending on selected options) of tabular files (single sample analysis only).
+The dynamic HTML file is composed of interactive tables and figures,
 which can be downloaded and viewed with a web browser.
 
-The tabular files correspond to the respective figures in the HTML file,
-which are the results
-of different RCAS analysis, as following:
+The tabular files contain the RCAS analysis results, corresponding to the 
+respective figures in the HTML file:
 
 1. Annotation summary for query regions
 
@@ -221,7 +261,9 @@ of different RCAS analysis, as following:
 
 3. Gene set enrichment analysis results
 
-4. Motif analysis results]]></help>
+4. Motif analysis results (no table output in 1.5.4.)
+
+    ]]></help>
     <citations>
         <citation type="doi">10.1093/nar/gkx120</citation>
     </citations>

@@ -13,18 +13,22 @@ import sys
 
 import requests
 
-url = 'http://www.uniprot.org/'
+url = 'https://www.uniprot.org/'
 
 
 def _retrieve(query, format='txt'):
     """_retrieve is not meant for use with the python interface, use `retrieve`
     instead"""
-    tool = 'batch/'
+    tool = 'uploadlists/'
 
     query = list(set(query.split('\n')))
     queries = [query[i:i+100] for i in range(0, len(query), 100)]
 
-    data = {'format': format}
+    data = {
+            'format': format,
+            'from': 'ACC+ID',
+            'to': 'ACC'
+            }
 
     responses = [requests.post(url + tool, data=data, files={'file': ' '.join(_)}) for _ in queries]
     page = ''.join(response.text for response in responses)
@@ -34,7 +38,7 @@ def _retrieve(query, format='txt'):
 def _map(query, f, t, format='tab'):
     """ _map is not meant for use with the python interface, use `map` instead
     """
-    tool = 'mapping/'
+    tool = 'uploadlists/'
 
     data = {
             'from': f,

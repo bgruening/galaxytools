@@ -10,12 +10,20 @@
                 <option value="SR">read 1 (or single-end read) comes from the reverse strand (SR)</option>
             </param>
         </xml>
-        <token name="@VERSION@">0.8.2</token>
+        <xml name="orientation">
+            <param name="orientation" type="select" label="Relative orientation of reads within a pair">
+                <option value="M">Mates are oriented in the same direction (M = matching)</option>
+                <option value="O">Mates are oriented away from each other (O = outward)</option>
+                <option value="I" selected="True">Mates are oriented toward each other (I = inward)</option>
+            </param>
+        </xml>
+        <token name="@VERSION@">0.11.2</token>
     </macros>
 
     <requirements>
         <requirement type="package" version="1.0.6">bzip2</requirement>
         <requirement type="package" version="@VERSION@">salmon</requirement>
+        <requirement type="package" version="1.2">seqtk</requirement>
     </requirements>
 
     <stdio>
@@ -39,9 +47,6 @@
                 --index './index'
                 --type '$quasi_orphans.type'
                 $perfectHash
-                #if str($sasamp):
-                    --sasamp $sasamp
-                #end if
             #set $index_path = './index'
         #else:
             #set $index_path = $refTranscriptSource.index.fields.path
@@ -52,27 +57,52 @@
             #if $single_or_paired.input_singles.ext == 'fasta':
                 #set $ext = 'fasta'
             #else:
-                #if $single_or_paired.input_singles.is_of_type('fastq.gz'):
+                #if $single_or_paired.input_singles.is_of_type("fastq.gz", "fastqsanger.gz"):
                     #set compressed = 'GZ'
-                #else if $single_or_paired.input_singles.is_of_type('fastq.bz2'):
+                #else if $single_or_paired.input_singles.is_of_type("fastq.bz2", "fastqsanger.bz2"):
                     #set compressed = 'BZ2'
                 #end if
                 #set $ext = 'fastq'
             #end if
             ln -s $single_or_paired.input_singles ./single.$ext &&
-        #else:
+        #else if $single_or_paired.single_or_paired_opts == 'paired':
             #if $single_or_paired.input_mate1.ext == 'fasta':
                 #set $ext = 'fasta'
             #else:
-                #if $single_or_paired.input_mate1.is_of_type('fastq.gz'):
+                #if $single_or_paired.input_mate1.is_of_type("fastq.gz", "fastqsanger.gz"):
                     #set compressed = 'GZ'
-                #else if $single_or_paired.input_mate1.is_of_type('fastq.bz2'):
+                #else if $single_or_paired.input_mate1.is_of_type("fastq.bz2", "fastqsanger.bz2"):
                     #set compressed = 'BZ2'
                 #end if
                 #set $ext = 'fastq'
             #end if
             ln -s $single_or_paired.input_mate1 ./mate1.$ext &&
             ln -s $single_or_paired.input_mate2 ./mate2.$ext &&
+        #else if $single_or_paired.single_or_paired_opts == 'paired_collection':
+            #if $single_or_paired.input_1.forward.ext == 'fasta':
+                #set $ext = 'fasta'
+            #else:
+                #if $single_or_paired.input_1.forward.is_of_type("fastq.gz", "fastqsanger.gz"):
+                    #set compressed = 'GZ'
+                #else if $single_or_paired.input_1.forward.is_of_type("fastq.bz2", "fastqsanger.bz2"):
+                    #set compressed = 'BZ2'
+                #end if
+                #set $ext = 'fastq'
+            #end if              
+            ln -s ${single_or_paired.input_1.forward} ./mate1.$ext &&
+            ln -s ${single_or_paired.input_1.reverse} ./mate2.$ext &&
+        #else if $single_or_paired.single_or_paired_opts == 'paired_interleaved':
+            #if $single_or_paired.input_1.ext == 'fasta':
+                #set $ext = 'fasta'
+            #else:
+                #if $single_or_paired.input_1.is_of_type("fastq.gz", "fastqsanger.gz"):
+                    #set compressed = 'GZ'
+                #else if $single_or_paired.input_1.is_of_type("fastq.bz2", "fastqsanger.bz2"):
+                    #set compressed = 'BZ2'
+                #end if
+                #set $ext = 'fastq'
+            #end if     
+            ln -s $single_or_paired.input_1 ./mate1.$ext && 
         #end if
         #if $geneMap:
             ln -s "$geneMap" ./geneMap.${geneMap.ext} &&
@@ -82,40 +112,53 @@
             #if $single_or_paired.single_or_paired_opts == 'single':
                 --libType ${single_or_paired.strandedness}
                 #if $compressed == 'GZ':
-                    --unmatedReads <(zcat ./single.$ext)
+                    --unmatedReads <(zcat < ./single.$ext)
                 #else if $compressed == 'BZ2':
-                    --unmatedReads <(bzcat ./single.$ext)
+                    --unmatedReads <(bzcat < ./single.$ext)
                 #else:
                     --unmatedReads ./single.$ext
                 #end if
             #else:
-                #if $compressed == 'GZ':
-                    --mates1 <(zcat ./mate1.$ext)
-                    --mates2 <(zcat ./mate2.$ext)
-                #else if $compressed == 'BZ2':
-                    --mates1 <(bzcat ./mate1.$ext)
-                    --mates2 <(bzcat ./mate2.$ext)
-                #else:
-                    --mates1 ./mate1.$ext
-                    --mates2 ./mate2.$ext
-                #end if
                 --libType "${single_or_paired.orientation}${single_or_paired.strandedness}"
+                #if $single_or_paired.single_or_paired_opts == 'paired_interleaved':
+                    #if $compressed == 'BZ2':
+                        --mates1 <(bzcat < ./mate1.$ext | seqtk seq -1)
+                        --mates2 <(bzcat < ./mate1.$ext | seqtk seq -2)
+                    #else: 
+                        --mates1 <(seqtk seq -1 ./mate1.$ext)
+                        --mates2 <(seqtk seq -2 ./mate1.$ext)
+                    #end if
+                #else:
+                    #if $compressed == 'GZ':
+                        --mates1 <(zcat < ./mate1.$ext)
+                        --mates2 <(zcat < ./mate2.$ext)
+                    #else if $compressed == 'BZ2':
+                        --mates1 <(bzcat < ./mate1.$ext)
+                        --mates2 <(bzcat < ./mate2.$ext)
+                    #else:
+                        --mates1 ./mate1.$ext
+                        --mates2 ./mate2.$ext
+                    #end if
+                #end if
             #end if
             --output ./output
             #if str($quasi_orphans.type) == 'quasi':
                 --allowOrphans
-            #else:
-                $quasi_orphans.allowOrphans
+                $quasi_orphans.validateMappings
+                --ma $quasi_orphans.matchScore
+                --mp $quasi_orphans.mismatchPenalty
+                --go $quasi_orphans.gapOpenPenalty
+                --ge $quasi_orphans.gapExtensionPenalty
+                --minScoreFraction $quasi_orphans.minScoreFraction
             #end if
             $seqBias
             $gcBias
+            $noErrorModel
             --threads "\${GALAXY_SLOTS:-4}"
             --incompatPrior $adv.incompatPrior
             $adv.consistentHits
             $adv.dumpEq
-            #if str($adv.gcSizeSamp):
-                --gcSizeSamp $adv.gcSizeSamp
-            #end if
+            $adv.reduceGCMemory
             #if str($adv.biasSpeedSamp):
                 --biasSpeedSamp $adv.biasSpeedSamp
             #end if
@@ -132,9 +175,6 @@
             #if $adv.forgettingFactor:
                 --forgettingFactor $adv.forgettingFactor
             #end if
-            #if str($adv.maxOcc):
-                --maxOcc $adv.maxOcc
-            #end if
             $adv.initUniform
             $adv.noFragLengthDist
             $adv.noBiasLengthThreshold
@@ -145,7 +185,7 @@
                 --geneMap ./geneMap.${geneMap.ext}
             #end if
             $adv.noEffectiveLengthCorrection
-            $adv.useVBOpt
+            $adv.useEM
             #if str($adv.numBiasSamples):
                 --numBiasSamples $adv.numBiasSamples
             #end if
@@ -161,11 +201,21 @@
             #if str($adv.numBootstraps):
                 --numBootstraps $adv.numBootstraps
             #end if
+            #if str($adv.consensusSlack):
+                --consensusSlack $adv.consensusSlack
+            #else:
+                #if $quasi_orphans.validateMappings:
+                    --consensusSlack 1
+                #else:
+                    --consensusSlack 0
+                #end if
+            #end if
             $adv.perTranscriptPrior
             #if $adv.vbPrior:
                 --vbPrior $adv.vbPrior
             #end if
             $adv.writeUnmappedNames
+            --sigDigits $adv.sigDigits
             #if str($adv.writeMappings):
                 $adv.writeMappings > ${output_sam}
             #end if
@@ -195,40 +245,58 @@
             <param name="single_or_paired_opts" type="select" label="Is this library mate-paired?">
                 <option value="single">Single-end</option>
                 <option value="paired">Paired-end</option>
+                <option value="paired_collection">Paired-end Dataset Collection</option>
+                <option value="paired_interleaved">Paired-end data from single interleaved dataset</option>
             </param>
             <when value="single">
-                <param name="input_singles" type="data" format="fastq,fasta,fastq.gz" label="FASTQ/FASTA file" help="FASTQ file." />
+                <param name="input_singles" type="data" format="fastq,fasta,fastq.gz,fastq.bz2" label="FASTQ/FASTA file" help="FASTQ file." />
                 <expand macro="strandedness" />
             </when>
             <when value="paired">
-                <param name="input_mate1" type="data" format="fastq,fasta,fastq.gz" label="Mate pair 1" help="FASTQ file." />
-                <param name="input_mate2" type="data" format="fastq,fasta,fastq.gz" label="Mate pair 2" help="FASTQ file." />
-                <param name="orientation" type="select" label="Relative orientation of reads within a pair">
-                    <option value="M">Mates are oriented in the same direction (M = matching)</option>
-                    <option value="O">Mates are oriented away from each other (O = outward)</option>
-                    <option value="I" selected="True">Mates are oriented toward each other (I = inward)</option>
-                </param>
+                <param name="input_mate1" type="data" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" label="Mate pair 1" help="FASTQ file." />
+                <param name="input_mate2" type="data" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" label="Mate pair 2" help="FASTQ file." />
+                <expand macro="orientation" /> 
                 <expand macro="strandedness" />
+            </when>
+            <when value="paired_collection">
+                <param name="input_1" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" type="data_collection" collection_type="paired" label="FASTQ Paired Dataset" help="Must be of datatype &quot;fastqsanger&quot; or &quot;fasta&quot;" />
+               <expand macro="orientation" /> 
+               <expand macro="strandedness" />
+            </when>
+            <when value="paired_interleaved">
+               <param name="input_1" format="fastq,fasta,fastq.gz,fastq.bz2,fastqsanger,fastqsanger.gz,fastqsanger.bz2" type="data" label="Interleaved FASTQ file" help="Must be of datatype &quot;fastqsanger&quot; or &quot;fasta&quot;. --interleaved"/>
+               <expand macro="orientation" /> 
+               <expand macro="strandedness" />
             </when>
         </conditional>
         <conditional name="quasi_orphans">
             <param argument="--type" type="select" label="Type of index" help="When using quasi, orphaned reads will be considered when performing lightweight-alignment.">
                 <option value="quasi" selected="True">quasi</option>
-                <option value="fmd">fmd</option>
             </param>
             <when value="quasi">
+                <param argument="--validateMappings" type="boolean" truevalue="--validateMappings" falsevalue="" checked="False"
+                label="Validate mappings"
+                help="Validate mappings using alignment-based verifcation. If this flag is passed, quasi-mappings will be validated to ensure that they could give rise to a reasonable alignment before they are further used for quantification."/>
+                <param name="matchScore" argument="--ma" type="integer" value="2"
+                label="Match Score"
+                help="The value given to a match between read and reference nucleotides in an alignment."/>
+                <param name="mismatchPenalty" argument="--mp" type="integer" value="4"
+                label="Mismatch Penalty"
+                help="The value given to a mis-match between read and reference nucleotides in an alignment. This will be cast to a negative value."/>
+                <param name="gapOpenPenalty" argument="--go" type="integer" value="5"
+                label="Gap Open Penalty"
+                help="The value given to a gap opening in an alignment."/>
+                <param name="gapExtensionPenalty" argument="--ge" type="integer" value="3"
+                label="Gap Extension Penalty"
+                help="The value given to a gap extension in an alignment."/>
+                <param argument="--minScoreFraction" type="float" value="0.65" min="0.0" max="0.99"
+                label="Min Score Fraction"
+                help="The fraction of the optimal possible alignment score that a mapping must achieve in order to be considered valid. Should be in (0,1]."/>
             </when>  <!-- build-in -->
-            <when value="fmd">
-                <param argument="--allowOrphans" type="boolean" truevalue="--allowOrphans" falsevalue="" checked="True"
-                    label="Consider orphaned reads as valid hits when performing lightweight-alignment"
-                    help="This option will increase sensitivity (allow more reads to map and more transcripts to be detected), but may decrease specificity as orphaned alignments are more likely to be spurious."/>
-            </when>  <!-- history -->
         </conditional>
         <param argument="--perfectHash" type="boolean" truevalue="--perfectHash" falsevalue="" checked="False"
             label="Perfect Hash"
             help="Build the index using a perfect hash rather than a dense hash.  This will require  less memory (especially during quantification), but will take longer to construct "/>
-        <param argument="--sasamp" type="integer" value="1" optional="True" label="Suffix Array"
-            help="The interval at which the suffix array should be sampled. Smaller values are faster, but produce a larger index. The default should be OK, unless your transcriptome is huge. This value should be a power of 2."/>
         <param argument="--seqBias" type="boolean" truevalue="--seqBias" falsevalue="" checked="False"
             label="Perform sequence-specific bias correction"
             help=""/>
@@ -238,6 +306,9 @@
         <param argument="--geneMap" type="data" format="tabular,gff,gtf" optional="True"
             label="File containing a mapping of transcripts to genes" 
             help="If this file is provided Salmon will output both quant.sf and quant.genes.sf files, where the latter contains aggregated gene-level abundance estimates. The transcript to gene mapping should be provided as either a GTF file, or a in a simple tab-delimited format where each line contains the name of a transcript and the gene to which it belongs separated by a tab." />
+        <param argument="--noErrorModel" type="boolean" truevalue="--noErrorModel" falsevalue="" checked="False"
+            label="No Error Model"
+            help="Turn off the alignment error model, which takes into account the the observed frequency of different types of mismatches / indels when computing the likelihood of a given alignment. Turning this off can speed up alignment-based salmon, but can harm quantification accuracy."/>
         <section name="adv" title="Additional Options">
             <param argument="--writeMappings" type="boolean" truevalue="--writeMappings" falsevalue="" checked="False"
                 label="Write Mappings"
@@ -247,8 +318,9 @@
                 help="This option sets the prior probability that an alignment that disagrees with the specified library type (--libType) results from the true fragment origin. Setting this to 0 specifies that alignments that disagree with the library type should be 'impossible', while setting it to 1 says that alignments that disagree with the library type are no less likely than those that do" />
             <param argument="--dumpEq" type="boolean" truevalue="--dumpEq" falsevalue="" checked="False"
                 label="Dump the equivalence class counts that were computed during quasi-mapping." help=""/>
-            <param argument="--gcSizeSamp" type="integer" value="1" optional="True"
-                label="The value by which to down-sample transcripts when representing the GC content" help="Larger values will reduce memory usage, but may decrease the fidelity of bias modeling results."/>
+            <param argument="--reduceGCMemory" type="boolean" truevalue="--reduceGCMemory" falsevalue="" optional="True" checked="False"
+                label="If this option is selected, a more memory efficient (but slightly slower representation is used to compute fragment GC content."
+                help="Enabling this will reduce memory usage, but can also reduce speed.  However, the results themselves will remain the same."/>
             <param argument="--biasSpeedSamp" type="integer" value="1" optional="True"
                 label="The value at which the fragment length PMF is down-sampled when evaluating GC fragment bias." help="Larger values speed up effective length correction, but may decrease the fidelity of bias modeling results."/>
             <param argument="--strictIntersect" type="boolean" truevalue="--strictIntersect" falsevalue="" checked="False"
@@ -279,9 +351,6 @@
             <param argument="--forgettingFactor" type="float" value="0.65000000000000002" optional="True"
                 label="The forgetting factor used in the online learning schedule."
                 help=" A smaller value results in quicker learning, but higher variance and may be unstable. A larger value results in slower learning but may be more stable.  Value should be in the interval (0.5, 1.0]." />
-            <param argument="--maxOcc" type="integer" value="200" optional="True"
-                label="(S)MEMs occuring more than this many times won't be considered"
-                help=""/>
             <param argument="--initUniform" type="boolean" truevalue="--initUniform" falsevalue="" checked="False"
                 label="Initialization with uniform parameters"
                 help="initialize the offline inference with uniform parameters, rather than seeding with online parameters." />
@@ -296,7 +365,7 @@
                 help="[experimental] : Don't consider concordance with the learned fragment length distribution when trying to determine the probability that a fragment has originated from a specified location.  Normally, Fragments with unlikely lengths will be assigned a smaller relative probability than those with more likely lengths. When this flag is passed in, the observed fragment length has no effect on that fragment's a priori probability." />
             <param argument="--noBiasLengthThreshold" type="boolean" truevalue="--noBiasLengthThreshold" falsevalue="" checked="False"
                 label="[experimental] : If this option is enabled, then no (lower) threshold will be set on how short bias correction can make effecctive lengths."
-                help="This can increase the precision of bias correction, but harm robustness. The difault correction applies a threshold." />
+                help="This can increase the precision of bias correction, but harm robustness. The default correction applies a threshold." />
             <param argument="--numBiasSamples" type="integer" value="2000000" optional="True"
                 label="Number of fragment mappings to use when learning the sequence-specific bias model."
                 help="" />
@@ -312,8 +381,8 @@
             <param argument="--splitSpanningSeeds" type="boolean" truevalue="--splitSpanningSeeds" falsevalue="" checked="False"
                 label="Attempt to split seeds that happen to fall on the boundary between two transcripts."
                 help="This can improve the fragment hit-rate, but is usually not necessary."/>
-            <param argument="--useVBOpt" type="boolean" truevalue="--useVBOpt" falsevalue="" checked="False"
-                label="Use the Variational Bayesian EM rather than the traditional EM algorithm for optimization in the batch passes."
+            <param argument="--useEM" type="boolean" truevalue="--useEM" falsevalue="" checked="False"
+                label="Use the traditional EM algorithm for optimization in the batch passes."
                 help=""/>
             <param argument="--numGibbsSamples" type="integer" value="0" optional="True"
                 label=" Number of Gibbs sampling rounds to perform."
@@ -330,6 +399,12 @@
             <param argument="--writeUnmappedNames" type="boolean" truevalue="--writeUnmappedNames" falsevalue="" checked="False"
                 label="Write the names of un-mapped reads to the file unmapped_names.txt."
                 help=""/>
+            <param argument="--sigDigits" type="integer" value="3"
+                label="Significant Digits"
+                help="The number of significant digits to write when outputting the EffectiveLength and NumReads columns."/>
+            <param argument="--consensusSlack" type="integer" optional="True"
+                label="Consensus Slack"
+                help="The amount of slack allowed in the quasi-mapping consensus mechanism.  Normally, a transcript must cover all hits to be considered for mapping. If this is set to a value, X, greater than 0, then a transcript can fail to cover up to X hits before it is discounted as a mapping candidate.  The default value of this option is 1 if --validateMappings is given and 0 otherwise."/>
         </section>
     </inputs>
 
@@ -388,6 +463,70 @@
                 </assert_contents>
             </output>
         </test>
+        <test> <!-- bzipped input -->
+            <param name="single_or_paired_opts" value="paired" />
+            <param name="input_mate1" value="reads_1.fastq.bz2" ftype="fastqsanger.bz2" />
+            <param name="input_mate2" value="reads_2.fastq.bz2" ftype="fastqsanger.bz2" />
+            <param name="biasCorrect" value="False" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test> <!-- interleaved bz2 input -->
+            <param name="single_or_paired_opts" value="paired_interleaved" />
+            <param name="input_1" value="reads_both.fastq.bz2" ftype="fastqsanger.bz2" />
+            <param name="biasCorrect" value="False" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test> <!-- interleaved gz input -->
+            <param name="single_or_paired_opts" value="paired_interleaved" />
+            <param name="input_1" value="reads_both.fastq.gz" ftype="fastqsanger.gz" />
+            <param name="biasCorrect" value="False" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
         <test>
             <param name="single_or_paired_opts" value="paired" />
             <param name="input_mate1" value="reads_1.fastq" />
@@ -395,6 +534,187 @@
             <param name="TranscriptSource" value="history" />
             <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
             <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+            <output name="output_gene_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="baz" />
+                    <has_text text="bar" />
+                    <has_text text="2283" />
+                    <has_text text="1640" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired_collection" />
+            <param name="input_1">
+                <collection type="paired">
+                    <element name="forward" value="reads_1.fastq" ftype="fastqsanger" />
+                    <element name="reverse" value="reads_2.fastq" ftype="fastqsanger" />
+                </collection>    
+            </param> 
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+            <output name="output_gene_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="baz" />
+                    <has_text text="bar" />
+                    <has_text text="2283" />
+                    <has_text text="1640" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired" />
+            <param name="input_mate1" value="reads_1.fastq" />
+            <param name="input_mate2" value="reads_2.fastq" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <param name="validateMappings" value="True" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+            <output name="output_gene_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="baz" />
+                    <has_text text="bar" />
+                    <has_text text="2283" />
+                    <has_text text="1640" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired_collection" />
+            <param name="input_1">
+                <collection type="paired">
+                    <element name="forward" value="reads_1.fastq" ftype="fastqsanger" />
+                    <element name="reverse" value="reads_2.fastq" ftype="fastqsanger" />
+                </collection>    
+            </param> 
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <param name="validateMappings" value="True" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+            <output name="output_gene_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="baz" />
+                    <has_text text="bar" />
+                    <has_text text="2283" />
+                    <has_text text="1640" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired" />
+            <param name="input_mate1" value="reads_1.fastq" />
+            <param name="input_mate2" value="reads_2.fastq" />
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <param name="useEM" value="True" />
+            <output name="output_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="NM_001168316" />
+                    <has_text text="NM_174914" />
+                    <has_text text="NM_018953" />
+                    <has_text text="NR_003084" />
+                    <has_text text="NM_017410" />
+                    <has_text text="NM_153693" />
+                    <has_text text="NR_031764" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+            <output name="output_gene_quant">
+                <assert_contents>
+                    <has_text text="EffectiveLength" />
+                    <has_text text="TPM" />
+                    <has_text text="baz" />
+                    <has_text text="bar" />
+                    <has_text text="2283" />
+                    <has_text text="1640" />
+                    <has_n_columns n="5" />
+                </assert_contents>
+            </output>
+        </test>
+        <test>
+            <param name="single_or_paired_opts" value="paired_collection" />
+            <param name="input_1">
+                <collection type="paired">
+                    <element name="forward" value="reads_1.fastq" ftype="fastqsanger" />
+                    <element name="reverse" value="reads_2.fastq" ftype="fastqsanger" />
+                </collection>    
+            </param> 
+            <param name="TranscriptSource" value="history" />
+            <param name="ownFile" value="transcripts.fasta" ftype="fasta" />
+            <param name="geneMap" value="gene_map.tab" ftype="tabular" />
+            <param name="useEM" value="True" />
             <output name="output_quant">
                 <assert_contents>
                     <has_text text="EffectiveLength" />
@@ -491,7 +811,7 @@ So, for example, if you wanted to specify a fragment library of strand-specific
 paired-end reads, oriented toward each other, where read 1 comes from the
 forward strand and read 2 comes from the reverse strand, you would specify ``-l
 ISF`` on the command line.  This designates that the library being processed has
-the type "ISF" meaning, **I**\ nward (the relative orientation), **S**\ tranted
+the type "ISF" meaning, **I**\ nward (the relative orientation), **S**\ tranded
 (the protocol is strand-specific), **F**\ orward (read 1 comes from the forward
 strand).
 The single end library strings are a bit simpler than their pair-end counter

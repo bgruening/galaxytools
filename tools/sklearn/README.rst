@@ -1,9 +1,9 @@
-***************
 Galaxy wrapper for scikit-learn library
-***************
+***************************************
 
 Contents
 ========
+
 - `What is scikit-learn?`_
 	- `Scikit-learn main package groups`_
 	- `Tools offered by this wrapper`_
@@ -16,10 +16,10 @@ Contents
 ____________________________
 
 
-.. _What is scikit-learn?
+.. _What is scikit-learn?:
 
 What is scikit-learn?
-===========================
+=====================
 
 Scikit-learn is an open-source machine learning library for the Python programming language. It offers various algorithms for performing supervised and unsupervised learning as well as data preprocessing and transformation, model selection and evaluation, and dataset utilities. It is built upon SciPy (Scientific Python) library.
 
@@ -29,9 +29,8 @@ Detailed installation instructions can be found at http://scikit-learn.org/stabl
 
 .. _Scikit-learn main package groups:
 
-======
 Scikit-learn main package groups
-======
+================================
 
 Scikit-learn provides the users with several main groups of related operations.
 These are:
@@ -54,9 +53,8 @@ Each group consists of a number of well-known algorithms from the category. For 
 
 .. _Tools offered by this wrapper:
 
-===================
 Available tools in the current wrapper
-===================
+======================================
 
 The current release of the wrapper offers a subset of the packages from scikit-learn library. You can find:
 
@@ -73,16 +71,15 @@ In addition, several tools for performing matrix operations, generating problem-
 .. _Machine learning workflows:
 
 Machine learning workflows
-===============
+==========================
 
 Machine learning is about processes. No matter what machine learning algorithm we use, we can apply typical workflows and dataflows to produce more robust models and better predictions.
 Here we discuss supervised and unsupervised learning workflows.
 
 .. _Supervised learning workflows:
 
-===================
 Supervised machine learning workflows
-===================
+=====================================
 
 **What is supervised learning?**
 
@@ -132,9 +129,8 @@ In practice, there are five steps which we can go through to start from raw inpu
 
 .. _Unsupervised learning workflows:
 
-=======================
 Unsupervised machine learning workflows
-=======================
+=======================================
 
 **What is unsupervised learning?**
 

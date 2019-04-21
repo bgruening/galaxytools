@@ -1,0 +1,205 @@
+<tool id="peakachu" name="PEAKachu" version="0.1.0.2">
+    <description>Calls Peaks in CLIP data</description>
+    <requirements>
+        <requirement type="package" version="3.6">python</requirement>
+        <requirement type="package" version="3.4.1">r-base</requirement>
+        <requirement type="package" version="0.1.0">peakachu</requirement>
+    </requirements>
+    <version_command>
+    <![CDATA[
+        peakachu --version
+    ]]>
+    </version_command>
+    <command detect_errors="aggressive">
+    <![CDATA[
+        #for $i, $clib in enumerate($controlLibs):
+            #if $clib:
+                ln -s -f '$clib' ${i}.c.bam &&
+                ln -s -f '$clib.metadata.bam_index' ${i}.c.bam.bai &&
+            #end if
+        #end for
+        #for $j, $elib in enumerate($experimentLibs):
+            ln -s -f '$elib' ${j}.e.bam &&
+            ln -s -f '$elib.metadata.bam_index' ${j}.e.bam.bai &&
+        #end for
+
+        pwd &&
+        mkdir ./tmp_output && 
+        peakachu 
+        ${mode.mode_selector}
+        --exp_libs 
+        #for $i, $elib in enumerate($experimentLibs):
+            '${i}.e.bam'
+        #end for
+        #for $i, $clib in enumerate($controlLibs):
+            #if $clib and $i == 0:
+                --ctr_libs 
+            #end if
+            #if $clib:
+                '${i}.c.bam'
+            #end if
+        #end for
+        $pairwise_replicates
+        $paired_end
+        --max_insert_size $max_insert_size
+        --features '$features'
+        --sub_features '$sub_features'
+        --max_proc "\${GALAXY_SLOTS:-1}"
+        --output_folder ./tmp_output
+        #if str($mode.mode_selector) == 'adaptive':
+            --min_cluster_expr_frac $mode.min_cluster_expr_frac
+            --min_block_overlap $mode.min_block_overlap
+            --min_max_block_expr $mode.min_max_block_expr
+        #elif str($mode.mode_selector) == 'window':
+            --window_size $mode.window_size
+            --step_size $mode.step_size
+            --stat_test $mode.stat_test
+            --het_p_val_threshold $mode.het_p_val_threshold
+            --rep_pair_p_val_threshold $mode.rep_pair_p_val_threshold
+        #end if
+       --norm_method $mode.norm_method.norm_method_selector
+        #if str($mode.norm_method.norm_method_selector) == 'manual':
+            --size_factors $size_factors
+        #end if
+        --mad_multiplier $mad_multiplier
+        --fc_cutoff $fc_cutoff
+        --padj_threshold $padj_threshold
+
+        &&
+        if ls ./tmp_output/peak_tables/*.csv > /dev/null;
+        then 
+            sed -n 1p ./tmp_output/peak_tables/*.csv > peaks.tsv &&
+            tail -n +2 -q ./tmp_output/peak_tables/*.csv >> peaks.tsv &&
+            mv peaks.tsv '$peak_tables' &&
+            awk '/peak/ {print $0}' ./tmp_output/peak_annotations/*.gff > peak_annotations.gff &&
+            mv peak_annotations.gff '$peak_annotations' &&
+            mv ./tmp_output/plots/Initial*.png '$MA_plot';
+        else 
+            echo "No Peaks Found" >&2;
+        fi 
+
+
+    ]]>
+    </command>
+    <inputs>
+        <param name="experimentLibs" type="data" format="bam" label="Experiment Libraries" multiple="True"/>
+        <param name="controlLibs" type="data" format="bam" label="Control Libraries" multiple="True" optional="True"/>
+        <param argument="--pairwise_replicates" type="boolean" truevalue="--pairwise_replicates" falsevalue="" checked="False" label="Pairwise Replicates" /> 
+        <param argument="--paired_end" type="boolean" truevalue="--paired_end" falsevalue="" checked="False" label="Paired End" /> 
+        <param argument="--max_insert_size" type="integer" value="50" label="Maximum Insert Size"/>
+        <!-- The gff feature is not implemented, because the function can easily be accomplished with featureCount or other tools
+        <param name="gffs" type="data" format="gff" label="Annotation" optional="True" multiple="True"/-->
+        <param argument="--features" type="text" label="Features">
+            <sanitizer>
+                <valid initial="default"/>
+            </sanitizer>
+        </param>
+        <param argument="--sub_features" type="text" label="Sub-Features">
+            <sanitizer>
+                <valid initial="default"/>
+            </sanitizer>
+        </param>
+
+        <conditional name="mode">
+            <param name="mode_selector" type="select" label="Select Mode" help="These modes work differently.">
+                <option value="adaptive" selected="True">Adaptive</option>
+                <option value="window">Window</option>
+                <!-- The following options are not implemented because they are vastly different and should be implemented as their own tool, if need be.
+                <option value="coverage">Coverage</option>
+                <option value="consensus_peak">Consensus Peak</option-->
+            </param>
+            <when value="adaptive">
+                <param argument="--min_cluster_expr_frac" label="Minimum cluster Expression Fraction" help="Minimum fraction of a block in a cluster for further consideration." type="float" value="0.01"/>
+                <param argument="--min_block_overlap" label="Minimum Block Overlap" help="Minimum fraction of the width of blocks for merging." type="float" value="0.5"/>
+                <param argument="--min_max_block_expr" label="Minimum Block Expression" help="Minimum fraction of expression of blocks for merging." type="float" value="0.1"/>
+                <conditional name="norm_method">
+                    <param name="norm_method_selector" type="select" label="Normalisation Method.">
+                        <option value="deseq" selected="True">DESeq2</option>
+                        <option value="manual">Manual</option>
+                        <option value="none">None</option>
+                    </param>
+                    <when value="deseq"/>
+                    <when value="none"/>
+                    <when value="manual">
+                        <param argument="--size_factors" label="Size Factors" type="text" help="Size factors have to be seperated by SPACE">
+                            <sanitizer>
+                                <valid initial="default"/>
+                            </sanitizer>
+                        </param>
+                    </when>
+                </conditional>
+            </when>
+            <when value="window">
+                <param argument="--window_size" label="Window Size" type="integer" value="25"/>
+                <param argument="--step_size" label="Step Size" type="integer" value="5"/>
+                <param name="stat_test" type="select" label="Statistical Test">
+                    <option value="gtest" selected="True">gtest</option>
+                    <option value="deseq">DESeq2</option>
+                </param>
+                <conditional name="norm_method">
+                    <param name="norm_method_selector" type="select" label="Normalisation Method.">
+                        <option value="tmm" selected="True">TMM</option>
+                        <option value="deseq">DESeq2</option>
+                        <option value="count">Count</option>
+                        <option value="manual">Manual</option>
+                        <option value="none">None</option>
+                    </param>
+                    <when value="deseq"/>
+                    <when value="tmm"/>
+                    <when value="count"/>
+                    <when value="none"/>
+                    <when value="manual">
+                        <param argument="--size_factors" label="Size Factors" type="text" help="Size factors have to be seperated by SPACE">
+                            <sanitizer>
+                                <valid initial="default"/>
+                            </sanitizer>
+                        </param>
+                    </when>
+                </conditional>
+                <param argument="--het_p_val_threshold" label="Heterogeneous p-value Threshold" type="float" value="0.01"/>
+                <param argument="--rep_pair_p_val_threshold" label="Paired p-value Threshold" type="float" value="0.05"/>
+            </when>
+        </conditional>
+        <param argument="--mad_multiplier" label="Mad Multiplier" type="float" value="2.0"/>
+        <param argument="--fc_cutoff" label="Fold Change Threshold" type="float" value="2.0"/>
+        <param argument="--padj_threshold" type="float" label="Adjusted p-value Threshold" value="0.05"/>  
+    </inputs>
+    <outputs>
+        <data format="tabular" name="peak_tables" label="${tool.name} ${mode.mode_selector} on ${on_string}: peaks"/>
+        <data format="gff" name="peak_annotations" label="${tool.name} ${mode.mode_selector} on ${on_string}: peak_annotations"/>
+        <data format="png" name="MA_plot" label="${tool.name} ${mode.mode_selector} on ${on_string}: MA plot"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="experimentLibs" value="test1_plus-xl.bam"/>
+            <param name="controlLibs" value="test1_minus-xl.bam"/>
+            <output name="peak_tables" ftype="tabular" file="test1_peaks.tsv"/>
+            <output name="peak_annotations" ftype="gff" file="test1_peak_annotations.gff"/>
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+**PEAKachu**
+
+PEAKachu is a tool for the accurate mapping of RBP binding sites based on CLIP-seq and RIP-seq data.
+PEAKachu uses signal and control libraries (ideally more than three each) to detect binding sites.
+It implements two peak calling approaches
+
+**adaptive**
+
+The adaptive approach applies a three-step procedure to detect regions that are significantly enriched over controls.
+
+- blockbuster is applied to the pooled libraries to combine similar sets of reads into blocks
+- blocks are decomposed into peaks by iteratively applying a block merging heuristic
+- peaks with significant enrichment of signal over control libraries are determined using DESeq2
+
+**windowed**
+
+The windowed approach subdivides the genome into overlapping regions.
+After filtering of lowly expressed regions and library normalization (either using manual size factors, TMM, or DESeq2), this approach determines significantly enriched windows using eiterh DESeq2 or repeated G-tests of goodness-of-fit.
+
+    ]]>
+    </help>
+    <citations>
+    </citations>
+</tool>
