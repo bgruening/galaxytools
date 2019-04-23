@@ -100,11 +100,14 @@ write.table(resout, file="out.tab", sep="\t", row.names=FALSE, quote=FALSE)
 if (!is.null(args$plots)) {
     pdf("out.pdf", width=14)
     plotAnnoPie(peakAnno)
-    plotAnnoBar(peakAnno)
+    p1 <- plotAnnoBar(peakAnno)
+    print(p1)
     vennpie(peakAnno)
     upsetplot(peakAnno)
-    plotDistToTSS(peakAnno, title="Distribution of transcription factor-binding loci\nrelative to TSS")
+    p2 <- plotDistToTSS(peakAnno, title="Distribution of transcription factor-binding loci\nrelative to TSS")
+    print(p2)
     dev.off()
+    rm(p1, p2)
 }
 
 ## Output RData file
