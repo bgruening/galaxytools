@@ -12,6 +12,7 @@ suppressPackageStartupMessages({
 
 option_list <- list(
     make_option(c("-i","--infile"), type="character", help="Peaks file to be annotated"),
+    make_option(c("-H","--header"), type="logical", help="Peaks file contains header row"),
     make_option(c("-G","--gtf"), type="character", help="GTF to create TxDb."),
     make_option(c("-u","--upstream"), type="integer", help="TSS upstream region"),
     make_option(c("-d","--downstream"), type="integer", help="TSS downstream region"),
@@ -51,7 +52,13 @@ if (!is.null(args$ignoreDownstream)) {
     ignoreDownstream <- FALSE
 }
 
-peaks <- readPeakFile(peaks)
+if (!is.null(args$header)) {
+    header <- TRUE
+} else {
+    header <- FALSE
+}
+
+peaks <- readPeakFile(peaks, header=header)
 
 # Make TxDb from GTF
 txdb <- makeTxDbFromGFF(gtf, format="gtf")
