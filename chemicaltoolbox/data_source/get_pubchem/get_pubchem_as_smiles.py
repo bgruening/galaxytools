@@ -33,7 +33,7 @@ def main(output, processors = 4):
         shutil.copyfileobj(open(path, 'rb'), output_handle)
 
     output_handle.close()
-    shutil.rmtree( td )
+    shutil.rmtree(td)
 
 def fetch_convert(args):
     (filename, td) = args
