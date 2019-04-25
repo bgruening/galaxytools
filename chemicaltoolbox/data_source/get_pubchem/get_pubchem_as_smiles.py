@@ -13,6 +13,7 @@ from multiprocessing import Pool
 import tempfile
 import shutil
 
+
 def main(output, processors = 4):
     output_handle = open(output,'w+')
 
@@ -21,10 +22,9 @@ def main(output, processors = 4):
     ftp.login()
     ftp.cwd('/pubchem/Compound/CURRENT-Full/SDF/')
     filelist = ftp.nlst()
-
+    
     pool = Pool(processes = processors)
     filenames = zip(filelist, [td]*len(filelist))
-
     result = pool.map_async(fetch_convert, filenames)
     result.get()
 
@@ -37,7 +37,6 @@ def main(output, processors = 4):
 
 def fetch_convert(args):
     (filename, td) = args
-
     tmp_name = os.path.join( td, filename)
     subprocess.call( ['wget', '-O', tmp_name, os.path.join('ftp://ftp.ncbi.nih.gov/pubchem/Compound/CURRENT-Full/SDF/', filename)] )
     output = os.path.join(td, filename) + '.smi'

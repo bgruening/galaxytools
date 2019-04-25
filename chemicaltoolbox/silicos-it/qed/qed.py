@@ -330,18 +330,18 @@ if __name__ == "__main__":
     # Elucidate filetype and open supplier
     ifile = os.path.abspath(args.input)
     if not os.path.isfile(ifile):
-        print "Error: ", ifile, " is not a file or cannot be found."
+        print("Error: ", ifile, " is not a file or cannot be found.")
         sys.exit(1)
     if not os.path.exists(ifile):
-        print "Error: ", ifile, " does not exist or cannot be found."
+        print("Error: ", ifile, " does not exist or cannot be found.")
         sys.exit(1)
     if not os.access(ifile, os.R_OK):
-        print "Error: ", ifile, " is not readable."
+        print("Error: ", ifile, " is not readable.")
         sys.exit(1)
 
     if not args.iformat:
         # try to guess the filetype
-        filetype = check_filetype( ifile )
+        filetype = check_filetype(ifile)
     else:
         filetype = args.iformat # sdf or smi
 
@@ -350,7 +350,7 @@ if __name__ == "__main__":
         We want to store the original SMILES in the output. So in case of a SMILES file iterate over the file and convert each line separate.
     """
     if filetype == 'sdf':
-        supplier = Chem.SDMolSupplier( ifile )
+        supplier = Chem.SDMolSupplier(ifile)
         # Process file
         if args.header:
             args.outfile.write("MW\tALOGP\tHBA\tHBD\tPSA\tROTB\tAROM\tALERTS\tLRo5\tQED\tNAME\n")
@@ -358,7 +358,7 @@ if __name__ == "__main__":
         for mol in supplier:
             count += 1
             if mol is None:
-                print "Warning: skipping molecule ", count, " and continuing with next."
+                print("Warning: skipping molecule ", count, " and continuing with next.")
                 continue
             props = properties(mol)
 
@@ -399,7 +399,7 @@ if __name__ == "__main__":
             mol = Chem.MolFromSmiles(smiles)
             count += 1
             if mol is None:
-                print "Warning: skipping molecule ", count, " and continuing with next."
+                print("Warning: skipping molecule ", count, " and continuing with next.")
                 continue
             props = properties(mol)
 
