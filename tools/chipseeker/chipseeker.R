@@ -12,6 +12,7 @@ suppressPackageStartupMessages({
 
 option_list <- list(
     make_option(c("-i","--infile"), type="character", help="Peaks file to be annotated"),
+    make_option(c("-H","--header"), type="logical", help="Peaks file contains header row"),
     make_option(c("-G","--gtf"), type="character", help="GTF to create TxDb."),
     make_option(c("-u","--upstream"), type="integer", help="TSS upstream region"),
     make_option(c("-d","--downstream"), type="integer", help="TSS downstream region"),
@@ -51,7 +52,13 @@ if (!is.null(args$ignoreDownstream)) {
     ignoreDownstream <- FALSE
 }
 
-peaks <- readPeakFile(peaks)
+if (!is.null(args$header)) {
+    header <- TRUE
+} else {
+    header <- FALSE
+}
+
+peaks <- readPeakFile(peaks, header=header)
 
 # Make TxDb from GTF
 txdb <- makeTxDbFromGFF(gtf, format="gtf")
@@ -93,11 +100,14 @@ write.table(resout, file="out.tab", sep="\t", row.names=FALSE, quote=FALSE)
 if (!is.null(args$plots)) {
     pdf("out.pdf", width=14)
     plotAnnoPie(peakAnno)
-    plotAnnoBar(peakAnno)
+    p1 <- plotAnnoBar(peakAnno)
+    print(p1)
     vennpie(peakAnno)
     upsetplot(peakAnno)
-    plotDistToTSS(peakAnno, title="Distribution of transcription factor-binding loci\nrelative to TSS")
+    p2 <- plotDistToTSS(peakAnno, title="Distribution of transcription factor-binding loci\nrelative to TSS")
+    print(p2)
     dev.off()
+    rm(p1, p2)
 }
 
 ## Output RData file
