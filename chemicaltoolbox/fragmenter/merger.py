@@ -234,7 +234,6 @@ def merge(mol_one, mol_two, options, iteration_depth = 1):
             no_result = False
             if is_fragment( concat_mol_smiles.split()[0] ):
                 if sticky_ends == 0:
-                    #print 'jump out'
                     continue
                 temp_fragments.append( concat_mol_smiles )
                 no_fragments = False
@@ -299,13 +298,10 @@ def mp_helper(file_one, file_two, iteration_depth = 1):
     fragments = list()
     for mol_one in pybel.readfile( 'smi', file_one ):
         for i,mol_two in enumerate(pybel.readfile( 'smi', file_two )):
-            #print 'merge:', str(mol_one).strip(), str(mol_two).strip()
             result, fragment = merge(mol_two,mol_one, options, iteration_depth)
             if result:
-                #print '\tr', result
                 results.extend( result )
             if fragment:
-                #print '\tf', fragment
                 fragments.extend( fragment )
 
     fragment_return, molecule_return = None, None
@@ -460,8 +456,6 @@ if __name__ == '__main__':
     # adding the non-fragments to the results
     # result_files.append( unique_input_non_fragments.name )
     splitted_files = split_smi_library( unique_input.name, 1 )
-    print(splitted_files)
-    print(unique_input.name)
     trash_list.extend( splitted_files )
 
 
@@ -487,14 +481,11 @@ if __name__ == '__main__':
             Every single fragment against each of the other fragments, including itself
         """
         for counter, fragment_file_one in enumerate( splitted_files ):
-            print(counter, fragment_file_one)
             logging.debug('Fragment-file content %s (%s)' % (open(fragment_file_one).read().strip(), counter))
             res = mp_helper_special_mode( [fragment_file_one], splitted_files, options )
             if res:
-                print(res)
                 result_files.append( res )
 
-    print(result_files)
     temp_final_result = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
     trash_list.append(temp_final_result.name)
     unique_files( result_files, temp_final_result )
