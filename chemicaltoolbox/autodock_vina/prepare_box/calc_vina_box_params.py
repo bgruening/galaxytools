@@ -2,6 +2,7 @@ import numpy as np
 from rdkit import Chem
 from rdkit.Chem import rdShapeHelpers
 import argparse
+from random import randint
 
 
 def get_params(options):
@@ -29,7 +30,6 @@ def get_params(options):
 
     # if no seed set, then randomly generate one between 0 and 2**31
     if options.seed == None:
-        from random import randint
         options.seed = randint(0, 2147483647)
 
     with open(options.output, 'w') as f:
