@@ -56,7 +56,7 @@ if __name__ == "__main__":
     generate the input parameters for an autodock vina job. The output file can be fed into
     the autodock vina tool as an alternative to creating the parameter file manually. 
     
-    Optionally, you can include a 'buffer' in each of the x,y and z directions (in angstroms),
+    Optionally, you can include a 'buffer' in each of the x,y and z directions (in Å),
     which will be added to the confounding box in the appropriate direction.
     """)
     parser.add_argument('--ligand', dest='ligand_path', help='The input ligand (mol file)')
