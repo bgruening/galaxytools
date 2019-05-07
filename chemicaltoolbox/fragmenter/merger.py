@@ -18,7 +18,6 @@ import shutil
 import logging
 import argparse
 import tempfile
-import cStringIO
 import subprocess
 import multiprocessing
 
@@ -46,7 +45,7 @@ def unique_files( file_paths, unique_file, temp = False ):
             shutil.copyfileobj(open(filename, 'rb'), concat)
         concat.close()
         p2 = subprocess.Popen(['sort', '-u', '-k', '1,1'], stdin=open(concat.name), stdout=unique_file) #send p1's output to p2
-    except Exception, err:
+    except Exception as err:
         sys.stderr.write("Error invoking command:\n%s\n" % (err))
         raise
     stdout, stderr = p2.communicate()
@@ -235,7 +234,6 @@ def merge(mol_one, mol_two, options, iteration_depth = 1):
             no_result = False
             if is_fragment( concat_mol_smiles.split()[0] ):
                 if sticky_ends == 0:
-                    #print 'jump out'
                     continue
                 temp_fragments.append( concat_mol_smiles )
                 no_fragments = False
@@ -300,13 +298,10 @@ def mp_helper(file_one, file_two, iteration_depth = 1):
     fragments = list()
     for mol_one in pybel.readfile( 'smi', file_one ):
         for i,mol_two in enumerate(pybel.readfile( 'smi', file_two )):
-            #print 'merge:', str(mol_one).strip(), str(mol_two).strip()
             result, fragment = merge(mol_two,mol_one, options, iteration_depth)
             if result:
-                #print '\tr', result
                 results.extend( result )
             if fragment:
-                #print '\tf', fragment
                 fragments.extend( fragment )
 
     fragment_return, molecule_return = None, None
@@ -390,10 +385,10 @@ def filter_input_files( input_file ):
         mol = mol.strip()
         if mol:
             if is_fragment(mol):
-                unique_input.write('%s\n' % mol)
+                unique_input.write(bytes('%s\n' % mol, 'utf-8'))
             else:
                 non_fragment_counter += 1
-                unique_input_non_fragments.write('%s\n' % mol)
+                unique_input_non_fragments.write(bytes('%s\n' % mol, 'utf-8'))
     logging.info('Your input file contains %s non-fragment molecules. These molecules will be merged back in the end-results.' % non_fragment_counter)
     trash_list.append( unique_input_raw.name )
     unique_input.close()
@@ -436,7 +431,6 @@ if __name__ == '__main__':
         default=multiprocessing.cpu_count())
 
     options = parser.parse_args()
-
     log_level = logging.WARNING
 
     verb_level = 0
@@ -491,7 +485,6 @@ if __name__ == '__main__':
             res = mp_helper_special_mode( [fragment_file_one], splitted_files, options )
             if res:
                 result_files.append( res )
-
 
     temp_final_result = tempfile.NamedTemporaryFile(dir=temp_dir, delete=False)
     trash_list.append(temp_final_result.name)

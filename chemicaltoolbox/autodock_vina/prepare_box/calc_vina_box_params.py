@@ -2,6 +2,7 @@ import numpy as np
 from rdkit import Chem
 from rdkit.Chem import rdShapeHelpers
 import argparse
+from random import randint
 
 
 def get_params(options):
@@ -27,6 +28,10 @@ def get_params(options):
     # optionally add buffers in each direction - expansion
     box_dims = [dims[0] + options.bufx, dims[1] + options.bufy, dims[2] + options.bufz]
 
+    # if no seed set, then randomly generate one between 0 and 2**31
+    if options.seed == None:
+        options.seed = randint(0, 2147483647)
+
     with open(options.output, 'w') as f:
         f.write(
             """
@@ -40,8 +45,8 @@ num_modes = 9999
 energy_range = 9999
 exhaustiveness = {}
 cpu = 4
-seed = 1
-            """.format(box_dims[0], box_dims[1], box_dims[2], center[0], center[1], center[2], options.exhaustiveness)
+seed = {}
+            """.format(box_dims[0], box_dims[1], box_dims[2], center[0], center[1], center[2], options.exhaustiveness, options.seed)
         )
 
 
@@ -51,7 +56,7 @@ if __name__ == "__main__":
     generate the input parameters for an autodock vina job. The output file can be fed into
     the autodock vina tool as an alternative to creating the parameter file manually. 
     
-    Optionally, you can include a 'buffer' in each of the x,y and z directions (in angstroms),
+    Optionally, you can include a 'buffer' in each of the x,y and z directions (in Å),
     which will be added to the confounding box in the appropriate direction.
     """)
     parser.add_argument('--ligand', dest='ligand_path', help='The input ligand (mol file)')
@@ -64,6 +69,7 @@ if __name__ == "__main__":
                                                                            '(float - in angs.)')
     parser.add_argument('--bufz', dest='bufz', default=0, type=float, help='the buffer in the z direction '
                                                                            '(float - in angs.)')
+    parser.add_argument('--seed', dest='seed', default=None, type=int, help='Random seed for reproducibility')
 
     options = parser.parse_args()
     get_params(options)
