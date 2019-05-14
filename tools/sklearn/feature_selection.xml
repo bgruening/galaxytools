@@ -4,6 +4,7 @@
         <import>main_macros.xml</import>
     </macros>
     <expand macro="python_requirements"/>
+    <!--TODO: Add imblearn package support-->
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
     <command>
@@ -17,10 +18,21 @@
             <![CDATA[
 import json
 import sklearn.feature_selection
+import skrebate
+import pandas
+import sys
+import warnings
+import xgboost
+from sklearn import (
+    cluster, compose, decomposition, ensemble, feature_extraction,
+    feature_selection, gaussian_process, kernel_approximation, metrics,
+    model_selection, naive_bayes, neighbors, pipeline, preprocessing,
+    svm, linear_model, tree, discriminant_analysis)
+from imblearn.pipeline import Pipeline as imbPipeline
+from sklearn.pipeline import Pipeline
 
-with open('$__tool_directory__/sk_whitelist.json', 'r') as f:
-    sk_whitelist = json.load(f)
-exec(open('$__tool_directory__/utils.py').read(), globals())
+sys.path.insert(0, '$__tool_directory__')
+from utils import SafeEval, feature_selector, read_columns
 
 warnings.simplefilter('ignore')
 
@@ -30,7 +42,7 @@ input_json_path = sys.argv[1]
 with open(input_json_path, 'r') as param_handler:
     params = json.load(param_handler)
 
-#handle cheetah
+## handle cheetah
 #if $fs_algorithm_selector.selected_algorithm == 'SelectFromModel'\
         and $fs_algorithm_selector.model_inputter.input_mode == 'prefitted':
 params['fs_algorithm_selector']['model_inputter']['fitted_estimator'] =\
@@ -39,18 +51,25 @@ params['fs_algorithm_selector']['model_inputter']['fitted_estimator'] =\
 
 #if $fs_algorithm_selector.selected_algorithm == 'SelectFromModel'\
         and $fs_algorithm_selector.model_inputter.input_mode == 'new'\
-        and $fs_algorithm_selector.model_inputter.estimator_selector.selected_module == 'customer_estimator':
+        and $fs_algorithm_selector.model_inputter.estimator_selector.selected_module == 'custom_estimator':
 params['fs_algorithm_selector']['model_inputter']['estimator_selector']['c_estimator'] =\
         '$fs_algorithm_selector.model_inputter.estimator_selector.c_estimator'
 #end if
 
-#if $fs_algorithm_selector.selected_algorithm in ['RFE', 'RFECV']\
-        and $fs_algorithm_selector.estimator_selector.selected_module == 'customer_estimator':
+#if $fs_algorithm_selector.selected_algorithm in ['RFE', 'RFECV', 'DyRFECV']\
+        and $fs_algorithm_selector.estimator_selector.selected_module == 'custom_estimator':
 params['fs_algorithm_selector']['estimator_selector']['c_estimator'] =\
         '$fs_algorithm_selector.estimator_selector.c_estimator'
 #end if
 
-# Read features
+#if $fs_algorithm_selector.selected_algorithm in ['RFECV', 'DyRFECV']\
+        and $fs_algorithm_selector.options.cv_selector.selected_cv\
+        in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']:
+params['fs_algorithm_selector']['options']['cv_selector']['groups_selector']['infile_g'] =\
+        '$fs_algorithm_selector.options.cv_selector.groups_selector.infile_g'
+#end if
+
+## Read features
 features_has_header = params['input_options']['header1']
 input_type = params['input_options']['selected_input']
 if input_type == 'tabular':
@@ -67,12 +86,12 @@ if input_type == 'tabular':
             return_df = True,
             sep='\t',
             header=header,
-            parse_dates=True
-    )
+            parse_dates=True)
+    X = X.astype(float)
 else:
     X = mmread('$input_options.infile1')
 
-# Read labels
+## Read labels
 header = 'infer' if params['input_options']['header2'] else None
 column_option = params['input_options']['column_selector_options_2']['selected_column_selector_option2']
 if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
@@ -85,12 +104,11 @@ y = read_columns(
         c_option = column_option,
         sep='\t',
         header=header,
-        parse_dates=True
-)
-y=y.ravel()
+        parse_dates=True)
+y = y.ravel()
 
-# Create feature selector
-new_selector = feature_selector(params['fs_algorithm_selector'])
+## Create feature selector
+new_selector = feature_selector(params['fs_algorithm_selector'], X=X, y=y)
 if params['fs_algorithm_selector']['selected_algorithm'] != 'SelectFromModel'\
         or params['fs_algorithm_selector']['model_inputter']['input_mode'] != 'prefitted' :
     new_selector.fit(X, y)
@@ -265,6 +283,28 @@ with open('$outfile_selector', 'wb') as output_handler:
             <param name="col2" value="1"/>
             <param name="header2" value="false"/>
             <output name="outfile" file="feature_selection_result12"/>
+        </test>
+        <test>
+            <param name="selected_algorithm" value="RFECV"/>
+            <param name="input_mode" value="new"/>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestRegressor"/>
+            <param name="text_params" value="n_estimators=10, random_state=10"/>
+            <section name="groups_selector">
+                <param name="infile_groups" value="regression_y.tabular" ftype="tabular"/>
+                <param name="header_g" value="true"/>
+                <param name="selected_column_selector_option_g" value="by_index_number"/>
+                <param name="col_g" value="1"/>
+            </section>
+            <param name="selected_cv" value="GroupShuffleSplit"/>
+            <param name="random_state" value="0"/>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col2" value="1"/>
+            <param name="header2" value="true"/>
+            <output name="outfile" file="feature_selection_result13"/>
         </test>
     </tests>
     <help>

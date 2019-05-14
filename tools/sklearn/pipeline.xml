@@ -3,10 +3,7 @@
     <macros>
         <import>main_macros.xml</import>
     </macros>
-    <expand macro="python_requirements">
-        <requirement type="package" version="0.6">skrebate</requirement>
-        <requirement type="package" version="0.4.2">imbalanced-learn</requirement>
-    </expand>
+    <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
     <command>
@@ -18,19 +15,28 @@
         <inputs name="inputs" />
         <configfile name="sklearn_pipeline_script">
             <![CDATA[
+import imblearn
 import json
+import pickle
 import pprint
 import skrebate
-import imblearn
-from imblearn import under_sampling, over_sampling, combine
-from imblearn.pipeline import Pipeline as imbPipeline
-from sklearn import (preprocessing, svm, linear_model, ensemble, naive_bayes,
-                    tree, neighbors, decomposition, kernel_approximation, cluster)
-from sklearn.pipeline import Pipeline
+import sys
+import warnings
+from mlxtend import classifier, regressor
+from sklearn import (
+    cluster, compose, decomposition, ensemble, feature_extraction,
+    feature_selection, gaussian_process, kernel_approximation, metrics,
+    model_selection, naive_bayes, neighbors, pipeline, preprocessing,
+    svm, linear_model, tree, discriminant_analysis)
+from sklearn.pipeline import make_pipeline
+from imblearn.pipeline import make_pipeline as imb_make_pipeline
 
-with open('$__tool_directory__/sk_whitelist.json', 'r') as f:
-    sk_whitelist = json.load(f)
-exec(open('$__tool_directory__/utils.py').read(), globals())
+sys.path.insert(0, '$__tool_directory__')
+
+from utils import SafeEval, feature_selector, get_estimator, try_get_attr
+from preprocessors import Z_RandomOverSampler
+
+N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
 
 warnings.filterwarnings('ignore')
 
@@ -40,9 +46,14 @@ input_json_path = sys.argv[1]
 with open(input_json_path, 'r') as param_handler:
     params = json.load(param_handler)
 
-#if $final_estimator.estimator_selector.selected_module == 'customer_estimator':
+#if $final_estimator.estimator_selector.selected_module == 'custom_estimator':
 params['final_estimator']['estimator_selector']['c_estimator'] =\
         '$final_estimator.estimator_selector.c_estimator'
+#end if
+
+#if $final_estimator.estimator_selector.selected_module == 'binarize_target':
+params['final_estimator']['estimator_selector']['wrapped_estimator'] =\
+        '$final_estimator.estimator_selector.wrapped_estimator'
 #end if
 
 pipeline_steps = []
@@ -53,7 +64,8 @@ def get_component(input_json, check_none=False):
         if not check_none:
             return None, False
         else:
-            sys.exit("The pre-processing component type can't be None when the number of components is greater than 1.")
+            sys.exit("The pre-processing component type can't be None "
+                     "when the number of components is greater than 1.")
     if input_json['component_type'] == 'pre_processor':
         preprocessor = input_json['pre_processors']['selected_pre_processor']
         pre_processor_options = input_json['pre_processors']['options']
@@ -97,6 +109,8 @@ def get_component(input_json, check_none=False):
         algorithm = input_json['imblearn_selector']['select_algorithm']
         if algorithm == 'over_sampling.SMOTENC':
             obj = over_sampling.SMOTENC(categorical_features=[])
+        elif algorithm == 'Z_RandomOverSampler':
+            obj = Z_RandomOverSampler()
         else:
             globals = algorithm.split('.')
             mod, klass = globals[0], globals[1]
@@ -105,6 +119,26 @@ def get_component(input_json, check_none=False):
         if options != '':
             options = safe_eval( 'dict(' + options + ')' )
             obj.set_params(**options)
+    elif input_json['component_type'] == 'IRAPS':
+        iraps_core = try_get_attr('iraps_classifier','IRAPSCore')()
+        core_params = input_json['text_params'].strip()
+        if core_params != '':
+            try:
+                params = safe_eval('dict(' + core_params + ')')
+            except ValueError:
+                sys.exit("Unsupported parameter input: `%s`" % core_params)
+            iraps_core.set_params(**params)
+        options = {}
+        if input_json['p_thres'] is not None:
+            options['p_thres'] = input_json['p_thres']
+        if input_json['fc_thres'] is not None:
+            options['fc_thres'] = input_json['fc_thres']
+        if input_json['occurrence'] is not None:
+            options['occurrence'] = input_json['occurrence']
+        if input_json['discretize'] is not None:
+            options['discretize'] = input_json['discretize']
+        IRAPSClassifier = try_get_attr('iraps_classifier','IRAPSClassifier')
+        obj = IRAPSClassifier(iraps_core, **options)
     if 'n_jobs' in obj.get_params():
         obj.set_params( n_jobs=N_JOBS )
     return obj, is_imblearn
@@ -113,36 +147,41 @@ has_imblearn = False
 if len(params['pipeline_component']) == 1:
     step_obj, is_imblearn = get_component( params['pipeline_component'][0]['component_selector'])
     if step_obj:
-        pipeline_steps.append( ('preprocessing_1', step_obj) )
+        pipeline_steps.append( step_obj )
         if is_imblearn:
             has_imblearn = True
 else:
     for i, c in enumerate(params['pipeline_component']):
         step_obj, is_imblearn = get_component( c['component_selector'], check_none=True )
-        pipeline_steps.append( ('preprocessing_' + str(i+1), step_obj) )
+        pipeline_steps.append(  step_obj )
         if is_imblearn:
             has_imblearn = True
 
-# Set up final estimator and add to pipeline.
+## Set up final estimator and add to pipeline.
 estimator_json = params['final_estimator']['estimator_selector']
 if estimator_json['selected_module'] == 'none':
     if len(pipeline_steps) == 0:
         sys.exit("No pipeline steps specified!")
-    else:   # turn the last pre-process component to final estimator
-        pipeline_steps[-1] = ('estimator', pipeline_steps[-1][-1])
+    ## else:  turn the last pre-process component to final estimator
 else:
     estimator = get_estimator(estimator_json)
-    pipeline_steps.append( ('estimator', estimator) )
+    pipeline_steps.append( estimator )
 
+#if $output_type == 'Final_Estimator_Builder':
+with open('$outfile', 'wb') as out_handler:
+    final_est = pipeline_steps[-1]
+    print(final_est)
+    pickle.dump(final_est, out_handler, pickle.HIGHEST_PROTOCOL)
+#else:
 if has_imblearn:
-    pipeline = imbPipeline(pipeline_steps)
+    pipeline = imb_make_pipeline(*pipeline_steps)
 else:
-    pipeline = Pipeline(pipeline_steps)
+    pipeline = make_pipeline(*pipeline_steps)
 pprint.pprint(pipeline.named_steps)
 
 with open('$outfile', 'wb') as out_handler:
     pickle.dump(pipeline, out_handler, pickle.HIGHEST_PROTOCOL)
-
+#end if
             ]]>
         </configfile>
     </configfiles>
@@ -158,6 +197,7 @@ with open('$outfile', 'wb') as out_handler:
                     <option value="FeatureAgglomeration">Agglomerate Features</option>
                     <option value="skrebate">SK-rebate feature selection</option>
                     <option value="imblearn">imbalanced-learn sampling</option>
+                    <option value="IRAPS">IRAPS -- feature selector and classifier</option>
                 </param>
                 <when value="None"/>
                 <when value="pre_processor">
@@ -184,27 +224,51 @@ with open('$outfile', 'wb') as out_handler:
                 <when value="imblearn">
                     <expand macro="imbalanced_learn_sampling"/>
                 </when>
+                <when value="IRAPS">
+                    <expand macro="estimator_params_text"
+                        label="Type in parameter settings for IRAPSCore if different from default:"
+                        help="Default(=blank): n_iter=1000, responsive_thres=-1, resistant_thres=0, random_state=None. No double quotes"/>
+                    <param argument="p_thres" type="float" value="0.001" label="P value threshold" help="Float. default=0.001"/>
+                    <param argument="fc_thres" type="float" value="0.1" label="fold change threshold" help="Float. default=0.1"/>
+                    <param argument="occurrence" type="float" value="0.7" label="reservation factor" help="Float. default=0.7"/>
+                    <param argument="discretize" type="float" value="-1" label="The z_score threshold to discretize target value" help="Float. default=-1"/>
+                </when>
             </conditional>
         </repeat>
         <section name="final_estimator" title="Final Estimator" expanded="true">
             <conditional name="estimator_selector">
                 <param name="selected_module" type="select" label="Choose the module that contains target estimator:" >
                     <expand macro="estimator_module_options">
-                        <option value="customer_estimator">Load a customer estimator</option>
+                        <option value="binarize_target">Binarize Target Classifier or Regressor</option>
+                        <option value="custom_estimator">Load a custom estimator</option>
                         <option value="none">none -- The last component of pre-processing step will turn to a final estimator</option>
                     </expand>
                 </param>
                 <expand macro="estimator_suboptions">
-                    <when value="customer_estimator">
-                        <param name="c_estimator" type="data" format="zip" label="Choose the dataset containing the customer estimator or pipeline:"/>
+                    <when value="binarize_target">
+                        <param name="clf_or_regr" type="select" label="Classifier or Regressor:">
+                            <option value="BinarizeTargetClassifier">BinarizeTargetClassifier</option>
+                            <option value="BinarizeTargetRegressor">BinarizeTargetRegressor</option>
+                        </param>
+                        <param name="wrapped_estimator" type="data" format="zip" label="Choose the dataset containing the wrapped estimator or pipeline"/>
+                        <param name='z_score' type="float" value="-1" optional="false" label="Discrize target values using z_score"/>
+                        <param name='value' type="float" value="" optional="true" label="Discretize target values using a fixed value instead" help="Optional. default: None."/>
+                        <param name="less_is_positive" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Are the detecting values smaller than others?"/>
+                    </when>
+                    <when value="custom_estimator">
+                        <param name="c_estimator" type="data" format="zip" label="Choose the dataset containing the custom estimator or pipeline"/>
                     </when>
                     <when value="none"/>
                 </expand>
             </conditional>
         </section>
+        <param name="output_type" type="select" label="Output the final estimator instead?">
+            <option value="Pipeline_Builder" selected="true">Pipeline</option>
+            <option value="Final_Estimator_Builder">Final Estimator</option>
+        </param>
     </inputs>
     <outputs>
-        <data format="zip" name="outfile"/>
+        <data format="zip" name="outfile" label="${output_type}"/>
     </outputs>
     <tests>
         <test>
@@ -313,7 +377,7 @@ with open('$outfile', 'wb') as out_handler:
             </conditional>
             <param name="selected_module" value="ensemble"/>
             <param name="selected_estimator" value="AdaBoostClassifier"/>
-            <output name="outfile" file="pipeline08" compare="sim_size" delta="5"/>
+            <output name="outfile" file="pipeline08" compare="sim_size" delta="20"/>
         </test>
         <test>
             <conditional name="component_selector">
@@ -372,6 +436,41 @@ with open('$outfile', 'wb') as out_handler:
                 </conditional>
             </section>
             <output name="outfile" file="pipeline12" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="None"/>
+            </conditional>
+            <param name="selected_module" value="ensemble"/>
+            <param name="selected_estimator" value="RandomForestClassifier"/>
+            <param name="output_type" value="Final_Estimator_Builder"/>
+            <output name="outfile" file="RandomForestClassifier.zip" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="IRAPS"/>
+            </conditional>
+            <section name="final_estimator">
+                <conditional name="estimator_selector">
+                    <param name="selected_module" value="none"/>
+                </conditional>
+            </section>
+            <param name="output_type" value="Final_Estimator_Builder"/>
+            <output name="outfile" file="pipeline14" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="None"/>
+            </conditional>
+            <section name="final_estimator">
+                <conditional name="estimator_selector">
+                    <param name="selected_module" value="binarize_target"/>
+                    <param name="clf_or_regr" value="BinarizeTargetClassifier"/>
+                    <param name="wrapped_estimator" value="RandomForestClassifier.zip" ftype="zip"/>
+                </conditional>
+            </section>
+            <param name="output_type" value="Final_Estimator_Builder"/>
+            <output name="outfile" file="pipeline15" compare="sim_size" delta="5"/>
         </test>
     </tests>
     <help>

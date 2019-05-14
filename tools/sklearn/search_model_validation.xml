@@ -3,23 +3,24 @@
     <macros>
         <import>main_macros.xml</import>
     </macros>
-    <expand macro="python_requirements">
-        <requirement type="package" version="0.6">skrebate</requirement>
-        <requirement type="package" version="0.4.2">imbalanced-learn</requirement>
-    </expand>
+    <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
     <command>
         <![CDATA[
         python '$__tool_directory__/search_model_validation.py'
-            '$inputs'
-            '$search_schemes.infile_pipeline'
-            '$input_options.infile1'
-            '$input_options.infile2'
-            '$outfile_result'
-            #if $save:
-            '$outfile_estimator'
+            --inputs '$inputs'
+            --estimator '$search_schemes.infile_estimator'
+            --infile1 '$input_options.infile1'
+            --infile2 '$input_options.infile2'
+            --outfile_result '$outfile_result'
+            #if $save
+            --outfile_object '$outfile_object'
             #end if
+            #if $search_schemes.options.cv_selector.selected_cv in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']
+            --groups '$inputs,$search_schemes.options.cv_selector.groups_selector.infile_g'
+            #end if
+
         ]]>
     </command>
     <configfiles>
@@ -27,7 +28,7 @@
     </configfiles>
     <inputs>
         <conditional name="search_schemes">
-            <param name="selected_search_scheme" type="select" label="Select a model selection search scheme:">
+            <param name="selected_search_scheme" type="select" label="Select a model selection search scheme">
                 <option value="GridSearchCV" selected="true">GridSearchCV - Exhaustive search over specified parameter values for an estimator </option>
                 <option value="RandomizedSearchCV">RandomizedSearchCV - Randomized search on hyper parameters for an estimator</option>
             </param>
@@ -46,27 +47,46 @@
                 </section>
             </when>
         </conditional>
-        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Save the best estimator/pipeline?"/>
+        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Save the searchCV object"/>
         <expand macro="sl_mixed_input"/>
+        <conditional name="train_test_split">
+            <param name="do_split" type="select" label="Whether to hold a portion of samples for test exclusively?" help="train_test_split">
+                <option value="no">Nope</option>
+                <option value="yes">Yes - I do</option>
+            </param>
+            <when value='no'/>
+            <when value='yes'>
+                <param argument="test_size" type="float" optional="True" value="0.25" label="Test size:"/>
+                <param argument="train_size" type="float" optional="True" value="" label="Train size:"/>
+                <param argument="random_state" type="integer" optional="True" value="" label="Random seed number:"/>
+                <param argument="shuffle" type="select">
+                    <option value="None">None - No shuffle</option>
+                    <option value="simple">Shuffle -- for regression problems</option>
+                    <option value="stratified">StratifiedShuffle -- will use the target values as class labels</option>
+                    <option value="group">GroupShuffle -- make sure group CV option is choosen</option>
+                </param>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
         <data format="tabular" name="outfile_result"/>
-        <data format="zip" name="outfile_estimator" label="${tool.name}: best estimator on ${on_string}">
+        <data format="zip" name="outfile_object" label="${search_schemes.selected_search_scheme} on ${on_string}">
             <filter>save</filter>
         </data>
     </outputs>
     <tests>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline01" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="C: [1, 10, 100, 1000]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="k: [-1, 3, 5, 7, 9]"/>
-                <param name="selected_param_type" value="prep_2_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline01" ftype="zip"/>
+            <param name="infile_params" value="get_params01.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[1, 10, 100, 1000]"/>
+                <param name="sp_name" value="svr__C"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[-1, 3, 5, 7, 9]"/>
+                <param name="sp_name" value="selectkbest__k"/>
+            </repeat>
             <param name="error_score" value="false"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
@@ -78,21 +98,22 @@
                 <assert_contents>
                     <has_n_columns n="13"/>
                     <has_text text="0.7938837807353147"/>
-                    <has_text text="{'estimator__C': 1, 'preprocessing_2__k': 9}"/>
+                    <has_text text="{'selectkbest__k': 9, 'svr__C': 1}"/>
                 </assert_contents>
             </output>
         </test>
         <test expect_failure="true">
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline01" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="C: [1, 10, 100, 1000]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="k: [-1, 3, 5, 7, 9]"/>
-                <param name="selected_param_type" value="prep_2_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline01" ftype="zip"/>
+            <param name="infile_params" value="get_params01.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[1, 10, 100, 1000]"/>
+                <param name="sp_name" value="svr__C"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[-1, 3, 5, 7, 9]"/>
+                <param name="sp_name" value="selectkbest__k"/>
+            </repeat>
             <param name="error_score" value="true"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
@@ -103,23 +124,24 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="RandomizedSearchCV"/>
-            <param name="infile_pipeline" value="pipeline01" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="C: [1, 10, 100, 1000]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="kernel: ['linear', 'poly', 'rbf', 'sigmoid']"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="k: [3, 5, 7, 9]"/>
-                <param name="selected_param_type" value="prep_2_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="with_centering: [True, False]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline01" ftype="zip"/>
+            <param name="infile_params" value="get_params01.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[1, 10, 100, 1000]"/>
+                <param name="sp_name" value="svr__C"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="['linear', 'poly', 'rbf', 'sigmoid']"/>
+                <param name="sp_name" value="svr__kernel"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[3, 5, 7, 9]"/>
+                <param name="sp_name" value="selectkbest__k"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[True, False]"/>
+                <param name="sp_name" value="robustscaler__with_centering"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -129,29 +151,30 @@
             <output name="outfile_result" >
                 <assert_contents>
                     <has_n_columns n="15" />
-                    <has_text text="param_preprocessing_1__with_centering"/>
+                    <has_text text="param_robustscaler__with_centering"/>
                 </assert_contents>
             </output>
         </test>
         <test>
             <param name="selected_search_scheme" value="RandomizedSearchCV"/>
-            <param name="infile_pipeline" value="pipeline03" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_estimators: np_arange(50, 1001, 50)"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="max_depth: scipy_stats_randint(1, 51)"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="gamma: scipy_stats_uniform(0., 1.)"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [324089]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline03" ftype="zip"/>
+            <param name="infile_params" value="get_params03.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="np_arange(50, 1001, 50)"/>
+                <param name="sp_name" value="xgbclassifier__n_estimators"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="scipy_stats_randint(1, 51)"/>
+                <param name="sp_name" value="xgbclassifier__max_depth"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="scipy_stats_uniform(0., 1.)"/>
+                <param name="sp_name" value="xgbclassifier__gamma"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[324089]"/>
+                <param name="sp_name" value="xgbclassifier__random_state"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -161,21 +184,22 @@
             <output name="outfile_result" >
                 <assert_contents>
                     <has_n_columns n="15" />
-                    <has_text text="param_estimator__max_depth"/>
+                    <has_text text="param_xgbclassifier__max_depth"/>
                 </assert_contents>
             </output>
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline04" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: list(range(100, 1001, 100))"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="estimator-: [sklearn_ensemble.ExtraTreesClassifier(n_estimators=100, random_state=324089)]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline04" ftype="zip"/>
+            <param name="infile_params" value="get_params04.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="list(range(100, 1001, 100))"/>
+                <param name="sp_name" value="linearsvc__random_state"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value=": [sklearn_ensemble.ExtraTreesClassifier(n_estimators=100, random_state=324089)]"/>
+                <param name="sp_name" value="selectfrommodel__estimator"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -191,30 +215,32 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline01" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="C: [1, 10, 100, 1000]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline01" ftype="zip"/>
+            <param name="infile_params" value="get_params01.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[1, 10, 100, 1000]"/>
+                <param name="sp_name" value="svr__C"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
-            <output name="outfile_estimator" file="searchCV01" compare="sim_size" delta="1"/>
+            <output name="outfile_object" file="searchCV01" compare="sim_size" delta="10"/>
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline06" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_estimators: [10, 50, 200, 1000]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [324089]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline06" ftype="zip"/>
+            <param name="infile_params" value="get_params06.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, 50, 200, 1000]"/>
+                <param name="sp_name" value="adaboostregressor__n_estimators"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[324089]"/>
+                <param name="sp_name" value="adaboostregressor__random_state"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -230,19 +256,20 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline07" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_estimators: [10, 50, 100, 200]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [324089]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="gamma: [1.0, 2.0]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline07" ftype="zip"/>
+            <param name="infile_params" value="get_params07.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, 50, 100, 200]"/>
+                <param name="sp_name" value="adaboostclassifier__n_estimators"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[324089]"/>
+                <param name="sp_name" value="adaboostclassifier__random_state"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[1.0, 2.0]"/>
+                <param name="sp_name" value="rbfsampler__gamma"/>
+            </repeat>
             <param name='selected_cv' value="default"/>
             <param name="n_splits" value="3"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
@@ -260,19 +287,20 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline08" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_estimators: [10, 50, 100, 200]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [324089]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="linkage: ['ward', 'complete', 'average']"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline08" ftype="zip"/>
+            <param name="infile_params" value="get_params08.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, 50, 100, 200]"/>
+                <param name="sp_name" value="adaboostclassifier__n_estimators"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[324089]"/>
+                <param name="sp_name" value="adaboostclassifier__random_state"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="['ward', 'complete', 'average']"/>
+                <param name="sp_name" value="featureagglomeration__linkage"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -287,11 +315,12 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline01" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="C: [1, 10, 100, 1000]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline01" ftype="zip"/>
+            <param name="infile_params" value="get_params01.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[1, 10, 100, 1000]"/>
+                <param name="sp_name" value="svr__C"/>
+            </repeat>
             <param name='selected_cv' value="StratifiedKFold"/>
             <param name="n_splits" value="3"/>
             <param name="shuffle" value="true" />
@@ -302,19 +331,20 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
-            <output name="outfile_estimator" file="searchCV02" compare="sim_size" delta="1"/>
+            <output name="outfile_object" file="searchCV02" compare="sim_size" delta="10"/>
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline03" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_estimators: [10, 50, 200, 1000]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [324089]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline03" ftype="zip"/>
+            <param name="infile_params" value="get_params03.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, 50, 200, 1000]"/>
+                <param name="sp_name" value="xgbclassifier__n_estimators"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[324089]"/>
+                <param name="sp_name" value="xgbclassifier__random_state"/>
+            </repeat>
             <param name="primary_scoring" value="balanced_accuracy"/>
             <param name='selected_cv' value="StratifiedKFold"/>
             <param name="n_splits" value="3"/>
@@ -335,15 +365,16 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline09" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_neighbors: [50, 100, 150, 200]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [324089]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline09" ftype="zip"/>
+            <param name="infile_params" value="get_params09.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[50, 100, 150, 200]"/>
+                <param name="sp_name" value="relieff__n_neighbors"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[324089]"/>
+                <param name="sp_name" value="randomforestregressor__random_state"/>
+            </repeat>
             <param name="primary_scoring" value="explained_variance"/>
             <param name="secondary_scoring" value="neg_mean_squared_error,r2"/>
             <param name='selected_cv' value="StratifiedKFold"/>
@@ -367,11 +398,12 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline02" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="eps: [0.01, 0.001]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline02" ftype="zip"/>
+            <param name="infile_params" value="get_params02.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[0.01, 0.001]"/>
+                <param name="sp_name" value="lassocv__eps"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -381,17 +413,18 @@
             <output name="outfile_result">
                 <assert_contents>
                     <has_n_columns n="12"/>
-                    <has_text text="0.7762968161366681" />
+                    <has_text text="0.776296816136668" />
                 </assert_contents>
             </output>
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline05" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_estimators: [10, 50, 100, 300]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline05" ftype="zip"/>
+            <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, 50, 100, 300]"/>
+                <param name="sp_name" value="randomforestregressor__n_estimators"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -407,11 +440,12 @@
         </test>
         <test expect_failure="true">
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline01" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="C: open('~/.ssh/authorized_keys', 'r').read()"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline01" ftype="zip"/>
+            <param name="infile_params" value="get_params01.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="open('~/.ssh/authorized_keys', 'r').read()"/>
+                <param name="sp_name" value="svr__C"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -421,15 +455,16 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline10" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="base_estimator-: [sklearn_tree.DecisionTreeRegressor(random_state=0), sklearn_tree.ExtraTreeRegressor(random_state=0)]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [10]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline10" ftype="zip"/>
+            <param name="infile_params" value="get_params10.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value=": [sklearn_tree.DecisionTreeRegressor(random_state=0), sklearn_tree.ExtraTreeRegressor(random_state=0)]"/>
+                <param name="sp_name" value="adaboostregressor__base_estimator"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10]"/>
+                <param name="sp_name" value="adaboostregressor__random_state"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -445,16 +480,17 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline09" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value=": [sklearn_feature_selection.SelectKBest(),
+            <param name="infile_estimator" value="pipeline09" ftype="zip"/>
+            <param name="infile_params" value="get_params09.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value=": [sklearn_feature_selection.SelectKBest(),
                         sklearn_feature_selection.VarianceThreshold(), skrebate_ReliefF(), sklearn_preprocessing.RobustScaler()]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [10]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+                <param name="sp_name" value="relieff"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10]"/>
+                <param name="sp_name" value="randomforestregressor__random_state"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -470,15 +506,16 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline09" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value=": [None,'sk_prep_all', 8, 14, skrebate_ReliefF(n_features_to_select=12)]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [10]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline09" ftype="zip"/>
+            <param name="infile_params" value="get_params09.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value=": [None,'sk_prep_all', 8, 14, skrebate_ReliefF(n_features_to_select=12)]"/>
+                <param name="sp_name" value="relieff"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10]"/>
+                <param name="sp_name" value="randomforestregressor__random_state"/>
+            </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
             <param name="selected_column_selector_option" value="all_columns"/>
@@ -494,23 +531,24 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline11" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_neighbors: [3,4,5]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [10]"/>
-                <param name="selected_param_type" value="prep_1_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_estimators:[10, 50, 100, 500]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="random_state: [10]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline11" ftype="zip"/>
+            <param name="infile_params" value="get_params11.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[3,4,5]"/>
+                <param name="sp_name" value="editednearestneighbours__n_neighbors"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10]"/>
+                <param name="sp_name" value="editednearestneighbours__random_state"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, 50, 100, 500]"/>
+                <param name="sp_name" value="randomforestclassifier__n_estimators"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10]"/>
+                <param name="sp_name" value="randomforestclassifier__random_state"/>
+            </repeat>
             <param name="primary_scoring" value="f1_macro"/>
             <param name="secondary_scoring" value="balanced_accuracy,accuracy"/>
             <param name="n_splits" value="5"/>
@@ -531,15 +569,16 @@
         </test>
         <test>
             <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_pipeline" value="pipeline12" ftype="zip"/>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="estimator__n_estimators: [10, 100, 200]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
-            <conditional name="search_param_selector">
-                <param name="search_p" value="n_features_to_select: [10, None]"/>
-                <param name="selected_param_type" value="final_estimator_p"/>
-            </conditional>
+            <param name="infile_estimator" value="pipeline12" ftype="zip"/>
+            <param name="infile_params" value="get_params12.tabular" ftype="tabular"/>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, 100, 200]"/>
+                <param name="sp_name" value="rfe__estimator__n_estimators"/>
+            </repeat>
+            <repeat name="param_set">
+                <param name="sp_list" value="[10, None]"/>
+                <param name="sp_name" value="rfe__n_features_to_select"/>
+            </repeat>
             <param name="primary_scoring" value="r2"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
@@ -554,38 +593,66 @@
                 </assert_contents>
             </output>
         </test>
+        <!--test>
+            <conditional name="search_schemes">
+                <param name="selected_search_scheme" value="GridSearchCV"/>
+                <param name="infile_estimator" value="pipeline05" ftype="zip"/>
+                <section name="search_params_builder">
+                    <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
+                    <repeat name="param_set">
+                        <param name="sp_list" value="[10, 50, 100, 300]"/>
+                        <param name="sp_name" value="randomforestregressor__n_estimators"/>
+                    </repeat>
+                </section>
+            </conditional>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_text text="0.7986842219788204" />
+                </assert_contents>
+            </output>
+        </test-->
     </tests>
     <help>
         <![CDATA[
 **What it does**
-Searches optimized parameter values for an estimator or pipeline through either exhaustive grid cross validation search or Randomized cross validation search.
+Searches optimized parameter settings for an estimator or pipeline through either exhaustive grid cross validation search or Randomized cross validation search.
 please refer to `Scikit-learn model_selection GridSearchCV`_, `Scikit-learn model_selection RandomizedSearchCV`_ and `Tuning hyper-parameters`_.
 
-**How to choose search patameters?**
+**Return**
+
+Outputs `cv_results_` from SearchCV in a tabular dataset if no train_test_split, otherwise the test score(s). Besides, Output of the SearchCV object is optional.
+
+**How to choose search patameters grid?**
 
 Please refer to `svm`_, `linear_model`_, `ensemble`_, `naive_bayes`_, `tree`_, `neighbors`_ and `xgboost`_ for estimator parameters.
-Refer to `sklearn.preprocessing`_, `feature_selection`_, `decomposition`_, `kernel_approximation`_, `cluster.FeatureAgglomeration`_ and `skrebate`_ for parameter in the pre-processing steps.
+Refer to `sklearn.preprocessing`_, `feature_selection`_, `decomposition`_, `kernel_approximation`_, `cluster.FeatureAgglomeration`_
+and `skrebate`_ for parameter in the pre-processing steps.
 
-**Search parameter input** accepts parameter and setting in key:value pair. One pair per input box. Setting can be list, numpy array, or distribution.
-The evaluation of settings supports operations in Math, list comprehension, numpy.arange(np_arange), most numpy.random(e.g., np_random_uniform) and some scipy.stats(e.g., scipy_stats_zipf) classes or functions, and others.
+**Search parameter list** can be list, numpy array, or distribution. The evaluation of settings supports operations in Math, 
+list comprehension, numpy.arange(np_arange), most numpy.random(e.g., np_random_uniform) and some scipy.stats(e.g., scipy_stats_zipf) classes or functions, and others.
 
-**Examples:**
+Examples:
 
-- K: [3, 5, 7, 9]
+- [3, 5, 7, 9]
 
-- n_estimators: list(range(50, 1001, 50))
+- list(range(50, 1001, 50))
 
-- gamma: np_arange(0.01, 1, 0.1)
+- np_arange(0.01, 1, 0.1)
 
-- alpha: np_random_choice(list(range(1, 51)) + [None], size=20)
+- np_random_choice(list(range(1, 51)) + [None], size=20)
 
-- max_depth: scipy_stats_randin(1, 11)
+- scipy_stats_randin(1, 11)
 
-**Estimator search/eval (additional '-')**::
+**Estimator / Preprocessor search (additional `:` in the front)**::
 
-     base_estimator-: [sklearn_tree.DecisionTreeRegressor(), sklearn_tree.ExtraTreeRegressor()]
-
-**Preprocessors search/swap**::
+     : [sklearn_tree.DecisionTreeRegressor(), sklearn_tree.ExtraTreeRegressor()]
 
      : [sklearn_feature_selection.SelectKBest(), sklearn_feature_selection.VarianceThreshold(),
         skrebate_ReliefF(), sklearn_preprocessing.RobustScaler()]
@@ -656,6 +723,17 @@ Support mix (CAUTION: Mix of imblearn and other preprocessors may not work), e.g
      : [None, 'sk_prep_all', 22, 'k_appr_all', sklearn_feature_selection.SelectKBest(k=50)]
 
 
+
+**Whether to do train_test_split?**
+
+Please refer to `https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation`_
+
+
+.. image:: https://scikit-learn.org/stable/_images/grid_search_cross_validation.png
+    :height: 300
+    :width: 400
+
+
 .. _`Scikit-learn model_selection GridSearchCV`: http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.GridSearchCV.html
 .. _`Scikit-learn model_selection RandomizedSearchCV`: http://scikit-learn.org/stable/modules/generated/sklearn.model_selection.RandomizedSearchCV.html
 .. _`Tuning hyper-parameters`: http://scikit-learn.org/stable/modules/grid_search.html
@@ -674,6 +752,7 @@ Support mix (CAUTION: Mix of imblearn and other preprocessors may not work), e.g
 .. _`kernel_approximation`: http://scikit-learn.org/stable/modules/classes.html#module-sklearn.kernel_approximation
 .. _`cluster.FeatureAgglomeration`: http://scikit-learn.org/stable/modules/generated/sklearn.cluster.FeatureAgglomeration.html
 .. _`skrebate`: https://epistasislab.github.io/scikit-rebate/using/
+.. _`https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation`: https://scikit-learn.org/stable/modules/cross_validation.html#cross-validation
 
         ]]>
     </help>
