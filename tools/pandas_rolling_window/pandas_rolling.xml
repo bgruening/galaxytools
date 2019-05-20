@@ -1,0 +1,166 @@
+<tool id="pandas_rolling_window" name="Rolling window" version="0.1">
+    <description>over a dataframe (e.g. for data smoothing)</description>
+    <requirements>
+        <requirement type="package" version="1.16.3">numpy</requirement>
+        <requirement type="package" version="1.2.1">scipy</requirement>
+        <requirement type="package" version="0.24.2">pandas</requirement>
+    </requirements>
+    <command>
+<![CDATA[
+
+    cat '$pandas_script' &&
+    python '$pandas_script'
+
+]]>
+    </command>
+    <configfiles>
+        <configfile name="pandas_script"><![CDATA[
+import argparse
+import sys
+
+import pandas as pd
+
+kwargs = dict()
+window_type = '$smooth_function.smooth_function_opts_selector'
+
+#if $smooth_function.smooth_function_opts_selector == 'gaussian':
+kwargs.update({'std': $smooth_function.gaussian_std})
+#elif $smooth_function.smooth_function_opts_selector == 'general_gaussian':
+kwargs = ({'power': $smooth_function.ggaussian_power, 'width': $smooth_function.ggaussian_width})
+#elif $smooth_function.smooth_function_opts_selector == 'kaiser':
+kwargs.update({'beta': $smooth_function.kaiser_beta})
+#elif $smooth_function.smooth_function_opts_selector == 'slepian':
+kwargs.update({'width': $smooth_function.slepian_width})
+#end if
+
+df = pd.read_csv('${infile}', sep='\t', index_col=None, header=None, dtype={'strand': object} )
+
+#if $group_column:
+df['aggregate'] = df.groupby( int($group_column)-1, sort=False )[int($value_column)-1].rolling(${window_len}, win_type=window_type, center=$centering ).${statistics}(**kwargs).reset_index(drop=True)
+#else:
+df['aggregate'] = df[int($value_column)-1].rolling(${window_len}, win_type=window_type, center=$centering ).${statistics}(**kwargs).reset_index(drop=True)
+#end if
+
+df.to_csv('${outfile}', index=False, header=False, sep='\t', na_rep='0', float_format='%.2f')
+    ]]> </configfile>
+    </configfiles>
+    <inputs>
+        <param name="infile" type="data" format="tabular,bed.interval" label="Select input file in tabular or BED format"/>
+        <param name="group_column" type="data_column" data_ref="infile" optional="true" label="Optional column to group"
+            help="For example if you have a chromosome column you probably want to group each chromosome before you apply any function." />
+
+        <param name="value_column" type="data_column" data_ref="infile" label="Column with the value of interest"
+            help="" />
+
+        <conditional name="smooth_function">
+            <param name="smooth_function_opts_selector" type="select" label="Provide a window type"
+                help="For more information please see https://en.wikipedia.org/wiki/Window_function">
+                <option value="boxcar" selected="True">Boxcar or Dirichlet, all points are evenly weighted</option>
+                <option value="triang">triang</option>
+                <option value="blackman">blackman</option>
+                <option value="hamming">hamming</option>
+                <option value="bartlett">bartlett</option>
+                <option value="parzen">parzen</option>
+                <option value="bohman">bohman</option>
+                <option value="blackmanharris">blackmanharris</option>
+                <option value="nuttall">nuttall</option>
+                <option value="barthann">barthann</option>
+                <!--option value="kaiser">kaiser</option>
+                <option value="gaussian">gaussian</option>
+                <option value="general_gaussian">general gaussian</option>
+                <option value="slepian">slepian</option-->
+            </param>
+            <when value="boxcar" />
+            <when value="triang" />
+            <when value="blackman" />
+            <when value="hamming" />
+            <when value="bartlett" />
+            <when value="parzen" />
+            <when value="bohman" />
+            <when value="blackmanharris" />
+            <when value="nuttall" />
+            <when value="barthann" />
+            <when value="kaiser">
+                <param name="kaiser_beta" type="float" value="0.1" min='0.0' label="beta" />
+            </when>
+            <when value="gaussian">
+                <param name="gaussian_std" type="float" value="0.1" min='0.0' label="std" />
+            </when>
+            <when value="general_gaussian">
+                <param name="ggaussian_power" type="integer" value="2" min='1' label="power" />
+                <param name="ggaussian_width" type="integer" value="2" min="1" label="width" />
+            </when>
+            <when value="slepian">
+                <param name="slepian_width" type="integer" value="2" min="1" label="width" />
+            </when>
+        </conditional>
+
+        <param name="statistics" type="select" label="Provide a statistical function">
+            <option value="count">Number of non-null observations (count)</option>
+            <option value="sum">Sum of values (sum)</option>
+            <option value="mean" selected="true">Mean of values (mean)</option>
+            <option value="median">Arithmetic median of values (median)</option>
+            <option value="min">Minimum (min)</option>
+            <option value="max">max (max)</option>
+            <option value="std">Bessel-corrected sample standard deviation (std)</option>
+            <option value="var">Unbiased variance (var)</option>
+            <option value="skew">Sample skewness (3rd moment)</option>
+            <option value="kurt">Sample kurtosis (4th moment)</option>
+            <option value="quantil">Sample quantile (value at %)</option>
+            <option value="cov">Unbiased covariance (binary) (cov)</option>
+            <option value="corr">Correlation (corr)</option>
+        </param>
+
+        <param name="centering" type="boolean" truevalue="True" falsevalue="False" label="center smoothed values"
+            help="By default the labels are set to the right edge of the window. Here you can change that to the center." />
+        <!-- Options for all formats.-->
+        <param name="window_len" type="integer" value="3" min="2" label="Window length"/>
+    </inputs>
+    <outputs>
+        <data name="outfile" format_source="infile" />
+    </outputs>
+    <tests>
+        <test>
+            <!-- None test -->
+            <param name="infile" value="1.bedgraph"/>
+            <param name="group_column" value="1"/>
+            <param name="value_column" value="5"/>
+            <conditional name="smooth_function">
+                <param name="smooth_function_opts_selector" value="None"/>
+            </conditional>
+            <param name="window_len" value="2"/>
+            <output name="outfile" value="1_None.bedgraph"/>
+        </test>
+        <test>
+            <param name="infile" value="1.bedgraph"/>
+            <param name="group_column" value="1"/>
+            <param name="value_column" value="5"/>
+            <conditional name="smooth_function">
+                <param name="smooth_function_opts_selector" value="boxcar"/>
+            </conditional>
+            <param name="window_len" value="3"/>
+            <output name="outfile" value="1_boxcar.bedgraph"/>
+        </test>
+        <test>
+            <param name="infile" value="1.bedgraph"/>
+            <param name="group_column" value="1"/>
+            <param name="value_column" value="5"/>
+            <conditional name="smooth_function">
+                <param name="smooth_function_opts_selector" value="hamming"/>
+            </conditional>
+            <param name="window_len" value="3"/>
+            <param name="statistics" value="sum"/>
+            <output name="outfile" value="1_hamming.bedgraph"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+**What it does**
+
+Provides rolling window calculations, e.g. for smoothing values.
+
+
+]]>
+    </help>
+</tool>
