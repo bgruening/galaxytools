@@ -46,6 +46,7 @@ def mordred_descriptors(mols, output, header, use_3d):
     for mol in invalid_mols:  # remove placeholders
         df.iloc[mol] = np.nan
     df = df.applymap(convert_errors_to_nan)  # remove descriptors which errored
+    df = df.round(6)
     df.to_csv(output, na_rep='', sep='\t', index=False, header=header)  # write output
 
 
