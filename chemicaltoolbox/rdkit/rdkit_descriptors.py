@@ -65,12 +65,12 @@ if __name__ == "__main__":
     functions = get_rdkit_descriptor_functions()
 
     if args.header:
-        args.outfile.write( '%s\n' % '\t'.join( [name for name, f in functions] ) )
+        args.outfile.write( '%s\n' % '\t'.join( ['MoleculeID'] + [name for name, f in functions] ) )
 
     for mol in supplier:
         if not mol:
             continue
         descs = descriptors( mol, functions )
         molecule_id = mol.GetProp("_Name")
-        args.outfile.write( "%s\n" % '\t'.join( [molecule_id]+ [str(res) for name, res in descs] ) )
+        args.outfile.write( "%s\n" % '\t'.join( [molecule_id]+ [str(round(res, 6)) for name, res in descs] ) )
 
