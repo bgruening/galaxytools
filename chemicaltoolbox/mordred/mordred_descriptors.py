@@ -31,7 +31,6 @@ def mol_supplier(filename, ext):
         mols = f.read().split('\n') 
     if ext == 'smi':
         return [Chem.MolFromSmiles(mol, sanitize=True) for mol in mols if mol != '']
-        # return [n for n in SmilesMolSupplier(filename)]
     if ext == 'inchi':
         return [Chem.inchi.MolFromInchi(mol, sanitize=True) for mol in mols if mol != '']
 
