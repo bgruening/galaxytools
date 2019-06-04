@@ -30,9 +30,9 @@ def mol_supplier(filename, ext):
     with open(filename) as f: 
         mols = f.read().split('\n') 
     if ext == 'smi':
-        return [Chem.MolFromSmiles(mol, sanitize=True) for mol in mols]
+        return [Chem.MolFromSmiles(mol, sanitize=True) for mol in mols if mol != '']
     if ext == 'inchi':
-        return [Chem.inchi.MolFromInchi(mol, sanitize=True) for mol in mols]
+        return [Chem.inchi.MolFromInchi(mol, sanitize=True) for mol in mols if mol != '']
 
 
 def mordred_descriptors(mols, output, header, use_3d):
