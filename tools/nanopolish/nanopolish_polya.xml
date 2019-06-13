@@ -1,0 +1,98 @@
+<tool id="nanopolish_polya" name="Nanopolish polyA" version="0.1.0">
+    <description>- Estimate the length of the poly-A tail on direct RNA reads.</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="exit_code"><![CDATA[
+        ln -s '$input_merged' reads.fasta && 
+        
+        #if $input_reads_raw.extension == 'fast5':
+            mkdir fast5_files && ln -s '$input_reads_raw' fast5_files/read1.fast5 &&
+        #else
+            ln -s '$input_reads_raw' fast5_files.tar.gz &&
+            mkdir fast5_files && tar -xzf fast5_files.tar.gz -C fast5_files &&
+        #end if
+
+        nanopolish index -d fast5_files/ reads.fasta &&
+        ln -s '$b' reads.bam &&
+        ln -s '${b.metadata.bam_index}' reads.bam.bai &&
+        #if $reference_source.reference_source_selector == 'history':
+            ln -f -s '$reference_source.ref_file' genome.fa &&
+        #else:
+            ln -f -s '$reference_source.ref_file.fields.path' genome.fa &&
+        #end if
+        
+        nanopolish polya
+        -r reads.fasta
+        -b reads.bam
+        -g genome.fa
+        --threads "\${GALAXY_SLOTS:-4}"        
+        #if $w and str($w).strip():
+          -w "${w}"
+        #end if  
+        > polya_results.tsv
+    ]]></command>
+    <inputs>
+      <!-- index inputs -->
+        <param type="data" name="input_merged" format="fasta,fastq" label="Basecalled merged reads.fa"/>
+        <param type="data" name="input_reads_raw" format="h5,fast5.tar.gz" label="Flat archive file of raw fast5 files"/>
+
+        <!-- variants consensus inputs -->
+        <param type="data" argument="-b" format="bam" label="Reads aligned to the reference genome" />
+        <conditional name="reference_source">
+          <param name="reference_source_selector" type="select" label="Load reference genome from">
+            <option value="cached">Local cache</option>
+            <option value="history">History</option>
+          </param>
+          <when value="cached">
+            <param name="ref_file" type="select" label="Using reference genome" help="REFERENCE_SEQUENCE">
+              <options from_data_table="all_fasta">
+              </options>
+              <validator type="no_options" message="A built-in reference genome is not available for the build associated with the selected input file"/>
+            </param>
+          </when>
+          <when value="history">
+            <param name="ref_file" type="data" format="fasta" label="Use the following dataset as the reference sequence" help="REFERENCE_SEQUENCE; You can upload a FASTA sequence to the history and use it as reference" />
+          </when>
+        </conditional>
+        <param argument="-w" type="text" optional="true"
+            label="only compute the poly-A lengths for reads in window STR (format: ctg:start_id-end_id)" />
+
+    </inputs>
+
+    <outputs>
+      <!-- variants consensus outputs -->
+        <data name="polya_results" format="tabular" from_work_dir="polya_results.tsv" label="called methylation sites" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_merged" ftype="fastq" value="30xpolyA-small-subset.fastq" />
+            <param name="input_reads_raw" ftype="fast5.tar.gz" value="fast5_files_30xpolyA-small-subset.tar.gz" />
+            <param name="b" value="30xpolyA-small-subset.sorted.bam" />
+            <param name="reference_source_selector" value="history" />
+            <param name="ref_file" value="enolase_reference.fas" />
+            <!-- <param name="w" value="tig00000001:200000-202000" /> -->
+            <output name="polya_results" file="30xpolyA-small-subset-results.tsv" />
+        </test>
+         <!-- <test>
+            <param name="input_merged" ftype="fasta" value="reads.fasta" />
+            <param name="input_reads_raw" ftype="fast5.tar.gz" value="fast5_files.tar.gz" />
+            <param name="reference_source_selector" value="cached" />
+            <param name="ref_file" value="draft"/>
+            <param name="b" value="reads.sorted.bam" />
+            <param name="w" value="tig00000001:200000-202000" />
+            <param name="batchsize" value="512" />
+            <output name="polya_results" file="methylation_calls.tsv" />
+        </test> -->
+    </tests>    
+    <help><![CDATA[
+        Usage: nanopolish polya [OPTIONS] --reads reads.fa --bam alignments.bam --genome genome.fa 
+        Estimate the length of the poly-A tail on direct RNA reads   
+
+        Quickstart tutorial and manual available at:
+        http://nanopolish.readthedocs.io/en/latest/quickstart_polya.html
+
+    ]]></help>
+    <expand macro="citations" />
+</tool>
