@@ -44,7 +44,7 @@ def getRawFeatures(mol):
     filtered = list(filter(filterFeature, rawFeats))
     return filtered
 
-def get_FeatureMapScore(small_feats, large_feats, tani=False):
+def get_FeatureMapScore(small_feats, large_feats, tani=False, score_mode=FeatMaps.FeatMapScoreMode.All):
     """
     Generate the feature map score.
 
@@ -56,9 +56,11 @@ def get_FeatureMapScore(small_feats, large_feats, tani=False):
 
     featLists = []
     for rawFeats in [small_feats, large_feats]:
-        # filter that list down to only include the ones we're intereted in
+        # filter that list down to only include the ones we're interested in
         featLists.append(rawFeats)
     fms = [FeatMaps.FeatMap(feats=x, weights=[1] * len(x), params=fmParams) for x in featLists]
+    # set the score mode
+    fms[0].scoreMode = score_mode
 
     try:
         if tani:
@@ -84,7 +86,7 @@ def get_FeatureMapScore(small_feats, large_feats, tani=False):
         return fm_score
 
 
-def get_SucosScore(ref_mol, query_mol, tani=False, ref_features=None, query_features=None):
+def get_SucosScore(ref_mol, query_mol, tani=False, ref_features=None, query_features=None, score_mode=FeatMaps.FeatMapScoreMode.All):
     """
     This is the key function that calculates the SuCOS scores and is expected to be called from other modules.
     To improve performance you can pre-calculate the features and pass them in as optional parameters to avoid having
@@ -104,7 +106,7 @@ def get_SucosScore(ref_mol, query_mol, tani=False, ref_features=None, query_feat
     if not query_features:
         query_features = getRawFeatures(query_mol)
 
-    fm_score = get_FeatureMapScore(ref_features, query_features, tani)
+    fm_score = get_FeatureMapScore(ref_features, query_features, tani, score_mode)
     fm_score = np.clip(fm_score, 0, 1)
 
     if tani:
@@ -119,7 +121,9 @@ def get_SucosScore(ref_mol, query_mol, tani=False, ref_features=None, query_feat
         SuCOS_score = 0.5 * fm_score + 0.5 * protrude_val
         return SuCOS_score, fm_score, protrude_val
 
-def process(refmol_filename, inputs_filename, outputs_filename, refmol_index=None, refmol_format=None, tani=False):
+def process(refmol_filename, inputs_filename, outputs_filename, refmol_index=None,
+            refmol_format=None, tani=False, score_mode=FeatMaps.FeatMapScoreMode.All):
+
     ref_mol = utils.read_single_molecule(refmol_filename, index=refmol_index, format=refmol_format)
     #utils.log("Reference mol has", ref_mol.GetNumHeavyAtoms(), "heavy atoms")
     ref_features = getRawFeatures(ref_mol)
@@ -138,7 +142,7 @@ def process(refmol_filename, inputs_filename, outputs_filename, refmol_index=Non
             continue
         #utils.log("Mol has", str(mol.GetNumHeavyAtoms()), "heavy atoms")
         try:
-            sucos_score, fm_score, val3 = get_SucosScore(ref_mol, mol, tani=tani, ref_features=ref_features)
+            sucos_score, fm_score, val3 = get_SucosScore(ref_mol, mol, tani=tani, ref_features=ref_features, score_mode=score_mode)
             mol.SetDoubleProp("SuCOS_Score", sucos_score)
             mol.SetDoubleProp("SuCOS_FeatureMap_Score", fm_score)
             if tani:
@@ -159,6 +163,17 @@ def process(refmol_filename, inputs_filename, outputs_filename, refmol_index=Non
 
     utils.log("Completed.", total, "processed, ", count, "succeeded, ", errors, "errors")
 
+def parse_score_mode(value):
+    if value == None or value == 'all':
+        return FeatMaps.FeatMapScoreMode.All
+    elif value == 'closest':
+        return FeatMaps.FeatMapScoreMode.Closest
+    elif value == 'best':
+        return FeatMaps.FeatMapScoreMode.Best
+    else:
+        raise ValueError(value + " is not a valid scoring mode option")
+
+
 ### start main execution #########################################
 
 def main():
@@ -171,11 +186,16 @@ def main():
     parser.add_argument('--refmolidx', help='Reference molecule index in SD file if not the first', type=int, default=1)
     parser.add_argument('-o', '--output', help='Output file in SDF format. Can be gzipped (*.gz).')
     parser.add_argument('--tanimoto', action='store_true', help='Include Tanimoto distance in score')
+    parser.add_argument('--score_mode', choices=['all', 'closest', 'best'],
+                        help="choose the scoring mode for the feature map, default is 'all'.")
 
     args = parser.parse_args()
     utils.log("SuCOS Args: ", args)
 
-    process(args.refmol, args.input, args.output, refmol_index=args.refmolidx, refmol_format=args.refmol_format, tani=args.tanimoto)
+    score_mode = parse_score_mode(args.score_mode)
+
+    process(args.refmol, args.input, args.output, refmol_index=args.refmolidx,
+            refmol_format=args.refmol_format, tani=args.tanimoto, score_mode=score_mode)
 
 
 if __name__ == "__main__":
