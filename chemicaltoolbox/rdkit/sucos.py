@@ -4,7 +4,7 @@ Basic SuCOS scoring. Allows a set of molecules from a SD file to be ovelayed to 
 with the resulting scores being written as properties in the output SD file.
 
 SuCOS is the work of Susan Leung.
-Bitbucket: https://bitbucket.org/Susanhleung/sucos/
+GitHub: https://github.com/susanhleung/SuCOS
 Publication: https://doi.org/10.26434/chemrxiv.8100203.v1
 """
 
@@ -141,7 +141,7 @@ def process(refmol_filename, inputs_filename, outputs_filename, refmol_index=Non
             sucos_score, fm_score, val3 = get_SucosScore(ref_mol, mol, tani=tani, ref_features=ref_features)
             mol.SetDoubleProp("SuCOS_Score", sucos_score)
             mol.SetDoubleProp("SuCOS_FeatureMap_Score", fm_score)
-            if is_tanimoto:
+            if tani:
                 mol.SetDoubleProp("SuCOS_Tanimoto_Score", val3)
             else:
                 mol.SetDoubleProp("SuCOS_Protrude_Score", val3)
