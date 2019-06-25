@@ -1,24 +1,31 @@
 #!/usr/bin/env python
 """
-Determination of the best SuCOS score for one set of molecules against a second set.
+Assess ligands against a second set of molecules using SuCOS scores.
 This is a quite specialised function that is designed to take a set of potential follow up
-ligands and compare them to a set of clustered fragment hits to help identify which follow up
+compounds and compare them to a set of clustered fragment hits to help identify which follow up
 ligands best map to the binding space of the hits.
 
-The clustering if the fragment hits is expected to be performed with the sucos_cluster.py module
+The clustering of the fragment hits is expected to be performed with the sucos_cluster.py module
 and will generate a set of SD files, one for each cluster of hits (presumably corresponding to a
 binding pocket in the protein target).
 
-Each molecule in the input ligands is then compared (using SuCOS) to each hit in the clusters to
-identify the hit with the best SuCOS score. The output is a SD file with each of the ligands, with
-these additional fields for each molecule:
+Each molecule in the input ligands is then compared (using SuCOS) to each hit in the clusters. There
+ are different modes which determine how the ligand is assessed.
+
+In mode 'max' the hit with the best SuCOS score is identified. The output is a SD file with each of the ligands,
+with these additional fields for each molecule:
 Max_SuCOS_Score - the best score
 Max_SuCOS_FeatureMap_Score - the feature map score for the hit that has the best SuCOS score
-Max_SuCOS_Tanimoto_Score - the Tanimoto score for the hit that has the best SuCOS score
+Max_SuCOS_Protrude_Score - the protrude volume for the hit that has the best SuCOS score
 Max_SuCOS_Cluster - the name of the cluster SD file that contains the best hit
 Max_SuCOS_Index - the index of the best hit in the SD file
 
-If a molecule has no alignment to any of the clustered hits (a max score of zero) then it is not
+In mode 'cum' the sum of all the scores is calculated and reported as the following properties for each molecule:
+Cum_SuCOS_Score property: the sum of the SuCOS scores
+Cum_SuCOS_FeatureMap_Score: the sum of the feature map scores
+Cum_SuCOS_Protrude_Score: the sum of the protrude volume scores
+
+If a molecule has no alignment to any of the clustered hits (all alignment scores of zero) then it is not
 included in the results.
 
 
@@ -28,22 +35,29 @@ Publication: https://doi.org/10.26434/chemrxiv.8100203.v1
 """
 
 import sucos, utils
-import argparse, gzip
+import argparse, gzip, os
 from rdkit import Chem
 
 
-def process(inputfilename, clusterfilenames, outputfilename):
+def process(inputfilename, clusterfilenames, outputfilename, mode):
 
     all_clusters = {}
     for filename in clusterfilenames:
         cluster = []
         cluster_file = utils.open_file_for_reading(filename)
         suppl = Chem.ForwardSDMolSupplier(cluster_file)
+        i = 0
         for mol in suppl:
+            i += 1
             if not mol:
+                utils.log("WARNING: failed to generate molecule", i, "in cluster", filename)
                 continue
-            features = sucos.getRawFeatures(mol)
-            cluster.append((mol, features))
+            try:
+                features = sucos.getRawFeatures(mol)
+                cluster.append((mol, features))
+            except:
+                utils.log("WARNING: failed to generate features for molecule", i, "in cluster", filename)
+
         cluster_file.close()
         all_clusters[filename] = cluster
 
@@ -57,33 +71,57 @@ def process(inputfilename, clusterfilenames, outputfilename):
 
     for mol in suppl:
         mol_num += 1
-        max_sucos_score = 0
-        cluster_name = None
-        cluster_index = 0
+        if not mol:
+            utils.log("WARNING: failed to generate molecule", mol_num, "in input")
+            continue
+        try:
+            query_features = sucos.getRawFeatures(mol)
+        except:
+            utils.log("WARNING: failed to generate features for molecule", mol_num, "in input")
+            continue
+        scores = [0, 0, 0]
         for clusterfilename in all_clusters:
             cluster = all_clusters[clusterfilename]
             index = 0
             for entry in cluster:
                 hit = entry[0]
-                features = entry[1]
+                ref_features = entry[1]
                 index += 1
                 comparisons += 1
-                sucos_score, fm_score, tani_score = sucos.get_SucosScore(hit, mol, ref_features=features)
-                if sucos_score > max_sucos_score:
-                    max_sucos_score = sucos_score
-                    max_fm_score = fm_score
-                    max_tanimoto_score = tani_score
-                    cluster_name = clusterfilename
-                    cluster_index = index
+                sucos_score, fm_score, vol_score = sucos.get_SucosScore(hit, mol,
+                    tani=False, ref_features=ref_features, query_features=query_features)
+                if mode == 'max':
+                    if sucos_score > scores[0]:
+                        scores[0] = sucos_score
+                        scores[1] = fm_score
+                        scores[2] = vol_score
+                        cluster_name = clusterfilename
+                        cluster_index = index
+                elif mode == 'cum':
+                    scores[0] += sucos_score
+                    scores[1] += fm_score
+                    scores[2] += vol_score
+                else:
+                    raise ValueError("Invalid mode: " + mode)
 
-        utils.log("Max SuCOS:", max_sucos_score, "File:", cluster_name, "Index:", cluster_index)
-        if max_sucos_score > 0:
-            mol.SetDoubleProp("Max_SuCOS_Score", max_sucos_score)
-            mol.SetDoubleProp("Max_SuCOS_FeatureMap_Score", max_fm_score)
-            mol.SetDoubleProp("Max_SuCOS_Tanimoto_Score", max_tanimoto_score)
-            mol.SetProp("Max_SuCOS_Cluster", cluster_name)
-            mol.SetIntProp("Max_SuCOS_Index", cluster_index)
+        if scores[0] > 0:
+            if mode == 'max':
+                cluster_file_name_only = cluster_name.split(os.sep)[-1]
+                #utils.log("Max SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2],"File:", cluster_file_name_only, "Index:", cluster_index)
+                mol.SetDoubleProp("Max_SuCOS_Score", scores[0])
+                mol.SetDoubleProp("Max_SuCOS_FeatureMap_Score", scores[1])
+                mol.SetDoubleProp("Max_SuCOS_Protrude_Score", scores[2])
+                mol.SetProp("Max_SuCOS_Cluster", cluster_file_name_only)
+                mol.SetIntProp("Max_SuCOS_Index", cluster_index)
+
+            else:
+                #utils.log("Cum SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2])
+                mol.SetDoubleProp("Cum_SuCOS_Score", scores[0])
+                mol.SetDoubleProp("Cum_SuCOS_FeatureMap_Score", scores[1])
+                mol.SetDoubleProp("Cum_SuCOS_Protrude_Score", scores[2])
+
             writer.write(mol)
+
         else:
             utils.log("Molecule", mol_num, "did not overlay. Omitting from results")
 
@@ -102,12 +140,14 @@ def main():
     parser = argparse.ArgumentParser(description='Max SuCOS scores with RDKit')
     parser.add_argument('-i', '--input', help='Input file to score in SDF format. Can be gzipped (*.gz).')
     parser.add_argument('-o', '--output', help='Output file in SDF format. Can be gzipped (*.gz).')
-    parser.add_argument('clusters', nargs='*', help="One of more SDF files with the clustered hits")
+    parser.add_argument('-m', '--mode', choices=['max', 'cum'],
+                        default='max', help='Score mode: max = best score, cum = sum of all scores')
+    parser.add_argument('clusters', nargs='*', help="One or more SDF files with the clustered hits")
 
     args = parser.parse_args()
     utils.log("Max SuCOS Args: ", args)
 
-    process(args.input, args.clusters, args.output)
+    process(args.input, args.clusters, args.output, args.mode)
 
 
 if __name__ == "__main__":
