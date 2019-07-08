@@ -8,17 +8,29 @@
     <version_command>echo "@VERSION@"</version_command>
     <command>
         <![CDATA[
+        #if $input_options.selected_input == 'refseq_and_interval'
+        bgzip -c '$input_options.target_file' > '${target_file.element_identifier}.gz' &&
+        tabix -p bed '${target_file.element_identifier}.gz' &&
+        #end if
         python '$__tool_directory__/search_model_validation.py'
             --inputs '$inputs'
             --estimator '$search_schemes.infile_estimator'
+            #if $input_options.selected_input == 'seq_fasta'
+            --fasta_path '$input_options.fasta_path'
+            #elif $input_options.selected_input == 'refseq_and_interval'
+            --ref_seq '$input_options.ref_genome_file'
+            --interval '$input_options.interval_file'
+            --targets "`pwd`/${target_file.element_identifier}.gz"
+            #else
             --infile1 '$input_options.infile1'
+            #end if
             --infile2 '$input_options.infile2'
             --outfile_result '$outfile_result'
             #if $save
             --outfile_object '$outfile_object'
             #end if
             #if $search_schemes.options.cv_selector.selected_cv in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']
-            --groups '$inputs,$search_schemes.options.cv_selector.groups_selector.infile_g'
+            --groups '$search_schemes.options.cv_selector.groups_selector.infile_g'
             #end if
 
         ]]>
@@ -49,13 +61,14 @@
         </conditional>
         <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Save the searchCV object"/>
         <expand macro="sl_mixed_input"/>
-        <conditional name="train_test_split">
-            <param name="do_split" type="select" label="Whether to hold a portion of samples for test exclusively?" help="train_test_split">
-                <option value="no">Nope</option>
-                <option value="yes">Yes - I do</option>
+        <conditional name="outer_split">
+            <param name="split_mode" type="select" label="Whether to hold a portion of samples for test exclusively?" help="Nested CV or train_test_split">
+                <option value="no" selected="true">Nope</option>
+                <option value="train_test_split">Yes - do a single train test split</option>
+                <option value="nested_cv">Yes - do nested CV</option>
             </param>
             <when value='no'/>
-            <when value='yes'>
+            <when value='train_test_split'>
                 <param argument="test_size" type="float" optional="True" value="0.25" label="Test size:"/>
                 <param argument="train_size" type="float" optional="True" value="" label="Train size:"/>
                 <param argument="random_state" type="integer" optional="True" value="" label="Random seed number:"/>
@@ -65,6 +78,9 @@
                     <option value="stratified">StratifiedShuffle -- will use the target values as class labels</option>
                     <option value="group">GroupShuffle -- make sure group CV option is choosen</option>
                 </param>
+            </when>
+            <when value="nested_cv">
+                <expand macro="cv_reduced" label="Select the outer cv splitter"/>
             </when>
         </conditional>
     </inputs>
@@ -593,7 +609,7 @@
                 </assert_contents>
             </output>
         </test>
-        <!--test>
+        <test>
             <conditional name="search_schemes">
                 <param name="selected_search_scheme" value="GridSearchCV"/>
                 <param name="infile_estimator" value="pipeline05" ftype="zip"/>
@@ -611,13 +627,52 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
+            <conditional name="outer_split">
+                <param name="split_mode" value="train_test_split"/>
+                <param name="shuffle" value="simple"/>
+                <param name="random_state" value="123"/>
+            </conditional>
             <output name="outfile_result">
                 <assert_contents>
                     <has_n_columns n="1"/>
-                    <has_text text="0.7986842219788204" />
+                    <has_text text="0.8124083594523798"/>
                 </assert_contents>
             </output>
-        </test-->
+        </test>
+        <test>
+            <conditional name="search_schemes">
+                <param name="selected_search_scheme" value="GridSearchCV"/>
+                <param name="infile_estimator" value="pipeline05" ftype="zip"/>
+                <section name="search_params_builder">
+                    <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
+                    <repeat name="param_set">
+                        <param name="sp_list" value="[10, 50, 100, 300]"/>
+                        <param name="sp_name" value="randomforestregressor__n_estimators"/>
+                    </repeat>
+                </section>
+            </conditional>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <conditional name="outer_split">
+                <param name="split_mode" value="nested_cv"/>
+                <conditional name="cv_selector">
+                    <param name='selected_cv' value="KFold"/>
+                    <param name="n_splits" value="3"/>
+                    <param name="shuffle" value="true" />
+                    <param name="random_state" value="123"/>
+                </conditional>
+            </conditional>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="4"/>
+                    <has_text text="0.8044418936007722" />
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help>
         <![CDATA[

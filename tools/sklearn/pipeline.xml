@@ -17,12 +17,12 @@
             <![CDATA[
 import imblearn
 import json
+import pandas as pd
 import pickle
 import pprint
 import skrebate
 import sys
 import warnings
-from mlxtend import classifier, regressor
 from sklearn import (
     cluster, compose, decomposition, ensemble, feature_extraction,
     feature_selection, gaussian_process, kernel_approximation, metrics,
@@ -30,11 +30,9 @@ from sklearn import (
     svm, linear_model, tree, discriminant_analysis)
 from sklearn.pipeline import make_pipeline
 from imblearn.pipeline import make_pipeline as imb_make_pipeline
+from galaxy_ml.utils import (SafeEval, feature_selector, get_estimator,
+                             try_get_attr, get_search_params)
 
-sys.path.insert(0, '$__tool_directory__')
-
-from utils import SafeEval, feature_selector, get_estimator, try_get_attr
-from preprocessors import Z_RandomOverSampler
 
 N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
 
@@ -110,6 +108,8 @@ def get_component(input_json, check_none=False):
         if algorithm == 'over_sampling.SMOTENC':
             obj = over_sampling.SMOTENC(categorical_features=[])
         elif algorithm == 'Z_RandomOverSampler':
+            Z_RandomOverSampler = try_get_attr('galaxy_ml.preprocessors',
+                                               'Z_RandomOverSampler')
             obj = Z_RandomOverSampler()
         else:
             globals = algorithm.split('.')
@@ -120,7 +120,7 @@ def get_component(input_json, check_none=False):
             options = safe_eval( 'dict(' + options + ')' )
             obj.set_params(**options)
     elif input_json['component_type'] == 'IRAPS':
-        iraps_core = try_get_attr('iraps_classifier','IRAPSCore')()
+        iraps_core = try_get_attr('galaxy_ml.iraps_classifier','IRAPSCore')()
         core_params = input_json['text_params'].strip()
         if core_params != '':
             try:
@@ -137,8 +137,14 @@ def get_component(input_json, check_none=False):
             options['occurrence'] = input_json['occurrence']
         if input_json['discretize'] is not None:
             options['discretize'] = input_json['discretize']
-        IRAPSClassifier = try_get_attr('iraps_classifier','IRAPSClassifier')
+        IRAPSClassifier = try_get_attr('galaxy_ml.iraps_classifier','IRAPSClassifier')
         obj = IRAPSClassifier(iraps_core, **options)
+    elif input_json['component_type'] == 'preprocessors':
+        encoder_selection = input_json['encoder_selection']
+        encoder_type = encoder_selection.pop('encoder_type')
+        klass = try_get_attr('galaxy_ml.preprocessors', encoder_type)
+        obj = klass(**encoder_selection)
+
     if 'n_jobs' in obj.get_params():
         obj.set_params( n_jobs=N_JOBS )
     return obj, is_imblearn
@@ -172,6 +178,7 @@ with open('$outfile', 'wb') as out_handler:
     final_est = pipeline_steps[-1]
     print(final_est)
     pickle.dump(final_est, out_handler, pickle.HIGHEST_PROTOCOL)
+out_obj = final_est
 #else:
 if has_imblearn:
     pipeline = imb_make_pipeline(*pipeline_steps)
@@ -181,6 +188,13 @@ pprint.pprint(pipeline.named_steps)
 
 with open('$outfile', 'wb') as out_handler:
     pickle.dump(pipeline, out_handler, pickle.HIGHEST_PROTOCOL)
+out_obj = pipeline
+#end if
+
+#if $get_params
+results = get_search_params(out_obj)
+df = pd.DataFrame(results, columns=['', 'Parameter', 'Value'])
+df.to_csv('$outfile_params', sep='\t', index=False)
 #end if
             ]]>
         </configfile>
@@ -195,9 +209,10 @@ with open('$outfile', 'wb') as out_handler:
                     <option value="decomposition">Matrix Decomposition</option>
                     <option value="kernel_approximation">Kernel Approximation</option>
                     <option value="FeatureAgglomeration">Agglomerate Features</option>
-                    <option value="skrebate">SK-rebate feature selection</option>
-                    <option value="imblearn">imbalanced-learn sampling</option>
+                    <option value="skrebate">SK-rebate Feature Selection</option>
+                    <option value="imblearn">Imbalanced-learn Sampling</option>
                     <option value="IRAPS">IRAPS -- feature selector and classifier</option>
+                    <option value="preprocessors">Bio-sequence Encoders</option>
                 </param>
                 <when value="None"/>
                 <when value="pre_processor">
@@ -233,6 +248,9 @@ with open('$outfile', 'wb') as out_handler:
                     <param argument="occurrence" type="float" value="0.7" label="reservation factor" help="Float. default=0.7"/>
                     <param argument="discretize" type="float" value="-1" label="The z_score threshold to discretize target value" help="Float. default=-1"/>
                 </when>
+                <when value="preprocessors">
+                    <expand macro="preprocessors_sequence_encoders"/>
+                </when>
             </conditional>
         </repeat>
         <section name="final_estimator" title="Final Estimator" expanded="true">
@@ -266,9 +284,14 @@ with open('$outfile', 'wb') as out_handler:
             <option value="Pipeline_Builder" selected="true">Pipeline</option>
             <option value="Final_Estimator_Builder">Final Estimator</option>
         </param>
+        <param name="get_params" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Output parameters for searchCV?"
+                help="Optional. Tunable parameters could be obtained through `estimator_attributes` tool."/>
     </inputs>
     <outputs>
         <data format="zip" name="outfile" label="${output_type}"/>
+        <data format="tabular" name="outfile_params" label="get_params for ${output_type}">
+            <filter>get_params</filter>
+        </data>
     </outputs>
     <tests>
         <test>
@@ -471,6 +494,23 @@ with open('$outfile', 'wb') as out_handler:
             </section>
             <param name="output_type" value="Final_Estimator_Builder"/>
             <output name="outfile" file="pipeline15" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="component_selector">
+                <param name="component_type" value="preprocessors"/>
+                <conditional name="encoder_selection">
+                    <param name="encoder_type" value="GenomeOneHotEncoder"/>
+                    <param name="seq_length" value="1000"/>
+                    <param name="padding" value="True"/>
+                </conditional>
+            </conditional>
+            <section name="final_estimator">
+                <conditional name="estimator_selector">
+                    <param name="selected_module" value="custom_estimator"/>
+                    <param name="c_estimator" value="keras_model02" ftype="zip"/>
+                </conditional>
+            </section>
+            <output name="outfile" file="pipeline16" compare="sim_size" delta="5"/>
         </test>
     </tests>
     <help>
