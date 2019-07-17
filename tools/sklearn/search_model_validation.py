@@ -33,7 +33,7 @@ setattr(_search, '_fit_and_score', _fit_and_score)
 
 N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
 CACHE_DIR = './cached'
-NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', 'steps',
+NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', '_path',
                   'nthread', 'verbose')
 
 

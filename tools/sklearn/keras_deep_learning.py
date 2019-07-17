@@ -1,9 +1,14 @@
+import argparse
+import json
 import keras
+import pandas as pd
+import pickle
 import six
+import warnings
 
 from ast import literal_eval
 from keras.models import Sequential, Model
-from galaxy_ml.utils import try_get_attr
+from galaxy_ml.utils import try_get_attr, get_search_params
 
 
 def _handle_shape(literal):
@@ -227,25 +232,26 @@ def config_keras_model(inputs, outfile):
         f.write(json_string)
 
 
-def build_keras_model(inputs, outfile, infile_json, infile_weights=None,
-                      batch_mode=False):
+def build_keras_model(inputs, outfile, model_json, infile_weights=None,
+                      batch_mode=False, outfile_params=None):
     """ for `keras_model_builder` tool
 
     Parameters
     ----------
     inputs : dict
-        loaded galaxy tool parameters from `keras_model_builder`
-        tool.
+        loaded galaxy tool parameters from `keras_model_builder` tool.
     outfile : str
-        Path to galaxy dataset containing keras_galaxy model.
-    infile_json : str
-        Path to dataset containing keras model JSON
+        Path to galaxy dataset containing the keras_galaxy model output.
+    model_json : str
+        Path to dataset containing keras model JSON.
     infile_weights : str or None
         If string, path to dataset containing model weights.
     batch_mode : bool, default=False
         Whether to build online batch classifier.
+    outfile_params : str, default=None
+        File path to search parameters output.
     """
-    with open(infile_json, 'r') as f:
+    with open(model_json, 'r') as f:
         json_model = json.load(f)
 
     config = json_model['config']
@@ -280,12 +286,21 @@ def build_keras_model(inputs, outfile, infile_json, infile_weights=None,
         options.update((inputs['mode_selection']['compile_params']
                         ['optimizer_selection']['optimizer_options']))
         options.update(inputs['mode_selection']['fit_params'])
+        options['seed'] = inputs['mode_selection']['random_seed']
 
         if batch_mode:
             generator = get_batch_generator(inputs['mode_selection']
                                             ['generator_selection'])
             options['data_batch_generator'] = generator
+            options['prediction_steps'] = \
+                inputs['mode_selection']['prediction_steps']
+            options['class_positive_factor'] = \
+                inputs['mode_selection']['class_positive_factor']
         estimator = klass(config, **options)
+        if outfile_params:
+            hyper_params = get_search_params(estimator)
+            df = pd.DataFrame(hyper_params, columns=['', 'Parameter', 'Value'])
+            df.to_csv(outfile_params, sep='\t', index=False)
 
     print(repr(estimator))
     # save model by pickle
@@ -294,36 +309,40 @@ def build_keras_model(inputs, outfile, infile_json, infile_weights=None,
 
 
 if __name__ == '__main__':
-    import json
-    import pickle
-    import sys
-    import warnings
-
     warnings.simplefilter('ignore')
-    input_json_path = sys.argv[1]
+
+    aparser = argparse.ArgumentParser()
+    aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
+    aparser.add_argument("-m", "--model_json", dest="model_json")
+    aparser.add_argument("-t", "--tool_id", dest="tool_id")
+    aparser.add_argument("-w", "--infile_weights", dest="infile_weights")
+    aparser.add_argument("-o", "--outfile", dest="outfile")
+    aparser.add_argument("-p", "--outfile_params", dest="outfile_params")
+    args = aparser.parse_args()
+
+    input_json_path = args.inputs
     with open(input_json_path, 'r') as param_handler:
         inputs = json.load(param_handler)
 
-    tool_id = sys.argv[2]
-    outfile = sys.argv[3]
-
-    if len(sys.argv) > 4:
-        infile_json = sys.argv[4]
-    if len(sys.argv) > 5:
-        infile_weights = sys.argv[5]
-    else:
-        infile_weights = None
-
-    # for keras_model_builder tool
-    if tool_id == 'keras_model_builder':
-        build_keras_model(inputs, outfile, infile_json,
-                          infile_weights=infile_weights)
-
-    elif tool_id == 'keras_batch_models':
-        build_keras_model(inputs, outfile, infile_json,
-                          infile_weights=infile_weights,
-                          batch_mode=True)
+    tool_id = args.tool_id
+    outfile = args.outfile
+    outfile_params = args.outfile_params
+    model_json = args.model_json
+    infile_weights = args.infile_weights
 
     # for keras_model_config tool
-    else:
+    if tool_id == 'keras_model_config':
         config_keras_model(inputs, outfile)
+
+    # for keras_model_builder tool
+    else:
+        batch_mode = False
+        if tool_id == 'keras_batch_models':
+            batch_mode = True
+
+        build_keras_model(inputs=inputs,
+                          model_json=model_json,
+                          infile_weights=infile_weights,
+                          batch_mode=batch_mode,
+                          outfile=outfile,
+                          outfile_params=outfile_params)
