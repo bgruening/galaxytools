@@ -63,7 +63,7 @@ def _eval_search_params(params_builder):
             ev = safe_eval_es(search_list)
             preprocessings = (
                 preprocessing.StandardScaler(), preprocessing.Binarizer(),
-                preprocessing.Imputer(), preprocessing.MaxAbsScaler(),
+                preprocessing.MaxAbsScaler(),
                 preprocessing.Normalizer(), preprocessing.MinMaxScaler(),
                 preprocessing.PolynomialFeatures(),
                 preprocessing.RobustScaler(), feature_selection.SelectKBest(),
@@ -132,19 +132,19 @@ def _eval_search_params(params_builder):
                 if obj is None:
                     newlist.append(None)
                 elif obj == 'all_0':
-                    newlist.extend(preprocessings[0:36])
+                    newlist.extend(preprocessings[0:35])
                 elif obj == 'sk_prep_all':      # no KernalCenter()
-                    newlist.extend(preprocessings[0:8])
+                    newlist.extend(preprocessings[0:7])
                 elif obj == 'fs_all':
-                    newlist.extend(preprocessings[8:15])
+                    newlist.extend(preprocessings[7:14])
                 elif obj == 'decomp_all':
-                    newlist.extend(preprocessings[15:26])
+                    newlist.extend(preprocessings[14:25])
                 elif obj == 'k_appr_all':
-                    newlist.extend(preprocessings[26:30])
+                    newlist.extend(preprocessings[25:29])
                 elif obj == 'reb_all':
-                    newlist.extend(preprocessings[31:36])
+                    newlist.extend(preprocessings[30:35])
                 elif obj == 'imb_all':
-                    newlist.extend(preprocessings[36:55])
+                    newlist.extend(preprocessings[35:54])
                 elif type(obj) is int and -1 < obj < len(preprocessings):
                     newlist.append(preprocessings[obj])
                 elif hasattr(obj, 'get_params'):       # user uploaded object
