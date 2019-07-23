@@ -14,6 +14,7 @@ import warnings
 from imblearn import under_sampling, over_sampling, combine
 from scipy.io import mmread
 from mlxtend import classifier, regressor
+from sklearn.base import clone
 from sklearn import (cluster, compose, decomposition, ensemble,
                      feature_extraction, feature_selection,
                      gaussian_process, kernel_approximation, metrics,
@@ -25,7 +26,7 @@ from sklearn.model_selection._validation import _score, cross_validate
 from sklearn.model_selection import _search
 
 from galaxy_ml.utils import (SafeEval, get_cv, get_scoring, load_model,
-                          read_columns, try_get_attr, get_module)
+                             read_columns, try_get_attr, get_module)
 
 
 _fit_and_score = try_get_attr('galaxy_ml.model_validations', '_fit_and_score')
@@ -419,8 +420,14 @@ def main(inputs, infile_estimator, infile1, infile2,
             train_test_split = try_get_attr(
                 'galaxy_ml.model_validations', 'train_test_split')
             # make sure refit is choosen
-            if not options['refit']:
-                raise ValueError("Refit must be `True` for shuffle splitting!")
+            # this could be True for sklearn models, but not the case for
+            # deep learning models
+            if not options['refit'] and \
+                    not all(hasattr(estimator, attr)
+                            for attr in ('config', 'model_type')):
+                warnings.warn("Refit is change to `True` for nested "
+                              "validation!")
+                setattr(searcher, 'refit', True)
             split_options = params['outer_split']
 
             # splits
@@ -428,12 +435,16 @@ def main(inputs, infile_estimator, infile1, infile2,
                 split_options['labels'] = y
                 X, X_test, y, y_test = train_test_split(X, y, **split_options)
             elif split_options['shuffle'] == 'group':
-                if not groups:
+                if groups is None:
                     raise ValueError("No group based CV option was "
                                      "choosen for group shuffle!")
                 split_options['labels'] = groups
-                X, X_test, y, y_test, groups, _ =\
-                    train_test_split(X, y, **split_options)
+                if y is None:
+                    X, X_test, groups, _ =\
+                        train_test_split(X, groups, **split_options)
+                else:
+                    X, X_test, y, y_test, groups, _ =\
+                        train_test_split(X, y, groups, **split_options)
             else:
                 if split_options['shuffle'] == 'None':
                     split_options['shuffle'] = None
@@ -463,17 +474,42 @@ def main(inputs, infile_estimator, infile1, infile2,
                               header=True, index=False)
 
         # train_test_split, output test result using best_estimator_
+        # or rebuild the trained estimator using weights if applicable.
         else:
-            best_estimator_ = searcher.best_estimator_
             scorer_ = searcher.scorer_
             if isinstance(scorer_, collections.Mapping):
                 is_multimetric = True
             else:
                 is_multimetric = False
 
-            test_score = _score(best_estimator_, X_test,
-                                y_test, scorer_,
-                                is_multimetric=is_multimetric)
+            best_estimator_ = getattr(searcher, 'best_estimator_', None)
+            if not best_estimator_:
+                weights_path = __import__('os').path.join(
+                    __import__('os').getcwd(), 'weights.hdf5')
+                # for keras_g deep learning models
+                if __import__('os').path.exists(weights_path):
+                    best_estimator_ = clone(estimator)
+                    # for pipeline object
+                    if isinstance(estimator, pipeline.Pipeline):
+                        best_estimator_[-1][-1].load_weights(weights_path)
+                    else:
+                        best_estimator_.load_weights(weights_path)
+                else:
+                    raise ValueError("Estimator neither has `best_estimator_` "
+                                     "attributes, nor outputs `weights.hdf5`!")
+
+            if best_estimator_.__class__.__name__ == 'KerasGBatchClassifier' \
+                    and hasattr(estimator.data_batch_generator, 'target_path'):
+                best_estimator_.data_generator_ = \
+                    best_estimator_.data_batch_generator
+                best_estimator_.data_generator_.fit()
+                test_score = best_estimator_.evaluate(
+                    X_test, scorer=scorer_, is_multimetric=is_multimetric)
+            else:
+                test_score = _score(best_estimator_, X_test,
+                                    y_test, scorer_,
+                                    is_multimetric=is_multimetric)
+
             if not is_multimetric:
                 test_score = {primary_scoring: test_score}
             for key, value in test_score.items():
