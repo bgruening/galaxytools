@@ -23,7 +23,7 @@ from sklearn import (cluster, compose, decomposition, ensemble,
                      tree, discriminant_analysis)
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection._validation import _score, cross_validate
-from sklearn.model_selection import _search
+from sklearn.model_selection import _search, _validation
 
 from galaxy_ml.utils import (SafeEval, get_cv, get_scoring, load_model,
                              read_columns, try_get_attr, get_module)
@@ -31,11 +31,12 @@ from galaxy_ml.utils import (SafeEval, get_cv, get_scoring, load_model,
 
 _fit_and_score = try_get_attr('galaxy_ml.model_validations', '_fit_and_score')
 setattr(_search, '_fit_and_score', _fit_and_score)
+setattr(_validation, '_fit_and_score', _fit_and_score)
 
 N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
 CACHE_DIR = './cached'
 NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', '_path',
-                  'nthread', 'verbose')
+                  'nthread')
 
 
 def _eval_search_params(params_builder):
