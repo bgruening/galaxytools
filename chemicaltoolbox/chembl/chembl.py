@@ -53,7 +53,7 @@ def filter_ro5(mols):
     return mols.filter(molecule_properties__num_ro5_violations=0)
 
 def main():
-    parser = argparse.ArgumentParser(description='Search ChemBL database for compounds')
+    parser = argparse.ArgumentParser(description='Search ChEMBL database for compounds')
     parser.add_argument('-i', '--input', help='SMILES input')
     parser.add_argument('-f', '--file', help='SMILES input as file')
     parser.add_argument('-o', '--output', help="SMILES output")
