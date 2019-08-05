@@ -3,15 +3,15 @@ import argparse
 
 def open_file(filename):
     with open(filename) as f:
-        return f.read().split('\n')[0]
+        return f.readline()
 
 def get_smiles(res):
     """
     Get a list of SMILES from function results
     """ 
-    smiles = []
+    smiles = set()
     for smi in res: 
-        smiles.append(smi['molecule_structures']['canonical_smiles']) 
+        smiles.add(smi['molecule_structures']['canonical_smiles']) 
     return smiles
 
 def sim_search(smiles, tanimoto):
