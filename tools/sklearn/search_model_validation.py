@@ -36,7 +36,9 @@ setattr(_validation, '_fit_and_score', _fit_and_score)
 N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
 CACHE_DIR = './cached'
 NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', '_path',
-                  'nthread')
+                  'nthread', 'callbacks')
+ALLOWED_CALLBACKS = ('EarlyStopping', 'TerminateOnNaN', 'ReduceLROnPlateau',
+                     'CSVLogger', 'None')
 
 
 def _eval_search_params(params_builder):
@@ -163,7 +165,8 @@ def _eval_search_params(params_builder):
 
 
 def main(inputs, infile_estimator, infile1, infile2,
-         outfile_result, outfile_object=None, groups=None,
+         outfile_result, outfile_object=None,
+         outfile_weights=None, groups=None,
          ref_seq=None, intervals=None, targets=None,
          fasta_path=None):
     """
@@ -186,6 +189,9 @@ def main(inputs, infile_estimator, infile1, infile2,
 
     outfile_object : str, optional
         File path to save searchCV object
+
+    outfile_weights : str, optional
+        File path to save model weights
 
     groups : str
         File path to dataset containing groups labels
@@ -375,6 +381,13 @@ def main(inputs, infile_estimator, infile1, infile2,
             elif p.endswith('n_jobs'):
                 new_params = {p: 1}
                 estimator.set_params(**new_params)
+            # for security reason, types of callbacks are limited
+            elif p.endswith('callbacks'):
+                for cb in v:
+                    cb_type = cb['callback_selection']['callback_type']
+                    if cb_type not in ALLOWED_CALLBACKS:
+                        raise ValueError(
+                            "Prohibited callback type: %s!" % cb_type)
 
     param_grid = _eval_search_params(params_builder)
     searcher = optimizer(estimator, param_grid, **options)
@@ -485,25 +498,11 @@ def main(inputs, infile_estimator, infile1, infile2,
 
             best_estimator_ = getattr(searcher, 'best_estimator_', None)
             if not best_estimator_:
-                weights_path = __import__('os').path.join(
-                    __import__('os').getcwd(), 'weights.hdf5')
-                # for keras_g deep learning models
-                if __import__('os').path.exists(weights_path):
-                    best_estimator_ = clone(estimator)
-                    # for pipeline object
-                    if isinstance(estimator, pipeline.Pipeline):
-                        best_estimator_[-1][-1].load_weights(weights_path)
-                    else:
-                        best_estimator_.load_weights(weights_path)
-                else:
-                    raise ValueError("Estimator neither has `best_estimator_` "
-                                     "attributes, nor outputs `weights.hdf5`!")
+                raise ValueError("GridSearchCV object has no "
+                                 "`best_estimator_` when `refit`=False!")
 
             if best_estimator_.__class__.__name__ == 'KerasGBatchClassifier' \
                     and hasattr(estimator.data_batch_generator, 'target_path'):
-                best_estimator_.data_generator_ = \
-                    best_estimator_.data_batch_generator
-                best_estimator_.data_generator_.fit()
                 test_score = best_estimator_.evaluate(
                     X_test, scorer=scorer_, is_multimetric=is_multimetric)
             else:
@@ -522,8 +521,26 @@ def main(inputs, infile_estimator, infile1, infile2,
     memory.clear(warn=False)
 
     if outfile_object:
+        best_estimator_ = getattr(searcher, 'best_estimator_', None)
+        if not best_estimator_:
+            warnings.warn("GridSearchCV object has no attribute "
+                          "'best_estimator_', because either it's "
+                          "nested gridsearch or `refit` is False!")
+            return
+
+        main_est = best_estimator_
+        if isinstance(best_estimator_, pipeline.Pipeline):
+            main_est = best_estimator_.steps[-1][-1]
+
+        if hasattr(main_est, 'model_') \
+                and hasattr(main_est, 'save_weights'):
+            if outfile_weights:
+                main_est.save_weights(outfile_weights)
+            del main_est.model_
+
         with open(outfile_object, 'wb') as output_handler:
-            pickle.dump(searcher, output_handler, pickle.HIGHEST_PROTOCOL)
+            pickle.dump(best_estimator_, output_handler,
+                        pickle.HIGHEST_PROTOCOL)
 
 
 if __name__ == '__main__':
@@ -534,6 +551,7 @@ if __name__ == '__main__':
     aparser.add_argument("-y", "--infile2", dest="infile2")
     aparser.add_argument("-O", "--outfile_result", dest="outfile_result")
     aparser.add_argument("-o", "--outfile_object", dest="outfile_object")
+    aparser.add_argument("-w", "--outfile_weights", dest="outfile_weights")
     aparser.add_argument("-g", "--groups", dest="groups")
     aparser.add_argument("-r", "--ref_seq", dest="ref_seq")
     aparser.add_argument("-b", "--intervals", dest="intervals")
@@ -543,5 +561,6 @@ if __name__ == '__main__':
 
     main(args.inputs, args.infile_estimator, args.infile1, args.infile2,
          args.outfile_result, outfile_object=args.outfile_object,
-         groups=args.groups, ref_seq=args.ref_seq, intervals=args.intervals,
+         outfile_weights=args.outfile_weights, groups=args.groups,
+         ref_seq=args.ref_seq, intervals=args.intervals,
          targets=args.targets, fasta_path=args.fasta_path)
