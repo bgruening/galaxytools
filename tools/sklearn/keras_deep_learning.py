@@ -306,6 +306,10 @@ def build_keras_model(inputs, outfile, model_json, infile_weights=None,
         estimator = klass(config, **options)
         if outfile_params:
             hyper_params = get_search_params(estimator)
+            # TODO: remove this after making `verbose` tunable
+            for h_param in hyper_params:
+                if h_param[1].endswith('verbose'):
+                    h_param[0] = '@'
             df = pd.DataFrame(hyper_params, columns=['', 'Parameter', 'Value'])
             df.to_csv(outfile_params, sep='\t', index=False)
 
