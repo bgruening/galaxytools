@@ -1,11 +1,11 @@
-<tool id="sklearn_stacking_ensemble_models" name="Stacking Ensemble Models" version="0.1.0">
+<tool id="stacking_ensemble_models" name="Stacking Ensemble Models" version="@ENSEMBLE_VERSION@">
     <description>builds a strong model by stacking multiple algorithms</description>
     <macros>
         <import>main_macros.xml</import>
     </macros>
     <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
-    <version_command>echo "$version"</version_command>
+    <version_command>echo "$ENSEMBLE_VERSION"</version_command>
     <command>
         <![CDATA[
         #for $i, $base in enumerate($base_est_builder)
@@ -25,8 +25,10 @@
             --inputs '$inputs'
             --outfile '$outfile'
             --bases "\$bases"
-            #if $meta_estimator.estimator_selector.selected_module == 'custom_estimator'
-            --meta '${meta_estimator.estimator_selector.c_estimator}'
+            #if $algo_selection.estimator_type not in ('sklearn.ensemble_VotingClassifier', 'sklearn.ensemble_VotingRegressor')
+            #if $algo_selection.meta_estimator.estimator_selector.selected_module == 'custom_estimator'
+            --meta '${algo_selection.meta_estimator.estimator_selector.c_estimator}'
+            #end if
             #end if
             #if $get_params
             --outfile_params '$outfile_params'
@@ -39,26 +41,46 @@
     <inputs>
         <conditional name="algo_selection">
             <param name="estimator_type" type="select" label="Choose the stacking ensemble type">
-                <option value="StackingCVClassifier" selected="true">classification -- StackingCVClassifier</option>
-                <option value="StackingClassifier">classification -- StackingClassifier</option>
-                <option value="StackingCVRegressor">regression -- StackingCVRegressor</option>
-                <option value="StackingRegressor">regression -- StackingRegressor</option>
+                <option value="sklearn.ensemble_VotingClassifier" selected="true">sklearn.ensemble -- VotingClassifier</option>
+                <option value="sklearn.ensemble_VotingRegressor">sklearn.ensemble -- VotingRegressor</option>
+                <option value="mlxtend.classifier_StackingCVClassifier">mlxtend.classifier -- StackingCVClassifier</option>
+                <option value="mlxtend.classifier_StackingClassifier">mlxtend.classifier -- StackingClassifier</option>
+                <option value="mlxtend.regressor_StackingCVRegressor">mlxtend.regressor -- StackingCVRegressor</option>
+                <option value="mlxtend.regressor_StackingRegressor">mlxtend.regressor -- StackingRegressor</option>
             </param>
-            <when value="StackingCVClassifier">
+            <when value="sklearn.ensemble_VotingClassifier">
+                <expand macro="stacking_voting_weights">
+                    <param argument="voting" type="select" help="If ‘hard’, uses predicted class labels for majority rule voting. Else if ‘soft’, predicts the class label based on the argmax of the sums of the predicted probabilities, which is recommended for an ensemble of well-calibrated classifiers.">
+                        <option value="hard" selected="true">hard</option>
+                        <option value="soft">soft</option>
+                    </param>
+                    <param argument="flatten_transform" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" help=""/>
+                </expand>
+            </when>
+            <when value="sklearn.ensemble_VotingRegressor">
+                <expand macro="stacking_voting_weights"/>
+            </when>
+            <when value="mlxtend.classifier_StackingCVClassifier">
                 <expand macro="stacking_ensemble_inputs">
                     <expand macro="cv_reduced"/>
                     <expand macro="shuffle" label="shuffle"/>
                     <expand macro="random_state" default_value="" help_text="Integer number. The seed of the pseudo random number generator to use when shuffling the data."/>
                     <param argument="use_probas" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false"/>
                 </expand>
+                <section name="meta_estimator" title="Meta Estimator" expanded="true">
+                    <expand macro="stacking_base_estimator"/>
+                </section>
             </when>
-            <when value="StackingClassifier">
+            <when value="mlxtend.classifier_StackingClassifier">
                 <expand macro="stacking_ensemble_inputs">
                     <param argument="use_probas" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false"/>
                     <param argument="average_probas" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false"/>
                 </expand>
+                <section name="meta_estimator" title="Meta Estimator" expanded="true">
+                    <expand macro="stacking_base_estimator"/>
+                </section>
             </when>
-            <when value="StackingCVRegressor">
+            <when value="mlxtend.regressor_StackingCVRegressor">
                 <expand macro="stacking_ensemble_inputs">
                     <expand macro="cv_reduced"/>
                     <!--TODO support group splitters. Hint: `groups` is a fit_param-->
@@ -66,11 +88,17 @@
                     <expand macro="random_state" default_value="" help_text="Integer number. The seed of the pseudo random number generator to use when shuffling the data."/>
                     <param argument="refit" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true"/>
                 </expand>
+                <section name="meta_estimator" title="Meta Estimator" expanded="true">
+                    <expand macro="stacking_base_estimator"/>
+                </section>
             </when>
-            <when value="StackingRegressor">
+            <when value="mlxtend.regressor_StackingRegressor">
                 <expand macro="stacking_ensemble_inputs">
                     <param argument="refit" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true"/>
                 </expand>
+                <section name="meta_estimator" title="Meta Estimator" expanded="true">
+                    <expand macro="stacking_base_estimator"/>
+                </section>
             </when>
         </conditional>
         <repeat name="base_est_builder" min="1" max="20" title="Base Estimator">
@@ -78,9 +106,6 @@
             <!--param name="base_estimator" type="data" format="zip,json" label="Select the dataset containing base estimator" help="One estimator at a time."/-->
         </repeat>
         <!--param name="meta_estimator" type="data" format="zip,json" label="Select the dataset containing the Meta estimator"/-->
-        <section name="meta_estimator" title="Meta Estimator" expanded="true">
-            <expand macro="stacking_base_estimator"/>
-        </section>
         <param name="get_params" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Output parameters for searchCV?"
                 help="Optional. Tunable parameters could be obtained through `estimator_attributes` tool."/>
     </inputs>
@@ -93,7 +118,35 @@
     <tests>
         <test>
             <conditional name="algo_selection">
-                <param name="estimator_type" value="StackingCVRegressor"/>
+                <param name="estimator_type" value="sklearn.ensemble_VotingClassifier"/>
+                <section name="options">
+                    <param name="weights" value="[1, 2]"/>
+                </section>
+            </conditional>
+            <repeat name="base_est_builder">
+                <conditional name="estimator_selector">
+                    <param name="selected_module" value="svm"/>
+                    <param name="selected_estimator" value="SVC"/>
+                </conditional>
+            </repeat>
+            <repeat name="base_est_builder">
+                <conditional name="estimator_selector">
+                    <param name="selected_module" value="xgboost"/>
+                    <param name="selected_estimator" value="XGBClassifier"/>
+                </conditional>
+            </repeat>
+            <param name="get_params" value="false"/>
+            <output name="outfile" file="StackingVoting03.zip" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="algo_selection">
+                <param name="estimator_type" value="mlxtend.regressor_StackingCVRegressor"/>
+                <section name="meta_estimator">
+                    <conditional name="estimator_selector">
+                        <param name="selected_module" value="custom_estimator"/>
+                        <param name="c_estimator" value="LinearRegression01.zip" ftype="zip"/>
+                    </conditional>
+                </section>
             </conditional>
             <repeat name="base_est_builder">
                 <conditional name="estimator_selector">
@@ -107,18 +160,18 @@
                     <param name="c_estimator" value="XGBRegressor01.zip" ftype="zip"/>
                 </conditional>
             </repeat>
-            <section name="meta_estimator">
-                <conditional name="estimator_selector">
-                    <param name="selected_module" value="custom_estimator"/>
-                    <param name="c_estimator" value="LinearRegression01.zip" ftype="zip"/>
-                </conditional>
-            </section>
             <param name="get_params" value="false"/>
             <output name="outfile" file="StackingCVRegressor01.zip" compare="sim_size" delta="5"/>
         </test>
         <test>
             <conditional name="algo_selection">
-                <param name="estimator_type" value="StackingCVRegressor"/>
+                <param name="estimator_type" value="mlxtend.regressor_StackingRegressor"/>
+                <section name="meta_estimator">
+                    <conditional name="estimator_selector">
+                        <param name="selected_module" value="svm"/>
+                        <param name="selected_estimator" value="SVR"/>
+                    </conditional>
+                </section>
             </conditional>
             <repeat name="base_est_builder">
                 <conditional name="estimator_selector">
@@ -132,14 +185,8 @@
                     <param name="selected_estimator" value="XGBRegressor"/>
                 </conditional>
             </repeat>
-            <section name="meta_estimator">
-                <conditional name="estimator_selector">
-                    <param name="selected_module" value="svm"/>
-                    <param name="selected_estimator" value="SVR"/>
-                </conditional>
-            </section>
             <param name="get_params" value="false"/>
-            <output name="outfile" file="StackingCVRegressor02.zip" compare="sim_size" delta="5"/>
+            <output name="outfile" file="StackingRegressor02.zip" compare="sim_size" delta="5"/>
         </test>
     </tests>
     <help>
