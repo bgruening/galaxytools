@@ -1,0 +1,140 @@
+<tool id="fpocket" name="fpocket" version="0.1.0">
+    <description>- find potential binding sites in protein structures</description>
+    <requirements>
+        <requirement type="package" version="3.1.3">fpocket</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+
+        ln -s $input ./input.pdb &&
+        fpocket
+            -f ./input.pdb
+            #if $inp.pocket_type == 'channel':
+                -­m 2.8 -­M 5.5 -­i 30
+            #end if
+            #if $inp.pocket_type == 'external':
+                -­m 3.5 -­M 10 -­i 30
+            #end if
+            #if $inp.pocket_type == 'custom':
+                -­m $inp.min -­M $inp.max -­i $inp.i -D $inp.D -C $inp.C -e $inp.e­
+            #end if
+
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="pdb" label="Input file" help="Protein structure file (PDB) to search."/>
+        <conditional name="inp">
+            <param name="pocket_type" type="select" label="Type of pocket to detect" help="Search for different kinds of pockets - or select 'custom' for more fine-grained control">
+                <option value="small_mol">Small molecule binding sites</option>
+                <option value="channel">Putative channels and small cavities</option>
+                <option value="external">Large, external pockets</option>
+                <option value="custom">Custom options (advanced)</option>
+            </param>
+            <when value="custom">
+                <param name="min" type="float" value="3" min="0" max="10" label="Minimum radius for an alpha sphere (angstroms)" help="An alpha sphere is an empty sphere in contact with 4 atoms in 3D space."/>
+                <param name="max" type="float" value="6" min="0" max="10" label="Maximum radius for an alpha sphere (angstroms)" help="An alpha sphere is an empty sphere in contact with 4 atoms in 3D space."/>
+                <param name="i" type="integer" value="35" min="20" max="50" label="Minimum number of alpha spheres a pocket must contain" help="Below this threshold pockets will not be listed in results"/>
+                <param name="D" type="float" value="2.4" min="0" max="10" label="Distance threshold for clustering algorithm (angstroms)" help="Alpha spheres may be clustered if they are separated by less than this distance"/>
+                <param name="C" type="select" value="s" label="Clustering method for grouping Voronoi vertices" help="Method for clustering alpha spheres">
+                    <option value="s">Single linkage clustering</option>
+                    <option value="m">Complete linkage clustering</option>
+                    <option value="a">Average linkage clustering</option>
+                    <option value="c">Centroid linkage clustering</option>
+                </param>
+                <param name="e" type="select" value="e" label="Distance measure for clustering">
+                    <option value="e">Euclidean distance</option>
+                    <option value="b">Manhattan distance</option>
+                </param>
+            </when>
+            <when value="small_mol"/>
+            <when value="channel"/>
+            <when value="external"/>
+        </conditional>
+        <param name="outputs" type="select" display="checkboxes" multiple="true" label="Output files">
+            <option value="atoms" selected="true">PDB files containing the atoms in contact with each pocket</option>
+            <option value="pock_verts">PQR files containing Voronoi vertices of each pocket</option>
+            <option value="all_verts">PQR file containing all Voronoi vertices found</option>
+            <option value="info" selected="true">Log file containing pocket properties</option>
+        </param>
+    </inputs>
+
+    <outputs>
+        <collection type="list" name="atoms_output" label="Atoms in contact with each pocket">
+            <discover_datasets pattern="(?P&lt;designation&gt;^pocket\d+)_atm\.pdb$" directory="input_out/pockets" ext="pdb"/>
+            <filter>"atoms" in outputs</filter>
+        </collection>
+        <collection type="list" name="pock_verts_output" label="Voronoi vertices of each pocket">
+            <discover_datasets pattern="(?P&lt;designation&gt;^pocket\d+)_vert\.pqr$" directory="input_out/pockets" ext="pqr"/>
+            <filter>"pock_verts" in outputs</filter>
+        </collection>
+        <data format="pqr" name="all_verts_output" label="All Voronoi vertices found" from_work_dir="input_out/input_pockets.pqr">
+            <filter>"all_verts" in outputs</filter>
+        </data>
+        <data format="txt" name="info_output" label="Pocket properties" from_work_dir="input_out/input_info.txt">
+            <filter>"info" in outputs</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <!-- lines_diff needed because volume estimates are calculated via a Monte Carlo method and vary with each run -->
+        <test>
+            <param name="input" ftype="pdb" value="2brc.pdb"/>
+            <param name='pocket_type' value='custom' />
+            <param name="min" value="4.0"/>
+            <param name="max" value="7.0"/>
+            <param name="i" value="20" />
+            <param name="D" value="2.0"/>
+            <param name="C" value="c" />
+            <param name="e" value="b" />
+            <param name='outputs' value='pock_verts,all_verts' />
+            <output_collection name="pock_verts_output" type="list">
+                <element name="pocket2" ftype="pqr" file="pocket2_vert.pqr" lines_diff="2"/>
+            </output_collection>
+            <output name="all_verts_output" ftype="pqr" file='custom_pockets.pqr'/>
+        </test>
+        <test>
+            <param name="input" ftype="pdb" value="2brc.pdb"/>
+            <param name='pocket_type' value='small_mol' />
+            <output_collection name="atoms_output" type="list">
+                <element name="pocket1" ftype="pdb" file="pocket1_atm.pdb" lines_diff="2"/>
+            </output_collection>
+            <output name="info_output" ftype="txt" file='2brc_info.txt' lines_diff="20"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+Detect 'pockets' in a protein structure using the fpocket software. A potential use 
+of this tool is locating potential binding sites in a protein prior to performing 
+protein-ligand docking.
+
+To use, upload a protein structure in PDB format and select the type of pocket to 
+detect. 'Custom options' can also be selected - this exposes all internal fpocket 
+parameters. Using this option requires some knowledge of the fpocket prediction 
+algorithm. Please consult the cited publications for more details.
+
+
+-----
+
+.. class:: infomark
+
+**Input**
+
+A protein structure in PDB format.
+
+-----
+
+.. class:: infomark
+
+**Output**
+
+Some or all of the following files:
+
+- A collection of PDB files, one for each pocket, each containing the atoms bordering the pocket.
+- A collection of PQR files, one for each pocket, each containing Voronoi vertices of the pocket.
+- A single PQR file containing all Voronoi vertices for all pockets.
+- A text file listing properties of all pockets detected.
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1186/1471-2105-10-168</citation>
+        <citation type="doi">10.1093/nar/gkq383</citation>
+    </citations>
+</tool>
