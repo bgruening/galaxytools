@@ -1,3 +1,5 @@
+from chembl_webresource_client.settings import Settings
+Settings.Instance().CACHING = False
 from chembl_webresource_client.new_client import new_client
 import argparse
 
