@@ -96,9 +96,9 @@ if __name__ == "__main__":
     arg_parser.add_argument("-tu", "--tool_usage_file", required=True, help="tool usage file")
     arg_parser.add_argument("-cd", "--cutoff_date", required=True, help="earliest date for taking tool usage")
     arg_parser.add_argument("-pl", "--maximum_path_length", required=True, help="maximum length of tool path")
-    #arg_parser.add_argument("-tm", "--trained_model_file", required=True, help="trained model file")
+    arg_parser.add_argument("-tm", "--trained_model_file", required=True, help="trained model file")
     
-    '''arg_parser.add_argument("-ep", "--n_epochs", required=True, help="number of iterations to run to create model")
+    arg_parser.add_argument("-ep", "--n_epochs", required=True, help="number of iterations to run to create model")
     arg_parser.add_argument("-oe", "--optimize_n_epochs", required=True, help="number of iterations to run to find best model parameters")
     arg_parser.add_argument("-me", "--max_evals", required=True, help="maximum number of configuration evaluations")
     arg_parser.add_argument("-ts", "--test_share", required=True, help="share of data to be used for testing")
@@ -113,12 +113,11 @@ if __name__ == "__main__":
     arg_parser.add_argument("-lr", "--learning_rate", required=True, help="learning rate")
     arg_parser.add_argument("-ar", "--activation_recurrent", required=True, help="activation function for recurrent layers")
     arg_parser.add_argument("-ao", "--activation_output", required=True, help="activation function for output layers")
-    arg_parser.add_argument("-lt", "--loss_type", required=True, help="type of the loss/error function")'''
+    arg_parser.add_argument("-lt", "--loss_type", required=True, help="type of the loss/error function")
 
     args = vars(arg_parser.parse_args())
     path_length = int(args["maximum_path_length"])
     print(path_length)
-    return path_length
 
     # get argument values
     '''maximum_path_length = int(args["maximum_path_length"])
