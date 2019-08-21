@@ -93,16 +93,16 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-wf", "--workflow_file", required=True, help="workflows tabular file")
     arg_parser.add_argument("-tu", "--tool_usage_file", required=True, help="tool usage file")
+    arg_parser.add_argument("-om", "--output_model", required=True, help="trained model file")
+    # data parameters
     arg_parser.add_argument("-cd", "--cutoff_date", required=True, help="earliest date for taking tool usage")
     arg_parser.add_argument("-pl", "--maximum_path_length", required=True, help="maximum length of tool path")
-    arg_parser.add_argument("-om", "--output_model", required=True, help="trained model file")
-    
     arg_parser.add_argument("-ep", "--n_epochs", required=True, help="number of iterations to run to create model")
     arg_parser.add_argument("-oe", "--optimize_n_epochs", required=True, help="number of iterations to run to find best model parameters")
     arg_parser.add_argument("-me", "--max_evals", required=True, help="maximum number of configuration evaluations")
     arg_parser.add_argument("-ts", "--test_share", required=True, help="share of data to be used for testing")
     arg_parser.add_argument("-vs", "--validation_share", required=True, help="share of data to be used for validation")
-    
+    # neural network parameters
     arg_parser.add_argument("-bs", "--batch_size", required=True, help="size of the tranining batch i.e. the number of samples per batch")
     arg_parser.add_argument("-ut", "--units", required=True, help="number of hidden recurrent units")
     arg_parser.add_argument("-es", "--embedding_size", required=True, help="size of the fixed vector learned for each tool")
@@ -113,7 +113,6 @@ if __name__ == "__main__":
     arg_parser.add_argument("-ar", "--activation_recurrent", required=True, help="activation function for recurrent layers")
     arg_parser.add_argument("-ao", "--activation_output", required=True, help="activation function for output layers")
     arg_parser.add_argument("-lt", "--loss_type", required=True, help="type of the loss/error function")
-
     # get argument values
     args = vars(arg_parser.parse_args())
     tool_usage_path = args["tool_usage_file"]
@@ -160,15 +159,12 @@ if __name__ == "__main__":
     # Extract and process workflows
     connections = extract_workflow_connections.ExtractWorkflowConnections()
     workflow_paths, compatible_next_tools = connections.read_tabular_file(workflows_path)
-
     # Process the paths from workflows
     print("Dividing data...")
     data = prepare_data.PrepareData(maximum_path_length, test_share)
     train_data, train_labels, test_data, test_labels, data_dictionary, reverse_dictionary, class_weights, usage_pred = data.get_data_labels_matrices(workflow_paths, tool_usage_path, cutoff_date, compatible_next_tools)
-
     # find the best model and start training
     predict_tool = PredictTool()
-
     # start training with weighted classes
     print("Training with weighted classes and samples ...")
     results_weighted = predict_tool.find_train_best_network(config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools)
