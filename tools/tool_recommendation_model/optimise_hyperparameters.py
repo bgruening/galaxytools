@@ -41,7 +41,7 @@ class HyperparameterOptimisation:
         l_recurrent_dropout = list(map(float, config["recurrent_dropout"].split(",")))
 
         optimize_n_epochs = int(config["optimize_n_epochs"])
-        validation_split = float(config["validation_split"])
+        validation_split = float(config["validation_share"])
 
         # get dimensions
         dimensions = len(reverse_dictionary) + 1

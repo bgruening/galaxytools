@@ -56,15 +56,12 @@ class ExtractWorkflowConnections:
             workflow_paths.extend(flow_paths)
 
         print("Workflows processed: %d" % wf_ctr)
-        print("# paths in workflows: %d" % len(workflow_paths))
 
         # remove slashes from the tool ids
         wf_paths_no_slash = list()
         for path in workflow_paths:
             path_no_slash = [utils.format_tool_id(tool_id) for tool_id in path]
             wf_paths_no_slash.append(path_no_slash)
-
-        print("# paths in workflows with no slashes: %d" % len(wf_paths_no_slash))
 
         # collect duplicate paths
         for path in wf_paths_no_slash:
@@ -74,8 +71,6 @@ class ExtractWorkflowConnections:
         unique_paths = list(workflow_paths_dup.split("\n"))
         unique_paths = list(filter(None, unique_paths))
         random.shuffle(unique_paths)
-        print("# paths: %d" % len(unique_paths))
-
         no_dup_paths = list(set(unique_paths))
 
         print("Finding compatible next tools...")

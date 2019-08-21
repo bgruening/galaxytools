@@ -5,6 +5,7 @@ using machine learning (recurrent neural network)
 
 import numpy as np
 import argparse
+import time
 
 # machine learning library
 import keras.callbacks as callbacks
@@ -22,7 +23,7 @@ class PredictTool:
         """ Init method. """
 
     @classmethod
-    def find_train_best_network(self, network_config, optimise_parameters_node, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools):
+    def find_train_best_network(self, network_config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools):
         """
         Define recurrent neural network and train sequential data
         """
@@ -88,7 +89,7 @@ class PredictCallback(callbacks.Callback):
 
 
 if __name__ == "__main__":
-
+    start_time = time.time()
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-wf", "--workflow_file", required=True, help="workflows tabular file")
     arg_parser.add_argument("-tu", "--tool_usage_file", required=True, help="tool usage file")
@@ -113,23 +114,52 @@ if __name__ == "__main__":
     arg_parser.add_argument("-ao", "--activation_output", required=True, help="activation function for output layers")
     arg_parser.add_argument("-lt", "--loss_type", required=True, help="type of the loss/error function")
 
-    args = vars(arg_parser.parse_args())
-    path_length = int(args["maximum_path_length"])
-
     # get argument values
+    args = vars(arg_parser.parse_args())
+    tool_usage_path = args["tool_usage_file"]
+    workflows_path = args["workflow_file"]
+    cutoff_date = args["cutoff_date"]
     maximum_path_length = int(args["maximum_path_length"])
     trained_model_path = args["output_model"]
-    tool_usage_path = args["tool_usage_file"]
-    cutoff_date = args["cutoff_date"]
-
     n_epochs = int(args["n_epochs"])
+    optimize_n_epochs = int(args["optimize_n_epochs"])
+    max_evals = int(args["max_evals"])
     test_share = float(args["test_share"])
-    print()
-    print(args["workflow_file"])
-    print()
+    validation_share = float(args["validation_share"])
+    batch_size = args["batch_size"]
+    units = args["units"]
+    embedding_size = args["embedding_size"]
+    dropout = args["dropout"]
+    spatial_dropout = args["spatial_dropout"]
+    recurrent_dropout = args["recurrent_dropout"]
+    learning_rate = args["learning_rate"]
+    activation_recurrent = args["activation_recurrent"]
+    activation_output = args["activation_output"]
+    loss_type = args["loss_type"]
+
+    config = {
+        'cutoff_date': cutoff_date,
+        'maximum_path_length': maximum_path_length,
+        'n_epochs': n_epochs,
+        'optimize_n_epochs': optimize_n_epochs,
+        'max_evals': max_evals,
+        'test_share': test_share,
+        'validation_share': validation_share,
+        'batch_size': batch_size,
+        'units': units,
+        'embedding_size': embedding_size,
+        'dropout': dropout,
+        'spatial_dropout': spatial_dropout,
+        'recurrent_dropout': recurrent_dropout,
+        'learning_rate': learning_rate,
+        'activation_recurrent': activation_recurrent,
+        'activation_output': activation_output,
+        'loss_type': loss_type
+    }
+
     # Extract and process workflows
     connections = extract_workflow_connections.ExtractWorkflowConnections()
-    workflow_paths, compatible_next_tools = connections.read_tabular_file(args["workflow_file"])
+    workflow_paths, compatible_next_tools = connections.read_tabular_file(workflows_path)
 
     # Process the paths from workflows
     print("Dividing data...")
@@ -141,5 +171,8 @@ if __name__ == "__main__":
 
     # start training with weighted classes
     print("Training with weighted classes and samples ...")
-    results_weighted = predict_tool.find_train_best_network(config, optimise_parameters_node, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools)
+    results_weighted = predict_tool.find_train_best_network(config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools)
     utils.save_model(results_weighted, data_dictionary, compatible_next_tools, trained_model_path, class_weights)
+    end_time = time.time()
+    print()
+    print("Program finished in %s seconds" % str(end_time - start_time))
