@@ -172,6 +172,10 @@ if __name__ == "__main__":
     # start training with weighted classes
     print("Training with weighted classes and samples ...")
     results_weighted = predict_tool.find_train_best_network(config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools)
+    print()
+    print("Best parameters \n")
+    print(results_weighted["best_parameters"])
+    print()
     utils.save_model(results_weighted, data_dictionary, compatible_next_tools, trained_model_path, class_weights)
     end_time = time.time()
     print()
