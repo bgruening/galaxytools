@@ -7,14 +7,12 @@ import numpy as np
 import argparse
 
 # machine learning library
-'''import keras.callbacks as callbacks
+import keras.callbacks as callbacks
 
 import extract_workflow_connections
 import prepare_data
 import optimise_hyperparameters
 import utils
-
-warnings.filterwarnings("ignore")
 
 
 class PredictTool:
@@ -86,7 +84,7 @@ class PredictCallback(callbacks.Callback):
             self.precision.append(precision)
             self.usage_weights.append(usage_weights)
             print("Epoch %d precision: %s" % (epoch + 1, precision))
-            print("Epoch %d usage weights: %s" % (epoch + 1, usage_weights))'''
+            print("Epoch %d usage weights: %s" % (epoch + 1, usage_weights))
 
 
 if __name__ == "__main__":
@@ -96,7 +94,7 @@ if __name__ == "__main__":
     arg_parser.add_argument("-tu", "--tool_usage_file", required=True, help="tool usage file")
     arg_parser.add_argument("-cd", "--cutoff_date", required=True, help="earliest date for taking tool usage")
     arg_parser.add_argument("-pl", "--maximum_path_length", required=True, help="maximum length of tool path")
-    arg_parser.add_argument("-tm", "--trained_model_file", required=True, help="trained model file")
+    #arg_parser.add_argument("-tm", "--trained_model_file", required=True, help="trained model file")
     
     arg_parser.add_argument("-ep", "--n_epochs", required=True, help="number of iterations to run to create model")
     arg_parser.add_argument("-oe", "--optimize_n_epochs", required=True, help="number of iterations to run to find best model parameters")
@@ -117,20 +115,21 @@ if __name__ == "__main__":
 
     args = vars(arg_parser.parse_args())
     path_length = int(args["maximum_path_length"])
-    print(path_length)
 
     # get argument values
-    '''maximum_path_length = int(args["maximum_path_length"])
-    trained_model_path = args["trained_model_file"]
+    maximum_path_length = int(args["maximum_path_length"])
+    #trained_model_path = args["trained_model_file"]
     tool_usage_path = args["tool_usage_file"]
     cutoff_date = args["cutoff_date"]
 
     n_epochs = int(args["n_epochs"])
-    test_share = float(args["test_share"])'''
-
+    test_share = float(args["test_share"])
+    print()
+    print(args["workflow_file"])
+    print()
     # Extract and process workflows
-    #connections = extract_workflow_connections.ExtractWorkflowConnections()
-    #workflow_paths, compatible_next_tools = connections.read_tabular_file(args["workflow_file"])
+    connections = extract_workflow_connections.ExtractWorkflowConnections()
+    workflow_paths, compatible_next_tools = connections.read_tabular_file(args["workflow_file"])
 
     # Process the paths from workflows
     #print("Dividing data...")
