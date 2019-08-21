@@ -71,6 +71,7 @@ def __main__():
     parser.add_argument('--non-directional', dest='non_directional', action="store_true")
 
     parser.add_argument('--skip-reads', dest='skip_reads', type=int)
+    parser.add_argument('--score-min', dest='score_min', type=str)
     parser.add_argument('--qupto', type=int)
 
     # paired end options
@@ -88,10 +89,7 @@ def __main__():
     parser.add_argument('--seed-mismatches', dest='seed_mismatches', type=int)
     # default 2
     parser.add_argument('--max-reseed', dest='max_reseed', type=int)
-    """
-    # default 70
-    parser.add_argument( '--maqerr', dest='maqerr', type=int )
-    """
+
 
     """
     The number of megabytes of memory a given thread is given to store path
@@ -181,6 +179,8 @@ def __main__():
         cmd.append('--no-mixed')
     if args.skip_reads:
         cmd.extend(['--skip', str(args.skip_reads)])
+    if args.score_min:
+        cmd.extend(['--score_min', str(args.score_min)])
     if args.qupto:
         cmd.extend(['--upto', 'args.qupto'])
     if args.phred64:
