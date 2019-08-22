@@ -96,5 +96,4 @@ class HyperparameterOptimisation:
                 best_model_params[item] = l_recurrent_activations[item_val]
             else:
                 best_model_params[item] = item_val
-        model_config = utils.extract_configuration(trials.trials)
         return best_model_params

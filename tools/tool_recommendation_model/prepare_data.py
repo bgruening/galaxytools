@@ -10,7 +10,6 @@ import numpy as np
 import random
 
 import predict_tool_usage
-import utils
 
 main_path = os.getcwd()
 
