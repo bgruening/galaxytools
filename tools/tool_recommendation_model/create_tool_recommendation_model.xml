@@ -95,7 +95,76 @@
     <help>
         <![CDATA[
 **What it does**
-It creates a model to recommend tools in Galaxy by learning the connections of tools in workflows. The model is an HDF5 file containing the tool dictionary, weights and configuration of the neural network. The recurrent neural network (Gated Recurrent Units) is used as a deep learner to learn the higher-order dependencies in tool connections of workflows. It takes two tabular files as input - one for the workflows and another for tools' usage frequencies. There are multiple other parameters to be set to find the best configuration of parameters of the neural network.
+
+**Description**
+
+It creates a model to recommend tools in Galaxy by learning the connections of tools in workflows. The model is an HDF5 file containing the tool dictionary, weights and configuration of the neural network. The recurrent neural network (Gated Recurrent Units) is used as a deep learner to learn the higher-order dependencies in tool connections of workflows. It takes two tabular files as input - one for the workflows and another for tools' usage frequencies. There are multiple other parameters to be set to find the best configuration of parameters of the neural network. This is achieved using bayesian optimisation hyperparameter search approach. Once the best configuration is found, a model is created which can be used to recommend tools in Galaxy. Further details about the input data and network parameters are explained below.
+
+-----
+
+**Input files**
+
+There are two input files:
+
+1. The first file ("dataset containing workflows") contains tool connections for workflows in a tabular format. The workflows are arranged as pairs of tool connections. Each row is a pair of tool connections in a workflow as shown below:
+
+    ==========  ===================       =========    =================          =============    ==========     ============   ==============
+    **wf_id**   **wf_updated**            **in_id**    **in_tool**                **in_tool_v**    **out_id**     **out_tool**   **out_tool_v**
+    ----------  -------------------       ---------    -----------------          -------------    ----------     ------------   --------------
+    3           2013-02-07 16:48:00       7            Remove beginning1          1.0.0            5              Grep1          1.0.1
+    ==========  ===================       =========    =================          =============    ==========     ============   ==============
+
+The first column (wf_id) is the workflow id, second (wf_updated) is the last updated date timestamp, third (in_id) is the id of the tool which is the input to the tool connection, fourth (in_tool) is the   name of the input tool, fifth (in_tool_v) is the version of the input tool, sixth (out_id) is the id of the output tool in the tool connection, seventh (out_tool) is the name of the output tool and the last one (out_tool_v) is the version of the output tool. The tools connections (rows) for each workflow are used to recreate the workflow (directed acyclic graph) and unique tool sequences for each workflow are extracted. These tool sequences are then used to learn higher-order dependencies using a recurrent neural network to recommend tools.
+    
+2. The second file ("dataset containing usage frequencies of tools") is also a tabular file containing the usage frequencies of tools for a period of time. It has 3 columns:
+
+    ============================================================================================  ==========  ===   
+    upload1                                                                                       2019-03-01  176
+    toolshed.g2.bx.psu.edu/repos/devteam/fastqc/fastqc/0.72                                       2019-03-01  97
+    toolshed.g2.bx.psu.edu/repos/bgruening/deeptools_bam_coverage/deeptools_bam_coverage/3.0.2.0  2019-03-01  67
+    ============================================================================================  ==========  ===
+
+The first column is the name of the tool, second is the date and the last one is the number of times the tool has been used in a month. For example, if this data is collected for 1 year, then each tool will appear in this list at most 12 times (months in which the usage is > 0). This data helps to know the usage pattern of a tool i.e. if a tool is being used often (high frequency in recent months) in the last one year or not being used at all (low frequency in recent months). This frequency is then used as weights for these tools in the neural network learning. The tools with high frequency in recent months is more important than tools with low frequency in recent months. This constraint allows to phase-out those tools from predictions which are not being used recently.
+
+-----
+
+
+**Parameters**
+
+There are multiple parameters which can be set. They are divided into 3 categories:
+
+1. Data parameters
+    - "input_cutoff_date": It is used to set the earliest date from which the usage frequencies of tools should be considered. The format of the date is YYYY-MM-DD. This date should be in the past.
+    - "input_maximum_path_length": This takes an integer and specifies the maximum size of a tool sequence extracted from any workflow. Any tool sequence of length larger than this number is not included in the dataset for training.
+    
+2. Training parameters
+    - "max_evals": The hyperparameters of the neural network are tuned using a Bayesian optimisation approach and multiple configurations are sampled from different ranges of parameters. The number specified in this parameter is the number of configurations of hyperparameters evaluated to optimise them. Higher the number, the longer is the running time of the tool.
+    - "optimize_n_epochs": This number specifies how many iterations would the neural network executes to evaluate each sampled configuration.
+    - "n_epochs": Once the best configuration of hyperparameters has been found, the neural network takes this configuration and runs for "n_epochs" number of times minimising the error to produce a model at the end.
+    - "test_share": It specifies the size of the test set. For example, if it is 0.5, then the test set is half of the entire data available. It should not be set to more than 0.5. This set is used for evaluating the precision on an unseen set.
+    - "validation_share": It specifies the size of the validation set. For example, if it is 0.5, then the validation set is half of the entire data available. It should not be set to more than 0.5. This set is used for computing error while training on the best configuration.
+    
+3. Neural network parameters:
+    - "batch_size": The training of the neural network is done using batch learning in this work. The training data is divided into equal batches and for each epoch (a training iteration), all batches of data are trained one after another. A higher or lower value can unsettle the training. Therefore, this parameter should be optimised.
+    - "units": This number is the number of hidden recurrent units. A higher number means stronger learning (may lead to overfitting) and a lower number means weaker learning (may lead to underfitting). Therefore, this number should be optimised.
+    - "embedding_size": For each tool, a fixed-size vector is learned and this fixed-size is known as the embedding size. This size remains same for all the tools. A lower number may underfit and a higher number may overfit. This parameter should be optimised as well.
+    - "dropout": A neural network tends to overfit (especially when it is stronger). Therefore, to avoid or minimize overfitting, dropout is used. The fraction specified by dropout is the fraction of units "deleted" randomly from the network to impose randomness which helps in avoiding overfitting. This parameter should be optimised as well.
+    - "spatial_dropout": Similar to dropout, this is used to reduce overfitting in the embedding layer. This parameter should be optimised as well.
+    - "recurrent_dropout": Similar to dropout and spatial dropout, this is used to reduce overfitting in the recurrent layers (hidden). This parameter should be optimised as well.
+    - "learning_rate": The learning rate specifies the speed of learning. A higher value ensures fast learning (the optimiser may diverge) and a lower value causes slow learning (may not reach the optimum). This parameter should be optimised as well.
+    - "activation_recurrent": Activations are mathematical functions to transform input into output. This takes the name of an activation function from the list of Keras activations (https://keras.io/activations/) for recurrent layers.
+    - "activation_output": This takes the activation for transforming the input of the last layer to the output of the neural network. It is also taken from Keras activations (https://keras.io/activations/).
+    - "loss_type": This is also a mathematical function which computes the error between true and predicted outputs. An optimizer uses this loss function to compute error and minimize it. It is taken from the list of Keras optimisers (https://keras.io/optimizers/).
+
+-----
+
+**Output file**
+
+The output file (model) is an HDF5 file (http://docs.h5py.org/en/latest/high/file.html) containing multiple attributes like a dictionary of tools, neural network configuration and weights for each layer, weights of all tools and so on. After the tool has finished executing, it can be downloaded and placed at "/galaxy/database/" inside a Galaxy instance codebase. To see the recommended tools (enable the UI integrations) in Galaxy, the following changes should be made to "galaxy.yml" file:
+
+    - Enable and then set the property "enable_tool_recommendation" to "true".
+    - Enable and then set the property "model_path" to "database/<<model_file_name>>".
+
         ]]>
     </help>
     <citations>
