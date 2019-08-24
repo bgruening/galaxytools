@@ -195,6 +195,12 @@ def main(inputs, infile_estimator=None, infile1=None,
             )
             data.append(trace)
 
+        trace = go.Scatter(x=[0, 1], y=[0, 1], 
+                           mode='lines', 
+                           line=dict(color='black', dash='dash'),
+                           showlegend=False)
+        data.append(trace)
+
         layout = go.Layout(
             title=title or "Receiver operating characteristic curve",
             xaxis=dict(title='False Positive Rate'),
