@@ -130,7 +130,6 @@ def get_sequential_model(config):
     input_shape = _handle_shape(config['input_shape'])
     layers = config['layers']
     for layer in layers:
-        print(layer)
         options = layer['layer_selection']
         layer_type = options.pop('layer_type')
         klass = getattr(keras.layers, layer_type)
