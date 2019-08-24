@@ -158,10 +158,16 @@ def main(inputs, infile_estimator, outfile_predict,
             if params['method'] == 'predict':
                 batch_preds = estimator.predict(
                     batch_X,
+                    # The presence of `pred_data_generator` is for API
+                    # compatibility only. After galaxy-ml v0.7.11, this
+                    # line can be removed.
                     data_generator=pred_data_generator)
             else:
                 batch_preds = estimator.predict_proba(
                     batch_X,
+                    # The presence of `pred_data_generator` is for API
+                    # compatibility only. After galaxy-ml v0.7.11, this
+                    # line can be removed.
                     data_generator=pred_data_generator)
 
             if batch_preds.ndim == 1:
