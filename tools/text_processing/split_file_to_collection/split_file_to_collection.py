@@ -57,7 +57,7 @@ def parser_cli():
     parser.add_argument('--file_ext', '-e', help="If not splitting by column," +
                                                  " the extension of the new files (without a period)")
     parser.add_argument('--ftype', '-f', help="The type of the file to split", required = True,
-        choices=["mgf", "fastq", "fasta", "tabular"])
+        choices=["mgf", "fastq", "fasta", "tabular", "txt"])
     parser.add_argument('--by', '-b', help="Split by line or by column (tabular only)",
         default = "row", choices = ["col", "row"])
     parser.add_argument('--top', '-t', type=int, default=0, help="Number of header lines to carry over to new files. " +
