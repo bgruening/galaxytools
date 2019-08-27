@@ -223,24 +223,24 @@ def __main__():
         output_report_file.close()
 
     if args.output_suppressed_reads:
-        if glob(os.path.join(output_dir, '*ambiguous_reads.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads.txt'))[0], args.output_suppressed_reads)
+        if glob(os.path.join(output_dir, '*ambiguous_reads.*')):
+            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads.*'))[0], args.output_suppressed_reads)
     if args.output_suppressed_reads_l:
-        if glob(os.path.join(output_dir, '*ambiguous_reads_1.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_1.txt'))[0], args.output_suppressed_reads_l)
+        if glob(os.path.join(output_dir, '*ambiguous_reads_1.*')):
+            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_1.*'))[0], args.output_suppressed_reads_l)
     if args.output_suppressed_reads_r:
-        if glob(os.path.join(output_dir, '*ambiguous_reads_2.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_2.txt'))[0], args.output_suppressed_reads_r)
+        if glob(os.path.join(output_dir, '*ambiguous_reads_2.*')):
+            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_2.*'))[0], args.output_suppressed_reads_r)
 
     if args.output_unmapped_reads:
-        if glob(os.path.join(output_dir, '*unmapped_reads.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads.txt'))[0], args.output_unmapped_reads)
+        if glob(os.path.join(output_dir, '*unmapped_reads.*')):
+            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads.*'))[0], args.output_unmapped_reads)
     if args.output_unmapped_reads_l:
-        if glob(os.path.join(output_dir, '*unmapped_reads_1.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_1.txt'))[0], args.output_unmapped_reads_l)
+        if glob(os.path.join(output_dir, '*unmapped_reads_1.*')):
+            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_1.*'))[0], args.output_unmapped_reads_l)
     if args.output_unmapped_reads_r:
-        if glob(os.path.join(output_dir, '*unmapped_reads_2.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_2.txt'))[0], args.output_unmapped_reads_r)
+        if glob(os.path.join(output_dir, '*unmapped_reads_2.*')):
+            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_2.*'))[0], args.output_unmapped_reads_r)
 
     try:
         # merge all bam files
