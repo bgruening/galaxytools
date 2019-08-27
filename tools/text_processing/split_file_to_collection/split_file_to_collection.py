@@ -15,6 +15,7 @@ updating the parser, and adding a new type option in the Galaxy wrapper
 FILETYPES = {'fasta': '^>',
              'fastq': '^@',
              'tabular': '^.*',
+             'txt': '^.*',
              'mgf': '^BEGIN IONS'}
 
 
