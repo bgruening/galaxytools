@@ -1,4 +1,4 @@
-<tool id="bismark_bowtie2" name="Bismark Mapper" version="0.22.1+galaxy3" profile="18.01">
+<tool id="bismark_bowtie2" name="Bismark Mapper" version="0.22.1+galaxy4" profile="18.01">
     <description>Bisulfite reads mapper</description>
     <requirements>
         <requirement type="package" version="0.22.1">bismark</requirement>
@@ -12,11 +12,20 @@
             #if $singlePaired.input_singles.ext == "fasta":
                 #set read1 = 'input_1.fa'
             #elif $singlePaired.input_singles.ext in ["fastq.gz", "fastqsanger.gz"]:
-                #set read1 = 'input_1.fq.gz'
+                #if $params.pbat == "--pbat"
+                    #set read1 = 'input_1.fq'
+                #else
+                    #set read1 = 'input_1.fq.gz'
+                #end if
             #else
                 #set read1 = 'input_1.fq'
             #end if
-            ln -s '${singlePaired.input_singles}' '${read1}' &&
+
+            #if $params.pbat == "--pbat" and $singlePaired.input_singles.ext in ["fastq.gz", "fastqsanger.gz"]:
+                zcat '${singlePaired.input_singles}' > '${read1}' &&
+            #else
+                ln -s '${singlePaired.input_singles}' '${read1}' &&
+            #end if
         #else:
             #set $mate1 = list()
             #set $mate2 = list()
@@ -25,20 +34,38 @@
                 #if $mate_pair.input_mate1.ext == "fasta":
                     #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fa'
                 #elif $mate_pair.input_mate1.ext in ["fastq.gz", "fastqsanger.gz"]:
-                    #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fq.gz'
+                    #if $params.pbat == "--pbat"
+                        #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fq'
+                    #else
+                        #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fq.gz'
+                    #end if
                 #else
                     #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fq'
                 #end if
-                ln -s '${mate_pair.input_mate1}' '${read1}' &&
+
+                #if $params.pbat == "--pbat" and $mate_pair.input_mate1.ext in ["fastq.gz", "fastqsanger.gz"]:
+                    zcat '${mate_pair.input_mate1}' > '${read1}' &&
+                #else
+                    ln -s '${mate_pair.input_mate1}' '${read1}' &&
+                #end if
 
                 #if $mate_pair.input_mate2.ext == "fasta":
                     #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fa'
                 #elif $mate_pair.input_mate2.ext in ["fastq.gz", "fastqsanger.gz"]:
-                    #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fq.gz'
+                    #if $params.pbat == "--pbat"
+                        #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fq'
+                    #else
+                        #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fq.gz'
+                    #end if
                 #else
                     #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fq'
                 #end if
-                ln -s '${mate_pair.input_mate2}' '${read2}' &&
+
+                #if $params.pbat == "--pbat" and $mate_pair.input_mate2.ext in ["fastq.gz", "fastqsanger.gz"]:
+                    zcat '${mate_pair.input_mate2}' > '${read2}' &&
+                #else
+                    ln -s '${mate_pair.input_mate2}' '${read2}' &&
+                #end if
 
                 $mate1.append( str($read1) )
                 $mate2.append( str($read2) )
@@ -137,6 +164,8 @@
             $params.no_discordant
 
             $params.non_directional
+
+            $params.pbat
 
             #if $params.bismark_stdout:
                 --stdout '$output_stdout'
@@ -289,6 +318,11 @@
                 <param argument="--non-directional" name="non_directional" type="boolean"
                        truevalue="--non-directional" falsevalue="" checked="false"
                        label="The sequencing library was constructed in a non strand-specific manner, alignments to all four bisulfite strands will be reported."/>
+                <param argument="--pbat" name="pbat" type="boolean"
+                       truevalue="--pbat" falsevalue="" checked="false"
+                       label="Treat input data as PBAT-Seq libraries"
+                       help="Use this option only if you are certain that your libraries were constructed following a PBAT protocol. If you don't know what PBAT-Seq is you should not specify this option." />
+
 
                 <!--end output options -->
             </when>  <!-- full -->
@@ -542,6 +576,38 @@
 
             <assert_command>
                 <has_text text="--score-min 'L,0,-0.8'" />
+            </assert_command>
+        </test>
+        <test>
+            <param name="genomeSource" value="history"/>
+            <param name="own_file" value="mm10.tiny.fa.gz" />
+            <param name="sPaired" value="single"/>
+            <param name="input_singles" value="input1.fq.gzip" ftype="fastqsanger.gz"/>
+            <param name="sort_bam" value="false"/>
+            <param name="settingsType" value="custom"/>
+            <param name="suppressed_read_file" value="true"/>
+            <param name="unmapped_read_file" value="true"/>
+            <param name="bismark_stdout" value="true"/>
+            <param name="isReportOutput" value="true"/>
+            <conditional name="params">
+                <param name="settingsType" value="custom" />
+                <param name="pbat" value="true" />
+            </conditional>
+
+            <output name="output_stdout" file="summary_pbat.txt" ftype="txt" lines_diff="94">
+                 <assert_contents>
+                     <has_text text="Sequences analysed in total:" />
+                     <has_text text="44115" />
+                     <has_text text="Mapping efficiency:" />
+                     <has_text text="0.0%" />
+                     <has_text text="Bismark run complete" />
+                 </assert_contents>
+            </output>
+            <output name="report_file" file="mapping_report_pbat.txt" ftype="txt" lines_diff="6"/>
+            <output name="output" file="mapped_reads_pbat.bam" ftype="qname_input_sorted.bam" lines_diff="14"/>
+
+            <assert_command>
+                <has_text text="--pbat" />
             </assert_command>
         </test>
     </tests>

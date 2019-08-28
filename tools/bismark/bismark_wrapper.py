@@ -69,6 +69,7 @@ def __main__():
     parser.add_argument('--fasta', action='store_true', help='Query filetype is in FASTA format')
     parser.add_argument('--phred64-quals', dest='phred64', action="store_true")
     parser.add_argument('--non-directional', dest='non_directional', action="store_true")
+    parser.add_argument('--pbat', dest='pbat', action="store_true")
 
     parser.add_argument('--skip-reads', dest='skip_reads', type=int)
     parser.add_argument('--score-min', dest='score_min', type=str)
@@ -153,7 +154,9 @@ def __main__():
     # Build bismark command
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join(tmp_bismark_dir, 'results')
-    cmd = ['bismark', '--bam', '--gzip', '--temp_dir', tmp_bismark_dir, '-o', output_dir, '--quiet']
+    cmd = ['bismark', '--bam', '--temp_dir', tmp_bismark_dir, '-o', output_dir, '--quiet']
+    if not args.pbat:
+        cmd.append('--gzip')
 
     if args.fasta:
         # the query input files (specified as mate1,mate2 or singles) are FastA
@@ -187,6 +190,8 @@ def __main__():
         cmd.append('--phred64-quals')
     if args.non_directional:
        cmd.append('--non-directional')
+    if args.pbat:
+       cmd.append('--pbat')
     if args.suppress_header:
         cmd.append('--sam-no-hd')
     if args.output_unmapped_reads or (args.output_unmapped_reads_l and args.output_unmapped_reads_r):
@@ -223,24 +228,24 @@ def __main__():
         output_report_file.close()
 
     if args.output_suppressed_reads:
-        if glob(os.path.join(output_dir, '*ambiguous_reads.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads.txt'))[0], args.output_suppressed_reads)
+        if glob(os.path.join(output_dir, '*ambiguous_reads.*')):
+            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads.*'))[0], args.output_suppressed_reads)
     if args.output_suppressed_reads_l:
-        if glob(os.path.join(output_dir, '*ambiguous_reads_1.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_1.txt'))[0], args.output_suppressed_reads_l)
+        if glob(os.path.join(output_dir, '*ambiguous_reads_1.*')):
+            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_1.*'))[0], args.output_suppressed_reads_l)
     if args.output_suppressed_reads_r:
-        if glob(os.path.join(output_dir, '*ambiguous_reads_2.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_2.txt'))[0], args.output_suppressed_reads_r)
+        if glob(os.path.join(output_dir, '*ambiguous_reads_2.*')):
+            shutil.move(glob(os.path.join(output_dir, '*ambiguous_reads_2.*'))[0], args.output_suppressed_reads_r)
 
     if args.output_unmapped_reads:
-        if glob(os.path.join(output_dir, '*unmapped_reads.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads.txt'))[0], args.output_unmapped_reads)
+        if glob(os.path.join(output_dir, '*unmapped_reads.*')):
+            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads.*'))[0], args.output_unmapped_reads)
     if args.output_unmapped_reads_l:
-        if glob(os.path.join(output_dir, '*unmapped_reads_1.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_1.txt'))[0], args.output_unmapped_reads_l)
+        if glob(os.path.join(output_dir, '*unmapped_reads_1.*')):
+            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_1.*'))[0], args.output_unmapped_reads_l)
     if args.output_unmapped_reads_r:
-        if glob(os.path.join(output_dir, '*unmapped_reads_2.txt')):
-            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_2.txt'))[0], args.output_unmapped_reads_r)
+        if glob(os.path.join(output_dir, '*unmapped_reads_2.*')):
+            shutil.move(glob(os.path.join(output_dir, '*unmapped_reads_2.*'))[0], args.output_unmapped_reads_r)
 
     try:
         # merge all bam files
