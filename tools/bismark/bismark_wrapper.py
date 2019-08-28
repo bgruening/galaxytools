@@ -154,7 +154,9 @@ def __main__():
     # Build bismark command
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join(tmp_bismark_dir, 'results')
-    cmd = ['bismark', '--bam', '--gzip', '--temp_dir', tmp_bismark_dir, '-o', output_dir, '--quiet']
+    cmd = ['bismark', '--bam', '--temp_dir', tmp_bismark_dir, '-o', output_dir, '--quiet']
+    if not args.pbat:
+        cmd.append('--gzip')
 
     if args.fasta:
         # the query input files (specified as mate1,mate2 or singles) are FastA
