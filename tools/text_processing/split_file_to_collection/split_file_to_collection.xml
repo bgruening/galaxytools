@@ -1,6 +1,19 @@
 <tool id="split_file_to_collection" name="Split file" version="0.2.0">
     <description>to dataset collection</description>
     <macros>
+        <xml name="regex_sanitizer">
+            <sanitizer>
+                <valid>
+                    <add preset="string.printable"/>
+                    <remove value="&#92;" />
+                    <remove value="&apos;" />
+                </valid>
+                <mapping initial="none">
+                    <add source="&#92;" target="__backslash__" />
+                    <add source="&apos;" target="__sq__"/>
+                </mapping>
+            </sanitizer>
+        </xml>
         <xml name="numnew_fname">
             <param name="numnew" type="integer" label="Number of new files" min="1" value="1"/>
             <param name="newfilenames" type="text" label="Base name for new files in collection"
@@ -26,7 +39,6 @@
     </requirements>
     <command detect_errors="aggressive"><![CDATA[
         mkdir ./out &&
-        python -V &> $log &&
         python '$__tool_directory__/split_file_to_collection.py'
             --out ./out
             --in '$split_parms.input'
@@ -49,6 +61,9 @@
                     #end if
                 #end if
             #else
+                #if $split_parms.select_ftype == "generic"
+                    --generic_re '$split_parms.generic_regex'
+                #end if
                 --numnew '$split_parms.numnew'
                 #if $split_parms.select_allocate.allocate == "random":
                     --rand
@@ -64,9 +79,10 @@
         #end if
         #if $split_parms.select_ftype != "tabular":
             --file_names '$split_parms.newfilenames'
-            --file_ext '$split_parms.select_ftype'
+            #if $split_parms.select_ftype == "generic"
+                --file_ext '$split_parms.input.ext'
+            #end if
         #end if
-        &>> $log
     ]]></command>
     <inputs>
         <conditional name="split_parms">
@@ -76,6 +92,7 @@
                 <option value="tabular">Tabular</option>
                 <option value="fasta">FASTA</option>
                 <option value="txt">Text files</option>
+                <option value="generic">Genric</option>
             </param>
             <when value="tabular">
                 <param name="input" type="data" format="tabular" label="Tabular file to split"/>
@@ -88,30 +105,10 @@
                     <when value="col">
                         <param name="id_col" type="data_column" label="Column to split on" data_ref="input"/>
                         <param name="match_regex" type="text" label="Regex to match contents of id column" value="(.*)">
-	 		                <sanitizer>
-          		                <valid>
-            		                <add preset="string.printable"/>
-            		                <remove value="&#92;" />
-           		                    <remove value="&apos;" />
-          			            </valid>
-          		                <mapping initial="none">
-            		                <add source="&#92;" target="__backslash__" />
-            		                <add source="&apos;" target="__sq__"/>
-          		                </mapping>
-			                </sanitizer>
-		                </param>
+                            <expand macro="regex_sanitizer"/>
+                        </param>
                         <param name="sub_regex" type="text" label="Pattern to replace match with" value="\1">
-                            <sanitizer>
-                                <valid>
-                                    <add preset="string.printable"/>
-                                    <remove value="&#92;" />
-                                    <remove value="&apos;" />
-                                </valid>
-                                <mapping initial="none">
-                                    <add source="&#92;" target="__backslash__" />
-                                    <add source="&apos;" target="__sq__"/>
-                                </mapping>
-			                </sanitizer>
+                            <expand macro="regex_sanitizer"/>
                         </param>
                     </when>
                     <when value="row">
@@ -133,6 +130,13 @@
             </when>
             <when value="txt">
                 <param name="input" type="data" format="txt" label="Text file to split"/>
+                <expand macro="numnew_fname"/>
+            </when>
+            <when value="generic">
+                <param name="input" type="data" format="txt" label="File to split"/>
+                <param name="generic_regex" type="text" label="Regex to match record separator" value="^.*">
+                    <expand macro="regex_sanitizer"/>
+                </param>
                 <expand macro="numnew_fname"/>
             </when>
         </conditional>
@@ -157,8 +161,11 @@
         <collection name="list_output_txt" type="list" label="${tool.name} on ${on_string}">
             <discover_datasets pattern="__name__" directory="out" visible="false" format="txt"/>
             <filter>split_parms['select_ftype'] == "txt"</filter>
-	</collection>
-			<data format="txt" name="log" />
+        </collection>
+        <collection name="list_output_generic" type="list" label="${tool.name} on ${on_string}">
+            <discover_datasets pattern="__name_and_ext__" directory="out" visible="false"/>
+            <filter>split_parms['select_ftype'] == "generic"</filter>
+        </collection>
     </outputs>
     <tests>
         <test>
@@ -272,12 +279,35 @@
         <test>
             <param name="input" value="test.tabular" ftype="txt"/>
             <param name="select_ftype" value="txt"/>
-            <param name="top" value="2"/>
             <param name="numnew" value="2"/>
             <param name="newfilenames" value="test"/> 
             <output_collection name="list_output_txt" type="list">
-                <element name="test_0.txt" file="test_0.tabular" ftype="txt"/>
-                <element name="test_1.txt" file="test_1.tabular" ftype="txt"/>
+                <element name="test_0.txt" file="test_0.tabular" ftype="txt" lines_diff="1"/>
+                <element name="test_1.txt" file="test_1.tabular" ftype="txt" lines_diff="1"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.tabular" ftype="txt"/>
+            <param name="select_ftype" value="generic"/>
+            <param name="generic_regex" value="^.*"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="test"/> 
+            <output_collection name="list_output_generic" type="list">
+                <element name="test_0" file="test_0.tabular" ftype="txt" lines_diff="1"/>
+                <element name="test_1" file="test_1.tabular" ftype="txt" lines_diff="1"/>
+            </output_collection>
+        </test>
+        <test>
+            <param name="input" value="test.fasta" ftype="fasta"/>
+            <param name="select_ftype" value="generic"/>
+            <param name="generic_regex" value="^>.*"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="rand"/>
+            <param name="allocate" value="random"/>
+            <param name="seed" value="1010"/> 
+            <output_collection name="list_output_generic" type="list">
+                <element name="rand_0" file="rand_0.fasta" ftype="fasta"/>
+                <element name="rand_1" file="rand_1.fasta" ftype="fasta"/>
             </output_collection>
         </test>
     </tests>
