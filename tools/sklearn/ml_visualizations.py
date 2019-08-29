@@ -4,8 +4,11 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
+import subprocess
 import warnings
 
+from keras.models import model_from_json
+from keras.utils import plot_model
 from sklearn.feature_selection.base import SelectorMixin
 from sklearn.metrics import precision_recall_curve, average_precision_score
 from sklearn.metrics import roc_curve, auc
@@ -20,7 +23,8 @@ def main(inputs, infile_estimator=None, infile1=None,
          infile2=None, outfile_result=None,
          outfile_object=None, groups=None,
          ref_seq=None, intervals=None,
-         targets=None, fasta_path=None):
+         targets=None, fasta_path=None,
+         model_config=None):
     """
     Parameter
     ---------
@@ -57,6 +61,9 @@ def main(inputs, infile_estimator=None, infile1=None,
 
     fasta_path : str, default is None
         File path to dataset containing fasta file
+
+    model_config : str, default is None
+        File path to dataset containing JSON config for neural networks
     """
     warnings.simplefilter('ignore')
 
@@ -261,8 +268,18 @@ def main(inputs, infile_estimator=None, infile1=None,
         )
         fig = go.Figure(data=[data1, data2], layout=layout)
 
+    elif plot_type == 'keras_plot_model':
+        with open(model_config, 'r') as f:
+            model_str = f.read()
+        model = model_from_json(model_str)
+        plot_model(model, to_file="output")
+
+        return 0
+
     plotly.offline.plot(fig, filename="output.html",
                         auto_open=False)
+    # to be discovered by `from_work_dir`
+    subprocess.run("mv output.html output", shell=True)
 
 
 if __name__ == '__main__':
@@ -278,9 +295,11 @@ if __name__ == '__main__':
     aparser.add_argument("-b", "--intervals", dest="intervals")
     aparser.add_argument("-t", "--targets", dest="targets")
     aparser.add_argument("-f", "--fasta_path", dest="fasta_path")
+    aparser.add_argument("-c", "--model_config", dest="model_config")
     args = aparser.parse_args()
 
     main(args.inputs, args.infile_estimator, args.infile1, args.infile2,
          args.outfile_result, outfile_object=args.outfile_object,
          groups=args.groups, ref_seq=args.ref_seq, intervals=args.intervals,
-         targets=args.targets, fasta_path=args.fasta_path)
+         targets=args.targets, fasta_path=args.fasta_path,
+         model_config=args.model_config)
