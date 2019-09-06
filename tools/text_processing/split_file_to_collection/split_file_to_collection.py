@@ -140,7 +140,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
         new_file_base = [custom_new_file_name, custom_new_file_ext]
 
     newfiles = [
-        open(out_dir + "/" + new_file_base[0] + "_" + str(count) + new_file_base[1], "w")
+        open(os.path.join(out_dir, "%s_%06d%s" % (new_file_base[0], count, new_file_base[1])) , "w")
         for count in range(0, numnew)
     ]
 
@@ -159,7 +159,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
     # keep track in loop of number of records in each file
     # only used in batch
     records_in_file = 0
-    
+
     # open file
     with open(in_file, "r") as file:
         record = ""
