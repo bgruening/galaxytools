@@ -15,6 +15,7 @@ updating the parser, and adding a new type option in the Galaxy wrapper
 FILETYPES = {'fasta': '^>',
              'fastq': '^@',
              'tabular': '^.*',
+             'txt': '^.*',
              'mgf': '^BEGIN IONS'}
 
 
@@ -37,6 +38,8 @@ def main():
 
     ftype = args["ftype"]
 
+    assert ftype != "generic" or args["generic_re"] != None, "--generic_re needs to be given for generic input"
+
     if args["ftype"] == "tabular" and args["by"] == "col":
         args["match"] = replace_mapped_chars(args["match"])
         args["sub"] = replace_mapped_chars(args["sub"])
@@ -56,7 +59,8 @@ def parser_cli():
     parser.add_argument('--file_ext', '-e', help="If not splitting by column," +
                                                  " the extension of the new files (without a period)")
     parser.add_argument('--ftype', '-f', help="The type of the file to split", required = True,
-        choices=["mgf", "fastq", "fasta", "tabular"])
+        choices=["mgf", "fastq", "fasta", "tabular", "txt", "generic"])
+    parser.add_argument('--generic_re', '-g', help="Regular expression indicating the start of a new record (only for generic)", required = False)
     parser.add_argument('--by', '-b', help="Split by line or by column (tabular only)",
         default = "row", choices = ["col", "row"])
     parser.add_argument('--top', '-t', type=int, default=0, help="Number of header lines to carry over to new files. " +
@@ -96,7 +100,7 @@ def replace_mapped_chars(pattern):
 
 def split_by_record(args, in_file, out_dir, top, ftype):
     # get record separator for given filetype
-    sep = re.compile(FILETYPES[ftype])
+    sep = re.compile(FILETYPES.get(ftype, args["generic_re"]))
 
     numnew = args["numnew"]
 
