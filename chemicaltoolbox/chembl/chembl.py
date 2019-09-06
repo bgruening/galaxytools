@@ -13,7 +13,7 @@ def get_smiles(res):
     """ 
     smiles = set()
     for smi in res: 
-        smiles.add(smi['molecule_structures']['canonical_smiles']) 
+        smiles.add('{}\t{}'.format(smi['molecule_structures']['canonical_smiles'], smi['molecule_chembl_id']))
     return smiles
 
 def sim_search(smiles, tanimoto):
@@ -21,14 +21,14 @@ def sim_search(smiles, tanimoto):
     Return compounds which are within a Tanimoto range of the SMILES input
     """
     similarity = new_client.similarity
-    return similarity.filter(smiles=smiles, similarity=tanimoto).only(['molecule_structures'])
+    return similarity.filter(smiles=smiles, similarity=tanimoto).only(['molecule_structures', 'molecule_chembl_id'])
     
 def substr_search(smiles):
     """
     Return compounds which contain the SMILES substructure input
     """
     substructure = new_client.substructure
-    return substructure.filter(smiles=smiles).only(['molecule_structures'])
+    return substructure.filter(smiles=smiles).only(['molecule_structures', 'molecule_chembl_id'])
     
 def filter_drugs(mols):
     """
