@@ -150,45 +150,47 @@ def main(inputs, infile_estimator, outfile_predict,
         steps_done = 0
 
         # TODO: multiple threading
-        while steps_done < len(gen_flow):
-            index_array = next(gen_flow.index_generator)
-            batch_X = gen_flow._get_batches_of_transformed_samples(
-                index_array)
+        try:
+            while steps_done < len(gen_flow):
+                index_array = next(gen_flow.index_generator)
+                batch_X = gen_flow._get_batches_of_transformed_samples(
+                    index_array)
 
-            if params['method'] == 'predict':
-                batch_preds = estimator.predict(
-                    batch_X,
-                    # The presence of `pred_data_generator` is for API
-                    # compatibility only. After galaxy-ml v0.7.11, this
-                    # line can be removed.
-                    data_generator=pred_data_generator)
-            else:
-                batch_preds = estimator.predict_proba(
-                    batch_X,
-                    # The presence of `pred_data_generator` is for API
-                    # compatibility only. After galaxy-ml v0.7.11, this
-                    # line can be removed.
-                    data_generator=pred_data_generator)
+                if params['method'] == 'predict':
+                    batch_preds = estimator.predict(
+                        batch_X,
+                        # The presence of `pred_data_generator` below is to override
+                        # model carrying data_generator if there is any.
+                        data_generator=pred_data_generator)
+                else:
+                    batch_preds = estimator.predict_proba(
+                        batch_X,
+                        # The presence of `pred_data_generator` below is to override
+                        # model carrying data_generator if there is any.
+                        data_generator=pred_data_generator)
 
-            if batch_preds.ndim == 1:
-                batch_preds = batch_preds[:, np.newaxis]
+                if batch_preds.ndim == 1:
+                    batch_preds = batch_preds[:, np.newaxis]
 
-            batch_meta = variants[index_array]
-            batch_out = np.column_stack([batch_meta, batch_preds])
+                batch_meta = variants[index_array]
+                batch_out = np.column_stack([batch_meta, batch_preds])
 
-            if not header_done:
-                heads = np.arange(batch_preds.shape[-1]).astype(str)
-                heads_str = '\t'.join(heads)
-                file_writer.write("\t%s\n" % heads_str)
-                header_done = True
+                if not header_done:
+                    heads = np.arange(batch_preds.shape[-1]).astype(str)
+                    heads_str = '\t'.join(heads)
+                    file_writer.write("\t%s\n" % heads_str)
+                    header_done = True
 
-            for row in batch_out:
-                row_str = '\t'.join(row)
-                file_writer.write("%s\n" % row_str)
+                for row in batch_out:
+                    row_str = '\t'.join(row)
+                    file_writer.write("%s\n" % row_str)
 
-            steps_done += 1
+                steps_done += 1
 
-        file_writer.close()
+        finally:
+            file_writer.close()
+            # TODO: make api `pred_data_generator.close()`
+            pred_data_generator.close()
         return 0
     # end input
 

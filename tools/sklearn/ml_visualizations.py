@@ -4,7 +4,6 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
-import subprocess
 import warnings
 
 from keras.models import model_from_json
@@ -279,7 +278,7 @@ def main(inputs, infile_estimator=None, infile1=None,
     plotly.offline.plot(fig, filename="output.html",
                         auto_open=False)
     # to be discovered by `from_work_dir`
-    subprocess.run("mv output.html output", shell=True)
+    __import__('os').rename('output.html', 'output')
 
 
 if __name__ == '__main__':
