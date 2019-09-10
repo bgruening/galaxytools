@@ -271,7 +271,8 @@ def main(inputs, infile_estimator=None, infile1=None,
         with open(model_config, 'r') as f:
             model_str = f.read()
         model = model_from_json(model_str)
-        plot_model(model, to_file="output")
+        plot_model(model, to_file="output.png")
+        __import__('os').rename('output.png', 'output')
 
         return 0
 
