@@ -6,8 +6,6 @@
 """
 import matplotlib
 matplotlib.use('Agg')
-from matplotlib import rcParams
-rcParams.update({'figure.autolayout': True})
 import argparse
 import os
 import chemfp
