@@ -1,0 +1,222 @@
+<tool id="docking030" name="Docking030" version="0.3.0">
+    <description>tool to perform protein-ligand docking with Autodock Vina</description>
+    <requirements>
+        <requirement type="package" version="1.1.2">autodock-vina</requirement>
+        <requirement type="package" version="2.4.1">openbabel</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1" />
+    </stdio>
+    <command><![CDATA[
+        obabel -isdf '$ligands' -O ligand.pdbqt -m -p $ph_value &&
+        rm -rf output &&
+        mkdir output &&
+        for file in ligand*.pdbqt;
+            do
+            OUTNAME=\${file%.pdbqt}_docked &&
+
+            #if $config_params.config_params == 'vals':
+                vina
+                    --center_x '$config_params.center_x'
+                    --center_y '$config_params.center_y'
+                    --center_z '$config_params.center_z'
+                    --size_x '$config_params.size_x'
+                    --size_y '$config_params.size_y'
+                    --size_z '$config_params.size_z'
+                    --exhaustiveness '$config_params.exh'
+                    --num_modes 9999
+                    --energy_range 9999
+                    --receptor '$receptor'
+                    --ligand "\$file"
+                    --out "./\${OUTNAME}.pdbqt"
+                    --log "./\${OUTNAME}.log"
+                    --cpu \${GALAXY_SLOTS:-1}
+                    #if $config_params.seed.seed == 'true':
+                        --seed '$config_params.seed.seed_value'
+                    #end if
+            #end if
+            #if $config_params.config_params == 'file':
+                vina
+                    --config '$config_params.box'
+                    --receptor '$receptor'
+                    --ligand "\$file"
+                    --out "./\${OUTNAME}.pdbqt"
+                    --log "./\${OUTNAME}.log"
+                    --cpu \${GALAXY_SLOTS:-1}
+                    #if $config_params.exh != "":
+                        --exhaustiveness $config_params.exh
+                    #end if
+            #end if
+
+            && python '$__tool_directory__/convert_pdbqt_to_sdf.py' ./\${OUTNAME}.pdbqt output/\${OUTNAME}.sdf;
+        done
+        
+    ]]></command>
+    <inputs>
+        <param type="data" name="receptor" format="pdbqt" label="Receptor" help="Select a receptor (PDBQT format). This can be prepared using the receptor preparation tool." />
+        <param type="data" name="ligands" format="sdf"  label="Ligands" help="Select ligands (SDF format)." />
+        <param name="ph_value" type="float" value="7.4" min="0" max="14" label="Specify pH value for ligand protonation"/>
+        <conditional name="config_params">
+            <param name="config_params" type="select" label="Specify parameters">
+                <option value="file">Upload a config file to specify parameters</option>
+                <option value="vals">Specify values directly</option>
+            </param>
+            <when value="vals">
+                <param type="float" name="center_x" label="x coordinate" help="x coordinate of the binding site." value="0"/>
+                <param type="float" name="center_y" label="y coordinate" help="y coordinate of the binding site." value="0"/>
+                <param type="float" name="center_z" label="z coordinate" help="z coordinate of the binding site." value="0"/>
+                <param type="float" name="size_x" label="x size" help="Length of the binding site (Å) in the x direction." value="0"/>
+                <param type="float" name="size_y" label="y size" help="Length of the binding site (Å) in the y direction." value="0"/>
+                <param type="float" name="size_z" label="z size" help="Length of the binding site (Å) in the z direction." value="0"/>
+                <param type="integer" name="exh" label="Exhaustiveness" help="The number of poses to return from the docking job" value="10"/>
+                <conditional name="seed">
+                    <param name="seed" type="boolean" label="Specify random seed for simulation reproducibility?"/>
+                    <when value="true">
+                        <param type="integer" name="seed_value" label="Random seed" help="Choose a seed value" value="1"/>
+                    </when>
+                    <when value="false"/>
+                </conditional>
+            </when>
+            <when value="file">
+                <param type="data" name="box" format="txt" label="Box configuration" help="Text file with the box configurations" />
+                <param type="integer" name="exh" label="Exhaustiveness" help="The number of poses to return from the docking job (optional, will override any value specified in the config file)" optional="true"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="sdf_outputs" type="list" label="Docked ligands for ${on_string}" >
+            <discover_datasets pattern="__name_and_ext__" directory="output" visible="false" />
+        </collection>
+    </outputs>
+    <tests>
+
+        <test>
+            <param name="receptor" value="protein.pdbqt"/>
+            <param name="ligands" value="input_ligands.sdf"/>
+            <param name="box" value="box.txt"/>
+            <output_collection name="sdf_outputs" type="list" count="5">
+                <element name="ligand1_docked" file="ligand1_docked.sdf" lines_diff="40"/>
+                <element name="ligand2_docked" file="ligand2_docked.sdf" lines_diff="40"/>
+                <!-- we check only the first 2 -->
+            </output_collection>
+        </test>
+
+    </tests>
+    <help><![CDATA[
+
+This tool performs protein-ligand docking using the Autodock Vina program.
+
+-----
+
+.. class:: infomark
+
+**Inputs**
+
+The first two inputs required are files describing the receptor (in the pdbqt format) and ligands (in the sdf format) respectively.
+These files are produced by the receptor and ligand preparation tools.
+
+VINA will dock each of the ligands in the SDF file sequentially. If there are a large number of ligands then first split
+them into a collection of smaller files e.g. using the splitter tool. This allows each split chunk of molecules to be docked
+as a separate task. The optimal size of the chunk will depend on the number of ligands and the capacity of the execution
+environment.
+
+In addition, parameters for docking must be defined. The Cartesian coordinates of the center of the binding site should
+be provided, along with the size of the binding site along each dimension. Effectively, this defines a cuboidal volume in
+which docking is performed. Alternatively, a config file can be uploaded containing this information - such a file can be
+generated from the box parameter calculation file.
+
+
+-----
+
+.. class:: infomark
+
+**Outputs**
+
+SDF files are produced as output.
+There is one file for each ligand in the input. Each entry in the file is a docked pose for that ligand.
+The binding affinity scores are contained within the SDF file.::
+
+    OpenBabel06171915303D
+
+    23 23  0  0  0  0  0  0  0  0999 V2000
+    66.9030   73.3450   36.0040 O   0  0  0  0  0  0  0  0  0  0  0  0
+    66.8190   73.2170   37.2120 C   0  0  0  0  0  0  0  0  0  0  0  0
+    66.0490   72.3370   37.8940 O   0  0  0  0  0  0  0  0  0  0  0  0
+    66.2290   70.9500   37.5970 C   0  0  0  0  0  0  0  0  0  0  0  0
+    67.2070   70.4140   38.6010 C   0  0  0  0  0  0  0  0  0  0  0  0
+    68.5140   70.1440   38.3980 C   0  0  0  0  0  0  0  0  0  0  0  0
+    69.2150   70.3400   37.0800 C   0  0  0  0  0  0  0  0  0  0  0  0
+    69.3810   69.5970   39.5210 C   0  0  0  0  0  0  0  0  0  0  0  0
+    68.7730   69.8280   40.9100 C   0  0  0  0  0  0  0  0  0  0  0  0
+    69.3750   71.0120   41.6220 C   0  0  0  0  0  0  0  0  0  0  0  0
+    68.7550   72.1570   41.9760 C   0  0  0  0  0  0  0  0  0  0  0  0
+    67.3280   72.4970   41.6430 C   0  0  0  0  0  0  0  0  0  0  0  0
+    69.4770   73.2270   42.7560 C   0  0  0  0  0  0  0  0  0  0  0  0
+    67.5570   74.0540   38.1920 C   0  0  0  0  0  0  0  0  0  0  0  0
+    66.9010   75.0480   38.9340 C   0  0  0  0  0  0  0  0  0  0  0  0
+    67.6300   75.8170   39.8300 C   0  0  0  0  0  0  0  0  0  0  0  0
+    68.9950   75.5990   39.9980 C   0  0  0  0  0  0  0  0  0  0  0  0
+    69.6510   74.6060   39.2850 C   0  0  0  0  0  0  0  0  0  0  0  0
+    68.9300   73.8240   38.3800 C   0  0  0  0  0  0  0  0  0  0  0  0
+    67.0450   76.8040   40.5760 O   0  0  0  0  0  0  0  0  0  0  0  0
+    67.5560   77.4980   40.9760 H   0  0  0  0  0  0  0  0  0  0  0  0
+    69.7010   76.3670   40.8780 O   0  0  0  0  0  0  0  0  0  0  0  0
+    69.2520   76.7930   41.5990 H   0  0  0  0  0  0  0  0  0  0  0  0
+    1  2  2  0  0  0  0
+    2  3  1  0  0  0  0
+    2 14  1  0  0  0  0
+    4  3  1  0  0  0  0
+    4  5  1  0  0  0  0
+    6  5  2  0  0  0  0
+    6  8  1  0  0  0  0
+    7  6  1  0  0  0  0
+    8  9  1  0  0  0  0
+    9 10  1  0  0  0  0
+    10 11  2  0  0  0  0
+    11 13  1  0  0  0  0
+    12 11  1  0  0  0  0
+    14 19  2  0  0  0  0
+    14 15  1  0  0  0  0
+    15 16  2  0  0  0  0
+    16 17  1  0  0  0  0
+    16 20  1  0  0  0  0
+    17 22  1  0  0  0  0
+    18 17  2  0  0  0  0
+    19 18  1  0  0  0  0
+    20 21  1  0  0  0  0
+    22 23  1  0  0  0  0
+    M  END
+    >  <MODEL>
+    1
+
+    >  <REMARK>
+    VINA RESULT:       0.0      0.000      0.000
+    9 active torsions:
+    status: ('A' for Active; 'I' for Inactive)
+        1  A    between atoms: C_2  and  O_3 
+        2  A    between atoms: C_2  and  C_14 
+        3  A    between atoms: O_3  and  C_4 
+        4  A    between atoms: C_4  and  C_5 
+        5  A    between atoms: C_6  and  C_8 
+        6  A    between atoms: C_8  and  C_9 
+        7  A    between atoms: C_9  and  C_10 
+        8  A    between atoms: C_16  and  O_17 
+        9  A    between atoms: C_19  and  O_20 
+
+    >  <TORSDO>
+    F 9
+
+    >  <SCORE>
+    0.0
+
+    >  <RMSD_LB>
+    0.000
+
+    >  <RMSD_UB>
+    0.000
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1002/jcc.21334</citation>
+    </citations>
+</tool>
