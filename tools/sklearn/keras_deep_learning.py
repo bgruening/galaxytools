@@ -8,7 +8,10 @@ import warnings
 
 from ast import literal_eval
 from keras.models import Sequential, Model
-from galaxy_ml.utils import try_get_attr, get_search_params
+from galaxy_ml.utils import try_get_attr, get_search_params, SafeEval
+
+
+safe_eval = SafeEval()
 
 
 def _handle_shape(literal):
@@ -100,13 +103,14 @@ def _handle_layer_parameters(params):
         if key in ['input_shape', 'noise_shape', 'shape', 'batch_shape',
                    'target_shape', 'dims', 'kernel_size', 'strides',
                    'dilation_rate', 'output_padding', 'cropping', 'size',
-                   'padding', 'pool_size', 'axis', 'shared_axes']:
+                   'padding', 'pool_size', 'axis', 'shared_axes'] \
+                and isinstance(value, str):
             params[key] = _handle_shape(value)
 
-        elif key.endswith('_regularizer'):
+        elif key.endswith('_regularizer') and isinstance(value, dict):
             params[key] = _handle_regularizer(value)
 
-        elif key.endswith('_constraint'):
+        elif key.endswith('_constraint') and isinstance(value, dict):
             params[key] = _handle_constraint(value)
 
         elif key == 'function':  # No support for lambda/function eval
@@ -129,11 +133,14 @@ def get_sequential_model(config):
         options = layer['layer_selection']
         layer_type = options.pop('layer_type')
         klass = getattr(keras.layers, layer_type)
-        other_options = options.pop('layer_options', {})
-        options.update(other_options)
+        kwargs = options.pop('kwargs', '')
 
         # parameters needs special care
         options = _handle_layer_parameters(options)
+
+        if kwargs:
+            kwargs = safe_eval('dict(' + kwargs + ')')
+            options.update(kwargs)
 
         # add input_shape to the first layer only
         if not getattr(model, '_layers') and input_shape is not None:
@@ -158,11 +165,15 @@ def get_functional_model(config):
         layer_type = options.pop('layer_type')
         klass = getattr(keras.layers, layer_type)
         inbound_nodes = options.pop('inbound_nodes', None)
-        other_options = options.pop('layer_options', {})
-        options.update(other_options)
+        kwargs = options.pop('kwargs', '')
 
         # parameters needs special care
         options = _handle_layer_parameters(options)
+
+        if kwargs:
+            kwargs = safe_eval('dict(' + kwargs + ')')
+            options.update(kwargs)
+
         # merge layers
         if 'merging_layers' in options:
             idxs = literal_eval(options.pop('merging_layers'))

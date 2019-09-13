@@ -403,7 +403,6 @@ def main(inputs, infile_estimator, infile1, infile2,
             del main_est.validation_data
             if getattr(main_est, 'data_generator_', None):
                 del main_est.data_generator_
-                del main_est.data_batch_generator
 
         with open(outfile_object, 'wb') as output_handler:
             pickle.dump(estimator, output_handler,

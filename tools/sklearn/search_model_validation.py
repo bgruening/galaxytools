@@ -213,6 +213,16 @@ def main(inputs, infile_estimator, infile1, infile2,
     with open(inputs, 'r') as param_handler:
         params = json.load(param_handler)
 
+    # conflict param checker
+    if params['outer_split']['split_mode'] == 'nested_cv' \
+            and params['save'] != 'nope':
+        raise ValueError("Save best estimator is not possible for nested CV!")
+
+    if not (params['search_schemes']['options']['refit']) \
+            and params['save'] != 'nope':
+        raise ValueError("Save best estimator is not possible when refit "
+                         "is False!")
+
     params_builder = params['search_schemes']['search_params_builder']
 
     with open(infile_estimator, 'rb') as estimator_handler:
@@ -542,7 +552,6 @@ def main(inputs, infile_estimator, infile1, infile2,
             del main_est.validation_data
             if getattr(main_est, 'data_generator_', None):
                 del main_est.data_generator_
-                del main_est.data_batch_generator
 
         with open(outfile_object, 'wb') as output_handler:
             pickle.dump(best_estimator_, output_handler,
