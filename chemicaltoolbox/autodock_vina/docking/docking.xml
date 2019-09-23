@@ -1,4 +1,4 @@
-<tool id="docking" name="Docking" version="0.2.1">
+<tool id="docking030" name="Docking030" version="0.3.0">
     <description>tool to perform protein-ligand docking with Autodock Vina</description>
     <requirements>
         <requirement type="package" version="1.1.2">autodock-vina</requirement>
@@ -8,49 +8,58 @@
         <exit_code range="1" />
     </stdio>
     <command><![CDATA[
-        #if $config_params.config_params == 'vals':
-            vina
-                --center_x '$config_params.center_x' 
-                --center_y '$config_params.center_y' 
-                --center_z '$config_params.center_z' 
-                --size_x '$config_params.size_x' 
-                --size_y '$config_params.size_y' 
-                --size_z '$config_params.size_z' 
-                --exhaustiveness '$config_params.exh' 
-                --num_modes 9999 
-                --energy_range 9999 
-                --receptor '$receptor' 
-                --ligand '$ligand' 
-                --out './output1.dat' 
-                --log './output2.dat' 
-                --cpu \${GALAXY_SLOTS:-1}
-                #if $config_params.seed.seed == 'true':
-                    --seed '$config_params.seed.seed_value'
-                #end if
-        #end if
-        #if $config_params.config_params == 'file':
-            vina 
-                --config '$config_params.box' 
-                --receptor '$receptor' 
-                --ligand '$ligand' 
-                --out './output1.dat' 
-                --log './output2.dat'
-                --cpu \${GALAXY_SLOTS:-1}
-                #if $config_params.exh != "":
-                    --exhaustiveness $config_params.exh
-                #end if
-        #end if
-        #if $output_format == 'sdf':
-            && python '$__tool_directory__/convert_pdbqt_to_sdf.py' './output1.dat' '$sdf_output' 
+        #if $ligands.is_of_type("sdf")
+            obabel -isdf '$ligands' -O ligand.pdbqt -m -p $ph_value &&
         #else
-            && mv ./output1.dat '$file_output1'
-            && mv ./output2.dat '$file_output2'
+            ln -s '$ligands' ligand1.pdbqt &&
         #end if
+        rm -rf output &&
+        mkdir output &&
+        for file in ligand*.pdbqt;
+            do
+            OUTNAME=\${file%.pdbqt}_docked &&
+
+            #if $config_params.config_params == 'vals':
+                vina
+                    --center_x '$config_params.center_x'
+                    --center_y '$config_params.center_y'
+                    --center_z '$config_params.center_z'
+                    --size_x '$config_params.size_x'
+                    --size_y '$config_params.size_y'
+                    --size_z '$config_params.size_z'
+                    --exhaustiveness '$config_params.exh'
+                    --num_modes 9999
+                    --energy_range 9999
+                    --receptor '$receptor'
+                    --ligand "\$file"
+                    --out "./\${OUTNAME}.pdbqt"
+                    --log "./\${OUTNAME}.log"
+                    --cpu \${GALAXY_SLOTS:-1}
+                    #if $config_params.seed.seed == 'true':
+                        --seed '$config_params.seed.seed_value'
+                    #end if
+            #end if
+            #if $config_params.config_params == 'file':
+                vina
+                    --config '$config_params.box'
+                    --receptor '$receptor'
+                    --ligand "\$file"
+                    --out "./\${OUTNAME}.pdbqt"
+                    --log "./\${OUTNAME}.log"
+                    --cpu \${GALAXY_SLOTS:-1}
+                    #if $config_params.exh != "":
+                        --exhaustiveness $config_params.exh
+                    #end if
+            #end if
+
+            && python '$__tool_directory__/convert_pdbqt_to_sdf.py' ./\${OUTNAME}.pdbqt output/\${OUTNAME}.sdf;
+        done
         
     ]]></command>
     <inputs>
         <param type="data" name="receptor" format="pdbqt" label="Receptor" help="Select a receptor (PDBQT format). This can be prepared using the receptor preparation tool." />
-        <param type="data" name="ligand" format="pdbqt"  label="Ligand" help="Select a ligand (PDBQT format). This can be prepared using the ligand preparation tool." />
+        <param type="data" name="ligands" format="sdf,pdbqt"  label="Ligands" help="Select ligands (SDF format with multiple ligands or PDBQT format with single ligand)." />
+        <param name="ph_value" type="float" value="7.4" min="0" max="14" label="Specify pH value for ligand protonation"/>
         <conditional name="config_params">
             <param name="config_params" type="select" label="Specify parameters">
                 <option value="file">Upload a config file to specify parameters</option>
@@ -77,57 +86,34 @@
                 <param type="integer" name="exh" label="Exhaustiveness" help="The number of poses to return from the docking job (optional, will override any value specified in the config file)" optional="true"/>
             </when>
         </conditional>
-        <param type="select" name="output_format" label="Output format" help="Select a format for the output files">
-            <option value="pdbqt" selected="true">PDBQT (and separate log file with binding scores)</option>
-            <option value="sdf">SDF</option>
-        </param>
     </inputs>
     <outputs>
-        <data name="file_output1" format="pdbqt">
-            <filter>output_format == 'pdbqt'</filter>
-        </data>
-        <data name="file_output2" format="txt">
-            <filter>output_format == 'pdbqt'</filter>
-        </data>
-        <data name="sdf_output" format="sdf">
-            <filter>output_format == 'sdf'</filter>
-        </data>
+        <collection name="sdf_outputs" type="list" label="Docked ligands for ${on_string}" >
+            <discover_datasets pattern="__name_and_ext__" directory="output" visible="false" />
+        </collection>
     </outputs>
     <tests>
-        <test expect_num_outputs="2">
-            <param name="receptor" value="3u1i_for_DM.pdbqt"/>
-            <param name="ligand" value="NuBBE_1_obabel_3D.pdbqt"/>
-            <param name="config_params" value="vals"/>
-            <param name="center_x" value="70.92" />
-            <param name="center_y" value="70.57" />
-            <param name="center_z" value="36.86" />
-            <param name="size_x" value="20.00"  />
-            <param name="size_y" value="18.40" />
-            <param name="size_z" value="23.60" />
-            <param name="seed" value="true" />
-            <param name="seed_value" value="1" />
-            <param name="exhaustiveness" value="10" />
-            <param name="output_format" value="pdbqt" />
-            <output name="file_output1" file="NuBBE_1_obabel_3D_-_3u1i_for_DM.pdbqt"/>
-            <output name="file_output2" file="NuBBE_1_obabel_3D_-_3u1i_for_DM.log"/>
+
+        <test>
+            <param name="receptor" value="protein.pdbqt"/>
+            <param name="ligands" value="input_ligands.sdf"/>
+            <param name="box" value="box.txt"/>
+            <output_collection name="sdf_outputs" type="list" count="5">
+                <element name="ligand1_docked" file="ligand1_docked.sdf" lines_diff="40"/>
+                <element name="ligand2_docked" file="ligand2_docked.sdf" lines_diff="40"/>
+                <!-- we check only the first 2 -->
+            </output_collection>
         </test>
-        <test expect_num_outputs="2">
-            <param name="receptor" value="3u1i_for_DM.pdbqt"/>
-            <param name="ligand" value="NuBBE_1_obabel_3D.pdbqt"/>
-            <param name="config_params" value="file"/>
-            <param name="box" value="config_complexo_dm.txt"/>
-            <param name="output_format" value="pdbqt" />
-            <output name="file_output1" file="NuBBE_1_obabel_3D_-_3u1i_for_DM.pdbqt"/>
-            <output name="file_output2" file="NuBBE_1_obabel_3D_-_3u1i_for_DM.log"/>
+
+        <test>
+            <param name="receptor" value="protein.pdbqt"/>
+            <param name="ligands" value="input_ligand.pdbqt"/>
+            <param name="box" value="box.txt"/>
+            <output_collection name="sdf_outputs" type="list" count="1">
+                <element name="ligand1_docked" file="ligand1_docked.sdf" lines_diff="40"/>
+            </output_collection>
         </test>
-        <test expect_num_outputs="1">
-            <param name="receptor" value="3u1i_for_DM.pdbqt"/>
-            <param name="ligand" value="NuBBE_1_obabel_3D.pdbqt"/>
-            <param name="config_params" value="file"/>
-            <param name="box" value="config_complexo_dm.txt"/>
-            <param name="output_format" value="sdf" />
-            <output name="sdf_output" file="NuBBE_1_obabel_3D_-_3u1i_for_DM.sdf" lines_diff="40"/>
-        </test>
+
     </tests>
     <help><![CDATA[
 
@@ -139,11 +125,22 @@ This tool performs protein-ligand docking using the Autodock Vina program.
 
 **Inputs**
 
-The first two inputs required are files (in the pdbqt format) describing the receptor and ligand respectively. These files are produced by the receptor and ligand preparation tools.
+The first two inputs required are files describing the receptor (in the pdbqt format) and ligands (in SDF of PDBQT format) respectively.
+These files are produced by the receptor and ligand preparation tools.
+If using PDBQT format for the ligands only a single ligand can be specified. If using SDF you can include multiple ligands
+and those ligands are converted to individual PDBQT format files using openbabel as the first step of tool execution.
+You can specify the pH for protonation by openbabel
 
-In addition, parameters for docking must be defined. The Cartesian coordinates of the center of the binding site should be provided, along with the size of the binding site along each dimension. Effectively, this defines a cuboidal volume in which docking is performed. Alternatively, a config file can be uploaded containing this information - such a file can be generated from the box parameter calculation file. 
+VINA will dock each of the ligands in the SDF file sequentially. If there are a large number of ligands then first split
+them into a collection of smaller files e.g. using the splitter tool. This allows each split chunk of molecules to be docked
+as a separate task. The optimal size of the chunk will depend on the number of ligands and the capacity of the execution
+environment.
 
-A format for the output should also be selected: the available options are PDBQT or SDF.
+In addition, parameters for docking must be defined. The Cartesian coordinates of the center of the binding site should
+be provided, along with the size of the binding site along each dimension. Effectively, this defines a cuboidal volume in
+which docking is performed. Alternatively, a config file can be uploaded containing this information - such a file can be
+generated from the box parameter calculation file.
+
 
 -----
 
@@ -151,11 +148,9 @@ A format for the output should also be selected: the available options are PDBQT
 
 **Outputs**
 
-Either PDBQT or SDF may be selected as output.
-
-**Option 1: SDF**
-
-An SDF file is produced as output. The binding affinity scores are also contained within the SDF file.::
+SDF files are produced as output.
+There is one file for each ligand in the input. Each entry in the file is a docked pose for that ligand.
+The binding affinity scores are contained within the SDF file.::
 
     OpenBabel06171915303D
 
@@ -236,117 +231,6 @@ An SDF file is produced as output. The binding affinity scores are also containe
     >  <RMSD_UB>
     0.000
 
-
-**Option 2: PDBQT**
-
-Two outputs are generated if PDBQT output is selected. The first is another pdbqt file containing the molecular structure resulting from docking, such as the following example::
-
-    MODEL 1
-    REMARK VINA RESULT:      -0.0      0.000      0.000
-    REMARK  9 active torsions:
-    REMARK  status: ('A' for Active; 'I' for Inactive)
-    REMARK    1  A    between atoms: C_2  and  O_3 
-    REMARK    2  A    between atoms: C_2  and  C_14 
-    REMARK    3  A    between atoms: O_3  and  C_4 
-    REMARK    4  A    between atoms: C_4  and  C_5 
-    REMARK    5  A    between atoms: C_6  and  C_8 
-    REMARK    6  A    between atoms: C_8  and  C_9 
-    REMARK    7  A    between atoms: C_9  and  C_10 
-    REMARK    8  A    between atoms: C_16  and  O_17 
-    REMARK    9  A    between atoms: C_19  and  O_20 
-    ROOT
-    ATOM      1  O   LIG d   1      72.801  71.157  37.352  0.00  0.00    -0.259 OA
-    ATOM      2  C   LIG d   1      73.413  72.112  37.794  0.00  0.00     0.293 C 
-    ENDROOT
-    BRANCH   2   3
-    ATOM      3  O   LIG d   1      72.912  73.321  38.144  0.00  0.00    -0.314 OA
-    BRANCH   3   4
-    ATOM      4  C   LIG d   1      71.868  73.332  39.120  0.00  0.00     0.206 C 
-    BRANCH   4   5
-    ATOM      5  C   LIG d   1      72.522  73.555  40.453  0.00  0.00     0.002 C 
-    ATOM      6  C   LIG d   1      72.762  72.629  41.405  0.00  0.00    -0.085 C 
-    ATOM      7  C   LIG d   1      72.390  71.176  41.274  0.00  0.00     0.043 C 
-    BRANCH   6   8
-    ATOM      8  C   LIG d   1      73.435  73.012  42.714  0.00  0.00     0.037 C 
-    BRANCH   8   9
-    ATOM      9  C   LIG d   1      74.184  74.348  42.631  0.00  0.00     0.031 C 
-    BRANCH   9  10
-    ATOM     10  C   LIG d   1      75.668  74.175  42.431  0.00  0.00    -0.024 C 
-    ATOM     11  C   LIG d   1      76.399  74.547  41.360  0.00  0.00    -0.091 C 
-    ATOM     12  C   LIG d   1      75.833  75.151  40.104  0.00  0.00     0.042 C 
-    ATOM     13  C   LIG d   1      77.897  74.373  41.339  0.00  0.00     0.042 C 
-    ENDBRANCH   9  10
-    ENDBRANCH   8   9
-    ENDBRANCH   6   8
-    ENDBRANCH   4   5
-    ENDBRANCH   3   4
-    ENDBRANCH   2   3
-    BRANCH   2  14
-    ATOM     14  C   LIG d   1      74.882  72.132  38.012  0.00  0.00     0.042 A 
-    ATOM     15  C   LIG d   1      75.732  72.845  37.153  0.00  0.00     0.057 A 
-    ATOM     16  C   LIG d   1      77.101  72.826  37.385  0.00  0.00     0.099 A 
-    ATOM     17  C   LIG d   1      77.623  72.116  38.462  0.00  0.00     0.098 A 
-    ATOM     18  C   LIG d   1      76.791  71.422  39.330  0.00  0.00     0.040 A 
-    ATOM     19  C   LIG d   1      75.412  71.432  39.110  0.00  0.00     0.020 A 
-    BRANCH  16  20
-    ATOM     20  O   LIG d   1      77.978  73.498  36.578  0.00  0.00    -0.358 OA
-    ATOM     21  HO  LIG d   1      77.680  74.093  35.900  1.00  0.00     0.217 HD
-    ENDBRANCH  16  20
-    BRANCH  17  22
-    ATOM     22  O   LIG d   1      78.971  72.100  38.675  0.00  0.00    -0.358 OA
-    ATOM     23  HO  LIG d   1      79.541  71.651  38.060  1.00  0.00     0.217 HD
-    ENDBRANCH  17  22
-    ENDBRANCH   2  14
-    TORSDOF 9
-    ENDMDL 
-
-The second output is a log file containing the binding affinity scores, like the following::
-
-    -----------------------------------------------------------------
-     If you used AutoDock Vina in your work, please cite:          
-                                                                   
-     O. Trott, A. J. Olson,                                        
-     AutoDock Vina: improving the speed and accuracy of docking    
-     with a new scoring function, efficient optimization and       
-     multithreading, Journal of Computational Chemistry 31 (2010)  
-     455-461                                                       
-                                                                   
-     DOI 10.1002/jcc.21334                                         
-                                                                   
-     Please see http://vina.scripps.edu for more information.      
-    ------------------------------------------------------------------
-
-    Reading input ... done.
-    Setting up the scoring function ... done.
-    Analyzing the binding site ... done.
-    Using random seed: 1899908181
-    Performing search ... done.
-    Refining results ... done.
-
-    mode |   affinity | dist from best mode
-         | (kcal/mol) | rmsd l.b.| rmsd u.b.
-    -----+------------+----------+----------
-       1         -0.0      0.000      0.000
-       2         -0.0      2.046      2.443
-       3         -0.0      5.896      7.949
-       4         -0.0      2.518      3.100
-       5         -0.0      2.417      4.527
-       6         -0.0      5.686      7.689
-       7         -0.0      2.828      4.792
-       8         -0.0      5.547      7.086
-       9         -0.0      7.388      9.966
-      10         -0.0      7.877     11.352
-      11         -0.0      8.203     10.157
-      12         -0.0      5.163      7.653
-      13         -0.0      3.093      6.011
-      14         -0.0      7.998     11.146
-      15         -0.0      7.015     10.108
-      16         -0.0      8.795     11.682
-      17         -0.0      7.317     10.367
-      18          0.0      3.274      4.160
-      19          0.0     10.286     12.001
-      20          0.0      3.566      5.349
-    Writing output ... done.
     ]]></help>
     <citations>
         <citation type="doi">10.1002/jcc.21334</citation>
