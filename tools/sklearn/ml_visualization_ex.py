@@ -146,7 +146,8 @@ def main(inputs, infile_estimator=None, infile1=None,
             precision["micro"], recall["micro"], _ = precision_recall_curve(
                 df1.values.ravel(), df2.values.ravel(), pos_label=pos_label)
             ap['micro'] = average_precision_score(
-                df1.values, df2.values, average='micro', pos_label=pos_label or 1)
+                df1.values, df2.values, average='micro',
+                pos_label=pos_label or 1)
 
         data = []
         for key in precision.keys():
@@ -201,7 +202,7 @@ def main(inputs, infile_estimator=None, infile1=None,
             )
             data.append(trace)
 
-        trace = go.Scatter(x=[0, 1], y=[0, 1], 
+        trace = go.Scatter(x=[0, 1], y=[0, 1],
                            mode='lines', 
                            line=dict(color='black', dash='dash'),
                            showlegend=False)
