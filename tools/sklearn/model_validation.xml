@@ -1,5 +1,5 @@
 <tool id="sklearn_model_validation" name="Model Validation" version="@VERSION@">
-    <description>evaluates estimator performance by cross-validation</description>
+    <description>evaluates estimator performances without changing parameters</description>
     <macros>
         <import>main_macros.xml</import>
     </macros>
@@ -8,6 +8,7 @@
     <version_command>echo "@VERSION@"</version_command>
     <command>
         <![CDATA[
+        export HDF5_USE_FILE_LOCKING='FALSE';
         python "$sklearn_model_validation_script" '$inputs'
         ]]>
     </command>
@@ -16,6 +17,7 @@
         <configfile name="sklearn_model_validation_script">
             <![CDATA[
 import imblearn
+import joblib
 import json
 import numpy as np
 import pandas as pd
@@ -31,11 +33,19 @@ from sklearn import (
     feature_selection, gaussian_process, kernel_approximation, metrics,
     model_selection, naive_bayes, neighbors, pipeline, preprocessing,
     svm, linear_model, tree, discriminant_analysis)
+from sklearn.model_selection import _validation
 
-sys.path.insert(0, '$__tool_directory__')
-from utils import SafeEval, get_cv, get_scoring, load_model, read_columns
+from galaxy_ml.utils import (SafeEval, get_cv, get_scoring, load_model,
+                   read_columns, get_module)
+from galaxy_ml.model_validations import _fit_and_score
+
+
+setattr(_validation, '_fit_and_score', _fit_and_score)
 
 N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
+CACHE_DIR = './cached'
+ALLOWED_CALLBACKS = ('EarlyStopping', 'TerminateOnNaN', 'ReduceLROnPlateau',
+                     'CSVLogger', 'None')
 
 warnings.filterwarnings('ignore')
 
@@ -45,29 +55,96 @@ input_json_path = sys.argv[1]
 with open(input_json_path, 'r') as param_handler:
     params = json.load(param_handler)
 
-#if $model_validation_functions.options.cv_selector.selected_cv\
-        in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']:
-params['model_validation_functions']['options']['cv_selector']['groups_selector']['infile_g'] =\
-        '$model_validation_functions.options.cv_selector.groups_selector.infile_g'
-#end if
+## load estimator
+with open('$infile_estimator', 'rb') as estimator_handler:
+    estimator = load_model(estimator_handler)
 
-input_type = params['input_options']['selected_input']
-if input_type == 'tabular':
-    header = 'infer' if params['input_options']['header1'] else None
-    column_option = params['input_options']['column_selector_options_1']['selected_column_selector_option']
-    if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
-        c = params['input_options']['column_selector_options_1']['col1']
-    else:
-        c = None
-    X = read_columns(
-            '$input_options.infile1',
-            c = c,
-            c_option = column_option,
-            sep='\t',
-            header=header,
-            parse_dates=True).astype(float)
+estimator_params = estimator.get_params()
+
+## check estimator hyperparameters
+memory = joblib.Memory(location=CACHE_DIR, verbose=0)
+# cache iraps_core fits could increase search speed significantly
+if estimator.__class__.__name__ == 'IRAPSClassifier':
+    estimator.set_params(memory=memory)
 else:
-    X = mmread('$input_options.infile1')
+    # For iraps buried in pipeline
+    for p, v in estimator_params.items():
+        if p.endswith('memory'):
+            # for case of `__irapsclassifier__memory`
+            if len(p) > 8 and p[:-8].endswith('irapsclassifier'):
+                # cache iraps_core fits could increase search
+                # speed significantly
+                new_params = {p: memory}
+                estimator.set_params(**new_params)
+            # security reason, we don't want memory being
+            # modified unexpectedly
+            elif v:
+                new_params = {p, None}
+                estimator.set_params(**new_params)
+        # For now, 1 CPU is suggested for iprasclassifier
+        elif p.endswith('n_jobs'):
+            new_params = {p: 1}
+            estimator.set_params(**new_params)
+        # for security reason, types of callback are limited
+        elif p.endswith('callbacks'):
+            for cb in v:
+                cb_type = cb['callback_selection']['callback_type']
+                if cb_type not in ALLOWED_CALLBACKS:
+                    raise ValueError(
+                        "Prohibited callback type: %s!" % cb_type)
+
+## store read dataframe object
+loaded_df = {}
+
+#if $input_options.selected_input == 'tabular'
+header = 'infer' if params['input_options']['header1'] else None
+column_option = params['input_options']['column_selector_options_1']['selected_column_selector_option']
+if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+    c = params['input_options']['column_selector_options_1']['col1']
+else:
+    c = None
+infile1 = '$input_options.infile1'
+df_key = infile1 + repr(header)
+df = pd.read_csv(infile1, sep='\t', header=header, parse_dates=True)
+loaded_df[df_key] = df
+X = read_columns(df, c=c, c_option=column_option).astype(float)
+
+#elif $input_options.selected_input == 'sparse':
+X = mmread('$input_options.infile1')
+
+#elif $input_options.selected_input == 'seq_fasta'
+fasta_path = '$input_options.fasta_path'
+pyfaidx = get_module('pyfaidx')
+sequences = pyfaidx.Fasta(fasta_path)
+n_seqs = len(sequences.keys())
+X = np.arange(n_seqs)[:, np.newaxis]
+for param in estimator_params.keys():
+    if param.endswith('fasta_path'):
+        estimator.set_params(
+            **{param: fasta_path})
+        break
+else:
+    raise ValueError(
+        "The selected estimator doesn't support "
+        "fasta file input! Please consider using "
+        "KerasGBatchClassifier with "
+        "FastaDNABatchGenerator/FastaProteinBatchGenerator "
+        "or having GenomeOneHotEncoder/ProteinOneHotEncoder "
+        "in pipeline!")
+#elif $input_options.selected_input == 'refseq_and_interval'
+ref_seq = '$input_options.ref_genome_file'
+intervals = '$input_options.interval_file'
+targets = __import__('os').path.join(__import__('os').getcwd(),
+                                     '${target_file.element_identifier}.gz')
+path_params = {
+    'data_batch_generator__ref_genome_path': ref_seq,
+    'data_batch_generator__intervals_path': intervals,
+    'data_batch_generator__target_path': targets
+}
+estimator.set_params(**path_params)
+n_intervals = sum(1 for line in open(intervals))
+X = np.arange(n_intervals)[:, np.newaxis]
+#end if
 
 header = 'infer' if params['input_options']['header2'] else None
 column_option = params['input_options']['column_selector_options_2']['selected_column_selector_option2']
@@ -75,17 +152,54 @@ if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_na
     c = params['input_options']['column_selector_options_2']['col2']
 else:
     c = None
+infile2 = '$input_options.infile2'
+df_key = infile2 + repr(header)
+if df_key in loaded_df:
+    infile2 = loaded_df[df_key]
+else:
+    infile2 = pd.read_csv(infile2, sep='\t', header=header, parse_dates=True)
+    loaded_df[df_key] = infile2
 y = read_columns(
-        '$input_options.infile2',
+        infile2,
         c = c,
         c_option = column_option,
         sep='\t',
         header=header,
         parse_dates=True)
-y = y.ravel()
+if len(y.shape) == 2 and y.shape[1] == 1:
+    y = y.ravel()
+#if $input_options.selected_input == 'refseq_and_interval'
+estimator.set_params(
+    data_batch_generator__features=y.ravel().tolist())
+y = None
+#end if
 
 ## handle options
 options = params['model_validation_functions']['options']
+
+#if $model_validation_functions.options.cv_selector.selected_cv\
+        in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']:
+infile_g = '$model_validation_functions.options.cv_selector.groups_selector.infile_g'
+header = 'infer' if options['cv_selector']['groups_selector']['header_g'] else None
+column_option = (options['cv_selector']['groups_selector']['column_selector_options_g']
+                        ['selected_column_selector_option_g'])
+if column_option in ['by_index_number', 'all_but_by_index_number',
+                     'by_header_name', 'all_but_by_header_name']:
+    c = (options['cv_selector']['groups_selector']['column_selector_options_g']['col_g'])
+else:
+    c = None
+df_key = infile_g + repr(header)
+if df_key in loaded_df:
+    infile_g = loaded_df[df_key]
+groups = read_columns(infile_g, c=c, c_option=column_option,
+                      sep='\t', header=header, parse_dates=True)
+groups = groups.ravel()
+options['cv_selector']['groups_selector'] = groups
+#end if
+
+## del loaded_df
+del loaded_df
+
 splitter, groups = get_cv( options.pop('cv_selector') )
 options['cv'] = splitter
 options['groups'] = groups
@@ -96,27 +210,25 @@ if 'scoring' in options:
 if 'pre_dispatch' in options and options['pre_dispatch'] == '':
     options['pre_dispatch'] = None
 
-## load pipeline
-with open('$infile_pipeline', 'rb') as pipeline_handler:
-    pipeline = load_model(pipeline_handler)
-
-## Set up validator, run pipeline through validator and return results.
+## Set up validator, run estimator through validator and return results.
 
 validator = params['model_validation_functions']['selected_function']
-validator = getattr(model_selection, validator)
+validator = getattr(_validation, validator)
 
 selected_function = params['model_validation_functions']['selected_function']
 
 if selected_function == 'cross_validate':
-    res = validator(pipeline, X, y, **options)
+    res = validator(estimator, X, y, **options)
+    stat = {}
+    for k, v in res.items():
+        if k.startswith('test'):
+            stat['mean_' + k] = np.mean(v)
+            stat['std_' + k] = np.std(v)
+    res.update(stat)
     rval = pd.DataFrame(res)
-    col_rename = {}
-    for col in rval.columns:
-        if col.endswith('_primary'):
-            col_rename[col] = col[:-7] + primary_scoring
-    rval.rename(inplace=True, columns=col_rename)
+    rval = rval[sorted(rval.columns)]
 elif selected_function == 'cross_val_predict':
-    predicted = validator(pipeline, X, y, **options)
+    predicted = validator(estimator, X, y, **options)
     if len(predicted.shape) == 1:
         rval = pd.DataFrame(predicted, columns=['Predicted'])
     else:
@@ -129,7 +241,7 @@ elif selected_function == 'learning_curve':
     if type(train_sizes) is tuple:
         train_sizes = np.linspace(*train_sizes)
     options['train_sizes'] = train_sizes
-    train_sizes_abs, train_scores, test_scores = validator(pipeline, X, y, **options)
+    train_sizes_abs, train_scores, test_scores = validator(estimator, X, y, **options)
     rval = pd.DataFrame(dict(
                 train_sizes_abs = train_sizes_abs,
                 mean_train_scores = np.mean(train_scores, axis=1),
@@ -139,7 +251,7 @@ elif selected_function == 'learning_curve':
     rval = rval[['train_sizes_abs', 'mean_train_scores', 'std_train_scores',
                 'mean_test_scores', 'std_test_scores']]
 elif selected_function == 'permutation_test_score':
-    score, permutation_scores, pvalue = validator(pipeline, X, y, **options)
+    score, permutation_scores, pvalue = validator(estimator, X, y, **options)
     permutation_scores_df = pd.DataFrame(dict(
             permutation_scores = permutation_scores))
     score_df = pd.DataFrame(dict(
@@ -153,7 +265,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
         </configfile>
     </configfiles>
     <inputs>
-        <param name="infile_pipeline" type="data" format="zip" label="Choose the dataset containing model/pipeline object"/>
+        <param name="infile_estimator" type="data" format="zip" label="Choose the dataset containing model/pipeline object"/>
         <conditional name="model_validation_functions">
             <param name="selected_function" type="select" label="Select a model validation function">
                 <option value="cross_validate">cross_validate - Evaluate metric(s) by cross-validation and also record fit/score times</option>
@@ -220,7 +332,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
     </outputs>
     <tests>
         <test>
-            <param name="infile_pipeline" value="pipeline02"/>
+            <param name="infile_estimator" value="pipeline02"/>
             <param name="selected_function" value="cross_validate"/>
             <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
             <param name="col1" value="1,2,3,4,5"/>
@@ -228,7 +340,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
             <param name="col2" value="6"/>
             <output name="outfile">
                 <assert_contents>
-                    <has_n_columns n="4"/>
+                    <has_n_columns n="6"/>
                     <has_text text="0.9999961390418067"/>
                     <has_text text="0.9944541531269271"/>
                     <has_text text="0.9999193322454393"/>
@@ -236,7 +348,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
             </output>
         </test>
         <test>
-            <param name="infile_pipeline" value="pipeline02"/>
+            <param name="infile_estimator" value="pipeline02"/>
             <param name="selected_function" value="cross_val_predict"/>
             <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
             <param name="col1" value="1,2,3,4,5"/>
@@ -245,7 +357,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
             <output name="outfile" file="mv_result02.tabular" lines_diff="4"/>
         </test>
         <test>
-            <param name="infile_pipeline" value="pipeline05"/>
+            <param name="infile_estimator" value="pipeline05"/>
             <param name="selected_function" value="learning_curve"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
@@ -256,7 +368,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
             <output name="outfile" file="mv_result03.tabular"/>
         </test>
         <test>
-            <param name="infile_pipeline" value="pipeline05"/>
+            <param name="infile_estimator" value="pipeline05"/>
             <param name="selected_function" value="permutation_test_score"/>
             <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
             <param name="col1" value="1,2,3,4,5"/>
@@ -270,7 +382,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
             </output>
         </test>
         <test>
-            <param name="infile_pipeline" value="pipeline05"/>
+            <param name="infile_estimator" value="pipeline05"/>
             <param name="selected_function" value="cross_val_predict"/>
             <section name="groups_selector">
                 <param name="infile_groups" value="regression_y.tabular" ftype="tabular"/>

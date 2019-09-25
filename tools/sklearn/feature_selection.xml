@@ -1,4 +1,4 @@
-<tool id="sklearn_feature_selection" name="Feature Selection" version="@VERSION@.1">
+<tool id="sklearn_feature_selection" name="Feature Selection" version="@VERSION@">
     <description>module, including univariate filter selection methods and recursive feature elimination algorithm</description>
     <macros>
         <import>main_macros.xml</import>
@@ -31,8 +31,9 @@ from sklearn import (
 from imblearn.pipeline import Pipeline as imbPipeline
 from sklearn.pipeline import Pipeline
 
-sys.path.insert(0, '$__tool_directory__')
-from utils import SafeEval, feature_selector, read_columns
+from galaxy_ml.utils import (SafeEval, feature_selector,
+                             read_columns, get_module)
+
 
 warnings.simplefilter('ignore')
 
@@ -71,25 +72,43 @@ params['fs_algorithm_selector']['options']['cv_selector']['groups_selector']['in
 
 ## Read features
 features_has_header = params['input_options']['header1']
-input_type = params['input_options']['selected_input']
-if input_type == 'tabular':
-    header = 'infer' if features_has_header else None
-    column_option = params['input_options']['column_selector_options_1']['selected_column_selector_option']
-    if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
-        c = params['input_options']['column_selector_options_1']['col1']
-    else:
-        c = None
-    X, input_df = read_columns(
-            '$input_options.infile1',
-            c = c,
-            c_option = column_option,
-            return_df = True,
-            sep='\t',
-            header=header,
-            parse_dates=True)
-    X = X.astype(float)
+#if $input_options.selected_input == 'tabular'
+header = 'infer' if features_has_header else None
+column_option = params['input_options']['column_selector_options_1']['selected_column_selector_option']
+if column_option in ['by_index_number', 'all_but_by_index_number', 'by_header_name', 'all_but_by_header_name']:
+    c = params['input_options']['column_selector_options_1']['col1']
 else:
-    X = mmread('$input_options.infile1')
+    c = None
+X, input_df = read_columns(
+        '$input_options.infile1',
+        c = c,
+        c_option = column_option,
+        return_df = True,
+        sep='\t',
+        header=header,
+        parse_dates=True)
+X = X.astype(float)
+#elif $input_options.selected_input == 'seq_fasta'
+fasta_file = '$input_options.fasta_file'
+pyfaidx = get_module('pyfaidx')
+sequences = pyfaidx.Fasta(fasta_file)
+n_seqs = len(sequences.keys())
+X = np.arange(n_seqs)[:, np.newaxis]
+for param in estimator_params.keys():
+    if param.endswith('fasta_path'):
+        estimator.set_params(
+            **{param: fasta_file})
+else:
+    raise ValueError(
+        "The selected estimator doesn't support "
+        "fasta file input! Please consider using "
+        "KerasGBatchClassifier with "
+        "FastaDNABatchGenerator/FastaProteinBatchGenerator "
+        "or having GenomeOneHotEncoder/ProteinOneHotEncoder "
+        "in pipeline!")
+#elif $input_options.selected_input == 'sparse'
+X = mmread('$input_options.infile1')
+#end if
 
 ## Read labels
 header = 'infer' if params['input_options']['header2'] else None

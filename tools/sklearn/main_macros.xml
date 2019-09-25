@@ -1,16 +1,12 @@
 <macros>
-  <token name="@VERSION@">1.0.0.4</token>
+  <token name="@VERSION@">1.0.7.12</token>
+
+  <token name="@ENSEMBLE_VERSION@">0.2.0</token>
 
   <xml name="python_requirements">
       <requirements>
           <requirement type="package" version="3.6">python</requirement>
-          <requirement type="package" version="0.20.3">scikit-learn</requirement>
-          <requirement type="package" version="0.24.2">pandas</requirement>
-          <requirement type="package" version="0.80">xgboost</requirement>
-          <requirement type="package" version="0.9.13">asteval</requirement>
-          <requirement type="package" version="0.6">skrebate</requirement>
-          <requirement type="package" version="0.4.2">imbalanced-learn</requirement>
-          <requirement type="package" version="0.16.0">mlxtend</requirement>
+          <requirement type="package" version="0.7.12">Galaxy-ML</requirement>
           <yield/>
       </requirements>
   </xml>
@@ -349,9 +345,9 @@
   <xml name="samples_column_selector_options" token_column_option="selected_column_selector_option" token_col_name="col1" token_multiple="False" token_infile="infile1">
     <param name="@COLUMN_OPTION@" type="select" label="Choose how to select data by column:">
       <option value="by_index_number" selected="true">Select columns by column index number(s)</option>
-      <option value="all_but_by_index_number">All columns BUT by column index number(s)</option>
+      <option value="all_but_by_index_number">All columns EXCLUDING some by column index number(s)</option>
       <option value="by_header_name">Select columns by column header name(s)</option>
-      <option value="all_but_by_header_name">All columns BUT by column header name(s)</option>
+      <option value="all_but_by_header_name">All columns EXCLUDING some by column header name(s)</option>
       <option value="all_columns">All columns</option>
     </param>
     <when value="by_index_number">
@@ -420,8 +416,7 @@
 
   <xml name="sparse_target" token_label1="Select a sparse matrix:" token_label2="Select the tabular containing true labels:" token_multiple="False" token_format1="txt" token_format2="tabular" token_help1="" token_help2="">
     <param name="infile1" type="data" format="@FORMAT1@" label="@LABEL1@" help="@HELP1@"/>
-    <param name="infile2" type="data" format="@FORMAT2@" label="@LABEL2@" help="@HELP2@"/>
-    <param name="col2" multiple="@MULTIPLE@" type="data_column" data_ref="infile2" label="Select target column(s):"/>
+    <expand macro="input_tabular_target"/>
   </xml>
 
   <xml name="sl_mixed_input">
@@ -429,6 +424,8 @@
       <param name="selected_input" type="select" label="Select input type:">
           <option value="tabular" selected="true">tabular data</option>
           <option value="sparse">sparse matrix</option>
+          <option value="seq_fasta">sequnences in a fasta file</option>
+          <option value="refseq_and_interval">reference genome and intervals</option>
       </param>
       <when value="tabular">
           <expand macro="samples_tabular" multiple1="true" multiple2="false"/>
@@ -436,6 +433,36 @@
       <when value="sparse">
           <expand macro="sparse_target"/>
       </when>
+      <when value="seq_fasta">
+          <expand macro="inputs_seq_fasta"/>
+      </when>
+      <when value="refseq_and_interval">
+          <expand macro="inputs_refseq_and_interval"/>
+      </when>
+    </conditional>
+  </xml>
+
+  <xml name="input_tabular_target">
+    <param name="infile2" type="data" format="tabular" label="Dataset containing class labels or target values:"/>
+    <param name="header2" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Does the dataset contain header:" />
+    <conditional name="column_selector_options_2">
+      <expand macro="samples_column_selector_options" column_option="selected_column_selector_option2" col_name="col2" multiple="false" infile="infile2"/>
+    </conditional>
+  </xml>
+
+  <xml name="inputs_seq_fasta">
+    <param name="fasta_path" type="data" format="fasta" label="Dataset containing fasta genomic/protein sequences" help="Sequences will be one-hot encoded to arrays."/>
+    <expand macro="input_tabular_target"/>
+  </xml>
+
+  <xml name="inputs_refseq_and_interval">
+    <param name="ref_genome_file" type="data" format="fasta" label="Dataset containing reference genomic sequence"/>
+    <param name="interval_file" type="data" format="interval" label="Dataset containing sequence intervals for training" help="interval. Sequences will be retrieved from the reference genome and one-hot encoded to training arrays."/>
+    <param name="target_file" type="data" format="bed" label="Dataset containing positions and features for target values." help="bed. The file will be compressed with `bgzip` and then indexed using `tabix`."/>
+    <param name="infile2" type="data" format="tabular" label="Dataset containing the feature list for prediction"/>
+    <param name="header2" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Does the dataset contain header:" />
+    <conditional name="column_selector_options_2">
+      <expand macro="samples_column_selector_options" column_option="selected_column_selector_option2" col_name="col2" multiple="true" infile="infile2"/>
     </conditional>
   </xml>
 
@@ -705,7 +732,6 @@
     <param name="selected_pre_processor" type="select" label="Select a preprocessor:">
       <option value="StandardScaler" selected="true">Standard Scaler (Standardizes features by removing the mean and scaling to unit variance)</option>
       <option value="Binarizer">Binarizer (Binarizes data)</option>
-      <option value="Imputer">Imputer (Completes missing values)</option>
       <option value="MaxAbsScaler">Max Abs Scaler (Scales features by their maximum absolute value)</option>
       <option value="Normalizer">Normalizer (Normalizes samples individually to unit norm)</option>
       <yield/>
@@ -730,25 +756,6 @@
                 label="Threshold"
                 help="Feature values below or equal to this are replaced by 0, above it by 1. Threshold may not be less than 0 for operations on sparse matrices. "/>
         </section>
-    </when>
-    <when value="Imputer">
-      <section name="options" title="Advanced Options" expanded="False">
-          <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true"
-            label="Use a copy of data for precomputing imputation" help=" "/>
-          <param argument="strategy" type="select" optional="true" label="Imputation strategy" help=" ">
-              <option value="mean" selected="true">Replace missing values using the mean along the axis</option>
-              <option value="median">Replace missing values using the median along the axis</option>
-              <option value="most_frequent">Replace missing using the most frequent value along the axis</option>
-          </param>
-          <param argument="missing_values" type="text" optional="true" value="NaN"
-                label="Placeholder for missing values" help="For missing values encoded as numpy.nan, use the string value “NaN”"/>
-          <!--param argument="axis" type="boolean" optional="true" truevalue="1" falsevalue="0"
-                label="Impute along axis = 1" help="If fasle, axis = 0 is selected for imputation. "/> -->
-          <!--param argument="axis" type="select" optional="true" label="The axis along which to impute" help=" ">
-              <option value="0" selected="true">Impute along columns</option>
-              <option value="1">Impute along rows</option>
-          </param-->
-      </section>
     </when>
     <when value="StandardScaler">
       <section name="options" title="Advanced Options" expanded="False">
@@ -788,7 +795,7 @@
       </when>
       <when value="MinMaxScaler">
           <section name="options" title="Advanced Options" expanded="False">
-              <!--feature_range-->
+              <param argument="feature_range" type="text" value="(0, 1)" optional="true" help="Desired range of transformed data. None or tuple (min, max). None equals to (0, 1)"/>
               <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true"
                   label="Use a copy of data for precomputing normalization" help=" "/>
           </section>
@@ -922,9 +929,9 @@
     </conditional>
   </xml>
 
-  <xml name="cv_reduced">
+  <xml name="cv_reduced" token_label="Select the cv splitter">
     <conditional name="cv_selector">
-      <param name="selected_cv" type="select" label="Select the cv splitter:">
+      <param name="selected_cv" type="select" label="@LABEL@">
         <expand macro="cv_splitter"/>
       </param>
       <expand macro="cv_splitter_options"/>
@@ -932,7 +939,7 @@
   </xml>
 
   <xml name="cv_n_splits" token_value="3" token_help="Number of folds. Must be at least 2.">
-    <param argument="n_splits" type="integer" value="@VALUE@" min="2" label="n_splits" help="@HELP@"/>
+    <param argument="n_splits" type="integer" value="@VALUE@" min="1" label="n_splits" help="@HELP@"/>
   </xml>
 
   <xml name="cv_shuffle">
@@ -951,6 +958,40 @@
         <expand macro="samples_column_selector_options" column_option="selected_column_selector_option_g" col_name="col_g" multiple="False" infile="infile_g"/>
       </conditional>
     </section>
+  </xml>
+
+  <xml name="train_test_split_params">
+    <conditional name="split_algos">
+      <param name="shuffle" type="select" label="Select the splitting method">
+        <option value="None">No shuffle</option>
+        <option value="simple" selected="true">ShuffleSplit</option>
+        <option value="stratified">StratifiedShuffleSplit -- target values serve as class labels</option>
+        <option value="group">GroupShuffleSplit or split by group names</option>
+      </param>
+      <when value="None">
+        <expand macro="train_test_split_test_size"/>
+      </when>
+      <when value="simple">
+        <expand macro="train_test_split_test_size"/>
+        <expand macro="random_state"/>
+      </when>
+      <when value="stratified">
+        <expand macro="train_test_split_test_size"/>
+        <expand macro="random_state"/>
+      </when>
+      <when value="group">
+        <expand macro="train_test_split_test_size" optional="true"/>
+        <expand macro="random_state"/>
+        <param argument="group_names" type="text" value="" optional="true" label="Type in group names instead"
+        help="For example: chr6, chr7. This parameter is optional. If used, it will override the holdout size and random seed."/>
+        <yield/>
+      </when>
+    </conditional>
+    <!--param argument="train_size" type="float" optional="True" value="" label="Train size:"/>-->
+  </xml>
+
+  <xml name="train_test_split_test_size" token_optional="false">
+    <param name="test_size" type="float" value="0.2" optional="@OPTIONAL@" label="Holdout size" help="Leass than 1, for preportion; greater than 1 (integer), for number of samples."/>
   </xml>
 
   <xml name="feature_selection_algorithms">
@@ -1167,7 +1208,7 @@
 
   <xml name="model_validation_common_options">
     <expand macro="cv"/>
-    <!-- expand macro="verbose"/> -->
+    <expand macro="verbose"/>
     <yield/>
   </xml>
 
@@ -1286,14 +1327,13 @@
   <xml name="search_cv_estimator">
     <param name="infile_estimator" type="data" format="zip" label="Choose the dataset containing pipeline/estimator object"/>
     <section name="search_params_builder" title="Search parameters Builder" expanded="true">
-      <param name="infile_params" type="data" format="tabular" label="Choose the dataset containing parameter names"/>
+      <param name="infile_params" type="data" format="tabular" optional="true" label="Choose the dataset containing parameter names" help="This dataset could be the output of `get_params` in the `Estimator Attributes` tool."/>
       <repeat name="param_set" min="1" max="30" title="Parameter settings for search:">
-          <param name="sp_name" type="select" label="Choose a parameter name (with current value)">
+          <param name="sp_name" type="select" optional="true" label="Choose a parameter name (with current value)">
             <options from_dataset="infile_params" startswith="@">
               <column name="name" index="2"/>
               <column name="value" index="1"/>
               <filter type="unique_value" name="unique_param" column="1"/>
-              <filter type="sort_by" name="sorted_param" column="2"/>
             </options>
           </param>
           <param name="sp_list" type="text" value="" optional="true" label="Search list" help="list or array-like, for example: [1, 10, 100, 1000], [True, False] and ['auto', 'sqrt', None]. See `help` section for more examples">
@@ -1310,12 +1350,36 @@
     </section>
   </xml>
 
+  <xml name="estimator_and_hyperparameter">
+    <param name="infile_estimator" type="data" format="zip" label="Choose the dataset containing pipeline/estimator object"/>
+    <section name="hyperparams_swapping" title="Hyperparameter Swapping" expanded="false">
+      <param name="infile_params" type="data" format="tabular" optional="true" label="Choose the dataset containing hyperparameters for the pipeline/estimator above" help="This dataset could be the output of `get_params` in the `Estimator Attributes` tool."/>
+      <repeat name="param_set" min="1" max="30" title="New hyperparameter setting">
+          <param name="sp_name" type="select" optional="true" label="Choose a parameter name (with current value)">
+            <options from_dataset="infile_params" startswith="@">
+              <column name="name" index="2"/>
+              <column name="value" index="1"/>
+              <filter type="unique_value" name="unique_param" column="1"/>
+            </options>
+          </param>
+          <param name="sp_value" type="text" value="" optional="true" label="New value" help="Supports int, float, boolean, single quoted string, and selected object constructor. Similar to the `Parameter settings for search` section in `searchcv` tool except that only single value is expected here.">
+            <sanitizer>
+              <valid initial="default">
+                <add value="&apos;"/>
+                <add value="&quot;"/>
+              </valid>
+            </sanitizer>
+          </param>
+      </repeat>
+    </section>
+  </xml>
+
   <xml name="search_cv_options">
       <expand macro="scoring_selection"/>
       <expand macro="model_validation_common_options"/>
       <!--expand macro="pre_dispatch" default_value="2*n_jobs" help="Controls the number of jobs that get dispatched during parallel execution"/-->
       <param argument="iid" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="iid" help="If True, data is identically distributed across the folds"/>
-      <param argument="refit" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="refit" help="Refit an estimator using the best found parameters on the whole dataset."/>
+      <param argument="refit" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="refit" help="Refit an estimator using the best found parameters on the whole dataset. Be aware that `refit=True` invokes extra computation, but it's REQUIRED for outputting the best estimator!"/>
       <param argument="error_score" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Raise fit error:" help="If false, the metric score is assigned to NaN if an error occurs in estimator fitting and FitFailedWarning is raised."/>
       <param argument="return_train_score" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="return_train_score" help=""/>
   </xml>
@@ -1750,6 +1814,40 @@
     </conditional>
   </xml>
 
+  <xml name="stacking_voting_weights">
+    <section name="options" title="Advanced Options" expanded="false">
+        <param argument="weights" type="text" value="[]" optional="true" help="Sequence of weights (float or int). Uses uniform weights if None (`[]`).">
+          <sanitizer>
+            <valid initial="default">
+              <add value="["/>
+              <add value="]"/>
+            </valid>
+          </sanitizer>
+        </param>
+        <yield/>
+    </section>
+  </xml>
+
+  <xml name="preprocessors_sequence_encoders">
+    <conditional name="encoder_selection">
+        <param name="encoder_type" type="select" label="Choose the sequence encoder class">
+            <option value="GenomeOneHotEncoder">GenomeOneHotEncoder</option>
+            <option value="ProteinOneHotEncoder">ProteinOneHotEncoder</option>
+        </param>
+        <when value="GenomeOneHotEncoder">
+            <expand macro="preprocessors_sequence_encoder_arguments"/>
+        </when>
+        <when value="ProteinOneHotEncoder">
+            <expand macro="preprocessors_sequence_encoder_arguments"/>
+        </when>
+    </conditional>
+  </xml>
+
+  <xml name="preprocessors_sequence_encoder_arguments">
+    <param argument="seq_length" type="integer" value="" min="0" optional="true" help="Integer. Sequence length"/>
+    <param argument="padding" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" help="Whether to pad or truncate sequence to meet the sequence length."/>
+  </xml>
+
   <!-- Outputs -->
 
   <xml name="output">
@@ -1847,7 +1945,7 @@
     </citation>
   </xml>
 
-    <xml name="imblearn_citation">
+  <xml name="imblearn_citation">
     <citation type="bibtex">
       @article{JMLR:v18:16-365,
         author  = {Guillaume  Lema{{\^i}}tre and Fernando Nogueira and Christos K. Aridas},
@@ -1858,6 +1956,21 @@
         number  = {17},
         pages   = {1-5},
         url     = {http://jmlr.org/papers/v18/16-365.html}
+      }
+    </citation>
+  </xml>
+
+  <xml name="selene_citation">
+    <citation type="bibtex">
+      @article{chen2019selene,
+        title={Selene: a PyTorch-based deep learning library for sequence data},
+        author={Chen, Kathleen M and Cofer, Evan M and Zhou, Jian and Troyanskaya, Olga G},
+        journal={Nature methods},
+        volume={16},
+        number={4},
+        pages={315},
+        year={2019},
+        publisher={Nature Publishing Group}
       }
     </citation>
   </xml>

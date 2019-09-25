@@ -1,11 +1,77 @@
-<tool id="bismark_bowtie2" name="Bismark Mapper" version="0.20.0.3" profile="18.01">
+<tool id="bismark_bowtie2" name="Bismark Mapper" version="0.22.1+galaxy4" profile="18.01">
     <description>Bisulfite reads mapper</description>
     <requirements>
-        <requirement type="package" version="0.20.0">bismark</requirement>
+        <requirement type="package" version="0.22.1">bismark</requirement>
         <requirement type="package" version="1.8">samtools</requirement>
-        <requirement type="package" version="2.3.4.2">bowtie2</requirement>
+        <requirement type="package" version="2.3.5">bowtie2</requirement>
     </requirements>
     <command><![CDATA[
+        #import re
+
+        #if $singlePaired.sPaired == "single":
+            #if $singlePaired.input_singles.ext == "fasta":
+                #set read1 = 'input_1.fa'
+            #elif $singlePaired.input_singles.ext in ["fastq.gz", "fastqsanger.gz"]:
+                #if $params.pbat == "--pbat"
+                    #set read1 = 'input_1.fq'
+                #else
+                    #set read1 = 'input_1.fq.gz'
+                #end if
+            #else
+                #set read1 = 'input_1.fq'
+            #end if
+
+            #if $params.pbat == "--pbat" and $singlePaired.input_singles.ext in ["fastq.gz", "fastqsanger.gz"]:
+                zcat '${singlePaired.input_singles}' > '${read1}' &&
+            #else
+                ln -s '${singlePaired.input_singles}' '${read1}' &&
+            #end if
+        #else:
+            #set $mate1 = list()
+            #set $mate2 = list()
+            #for $mate_pair in $singlePaired.mate_list
+
+                #if $mate_pair.input_mate1.ext == "fasta":
+                    #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fa'
+                #elif $mate_pair.input_mate1.ext in ["fastq.gz", "fastqsanger.gz"]:
+                    #if $params.pbat == "--pbat"
+                        #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fq'
+                    #else
+                        #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fq.gz'
+                    #end if
+                #else
+                    #set read1 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_1.fq'
+                #end if
+
+                #if $params.pbat == "--pbat" and $mate_pair.input_mate1.ext in ["fastq.gz", "fastqsanger.gz"]:
+                    zcat '${mate_pair.input_mate1}' > '${read1}' &&
+                #else
+                    ln -s '${mate_pair.input_mate1}' '${read1}' &&
+                #end if
+
+                #if $mate_pair.input_mate2.ext == "fasta":
+                    #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fa'
+                #elif $mate_pair.input_mate2.ext in ["fastq.gz", "fastqsanger.gz"]:
+                    #if $params.pbat == "--pbat"
+                        #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fq'
+                    #else
+                        #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fq.gz'
+                    #end if
+                #else
+                    #set read2 = re.sub('[^\w\-_.]', '_', str($mate_pair.input_mate1.element_identifier)) + '_2.fq'
+                #end if
+
+                #if $params.pbat == "--pbat" and $mate_pair.input_mate2.ext in ["fastq.gz", "fastqsanger.gz"]:
+                    zcat '${mate_pair.input_mate2}' > '${read2}' &&
+                #else
+                    ln -s '${mate_pair.input_mate2}' '${read2}' &&
+                #end if
+
+                $mate1.append( str($read1) )
+                $mate2.append( str($read2) )
+            #end for
+        #end if
+
         python '$__tool_directory__/bismark_wrapper.py'
 
         ## Change this to accommodate the number of threads you have available.
@@ -29,7 +95,7 @@
         ##
 
         #if $singlePaired.sPaired == "single":
-            --single-paired '$singlePaired.input_singles'
+            --single-paired '${read1}'
 
             #if $singlePaired.input_singles.ext in ["fastq", "fastq.gz", "fastqillumina"]:
                 --phred64-quals
@@ -41,12 +107,6 @@
             #end if
         #else:
             --mate-paired
-            #set $mate1 = list()
-            #set $mate2 = list()
-            #for $mate_pair in $singlePaired.mate_list
-                $mate1.append( str($mate_pair.input_mate1) )
-                $mate2.append( str($mate_pair.input_mate2) )
-            #end for
 
             --mate1 #echo ','.join($mate1)
             --mate2 #echo ','.join($mate2)
@@ -86,9 +146,6 @@
             ## default 2
             --max-reseed $params.max_reseed
 
-            ## default 70
-            ##--maqerr $params.maqerr
-
             ## default unlimited
             #if $params.qupto != 0:
                 --qupto $params.qupto
@@ -97,12 +154,18 @@
                 --skip-reads $params.skip_reads
             #end if
 
+            #if $params.score_min != "":
+                --score-min '${params.score_min}'
+            #end if
+
             ## if set, disable the original behaviour
             $params.no_mixed
             ## if set, disable the original behaviour
             $params.no_discordant
 
             $params.non_directional
+
+            $params.pbat
 
             #if $params.bismark_stdout:
                 --stdout '$output_stdout'
@@ -219,9 +282,7 @@
                 <!-- -L -->
                 <param name="seed_len" type="integer" value="20"
                        label="Length of the seed substrings to align during multiseed alignment"/>
-                <!--
-                <param name="maqerr" type="integer" value="70" label="Maximum permitted total of quality values at all mismatched read positions throughout the entire alignment, not just in the 'seed'." />
-                -->
+
                 <!-- -D -->
                 <param name="seed_extention_attempts" type="integer" value="15"
                        label="How many consecutive seed extension attempts can fail before Bowtie 2 moves on"/>
@@ -234,6 +295,8 @@
                        help="Default is 0 and means 'no-limit'."/>
                 <param name="skip_reads" type="integer" value="0"
                        label="Skip (i.e. do not align) the first N reads or read pairs from the input"/>
+
+                <param argument="--score-min" name="score_min" type="text" value="" label="Set a function governing the minimum alignment score needed for an alignment to be considered `valid` (i.e. good enough to report)" help="This is a function of read length. For instance, specifying `L,0,-0.2` sets the minimum-score function `f` to `f(x) = 0 + -0.2 * x`, where `x` is the read length."/>
 
                 <param name="no_discordant" type="boolean" truevalue="--no-discordant" falsevalue="" checked="false"
                        label="Disable looking for discordant alignments if it cannot find any concordant alignments (only for paired-end reads)"
@@ -255,6 +318,11 @@
                 <param argument="--non-directional" name="non_directional" type="boolean"
                        truevalue="--non-directional" falsevalue="" checked="false"
                        label="The sequencing library was constructed in a non strand-specific manner, alignments to all four bisulfite strands will be reported."/>
+                <param argument="--pbat" name="pbat" type="boolean"
+                       truevalue="--pbat" falsevalue="" checked="false"
+                       label="Treat input data as PBAT-Seq libraries"
+                       help="Use this option only if you are certain that your libraries were constructed following a PBAT protocol. If you don't know what PBAT-Seq is you should not specify this option." />
+
 
                 <!--end output options -->
             </when>  <!-- full -->
@@ -407,7 +475,7 @@
             <param name="genomeSource" value="history"/>
             <param name="own_file" value="mm10.tiny.fa.gz" />
             <param name="sPaired" value="single"/>
-            <param name="input_singles" value="input1.fq.gz" ftype="fastqsanger"/>
+            <param name="input_singles" value="input1.fq.gzip" ftype="fastqsanger.gz"/>
             <param name="sort_bam" value="false"/>
             <param name="settingsType" value="custom"/>
             <param name="suppressed_read_file" value="true"/>
@@ -415,7 +483,7 @@
             <param name="bismark_stdout" value="true"/>
             <param name="isReportOutput" value="true"/>
 
-            <output name="output_stdout" file="summary.txt" ftype="txt" lines_diff="80">
+            <output name="output_stdout" file="summary.txt" ftype="txt" lines_diff="94">
                  <assert_contents>
                      <has_text text="Sequences analysed in total:" />
                      <has_text text="44115" />
@@ -426,6 +494,121 @@
             </output>
             <output name="report_file" file="mapping_report.txt" ftype="txt" lines_diff="6"/>
             <output name="output" file="mapped_reads.bam" ftype="qname_input_sorted.bam" lines_diff="14"/>
+        </test>
+        <test>
+            <param name="genomeSource" value="history"/>
+            <param name="own_file" value="mm10.tiny.fa.gz" />
+            <param name="sPaired" value="single"/>
+            <param name="input_singles" value="input1.fq" ftype="fastqsanger"/>
+            <param name="sort_bam" value="false"/>
+            <param name="settingsType" value="custom"/>
+            <param name="suppressed_read_file" value="true"/>
+            <param name="unmapped_read_file" value="true"/>
+            <param name="bismark_stdout" value="true"/>
+            <param name="isReportOutput" value="true"/>
+
+            <output name="output_stdout" file="summary_short.txt" ftype="txt" lines_diff="94">
+                 <assert_contents>
+                     <has_text text="Sequences analysed in total:" />
+                     <has_text text="1000" />
+                     <has_text text="Mapping efficiency:" />
+                     <has_text text="0.8%" />
+                     <has_text text="Bismark run complete" />
+                 </assert_contents>
+            </output>
+            <output name="report_file" file="mapping_report_short.txt" ftype="txt" lines_diff="6"/>
+            <output name="output" file="mapped_reads_short.bam" ftype="qname_input_sorted.bam" lines_diff="14"/>
+        </test>
+        <test>
+            <param name="genomeSource" value="history"/>
+            <param name="own_file" value="mm10.tiny.fa.gz" />
+            <param name="sPaired" value="paired"/>
+            <repeat name="mate_list">
+                <param name="input_mate1" value="input1.fq" ftype="fastqsanger"/>
+                <param name="input_mate2" value="input1.fq" ftype="fastqsanger"/>
+            </repeat>
+            <param name="sort_bam" value="false"/>
+            <param name="settingsType" value="custom"/>
+            <param name="suppressed_read_file" value="true"/>
+            <param name="unmapped_read_file" value="true"/>
+            <param name="bismark_stdout" value="true"/>
+            <param name="isReportOutput" value="true"/>
+
+            <output name="output_stdout" file="summary_mate.txt" ftype="txt" lines_diff="94">
+                 <assert_contents>
+                     <has_text text="Sequence pairs analysed in total:" />
+                     <has_text text="1000" />
+                     <has_text text="Mapping efficiency:" />
+                     <has_text text="0.0%" />
+                     <has_text text="Bismark run complete" />
+                 </assert_contents>
+            </output>
+            <output name="report_file" file="mapping_report_mate.txt" ftype="txt" lines_diff="6"/>
+            <output name="output" file="mapped_reads_mate.bam" ftype="qname_input_sorted.bam" lines_diff="14"/>
+        </test>
+        <test>
+            <param name="genomeSource" value="history"/>
+            <param name="own_file" value="mm10.tiny.fa.gz" />
+            <param name="sPaired" value="single"/>
+            <param name="input_singles" value="input1.fq.gzip" ftype="fastqsanger.gz"/>
+            <param name="sort_bam" value="false"/>
+            <param name="settingsType" value="custom"/>
+            <param name="suppressed_read_file" value="true"/>
+            <param name="unmapped_read_file" value="true"/>
+            <param name="bismark_stdout" value="true"/>
+            <param name="isReportOutput" value="true"/>
+            <conditional name="params">
+                <param name="settingsType" value="custom" />
+                <param name="score_min" value="L,0,-0.8" />
+            </conditional>
+
+            <output name="output_stdout" file="summary_custom.txt" ftype="txt" lines_diff="94">
+                 <assert_contents>
+                     <has_text text="Sequences analysed in total:" />
+                     <has_text text="44115" />
+                     <has_text text="Mapping efficiency:" />
+                     <has_text text="4.5%" />
+                     <has_text text="Bismark run complete" />
+                 </assert_contents>
+            </output>
+            <output name="report_file" file="mapping_report_custom.txt" ftype="txt" lines_diff="6"/>
+            <output name="output" file="mapped_reads_custom.bam" ftype="qname_input_sorted.bam" lines_diff="14"/>
+
+            <assert_command>
+                <has_text text="--score-min 'L,0,-0.8'" />
+            </assert_command>
+        </test>
+        <test>
+            <param name="genomeSource" value="history"/>
+            <param name="own_file" value="mm10.tiny.fa.gz" />
+            <param name="sPaired" value="single"/>
+            <param name="input_singles" value="input1.fq.gzip" ftype="fastqsanger.gz"/>
+            <param name="sort_bam" value="false"/>
+            <param name="settingsType" value="custom"/>
+            <param name="suppressed_read_file" value="true"/>
+            <param name="unmapped_read_file" value="true"/>
+            <param name="bismark_stdout" value="true"/>
+            <param name="isReportOutput" value="true"/>
+            <conditional name="params">
+                <param name="settingsType" value="custom" />
+                <param name="pbat" value="true" />
+            </conditional>
+
+            <output name="output_stdout" file="summary_pbat.txt" ftype="txt" lines_diff="94">
+                 <assert_contents>
+                     <has_text text="Sequences analysed in total:" />
+                     <has_text text="44115" />
+                     <has_text text="Mapping efficiency:" />
+                     <has_text text="0.0%" />
+                     <has_text text="Bismark run complete" />
+                 </assert_contents>
+            </output>
+            <output name="report_file" file="mapping_report_pbat.txt" ftype="txt" lines_diff="6"/>
+            <output name="output" file="mapped_reads_pbat.bam" ftype="qname_input_sorted.bam" lines_diff="14"/>
+
+            <assert_command>
+                <has_text text="--pbat" />
+            </assert_command>
         </test>
     </tests>
 
