@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Basic SuCOS scoring. Allows a set of molecules from a SD file to be ovelayed to a reference molecule,
+Basic SuCOS scoring. Allows a set of molecules from a SD file to be overlayed to a reference molecule,
 with the resulting scores being written as properties in the output SD file.
 
 SuCOS is the work of Susan Leung.
