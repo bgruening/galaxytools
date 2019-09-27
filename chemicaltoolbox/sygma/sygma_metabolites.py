@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 
 import argparse
 import csv
@@ -18,8 +19,6 @@ def mol_supplier(filename, ext):
         mols = f.read().split('\n') 
     if ext == 'smi' or ext == 'inchi':
         return [Chem.MolFromSmiles(mol, sanitize=True) for mol in mols if mol != '']
-    # if ext == 'inchi':
-    #     return [Chem.inchi.MolFromInchi(mol, sanitize=True) for mol in mols if mol != '']
 
 def predict_metabolites(parent, phase1_cycles, phase2_cycles):
     """
