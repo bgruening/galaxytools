@@ -112,7 +112,6 @@ if __name__ == "__main__":
     arg_parser.add_argument("-lr", "--learning_rate", required=True, help="learning rate")
     arg_parser.add_argument("-ar", "--activation_recurrent", required=True, help="activation function for recurrent layers")
     arg_parser.add_argument("-ao", "--activation_output", required=True, help="activation function for output layers")
-    arg_parser.add_argument("-lt", "--loss_type", required=True, help="type of the loss/error function")
     # get argument values
     args = vars(arg_parser.parse_args())
     tool_usage_path = args["tool_usage_file"]
@@ -134,7 +133,6 @@ if __name__ == "__main__":
     learning_rate = args["learning_rate"]
     activation_recurrent = args["activation_recurrent"]
     activation_output = args["activation_output"]
-    loss_type = args["loss_type"]
 
     config = {
         'cutoff_date': cutoff_date,
@@ -152,8 +150,7 @@ if __name__ == "__main__":
         'recurrent_dropout': recurrent_dropout,
         'learning_rate': learning_rate,
         'activation_recurrent': activation_recurrent,
-        'activation_output': activation_output,
-        'loss_type': loss_type
+        'activation_output': activation_output
     }
 
     # Extract and process workflows
