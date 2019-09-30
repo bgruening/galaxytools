@@ -11,7 +11,7 @@ import warnings
 from sklearn import ensemble
 
 from galaxy_ml.utils import (load_model, get_cv, get_estimator,
-                          get_search_params)
+                             get_search_params)
 
 
 warnings.filterwarnings('ignore')
