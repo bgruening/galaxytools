@@ -28,9 +28,13 @@ def get_params(options):
     # optionally add buffers in each direction - expansion
     box_dims = [dims[0] + options.bufx, dims[1] + options.bufy, dims[2] + options.bufz]
 
-    # if no seed set, then randomly generate one between 0 and 2**31
-    if options.seed == None:
-        options.seed = randint(0, 2147483647)
+    optionalvals = ""
+
+
+    if options.seed != None:
+        optionalvals += "seed = " + str(options.seed) + "\n"
+    if options.exhaustiveness != None:
+        optionalvals += "exhaustiveness = " + str(options.exhaustiveness) + "\n"
 
     with open(options.output, 'w') as f:
         f.write(
@@ -41,12 +45,7 @@ size_z =  {}
 center_x =  {}
 center_y =  {}
 center_z =  {}
-num_modes = 9999
-energy_range = 9999
-exhaustiveness = {}
-cpu = 4
-seed = {}
-            """.format(box_dims[0], box_dims[1], box_dims[2], center[0], center[1], center[2], options.exhaustiveness, options.seed)
+{}""".format(box_dims[0], box_dims[1], box_dims[2], center[0], center[1], center[2], optionalvals)
         )
 
 
@@ -61,8 +60,7 @@ if __name__ == "__main__":
     """)
     parser.add_argument('--ligand', dest='ligand_path', help='The input ligand (mol file)')
     parser.add_argument('--config', dest='output', help='The output file containing calculated params (txt)')
-    parser.add_argument('--exh', dest='exhaustiveness', default=10, type=int, help='The number of poses '
-                                                                                     'to return from docking job')
+    parser.add_argument('--exh', dest='exhaustiveness', type=int, help='Exhaustiveness of global search')
     parser.add_argument('--bufx', dest='bufx', default=0, type=float, help='the buffer in the x direction '
                                                                            '(float - in angs.)')
     parser.add_argument('--bufy', dest='bufy', default=0, type=float, help='the buffer in the y direction '
