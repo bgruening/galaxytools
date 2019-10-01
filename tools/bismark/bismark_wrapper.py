@@ -167,7 +167,7 @@ def __main__():
     # alignment options
     if args.num_threads > 2:
         # divide num_threads by 2 here since bismark will spawn 2 jobs with -p threads each
-        cmd.extend(['-p', str(math.ceil(args.num_threads / 2))])
+        cmd.extend(['-p', str(int(math.ceil(args.num_threads / 2)))])
     if args.seed_mismatches:
         cmd.extend(['-N', str(args.seed_mismatches)])
     if args.seed_len:
