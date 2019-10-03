@@ -22,7 +22,7 @@ class HyperparameterOptimisation:
         """ Init method. """
 
     @classmethod
-    def train_model(self, config, reverse_dictionary, train_data, train_labels, test_data, test_labels, class_weights):
+    def train_model(self, config, reverse_dictionary, train_data, train_labels, class_weights):
         """
         Train a model and report accuracy
         """
@@ -46,7 +46,7 @@ class HyperparameterOptimisation:
         # get dimensions
         dimensions = len(reverse_dictionary) + 1
         best_model_params = dict()
-        early_stopping = EarlyStopping(monitor='val_loss', mode='min', min_delta=1e-4, verbose=1, patience=1)
+        early_stopping = EarlyStopping(monitor='val_loss', mode='min', min_delta=1e-1, verbose=1, patience=0)
 
         # specify the search space for finding the best combination of parameters using Bayesian optimisation
         params = {

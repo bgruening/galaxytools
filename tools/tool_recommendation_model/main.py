@@ -29,39 +29,46 @@ class PredictTool:
         """
         print("Start hyperparameter optimisation...")
         hyper_opt = optimise_hyperparameters.HyperparameterOptimisation()
-        best_params = hyper_opt.train_model(network_config, reverse_dictionary, train_data, train_labels, test_data, test_labels, class_weights)
+        best_params = hyper_opt.train_model(network_config, reverse_dictionary, train_data, train_labels, class_weights)
 
         # retrieve the model and train on complete dataset without validation set
         model, best_params = utils.set_recurrent_network(best_params, reverse_dictionary, class_weights)
 
         # define callbacks
+        early_stopping = callbacks.EarlyStopping(monitor='loss', mode='min', min_delta=1e-1, verbose=1, patience=0)
         predict_callback_test = PredictCallback(test_data, test_labels, reverse_dictionary, n_epochs, compatible_next_tools, usage_pred)
-        # tensor_board = callbacks.TensorBoard(log_dir=log_directory, histogram_freq=0, write_graph=True, write_images=True)
-        callbacks_list = [predict_callback_test]
+
+        callbacks_list = [predict_callback_test, early_stopping]
 
         print("Start training on the best model...")
-        model_fit = model.fit(
-            train_data,
-            train_labels,
-            batch_size=int(best_params["batch_size"]),
-            epochs=n_epochs,
-            verbose=2,
-            callbacks=callbacks_list,
-            shuffle="batch",
-            validation_data=(test_data, test_labels)
-        )
-
-        train_performance = {
-            "train_loss": np.array(model_fit.history["loss"]),
-            "model": model,
-            "best_parameters": best_params
-        }
-
-        # if there is test data, add more information
+        train_performance = dict()
         if len(test_data) > 0:
-            train_performance["validation_loss"] = np.array(model_fit.history["val_loss"])
+            trained_model = model.fit(
+                train_data,
+                train_labels,
+                batch_size=int(best_params["batch_size"]),
+                epochs=n_epochs,
+                verbose=2,
+                callbacks=callbacks_list,
+                shuffle="batch",
+                validation_data=(test_data, test_labels)
+            )
+            train_performance["validation_loss"] = np.array(trained_model.history["val_loss"])
             train_performance["precision"] = predict_callback_test.precision
             train_performance["usage_weights"] = predict_callback_test.usage_weights
+        else:
+            trained_model = model.fit(
+                train_data,
+                train_labels,
+                batch_size=int(best_params["batch_size"]),
+                epochs=n_epochs,
+                verbose=2,
+                callbacks=callbacks_list,
+                shuffle="batch"
+            )
+        train_performance["train_loss"] = np.array(trained_model.history["loss"])
+        train_performance["model"] = model
+        train_performance["best_parameters"] = best_params
         return train_performance
 
 
