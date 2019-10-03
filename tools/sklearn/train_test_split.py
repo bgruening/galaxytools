@@ -4,6 +4,7 @@ import pandas as pd
 import warnings
 
 from galaxy_ml.model_validations import train_test_split
+from galaxy_ml.model_validations import OrderedKFold
 
 
 def main(inputs, infile_array, outfile_train, outfile_test,
@@ -34,23 +35,42 @@ def main(inputs, infile_array, outfile_train, outfile_test,
     input_header = 'header' in params['infile_info']
 
     header = 'infer' if input_header else None
-    array = pd.read_csv(infile_array, sep='\t', header=header, parse_dates=True)
+    array = pd.read_csv(infile_array, sep='\t', header=header,
+                        parse_dates=True)
 
     options = params['options']
     shuffle_selection = options.pop('shuffle_selection')
     options['shuffle'] = shuffle_selection['shuffle']
     if infile_labels:
-        header = 'infer' if 'header' in shuffle_selection['infile_info'] else None
+        header = 'infer' if 'header' in shuffle_selection['infile_info']\
+            else None
         col_index = shuffle_selection['col'][0] - 1
         df = pd.read_csv(infile_labels, sep='\t', header=header,
                          parse_dates=True)
         labels = df.iloc[:, col_index].values
         options['labels'] = labels
 
-    train, test = train_test_split(array, **options)
+    if shuffle_selection['shuffle'] == 'ordered_target':
+        test_size = options['test_size']
+        if test_size < 1.0:
+            if test_size > 0.5:
+                raise ValueError("Ordered Target Split only supports "
+                                 "test proportion 0 - 0.5!")
+            n_splits = round(1 / test_size)
+        else:
+            n_samples = array.shape[0]
+            n_splits = round(n_samples / test_size)
 
-    print((array.shape, train.shape, test.shape))
+        splitter = OrderedKFold(n_splits=n_splits, shuffle=True,
+                                random_state=options['random_state'])
+        train_index, test_index = next(splitter.split(array.values, labels))
+        train, test = array.iloc[train_index, :], array.iloc[test_index, :]
+    else:
+        train, test = train_test_split(array, **options)
 
+    print(("Input shape:", array.shape))
+    print(("Train shape:", train.shape))
+    print(("Test shape:", test.shape))
     train.to_csv(outfile_train, sep='\t', header=input_header, index=False)
     test.to_csv(outfile_test, sep='\t', header=input_header, index=False)
 
