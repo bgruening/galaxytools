@@ -2,7 +2,7 @@ import jython_utils
 import math
 import sys
 from ij import IJ
-from skeleton_analysis import AnalyzeSkeleton_
+from sc.fiji.analyzeSkeleton import AnalyzeSkeleton_
 
 BASIC_NAMES = [ 'Branches', 'Junctions', 'End-point Voxels',
                 'Junction Voxels', 'Slab Voxels', 'Average branch length',
