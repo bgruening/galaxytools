@@ -46,7 +46,7 @@ class HyperparameterOptimisation:
         # get dimensions
         dimensions = len(reverse_dictionary) + 1
         best_model_params = dict()
-        early_stopping = EarlyStopping(monitor='val_loss', mode='min', min_delta=1e-1, verbose=1, patience=0)
+        early_stopping = EarlyStopping(monitor='val_loss', mode='min', verbose=1, min_delta=1e-1)
 
         # specify the search space for finding the best combination of parameters using Bayesian optimisation
         params = {

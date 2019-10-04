@@ -35,7 +35,7 @@ class PredictTool:
         model, best_params = utils.set_recurrent_network(best_params, reverse_dictionary, class_weights)
 
         # define callbacks
-        early_stopping = callbacks.EarlyStopping(monitor='loss', mode='min', min_delta=1e-1, verbose=1, patience=0)
+        early_stopping = callbacks.EarlyStopping(monitor='loss', mode='min', verbose=1, min_delta=1e-1, restore_best_weights=True)
         predict_callback_test = PredictCallback(test_data, test_labels, reverse_dictionary, n_epochs, compatible_next_tools, usage_pred)
 
         callbacks_list = [predict_callback_test, early_stopping]
