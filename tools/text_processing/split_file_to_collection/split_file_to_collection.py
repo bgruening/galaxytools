@@ -46,8 +46,8 @@ def main():
         args["match"] = replace_mapped_chars(args["match"])
         args["sub"] = replace_mapped_chars(args["sub"])
         split_by_column(args, in_file, out_dir, top)
-
     else:
+        args["generic_re"] = replace_mapped_chars(args["generic_re"])
         split_by_record(args, in_file, out_dir, top, ftype)
 
 
