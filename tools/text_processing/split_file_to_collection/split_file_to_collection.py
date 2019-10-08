@@ -195,13 +195,19 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                     if new_file_counter in fresh_files:
                         newfiles[new_file_counter].write(header)
                         fresh_files.remove(new_file_counter)
+                    
+                    if ftype != "sdf":
+                        # write record to file
+                        newfiles[new_file_counter].write(record)
 
-                    # write record to file
-                    newfiles[new_file_counter].write(record)
-
-                    # if not the first time through, we assign the new record
-                    record = line
-
+                        # if not the first time through, we assign the new record
+                        record = line
+                                                
+                    else:  # for sdf we want to write the line to the record before starting a new one
+                        record += line
+                        newfiles[new_file_counter].write(record)
+                        record = ""
+                        
                     # change destination file
                     if rand:
                         new_file_counter = int(math.floor(random.random() * numnew))
