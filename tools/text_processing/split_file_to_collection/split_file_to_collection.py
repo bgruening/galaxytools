@@ -138,6 +138,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
         # there is exactly one (which is not exactly correct for empty files)
         if n_records == 0:
             n_records = 1
+    print("sep_at_start", sep_at_start)
     # if there are fewer records than desired files
     numnew = min(numnew, n_records)
     # approx. number of records per file
@@ -200,11 +201,14 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                         fresh_files.remove(new_file_counter)
                     
                     if not sep_at_start:
-                        record = line
+                        record += line
                     # write record to file
                     newfiles[new_file_counter].write(record)
+                    print(new_file_counter, record)
                     if sep_at_start:
                         record = line
+                    else:
+                        record = ""
 
                     # change destination file
                     if rand:
@@ -225,6 +229,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                 record += line
         # after loop, write final record to file
         newfiles[new_file_counter].write(record)
+
     # close new files
     close_files(newfiles)
 
