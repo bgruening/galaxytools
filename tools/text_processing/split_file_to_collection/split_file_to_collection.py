@@ -76,7 +76,9 @@ def parser_cli():
                         help="Number of records by file. Not valid for splitting on a column")
     parser.add_argument('--batch', action='store_true',
                         help="Distribute files to collection while maintaining order. Ignored if splitting on column.")
-
+    parser.add_argument('--split_after', '-p', action='store_true',
+                        help="Split between records after separator (default is before)." + 
+                         "Only for generic - specific ftypes are always split in the default way")
     bycol = parser.add_argument_group('If splitting on a column')
     bycol.add_argument('--match', '-m', default = "(.*)", help="The regular expression to match id column entries")
     bycol.add_argument('--sub', '-s', default = r'\1',
@@ -196,7 +198,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                         newfiles[new_file_counter].write(header)
                         fresh_files.remove(new_file_counter)
                     
-                    if ftype != "sdf":
+                    if ftype != "sdf" and args["split_after"] == False:
                         # write record to file
                         newfiles[new_file_counter].write(record)
 
