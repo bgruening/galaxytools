@@ -62,11 +62,10 @@ def parser_cli():
                                                  " the extension of the new files (without a period)")
     parser.add_argument('--ftype', '-f', help="The type of the file to split", required = True,
         choices=["mgf", "fastq", "fasta", "sdf", "tabular", "txt", "generic"])
-    parser.add_argument('--generic_re', '-g', help="Regular expression indicating the start of a new record (only for generic)", required = False)
+    parser.add_argument('--generic_re', '-g', default="", help="Regular expression indicating the start of a new record (only for generic)", required = False)
     parser.add_argument('--by', '-b', help="Split by line or by column (tabular only)",
         default = "row", choices = ["col", "row"])
-    parser.add_argument('--top', '-t', type=int, default=0, help="Number of header lines to carry over to new files. " +
-                                                                 "(tabular only).")
+    parser.add_argument('--top', '-t', type=int, default=0, help="Number of header lines to carry over to new files.")
     parser.add_argument('--rand', '-r', help="Divide records randomly into new files", action='store_true')
     parser.add_argument('--seed', '-x', help="Provide a seed for the random number generator. " +
                                              "If not provided and args[\"rand\"]==True, then date is used", type=int)
@@ -76,9 +75,6 @@ def parser_cli():
                         help="Number of records by file. Not valid for splitting on a column")
     parser.add_argument('--batch', action='store_true',
                         help="Distribute files to collection while maintaining order. Ignored if splitting on column.")
-    parser.add_argument('--split_after', '-p', action='store_true',
-                        help="Split between records after separator (default is before)." + 
-                         "Only for generic - specific ftypes are always split in the default way")
     bycol = parser.add_argument_group('If splitting on a column')
     bycol.add_argument('--match', '-m', default = "(.*)", help="The regular expression to match id column entries")
     bycol.add_argument('--sub', '-s', default = r'\1',
@@ -121,32 +117,35 @@ def split_by_record(args, in_file, out_dir, top, ftype):
 
     # batched division (maintains order)
     batch = args["batch"]
-
     
-    if chunksize != 0 or batch: # needs to be calculated if either batch or chunksize are selected
-        # define n_per_file so we don't get a warning about ref before assignment
-        n_per_file = math.inf
-
-        # number of records
-        with open(in_file) as f:
-            i = 0
-            for line in f:
-                if re.match(sep, line) is not None:
-                    i+=1
-            n_records = i + 1
-        if top:
-            n_records -= top  # don't count the top lines
-        
-        if chunksize == 0: # i.e. no chunking
-            # approx. number of lines per file
-            n_per_file = n_records // numnew
-        else:
-            # approx. number of lines per file
-            numnew = n_records // chunksize
-            n_per_file = chunksize
-
-
-
+    # determine
+    # - the number of records that should be stored per file 
+    #   (done always, even if used only for batch mode)
+    # - if the separator is a the start / end of the record
+    sep_at_start = False
+    with open(in_file) as f:
+        # read header lines
+        for i in range(top):
+            f.readline()
+        n_records = 0
+        line_no = 0
+        for line_no, line in enumerate(f):
+            if re.match(sep, line) is not None:
+                if line_no == 0:
+                    sep_at_start = True
+                n_records += 1
+        # if there was no record separator we assume that
+        # there is exactly one (which is not exactly correct for empty files)
+        if n_records == 0:
+            n_records = 1
+    # if there are fewer records than desired files
+    numnew = min(numnew, n_records)
+    # approx. number of records per file
+    if chunksize == 0: # i.e. no chunking
+        n_per_file = n_records // numnew
+    else:
+        numnew = n_records // chunksize
+        n_per_file = chunksize
 
     # make new files
     # strip extension of old file and add number
@@ -164,15 +163,17 @@ def split_by_record(args, in_file, out_dir, top, ftype):
 
     # bunch o' counters
     # index to list of new files
-    new_file_counter = 0
-
+    if rand:
+        new_file_counter = int(math.floor(random.random() * numnew))
+    else:
+        new_file_counter = 0
     # used for top
     # number of lines read so far
     n_read = 0
     # to contain header specified by top
     header = ""
     # keep track of the files that have been opened so far
-    fresh_files = {i for i in range(0, numnew)}
+    fresh_files = set(range(numnew))
 
     # keep track in loop of number of records in each file
     # only used in batch
@@ -198,18 +199,13 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                         newfiles[new_file_counter].write(header)
                         fresh_files.remove(new_file_counter)
                     
-                    if ftype != "sdf" and args["split_after"] == False:
-                        # write record to file
-                        newfiles[new_file_counter].write(record)
-
-                        # if not the first time through, we assign the new record
+                    if not sep_at_start:
                         record = line
-                                                
-                    else:  # for sdf we want to write the line to the record before starting a new one
-                        record += line
-                        newfiles[new_file_counter].write(record)
-                        record = ""
-                        
+                    # write record to file
+                    newfiles[new_file_counter].write(record)
+                    if sep_at_start:
+                        record = line
+
                     # change destination file
                     if rand:
                         new_file_counter = int(math.floor(random.random() * numnew))
