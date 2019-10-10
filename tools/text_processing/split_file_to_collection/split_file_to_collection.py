@@ -16,7 +16,9 @@ FILETYPES = {'fasta': '^>',
              'fastq': '^@',
              'tabular': '^.*',
              'txt': '^.*',
-             'mgf': '^BEGIN IONS'}
+             'mgf': '^BEGIN IONS',
+             'sdf': '\$\$\$\$',
+             }
 
 
 def main():
@@ -59,7 +61,7 @@ def parser_cli():
     parser.add_argument('--file_ext', '-e', help="If not splitting by column," +
                                                  " the extension of the new files (without a period)")
     parser.add_argument('--ftype', '-f', help="The type of the file to split", required = True,
-        choices=["mgf", "fastq", "fasta", "tabular", "txt", "generic"])
+        choices=["mgf", "fastq", "fasta", "sdf", "tabular", "txt", "generic"])
     parser.add_argument('--generic_re', '-g', help="Regular expression indicating the start of a new record (only for generic)", required = False)
     parser.add_argument('--by', '-b', help="Split by line or by column (tabular only)",
         default = "row", choices = ["col", "row"])
@@ -69,10 +71,14 @@ def parser_cli():
     parser.add_argument('--seed', '-x', help="Provide a seed for the random number generator. " +
                                              "If not provided and args[\"rand\"]==True, then date is used", type=int)
     parser.add_argument('--numnew', '-n', type=int, default = 1,
-                        help="Number of output files desired. Not valid for splitting on a column")
+                        help="Number of output files desired. Not valid for splitting on a column. Not compatible with chunksize and will be ignored if both are set.")
+    parser.add_argument('--chunksize', '-k', type=int, default = 0,
+                        help="Number of records by file. Not valid for splitting on a column")
     parser.add_argument('--batch', action='store_true',
                         help="Distribute files to collection while maintaining order. Ignored if splitting on column.")
-
+    parser.add_argument('--split_after', '-p', action='store_true',
+                        help="Split between records after separator (default is before)." + 
+                         "Only for generic - specific ftypes are always split in the default way")
     bycol = parser.add_argument_group('If splitting on a column')
     bycol.add_argument('--match', '-m', default = "(.*)", help="The regular expression to match id column entries")
     bycol.add_argument('--sub', '-s', default = r'\1',
@@ -102,6 +108,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
     # get record separator for given filetype
     sep = re.compile(FILETYPES.get(ftype, args["generic_re"]))
 
+    chunksize = args["chunksize"]
     numnew = args["numnew"]
 
     # random division
@@ -114,9 +121,12 @@ def split_by_record(args, in_file, out_dir, top, ftype):
 
     # batched division (maintains order)
     batch = args["batch"]
-    # define n_per_file so we don't get a warning about ref before assignment
-    n_per_file = math.inf
-    if batch:
+
+    
+    if chunksize != 0 or batch: # needs to be calculated if either batch or chunksize are selected
+        # define n_per_file so we don't get a warning about ref before assignment
+        n_per_file = math.inf
+
         # number of records
         with open(in_file) as f:
             i = 0
@@ -126,9 +136,17 @@ def split_by_record(args, in_file, out_dir, top, ftype):
             n_records = i + 1
         if top:
             n_records -= top  # don't count the top lines
+        
+        if chunksize == 0: # i.e. no chunking
+            # approx. number of lines per file
+            n_per_file = n_records // numnew
+        else:
+            # approx. number of lines per file
+            numnew = n_records // chunksize
+            n_per_file = chunksize
 
-        # approx. number of lines per file
-        n_per_file = n_records // numnew
+
+
 
     # make new files
     # strip extension of old file and add number
@@ -179,13 +197,19 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                     if new_file_counter in fresh_files:
                         newfiles[new_file_counter].write(header)
                         fresh_files.remove(new_file_counter)
+                    
+                    if ftype != "sdf" and args["split_after"] == False:
+                        # write record to file
+                        newfiles[new_file_counter].write(record)
 
-                    # write record to file
-                    newfiles[new_file_counter].write(record)
-
-                    # if not the first time through, we assign the new record
-                    record = line
-
+                        # if not the first time through, we assign the new record
+                        record = line
+                                                
+                    else:  # for sdf we want to write the line to the record before starting a new one
+                        record += line
+                        newfiles[new_file_counter].write(record)
+                        record = ""
+                        
                     # change destination file
                     if rand:
                         new_file_counter = int(math.floor(random.random() * numnew))
