@@ -149,7 +149,7 @@ if __name__ == "__main__":
     learning_rate = args["learning_rate"]
     activation_recurrent = args["activation_recurrent"]
     activation_output = args["activation_output"]
-    num_cpus = 12
+    num_cpus = 16
 
     config = {
         'cutoff_date': cutoff_date,
