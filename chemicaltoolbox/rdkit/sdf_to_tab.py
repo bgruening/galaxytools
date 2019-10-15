@@ -8,10 +8,10 @@ def sdf_to_tab(vars):
     df = pd.DataFrame()  # for output
 
     for mol in mols:
-        if mol != None:
+        if mol:
             d = mol.GetPropsAsDict()
             # filter dict for desired props
-            if vars.props == '':  # none specified, return all
+            if vars.props.strip() == '':  # none specified, return all
                 d = {prop: val for (prop, val) in d.items() if not any(x in str(val) for x in ['\n', '\t'])}  # remove items containing newlines or tabs
             else:
                 d = {prop: val for (prop, val) in d.items() if prop in vars.props.replace(' ', '').split(',')}  # remove items not requested via CLI
