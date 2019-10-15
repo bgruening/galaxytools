@@ -16,9 +16,9 @@ def sdf_to_tab(vars):
             else:
                 d = {prop: val for (prop, val) in d.items() if prop in vars.props.replace(' ', '').split(',')}  # remove items not requested via CLI
             d['Name'] = mol.GetProp('_Name')
+            df = df.append(d, ignore_index=True)
         else:
-            d = {'Name': 'ERROR'}
-        df = df.append(d, ignore_index=True)
+            print("Molecule could not be read - skipped.")
 
     df = df.set_index('Name')
     df.to_csv(vars.out, sep='\t', header=vars.header)
