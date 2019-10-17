@@ -18,11 +18,6 @@ def get_mol_from_file(fname, ftype):
     return mol
 
 def get_params(options):
-    # make sure we have a mol file by initiating rdkit mol object from input
-    # mol = Chem.MolFromMolFile(options.ligand_path)
-    # if not mol:
-    #     raise IOError
-
     mol = get_mol_from_file(options.ligand_path, options.ftype)
 
     # get rdkit conformer and compute x,y,z of top and bottom corner of confounding cuboid
