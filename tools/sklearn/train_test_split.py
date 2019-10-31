@@ -65,14 +65,16 @@ def _get_single_cv_split(params, array, infile_labels=None,
         raise ValueError("Total number of splits is {}, but got `nth_split` "
                          "= {}".format(total_n_splits, nth_split))
 
-    all_splits = []
+    i = 1
     for train_index, test_index in splitter.split(array.values, y=y, groups=groups):
-        all_splits.append((train_index, test_index))
-
-    train_index, test_index = all_splits[nth_split - 1]
+        # suppose nth_split >= 1
+        if i == nth_split:
+            break
+        else:
+            i += 1
 
     train = array.iloc[train_index, :]
-    test = array.loc[test_index, :]
+    test = array.iloc[test_index, :]
 
     return train, test
 
