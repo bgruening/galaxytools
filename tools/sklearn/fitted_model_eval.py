@@ -10,9 +10,6 @@ from sklearn.model_selection._validation import _score
 from galaxy_ml.utils import get_scoring, load_model, read_columns
 
 
-N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
-
-
 def _get_X_y(params, infile1, infile2):
     """ read from inputs and output X and y
 
@@ -123,7 +120,7 @@ def main(inputs, infile_estimator, outfile_eval,
     if hasattr(main_est, 'config') and hasattr(main_est, 'load_weights'):
         if not infile_weights or infile_weights == 'None':
             raise ValueError("The selected model skeleton asks for weights, "
-                             "but dataset for weights wan not selected!")
+                             "but no dataset for weights was provided!")
         main_est.load_weights(infile_weights)
 
     # handle scorer, convert to scorer dict

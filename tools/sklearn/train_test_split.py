@@ -32,8 +32,7 @@ def main(inputs, infile_array, outfile_train, outfile_test,
     with open(inputs, 'r') as param_handler:
         params = json.load(param_handler)
 
-    input_header = 'header' in params['infile_info']
-
+    input_header = params['header0']
     header = 'infer' if input_header else None
     array = pd.read_csv(infile_array, sep='\t', header=header,
                         parse_dates=True)
@@ -42,8 +41,7 @@ def main(inputs, infile_array, outfile_train, outfile_test,
     shuffle_selection = options.pop('shuffle_selection')
     options['shuffle'] = shuffle_selection['shuffle']
     if infile_labels:
-        header = 'infer' if 'header' in shuffle_selection['infile_info']\
-            else None
+        header = 'infer' if shuffle_selection['header1'] else None
         col_index = shuffle_selection['col'][0] - 1
         df = pd.read_csv(infile_labels, sep='\t', header=header,
                          parse_dates=True)
@@ -68,9 +66,9 @@ def main(inputs, infile_array, outfile_train, outfile_test,
     else:
         train, test = train_test_split(array, **options)
 
-    print(("Input shape:", array.shape))
-    print(("Train shape:", train.shape))
-    print(("Test shape:", test.shape))
+    print("Input shape: %s" % repr(array.shape))
+    print("Train shape: %s" % repr(train.shape))
+    print("Test shape: %s" % repr(test.shape))
     train.to_csv(outfile_train, sep='\t', header=input_header, index=False)
     test.to_csv(outfile_test, sep='\t', header=input_header, index=False)
 
