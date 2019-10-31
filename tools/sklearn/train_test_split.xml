@@ -2,6 +2,11 @@
     <description>into training and test subsets</description>
     <macros>
         <import>main_macros.xml</import>
+        <macro name="label_input" token_label="Select the dataset containing labels">
+            <param name="labels" type="data" format="tabular" label="@LABEL@"/>
+            <param name="header1" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Does the dataset contain header?" />
+            <param name="col" type="data_column" data_ref="labels" label="Select target column"/>
+        </macro>
     </macros>
     <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
@@ -10,8 +15,14 @@
         python '$__tool_directory__/train_test_split.py'
             --inputs '$inputs'
             --infile_array '$infile_array'
-            #if $options.shuffle_selection.shuffle not in ['None', 'simple']
-                --infile_labels '$options.shuffle_selection.labels'
+            #if $mode_selection.selected_mode == 'train_test_split' and $mode_selection.options.shuffle_selection.shuffle not in ['None', 'simple']
+                --infile_labels '$mode_selection.options.shuffle_selection.labels'
+            #end if
+            #if $mode_selection.selected_mode == 'cv_splitter' and $mode_selection.cv_selector.selected_cv in ['StratifiedKFold', 'RepeatedStratifiedKFold', 'StratifiedShuffleSplit', 'OrderedKFold', 'RepeatedOrderedKFold']
+                --infile_labels '$mode_selection.cv_selector.target_input.labels'
+            #end if
+            #if $mode_selection.selected_mode == 'cv_splitter' and $mode_selection.cv_selector.selected_cv in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']
+                --infile_groups '$mode_selection.cv_selector.groups_selector.infile_g'
             #end if
             --outfile_train '$out_train'
             --outfile_test '$out_test'
@@ -23,37 +34,142 @@
     <inputs>
         <param name="infile_array" type="data" format="tabular" label="Select the dataset containing array to split"/>
         <param name="header0" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Does the dataset contain header?" />
-        <section name="options" title="Options" expanded="true">
-            <param argument="test_size" type="float" min="0" optional="false" value="0.25" label="Test size:"
-                help="A float number, 0.0 - 1.0, represents the proportion of the dataset to be included in the test split."/>
-            <param argument="random_state" type="integer" optional="true" value="" label="Random seed number:"/>
-            <conditional name="shuffle_selection">
-                <param name="shuffle" type="select" label="Splitting strategy">
-                    <option value="None">None - No shuffle</option>
-                    <option value="simple">Shuffle Split</option>
-                    <option value="stratified">Stratified Shuffle Split</option>
-                    <option value="group">Group Shuffle Split</option>
-                    <option value="ordered_target">Ordered Target Split -- Single split from `galaxy_ml.model_validations.OrderedKFold`</option>
-                </param>
-                <when value="None"/>
-                <when value="simple"/>
-                <when value="stratified">
-                    <param name="labels" type="data" format="tabular" label="Select the dataset containing labels"/>
-                    <param name="header1" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Does the dataset contain header?" />
-                    <param name="col" type="data_column" data_ref="labels" label="Select target column"/>
-                </when>
-                <when value="group">
-                    <param name="labels" type="data" format="tabular" label="Select the dataset containing groups"/>
-                    <param name="header1" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Does the dataset contain header?" />
-                    <param name="col" type="data_column" data_ref="labels" label="Select target column"/>
-                </when>
-                <when value="ordered_target">
-                    <param name="labels" type="data" format="tabular" label="Select the dataset containing target values"/>
-                    <param name="header1" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Does the dataset contain header?" />
-                    <param name="col" type="data_column" data_ref="labels" label="Select target column"/>
-                </when>
-            </conditional>
-        </section>
+        <conditional name="mode_selection">
+            <param name="selected_mode" type="select" label="Select the splitting mode">
+                <option value="train_test_split" selected="true">Train Test Split</option>
+                <option value="cv_splitter">Cross-Validation Splitter</option>
+            </param>
+            <when value="train_test_split">
+                <section name="options" title="Options" expanded="true">
+                    <param argument="test_size" type="float" min="0" optional="false" value="0.25" label="Test size:"
+                        help="A float number, 0.0 - 1.0, represents the proportion of the dataset to be included in the test split."/>
+                    <param argument="random_state" type="integer" optional="true" value="" label="Random seed number:"/>
+                    <conditional name="shuffle_selection">
+                        <param name="shuffle" type="select" label="Shuffle strategy">
+                            <option value="None">None - No shuffle</option>
+                            <option value="simple">Shuffle</option>
+                            <option value="stratified">Stratified Shuffle</option>
+                            <option value="group">Group Shuffle</option>
+                        </param>
+                        <when value="None"/>
+                        <when value="simple"/>
+                        <when value="stratified">
+                            <expand macro="label_input"/>
+                        </when>
+                        <when value="group">
+                            <expand macro="label_input" label="Select the dataset containing groups"/>
+                        </when>
+                    </conditional>
+                </section>
+            </when>
+            <when value="cv_splitter">
+                <conditional name="cv_selector">
+                    <param name="selected_cv" type="select" label="Select the cv splitter:">
+                        <option value="KFold">KFold</option>
+                        <option value="StratifiedKFold">StratifiedKFold</option>
+                        <option value="LeaveOneOut">LeaveOneOut</option>
+                        <option value="LeavePOut">LeavePOut</option>
+                        <option value="RepeatedKFold">RepeatedKFold</option>
+                        <option value="RepeatedStratifiedKFold">RepeatedStratifiedKFold</option>
+                        <option value="ShuffleSplit">ShuffleSplit</option>
+                        <option value="StratifiedShuffleSplit">StratifiedShuffleSplit</option>
+                        <option value="TimeSeriesSplit">TimeSeriesSplit</option>
+                        <option value="PredefinedSplit">PredefinedSplit</option>
+                        <option value="OrderedKFold">OrderedKFold</option>
+                        <option value="RepeatedOrderedKFold">RepeatedOrderedKFold</option>
+                        <option value="GroupKFold">GroupKFold</option>
+                        <option value="GroupShuffleSplit">GroupShuffleSplit</option>
+                        <option value="LeaveOneGroupOut">LeaveOneGroupOut</option>
+                        <option value="LeavePGroupsOut">LeavePGroupsOut</option>
+                    </param>
+                    <when value="KFold">
+                        <expand macro="cv_n_splits"/>
+                        <expand macro="cv_shuffle"/>
+                        <expand macro="random_state"/>
+                    </when>
+                    <when value="StratifiedKFold">
+                        <expand macro="cv_n_splits"/>
+                        <expand macro="cv_shuffle"/>
+                        <expand macro="random_state"/>
+                        <section name="target_input" title="Target values" expanded="true">
+                            <expand macro="label_input"/>
+                        </section>
+                    </when>
+                    <when value="LeaveOneOut">
+                    </when>
+                    <when value="LeavePOut">
+                        <param argument="p" type="integer" value="" label="p" help="Integer. Size of the test sets."/>
+                    </when>
+                    <when value="RepeatedKFold">
+                        <expand macro="cv_n_splits" value="5"/>
+                        <param argument="n_repeats" type="integer" value="10" label="n_repeats" help="Number of times cross-validator needs to be repeated." />
+                        <expand macro="random_state" />
+                    </when>
+                    <when value="RepeatedStratifiedKFold">
+                        <expand macro="cv_n_splits" value="5"/>
+                        <param argument="n_repeats" type="integer" value="10" label="n_repeats" help="Number of times cross-validator needs to be repeated." />
+                        <expand macro="random_state" />
+                        <section name="target_input" title="Target values" expanded="true">
+                            <expand macro="label_input"/>
+                        </section>
+                    </when>
+                    <when value="ShuffleSplit">
+                        <expand macro="cv_n_splits" value="10" help="Number of re-shuffling and splitting iterations."/>
+                        <expand macro="cv_test_size" value="0.1" />
+                        <expand macro="random_state"/>
+                    </when>
+                    <when value="StratifiedShuffleSplit">
+                        <expand macro="cv_n_splits" value="10" help="Number of re-shuffling and splitting iterations."/>
+                        <expand macro="cv_test_size" value="0.1" />
+                        <expand macro="random_state"/>
+                        <section name="target_input" title="Target values" expanded="true">
+                            <expand macro="label_input"/>
+                        </section>
+                    </when>
+                    <when value="TimeSeriesSplit">
+                        <expand macro="cv_n_splits"/>
+                        <param argument="max_train_size" type="integer" value="" optional="true" label="Maximum size of the training set" help="Maximum size for a single training set." />
+                    </when>
+                    <when value="PredefinedSplit">
+                        <param argument="test_fold" type="text" value="" area="true" label="test_fold" help="List, e.g., [0, 1, -1, 1], represents two test sets, [X[0]] and [X[1], X[3]], X[2] is excluded from any test set due to '-1'."/>
+                    </when>
+                    <when value="OrderedKFold">
+                        <expand macro="cv_n_splits"/>
+                        <expand macro="cv_shuffle"/>
+                        <expand macro="random_state"/>
+                        <section name="target_input" title="Target values" expanded="true">
+                            <expand macro="label_input" label="Select the dataset containing target values"/>
+                        </section>
+                    </when>
+                    <when value="RepeatedOrderedKFold">
+                        <expand macro="cv_n_splits"/>
+                        <param argument="n_repeats" type="integer" value="5"/>
+                        <expand macro="random_state"/>
+                        <section name="target_input" title="Target values" expanded="true">
+                            <expand macro="label_input" label="Select the dataset containing target values"/>
+                        </section>
+                    </when>
+                    <when value="GroupKFold">
+                        <expand macro="cv_n_splits"/>
+                        <expand macro="cv_groups" />
+                    </when>
+                    <when value="GroupShuffleSplit">
+                        <expand macro="cv_n_splits" value="5"/>
+                        <expand macro="cv_test_size"/>
+                        <expand macro="random_state"/>
+                        <expand macro="cv_groups"/>
+                    </when>
+                    <when value="LeaveOneGroupOut">
+                        <expand macro="cv_groups"/>
+                    </when>
+                    <when value="LeavePGroupsOut">
+                        <param argument="n_groups" type="integer" value="" label="n_groups" help="Number of groups (p) to leave out in the test split." />
+                        <expand macro="cv_groups"/>
+                    </when>
+                </conditional>
+                <param name="nth_split" type="integer" min="1" value="1" label="Type the index of split to output" help="Split index starts from 1 to  total = n_splits (x n_repeats). (nth_split)"/>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
         <data format="tabular" name="out_train" label="${tool.name} on ${on_string} (train)"/>
@@ -63,21 +179,68 @@
         <test>
             <param name="infile_array" value="regression_X.tabular" ftype="tabular"/>
             <param name="header0" value="true"/>
-            <param name="random_state" value="123"/>
-            <param name="shuffle" value="simple"/>
+            <conditional name="mode_selection">
+                <param name="selected_mode" value="train_test_split"/>
+                <section name="options">
+                    <param name="random_state" value="123"/>
+                    <conditional name="shuffle_selection">
+                        <param name="shuffle" value="simple"/>
+                    </conditional>
+                </section>
+            </conditional>
+            <output name="out_train" file="train_test_split_train01.tabular" ftype="tabular"/>
+            <output name="out_test" file="train_test_split_test01.tabular" ftype="tabular"/>
+        </test>
+         <test>
+            <param name="infile_array" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header0" value="true"/>
+            <conditional name="mode_selection">
+                <param name="selected_mode" value="cv_splitter"/>
+                <conditional name="cv_selector">
+                    <param name="selected_cv" value="ShuffleSplit"/>
+                    <param name="random_state" value="123"/>
+                    <param name="n_splits" value="2"/>
+                    <param name="test_size" value="0.25"/>
+                </conditional>
+            </conditional>
             <output name="out_train" file="train_test_split_train01.tabular" ftype="tabular"/>
             <output name="out_test" file="train_test_split_test01.tabular" ftype="tabular"/>
         </test>
         <test>
             <param name="infile_array" value="imblearn_X.tabular" ftype="tabular"/>
             <param name="header0" value="false"/>
-            <param name="test_size" value="0.2"/>
-            <param name="random_state" value="123"/>
-            <param name="shuffle" value="stratified"/>
-            <conditional name="shuffle_selection">
-                <param name="labels" value="imblearn_y.tabular" ftype="tabular"/>
-                <param name="header1" value="false"/>
-                <param name="col" value="1"/>
+            <conditional name="mode_selection">
+                <param name="selected_mode" value="train_test_split"/>
+                <section name="options">
+                    <param name="test_size" value="0.2"/>
+                    <param name="random_state" value="123"/>
+                    <conditional name="shuffle_selection">
+                        <param name="shuffle" value="stratified"/>
+                        <param name="labels" value="imblearn_y.tabular" ftype="tabular"/>
+                        <param name="header1" value="false"/>
+                        <param name="col" value="1"/>
+                    </conditional>
+                </section>
+            </conditional>
+            <output name="out_train" file="train_test_split_train02.tabular" ftype="tabular"/>
+            <output name="out_test" file="train_test_split_test02.tabular" ftype="tabular"/>
+        </test>
+        <test>
+            <param name="infile_array" value="imblearn_X.tabular" ftype="tabular"/>
+            <param name="header0" value="false"/>
+            <conditional name="mode_selection">
+                <param name="selected_mode" value="cv_splitter"/>
+                <conditional name="cv_selector">
+                    <param name="selected_cv" value="StratifiedShuffleSplit"/>
+                    <param name="random_state" value="123"/>
+                    <param name="test_size" value="0.2"/>
+                    <param name="n_splits" value="1"/>
+                    <section name="target_input">
+                        <param name="labels" value="imblearn_y.tabular" ftype="tabular"/>
+                        <param name="header1" value="false"/>
+                        <param name="col" value="1"/>
+                    </section>
+                </conditional>
             </conditional>
             <output name="out_train" file="train_test_split_train02.tabular" ftype="tabular"/>
             <output name="out_test" file="train_test_split_test02.tabular" ftype="tabular"/>
@@ -85,13 +248,19 @@
         <test>
             <param name="infile_array" value="regression_X.tabular" ftype="tabular"/>
             <param name="header0" value="true"/>
-            <param name="test_size" value="0.2"/>
-            <param name="random_state" value="123"/>
-            <param name="shuffle" value="ordered_target"/>
-            <conditional name="shuffle_selection">
-                <param name="labels" value="regression_y.tabular" ftype="tabular"/>
-                <param name="header1" value="true"/>
-                <param name="col" value="1"/>
+            <conditional name="mode_selection">
+                <param name="selected_mode" value="cv_splitter"/>
+                <conditional name="cv_selector">
+                    <param name="selected_cv" value="OrderedKFold"/>
+                    <param name="random_state" value="123"/>
+                    <param name="shuffle" value="true"/>
+                    <param name="n_splits" value="5"/>
+                    <section name="target_input">
+                        <param name="labels" value="regression_y.tabular" ftype="tabular"/>
+                        <param name="header1" value="true"/>
+                        <param name="col" value="1"/>
+                    </section>
+                </conditional>
             </conditional>
             <output name="out_train" file="train_test_split_train03.tabular" ftype="tabular"/>
             <output name="out_test" file="train_test_split_test03.tabular" ftype="tabular"/>
@@ -99,14 +268,19 @@
     </tests>
     <help><![CDATA[
 **What it does**
-This tool implements `sklearn.model_selection.train_test_split` to split contents (rows) of a table dataset into two subsets for training and test, respectively . It not only supports shuffle split and stratified shuffle split natively carried by the function, but also gets extended to do group shuffle.
+This tool implements splitter function and classes from `sklearn.model_selection` module to split contents (rows) of a table into two subsets for training and test, respectively . The simple train test split mode not only supports shuffle split and stratified shuffle split natively carried by the `train_test_split` function, but also gets extended to do group shuffle. The cross-validation splitter mode supports more diverse splitting strategies. Each tool run outputs one split, train and test. To get different splitting sets, for example, nested CV, multiple tool runs are needed with different `nth_split`.
 
-- train test split
+- Train Test Split mode
     - direct split, no shuffle
     - shuffle split
     - stratified shuffle split
     - group shuffle split
-
+- Cross-Validation Splitter mode
+    - KFold
+    - StratifiedKFold
+    - LeaveOneOut
+    - LeavePOut
+    - ...
 
 Input: a tabular dataset.
 

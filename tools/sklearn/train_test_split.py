@@ -4,11 +4,81 @@ import pandas as pd
 import warnings
 
 from galaxy_ml.model_validations import train_test_split
-from galaxy_ml.model_validations import OrderedKFold
+from galaxy_ml.utils import get_cv, read_columns
+
+
+def _get_single_cv_split(params, array, infile_labels=None,
+                         infile_groups=None):
+    """ output (train, test) sub set from a cv splitter
+
+    Parameters
+    ----------
+    params : dict
+        Galaxy tool inputs
+    array : pandas DataFrame object
+        The target dataset to split
+    infile_labels : str
+        File path to dataset containing target values
+    infile_groups : str
+        File path to dataset containing group values
+    """
+    y = None
+    groups = None
+
+    nth_split = params['mode_selection']['nth_split']
+
+    # read groups
+    if infile_groups:
+        header = 'infer' if (params['mode_selection']['cv_selector']
+                             ['groups_selector']['header_g']) else None
+        column_option = (params['mode_selection']['cv_selector']
+                         ['groups_selector']['column_selector_options_g']
+                         ['selected_column_selector_option_g'])
+        if column_option in ['by_index_number', 'all_but_by_index_number',
+                             'by_header_name', 'all_but_by_header_name']:
+            c = (params['mode_selection']['cv_selector']['groups_selector']
+                 ['column_selector_options_g']['col_g'])
+        else:
+            c = None
+
+        groups = read_columns(infile_groups, c=c, c_option=column_option,
+                              sep='\t', header=header, parse_dates=True)
+        groups = groups.ravel()
+
+        params['mode_selection']['cv_selector']['groups_selector'] = groups
+
+    # read labels
+    if infile_labels:
+        target_input = (params['mode_selection']
+                        ['cv_selector'].pop('target_input'))
+        header = 'infer' if target_input['header1'] else None
+        col_index = target_input['col'][0] - 1
+        df = pd.read_csv(infile_labels, sep='\t', header=header,
+                         parse_dates=True)
+        y = df.iloc[:, col_index].values
+
+    # construct the cv splitter object
+    splitter, groups = get_cv(params['mode_selection']['cv_selector'])
+
+    total_n_splits = splitter.get_n_splits(array.values, y=y, groups=groups)
+    if nth_split > total_n_splits:
+        raise ValueError("Total number of splits is {}, but got `nth_split` "
+                         "= {}".format(total_n_splits, nth_split))
+
+    all_splits = []
+    for train_index, test_index in splitter.split(array.values, y=y, groups=groups):
+        all_splits.append((train_index, test_index))
+
+    train_index, test_index = all_splits[nth_split - 1]
+
+    train = array.iloc[train_index, :]
+    test = array.loc[test_index, :]
+
+    return train, test
 
 
 def main(inputs, infile_array, outfile_train, outfile_test,
-         infile_labels=None):
+         infile_labels=None, infile_groups=None):
     """
     Parameter
     ---------
@@ -20,6 +90,9 @@ def main(inputs, infile_array, outfile_train, outfile_test,
 
     infile_labels : str
         File path to dataset containing labels
+
+    infile_groups : str
+        File path to dataset containing groups
 
     outfile_train : str
         File path to dataset containing train split
@@ -37,34 +110,26 @@ def main(inputs, infile_array, outfile_train, outfile_test,
     array = pd.read_csv(infile_array, sep='\t', header=header,
                         parse_dates=True)
 
-    options = params['options']
-    shuffle_selection = options.pop('shuffle_selection')
-    options['shuffle'] = shuffle_selection['shuffle']
-    if infile_labels:
-        header = 'infer' if shuffle_selection['header1'] else None
-        col_index = shuffle_selection['col'][0] - 1
-        df = pd.read_csv(infile_labels, sep='\t', header=header,
-                         parse_dates=True)
-        labels = df.iloc[:, col_index].values
-        options['labels'] = labels
+    # train test split
+    if params['mode_selection']['selected_mode'] == 'train_test_split':
+        options = params['mode_selection']['options']
+        shuffle_selection = options.pop('shuffle_selection')
+        options['shuffle'] = shuffle_selection['shuffle']
+        if infile_labels:
+            header = 'infer' if shuffle_selection['header1'] else None
+            col_index = shuffle_selection['col'][0] - 1
+            df = pd.read_csv(infile_labels, sep='\t', header=header,
+                             parse_dates=True)
+            labels = df.iloc[:, col_index].values
+            options['labels'] = labels
 
-    if shuffle_selection['shuffle'] == 'ordered_target':
-        test_size = options['test_size']
-        if test_size < 1.0:
-            if test_size > 0.5:
-                raise ValueError("Ordered Target Split only supports "
-                                 "test proportion 0 - 0.5!")
-            n_splits = round(1 / test_size)
-        else:
-            n_samples = array.shape[0]
-            n_splits = round(n_samples / test_size)
-
-        splitter = OrderedKFold(n_splits=n_splits, shuffle=True,
-                                random_state=options['random_state'])
-        train_index, test_index = next(splitter.split(array.values, labels))
-        train, test = array.iloc[train_index, :], array.iloc[test_index, :]
-    else:
         train, test = train_test_split(array, **options)
+
+    # cv splitter
+    else:
+        train, test = _get_single_cv_split(params, array,
+                                           infile_labels=infile_labels,
+                                           infile_groups=infile_groups)
 
     print("Input shape: %s" % repr(array.shape))
     print("Train shape: %s" % repr(train.shape))
@@ -77,10 +142,11 @@ if __name__ == '__main__':
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
     aparser.add_argument("-X", "--infile_array", dest="infile_array")
-    aparser.add_argument("-g", "--infile_labels", dest="infile_labels")
+    aparser.add_argument("-y", "--infile_labels", dest="infile_labels")
+    aparser.add_argument("-g", "--infile_groups", dest="infile_groups")
     aparser.add_argument("-o", "--outfile_train", dest="outfile_train")
     aparser.add_argument("-t", "--outfile_test", dest="outfile_test")
     args = aparser.parse_args()
 
     main(args.inputs, args.infile_array, args.outfile_train,
-         args.outfile_test, args.infile_labels)
+         args.outfile_test, args.infile_labels, args.infile_groups)
