@@ -9,7 +9,7 @@ from galaxy_ml.utils import get_cv, read_columns
 
 def _get_single_cv_split(params, array, infile_labels=None,
                          infile_groups=None):
-    """ output (train, test) sub set from a cv splitter
+    """ output (train, test) subset from a cv splitter
 
     Parameters
     ----------
