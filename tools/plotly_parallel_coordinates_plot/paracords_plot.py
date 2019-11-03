@@ -32,7 +32,7 @@ def main(infile, col_dimensions, categorized, col_color,
         else:
             pattern = col_dimensions.strip()
             col_dimensions = [header for header in df.columns
-                              if re.match(pattern, header)]
+                              if re.search(pattern, header)]
 
     for col_name in col_dimensions:
         values = df[col_name]
