@@ -51,11 +51,13 @@ def main(infile, col_dimensions, categorized, col_color,
         else:
             unique_values = list(set(values))
             unique_values.sort()
+            # cast to str, fix object indexing
+            unique_values = [repr(e) for e in unique_values]
             dimensions.append(
                 dict(   range = [0, len(unique_values)-1],
                         tickvals = list(range(len(unique_values))),
-                        ticktext = [str(e) for e in unique_values],
-                        values = list(map(lambda e: unique_values.index(e), values )),
+                        ticktext = unique_values,
+                        values = list(map(lambda e: unique_values.index(repr(e)), values )),
                         label = col_name)
             )
 
