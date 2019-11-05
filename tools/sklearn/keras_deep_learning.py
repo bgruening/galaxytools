@@ -240,7 +240,7 @@ def config_keras_model(inputs, outfile):
     json_string = model.to_json()
 
     with open(outfile, 'w') as f:
-        f.write(json_string)
+        json.dump(json.loads(json_string), f, indent=2)
 
 
 def build_keras_model(inputs, outfile, model_json, infile_weights=None,
