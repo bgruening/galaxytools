@@ -35,7 +35,7 @@ def mol_supplier(filename, ext):
         return [Chem.inchi.MolFromInchi(mol, sanitize=True) for mol in mols if mol != '']
 
 
-def mordred_descriptors(mols, output, header, use_3d):
+def mordred_descriptors(mols, output, header, use_3d, smi_as_col):
     """
     Calculate Mordred descriptors and save as tabular
     """
@@ -47,6 +47,10 @@ def mordred_descriptors(mols, output, header, use_3d):
         df.iloc[mol] = np.nan
     df = df.applymap(convert_errors_to_nan)  # remove descriptors which errored
     df = df.round(6)
+    if smi_as_col:
+        smiles = [Chem.MolToSmiles(mol) for mol in mols]
+        df['SMILES'] = smiles
+
     df.to_csv(output, na_rep='', sep='\t', index=False, header=header)  # write output
 
 
@@ -65,7 +69,11 @@ if __name__ == "__main__":
     parser.add_argument("--header", dest="header", action="store_true",
                     default=False,
                     help="Write header line.")
+
+    parser.add_argument("--smiles", dest="smiles", action="store_true",
+                    default=False,
+                    help="Add a column with compound SMILES.")
     args = parser.parse_args()
 
     mols = mol_supplier(args.infile, args.iformat)
-    mordred_descriptors(mols, args.outfile, args.header, args.use_3d)
+    mordred_descriptors(mols, args.outfile, args.header, args.use_3d, args.smiles)
