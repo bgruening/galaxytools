@@ -233,7 +233,7 @@ def main():
     REFERENCE_SOURCE_TO_DOWNLOAD[params['param_dict']['reference_source']['reference_source_selector']](data_manager_dict, params, target_directory, database_id, database_name)
 
     # save info to json file
-    open(filename, 'wb').write(json.dumps(data_manager_dict))
+    open(filename, 'w').write(json.dumps(data_manager_dict, sort_keys=True))
 
 
 if __name__ == "__main__":
