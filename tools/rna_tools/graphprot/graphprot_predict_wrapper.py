@@ -1,296 +1,321 @@
-#!/usr/bin/perl
-
-use strict;
-use warnings;
-use Getopt::Long;
-use Pod::Usage;
-use Cwd qw(getcwd abs_path);
-use List::Util qw(sum);
-
-=head1 NAME
-
-=head1 SYNOPSIS
-
-Galaxy wrapper script for GraphProt (-action predict_profile) to compute 
-the binding profile for a given model on a given set of sequences provided 
-in FASTA format. After profile prediction, average profiles get computed, 
-scores signified and binding peak regions extracted. The score signification 
-is done using the provided fitted GEV parameters, either from .params file 
-or manually set. If score threshold is set (-thr-sc), p-value assignment 
-will be skipped and set score threshold will be used to extract peak 
-regions. NOTE: Additional lines .params file are used to store and get 
-GEV parameters, as well as type of model (model_type: sequence|structure).
-Also, this wrapper currently works for classification mode only.
-
-PARAMETERS:
-
-    -help|h         display help page
-    -fasta          Input FASTA file (option -fasta)
-    -model          Input .model file (option -model)
-    -params         Input .params file
-                    NOTE: uses .params file with additional
-                    parameters
-                    Manually set parameters (below) will override 
-                    found settings in .params file
-    -data-id        Data ID (option -prefix)
-
-GraphProt model parameters (by default get from .params file):
-
-    -onlyseq        Set if model is a sequence model
-    -R              GraphProt model R parameter
-    -D              GraphProt model D parameter
-    -epochs         GraphProt model epochs parameter
-    -lambda         GraphProt model lambda parameter
-    -bitsize        GraphProt model bitsize parameter
-    -abstraction    GraphProt model RNAshapes abstraction level 
-                    parameter (set for structure models)
-
-Peak region extraction parameters:
-
-    -thr-sc         Score threshold for extracting peak regions
-                    By default p-value of 0.05 is used. If no p-value 
-                    calculation possible, -thr-sc is used with default: 0
-    -thr-p          p-value threshold for extracting peak regions
-                    By default, peak regions with p = 0.05 are extracted,
-                    as well as p50 score peak regions (if info given)
-                    Default: 0.05
-    -merge-dist     Maximum merge distance for nearby peak regions
-                    Default: report all non-overlapping regions
-    -p50-out        Output p50 score filtered peak regions BED file
-                    default: false
-
-GEV distribution parameters:
-
-    -distr-my       GEV distribution my parameter for calculating p-values
-                    from scores
-    -distr-sigma    GEV distrubution sigma parameter for calculating 
-                    p-values from scores
-    -distr-xi       GEV distribution xi parameter for calculating p-values
-                    from scores
-    -ap-extlr       Used average profile left right extension for 
-                    averaging scores, which were used for distribution 
-                    fitting. NOTE: usually a value of 5 was used for 
-                    for getting GEV distribution and parameters. If you 
-                    choose a different value here, calculated p-values 
-                    will be wrong!
-                    default : 5
+#!/usr/bin/env python3
 
 
-=head1 DISCRIPTION
+from lib import cliplib
+import subprocess
+import argparse
+import shutil
+import gzip
+import sys
+import os
 
-5) Write manual
-6) add output p50 file with NOTE
 
-6) put GP into rna_tools
+"""
 
-NOTE:
-Additional lines .params file used to store and get gev parameters, as well 
-as type of model (model_type: sequence|structure).
+TOOL DEPENDENCIES
+=================
 
-Example .params content:
-epochs: 20
-lambda: 0.001
-R: 1
-D: 4
-bitsize: 14
-model_type: sequence
-#ADDITIONAL MODEL PARAMETERS
-ap_extlr: 5
-gev_my: -2.5408
-gev_sigma: 1.6444
-gev_xi: -0.1383
-p50_score: 6.51534 
-p50_p_val: 0.0009059744 
+GraphProt 1.1.7
+Best install via:
+https://anaconda.org/bioconda/graphprot
+Tested with: miniconda3, conda 4.7.12
 
-=cut
 
-############################
-# COMMAND LINE CHECKING.
-############################
+Script: What's my job this time, master?
+Author: It'll be a though one.
+Script: I take this as a given.
+Author: Oh yeah?
+Script: ... I'm ready.
 
-# Command line argument variables.
-my ($i_help, $i_fasta, $i_model, $i_params, $i_data_id, $i_thr_sc, $i_thr_p, $i_max_merge_dist, $i_p50_out, $i_gp_r, $i_gp_d, $i_gp_epochs, $i_gp_lambda, $i_gp_bitsize, $i_gp_abstr, $i_gp_onlyseq, $i_distr_my, $i_distr_sigma, $i_distr_xi, $i_ap_extlr);
 
-# Parse the command line.
-GetOptions ( "help|h" => \$i_help,
-             "fasta:s" => \$i_fasta,
-             "model:s" => \$i_model,
-             "params:s" => \$i_params,
-             "data-id:s" => \$i_data_id,
-             "thr-sc:f" => \$i_thr_sc,
-             "thr-p:f" => \$i_thr_p,
-             "p50-out" => \$i_p50_out,
-             "merge-dist:i" => \$i_max_merge_dist,
-             "R:i" => \$i_gp_r,
-             "D:i" => \$i_gp_d,
-             "epochs:i" => \$i_gp_epochs,
-             "lambda:f" => \$i_gp_lambda,
-             "bitsize:i" => \$i_gp_bitsize,
-             "abstr:i" => \$i_gp_abstr,
-             "onlyseq" => \$i_gp_onlyseq,
-             "distr-my:f" => \$i_distr_my,
-             "distr-sigma:f" => \$i_distr_sigma,
-             "distr-xi:f" => \$i_distr_xi,
-             "ap-extlr:i" => \$i_ap_extlr ) or pod2usage(1);
+OUTPUT FILES
+============
 
-# Check.
-pod2usage(1) if $i_help;
-($i_fasta and $i_model) or pod2usage "ERROR: -fasta, -model are mandatory";
-if ($i_distr_my or $i_distr_sigma or $i_distr_xi) {
-    ($i_distr_my and $i_distr_sigma and $i_distr_xi) or pod2usage "ERROR: expects all three distribution parameters to be set";
-}
+    data_id.avg_profile
+    data_id.avg_profile.peaks.bed
+--conf-out
+    data_id.avg_profile.p50.peaks.bed
+--gen-site-bed
+    data_id.avg_profile.genomic_peaks.bed
+--conf-out --gen-site-bed
+    data_id.avg_profile.p50.genomic_peaks.bed
+--ws-pred
+    data_id.predictions
+--ws-pred --conf-out
+    data_id.predictions
+    data_id.p50.predictions
 
-#######################
-# SET PARAMETERS.
-#######################
 
-# Prefix.
-my $data_id = "GraphProt";
-if ($i_data_id) {
-    $data_id = $i_data_id;
-}
-my $thr_sc = 0;
-if ($i_thr_sc) {
-    $thr_sc = $i_thr_sc;
-}
-my $thr_p = 0.05;
-if ($i_thr_p) {
-    $thr_p = $i_thr_p;
-}
-my $ap_extlr = 5;
-if ($i_ap_extlr) {
-    $ap_extlr = $i_ap_extlr;
-}
-my $max_merge_dist = 0;
-if ($i_max_merge_dist) {
-    $max_merge_dist = $i_max_merge_dist;
-}
+EXAMPLE CALLS
+=============
 
-# Get parameters from .params file.
-my %params;
-if ($i_params) {
-    open(IN, $i_params) or die "Cannot open $i_params: $!";
-    while(<IN>) {
-        next if ($_ =~ /^#/);
-        if ($_ =~ /(.+):\s(.+)/) {
-            $params{$1} = $2;
-        }
-    }
-    close IN;
-}
+python graphprot_predict_wrapper.py --model test2.model --params test2.params --fasta gp_data/test10_predict.fa --data-id test2pred --gp-output
+python graphprot_predict_wrapper.py --model test2.model --params test2.params --fasta gp_data/test10_predict.fa --data-id test2pred --gen-site-bed gp_data/test10_predict.bed
+python graphprot_predict_wrapper.py --model test2.model --params test2.params --fasta gp_data/test10_predict.fa --data-id test2pred --gen-site-bed gp_data/test10_predict.bed --conf-out
+python graphprot_predict_wrapper.py --model test2.model --params test2.params --fasta gp_data/test10_predict.fa --data-id test2pred --conf-out --ws-pred
 
-# Create GP parameter string.
-my $params_string = "";
-# -onlyseq
-my $model_type = "structure";
-if (exists $params{"model_type"}) {
-    if ($params{"model_type"} eq "sequence") {
-        $params_string .= " -onlyseq";
-        $model_type = "sequence";
-    }
-} elsif ($i_gp_onlyseq) {
-    $params_string .= " -onlyseq";
-    $model_type = "sequence";
-}
-# -R
-if ($i_gp_r) {
-    $params_string .= " -R $i_gp_r";
-} elsif (exists $params{"R"}) {
-    my $v = $params{"R"};
-    $params_string .= " -R $v";
-} else {
-    die "ERROR: -R needs to be set";
-}
-# -D
-if ($i_gp_d) {
-    $params_string .= " -D $i_gp_d";
-} elsif (exists $params{"D"}) {
-    my $v = $params{"D"};
-    $params_string .= " -D $v";
-} else {
-    die "ERROR: -D needs to be set";
-}
-# -epochs
-if ($i_gp_epochs) {
-    $params_string .= " -epochs $i_gp_epochs";
-} elsif (exists $params{"epochs"}) {
-    my $v = $params{"epochs"};
-    $params_string .= " -epochs $v";
-} else {
-    die "ERROR: -epochs needs to be set";
-}
-# -lambda
-if ($i_gp_lambda) {
-    $params_string .= " -lambda $i_gp_lambda";
-} elsif (exists $params{"lambda"}) {
-    my $v = $params{"lambda"};
-    $params_string .= " -lambda $v";
-} else {
-    die "ERROR: -lambda needs to be set";
-}
-# -bitsize
-if ($i_gp_bitsize) {
-    $params_string .= " -bitsize $i_gp_bitsize";
-} elsif (exists $params{"bitsize"}) {
-    my $v = $params{"bitsize"};
-    $params_string .= " -bitsize $v";
-} else {
-    die "ERROR: -bitsize needs to be set";
-}
-# -abstraction
-if ($i_gp_abstr) {
-    $params_string .= " -bitsize $i_gp_abstr";
-    die "ERROR: -abstraction set with -onlyseq" unless ($model_type eq "structure");
-} elsif (exists $params{"abstraction"}) {
-    my $v = $params{"abstraction"};
-    $params_string .= " -abstraction $v";
-    die "ERROR: -abstraction set with -onlyseq" unless ($model_type eq "structure");
-}
 
-# Distribution parameters.
-my ($distr_my, $distr_sigma, $distr_xi);
-if ($i_distr_my) {
-    $distr_my = $i_distr_my;
-} elsif (exists $params{"gev_my"}) {
-    $distr_my = $params{"gev_my"};
-}
-if ($i_distr_sigma) {
-    $distr_sigma = $i_distr_sigma;
-} elsif (exists $params{"gev_sigma"}) {
-    $distr_sigma = $params{"gev_sigma"};
-}
-if ($i_distr_xi) {
-    $distr_xi = $i_distr_xi;
-} elsif (exists $params{"gev_xi"}) {
-    $distr_xi = $params{"gev_xi"};
-}
-# Average profile extension parameter.
-if (exists $params{"ap_extlr"}) {
-    $ap_extlr = $params{"ap_extlr"};
-}
+"""
 
-print STDOUT "model_type:     $model_type\n";
-print STDOUT "ap_extlr:       $ap_extlr\n";
+################################################################################
 
-if ($distr_my and $distr_sigma and $distr_xi) {
-    print STDOUT "distr_my:       $distr_my\n";
-    print STDOUT "distr_sigma:    $distr_sigma\n";
-    print STDOUT "distr_xi:       $distr_xi\n";
-}
-print STDOUT "max_merge_dist: $max_merge_dist\n";
+def setup_argument_parser():
+    """Setup argparse parser."""
+    help_description = """
+    Galaxy wrapper script for GraphProt (-action predict and -action 
+    predict_profile) to compute whole site or position-wise scores for input 
+    FASTA sequences.
+    By default, profile predictions are calculated, followed by average 
+    profiles computions and peak regions extraction from average profiles.
+    If --ws-pred is set, whole site score predictions on input sequences
+    will be run instead.
+    If --conf-out is set, sites or peak regions with a score >= the median 
+    score of positive training sites will be output.
+    If --gen-site-bed .bed file is provided, peak regions will be output 
+    with genomic coordinates too.
 
-# p50 filter score.
-my $p50_sc;
-if (exists $params{"p50_score"}) {
-    $p50_sc = $params{"p50_score"};
-    print STDOUT "p50_score:      $p50_sc\n";
-}
-# p50 p-value.
-my $p50_p;
-if (exists $params{"p50_p_val"}) {
-    $p50_p = $params{"p50_p_val"};
-    print STDOUT "p50_p_val:      $p50_p\n";
-}
+    """
+    # Define argument parser.
+    p = argparse.ArgumentParser(add_help=False,
+                                prog="graphprot_predict_wrapper.py",
+                                description=help_description,
+                                formatter_class=argparse.MetavarTypeHelpFormatter)
+
+    # Argument groups.
+    p_man = p.add_argument_group("MANDATORY ARGUMENTS")
+    p_opt = p.add_argument_group("OPTIONAL ARGUMENTS")
+
+    # Required arguments.
+    p_opt.add_argument("-h", "--help",
+           action="help",
+           help="Print help message")
+    p_man.add_argument("--fasta",
+           dest="in_fa",
+           type=str,
+           required = True,
+           help = "Sequences .fa file to predict on (option -fasta)")
+    p_man.add_argument("--model",
+           dest="in_model",
+           type=str,
+           required = True,
+           help = "GraphProt model file to use for predictions (option -model)")
+    p_man.add_argument("--params",
+           dest="in_params",
+           type=str,
+           required = True,
+           help = "Parameter file for given model")
+    p_man.add_argument("--data-id",
+           dest="data_id",
+           type=str,
+           required = True,
+           help = "Data ID (option -prefix)")
+    # ---> I'm  a conditional argument <---
+    p_opt.add_argument("--ws-pred",
+           dest = "ws_pred",
+           default = False,
+           action = "store_true",
+           help = "Run a whole site prediction instead of calculating profiles (default: false)")
+    # Additional arguments.
+    p_opt.add_argument("--sc-thr",
+           dest="score_thr",
+           type = float,
+           default = 0,
+           choices = [0,1,2,3,4,5,6,7,8,9,10],
+           help = "Score threshold for extracting peak regions (default: 0)")
+    p_opt.add_argument("--max-merge-dist",
+           dest="max_merge_dist",
+           type = int,
+           default = 0,
+           help = "Maximum merge distance for nearby peak regions (default: report all non-overlapping regions)")
+    p_opt.add_argument("--gen-site-bed",
+           dest="genomic_sites_bed",
+           type=str,
+           help = ".bed file specifying the genomic regions of the input .fa sequences. Corrupt .bed information will be punished (default: false)")
+    p_opt.add_argument("--conf-out",
+           dest="conf_out",
+           default = False,
+           action = "store_true",
+           help = "Output filtered peak regions BED file or predictions file (if --ws-pred) using the median positive training site score for filtering (default: false)")
+    p_opt.add_argument("--gp-output",
+           dest = "gp_output",
+           default = False,
+           action = "store_true",
+           help = "Print output produced by GraphProt (default: false)")
+    p_opt.add_argument("--ap-extlr",
+           dest="ap_extlr",
+           type = int,
+           default = 5,
+           choices = [1,2,3,4,5,6,7,8,9,10],
+           help = "Define average profile up- and downstream extension to produce the average profile. The mean over small sequence windows (window length = --ap-extlr*2 + 1) is used to get position scores, thus the average profile is more smooth than the initial profile output by GraphProt (default: 5)")
+    return p
+
+
+################################################################################
+
+if __name__ == '__main__':
+
+    # Setup argparse.
+    parser = setup_argument_parser()
+    # Read in command line arguments.
+    args = parser.parse_args()
+    
+    """
+    Do all sorts of sanity checking.
+    
+    """
+    # Check for Linux.
+    assert "linux" in sys.platform, "please use Linux"
+    # Check tool availability.
+    assert cliplib.is_tool("GraphProt.pl"), "GraphProt.pl not in PATH"
+    # Check file inputs.
+    assert os.path.exists(args.in_fa), "input .fa file \"%s\" not found" %(args.in_fa)
+    assert os.path.exists(args.in_model), "input .model file \"%s\" not found" %(args.in_model)
+    assert os.path.exists(args.in_params), "input .params file \"%s\" not found" %(args.in_params)
+    # Count .fa entries.
+    c_in_fa = cliplib.count_fasta_headers(args.in_fa)
+    assert c_in_fa, "input .fa file \"%s\" no headers found" %(args.in_fa)
+    print("# input .fa sequences:   %i" %(c_in_fa))
+    # Read in FASTA sequences to check for uppercase sequences.
+    seqs_dic = cliplib.read_fasta_into_dic(args.in_fa)
+    c_uc_nt = cliplib.seqs_dic_count_uc_nts(seqs_dic)
+    assert c_uc_nt, "no uppercase nucleotides in input .fa sequences. Please change sequences to uppercase (keep in mind GraphProt only scores uppercase regions (according to its viewpoint concept))"
+    if not args.ws_pred:
+        # Check for lowercase sequences.
+        c_lc_nt = cliplib.seqs_dic_count_lc_nts(seqs_dic)
+        assert not c_lc_nt, "lowercase nucleotides not allowed in profile predictions, since GraphProt only scores uppercase regions (according to its viewpoint concept))"
+    # Check .bed.
+    if args.genomic_sites_bed:
+        # An array of checks, marvelous.
+        assert os.path.exists(args.genomic_sites_bed), "genomic .bed file \"%s\" not found" %(args.genomic_sites_bed)
+        # Check .bed for content.
+        assert cliplib.count_file_rows(args.genomic_sites_bed), "genomic .bed file \"%s\" is empty" %(args.genomic_sites_bed)
+        # Check .bed for 6-column format.
+        assert cliplib.bed_check_six_col_format(args.genomic_sites_bed), "genomic .bed file \"%s\" appears to not be in 6-column .bed format" %(args.genomic_sites_bed)
+        # Check for unique column 4 IDs.
+        assert cliplib.bed_check_unique_ids(args.genomic_sites_bed), "genomic .bed file \"%s\" column 4 IDs not unique" %(args.genomic_sites_bed)
+        # Read in .bed regions, compare to FASTA sequences (compare IDs + lengths)
+        seq_len_dic = cliplib.get_seq_lengths_from_seqs_dic(seqs_dic)
+        reg_len_dic = cliplib.bed_get_region_lengths(args.genomic_sites_bed)
+        for seq_id in seq_len_dic:
+            seq_l = seq_len_dic[seq_id]
+            assert seq_id in reg_len_dic, "sequence ID \"\" missing in input .bed \"\"" %(seq_id, args.genomic_sites_bed)
+            reg_l = reg_len_dic[seq_id]
+            assert seq_l == reg_l, "sequence length differs from .bed region length (%i != %i)" %(seq_l, reg_l)
+    # Read in model parameters.
+    param_dic = cliplib.graphprot_get_param_dic(args.in_params)
+    # Create GraphProt parameter string.
+    param_string = cliplib.graphprot_get_param_string(args.in_params)
+
+    """
+    Run predictions.
+    
+    """
+    if args.ws_pred:
+        # Do whole site prediction.
+        print("Starting whole site predictions on input .fa file (-action predict) ... ")
+        check_cmd = "GraphProt.pl -action predict -prefix " + args.data_id + " -fasta " + args.in_fa + " " + param_string + " -model " + args.in_model
+        output = subprocess.getoutput(check_cmd)
+        assert output, "the following call of GraphProt.pl produced no output:\n%s" %(check_cmd)
+        if args.gp_output:
+            print(output)
+        ws_predictions_file = args.data_id + ".predictions"
+        assert os.path.exists(ws_predictions_file), "Whole site prediction output .predictions file \"%s\" not found" %(ws_predictions_file)
+        if args.conf_out:
+            # Filter by pos_train_ws_pred_median median.
+            assert "pos_train_ws_pred_median" in param_dic, "whole site top scores median information missing in .params file"
+            pos_train_ws_pred_median = float(param_dic["pos_train_ws_pred_median"])
+            # Filtered file.
+            filt_ws_predictions_file = args.data_id + ".p50.predictions"
+            print("Extracting p50 sites from whole site predictions (score threshold = %f) ... " %(pos_train_ws_pred_median))
+            cliplib.graphprot_filter_predictions_file(ws_predictions_file, filt_ws_predictions_file,
+                                                      sc_thr=pos_train_ws_pred_median)
+    else:
+        # Do profile prediction.
+        print("Starting profile predictions on on input .fa file (-action predict_profile) ... ")
+        check_cmd = "GraphProt.pl -action predict_profile -prefix " + args.data_id + " -fasta " + args.in_fa + " " + param_string + " -model " + args.in_model
+        output = subprocess.getoutput(check_cmd)
+        assert output, "the following call of GraphProt.pl produced no output:\n%s" %(check_cmd)
+        if args.gp_output:
+            print(output)
+        profile_predictions_file = args.data_id + ".profile"
+        assert os.path.exists(profile_predictions_file), "Profile prediction output .profile file \"%s\" not found" %(profile_predictions_file)
+        # Get sequence IDs in order from input .fa file.
+        seq_ids_list = cliplib.fasta_read_in_ids(args.in_fa)
+        # Calculate average profiles.
+        print("Getting average profile from profile (extlr for smoothing: %i) ... " %(args.ap_extlr))
+        avg_prof_file = args.data_id + ".avg_profile"
+        cliplib.graphprot_profile_calculate_avg_profile(profile_predictions_file,
+                                                        avg_prof_file,
+                                                        ap_extlr=args.ap_extlr,
+                                                        seq_ids_list=seq_ids_list,
+                                                        method=2)
+        # Extract peak regions on sequences with threshold score 0.
+        avg_prof_peaks_file = args.data_id + ".avg_profile.peaks.bed"
+        print("Extracting peak regions from average profile (score threshold = 0) ... ")
+        cliplib.graphprot_profile_extract_peak_regions(avg_prof_file, avg_prof_peaks_file,
+                                               max_merge_dist=0,
+                                               sc_thr=args.score_thr)
+        # Convert peaks to genomic coordinates.
+        if args.genomic_sites_bed:
+            avg_prof_gen_peaks_file = args.data_id + ".avg_profile.genomic_peaks.bed"
+            print("Converting peak regions to genomic coordinates ... ")
+            cliplib.bed_peaks_to_genomic_peaks(avg_prof_peaks_file, avg_prof_gen_peaks_file,
+                                               genomic_sites_bed=args.genomic_sites_bed)
+        # Extract peak regions with threshold score p50.
+        if args.conf_out:
+            sc_id = "pos_train_avg_profile_median_%i" %(args.ap_extlr)
+            # Filter by pos_train_ws_pred_median median.
+            assert sc_id in param_dic, "average profile extlr %i median information missing in .params file" %(args.ap_extlr)
+            p50_sc_thr = float(param_dic[sc_id])
+            avg_prof_peaks_p50_file = args.data_id + ".avg_profile.p50.peaks.bed"
+            print("Extracting p50 peak regions from average profile (score threshold = %f) ... " %(p50_sc_thr))
+            cliplib.graphprot_profile_extract_peak_regions(avg_prof_file, avg_prof_peaks_p50_file,
+                                                           max_merge_dist=0,
+                                                           sc_thr=p50_sc_thr)
+            # Convert peaks to genomic coordinates.
+            if args.genomic_sites_bed:
+                avg_prof_gen_peaks_p50_file = args.data_id + ".avg_profile.p50.genomic_peaks.bed"
+                print("Converting p50 peak regions to genomic coordinates ... ")
+                cliplib.bed_peaks_to_genomic_peaks(avg_prof_peaks_p50_file, avg_prof_gen_peaks_p50_file,
+                                                   genomic_sites_bed=args.genomic_sites_bed)
+
+    print("Script: I'm done.")
+    print("Author: ... ")
+
+
+
+
+
+"""
+
+    p.add_argument("--seq-uc",
+                   dest = "seq_uc",
+                   default = False,
+                   action = "store_true",
+                   help = "Convert input sequences to uppercase (default: false)")
+
+SERBP1_K562_rep01_939	1	1.30147
+SERBP1_K562_rep01_2175	1	0.621339
+SERBP1_K562_rep01_1370	-1	-0.707584
+SERBP1_K562_rep01_544	1	0.975721
+SERBP1_K562_rep01_1221	1	1.27005
+SERBP1_K562_rep02_996	1	1.4934
+
+
+    Example .params content:
+    epochs: 30
+    lambda: 0.001
+    R: 1
+    D: 4
+    bitsize: 14
+    model_type: sequence
+    pos_train_ws_pred_median: 1.033690
+    pos_train_profile_median: 8.680340
+    pos_train_avg_profile_median: 4.027981
+    avg_profile_extlr: 5
+
+
+
 
 
 
@@ -450,7 +475,6 @@ qx/rm -f $profile/;
 #########################
 # GET PEAK REGIONS.
 #########################
-
 
 my $p50_peaks_bed_out = $data_id . ".peak_regions_p50.bed";
 my $peaks_bed_out = $data_id . ".peak_regions.bed";
@@ -760,5 +784,6 @@ sub extract_peak_regions_from_scores {
 
 ################################################################################
 
+"""
 
 
