@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 
-
-from lib import cliplib
 import subprocess
 import argparse
 import shutil
+import gplib
 import gzip
 import sys
 import os
@@ -23,6 +22,7 @@ Tested with: miniconda3, conda 4.7.12
 
 OUTPUT FILES
 ============
+
     data_id.model
     data_id.params
 if not --disable-cv:
@@ -57,6 +57,8 @@ python graphprot_train_wrapper.py --pos gp_data/SERBP1_positives.train.fa --neg 
 
 python graphprot_train_wrapper.py --pos gp_data/SERBP1_positives.train.fa --neg gp_data/SERBP1_negatives.train.fa --data-id test2 --disable-cv --opt-set-size 100 --min-train 200
 
+python graphprot_train_wrapper.py --pos test-data/test_positives.train.fa --neg test-data/test_negatives.train.fa --data-id gptest2 --disable-cv --disable-motifs --opt-pos test-data/test_positives.parop.fa --opt-neg test-data/test_negatives.parop.fa
+
 
 """
 
@@ -88,7 +90,7 @@ def setup_argument_parser():
                                 formatter_class=argparse.MetavarTypeHelpFormatter)
 
     # Argument groups.
-    p_man = p.add_argument_group("MANDATORY ARGUMENTS")
+    p_man = p.add_argument_group("REQUIRED ARGUMENTS")
     p_opt = p.add_argument_group("OPTIONAL ARGUMENTS")
 
     # Required arguments.
@@ -168,13 +170,13 @@ if __name__ == '__main__':
     # Check for Linux.
     assert "linux" in sys.platform, "please use Linux"
     # Check tool availability.
-    assert cliplib.is_tool("GraphProt.pl"), "GraphProt.pl not in PATH"
+    assert gplib.is_tool("GraphProt.pl"), "GraphProt.pl not in PATH"
     # Check file inputs.
     assert os.path.exists(args.in_pos_fa), "positives .fa file \"%s\" not found" %(args.in_pos_fa)
     assert os.path.exists(args.in_neg_fa), "negatives .fa file \"%s\" not found" %(args.in_neg_fa)
     # Count .fa entries.
-    c_pos_fa = cliplib.count_fasta_headers(args.in_pos_fa)
-    c_neg_fa = cliplib.count_fasta_headers(args.in_neg_fa)
+    c_pos_fa = gplib.count_fasta_headers(args.in_pos_fa)
+    c_neg_fa = gplib.count_fasta_headers(args.in_neg_fa)
     assert c_pos_fa, "positives .fa file \"%s\" no headers found" %(args.in_pos_fa)
     assert c_neg_fa, "negatives .fa file \"%s\" no headers found" %(args.in_neg_fa)
     print("# positive .fa sequences:   %i" %(c_pos_fa))
@@ -186,13 +188,13 @@ if __name__ == '__main__':
         assert args.opt_pos_fa, "--opt-neg but no --opt-pos given"
     # If parop .fa files given.
     if args.opt_pos_fa and args.opt_neg_fa:
-        c_parop_pos_fa = cliplib.count_fasta_headers(args.opt_pos_fa)
-        c_parop_neg_fa = cliplib.count_fasta_headers(args.opt_neg_fa)
+        c_parop_pos_fa = gplib.count_fasta_headers(args.opt_pos_fa)
+        c_parop_neg_fa = gplib.count_fasta_headers(args.opt_neg_fa)
         assert c_parop_pos_fa, "--opt-pos .fa file \"%s\" no headers found" %(args.opt_pos_fa)
         assert c_parop_neg_fa, "--opt-neg .fa file \"%s\" no headers found" %(args.opt_neg_fa)
         # Less than 500 for training?? You gotta be kidding.
-        assert c_pos_train >= args.min_train, "--pos for training < %i, please provide more (try at least > 1000, the more the better)" %(args.min_train)
-        assert c_neg_train >= args.min_train, "--neg for training < %i, please provide more (try at least > 1000, the more the better)" %(args.min_train)
+        assert c_pos_fa >= args.min_train, "--pos for training < %i, please provide more (try at least > 1000, the more the better)" %(args.min_train)
+        assert c_neg_fa >= args.min_train, "--neg for training < %i, please provide more (try at least > 1000, the more the better)" %(args.min_train)
         # Looking closer at ratios.
         pos_neg_ratio = c_parop_pos_fa / c_parop_neg_fa
         if pos_neg_ratio < 0.8 or pos_neg_ratio > 1.25:
@@ -227,15 +229,15 @@ if __name__ == '__main__':
     # If parop .fa files given.
     if args.opt_pos_fa and args.opt_neg_fa:
         # Just copy parop and train files.
-        cliplib.make_file_copy(args.opt_pos_fa, pos_parop_fa)
-        cliplib.make_file_copy(args.opt_neg_fa, neg_parop_fa)
-        cliplib.make_file_copy(args.in_pos_fa, pos_train_fa)
-        cliplib.make_file_copy(args.in_neg_fa, neg_train_fa)
+        gplib.make_file_copy(args.opt_pos_fa, pos_parop_fa)
+        gplib.make_file_copy(args.opt_neg_fa, neg_parop_fa)
+        gplib.make_file_copy(args.in_pos_fa, pos_train_fa)
+        gplib.make_file_copy(args.in_neg_fa, neg_train_fa)
     else:
         # Generate parop + train .fa files from input .fa files.
-        cliplib.split_fasta_into_test_train_files(args.in_pos_fa, pos_parop_fa, pos_train_fa,
+        gplib.split_fasta_into_test_train_files(args.in_pos_fa, pos_parop_fa, pos_train_fa,
                                                   test_size=args.opt_set_size)
-        cliplib.split_fasta_into_test_train_files(args.in_neg_fa, neg_parop_fa, neg_train_fa,
+        gplib.split_fasta_into_test_train_files(args.in_neg_fa, neg_parop_fa, neg_train_fa,
                                                   test_size=args.opt_set_size)
 
     """
@@ -256,11 +258,11 @@ if __name__ == '__main__':
     assert os.path.exists(params_file), "Hyperparameter optimization output .params file \"%s\" not found" %(params_file)
     # Add model type to params file.
     if args.train_str_model:
-        cliplib.echo_add_to_file("model_type: structure", params_file)
+        gplib.echo_add_to_file("model_type: structure", params_file)
     else:
-        cliplib.echo_add_to_file("model_type: sequence", params_file)
+        gplib.echo_add_to_file("model_type: sequence", params_file)
     # Get parameter string.
-    param_string = cliplib.graphprot_get_param_string(params_file)
+    param_string = gplib.graphprot_get_param_string(params_file)
 
     """
     Do the model training. (Yowza!)
@@ -351,23 +353,23 @@ if __name__ == '__main__':
     print("Getting .profile and .predictions median scores ... ")
 
     # Whole site scores median.
-    ws_pred_median = cliplib.graphprot_predictions_get_median(ws_predictions_file)
+    ws_pred_median = gplib.graphprot_predictions_get_median(ws_predictions_file)
     # Profile top site scores median.
-    profile_median = cliplib.graphprot_profile_get_top_scores_median(profile_predictions_file, 
+    profile_median = gplib.graphprot_profile_get_top_scores_median(profile_predictions_file, 
                                                                      profile_type="profile")
     ws_pred_string = "pos_train_ws_pred_median: %f" %(ws_pred_median)
     profile_string = "pos_train_profile_median: %f" %(profile_median)
-    cliplib.echo_add_to_file(ws_pred_string, params_file)
-    cliplib.echo_add_to_file(profile_string, params_file)
+    gplib.echo_add_to_file(ws_pred_string, params_file)
+    gplib.echo_add_to_file(profile_string, params_file)
     # Average profile top site scores median for extlr 1 to 10.
     for i in range(10):
         i += 1
-        avg_profile_median = cliplib.graphprot_profile_get_top_scores_median(profile_predictions_file,
+        avg_profile_median = gplib.graphprot_profile_get_top_scores_median(profile_predictions_file,
                                                                              profile_type="avg_profile",
                                                                              avg_profile_extlr=i)
                                                                         
         avg_profile_string = "pos_train_avg_profile_median_%i: %f" %(i, avg_profile_median)
-        cliplib.echo_add_to_file(avg_profile_string, params_file)
+        gplib.echo_add_to_file(avg_profile_string, params_file)
 
     print("Script: I'm done.")
     print("Author: Good. Now go back to your file system directory.")
@@ -375,10 +377,8 @@ if __name__ == '__main__':
 
 
 """
-OLD CODE:
 
-Do it for:
-1 to 10
+OLD CODE ...
 
     p.add_argument("--ap-extlr",
                    dest="ap_extlr",
@@ -386,16 +386,6 @@ Do it for:
                    default = 5,
                    help = "Define average profile up- and downstream extension for averaging scores to produce the average profile. This is used to get the median average profile score, which will be stored in the .params file to later be used in a prediction setting as a second filter value to get more confident peak regions. NOTE that you have to use the same value in model training and prediction! (default: 5)")
 
-
-    # Check input parameters.
-    if args.disable_opt:
-        if args.train_str_model:
-            assert args.param_abstraction, "--disable-opt and --str-model is set, but not --abstraction"
-        assert args.param_r, "ERROR: --disable-opt is set, but not --R"
-        assert args.param_d, "ERROR: --disable-opt is set, but not --D"
-        assert args.param_epochs, "ERROR: --disable-opt is set, but not --epochs"
-        assert args.param_lambda, "ERROR: --disable-opt is set, but not --lambda"
-        assert args.param_bitsize, "ERROR: --disable-opt is set, but not --bitsize"
 
     p.add_argument("--disable-opt",
                    dest = "disable_opt",
@@ -432,6 +422,7 @@ Do it for:
                    type = int,
                    default = False,
                    help = "GraphProt model RNAshapes abstraction level parameter for training structure models (default: determined by HPO)")
+
 """
 
 
