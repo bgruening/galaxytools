@@ -53,14 +53,14 @@ python graphprot_predict_wrapper.py --model test2.model --params test2.params --
 python graphprot_predict_wrapper.py --model test2.model --params test2.params --fasta gp_data/test10_predict.fa --data-id test2pred --gen-site-bed gp_data/test10_predict.bed --conf-out
 python graphprot_predict_wrapper.py --model test2.model --params test2.params --fasta gp_data/test10_predict.fa --data-id test2pred --conf-out --ws-pred
 
-
 python graphprot_predict_wrapper.py --model test-data/test.model --params test-data/test.params --fasta test-data/test_predict.fa --data-id predtest
 
-python graphprot_predict_wrapper.py --model test-data/test.model --params test-data/test.params --fasta test-data/test_predict.fa --data-id predtest --gen-site-bed test-data/test_predict.bed
+python graphprot_predict_wrapper.py --model test-data/test.model --params test-data/test.params --fasta test-data/test_predict.fa --data-id predtest --gen-site-bed test-data/test_predict.bed --sc-thr 0.0 --max-merge-dist 0 --conf-out  --ap-extlr 5
 
---gen-site-bed test-data/test_predict.bed
+python graphprot_predict_wrapper.py --data-id GraphProt --fasta test-data/test_predict.fa --model test-data/test.model --params test-data/test.params --gen-site-bed test-data/test_predict.bed --sc-thr 0.0 --max-merge-dist 0 --conf-out  --ap-extlr 5
 
-python graphprot_train_wrapper.py --pos test-data/test_positives.train.fa --neg test-data/test_negatives.train.fa --data-id gptest2 --disable-cv --disable-motifs --opt-pos test-data/test_positives.parop.fa --opt-neg test-data/test_negatives.parop.fa
+
+pwd && python '/home/uhlm/Dokumente/Projekte/GraphProt_galaxy_new/galaxytools/tools/rna_tools/graphprot/graphprot_predict_wrapper.py' --data-id GraphProt --fasta /tmp/tmpmuslpc1h/files/0/8/c/dataset_08c48d88-e3b5-423b-acf6-bf89b8c60660.dat --model /tmp/tmpmuslpc1h/files/e/6/4/dataset_e6471bb4-e74c-4372-bc49-656f900e7191.dat --params /tmp/tmpmuslpc1h/files/b/6/5/dataset_b65e8cf4-d3e6-429e-8d57-1d401adf4b3c.dat --gen-site-bed /tmp/tmpmuslpc1h/files/5/1/a/dataset_51a38b65-5943-472d-853e-5d845fa8ac3e.dat --sc-thr 0.0 --max-merge-dist 0 --conf-out  --ap-extlr 5
 
 
 """
@@ -247,45 +247,50 @@ if __name__ == '__main__':
             print(output)
         profile_predictions_file = args.data_id + ".profile"
         assert os.path.exists(profile_predictions_file), "Profile prediction output .profile file \"%s\" not found" %(profile_predictions_file)
+
+        # Profile prediction output files.
+        avg_prof_file = args.data_id + ".avg_profile"
+        avg_prof_peaks_file = args.data_id + ".avg_profile.peaks.bed"
+        avg_prof_gen_peaks_file = args.data_id + ".avg_profile.genomic_peaks.bed"
+        avg_prof_peaks_p50_file = args.data_id + ".avg_profile.p50.peaks.bed"
+        avg_prof_gen_peaks_p50_file = args.data_id + ".avg_profile.p50.genomic_peaks.bed"
+
         # Get sequence IDs in order from input .fa file.
         seq_ids_list = gplib.fasta_read_in_ids(args.in_fa)
         # Calculate average profiles.
         print("Getting average profile from profile (extlr for smoothing: %i) ... " %(args.ap_extlr))
-        avg_prof_file = args.data_id + ".avg_profile"
         gplib.graphprot_profile_calculate_avg_profile(profile_predictions_file,
-                                                        avg_prof_file,
-                                                        ap_extlr=args.ap_extlr,
-                                                        seq_ids_list=seq_ids_list,
-                                                        method=2)
+                                                      avg_prof_file,
+                                                      ap_extlr=args.ap_extlr,
+                                                      seq_ids_list=seq_ids_list,
+                                                      method=2)
         # Extract peak regions on sequences with threshold score 0.
-        avg_prof_peaks_file = args.data_id + ".avg_profile.peaks.bed"
         print("Extracting peak regions from average profile (score threshold = 0) ... ")
         gplib.graphprot_profile_extract_peak_regions(avg_prof_file, avg_prof_peaks_file,
-                                               max_merge_dist=0,
+                                               max_merge_dist=args.max_merge_dist,
                                                sc_thr=args.score_thr)
         # Convert peaks to genomic coordinates.
         if args.genomic_sites_bed:
-            avg_prof_gen_peaks_file = args.data_id + ".avg_profile.genomic_peaks.bed"
             print("Converting peak regions to genomic coordinates ... ")
             gplib.bed_peaks_to_genomic_peaks(avg_prof_peaks_file, avg_prof_gen_peaks_file,
-                                               genomic_sites_bed=args.genomic_sites_bed)
+                                             print_rows=False,
+                                             genomic_sites_bed=args.genomic_sites_bed)
+            # gplib.make_file_copy(avg_prof_gen_peaks_file, avg_prof_peaks_file)
         # Extract peak regions with threshold score p50.
         if args.conf_out:
             sc_id = "pos_train_avg_profile_median_%i" %(args.ap_extlr)
             # Filter by pos_train_ws_pred_median median.
             assert sc_id in param_dic, "average profile extlr %i median information missing in .params file" %(args.ap_extlr)
             p50_sc_thr = float(param_dic[sc_id])
-            avg_prof_peaks_p50_file = args.data_id + ".avg_profile.p50.peaks.bed"
             print("Extracting p50 peak regions from average profile (score threshold = %f) ... " %(p50_sc_thr))
             gplib.graphprot_profile_extract_peak_regions(avg_prof_file, avg_prof_peaks_p50_file,
-                                                           max_merge_dist=0,
-                                                           sc_thr=p50_sc_thr)
+                                                         max_merge_dist=args.max_merge_dist,
+                                                         sc_thr=p50_sc_thr)
             # Convert peaks to genomic coordinates.
             if args.genomic_sites_bed:
-                avg_prof_gen_peaks_p50_file = args.data_id + ".avg_profile.p50.genomic_peaks.bed"
                 print("Converting p50 peak regions to genomic coordinates ... ")
                 gplib.bed_peaks_to_genomic_peaks(avg_prof_peaks_p50_file, avg_prof_gen_peaks_p50_file,
-                                                   genomic_sites_bed=args.genomic_sites_bed)
+                                                 genomic_sites_bed=args.genomic_sites_bed)
     # Done.
     print("Script: I'm done.")
     print("Author: ... ")

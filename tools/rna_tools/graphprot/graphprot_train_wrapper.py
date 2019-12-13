@@ -57,6 +57,8 @@ python graphprot_train_wrapper.py --pos gp_data/SERBP1_positives.train.fa --neg 
 
 python graphprot_train_wrapper.py --pos gp_data/SERBP1_positives.train.fa --neg gp_data/SERBP1_negatives.train.fa --data-id test2 --disable-cv --opt-set-size 100 --min-train 200
 
+python graphprot_train_wrapper.py --pos test-data/test_positives.train.fa --neg test-data/test_negatives.train.fa --data-id gptest2 --disable-cv --opt-pos test-data/test_positives.parop.fa --opt-neg test-data/test_negatives.parop.fa
+
 python graphprot_train_wrapper.py --pos test-data/test_positives.train.fa --neg test-data/test_negatives.train.fa --data-id gptest2 --disable-cv --disable-motifs --opt-pos test-data/test_positives.parop.fa --opt-neg test-data/test_negatives.parop.fa
 
 
