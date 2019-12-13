@@ -8,22 +8,19 @@ import pickle
 import warnings
 from itertools import chain
 from scipy.io import mmread
-from sklearn.base import clone
-from sklearn import (cluster, compose, decomposition, ensemble,
-                     feature_extraction, feature_selection,
-                     gaussian_process, kernel_approximation, metrics,
-                     model_selection, naive_bayes, neighbors,
-                     pipeline, preprocessing, svm, linear_model,
-                     tree, discriminant_analysis)
-from sklearn.exceptions import FitFailedWarning
+from sklearn.pipeline import Pipeline
 from sklearn.metrics.scorer import _check_multimetric_scoring
-from sklearn.model_selection._validation import _score, cross_validate
+from sklearn import model_selection
+from sklearn.model_selection._validation import _score
 from sklearn.model_selection import _search, _validation
 from sklearn.utils import indexable, safe_indexing
 
+from galaxy_ml.externals.selene_sdk.utils import compute_score
 from galaxy_ml.model_validations import train_test_split
+from galaxy_ml.keras_galaxy_models import _predict_generator
 from galaxy_ml.utils import (SafeEval, get_scoring, load_model,
-                             read_columns, try_get_attr, get_module)
+                             read_columns, try_get_attr, get_module,
+                             clean_params, get_main_estimator)
 
 
 _fit_and_score = try_get_attr('galaxy_ml.model_validations', '_fit_and_score')
@@ -106,9 +103,65 @@ def train_test_split_none(*arrays, **kwargs):
     return rval
 
 
+def _evaluate(y_true, pred_probas, scorer, is_multimetric=True):
+    """ output scores based on input scorer
+
+    Parameters
+    ----------
+    y_true : array
+        True label or target values
+    pred_probas : array
+        Prediction values, probability for classification problem
+    scorer : dict
+        dict of `sklearn.metrics.scorer.SCORER`
+    is_multimetric : bool, default is True
+    """
+    if y_true.ndim == 1 or y_true.shape[-1] == 1:
+        pred_probas = pred_probas.ravel()
+        pred_labels = (pred_probas > 0.5).astype('int32')
+        targets = y_true.ravel().astype('int32')
+        if not is_multimetric:
+            preds = pred_labels if scorer.__class__.__name__ == \
+                '_PredictScorer' else pred_probas
+            score = scorer._score_func(targets, preds, **scorer._kwargs)
+
+            return score
+        else:
+            scores = {}
+            for name, one_scorer in scorer.items():
+                preds = pred_labels if one_scorer.__class__.__name__\
+                    == '_PredictScorer' else pred_probas
+                score = one_scorer._score_func(targets, preds,
+                                               **one_scorer._kwargs)
+                scores[name] = score
+
+    # TODO: multi-class metrics
+    # multi-label
+    else:
+        pred_labels = (pred_probas > 0.5).astype('int32')
+        targets = y_true.astype('int32')
+        if not is_multimetric:
+            preds = pred_labels if scorer.__class__.__name__ == \
+                '_PredictScorer' else pred_probas
+            score, _ = compute_score(preds, targets,
+                                     scorer._score_func)
+            return score
+        else:
+            scores = {}
+            for name, one_scorer in scorer.items():
+                preds = pred_labels if one_scorer.__class__.__name__\
+                    == '_PredictScorer' else pred_probas
+                score, _ = compute_score(preds, targets,
+                                         one_scorer._score_func)
+                scores[name] = score
+
+    return scores
+
+
 def main(inputs, infile_estimator, infile1, infile2,
          outfile_result, outfile_object=None,
-         outfile_weights=None, groups=None,
+         outfile_weights=None, outfile_y_true=None,
+         outfile_y_preds=None, groups=None,
          ref_seq=None, intervals=None, targets=None,
          fasta_path=None):
     """
@@ -135,6 +188,12 @@ def main(inputs, infile_estimator, infile1, infile2,
     outfile_weights : str, optional
         File path to save deep learning model weights
 
+    outfile_y_true : str, optional
+        File path to target values for prediction
+
+    outfile_y_preds : str, optional
+        File path to save deep learning model weights
+
     groups : str
         File path to dataset containing groups labels
 
@@ -158,6 +217,8 @@ def main(inputs, infile_estimator, infile1, infile2,
     #  load estimator
     with open(infile_estimator, 'rb') as estimator_handler:
         estimator = load_model(estimator_handler)
+
+    estimator = clean_params(estimator)
 
     # swap hyperparameter
     swapping = params['experiment_schemes']['hyperparams_swapping']
@@ -285,41 +346,11 @@ def main(inputs, infile_estimator, infile1, infile2,
     # del loaded_df
     del loaded_df
 
-    # handle memory
-    memory = joblib.Memory(location=CACHE_DIR, verbose=0)
     # cache iraps_core fits could increase search speed significantly
-    if estimator.__class__.__name__ == 'IRAPSClassifier':
-        estimator.set_params(memory=memory)
-    else:
-        # For iraps buried in pipeline
-        new_params = {}
-        for p, v in estimator_params.items():
-            if p.endswith('memory'):
-                # for case of `__irapsclassifier__memory`
-                if len(p) > 8 and p[:-8].endswith('irapsclassifier'):
-                    # cache iraps_core fits could increase search
-                    # speed significantly
-                    new_params[p] = memory
-                # security reason, we don't want memory being
-                # modified unexpectedly
-                elif v:
-                    new_params[p] = None
-            # handle n_jobs
-            elif p.endswith('n_jobs'):
-                # For now, 1 CPU is suggested for iprasclassifier
-                if len(p) > 8 and p[:-8].endswith('irapsclassifier'):
-                    new_params[p] = 1
-                else:
-                    new_params[p] = N_JOBS
-            # for security reason, types of callback are limited
-            elif p.endswith('callbacks'):
-                for cb in v:
-                    cb_type = cb['callback_selection']['callback_type']
-                    if cb_type not in ALLOWED_CALLBACKS:
-                        raise ValueError(
-                            "Prohibited callback type: %s!" % cb_type)
-
-        estimator.set_params(**new_params)
+    memory = joblib.Memory(location=CACHE_DIR, verbose=0)
+    main_est = get_main_estimator(estimator)
+    if main_est.__class__.__name__ == 'IRAPSClassifier':
+        main_est.set_params(memory=memory)
 
     # handle scorer, convert to scorer dict
     scoring = params['experiment_schemes']['metrics']['scoring']
@@ -374,12 +405,33 @@ def main(inputs, infile_estimator, infile1, infile2,
         estimator.fit(X_train, y_train)
 
     if hasattr(estimator, 'evaluate'):
-        scores = estimator.evaluate(X_test, y_test=y_test,
-                                    scorer=scorer,
-                                    is_multimetric=True)
+        steps = estimator.prediction_steps
+        batch_size = estimator.batch_size
+        generator = estimator.data_generator_.flow(X_test, y=y_test,
+                                                   batch_size=batch_size)
+        predictions, y_true = _predict_generator(estimator.model_, generator,
+                                                 steps=steps)
+        scores = _evaluate(y_true, predictions, scorer, is_multimetric=True)
+
     else:
+        if hasattr(estimator, 'predict_proba'):
+            predictions = estimator.predict_proba(X_test)
+        else:
+            predictions = estimator.predict(X_test)
+
+        y_true = y_test
         scores = _score(estimator, X_test, y_test, scorer,
                         is_multimetric=True)
+    if outfile_y_true:
+        try:
+            pd.DataFrame(y_true).to_csv(outfile_y_true, sep='\t',
+                                        index=False)
+            pd.DataFrame(predictions).astype(np.float32).to_csv(
+                outfile_y_preds, sep='\t', index=False,
+                float_format='%g', chunksize=10000)
+        except Exception as e:
+            print("Error in saving predictions: %s" % e)
+
     # handle output
     for name, score in scores.items():
         scores[name] = [score]
@@ -392,7 +444,7 @@ def main(inputs, infile_estimator, infile1, infile2,
 
     if outfile_object:
         main_est = estimator
-        if isinstance(estimator, pipeline.Pipeline):
+        if isinstance(estimator, Pipeline):
             main_est = estimator.steps[-1][-1]
 
         if hasattr(main_est, 'model_') \
@@ -420,6 +472,8 @@ if __name__ == '__main__':
     aparser.add_argument("-O", "--outfile_result", dest="outfile_result")
     aparser.add_argument("-o", "--outfile_object", dest="outfile_object")
     aparser.add_argument("-w", "--outfile_weights", dest="outfile_weights")
+    aparser.add_argument("-l", "--outfile_y_true", dest="outfile_y_true")
+    aparser.add_argument("-p", "--outfile_y_preds", dest="outfile_y_preds")
     aparser.add_argument("-g", "--groups", dest="groups")
     aparser.add_argument("-r", "--ref_seq", dest="ref_seq")
     aparser.add_argument("-b", "--intervals", dest="intervals")
@@ -429,6 +483,9 @@ if __name__ == '__main__':
 
     main(args.inputs, args.infile_estimator, args.infile1, args.infile2,
          args.outfile_result, outfile_object=args.outfile_object,
-         outfile_weights=args.outfile_weights, groups=args.groups,
+         outfile_weights=args.outfile_weights,
+         outfile_y_true=args.outfile_y_true,
+         outfile_y_preds=args.outfile_y_preds,
+         groups=args.groups,
          ref_seq=args.ref_seq, intervals=args.intervals,
          targets=args.targets, fasta_path=args.fasta_path)

@@ -1,5 +1,5 @@
-<tool id="sklearn_train_test_eval" name="Train, Test and Evaluation" version="@VERSION@">
-    <description>fit a model using part of dataset and evaluate using the rest</description>
+<tool id="keras_train_and_eval" name="Deep learning training and evaluation" version="@VERSION@">
+    <description>conduct deep training and evaluation either implicitly or explicitly</description>
     <macros>
         <import>main_macros.xml</import>
         <import>keras_macros.xml</import>
@@ -7,20 +7,21 @@
     <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
-    <command detect_errors="aggressive">
+    <command>
         <![CDATA[
         export HDF5_USE_FILE_LOCKING='FALSE';
         #if $input_options.selected_input == 'refseq_and_interval'
         bgzip -c '$input_options.target_file' > '${target_file.element_identifier}.gz' &&
         tabix -p bed '${target_file.element_identifier}.gz' &&
+        cp '$input_options.ref_genome_file' '${ref_genome_file.element_identifier}' &&
         #end if
-        python '$__tool_directory__/train_test_eval.py'
+        python '$__tool_directory__/keras_train_and_eval.py'
             --inputs '$inputs'
             --estimator '$experiment_schemes.infile_estimator'
             #if $input_options.selected_input == 'seq_fasta'
             --fasta_path '$input_options.fasta_path'
             #elif $input_options.selected_input == 'refseq_and_interval'
-            --ref_seq '$input_options.ref_genome_file'
+            --ref_seq "`pwd`/${ref_genome_file.element_identifier}"
             --interval '$input_options.interval_file'
             --targets "`pwd`/${target_file.element_identifier}.gz"
             #else
@@ -28,16 +29,19 @@
             #end if
             --infile2 '$input_options.infile2'
             --outfile_result "`pwd`/tmp_outfile_result"
-            #if $save != 'nope'
+            #if $save and 'save_estimator' in str($save)
             --outfile_object '$outfile_object'
-            #end if
-            #if $save == 'save_weights'
             --outfile_weights '$outfile_weights'
+            #end if
+            #if $save and 'save_prediction' in str($save)
+            --outfile_y_true '$outfile_y_true'
+            --outfile_y_preds '$outfile_y_preds'
             #end if
             #if $experiment_schemes.test_split.split_algos.shuffle == 'group'
             --groups '$experiment_schemes.test_split.split_algos.groups_selector.infile_g'
             #end if
-            >'$outfile_result' && cp tmp_outfile_result '$outfile_result';
+            >'$outfile_result' && cp '$outfile_result' "`pwd`/../tool_stdout"
+            && cp tmp_outfile_result '$outfile_result';
 
         ]]>
     </command>
@@ -47,12 +51,12 @@
     <inputs>
         <conditional name="experiment_schemes">
             <param name="selected_exp_scheme" type="select" label="Select a scheme">
-                <option value="train_test" selected="true">Train and Test</option>
-                <option value="train_val_test">Train, Validate and Test</option>
+                <option value="train_val" selected="true">Train and Validate</option>
+                <option value="train_val_test">Train, Validate and and Evaluate</option>
             </param>
-            <when value="train_test">
+            <when value="train_val">
                 <expand macro="estimator_and_hyperparameter"/>
-                <section name="test_split" title="Test holdout" expanded="false">
+                <section name="test_split" title="Validation holdout" expanded="false">
                     <expand macro="train_test_split_params">
                         <expand macro="cv_groups"/>
                     </expand>
@@ -68,7 +72,7 @@
                         <expand macro="cv_groups"/>
                     </expand>
                 </section>
-                <section name="val_split" title="Validation holdout (recommend using the same method for both validation and test)" expanded="false">
+                <section name="val_split" title="Validation holdout (recommend using the same splitting method as for test holdout)" expanded="false">
                     <expand macro="train_test_split_params"/>
                 </section>
                 <section name="metrics" title="Metrics for evaluation" expanded="false">
@@ -77,19 +81,24 @@
             </when>
         </conditional>
         <expand macro="sl_mixed_input_plus_sequence"/>
-        <param name="save" type="select" label="Save the fitted model" help="For security reason, deep learning models will be saved into two datasets, model skeleton and weights.">
-            <option value="nope" selected="true">Nope, save is unnecessary</option>
-            <option value="save_estimator">Fitted whole estimator (excluding deep learning)</option>
-            <option value="save_weights">Model skeleton and weights, for deep learning exclusively</option>
+        <param name="save" type="select" multiple='true' display="checkboxes" label="Save the fitted model" optional="true" help="Evaluation scores will be output by default.">
+            <option value="save_estimator" selected="true">Fitted estimator in skeleton and weights, separately</option>
+            <option value="save_prediction">True labels and prediction results from evaluation for downstream analysis</option>
         </param>
     </inputs>
     <outputs>
         <data format="tabular" name="outfile_result"/>
         <data format="zip" name="outfile_object" label="Fitted estimator or estimator skeleton on ${on_string}">
-            <filter>save != 'nope'</filter>
+            <filter>str(save) and 'save_estimator' in str(save)</filter>
         </data>
         <data format="h5" name="outfile_weights" label="Weights trained on ${on_string}">
-            <filter>save == 'save_weights'</filter>
+            <filter>str(save) and 'save_estimator' in str(save)</filter>
+        </data>
+        <data format="tabular" name="outfile_y_true" label="True labels/target values on ${on_string}">
+            <filter>str(save) and 'save_prediction' in str(save)</filter>
+        </data>
+        <data format="tabular" name="outfile_y_preds" label="All predictions on ${on_string}">
+            <filter>str(save) and 'save_prediction' in str(save)</filter>
         </data>
     </outputs>
     <tests>
@@ -143,7 +152,7 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
-            <param name="save" value="save_weights"/>
+            <param name="save" value="save_estimator"/>
             <output name="outfile_result">
                 <assert_contents>
                     <has_n_columns n="2"/>
@@ -210,19 +219,20 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
-            <param name="save" value="save_weights"/>
+            <param name="save" value="save_estimator,save_prediction"/>
             <output name="outfile_result" >
                 <assert_contents>
                     <has_n_columns n="2"/>
                     <has_text text="0.667"/>
-                    <has_text text="-5.586"/>
+                    <has_text text="5.586"/>
                 </assert_contents>
             </output>
             <output name="outfile_weights" file="train_test_eval_weights02.h5" compare="sim_size" delta="5"/>
+            <output name="outfile_y_true" file="keras_train_eval_y_true02.tabular" ftype="tabular"/>
         </test>
         <test>
             <conditional name="experiment_schemes">
-                <param name="selected_exp_scheme" value="train_test"/>
+                <param name="selected_exp_scheme" value="train_val"/>
                 <param name="infile_estimator" value="pipeline10" ftype="zip"/>
                 <section name="hyperparams_swapping">
                     <param name="infile_params" value="get_params10.tabular" ftype="tabular"/>
@@ -262,7 +272,7 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
-            <param name="save" value="nope"/>
+            <param name="save" value=""/>
             <output name="outfile_result" file="train_test_eval03.tabular"/>
         </test>
     </tests>
@@ -270,21 +280,33 @@
         <![CDATA[
 **What it does**
 
-Given an estimator and dataset, this tool fits the estimator with part of the datasets and evalue the performance of the fitted estimator on the rest of the datasets. It consists of two modes: train-test and train-val-test.
+Given a pre-built keras deep learning model and labeled training dataset, this tool works in two modes.
 
-- train-test: data sets will be split into train and test portions. Estimator is training on the train portion, and performance is evaluated on the test portion.
+- Train and Validate: training dataset is split into train and validation portions. The model fits on the train portion, in the meantime performances are validated on the validation portion multiple times along with the training progressing. Finally, a fitted model (skeleton + weights) and its validation performance scores are outputted. 
 
-- train-val-test: data sets are split into three portions, train, val and test. Validations happen along with the training process, which is often useful in **deep learnings**.
+
+- Train, Validate and and Evaluate: training dataset is split into three portions, train, val and test. The same `Train and Validate` happens on the train and val portions. The test portion is hold out exclusively for testing (evaluation). As a result, a fitted model (skeleton + weights) and test performance scores are outputted.
+
+In both modes, besides the performance scores, the true labels and predicted values are able to be ouputted, which could be used in generating plots in other tools, machine learning visualization extensions, for example.
+
+Note that since all training and model parameters are accessible and changeable in the `Hyperparameter Swapping` section, the training and evaluation processes are transparent and fully controllable.
+
+**Input**
+
+- tabular
+- sparse
+- `sequnences in a fasta file` to work with DNA, RNA and Proteins with corresponding fasta data generator
+- `reference genome and intervals` exclusively work with `GenomicIntervalBatchGenerator`.
 
 **Output**
 
-Performance scores.
+- performance scores from evaluation
+- fitted estimator skeleton and weights
+- true labels or values and predicted values from the evaluation
 
         ]]>
     </help>
     <expand macro="sklearn_citation">
-        <expand macro="skrebate_citation"/>
-        <expand macro="xgboost_citation"/>
         <expand macro="keras_citation"/>
     </expand>
 </tool>

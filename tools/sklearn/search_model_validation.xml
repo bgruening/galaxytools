@@ -1,12 +1,38 @@
 <tool id="sklearn_searchcv" name="Hyperparameter Search" version="@VERSION@">
-    <description>using exhausitive or randomized search</description>
+    <description>performs hyperparameter optimization using various SearchCVs</description>
     <macros>
         <import>main_macros.xml</import>
+         <macro name="search_cv_estimator">
+            <param name="infile_estimator" type="data" format="zip" label="Choose the dataset containing pipeline/estimator object"/>
+            <param name="is_deep_learning" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Is the estimator a deep learning model?"/>
+            <section name="search_params_builder" title="Search parameters Builder" expanded="true">
+            <param name="infile_params" type="data" format="tabular" optional="true" label="Choose the dataset containing parameter names" help="This dataset could be the output of `get_params` in the `Estimator Attributes` tool."/>
+            <repeat name="param_set" min="1" max="30" title="Parameter settings for search:">
+                <param name="sp_name" type="select" optional="true" label="Choose a parameter name (with current value)">
+                    <options from_dataset="infile_params" startswith="@">
+                    <column name="name" index="2"/>
+                    <column name="value" index="1"/>
+                    <filter type="unique_value" name="unique_param" column="1"/>
+                    </options>
+                </param>
+                <param name="sp_list" type="text" value="" optional="true" label="Search list" help="list or array-like, for example: [1, 10, 100, 1000], [True, False] and ['auto', 'sqrt', None]. See `help` section for more examples">
+                    <sanitizer>
+                    <valid initial="default">
+                        <add value="&apos;"/>
+                        <add value="&quot;"/>
+                        <add value="["/>
+                        <add value="]"/>
+                    </valid>
+                    </sanitizer>
+                </param>
+            </repeat>
+            </section>
+        </macro>
     </macros>
     <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
-    <command detect_errors="aggressive">
+    <command>
         <![CDATA[
         export HDF5_USE_FILE_LOCKING='FALSE';
         #if $input_options.selected_input == 'refseq_and_interval'
@@ -26,17 +52,25 @@
             --infile1 '$input_options.infile1'
             #end if
             --infile2 '$input_options.infile2'
+            #if $save != 'save_no_fit'
             --outfile_result "`pwd`/tmp_outfile_result"
-            #if $save != 'nope'
+            #end if
+            #if $save == 'save_estimator'
             --outfile_object '$outfile_object'
             #end if
-            #if $save == 'save_weights'
+            #if $save == 'save_no_fit'
+            --outfile_object '$outfile_object_no_fit'
+            #end if
+            #if $search_schemes.is_deep_learning == 'booltrue' and $save == 'save_estimator' and $outer_split.split_mode == 'nested_cv'
             --outfile_weights '$outfile_weights'
             #end if
             #if $search_schemes.options.cv_selector.selected_cv in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']
             --groups '$search_schemes.options.cv_selector.groups_selector.infile_g'
             #end if
-            >'$outfile_result' && cp tmp_outfile_result '$outfile_result';
+            #if $save != 'save_no_fit'
+            >'$outfile_result' && cp '$outfile_result' "`pwd`/../tool_stdout"
+            && cp "`pwd`/tmp_outfile_result" '$outfile_result';
+            #end if
 
         ]]>
     </command>
@@ -68,38 +102,35 @@
         <conditional name="outer_split">
             <param name="split_mode" type="select" label="Whether to hold a portion of samples for test exclusively?" help="Nested CV or train_test_split">
                 <option value="no" selected="true">Nope</option>
-                <option value="train_test_split">Yes - do a single train test split</option>
                 <option value="nested_cv">Yes - do nested CV</option>
             </param>
             <when value='no'/>
-            <when value='train_test_split'>
-                <param argument="test_size" type="float" optional="True" value="0.25" label="Test size:"/>
-                <!--param argument="train_size" type="float" optional="True" value="" label="Train size:"/>-->
-                <param argument="random_state" type="integer" optional="True" value="" label="Random seed number:"/>
-                <param argument="shuffle" type="select">
-                    <option value="None">None - No shuffle</option>
-                    <option value="simple">Shuffle -- for regression problems</option>
-                    <option value="stratified">StratifiedShuffle -- will use the target values as class labels</option>
-                    <option value="group">GroupShuffle -- make sure group CV option is choosen</option>
-                </param>
-            </when>
             <when value="nested_cv">
                 <expand macro="cv_reduced" label="Select the outer cv splitter"/>
             </when>
         </conditional>
-        <param name="save" type="select" label="Save best estimator?" help="For security reason, deep learning models will be saved into two datasets, model skeleton and weights. Caution: Save estimator doesn't work for nestCV or when refit is False.">
-            <option value="nope" selected="true">Nope, save is unnecessary</option>
-            <option value="save_estimator">Fitted estimator (excluding deep learning)</option>
-            <option value="save_weights">Model skeleton and weights, for deep learning exclusively</option>
+        <param name="save" type="select" label="Save best estimator?" help="For a non-deep learning model, save will output fitted best_estimator_ (refit must be true) or a list of cv_results_ from each outer split in nested CV mode. For a deep learning model, by checking the boolean option below the model input, the outputs are two parts, model skeleton and weights. Save Deep learning model for nested CV is not supported.">
+            <option value="nope">Nope, save is unnecessary</option>
+            <option value="save_estimator" selected="true">Fitted best estimator or Detailed cv_results_ from nested CV</option>
+            <option value="save_no_fit">SearchCV object without fitting</option>
         </param>
     </inputs>
     <outputs>
-        <data format="tabular" name="outfile_result"/>
+        <data format="tabular" name="outfile_result">
+            <filter>save != 'save_no_fit'</filter>
+        </data>
         <data format="zip" name="outfile_object" label="Fitted estimator or estimator skeleton on ${on_string}">
-            <filter>save != 'nope'</filter>
+            <filter>save == 'save_estimator' and outer_split['split_mode'] == 'no'</filter>
         </data>
         <data format="h5" name="outfile_weights" label="Weights trained on ${on_string}">
-            <filter>save == 'save_weights'</filter>
+            <filter>search_schemes['is_deep_learning'] and save == 'save_estimator' and outer_split['split_mode'] == 'no'</filter>
+        </data>
+        <collection type="list" name="outfile_in_splits" label="cv_results_ from splits on ${on_string}">
+            <filter>not search_schemes['is_deep_learning'] and save == 'save_estimator' and outer_split['split_mode'] == 'nested_cv'</filter>
+            <discover_datasets format="tabular" pattern="__name__" directory="cv_results_in_folds"/>
+        </collection>
+        <data format="zip" name="outfile_object_no_fit" label="Unfitted SearchCV on ${on_string}">
+            <filter>save == 'save_no_fit'</filter>
         </data>
     </outputs>
     <tests>
@@ -389,40 +420,7 @@
             <output name="outfile_result" >
                 <assert_contents>
                     <has_n_columns n="13" />
-                    <has_text text="0.09003449195911103"/>
-                </assert_contents>
-            </output>
-        </test>
-        <test>
-            <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_estimator" value="pipeline09" ftype="zip"/>
-            <param name="infile_params" value="get_params09.tabular" ftype="tabular"/>
-            <repeat name="param_set">
-                <param name="sp_list" value="[50, 100, 150, 200]"/>
-                <param name="sp_name" value="relieff__n_neighbors"/>
-            </repeat>
-            <repeat name="param_set">
-                <param name="sp_list" value="[324089]"/>
-                <param name="sp_name" value="randomforestregressor__random_state"/>
-            </repeat>
-            <param name="primary_scoring" value="explained_variance"/>
-            <param name="secondary_scoring" value="neg_mean_squared_error,r2"/>
-            <param name='selected_cv' value="StratifiedKFold"/>
-            <param name="n_splits" value="3"/>
-            <param name="shuffle" value="true" />
-            <param name="random_state" value="10"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="true" />
-            <param name="selected_column_selector_option" value="all_columns"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="header2" value="true" />
-            <param name="selected_column_selector_option2" value="all_columns"/>
-            <output name="outfile_result" >
-                <assert_contents>
-                    <has_n_columns n="25" />
-                    <has_text text="0.7879267424165166"/>
-                    <has_text text="0.787865425577799"/>
-                    <has_text text="-29.40436189868029"/>
+                    <has_text text="0.08719866399898475"/>
                 </assert_contents>
             </output>
         </test>
@@ -453,7 +451,7 @@
             <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
             <repeat name="param_set">
                 <param name="sp_list" value="[10, 50, 100, 300]"/>
-                <param name="sp_name" value="randomforestregressor__n_estimators"/>
+                <param name="sp_name" value="n_estimators"/>
             </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
@@ -603,11 +601,11 @@
             <param name="infile_params" value="get_params12.tabular" ftype="tabular"/>
             <repeat name="param_set">
                 <param name="sp_list" value="[10, 100, 200]"/>
-                <param name="sp_name" value="rfe__estimator__n_estimators"/>
+                <param name="sp_name" value="estimator__n_estimators"/>
             </repeat>
             <repeat name="param_set">
                 <param name="sp_list" value="[10, None]"/>
-                <param name="sp_name" value="rfe__n_features_to_select"/>
+                <param name="sp_name" value="n_features_to_select"/>
             </repeat>
             <param name="primary_scoring" value="r2"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
@@ -631,37 +629,7 @@
                     <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
                     <repeat name="param_set">
                         <param name="sp_list" value="[10, 50, 100, 300]"/>
-                        <param name="sp_name" value="randomforestregressor__n_estimators"/>
-                    </repeat>
-                </section>
-            </conditional>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="true" />
-            <param name="selected_column_selector_option" value="all_columns"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="header2" value="true" />
-            <param name="selected_column_selector_option2" value="all_columns"/>
-            <conditional name="outer_split">
-                <param name="split_mode" value="train_test_split"/>
-                <param name="shuffle" value="simple"/>
-                <param name="random_state" value="123"/>
-            </conditional>
-            <output name="outfile_result">
-                <assert_contents>
-                    <has_n_columns n="1"/>
-                    <has_text text="0.8124083594523798"/>
-                </assert_contents>
-            </output>
-        </test>
-        <test>
-            <conditional name="search_schemes">
-                <param name="selected_search_scheme" value="GridSearchCV"/>
-                <param name="infile_estimator" value="pipeline05" ftype="zip"/>
-                <section name="search_params_builder">
-                    <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
-                    <repeat name="param_set">
-                        <param name="sp_list" value="[10, 50, 100, 300]"/>
-                        <param name="sp_name" value="randomforestregressor__n_estimators"/>
+                        <param name="sp_name" value="n_estimators"/>
                     </repeat>
                 </section>
             </conditional>
