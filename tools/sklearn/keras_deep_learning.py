@@ -205,6 +205,9 @@ def get_batch_generator(config):
     config : dictionary, galaxy tool parameters loaded by JSON
     """
     generator_type = config.pop('generator_type')
+    if generator_type == 'none':
+        return None
+
     klass = try_get_attr('galaxy_ml.preprocessors', generator_type)
 
     if generator_type == 'GenomicIntervalBatchGenerator':
