@@ -73,7 +73,7 @@ def _handle_constraint(config):
             }
     """
     constraint_type = config['constraint_type']
-    if constraint_type == 'None':
+    if constraint_type in ('None', ''):
         return None
 
     klass = getattr(keras.constraints, constraint_type)
@@ -92,7 +92,7 @@ def _handle_layer_parameters(params):
     """Access to handle all kinds of parameters
     """
     for key, value in six.iteritems(params):
-        if value == 'None':
+        if value in ('None', ''):
             params[key] = None
             continue
 
@@ -205,6 +205,9 @@ def get_batch_generator(config):
     config : dictionary, galaxy tool parameters loaded by JSON
     """
     generator_type = config.pop('generator_type')
+    if generator_type == 'none':
+        return None
+
     klass = try_get_attr('galaxy_ml.preprocessors', generator_type)
 
     if generator_type == 'GenomicIntervalBatchGenerator':
@@ -240,7 +243,7 @@ def config_keras_model(inputs, outfile):
     json_string = model.to_json()
 
     with open(outfile, 'w') as f:
-        f.write(json_string)
+        json.dump(json.loads(json_string), f, indent=2)
 
 
 def build_keras_model(inputs, outfile, model_json, infile_weights=None,
