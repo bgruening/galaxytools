@@ -10,27 +10,21 @@ from itertools import chain
 from scipy.io import mmread
 from sklearn.pipeline import Pipeline
 from sklearn.metrics.scorer import _check_multimetric_scoring
-from sklearn import model_selection
 from sklearn.model_selection._validation import _score
-from sklearn.model_selection import _search, _validation
 from sklearn.utils import indexable, safe_indexing
 
-from galaxy_ml.externals.selene_sdk.utils import compute_score
 from galaxy_ml.model_validations import train_test_split
 from galaxy_ml.keras_galaxy_models import _predict_generator
 from galaxy_ml.utils import (SafeEval, get_scoring, load_model,
-                             read_columns, try_get_attr, get_module,
-                             clean_params, get_main_estimator)
+                             read_columns, get_module,
+                             clean_params, get_main_estimator,
+                             gen_compute_scores)
 
-
-_fit_and_score = try_get_attr('galaxy_ml.model_validations', '_fit_and_score')
-setattr(_search, '_fit_and_score', _fit_and_score)
-setattr(_validation, '_fit_and_score', _fit_and_score)
 
 N_JOBS = int(os.environ.get('GALAXY_SLOTS', 1))
 CACHE_DIR = os.path.join(os.getcwd(), 'cached')
 del os
-NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', '_path',
+NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', '_path', '_dir',
                   'nthread', 'callbacks')
 ALLOWED_CALLBACKS = ('EarlyStopping', 'TerminateOnNaN', 'ReduceLROnPlateau',
                      'CSVLogger', 'None')
@@ -101,61 +95,6 @@ def train_test_split_none(*arrays, **kwargs):
         rval[pos * 2: 2] = [None, None]
 
     return rval
-
-
-def _evaluate(y_true, pred_probas, scorer, is_multimetric=True):
-    """ output scores based on input scorer
-
-    Parameters
-    ----------
-    y_true : array
-        True label or target values
-    pred_probas : array
-        Prediction values, probability for classification problem
-    scorer : dict
-        dict of `sklearn.metrics.scorer.SCORER`
-    is_multimetric : bool, default is True
-    """
-    if y_true.ndim == 1 or y_true.shape[-1] == 1:
-        pred_probas = pred_probas.ravel()
-        pred_labels = (pred_probas > 0.5).astype('int32')
-        targets = y_true.ravel().astype('int32')
-        if not is_multimetric:
-            preds = pred_labels if scorer.__class__.__name__ == \
-                '_PredictScorer' else pred_probas
-            score = scorer._score_func(targets, preds, **scorer._kwargs)
-
-            return score
-        else:
-            scores = {}
-            for name, one_scorer in scorer.items():
-                preds = pred_labels if one_scorer.__class__.__name__\
-                    == '_PredictScorer' else pred_probas
-                score = one_scorer._score_func(targets, preds,
-                                               **one_scorer._kwargs)
-                scores[name] = score
-
-    # TODO: multi-class metrics
-    # multi-label
-    else:
-        pred_labels = (pred_probas > 0.5).astype('int32')
-        targets = y_true.astype('int32')
-        if not is_multimetric:
-            preds = pred_labels if scorer.__class__.__name__ == \
-                '_PredictScorer' else pred_probas
-            score, _ = compute_score(preds, targets,
-                                     scorer._score_func)
-            return score
-        else:
-            scores = {}
-            for name, one_scorer in scorer.items():
-                preds = pred_labels if one_scorer.__class__.__name__\
-                    == '_PredictScorer' else pred_probas
-                score, _ = compute_score(preds, targets,
-                                         one_scorer._score_func)
-                scores[name] = score
-
-    return scores
 
 
 def main(inputs, infile_estimator, infile1, infile2,
@@ -394,7 +333,7 @@ def main(inputs, infile_estimator, infile1, infile2,
                                   **val_split_options)
 
     # train and eval
-    if hasattr(estimator, 'validation_data'):
+    if hasattr(estimator, 'config') and hasattr(estimator, 'model_type'):
         if exp_scheme == 'train_val_test':
             estimator.fit(X_train, y_train,
                           validation_data=(X_val, y_val))
@@ -411,7 +350,8 @@ def main(inputs, infile_estimator, infile1, infile2,
                                                    batch_size=batch_size)
         predictions, y_true = _predict_generator(estimator.model_, generator,
                                                  steps=steps)
-        scores = _evaluate(y_true, predictions, scorer, is_multimetric=True)
+        scores = gen_compute_scores(y_true, predictions, scorer,
+                                    is_multimetric=True)
 
     else:
         if hasattr(estimator, 'predict_proba'):
@@ -454,7 +394,6 @@ def main(inputs, infile_estimator, infile1, infile2,
             del main_est.model_
             del main_est.fit_params
             del main_est.model_class_
-            del main_est.validation_data
             if getattr(main_est, 'data_generator_', None):
                 del main_est.data_generator_
 

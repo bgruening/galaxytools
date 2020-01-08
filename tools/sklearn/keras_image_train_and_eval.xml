@@ -1,0 +1,281 @@
+<tool id="keras_image_train_and_eval" name="Image Deep Learning" version="@VERSION@">
+    <description>performs training and evaluation using image data generator</description>
+    <macros>
+        <import>main_macros.xml</import>
+        <import>keras_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        export HDF5_USE_FILE_LOCKING='FALSE';
+        #for $f in $input_options.infile_images#
+            unzip -o -q '$f' -d "`pwd`/images";
+        #end for
+        python '$__tool_directory__/keras_image_train_and_eval.py'
+            --inputs '$inputs'
+            --estimator '$experiment_schemes.infile_estimator'
+            --infile_images '$input_options.infile_images'
+            --infile_dataframe '$input_options.infile_dataframe'
+            --outfile_result "`pwd`/tmp_outfile_result"
+            #if $save and 'save_estimator' in str($save)
+            --outfile_object '$outfile_object'
+            --outfile_weights '$outfile_weights'
+            #end if
+            #if $save and 'save_prediction' in str($save)
+            --outfile_y_true '$outfile_y_true'
+            --outfile_y_preds '$outfile_y_preds'
+            #end if
+            #if $experiment_schemes.test_split.split_algos.shuffle == 'group'
+            --groups '$experiment_schemes.test_split.split_algos.groups_selector.infile_g'
+            #end if
+            >'$outfile_result' && cp '$outfile_result' "`pwd`/../tool_stdout"
+            && cp tmp_outfile_result '$outfile_result';
+
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+    </configfiles>
+    <inputs>
+        <conditional name="experiment_schemes">
+            <param name="selected_exp_scheme" type="select" label="Select a scheme">
+                <option value="train_val" selected="true">Train and Validate</option>
+                <option value="train_val_test">Train, Validate and and Evaluate</option>
+            </param>
+            <when value="train_val">
+                <expand macro="estimator_and_hyperparameter"/>
+                <section name="test_split" title="Validation holdout" expanded="false">
+                    <expand macro="train_test_split_params">
+                        <expand macro="cv_groups"/>
+                    </expand>
+                </section>
+                <section name="metrics" title="Metrics for evaluation" expanded="false">
+                    <expand macro="scoring_selection"/>
+                </section>
+            </when>
+            <when value="train_val_test">
+                <expand macro="estimator_and_hyperparameter"/>
+                <section name="test_split" title="Test holdout" expanded="false">
+                    <expand macro="train_test_split_params">
+                        <expand macro="cv_groups"/>
+                    </expand>
+                </section>
+                <section name="val_split" title="Validation holdout (recommend using the same splitting method as for test holdout)" expanded="false">
+                    <expand macro="train_test_split_params"/>
+                </section>
+                <section name="metrics" title="Metrics for evaluation" expanded="false">
+                    <expand macro="scoring_selection"/>
+                </section>
+            </when>
+        </conditional>
+        <conditional name="input_options">
+            <param name="selected_input" type="select" label="Select input type:">
+                <option value="ImageDataFrameBatchGenerator">Images with DataFrame -- ImageDataFrameBatchGenerator</option>
+            </param>
+            <when value="ImageDataFrameBatchGenerator">
+                <param name="infile_images" type="data" format="zip" multiple="true" label="Images in a compressed file" help="If multple compressed files are provided, each file will be decompressed individually."/>
+                <param name="infile_dataframe" type="data" format="tabular" label="Select the table containing information about all the images" help="Headered."/>
+                <param argument="x_col" type="data_column" use_header_names="true" data_ref="infile_dataframe" help="The column containing relative path or filename to the each image"/>
+                <param argument="y_col" type="data_column" use_header_names="true" data_ref="infile_dataframe" multiple="true" help="The column containing target data"/>
+                <param argument="weight_col" type="data_column" use_header_names="true" data_ref="infile_dataframe" optional="true" help="Optional. The column containing sample weights"/>
+                <section name="options" title="Advanced Options" expanded="False">
+                    <param argument="target_size" type="text" value="(256, 256)" help="The dimensions to which all images found will be resized"/>
+                    <param argument="color_mode" type="select" help="Whether the images will be converted to have 1 or 3 color channels.">
+                        <option value="grayscale"/>
+                        <option value="rgb" selected="true"/>
+                        <option value="rgba"/>
+                    </param>
+                    <param argument="classes" type="text" value="" optional="true" help="Optional. Comma-separated string. For example: cat,dog. If None, all classes in `y_col` will be used."/>
+                    <param argument="class_mode" type="select">
+                        <option value="binary" />
+                        <option value="categorical" selected="true" />
+                        <option value="multi_output" />
+                    </param>
+                    <param argument="shuffle" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true" help="whether to shuffle the data"/>
+                    <param argument="seed" type="integer" value="" optional="true" help="random seed for shuffling and transformations"/>
+                    <param argument='interpolation' type="select" help="Interpolation method used to resample the image if the target size is different from that of the loaded image.">
+                        <option value="nearest" selected="true"/>
+                        <option value="bilinear" />
+                        <option value="bicubic" />
+                        <option value="lanczos" />
+                        <option value="box" />
+                        <option value="hamming" />
+                    </param>
+                    <param argument="fit_sample_size" type="integer" value="1000" optional="true" help="Number of training images used in `datagen.fit`. Relevant only when `featurewise_center` or `featurewise_std_normalization` or `zca_whitening` are set are set to True."/>
+                    <param argument="featurewise_center" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Set input mean to 0 over the dataset, feature-wise."/>
+                    <param argument="samplewise_center" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Set each sample mean to 0."/>
+
+                    <param argument="featurewise_std_normalization" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Divide inputs by std of the dataset, feature-wise."/>
+                    <param argument="samplewise_std_normalization" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Divide each input by its std."/>
+                    <param argument="zca_whitening" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Apply ZCA whitening."/>
+                    <param argument="zca_epsilon" type="float" value="0.000001" optional="true" help="epsilon for ZCA whitening."/>
+                    <param argument="rotation_range" type="text" value="0" optional="true" help="Degree range for random rotations."/>
+                    <param argument="width_shift_range" type="text" value="0." optional="true" />
+                    <param argument="height_shift_range" type="text" value="0." optional="true" />
+                    <param argument="brightness_range" type="text" value="" optional="true" help="Optional. Tuple of two floats."/>
+                    <param argument="shear_range" type="text" value="0" optional="true" help="Shear Intensity."/>
+                    <param argument="zoom_range" type="text" value="0." optional="true" help="Float or Tuple of two floats, (lower, upper)."/>
+                    <param argument="channel_shift_range" type="text" value="0." optional="true" help="Range for random channel shifts."/>
+                    <param argument="fill_mode" type="select" help="Points outside the boundaries of the input are filled according to the given mode.">
+                        <option value="constant">constant -- kkkkkkkk|abcd|kkkkkkkk (cval=k)</option>
+                        <option value="nearest" selected="true">nearest -- aaaaaaaa|abcd|dddddddd</option>
+                        <option value="reflect">reflect -- abcddcba|abcd|dcbaabcd</option>
+                        <option value="wrap">wrap -- abcdabcd|abcd|abcdabcd</option>
+                    </param>
+                    <param argument="cval" type="float" value="0" optional="true"/>
+                    <param argument="horizontal_flip" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Randomly flip inputs horizontally."/>
+                    <param argument="vertical_flip" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Randomly flip inputs vertically."/>
+                    <param argument="rescale" type="float" value="" optional="true" help="Rescaling factor."/>
+                    <param argument="data_format" type="select">
+                        <option value="channels_first" />
+                        <option value="channels_last" selected="true" />
+                    </param>
+                    <param argument="interpolation_order" type="integer" value="1" optional="true" />
+                </section>
+            </when>
+        </conditional>
+        <param name="save" type="select" multiple='true' display="checkboxes" label="Save the fitted model" optional="true" help="Evaluation scores will be output by default.">
+            <option value="save_estimator" selected="true">Fitted estimator in skeleton and weights, separately</option>
+            <option value="save_prediction">True labels and prediction results from evaluation for downstream analysis</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile_result"/>
+        <data format="zip" name="outfile_object" label="Fitted estimator or estimator skeleton on ${on_string}">
+            <filter>str(save) and 'save_estimator' in str(save)</filter>
+        </data>
+        <data format="h5" name="outfile_weights" label="Weights trained on ${on_string}">
+            <filter>str(save) and 'save_estimator' in str(save)</filter>
+        </data>
+        <data format="tabular" name="outfile_y_true" label="True labels/target values on ${on_string}">
+            <filter>str(save) and 'save_prediction' in str(save)</filter>
+        </data>
+        <data format="tabular" name="outfile_y_preds" label="All predictions on ${on_string}">
+            <filter>str(save) and 'save_prediction' in str(save)</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="experiment_schemes">
+                <param name="selected_exp_scheme" value="train_val"/>
+                <param name="infile_estimator" value="keras_batch_model05" ftype="zip"/>
+                <section name="hyperparams_swapping">
+                    <param name="infile_params" value="keras_batch_params05.tabular" ftype="tabular"/>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="50"/>
+                        <param name="sp_name" value="epochs"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="0.01"/>
+                        <param name="sp_name" value="lr"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="42"/>
+                        <param name="sp_name" value="seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_0_Conv2D__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_2_Dropout__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_3_Conv2D__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_5_Dropout__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_7_Dense__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_8_Dropout__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_9_Dense__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                </section>
+                <section name="test_split">
+                    <conditional name="split_algos">
+                        <param name="shuffle" value="stratified"/>
+                        <param name="test_size" value="0.2"/>
+                        <param name="random_state" value="123"/>
+                    </conditional>
+                </section>
+                <section name="metrics">
+                    <conditional name="scoring">
+                        <param name="primary_scoring" value="accuracy"/>
+                        <param name="secondary_scoring" value="average_precision"/>
+                    </conditional>
+                </section>
+            </conditional>
+            <conditional name="input_options">
+                <param name="infile_images" value="cifar-10_500.zip" ftype="zip"/>
+                <param name="infile_dataframe" value="cifar-10_500.tsv" ftype="tabular"/>
+                <param name="x_col" value="1"/>
+                <param name="y_col" value="2"/>
+                <section name="options">
+                    <param name="target_size" value="(32, 32)"/>
+                    <param name="width_shift_range" value="0.1"/>
+                    <param name="height_shift_range" value="0.1"/>
+                    <param name="cval" value="0"/>
+                    <param name="horizontal_flip" value="true"/>
+                    <param name="seed" value="141747174" />
+                </section>
+            </conditional>
+            <param name="save" value="save_estimator,save_prediction"/>
+            <output name="outfile_result" >
+                <assert_contents>
+                    <has_n_columns n="5"/>
+                    <has_text text="0.8"/>
+                    <has_text text="0.1"/>
+                    <has_text text="2."/>
+                </assert_contents>
+            </output>
+            <output name="outfile_weights" file="image_dl_weight01.h5" compare="sim_size" delta="5"/>
+            <output name="outfile_y_true" file="image_dl_y_true01.tabular" ftype="tabular"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+
+Given a pre-built keras deep learning model and labeled training dataset, this tool works in two modes.
+
+- Train and Validate: training dataset is split into train and validation portions. The model fits on the train portion, in the meantime performances are validated on the validation portion multiple times along with the training progressing. Finally, a fitted model (skeleton + weights) and its validation performance scores are outputted. 
+
+
+- Train, Validate and and Evaluate: training dataset is split into three portions, train, val and test. The same `Train and Validate` happens on the train and val portions. The test portion is hold out exclusively for testing (evaluation). As a result, a fitted model (skeleton + weights) and test performance scores are outputted.
+
+In both modes, besides the performance scores, the true labels and predicted values are able to be ouputted, which could be used in generating plots in other tools, machine learning visualization extensions, for example.
+
+Note that since all training and model parameters are accessible and changeable in the `Hyperparameter Swapping` section, the training and evaluation processes are transparent and fully controllable.
+
+**Input**
+
+- tabular
+- sparse
+- `sequnences in a fasta file` to work with DNA, RNA and Proteins with corresponding fasta data generator
+- `reference genome and intervals` exclusively work with `GenomicIntervalBatchGenerator`.
+
+**Output**
+
+- performance scores from evaluation
+- fitted estimator skeleton and weights
+- true labels or values and predicted values from the evaluation
+
+        ]]>
+    </help>
+    <expand macro="sklearn_citation">
+        <expand macro="keras_citation"/>
+    </expand>
+</tool>

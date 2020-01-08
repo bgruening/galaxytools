@@ -18,20 +18,17 @@ from sklearn.model_selection._validation import _score, cross_validate
 from sklearn.model_selection import _search, _validation
 from sklearn.pipeline import Pipeline
 
+from galaxy_ml.binarize_target import IRAPSClassifier
 from galaxy_ml.utils import (SafeEval, get_cv, get_scoring, load_model,
                              read_columns, try_get_attr, get_module,
                              clean_params, get_main_estimator)
 
 
-_fit_and_score = try_get_attr('galaxy_ml.model_validations', '_fit_and_score')
-setattr(_search, '_fit_and_score', _fit_and_score)
-setattr(_validation, '_fit_and_score', _fit_and_score)
-
 N_JOBS = int(os.environ.get('GALAXY_SLOTS', 1))
 # handle  disk cache
 CACHE_DIR = os.path.join(os.getcwd(), 'cached')
 del os
-NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', '_path',
+NON_SEARCHABLE = ('n_jobs', 'pre_dispatch', 'memory', '_path', '_dir',
                   'nthread', 'callbacks')
 
 
@@ -412,6 +409,34 @@ def _do_train_test_split_val(searcher, X, y, params, error_score='raise',
     return searcher
 
 
+def _set_memory(estimator, memory):
+    """set memeory cache
+
+    Parameters
+    ----------
+    estimator : python object
+    memory : joblib.Memory object
+
+    Returns
+    -------
+    estimator : estimator object after setting new attributes
+    """
+    if isinstance(estimator, IRAPSClassifier):
+        estimator.set_params(memory=memory)
+        return estimator
+
+    estimator_params = estimator.get_params()
+
+    new_params = {}
+    for k in estimator_params.keys():
+        if k.endswith('irapsclassifier__memory'):
+            new_params[k] = memory
+
+    estimator.set_params(**new_params)
+
+    return estimator
+
+
 def main(inputs, infile_estimator, infile1, infile2,
          outfile_result, outfile_object=None,
          outfile_weights=None, groups=None,
@@ -470,6 +495,13 @@ def main(inputs, infile_estimator, infile1, infile2,
 
     with open(infile_estimator, 'rb') as estimator_handler:
         estimator = load_model(estimator_handler)
+
+    if estimator.__class__.__name__ == 'KerasGBatchClassifier':
+        _fit_and_score = try_get_attr('galaxy_ml.model_validations',
+                                      '_fit_and_score')
+
+        setattr(_search, '_fit_and_score', _fit_and_score)
+        setattr(_validation, '_fit_and_score', _fit_and_score)
 
     optimizer = params['search_schemes']['selected_search_scheme']
     optimizer = getattr(model_selection, optimizer)
@@ -541,9 +573,7 @@ def main(inputs, infile_estimator, infile1, infile2,
 
     # cache iraps_core fits could increase search speed significantly
     memory = joblib.Memory(location=CACHE_DIR, verbose=0)
-    main_est = get_main_estimator(estimator)
-    if main_est.__class__.__name__ == 'IRAPSClassifier':
-        main_est.set_params(memory=memory)
+    estimator = _set_memory(estimator, memory)
 
     searcher = optimizer(estimator, param_grid, **options)
 
@@ -674,7 +704,6 @@ def main(inputs, infile_estimator, infile1, infile2,
             del main_est.model_
             del main_est.fit_params
             del main_est.model_class_
-            del main_est.validation_data
             if getattr(main_est, 'data_generator_', None):
                 del main_est.data_generator_
 
