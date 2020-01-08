@@ -3,11 +3,6 @@ import numpy as np
 import json
 import h5py
 
-from keras.models import model_from_json, Sequential
-from keras.layers import Dense, GRU, Dropout
-from keras.layers.embeddings import Embedding
-from keras.layers.core import SpatialDropout1D
-from keras.optimizers import RMSprop
 from keras import backend as K
 
 
@@ -37,17 +32,6 @@ def save_processed_workflows(file_path, unique_paths):
         workflows_file.write(workflow_paths_unique)
 
 
-def load_saved_model(model_config, model_weights):
-    """
-    Load the saved trained model using the saved network and its weights
-    """
-    # load the network
-    loaded_model = model_from_json(model_config)
-    # load the saved weights into the model
-    loaded_model.set_weights(model_weights)
-    return loaded_model
-
-
 def format_tool_id(tool_link):
     """
     Extract tool id from tool link
@@ -55,22 +39,6 @@ def format_tool_id(tool_link):
     tool_id_split = tool_link.split("/")
     tool_id = tool_id_split[-2] if len(tool_id_split) > 1 else tool_link
     return tool_id
-
-
-def get_HDF5(hf, d_key):
-    """
-    Read h5 file to get train and test data
-    """
-    return hf.get(d_key).value
-
-
-def save_HDF5(hf_file, d_key, data, d_type=""):
-    """
-    Save datasets as h5 file
-    """
-    if (d_type == 'json'):
-        data = json.dumps(data)
-    hf_file.create_dataset(d_key, data=data)
 
 
 def set_trained_model(dump_file, model_values):
@@ -100,44 +68,6 @@ def remove_file(file_path):
         os.remove(file_path)
 
 
-def extract_configuration(config_object):
-    config_loss = dict()
-    for index, item in enumerate(config_object):
-        config_loss[index] = list()
-        d_config = dict()
-        d_config['loss'] = item['result']['loss']
-        d_config['params_config'] = item['misc']['vals']
-        config_loss[index].append(d_config)
-    return config_loss
-
-
-def get_best_parameters(mdl_dict):
-    """
-    Get param values (defaults as well)
-    """
-    lr = float(mdl_dict.get("learning_rate", "0.001"))
-    embedding_size = int(mdl_dict.get("embedding_size", "512"))
-    dropout = float(mdl_dict.get("dropout", "0.2"))
-    recurrent_dropout = float(mdl_dict.get("recurrent_dropout", "0.2"))
-    spatial_dropout = float(mdl_dict.get("spatial_dropout", "0.2"))
-    units = int(mdl_dict.get("units", "512"))
-    batch_size = int(mdl_dict.get("batch_size", "512"))
-    activation_recurrent = mdl_dict.get("activation_recurrent", "elu")
-    activation_output = mdl_dict.get("activation_output", "sigmoid")
-
-    return {
-        "lr": lr,
-        "embedding_size": embedding_size,
-        "dropout": dropout,
-        "recurrent_dropout": recurrent_dropout,
-        "spatial_dropout": spatial_dropout,
-        "units": units,
-        "batch_size": batch_size,
-        "activation_recurrent": activation_recurrent,
-        "activation_output": activation_output,
-    }
-
-
 def weighted_loss(class_weights):
     """
     Create a weighted loss function. Penalise the misclassification
@@ -150,27 +80,6 @@ def weighted_loss(class_weights):
         expanded_weights = K.expand_dims(weight_values, axis=-1)
         return K.dot(K.binary_crossentropy(y_true, y_pred), expanded_weights)
     return weighted_binary_crossentropy
-
-
-def set_recurrent_network(mdl_dict, reverse_dictionary, class_weights):
-    """
-    Create a RNN network and set its parameters
-    """
-    dimensions = len(reverse_dictionary) + 1
-    model_params = get_best_parameters(mdl_dict)
-
-    # define the architecture of the neural network
-    model = Sequential()
-    model.add(Embedding(dimensions, model_params["embedding_size"], mask_zero=True))
-    model.add(SpatialDropout1D(model_params["spatial_dropout"]))
-    model.add(GRU(model_params["units"], dropout=model_params["spatial_dropout"], recurrent_dropout=model_params["recurrent_dropout"], activation=model_params["activation_recurrent"], return_sequences=True))
-    model.add(Dropout(model_params["dropout"]))
-    model.add(GRU(model_params["units"], dropout=model_params["spatial_dropout"], recurrent_dropout=model_params["recurrent_dropout"], activation=model_params["activation_recurrent"], return_sequences=False))
-    model.add(Dropout(model_params["dropout"]))
-    model.add(Dense(dimensions, activation=model_params["activation_output"]))
-    optimizer = RMSprop(lr=model_params["lr"])
-    model.compile(loss=weighted_loss(class_weights), optimizer=optimizer)
-    return model, model_params
 
 
 def compute_precision(model, x, y, reverse_data_dictionary, next_compatible_tools, usage_scores, actual_classes_pos, topk):

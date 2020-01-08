@@ -1,4 +1,4 @@
-<tool id="alevin" name="Alevin" version="@VERSION@">
+<tool id="alevin" name="Alevin" version="@VERSION@+galaxy1">
     <description>Quantification and analysis of 3’ tagged-end single-cell sequencing data</description>
     <macros>
         <import>macros.xml</import>
@@ -7,7 +7,7 @@
     <command detect_errors="exit_code"><![CDATA[
         mkdir ./index
         && mkdir ./output
-        #if '${refTranscriptSource.TranscriptSource}' != "indexed":
+        #if $refTranscriptSource.TranscriptSource != "indexed":
             && salmon index -i ./index
                 --kmerLen '${refTranscriptSource.s_index.kmer}'
                 --gencode
@@ -80,6 +80,7 @@
         #if $optional.keepCBFraction:
             --keepCBFraction '${optional.keepCBFraction}'
         #end if
+        ${optional.noDedup}
         ${optional.dumpBfh}
         ${optional.dumpFeatures}
         ${optional.dumpUmiGraph}
@@ -89,6 +90,17 @@
         #end if
         #if $optional.maxNumBarcodes:
             --maxNumBarcodes '${optional.maxNumBarcodes}'
+        #end if
+        #if $optional.freqThreshold:
+            --freqThreshold '${optional.freqThreshold}'
+        #end if
+
+        #if $optional.dumpMtx != "--dumpMtx":
+            && python '$__tool_directory__/vpolo_convert.py' -m
+        #end if
+        #if $optional.dumpUmiGraph:
+            && python '$__tool_directory__/vpolo_convert.py' -u
+            && sh '$__tool_directory__/umiout.sh'
         #end if
         ]]>
     </command>
@@ -122,7 +134,7 @@
         <param name="allout" type="boolean" label="Retrieve all output files" truevalue="Yes" falsevalue="No" checked="false" help="If not selected, all log, info.txt, and json files output by Alevin will not be retrieved"/>
         <section name="optional" title="Optional commands" expanded="false">
             <param name="whitelist" type="data" format="tsv,tabular" optional="true" label="Whitelist file" help="Explicitly specify whitelist CP for cell detection and CB sequence correction. If not specified, putative CBs generated."/>
-            <param name="noDedup" type="boolean" truevalue="Yes" falsevalue="No" checked="false" help="Causes pipeline to only perform CB correction, then maps the read-sequences to the transcriptome generating the interim data-structure of CB-EqClass-UMI-count. Used in parallel with --dumpBarcodeEq or --dumpBfh for the purposes of obtaining raw information or debugging."/>
+            <param name="noDedup" type="boolean" truevalue="--noDedup" falsevalue="" checked="false" help="Causes pipeline to only perform CB correction, then maps the read-sequences to the transcriptome generating the interim data-structure of CB-EqClass-UMI-count. Used in parallel with --dumpBarcodeEq or --dumpBfh for the purposes of obtaining raw information or debugging."/>
             <param name="mrna" type="data" format="tsv" optional="true" help="Single column tsv of mitochondrial genes which are to be used as a feature for CB whitelising naive Bayes classification."/>
             <param name="rrna" type="data" format="tsv" optional="true" help="Single column tsv of ribosomal genes which are to be used as a feature for CB whitelising naive Bayes classification."/>
             <param name="dumpBfh" type="boolean" truevalue="--dumpBfh" falsevalue="" checked="false" help="Dumps the full CB-EqClass-UMI-count data-structure for the purposed of allowing raw data analysis and debugging."/>
@@ -136,13 +148,19 @@
             <param name="keepCBFraction" type="float" optional="true" help="Fraction of cellular barcodes to keep (Between 0 and 1)."/>
             <param name="lowRegionMinNumBarcodes" type="integer" optional="true" help="Minimum number of cell barcodes to use fo learning low confidence region (defaults to 200)"/>
             <param name="maxNumBarcodes" type="integer" optional="true" help="Maximum allowable limit to process the cell barcodes. Defaults to 100000"/>
+            <param name="freqThreshold" type="integer" optional="true" help="Minimum frequency for a barcode to be considered. Defaults to 10"/>
         </section>
     </inputs>
     <outputs>
-        <data name="quants_mat.gz" label="quants_mat.gz" format="txt" from_work_dir="output/alevin/quants_mat.gz">
-            <filter>optional["dumpMtx"] != "Yes"</filter>
+        <data name="quants_mat.tsv" label="quants_mat.tsv" format="txt" from_work_dir="quants_mat.tsv">
+            <filter>optional["dumpMtx"] is not True</filter>
         </data>
-        <data name="quants_mat.mtx.gz" label="quants_mat.mtx.gz" format="mtx" from_work_dir="output/alevin/quants_mat.mtx.gz"/>
+        <data name="quants_mat.mtx.gz" label="quants_mat.mtx.gz" format="mtx" from_work_dir="output/alevin/quants_mat.mtx.gz">
+            <filter>optional["dumpMtx"]</filter>
+        </data>
+        <data name="raw_cb_frequency.txt" label="raw_cb_frequency.txt" format="txt" from_work_dir="output/alevin/raw_cb_frequency.txt">
+            <filter>optional["dumpFeatures"]</filter>
+        </data>
         <data name="quants_mat_cols.txt" label="quants_mat_cols.txt" format="txt" from_work_dir="output/alevin/quants_mat_cols.txt"/>
         <data name="quants_mat_rows.txt" label="quants_mat_rows.txt" format="txt" from_work_dir="output/alevin/quants_mat_rows.txt"/>
         <data name="quants_tier_mat.gz" label="quants_tier_mat.gz" format="mtx" from_work_dir="output/alevin/quants_tier_mat.gz"/>
@@ -152,7 +170,7 @@
         <data name="featureDump.txt" label="featureDump.txt" format="txt" from_work_dir="output/alevin/featureDump.txt"/>
         <data name="whitelist.txt" label="whitelist.txt" format="txt" from_work_dir="output/alevin/whitelist.txt"/>
         <data name="bfh.txt" label="bfh.txt" format="txt" from_work_dir="output/alevin/bfh.txt">
-            <filter>optional["dumpBfh"] == "Yes"</filter>
+            <filter>optional["dumpBfh"]</filter>
         </data>
         <data name="quants_mean_mat.gz" label="quants_mean_mat.gz" format="mtx" from_work_dir="output/alevin/quants_mean_mat.gz">
             <filter>optional["numCellBootstraps"]</filter>
@@ -179,6 +197,10 @@
         <data name="salmon_quant.log" format="txt" label="salmon_quant.log" from_work_dir="output/logs/salmon_quant.log">
             <filter>allout</filter>
         </data>
+        <collection name="umigraphs" type="list" label="Umi graph PDFs">
+            <filter>optional["dumpUmiGraph"]</filter>
+            <discover_datasets pattern="__name_and_ext__" ext="pdf" directory="fixed"/>
+        </collection>
     </outputs>
     <tests>
         <test expect_num_outputs="11">
@@ -198,6 +220,9 @@
             <param name="protocol" value="--chromium"/>
             <param name="tgmap" value="minitxp.tsv"/>
             <param name="dumpMtx" value="Yes"/>
+            <param name="freqThreshold" value="5"/>
+            <param name="dumpFeatures" value="Yes"/>
+            <param name="keepCBFraction" value="1"/>
             <output name="quants_mat.mtx.gz" file="alevin_mat.mtx.gz" ftype="mtx" compare="sim_size"/>
         </test>
     </tests>
