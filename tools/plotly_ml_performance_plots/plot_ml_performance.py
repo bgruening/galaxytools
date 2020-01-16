@@ -140,7 +140,7 @@ def main(infile_input, infile_output, infile_trained_model):
         plotly.offline.plot(fig_roc, filename="output_roc.html", auto_open=False)
 
     except Exception as exp:
-        pass
+        print("Plotting the ROC-AUC graph failed. This exception was raised: {}".format(exp))
 
 
 if __name__ == "__main__":
