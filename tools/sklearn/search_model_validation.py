@@ -491,7 +491,8 @@ def main(inputs, infile_estimator, infile1, infile2,
 
     # Override the refit parameter
     params['search_schemes']['options']['refit'] = True \
-        if params['save'] != 'nope' else False
+        if (params['save'] != 'nope' or
+            params['outer_split']['split_mode'] == 'nested_cv') else False
 
     with open(infile_estimator, 'rb') as estimator_handler:
         estimator = load_model(estimator_handler)
@@ -580,15 +581,6 @@ def main(inputs, infile_estimator, infile1, infile2,
     split_mode = params['outer_split'].pop('split_mode')
 
     if split_mode == 'nested_cv':
-        # make sure refit is choosen
-        # this could be True for sklearn models, but not the case for
-        # deep learning models
-        if not options['refit'] and \
-                not all(hasattr(estimator, attr)
-                        for attr in ('config', 'model_type')):
-            warnings.warn("Refit is change to `True` for nested validation!")
-            setattr(searcher, 'refit', True)
-
         outer_cv, _ = get_cv(params['outer_split']['cv_selector'])
         # nested CV, outer cv using cross_validate
         if options['error_score'] == 'raise':
@@ -704,6 +696,7 @@ def main(inputs, infile_estimator, infile1, infile2,
             del main_est.model_
             del main_est.fit_params
             del main_est.model_class_
+            main_est.callbacks = []
             if getattr(main_est, 'data_generator_', None):
                 del main_est.data_generator_
 
