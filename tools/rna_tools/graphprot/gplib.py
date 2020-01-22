@@ -102,7 +102,7 @@ def graphprot_profile_get_top_scores_median(profile_file,
 
 
 ################################################################################
-
+#!/usr/bin/env python3
 def list_moving_window_average_values(in_list, 
                                       win_extlr=5,
                                       method=1):
