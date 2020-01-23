@@ -162,6 +162,7 @@ def main():
 
     parser = argparse.ArgumentParser(description='RDKit conformers')
     parser.add_argument('-i', '--input', help='SMILES input')
+    parser.add_argument('--informat', help='Format/Extension of the input file')
     parser.add_argument('-f', '--file', help='SMILES input as file')
     parser.add_argument('-n', '--num', type=int, default=1, help='number of conformers to generate')
     parser.add_argument('-a', '--attempts', type=int, default=0, help='number of attempts')
@@ -174,6 +175,7 @@ def main():
                         help='energy minimisation iterations (default of 0 means none)')
     parser.add_argument('-o', '--output', type=argparse.FileType('w+'),
                         default=sys.stdout, help="path to the result file, default it sdtout")
+    parser.add_argument('--outformat', help='Format/Extension of the output file')
     args = parser.parse_args()
 
     utils.log("Conformers Args: ", args)
