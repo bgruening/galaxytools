@@ -39,6 +39,11 @@ field_MinimizationConverged = 'MinimizationConverged'
 
 ### start function defintions #########################################
 
+def open_file(filename):
+    with open(filename) as f:
+        return f.readline()
+
+
 def process_mol_conformers(mol, i, numConfs, maxAttempts, pruneRmsThresh, clusterMethod, clusterThreshold,
                            minimizeIterations):
     # utils.log("generating conformers for molecule",i)
@@ -109,6 +114,7 @@ def write_conformers(mol, i, conformerPropsDict, minEnergy, writer):
                 mol.SetDoubleProp(field_EnergyDelta, energy - minEnergy)
         writer.write(mol)
 
+
 def gen_conformers(mol, numConfs=1, maxAttempts=1, pruneRmsThresh=0.1, useExpTorsionAnglePrefs=True,
                    useBasicKnowledge=True, enforceChirality=True):
     ids = AllChem.EmbedMultipleConfs(mol, numConfs=numConfs, maxAttempts=maxAttempts, pruneRmsThresh=pruneRmsThresh,
@@ -155,6 +161,8 @@ def main():
     ### command line args defintions #########################################
 
     parser = argparse.ArgumentParser(description='RDKit conformers')
+    parser.add_argument('-i', '--input', help='SMILES input')
+    parser.add_argument('-f', '--file', help='SMILES input as file')
     parser.add_argument('-n', '--num', type=int, default=1, help='number of conformers to generate')
     parser.add_argument('-a', '--attempts', type=int, default=0, help='number of attempts')
     parser.add_argument('-r', '--rmsd', type=float, default=1.0, help='prune RMSD threshold')
@@ -164,17 +172,9 @@ def main():
                         help='cluster threshold (default of 2.0 for RMSD and 0.3 for TFD)')
     parser.add_argument('-e', '--emin', type=int, default=0,
                         help='energy minimisation iterations (default of 0 means none)')
-    parameter_utils.add_default_io_args(parser)
-    parser.add_argument('-s', '--smiles', help='input structure as smiles (incompatible with using files or stdin for input)')
-    parser.add_argument('-f', '--outfile', type=argparse.FileType('w+'),
+    parser.add_argument('-o', '--output', type=argparse.FileType('w+'),
                         default=sys.stdout, help="path to the result file, default it sdtout")
     args = parser.parse_args()
-
-    if not args.threshold:
-        if args.cluster == 'tfd':
-            args.threshold = 0.3
-        elif args.cluster == 'rmsd':
-            args.threshold = 2.0
 
     utils.log("Conformers Args: ", args)
 
@@ -202,8 +202,10 @@ def main():
          "values": {"source": source, "description": "Structure number this conformer was generated from"}}
     ]
 
-    if args.smiles:
-        mol = Chem.MolFromSmiles(args.smiles)
+    if args.input or args.file:
+        if args.file:
+            args.input = open_file(args.file)
+        mol = Chem.MolFromSmiles(args.input)
         suppl = [mol]
         input = None
     else:
@@ -213,6 +215,12 @@ def main():
                                       valueClassMappings=clsMappings,
                                       datasetMetaProps=datasetMetaProps,
                                       fieldMetaProps=fieldMetaProps)
+
+    if not args.threshold:
+        if args.cluster == 'tfd':
+            args.threshold = 0.3
+        elif args.cluster == 'rmsd':
+            args.threshold = 2.0
 
     # OK, all looks good so we can hope that things will run OK.
     # But before we start lets write the metadata so that the results can be handled.
@@ -234,7 +242,7 @@ def main():
 
     i = 0
     count = 0
-    writer = rdkit_utils.ThickSDWriter(args.outfile)
+    writer = rdkit_utils.ThickSDWriter(args.output)
     for mol in suppl:
         if mol is None: continue
         m = Chem.AddHs(mol)
@@ -249,10 +257,6 @@ def main():
         input.close()
     writer.flush()
     writer.close()
-
-    if args.meta:
-        utils.write_metrics(output_base, {'__InputCount__': i, '__OutputCount__': count, 'RDKitConformer': count})
-
 
 if __name__ == "__main__":
     main()
