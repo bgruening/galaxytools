@@ -186,11 +186,11 @@ if __name__ == '__main__':
     # Read in FASTA sequences to check for uppercase sequences.
     seqs_dic = gplib.read_fasta_into_dic(args.in_fa)
     c_uc_nt = gplib.seqs_dic_count_uc_nts(seqs_dic)
-    assert c_uc_nt, "no uppercase nucleotides in input .fa sequences. Please change sequences to uppercase (keep in mind GraphProt only scores uppercase regions (according to its viewpoint concept))"
+    assert c_uc_nt, "no uppercase nucleotides in input .fa sequences. Please change sequences to uppercase (keep in mind GraphProt only scores uppercase regions (according to its viewpoint concept)"
     if not args.ws_pred:
         # Check for lowercase sequences.
         c_lc_nt = gplib.seqs_dic_count_lc_nts(seqs_dic)
-        assert not c_lc_nt, "lowercase nucleotides not allowed in profile predictions, since GraphProt only scores uppercase regions (according to its viewpoint concept))"
+        assert not c_lc_nt, "lowercase nucleotides in input .fa not allowed in profile predictions, since GraphProt only scores uppercase regions (according to its viewpoint concept)"
     # Check .bed.
     if args.genomic_sites_bed:
         # An array of checks, marvelous.
