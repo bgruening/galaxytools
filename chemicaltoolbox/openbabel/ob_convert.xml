@@ -13,28 +13,37 @@
 
     #set $format = $oformat.oformat_opts_selector
 
-    #if $format == "fs":
+    #if $format == 'fs':
         ## For the fastsearch index we need to copy the original molecule files to the composite datatype of obfs.
         ## Because openbabel likes file extensions, we give the molecule file a proper file extension.
         mkdir $outfile.files_path;
-        cp "${infile}" ${os.path.join($outfile.files_path, 'molecule.%s' % $infile.ext )};
+        cp '${infile}' ${os.path.join($outfile.files_path, 'molecule.%s' % $infile.ext )};
     #end if
 
-    obabel -i "${infile.ext}"
+    #if $split == 'true':
+        mkdir output &&
+    #end if
 
-        #if $format == "fs":
+    obabel -i '${infile.ext}'
+
+        #if $format == 'fs':
             ## the fs filetype need his own symlink path, all others can take the original ones
             ${os.path.join($outfile.files_path, 'molecule.%s' % $infile.ext )}
-            -o "$format" -e
+            -o '$format' -e
             -O ${os.path.join($outfile.files_path,'molecule.fs')}
             #if int($oformat.fs_fold) > 0:
                 -xN$oformat.fs_fold
             #end if
             ${oformat.fs_fptype}
         #else:
-            "${infile}"
-            -o "${format}"
-            -O "${outfile}"
+            '${infile}'
+            -o '${format}'
+            #if $split == 'true':
+                -O 'output/molecule.$format'
+                -m
+            #else:
+                -O '${outfile}'
+            #end if
             -e
         #end if
 
@@ -188,6 +197,7 @@
                 <option value="nw">NWChem input format</option>
                 <option value="pcm">PCModel format</option>
                 <option value="pdb">Protein Data Bank format (pdb)</option>
+                <option value="pdbqt">PDBQT input format</option>
                 <option value="pov">POV-Ray input format</option>
                 <option value="pqs">Parallel Quantum Solutions format</option>
                 <option value="qcin">Q-Chem input format</option>
@@ -335,6 +345,7 @@
             <when value="nw" />
             <when value="pcm" />
             <when value="pdb" />
+            <when value="pdbqt" />
             <when value="pov" />
             <when value="pqs" />
             <when value="qcin" />
@@ -379,6 +390,7 @@
         </conditional>
 
         <!-- Options for all formats.-->
+        <param name="split" type="boolean" value="false" label="Split multi-molecule files into a collection"/>
         <param name="remove_h" type="boolean" truevalue="-d" falsevalue=""
             label="Delete hydrogen atoms, make all hydrogens implicit" help="(-d)" />
         <param name="ph" type="float" value="-1" label="Add hydrogens appropriate for pH" help="-1 means deactivated (-p)"/>
@@ -415,6 +427,7 @@
 
     <outputs>
         <data name="outfile" format="text" label="Convert to ${oformat.oformat_opts_selector} from ${on_string}">
+            <filter>split == False</filter>
             <change_format>
                 <when input="oformat.oformat_opts_selector" value="sdf" format="sdf"/>
                 <when input="oformat.oformat_opts_selector" value="can" format="smi"/>
@@ -424,9 +437,15 @@
                 <when input="oformat.oformat_opts_selector" value="cml" format="cml"/>
                 <when input="oformat.oformat_opts_selector" value="mol" format="mol"/>
                 <when input="oformat.oformat_opts_selector" value="pdb" format="pdb"/>
+                <when input="oformat.oformat_opts_selector" value="pdbqt" format="pdbqt"/>
                 <when input="oformat.oformat_opts_selector" value="fs" format="obfs"/>
             </change_format>
         </data>
+
+        <collection name="file_outputs" type="list" label="Prepared ligands" >
+            <filter>split == True</filter>
+			<discover_datasets pattern="__name_and_ext__" directory="output" visible="false" />
+        </collection>
     </outputs>
     <tests>
         <test>
@@ -461,6 +480,15 @@
             <param name="infile" ftype="sdf" value="CID_2244.sdf"/>
             <param name="oformat_opts_selector" value="sdf" />
             <output name="outfile" ftype="sdf" file="ob_convert_on_CID2244.sdf" lines_diff="2"/>
+        </test>
+        <test>
+            <param name="infile" ftype="smi" value="2_mol.smi"/>
+            <param name="oformat_opts_selector" value="pdbqt"/>
+            <param name="split" value="true"/>
+            <output_collection name="file_outputs" type="list" count="2">
+                <element name="molecule1" file="split1.pdbqt" />
+                <element name="molecule2" file="split2.pdbqt" />
+            </output_collection>
         </test>
     </tests>
     <help>

@@ -1,24 +1,75 @@
 <tool id="sklearn_searchcv" name="Hyperparameter Search" version="@VERSION@">
-    <description>using exhausitive or randomized search</description>
+    <description>performs hyperparameter optimization using various SearchCVs</description>
     <macros>
         <import>main_macros.xml</import>
+         <macro name="search_cv_estimator">
+            <param name="infile_estimator" type="data" format="zip" label="Choose the dataset containing pipeline/estimator object"/>
+            <param name="is_deep_learning" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Is the estimator a deep learning model?"/>
+            <section name="search_params_builder" title="Search parameters Builder" expanded="true">
+            <param name="infile_params" type="data" format="tabular" optional="true" label="Choose the dataset containing parameter names" help="This dataset could be the output of `get_params` in the `Estimator Attributes` tool."/>
+            <repeat name="param_set" min="1" max="30" title="Parameter settings for search:">
+                <param name="sp_name" type="select" optional="true" label="Choose a parameter name (with current value)">
+                    <options from_dataset="infile_params" startswith="@">
+                    <column name="name" index="2"/>
+                    <column name="value" index="1"/>
+                    <filter type="unique_value" name="unique_param" column="1"/>
+                    </options>
+                </param>
+                <param name="sp_list" type="text" value="" optional="true" label="Search list" help="list or array-like, for example: [1, 10, 100, 1000], [True, False] and ['auto', 'sqrt', None]. See `help` section for more examples">
+                    <sanitizer>
+                    <valid initial="default">
+                        <add value="&apos;"/>
+                        <add value="&quot;"/>
+                        <add value="["/>
+                        <add value="]"/>
+                    </valid>
+                    </sanitizer>
+                </param>
+            </repeat>
+            </section>
+        </macro>
     </macros>
     <expand macro="python_requirements"/>
     <expand macro="macro_stdio"/>
     <version_command>echo "@VERSION@"</version_command>
     <command>
         <![CDATA[
+        export HDF5_USE_FILE_LOCKING='FALSE';
+        #if $input_options.selected_input == 'refseq_and_interval'
+        bgzip -c '$input_options.target_file' > '${target_file.element_identifier}.gz' &&
+        tabix -p bed '${target_file.element_identifier}.gz' &&
+        #end if
         python '$__tool_directory__/search_model_validation.py'
             --inputs '$inputs'
             --estimator '$search_schemes.infile_estimator'
+            #if $input_options.selected_input == 'seq_fasta'
+            --fasta_path '$input_options.fasta_path'
+            #elif $input_options.selected_input == 'refseq_and_interval'
+            --ref_seq '$input_options.ref_genome_file'
+            --interval '$input_options.interval_file'
+            --targets "`pwd`/${target_file.element_identifier}.gz"
+            #else
             --infile1 '$input_options.infile1'
+            #end if
             --infile2 '$input_options.infile2'
-            --outfile_result '$outfile_result'
-            #if $save
+            #if $save != 'save_no_fit'
+            --outfile_result "`pwd`/tmp_outfile_result"
+            #end if
+            #if $save == 'save_estimator'
             --outfile_object '$outfile_object'
             #end if
+            #if $save == 'save_no_fit'
+            --outfile_object '$outfile_object_no_fit'
+            #end if
+            #if $search_schemes.is_deep_learning == 'booltrue' and $save == 'save_estimator' and $outer_split.split_mode == 'nested_cv'
+            --outfile_weights '$outfile_weights'
+            #end if
             #if $search_schemes.options.cv_selector.selected_cv in ['GroupKFold', 'GroupShuffleSplit', 'LeaveOneGroupOut', 'LeavePGroupsOut']
-            --groups '$inputs,$search_schemes.options.cv_selector.groups_selector.infile_g'
+            --groups '$search_schemes.options.cv_selector.groups_selector.infile_g'
+            #end if
+            #if $save != 'save_no_fit'
+            >'$outfile_result' && cp '$outfile_result' "`pwd`/../tool_stdout"
+            && cp "`pwd`/tmp_outfile_result" '$outfile_result';
             #end if
 
         ]]>
@@ -47,31 +98,39 @@
                 </section>
             </when>
         </conditional>
-        <param name="save" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Save the searchCV object"/>
-        <expand macro="sl_mixed_input"/>
-        <conditional name="train_test_split">
-            <param name="do_split" type="select" label="Whether to hold a portion of samples for test exclusively?" help="train_test_split">
-                <option value="no">Nope</option>
-                <option value="yes">Yes - I do</option>
+        <expand macro="sl_mixed_input_plus_sequence"/>
+        <conditional name="outer_split">
+            <param name="split_mode" type="select" label="Whether to hold a portion of samples for test exclusively?" help="Nested CV or train_test_split">
+                <option value="no" selected="true">Nope</option>
+                <option value="nested_cv">Yes - do nested CV</option>
             </param>
             <when value='no'/>
-            <when value='yes'>
-                <param argument="test_size" type="float" optional="True" value="0.25" label="Test size:"/>
-                <param argument="train_size" type="float" optional="True" value="" label="Train size:"/>
-                <param argument="random_state" type="integer" optional="True" value="" label="Random seed number:"/>
-                <param argument="shuffle" type="select">
-                    <option value="None">None - No shuffle</option>
-                    <option value="simple">Shuffle -- for regression problems</option>
-                    <option value="stratified">StratifiedShuffle -- will use the target values as class labels</option>
-                    <option value="group">GroupShuffle -- make sure group CV option is choosen</option>
-                </param>
+            <when value="nested_cv">
+                <expand macro="cv_reduced" label="Select the outer cv splitter"/>
             </when>
         </conditional>
+        <param name="save" type="select" label="Save best estimator?" help="For a non-deep learning model, save will output fitted best_estimator_ (refit must be true) or a list of cv_results_ from each outer split in nested CV mode. For a deep learning model, by checking the boolean option below the model input, the outputs are two parts, model skeleton and weights. Save Deep learning model for nested CV is not supported.">
+            <option value="nope">Nope, save is unnecessary</option>
+            <option value="save_estimator" selected="true">Fitted best estimator or Detailed cv_results_ from nested CV</option>
+            <option value="save_no_fit">SearchCV object without fitting</option>
+        </param>
     </inputs>
     <outputs>
-        <data format="tabular" name="outfile_result"/>
-        <data format="zip" name="outfile_object" label="${search_schemes.selected_search_scheme} on ${on_string}">
-            <filter>save</filter>
+        <data format="tabular" name="outfile_result">
+            <filter>save != 'save_no_fit'</filter>
+        </data>
+        <data format="zip" name="outfile_object" label="Fitted estimator or estimator skeleton on ${on_string}">
+            <filter>save == 'save_estimator' and outer_split['split_mode'] == 'no'</filter>
+        </data>
+        <data format="h5" name="outfile_weights" label="Weights trained on ${on_string}">
+            <filter>search_schemes['is_deep_learning'] and save == 'save_estimator' and outer_split['split_mode'] == 'no'</filter>
+        </data>
+        <collection type="list" name="outfile_in_splits" label="cv_results_ from splits on ${on_string}">
+            <filter>not search_schemes['is_deep_learning'] and save == 'save_estimator' and outer_split['split_mode'] == 'nested_cv'</filter>
+            <discover_datasets format="tabular" pattern="__name__" directory="cv_results_in_folds"/>
+        </collection>
+        <data format="zip" name="outfile_object_no_fit" label="Unfitted SearchCV on ${on_string}">
+            <filter>save == 'save_no_fit'</filter>
         </data>
     </outputs>
     <tests>
@@ -227,6 +286,7 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
+            <param name="save" value="save_estimator"/>
             <output name="outfile_object" file="searchCV01" compare="sim_size" delta="10"/>
         </test>
         <test>
@@ -331,6 +391,7 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
+            <param name="save" value="save_estimator"/>
             <output name="outfile_object" file="searchCV02" compare="sim_size" delta="10"/>
         </test>
         <test>
@@ -359,40 +420,7 @@
             <output name="outfile_result" >
                 <assert_contents>
                     <has_n_columns n="13" />
-                    <has_text text="0.09003449195911103"/>
-                </assert_contents>
-            </output>
-        </test>
-        <test>
-            <param name="selected_search_scheme" value="GridSearchCV"/>
-            <param name="infile_estimator" value="pipeline09" ftype="zip"/>
-            <param name="infile_params" value="get_params09.tabular" ftype="tabular"/>
-            <repeat name="param_set">
-                <param name="sp_list" value="[50, 100, 150, 200]"/>
-                <param name="sp_name" value="relieff__n_neighbors"/>
-            </repeat>
-            <repeat name="param_set">
-                <param name="sp_list" value="[324089]"/>
-                <param name="sp_name" value="randomforestregressor__random_state"/>
-            </repeat>
-            <param name="primary_scoring" value="explained_variance"/>
-            <param name="secondary_scoring" value="neg_mean_squared_error,r2"/>
-            <param name='selected_cv' value="StratifiedKFold"/>
-            <param name="n_splits" value="3"/>
-            <param name="shuffle" value="true" />
-            <param name="random_state" value="10"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="true" />
-            <param name="selected_column_selector_option" value="all_columns"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="header2" value="true" />
-            <param name="selected_column_selector_option2" value="all_columns"/>
-            <output name="outfile_result" >
-                <assert_contents>
-                    <has_n_columns n="25" />
-                    <has_text text="0.7879267424165166"/>
-                    <has_text text="0.787865425577799"/>
-                    <has_text text="-29.40436189868029"/>
+                    <has_text text="0.08719866399898475"/>
                 </assert_contents>
             </output>
         </test>
@@ -423,7 +451,7 @@
             <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
             <repeat name="param_set">
                 <param name="sp_list" value="[10, 50, 100, 300]"/>
-                <param name="sp_name" value="randomforestregressor__n_estimators"/>
+                <param name="sp_name" value="n_estimators"/>
             </repeat>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
             <param name="header1" value="true" />
@@ -509,7 +537,7 @@
             <param name="infile_estimator" value="pipeline09" ftype="zip"/>
             <param name="infile_params" value="get_params09.tabular" ftype="tabular"/>
             <repeat name="param_set">
-                <param name="sp_list" value=": [None,'sk_prep_all', 8, 14, skrebate_ReliefF(n_features_to_select=12)]"/>
+                <param name="sp_list" value=": [None,'sk_prep_all', 7, 13, skrebate_ReliefF(n_features_to_select=12)]"/>
                 <param name="sp_name" value="relieff"/>
             </repeat>
             <repeat name="param_set">
@@ -573,11 +601,11 @@
             <param name="infile_params" value="get_params12.tabular" ftype="tabular"/>
             <repeat name="param_set">
                 <param name="sp_list" value="[10, 100, 200]"/>
-                <param name="sp_name" value="rfe__estimator__n_estimators"/>
+                <param name="sp_name" value="estimator__n_estimators"/>
             </repeat>
             <repeat name="param_set">
                 <param name="sp_list" value="[10, None]"/>
-                <param name="sp_name" value="rfe__n_features_to_select"/>
+                <param name="sp_name" value="n_features_to_select"/>
             </repeat>
             <param name="primary_scoring" value="r2"/>
             <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
@@ -593,7 +621,7 @@
                 </assert_contents>
             </output>
         </test>
-        <!--test>
+        <test>
             <conditional name="search_schemes">
                 <param name="selected_search_scheme" value="GridSearchCV"/>
                 <param name="infile_estimator" value="pipeline05" ftype="zip"/>
@@ -601,7 +629,7 @@
                     <param name="infile_params" value="get_params05.tabular" ftype="tabular"/>
                     <repeat name="param_set">
                         <param name="sp_list" value="[10, 50, 100, 300]"/>
-                        <param name="sp_name" value="randomforestregressor__n_estimators"/>
+                        <param name="sp_name" value="n_estimators"/>
                     </repeat>
                 </section>
             </conditional>
@@ -611,13 +639,22 @@
             <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
             <param name="header2" value="true" />
             <param name="selected_column_selector_option2" value="all_columns"/>
+            <conditional name="outer_split">
+                <param name="split_mode" value="nested_cv"/>
+                <conditional name="cv_selector">
+                    <param name='selected_cv' value="KFold"/>
+                    <param name="n_splits" value="3"/>
+                    <param name="shuffle" value="true" />
+                    <param name="random_state" value="123"/>
+                </conditional>
+            </conditional>
             <output name="outfile_result">
                 <assert_contents>
-                    <has_n_columns n="1"/>
-                    <has_text text="0.7986842219788204" />
+                    <has_n_columns n="4"/>
+                    <has_text text="0.8044418936007722" />
                 </assert_contents>
             </output>
-        </test-->
+        </test>
     </tests>
     <help>
         <![CDATA[
@@ -661,66 +698,65 @@ Examples:
 
     0   sklearn_preprocessing.StandardScaler(copy=True, with_mean=True, with_std=True)
     1   sklearn_preprocessing.Binarizer(copy=True, threshold=0.0)
-    2   sklearn_preprocessing.Imputer(axis=0, copy=True, missing_values='NaN', strategy='mean', verbose=0)
-    3   sklearn_preprocessing.MaxAbsScaler(copy=True)
-    4   sklearn_preprocessing.Normalizer(copy=True, norm='l2')
-    5   sklearn_preprocessing.MinMaxScaler(copy=True, feature_range=(0, 1))
-    6   sklearn_preprocessing.PolynomialFeatures(degree=2, include_bias=True, interaction_only=False)
-    7   sklearn_preprocessing.RobustScaler(copy=True, quantile_range=(25.0, 75.0), with_centering=True, with_scaling=True)
-    8   sklearn_feature_selection.SelectKBest(k=10, score_func=<function f_classif at 0x113806d90>)
-    9   sklearn_feature_selection.GenericUnivariateSelect(mode='percentile', param=1e-05, score_func=<function f_classif at 0x113806d90>)
-    10  sklearn_feature_selection.SelectPercentile(percentile=10, score_func=<function f_classif at 0x113806d90>)
-    11  sklearn_feature_selection.SelectFpr(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
-    12  sklearn_feature_selection.SelectFdr(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
-    13  sklearn_feature_selection.SelectFwe(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
-    14  sklearn_feature_selection.VarianceThreshold(threshold=0.0)
-    15  sklearn_decomposition.FactorAnalysis(copy=True, iterated_power=3, max_iter=1000, n_components=None,
+    2   sklearn_preprocessing.MaxAbsScaler(copy=True)
+    3   sklearn_preprocessing.Normalizer(copy=True, norm='l2')
+    4   sklearn_preprocessing.MinMaxScaler(copy=True, feature_range=(0, 1))
+    5   sklearn_preprocessing.PolynomialFeatures(degree=2, include_bias=True, interaction_only=False)
+    6   sklearn_preprocessing.RobustScaler(copy=True, quantile_range=(25.0, 75.0), with_centering=True, with_scaling=True)
+    7   sklearn_feature_selection.SelectKBest(k=10, score_func=<function f_classif at 0x113806d90>)
+    8   sklearn_feature_selection.GenericUnivariateSelect(mode='percentile', param=1e-05, score_func=<function f_classif at 0x113806d90>)
+    9  sklearn_feature_selection.SelectPercentile(percentile=10, score_func=<function f_classif at 0x113806d90>)
+    10  sklearn_feature_selection.SelectFpr(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
+    11  sklearn_feature_selection.SelectFdr(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
+    12  sklearn_feature_selection.SelectFwe(alpha=0.05, score_func=<function f_classif at 0x113806d90>)
+    13  sklearn_feature_selection.VarianceThreshold(threshold=0.0)
+    14  sklearn_decomposition.FactorAnalysis(copy=True, iterated_power=3, max_iter=1000, n_components=None,
         noise_variance_init=None, random_state=0, svd_method='randomized', tol=0.01)
-    16  sklearn_decomposition.FastICA(algorithm='parallel', fun='logcosh', fun_args=None,
+    15  sklearn_decomposition.FastICA(algorithm='parallel', fun='logcosh', fun_args=None,
         max_iter=200, n_components=None, random_state=0, tol=0.0001, w_init=None, whiten=True)
-    17  sklearn_decomposition.IncrementalPCA(batch_size=None, copy=True, n_components=None, whiten=False)
-    18  sklearn_decomposition.KernelPCA(alpha=1.0, coef0=1, copy_X=True, degree=3, eigen_solver='auto',
+    16  sklearn_decomposition.IncrementalPCA(batch_size=None, copy=True, n_components=None, whiten=False)
+    17  sklearn_decomposition.KernelPCA(alpha=1.0, coef0=1, copy_X=True, degree=3, eigen_solver='auto',
         fit_inverse_transform=False, gamma=None, kernel='linear', kernel_params=None, max_iter=None,
         n_components=None, random_state=0, remove_zero_eig=False, tol=0)
-    19  sklearn_decomposition.LatentDirichletAllocation(batch_size=128, doc_topic_prior=None, evaluate_every=-1, learning_decay=0.7,
+    18  sklearn_decomposition.LatentDirichletAllocation(batch_size=128, doc_topic_prior=None, evaluate_every=-1, learning_decay=0.7,
         learning_method=None, learning_offset=10.0, max_doc_update_iter=100, max_iter=10, mean_change_tol=0.001, n_components=10,
         n_topics=None, perp_tol=0.1, random_state=0, topic_word_prior=None, total_samples=1000000.0, verbose=0)
-    20  sklearn_decomposition.MiniBatchDictionaryLearning(alpha=1, batch_size=3, dict_init=None, fit_algorithm='lars',
+    19  sklearn_decomposition.MiniBatchDictionaryLearning(alpha=1, batch_size=3, dict_init=None, fit_algorithm='lars',
         n_components=None, n_iter=1000, random_state=0, shuffle=True, split_sign=False, transform_algorithm='omp',
         transform_alpha=None, transform_n_nonzero_coefs=None, verbose=False)
-    21  sklearn_decomposition.MiniBatchSparsePCA(alpha=1, batch_size=3, callback=None, method='lars', n_components=None,
+    20  sklearn_decomposition.MiniBatchSparsePCA(alpha=1, batch_size=3, callback=None, method='lars', n_components=None,
         n_iter=100, random_state=0, ridge_alpha=0.01, shuffle=True, verbose=False)
-    22  sklearn_decomposition.NMF(alpha=0.0, beta_loss='frobenius', init=None, l1_ratio=0.0, max_iter=200,
+    21  sklearn_decomposition.NMF(alpha=0.0, beta_loss='frobenius', init=None, l1_ratio=0.0, max_iter=200,
         n_components=None, random_state=0, shuffle=False, solver='cd', tol=0.0001, verbose=0)
-    23  sklearn_decomposition.PCA(copy=True, iterated_power='auto', n_components=None, random_state=0, svd_solver='auto', tol=0.0, whiten=False)
-    24  sklearn_decomposition.SparsePCA(U_init=None, V_init=None, alpha=1, max_iter=1000, method='lars',
+    22  sklearn_decomposition.PCA(copy=True, iterated_power='auto', n_components=None, random_state=0, svd_solver='auto', tol=0.0, whiten=False)
+    23  sklearn_decomposition.SparsePCA(U_init=None, V_init=None, alpha=1, max_iter=1000, method='lars',
         n_components=None, random_state=0, ridge_alpha=0.01, tol=1e-08, verbose=False)
-    25  sklearn_decomposition.TruncatedSVD(algorithm='randomized', n_components=2, n_iter=5, random_state=0, tol=0.0)
-    26  sklearn_kernel_approximation.Nystroem(coef0=None, degree=None, gamma=None, kernel='rbf',
+    24  sklearn_decomposition.TruncatedSVD(algorithm='randomized', n_components=2, n_iter=5, random_state=0, tol=0.0)
+    25  sklearn_kernel_approximation.Nystroem(coef0=None, degree=None, gamma=None, kernel='rbf',
         kernel_params=None, n_components=100, random_state=0)
-    27  sklearn_kernel_approximation.RBFSampler(gamma=1.0, n_components=100, random_state=0)
-    28  sklearn_kernel_approximation.AdditiveChi2Sampler(sample_interval=None, sample_steps=2)
-    29  sklearn_kernel_approximation.SkewedChi2Sampler(n_components=100, random_state=0, skewedness=1.0)
-    30  sklearn_cluster.FeatureAgglomeration(affinity='euclidean', compute_full_tree='auto', connectivity=None,
+    26  sklearn_kernel_approximation.RBFSampler(gamma=1.0, n_components=100, random_state=0)
+    27  sklearn_kernel_approximation.AdditiveChi2Sampler(sample_interval=None, sample_steps=2)
+    28  sklearn_kernel_approximation.SkewedChi2Sampler(n_components=100, random_state=0, skewedness=1.0)
+    29  sklearn_cluster.FeatureAgglomeration(affinity='euclidean', compute_full_tree='auto', connectivity=None,
         linkage='ward', memory=None, n_clusters=2, pooling_func=<function mean at 0x113078ae8>)
-    31  skrebate_ReliefF(discrete_threshold=10, n_features_to_select=10, n_neighbors=100, verbose=False)
-    32  skrebate_SURF(discrete_threshold=10, n_features_to_select=10, verbose=False)
-    33  skrebate_SURFstar(discrete_threshold=10, n_features_to_select=10, verbose=False)
-    34  skrebate_MultiSURF(discrete_threshold=10, n_features_to_select=10, verbose=False)
-    35  skrebate_MultiSURFstar(discrete_threshold=10, n_features_to_select=10, verbose=False)
-    'sk_prep_all':   All sklearn preprocessing estimators, i.e., 0-7
-    'fs_all':        All feature_selection estimators, i.e., 8-14
-    'decomp_all':    All decomposition estimators, i.e., 15-25
-    'k_appr_all':    All kernel_approximation estimators, i.e., 26-29
-    'reb_all':       All skrebate estimators, i.e., 31-35
-    'all_0':         All except the imbalanced-learn samplers, i.e., 0-35
-    'imb_all':       All imbalanced-learn sampling methods, i.e., 36-54.
+    30  skrebate_ReliefF(discrete_threshold=10, n_features_to_select=10, n_neighbors=100, verbose=False)
+    31  skrebate_SURF(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    32  skrebate_SURFstar(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    33  skrebate_MultiSURF(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    34  skrebate_MultiSURFstar(discrete_threshold=10, n_features_to_select=10, verbose=False)
+    'sk_prep_all':   All sklearn preprocessing estimators, i.e., 0-6
+    'fs_all':        All feature_selection estimators, i.e., 7-13
+    'decomp_all':    All decomposition estimators, i.e., 14-24
+    'k_appr_all':    All kernel_approximation estimators, i.e., 25-28
+    'reb_all':       All skrebate estimators, i.e., 30-34
+    'all_0':         All except the imbalanced-learn samplers, i.e., 0-34
+    'imb_all':       All imbalanced-learn sampling methods, i.e., 35-53.
                      **CAUTION**: Mix of imblearn and other preprocessors may not work.
      None:           opt out of preprocessor
 
 Support mix (CAUTION: Mix of imblearn and other preprocessors may not work), e.g.::
 
-     : [None, 'sk_prep_all', 22, 'k_appr_all', sklearn_feature_selection.SelectKBest(k=50)]
+     : [None, 'sk_prep_all', 21, 'k_appr_all', sklearn_feature_selection.SelectKBest(k=50)]
 
 
 
