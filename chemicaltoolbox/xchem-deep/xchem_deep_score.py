@@ -42,7 +42,8 @@ def write_inputs(protein_file, ligands_file):
     os.mkdir(ligands_path)
     cmd1 = "gninatyper {0} {1}{2}ligands{2}ligand".format(ligands_file, work_dir, os.path.sep)
     log('CMD:', cmd1)
-    os.system(cmd1)
+    exit_code = os.system(cmd1)
+    log("Status:", exit_code)
     ligand_gninatypes = os.listdir("{0}{1}ligands".format(work_dir, os.path.sep))
 
     proteins_path = "{0}{1}proteins".format(work_dir, os.path.sep)
@@ -50,7 +51,8 @@ def write_inputs(protein_file, ligands_file):
     os.mkdir(proteins_path)
     cmd2 = "gninatyper {0} {1}{2}proteins{2}protein".format(protein_file, work_dir, os.path.sep)
     log('CMD:', cmd2)
-    os.system(cmd2)
+    exit_code = os.system(cmd2)
+    log("Status:", exit_code)
     protein_gninatypes = os.listdir("{0}{1}proteins".format(work_dir, os.path.sep))
 
     types_path = "{0}{1}{2}".format(work_dir, os.path.sep, types_file_name)
