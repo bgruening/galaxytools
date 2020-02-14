@@ -129,7 +129,7 @@ def patch_scores_sdf(sdf_in, outfile, scores):
     global work_dir
 
     counter = 0
-    sdf_path = "{0}{1}{2}.sdf".format(work_dir, os.path.sep, outfile)
+    sdf_path = "{0}{1}{2}".format(work_dir, os.path.sep, outfile)
     log("Writing results to {0}".format(sdf_path))
     sdf_file = pybel.Outputfile("sdf", sdf_path)
     for mol in pybel.readfile("sdf", sdf_in):
@@ -177,7 +177,7 @@ def main():
 
     parser.add_argument('-i', '--input', help="SDF containing the poses to score)")
     parser.add_argument('-r', '--receptor', help="Receptor file for scoring (PDB or Mol2 format)")
-    parser.add_argument('-o', '--outfile', default='output', help="Base file name for results")
+    parser.add_argument('-o', '--outfile', default='output.sdf', help="File name for results")
     parser.add_argument('-w', '--work-dir', default=".", help="Working directory")
     parser.add_argument('--mock', action='store_true', help='Generate mock scores rather than run on GPU')
 
