@@ -14,9 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import argparse
-import collections
-import sys
+import argparse, sys, collections
 
 from rdkit import Chem, rdBase
 from rdkit.Chem import AllChem, TorsionFingerprints
@@ -39,20 +37,14 @@ field_MinimizationConverged = 'MinimizationConverged'
 
 ### start function defintions #########################################
 
-def open_file(filename):
-    with open(filename) as f:
-        return f.readline()
-
-
-def process_mol_conformers(mol, i, numConfs, maxAttempts, pruneRmsThresh, clusterMethod, clusterThreshold,
+def process_mol_conformers(args, mol, i, numConfs, maxAttempts, pruneRmsThresh, clusterMethod, clusterThreshold,
                            minimizeIterations):
-    # utils.log("generating conformers for molecule",i)
+    args.logfile.write("Generating conformers for molecule %d\n" % (i+1))
     # generate the conformers
     conformerIds = gen_conformers(mol, numConfs, maxAttempts, pruneRmsThresh, True, True, True)
     conformerPropsDict = {}
     minEnergy = 9999999999999
     for conformerId in conformerIds:
-        # utils.log("Processing conf",i,conformerId)
         # energy minimise (optional) and energy calculation
         props = collections.OrderedDict()
         energy = calc_energy(mol, conformerId, minimizeIterations, props)
@@ -60,9 +52,9 @@ def process_mol_conformers(mol, i, numConfs, maxAttempts, pruneRmsThresh, cluste
             minEnergy = energy
         conformerPropsDict[conformerId] = props
     # cluster the conformers
-    if clusterMethod and clusterMethod != 'none':
+    if clusterMethod:
         rmsClusters = cluster_conformers(mol, clusterMethod, clusterThreshold)
-        utils.log("Molecule", i, "generated", len(conformerIds), "conformers and", len(rmsClusters), "clusters")
+        args.logfile.write("Molecule %d generated %d conformers and %d clusters\n\n" % ((i+1), len(conformerIds), len(rmsClusters)))
         rmsClustersPerCluster = []
         clusterNumber = 0
 
@@ -79,7 +71,7 @@ def process_mol_conformers(mol, i, numConfs, maxAttempts, pruneRmsThresh, cluste
                 else:
                     props[field_RMSToCentroid] = 0.0
     else:
-        utils.log("Molecule", i + 1, "generated", len(conformerIds), "conformers")
+        args.logfile.write("Molecule %d generated %d conformers\n\n" % ((i+1), len(conformerIds)))
 
     return conformerPropsDict, minEnergy
 
@@ -112,7 +104,7 @@ def write_conformers(mol, i, conformerPropsDict, minEnergy, writer):
             if energy:
                 mol.SetDoubleProp(field_EnergyAbs, energy)
                 mol.SetDoubleProp(field_EnergyDelta, energy - minEnergy)
-        writer.write(mol)
+        writer.write(mol, confId=id)
 
 
 def gen_conformers(mol, numConfs=1, maxAttempts=1, pruneRmsThresh=0.1, useExpTorsionAnglePrefs=True,
@@ -161,24 +153,30 @@ def main():
     ### command line args defintions #########################################
 
     parser = argparse.ArgumentParser(description='RDKit conformers')
-    parser.add_argument('-i', '--input', help='SMILES input')
-    parser.add_argument('--informat', help='Format/Extension of the input file')
-    parser.add_argument('-f', '--file', help='SMILES input as file')
     parser.add_argument('-n', '--num', type=int, default=1, help='number of conformers to generate')
     parser.add_argument('-a', '--attempts', type=int, default=0, help='number of attempts')
     parser.add_argument('-r', '--rmsd', type=float, default=1.0, help='prune RMSD threshold')
-    parser.add_argument('-c', '--cluster', type=str.lower, choices=['none', 'rmsd', 'tfd'],
+    parser.add_argument('-c', '--cluster', type=str.lower, choices=['rmsd', 'tfd'],
                         help='Cluster method (RMSD or TFD). If None then no clustering')
     parser.add_argument('-t', '--threshold', type=float,
                         help='cluster threshold (default of 2.0 for RMSD and 0.3 for TFD)')
     parser.add_argument('-e', '--emin', type=int, default=0,
                         help='energy minimisation iterations (default of 0 means none)')
-    parser.add_argument('-o', '--output', type=argparse.FileType('w+'),
-                        default=sys.stdout, help="path to the result file, default it sdtout")
-    parser.add_argument('--outformat', help='Format/Extension of the output file')
+    parameter_utils.add_default_io_args(parser)
+    parser.add_argument('--smiles', help='input structure as smiles (incompatible with using files or stdin for input)')
+    parser.add_argument('-l', '--logfile', type=argparse.FileType('w+'),
+                        default=sys.stdout, help="Path to the log file, default it sdtout")
+
     args = parser.parse_args()
 
-    utils.log("Conformers Args: ", args)
+    if not args.threshold:
+        if args.cluster == 'tfd':
+            args.threshold = 0.3
+        elif args.cluster == 'rmsd':
+            args.threshold = 2.0
+
+
+    args.logfile.write("Conformers Args: %s\n\n" % str(args))
 
     source = "conformers.py"
     datasetMetaProps = {"source": source, "description": "Conformer generation using RDKit " + rdBase.rdkitVersion}
@@ -204,12 +202,15 @@ def main():
          "values": {"source": source, "description": "Structure number this conformer was generated from"}}
     ]
 
-    if args.input or args.file:
-        if args.file:
-            args.input = open_file(args.file)
-        mol = Chem.MolFromSmiles(args.input)
+    if args.smiles:
+        mol = Chem.MolFromSmiles(args.smiles)
         suppl = [mol]
         input = None
+        output, writer, output_base = rdkit_utils. \
+            default_open_output(args.output, 'conformers', args.outformat,
+                                valueClassMappings=clsMappings,
+                                datasetMetaProps=datasetMetaProps,
+                                fieldMetaProps=fieldMetaProps)
     else:
         input, output, suppl, writer, output_base = rdkit_utils. \
             default_open_input_output(args.input, args.informat, args.output,
@@ -217,12 +218,6 @@ def main():
                                       valueClassMappings=clsMappings,
                                       datasetMetaProps=datasetMetaProps,
                                       fieldMetaProps=fieldMetaProps)
-
-    if not args.threshold:
-        if args.cluster == 'tfd':
-            args.threshold = 0.3
-        elif args.cluster == 'rmsd':
-            args.threshold = 2.0
 
     # OK, all looks good so we can hope that things will run OK.
     # But before we start lets write the metadata so that the results can be handled.
@@ -245,20 +240,28 @@ def main():
     i = 0
     count = 0
     writer = rdkit_utils.ThickSDWriter(args.output)
+    
     for mol in suppl:
         if mol is None: continue
         m = Chem.AddHs(mol)
-        conformerPropsDict, minEnergy = process_mol_conformers(m, i, args.num, args.attempts, args.rmsd, args.cluster,
+        conformerPropsDict, minEnergy = process_mol_conformers(args, m, i, args.num, args.attempts, args.rmsd, args.cluster,
                                                                args.threshold, args.emin)
         m = Chem.RemoveHs(m)
         write_conformers(m, i, conformerPropsDict, minEnergy, writer)
         count = count + m.GetNumConformers()
         i += 1
 
+    args.logfile.write("Generated conformers for %d molecules\n" % i)
+
     if input:
         input.close()
     writer.flush()
     writer.close()
+    output.close()
+
+    if args.meta:
+        utils.write_metrics(output_base, {'__InputCount__': i, '__OutputCount__': count, 'RDKitConformer': count})
+
 
 if __name__ == "__main__":
     main()
