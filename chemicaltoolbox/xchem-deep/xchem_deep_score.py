@@ -3,7 +3,8 @@
 #   docker run -it --rm --gpus all -v $PWD:/root/train/fragalysis_test_files/work:Z informaticsmatters/deep-app-ubuntu-1604:latest bash
 #
 # Now inside the container run like this:
-#   rm -rf work/* && python3 -m  pipelines_obabel.gnina.xchem_deep_score -i ligands.sdf -r protein.pdb -w work
+#   mkdir /tmp/work
+#   rm -rf /tmp/work/* && python3 work/xchem_deep_score.py -i work/test-data/ligands.sdf -r work/test-data/receptor.pdb -w /tmp/work
 #
 # If testing with no GPU you can use the --mock option to generate random scores
 #
@@ -16,6 +17,7 @@
 #
 
 import argparse, os, re, sys
+import subprocess
 import random
 from openbabel import pybel
 
@@ -26,10 +28,12 @@ work_dir = '.'
 inputs_protein = []
 inputs_ligands = []
 
+
 def log(*args, **kwargs):
     """Log output to STDERR
     """
-    print(*args, file=sys.stderr, **kwargs)
+    print(*args, file=sys.stderr, ** kwargs)
+
 
 def write_inputs(protein_file, ligands_file):
     global types_file_name
@@ -40,9 +44,9 @@ def write_inputs(protein_file, ligands_file):
     ligands_path = "{0}{1}ligands".format(work_dir, os.path.sep)
     log("Writing ligands to", ligands_path)
     os.mkdir(ligands_path)
-    cmd1 = "gninatyper {0} {1}{2}ligands{2}ligand".format(ligands_file, work_dir, os.path.sep)
+    cmd1 = ['gninatyper', ligands_file, os.path.sep.join([work_dir, 'ligands', 'ligand'])]
     log('CMD:', cmd1)
-    exit_code = os.system(cmd1)
+    exit_code = subprocess.call(cmd1)
     log("Status:", exit_code)
     if exit_code:
         raise Exception("Failed to write ligands")
@@ -51,9 +55,10 @@ def write_inputs(protein_file, ligands_file):
     proteins_path = "{0}{1}proteins".format(work_dir, os.path.sep)
     log("Writing proteins to", proteins_path)
     os.mkdir(proteins_path)
-    cmd2 = "gninatyper {0} {1}{2}proteins{2}protein".format(protein_file, work_dir, os.path.sep)
+
+    cmd2 = ['gninatyper', protein_file, os.path.sep.join([work_dir, 'proteins', 'protein'])]
     log('CMD:', cmd2)
-    exit_code = os.system(cmd2)
+    exit_code = subprocess.call(cmd2)
     log("Status:", exit_code)
     if exit_code:
         raise Exception("Failed to write proteins")
@@ -77,19 +82,24 @@ def write_inputs(protein_file, ligands_file):
 
     return num_proteins, num_ligands
 
+
 def generate_predictions_filename(work_dir, predict_file_name):
     return "{0}{1}{2}".format(work_dir, os.path.sep, predict_file_name)
+
 
 def run_predictions():
     global types_file_name
     global predict_file_name
     global work_dir
     # python3 scripts/predict.py -m resources/dense.prototxt -w resources/weights.caffemodel -i work_0/test_set.types >> work_0/caffe_output/predictions.txt
-    cmd1 = "python3 /root/train/fragalysis_test_files/scripts/predict.py -m /root/train/fragalysis_test_files/resources/dense.prototxt" +\
-           " -w /root/train/fragalysis_test_files/resources/weights.caffemodel" +\
-            " -i {0}/{1} -o {0}/{2}".format(work_dir, types_file_name, predict_file_name)
+    cmd1 = ['python3', '/root/train/fragalysis_test_files/scripts/predict.py',
+            '-m', '/root/train/fragalysis_test_files/resources/dense.prototxt',
+            '-w', '/root/train/fragalysis_test_files/resources/weights.caffemodel',
+            '-i', os.path.sep.join([work_dir, types_file_name]),
+            '-o', os.path.sep.join([work_dir, predict_file_name])]
     log("CMD:", cmd1)
-    os.system(cmd1)
+    subprocess.call(cmd1)
+
 
 def mock_predictions():
     global work_dir
@@ -102,7 +112,8 @@ def mock_predictions():
         for protein in inputs_protein:
             for ligand in inputs_ligands:
                 score = random.random()
-                line = "{0} | 0 {1}{4}proteins{4}{2} {1}{4}ligands{4}{3}\n".format(score, work_dir, protein, ligand, os.path.sep)
+                line = "{0} | 0 {1}{4}proteins{4}{2} {1}{4}ligands{4}{3}\n".format(score, work_dir, protein, ligand,
+                                                                                   os.path.sep)
                 # log("Writing", line)
                 predictions.write(line)
 
@@ -113,7 +124,7 @@ def read_predictions():
     scores = {}
     with open("{0}{1}{2}".format(work_dir, os.path.sep, predict_file_name), 'r') as input:
         for line in input:
-            #log(line)
+            # log(line)
             tokens = line.split()
             if len(tokens) == 5 and tokens[1] == '|':
                 # log(len(tokens), tokens[0], tokens[3], tokens[4])
@@ -124,8 +135,8 @@ def read_predictions():
     log("Found", len(scores), "scores")
     return scores
 
-def patch_scores_sdf(sdf_in, outfile, scores):
 
+def patch_scores_sdf(sdf_in, outfile, scores):
     global work_dir
 
     counter = 0
@@ -147,6 +158,7 @@ def patch_scores_sdf(sdf_in, outfile, scores):
 # work/ligands/ligand_9.gninatypes
 ligand_patt = re.compile(r'.*ligands/ligand_(\d+)\.gninatypes$')
 
+
 def match_ligand(s):
     global ligand_patt
     m = ligand_patt.match(s)
@@ -158,7 +170,6 @@ def match_ligand(s):
 
 
 def execute(ligands_sdf, protein, outfile, mock=False):
-
     output_base = "{0}{1}{2}".format(work_dir, os.path.sep, outfile)
 
     write_inputs(protein, ligands_sdf)
@@ -169,8 +180,8 @@ def execute(ligands_sdf, protein, outfile, mock=False):
     scores = read_predictions()
     patch_scores_sdf(ligands_sdf, outfile, scores)
 
-def main():
 
+def main():
     global work_dir
 
     parser = argparse.ArgumentParser(description='XChem deep - pose scoring')
@@ -187,6 +198,7 @@ def main():
     work_dir = args.work_dir
 
     execute(args.input, args.receptor, args.outfile, mock=args.mock)
+
 
 if __name__ == "__main__":
     main()
