@@ -95,7 +95,7 @@ def main():
                         help='descriptor or fingerprint type (default rdkit)')
     parser.add_argument('-m', '--metric', type=str.lower, choices=list(metrics.keys()), default='tanimoto',
                         help='similarity metric (default tanimoto)')
-    parser.add_argument('-f', '--fragment', choices=['none', 'hac', 'mw'],
+    parser.add_argument('-f', '--fragment', choices=['hac', 'mw'],
                         help='Find single fragment if more than one (hac = biggest\
                          by heavy atom count, mw = biggest by mol weight )')
     parser.add_argument('--hacmin', type=int, help='Min heavy atom count')
