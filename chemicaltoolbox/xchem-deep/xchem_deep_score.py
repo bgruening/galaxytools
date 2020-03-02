@@ -1,6 +1,6 @@
 # Create dir containing ligands.sdf and protein.pdb
 # Enter docker container like this:
-#   docker run -it --rm --gpus all -v $PWD:/root/train/fragalysis_test_files/work:Z informaticsmatters/deep-app-ubuntu-1604:latest bash
+#   docker run -it --rm --gpus all -v $PWD:/train/fragalysis_test_files/work:Z informaticsmatters/deep-app-ubuntu-1604:latest bash
 #
 # Now inside the container run like this:
 #   mkdir /tmp/work
@@ -92,9 +92,9 @@ def run_predictions():
     global predict_file_name
     global work_dir
     # python3 scripts/predict.py -m resources/dense.prototxt -w resources/weights.caffemodel -i work_0/test_set.types >> work_0/caffe_output/predictions.txt
-    cmd1 = ['python3', '/root/train/fragalysis_test_files/scripts/predict.py',
-            '-m', '/root/train/fragalysis_test_files/resources/dense.prototxt',
-            '-w', '/root/train/fragalysis_test_files/resources/weights.caffemodel',
+    cmd1 = ['python3', '/train/fragalysis_test_files/scripts/predict.py',
+            '-m', '/train/fragalysis_test_files/resources/dense.prototxt',
+            '-w', '/train/fragalysis_test_files/resources/weights.caffemodel',
             '-i', os.path.sep.join([work_dir, types_file_name]),
             '-o', os.path.sep.join([work_dir, predict_file_name])]
     log("CMD:", cmd1)
