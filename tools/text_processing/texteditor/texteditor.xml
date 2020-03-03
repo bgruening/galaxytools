@@ -1,18 +1,41 @@
 <tool id="texteditor" name="Text editor" version="0.1.0" python_template_version="3.5">
     <macros>
+        <xml name="sanitizer">
+            <!-- <sanitizer>
+                <valid>
+                    <add value="#" />
+                    <add value=";" />
+                    <add value="&#10;" />
+                </valid>
+            </sanitizer> -->
+            <sanitizer invalid_char="">
+                <valid initial="string.printable">
+                    <remove value="&apos;" />
+                </valid>
+                <mapping initial="none">
+                    <add source="&apos;" target="&apos;&quot;&apos;&quot;&apos;" />
+                </mapping>
+            </sanitizer>
+        </xml>
+
         <xml name="step_params">
             <conditional name="step">
-                <param type="select" name="loc" label="">
+                <param type="select" name="loc" label="Perform edit by position or by string?">
                     <option value="Position"/>
                     <option value="String"/>
                 </param>
                 <when value="Position">
-                    <param type="integer" name="line" value="" label="Line number"/>
-                    <param type="integer" name="pos" value="" label="Character position in line"/>
+                    <yield />
+                    <!-- <param type="integer" name="line1" value="" label="Number of first line"/>
+                    <param type="integer" name="pos1" value="0" label="Character position in first line"/>
+                    <param type="integer" name="line2" value="" label="Number of second line"/>
+                    <param type="integer" name="pos2" value="0" label="Character position in second line"/> -->
                 </when>
                 <when value="String">
-                    <param type="text" area="true" name="text" label="String" />
-                    <param type="boolean" name="first" label="Apply to first occurrence of the text or all?" />
+                    <param type="text" area="true" name="text_d" label="String">
+                        <expand macro="sanitizer" />
+                    </param>
+                    <!-- <param type="boolean" name="first" label="Apply to first occurrence of the text or all?" /> -->
                 </when>
             </conditional>
         </xml>
@@ -23,12 +46,14 @@
                     <option value="String"/>
                 </param>
                 <when value="File">
-                    <param type="data" name="File" />
-                    <param type="integer" name="line_start" value="" label="Starting line"/>
-                    <param type="integer" name="line_end" value="" label="Ending line"/>
+                    <param type="data" name="file2" format="data" label="File to insert" />
+                    <param type="integer" name="file2_line1" value="0" label="Starting line"/>
+                    <param type="integer" name="file2_line2" value="0" label="Ending line"/>
                 </when>
                 <when value="String">
-                    <param type="text" area="true" name="text" label="String" />
+                    <param type="text" area="true" name="text_i" label="String">
+                        <expand macro="sanitizer" />
+                    </param>
                 </when>
             </conditional>
         </xml>
@@ -39,37 +64,138 @@
 
     <command detect_errors="exit_code"><![CDATA[
 
+        cp $input ./input.txt &&
+        
+
+        #for $step in $steps:
+            python '$__tool_directory__/texteditor.py'
+                --job $step.step_type.edit_type
+                --file1 ./input.txt
+
+                #if $step.step_type.step.loc == 'String':
+                    --string_d '$step.step_type.step.text_d'
+                #else
+                    --line1 $step.step_type.step.line1
+                    #if $step.step_type.edit_type == 'insert':
+                        --pos1 $step.step_type.step.pos1
+                    #else:
+                        --line2 $step.step_type.step.line2
+                    #end if
+                #end if
+
+                #if $step.step_type.edit_type != 'delete':
+                    #if $step.step_type.str_or_file.str_or_file == 'String':
+                        --string_i '$step.step_type.str_or_file.text_i'
+                    #else
+                        --file2 $step.step_type.str_or_file.file2
+                        --file2_line1 $step.step_type.str_or_file.file2_line1
+                        --file2_line2 $step.step_type.str_or_file.file2_line2
+                    #end if
+                #end if
+
+                --output ./input.txt &&
+
+        #end for
+
+        cp ./input.txt $output
+
+        #if $diff:
+            && diff $input $output > $diff
+        #end if
+
     ]]></command>
     <inputs>
 	    <!-- <display>$data</display> -->
 	    <!-- <param name="text" type="text" value="test" area="true"/> -->
-        <param type="data" name="Input file"/>
-        <repeat name="step" title="Add step">
+        <param type="data" name="input" format="data" label="Input file"/>
+        <repeat name="steps" title="Add step">
             <conditional name="step_type">
-                <param type="select" name="Type of edit">
+                <param type="select" label="Type of edit" name="edit_type">
                     <option value="insert">Insert text or file</option>
                     <option value="replace">Replace a string with text or file</option>
                     <option value="delete">Delete text</option>
                 </param>
                 <when value="insert">
-                    <expand macro="step_params" />
+                    <expand macro="step_params">
+                        <param type="integer" name="line1" value="" label="Line number"/>
+                        <param type="integer" name="pos1" value="0" label="Character position"/>
+                    </expand>
                     <expand macro="str_or_file" />
                 </when>
                 <when value="replace">
-                    <expand macro="step_params" />
+                    <expand macro="step_params">
+                        <param type="integer" name="line1" value="" label="Number of first line"/>
+                        <param type="integer" name="line2" value="" label="Number of second line"/>
+                    </expand>
                     <expand macro="str_or_file" />
                 </when>
                 <when value="delete">
-                    <expand macro="step_params" />
+                    <expand macro="step_params">
+                        <param type="integer" name="line1" value="" label="Number of first line"/>
+                        <param type="integer" name="line2" value="" label="Number of second line"/>
+                    </expand>
                 </when>
             </conditional>
         </repeat>
-        
+        <param type="boolean" name="diff" label="Return a diff file?"/>
     </inputs>
+    
     <outputs>
-        <data format="html" name="output" />
+        <data format="txt" name="output" />
+        <data format="txt" name="diff">
+            <filter>diff</filter>
+        </data>
     </outputs>
+
+    <tests>
+        <test>
+            <param name="input" value="t.txt"/>
+            <param name="edit_type" value="replace"/>
+            <param name="str_or_file" value="File"/>
+            <param name="file2" value="s.txt"/>
+            <param name="loc" value="String"/>
+            <param name="text_d" value="test2"/>
+            <output name="output" value="out1.txt"/>
+        </test>
+        <test>
+            <param name="input" value="t.txt"/>
+            <param name="edit_type" value="insert"/>
+            <param name="str_or_file" value="String"/>
+            <param name="text_i" value="ins"/>
+            <param name="loc" value="Position"/>
+            <param name="line1" value="3"/>
+            <param name="pos1" value="2"/>
+            <output name="output" value="out2.txt"/>
+        </test>
+        <test>
+            <param name="input" value="t.txt"/>
+            <param name="edit_type" value="delete"/>
+            <param name="loc" value="Position"/>
+            <param name="line1" value="3"/>
+            <param name="line2" value="6"/>
+            <output name="output" value="out3.txt"/>
+        </test>
+        <test>
+            <param name="input" value="t.txt"/>
+            <param name="edit_type" value="delete"/>
+            <param name="loc" value="String"/>
+            <param name="text_d" value="test3"/>
+            <output name="output" value="out4.txt"/>
+        </test>
+    </tests>
+
     <help><![CDATA[
-        TODO: Fill in help.
+        help goes here
     ]]></help>
+
+    <citations>
+        <citation type="bibtex">
+            @misc{texteditor,
+                author = {Simon Bray},
+                title = {Galaxy tool for editing configuration files},
+                url = {https://github.com/bgruening/galaxytools}
+            }
+        </citation>
+    </citations>
+
 </tool>
