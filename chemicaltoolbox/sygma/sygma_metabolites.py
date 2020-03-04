@@ -15,8 +15,8 @@ def mol_supplier(filename, ext):
     """
     if ext == 'sdf':
         return [n for n in SDMolSupplier(filename)]
-    with open(filename) as f: 
-        mols = f.read().split('\n') 
+    with open(filename) as f:
+        mols = f.read().split('\n')
     if ext == 'smi' or ext == 'inchi':
         return [Chem.MolFromSmiles(mol, sanitize=True) for mol in mols if mol != '']
 
@@ -36,9 +36,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--infile', required=True, help='Path to the input file.')
     parser.add_argument('-o', '--outfile', required=True, help='Path to the output file.')
-    parser.add_argument("--iformat", help="Specify the input file format.")
-    parser.add_argument("--phase1", help="Number of phase1 cycles.")
-    parser.add_argument("--phase2", help="Number of phase2 cycles.")
+    parser.add_argument("--iformat", required=True, help="Specify the input file format.")
+    parser.add_argument("--phase1", required=True, help="Number of phase1 cycles.")
+    parser.add_argument("--phase2", required=True, help="Number of phase2 cycles.")
     args = parser.parse_args()
 
     mols = mol_supplier(args.infile, args.iformat)
