@@ -29,7 +29,7 @@ def predict_metabolites(parent, phase1_cycles, phase2_cycles):
         [sygma.ruleset['phase2'], int(phase2_cycles)]])
     metabolic_tree = scenario.run(parent)
     metabolic_tree.calc_scores()
-    return metabolic_tree.to_smiles()
+    return metabolic_tree.to_list()
 
 
 def main():
@@ -44,13 +44,14 @@ def main():
     mols = mol_supplier(args.infile, args.iformat)
     outp = np.zeros((0,3))
     for n in range(len(mols)):
-        metabs = np.array(predict_metabolites(mols[n], args.phase1, args.phase2))
-        metabs = np.column_stack((
-            metabs[:,0],  # SMILES
-            ['SYGMA{}MOL{}'.format(n, m) for m in range(metabs.shape[0])],  # SMILES label
-            np.round(np.array(metabs[:,1], dtype=float), decimals=5)  # score rounded to 5 dp
-        ))
-        outp = np.vstack((outp, metabs))
+        metabs = predict_metabolites(mols[n], args.phase1, args.phase2)
+        for entry in range(len(metabs)):
+            out = np.column_stack((
+                Chem.MolToSmiles(metabs[entry]['SyGMa_metabolite']), # SMILES
+                'SYGMA{}MOL{}'.format(n, entry), # SMILES label
+                np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float), decimals=5) # score rounded to 5 dp
+            ))
+            outp = np.vstack((outp, out))
     np.savetxt(args.outfile, outp, fmt="%s")
 
 
