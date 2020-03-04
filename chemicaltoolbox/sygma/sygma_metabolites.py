@@ -39,18 +39,36 @@ def main():
     parser.add_argument("--iformat", required=True, help="Specify the input file format.")
     parser.add_argument("--phase1", required=True, help="Number of phase1 cycles.")
     parser.add_argument("--phase2", required=True, help="Number of phase2 cycles.")
+    parser.add_argument("--detailed", dest="detailed",
+        action="store_true", help="Returns more detailed output")
     args = parser.parse_args()
 
     mols = mol_supplier(args.infile, args.iformat)
-    outp = np.zeros((0,3))
+    if args.detailed:
+        outp = np.zeros((0,6))
+    else:
+        outp = np.zeros((0,3))
     for n in range(len(mols)):
         metabs = predict_metabolites(mols[n], args.phase1, args.phase2)
         for entry in range(len(metabs)):
-            out = np.column_stack((
-                Chem.MolToSmiles(metabs[entry]['SyGMa_metabolite']), # SMILES
-                'SYGMA{}MOL{}'.format(n, entry), # SMILES label
-                np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float), decimals=5) # score rounded to 5 dp
-            ))
+            smiles = Chem.MolToSmiles(metabs[entry]['SyGMa_metabolite'])
+            if args.detailed:
+                out = np.column_stack((
+                    smiles, # SMILES
+                    'SYGMA{}MOL{}'.format(n, entry), # SMILES label
+                    np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float),
+                        decimals=5), # score rounded to 5 dp
+                    Chem.rdMolDescriptors.CalcMolFormula(Chem.MolFromSmiles(smiles)), # Molecular formula
+                    len(metabs[entry]["SyGMa_pathway"].split("\n")), # SyGMa_n Sygma pathway length
+                    metabs[entry]["SyGMa_pathway"].replace("\n", "") # SyGMa pathway
+                ))
+            else:
+                out = np.column_stack((
+                    smiles, # SMILES
+                    'SYGMA{}MOL{}'.format(n, entry), # SMILES label
+                    np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float),
+                        decimals=5) # score rounded to 5 dp
+                ))
             outp = np.vstack((outp, out))
     np.savetxt(args.outfile, outp, fmt="%s")
 
