@@ -266,6 +266,21 @@ def visualize_roc_curve_matplotlib(df1, df2, pos_label,
               os.path.join(folder, "output"))
 
 
+def get_dataframe(file_path, plot_selection, header_name, column_name):
+    header = 'infer' if plot_selection[header_name] else None
+    column_option = plot_selection[column_name]["selected_column_selector_option"]
+    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+        col = plot_selection[column_name]["col1"]
+    else:
+        col = None
+    _, input_df = read_columns(file_path, c=col,
+                                   c_option=column_option,
+                                   return_df=True,
+                                   sep='\t', header=header,
+                                   parse_dates=True)
+    return input_df
+
+
 def main(inputs, infile_estimator=None, infile1=None,
          infile2=None, outfile_result=None,
          outfile_object=None, groups=None,
@@ -319,7 +334,7 @@ def main(inputs, infile_estimator=None, infile1=None,
 
     predicted_labels : str, default is None
         File path to dataset containing true predicted labels
-        
+
     plot_color : str, default is None
         Color of the confusion matrix heatmap
 
@@ -558,8 +573,9 @@ def main(inputs, infile_estimator=None, infile1=None,
         return 0
 
     elif plot_type == 'classification_confusion_matrix':
-        input_true = pd.read_csv(true_labels, sep='\t', header='infer')
-        input_predicted = pd.read_csv(predicted_labels, sep='\t', header='infer')
+        plot_selection = params["plotting_selection"]
+        input_true = get_dataframe(true_labels, plot_selection, "header_true", "column_selector_options_true")
+        input_predicted = get_dataframe(predicted_labels, plot_selection, "header_predicted", "column_selector_options_predicted")
         true_classes = input_true.iloc[:, -1].copy()
         predicted_classes = input_predicted.iloc[:, -1].copy()
         axis_labels = list(set(true_classes))
@@ -568,7 +584,7 @@ def main(inputs, infile_estimator=None, infile1=None,
         im = plt.imshow(c_matrix, cmap=plot_color)
         for i in range(len(c_matrix)):
             for j in range(len(c_matrix)):
-                text = ax.text(j, i, c_matrix[i, j], ha="center", va="center", color="k")
+                ax.text(j, i, c_matrix[i, j], ha="center", va="center", color="k")
         ax.set_ylabel('True class labels')
         ax.set_xlabel('Predicted class labels')
         ax.set_title(title)
