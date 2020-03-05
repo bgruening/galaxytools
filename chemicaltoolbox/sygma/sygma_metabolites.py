@@ -70,7 +70,7 @@ def main():
                         decimals=5) # score rounded to 5 dp
                 ))
             outp = np.vstack((outp, out))
-    np.savetxt(args.outfile, outp, fmt="%s")
+    np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t")
 
 
 if __name__ == "__main__":
