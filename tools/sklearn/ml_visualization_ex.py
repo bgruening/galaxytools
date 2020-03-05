@@ -13,7 +13,7 @@ from keras.models import model_from_json
 from keras.utils import plot_model
 from sklearn.feature_selection.base import SelectorMixin
 from sklearn.metrics import precision_recall_curve, average_precision_score
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, confusion_matrix
 from sklearn.pipeline import Pipeline
 from galaxy_ml.utils import load_model, read_columns, SafeEval
 
@@ -271,7 +271,8 @@ def main(inputs, infile_estimator=None, infile1=None,
          outfile_object=None, groups=None,
          ref_seq=None, intervals=None,
          targets=None, fasta_path=None,
-         model_config=None):
+         model_config=None, true_labels=None,
+         predicted_labels=None, confusion_plot_color=None):
     """
     Parameter
     ---------
@@ -311,6 +312,15 @@ def main(inputs, infile_estimator=None, infile1=None,
 
     model_config : str, default is None
         File path to dataset containing JSON config for neural networks
+
+    true_labels : str, default is None
+        File path to dataset containing true labels
+
+    predicted_labels : str, default is None
+        File path to dataset containing true predicted labels
+        
+    confusion_plot_color : str, default is None
+        Color of the confusion matrix heatmap
     """
     warnings.simplefilter('ignore')
 
@@ -542,6 +552,35 @@ def main(inputs, infile_estimator=None, infile1=None,
         os.rename('output.png', 'output')
 
         return 0
+    
+    elif plot_type == 'classification_confusion_matrix':
+        input_true = pd.read_csv(true_labels, sep='\t', header='infer')
+        input_predicted = pd.read_csv(predicted_labels, sep='\t', header='infer')
+        true_classes = input_true.iloc[:, -1].copy()
+        predicted_classes = input_predicted.iloc[:, -1].copy()
+        axis_labels = list(set(true_classes))
+        c_matrix = confusion_matrix(true_classes, predicted_classes)
+        data = [
+            go.Heatmap(
+                z=c_matrix,
+                x=axis_labels,
+                y=axis_labels,
+                colorscale=confusion_plot_color,
+            )
+        ]
+
+        layout = go.Layout(
+            title='Confusion Matrix between true and predicted class labels',
+            xaxis=dict(title='Predicted class labels'),
+            yaxis=dict(title='True class labels')
+        )
+
+        fig = go.Figure(data=data, layout=layout)
+        plotly.offline.plot(fig, filename="output.html", auto_open=False)
+        # to be discovered by `from_work_dir`
+        os.rename('output.html', 'output')
+
+        return 0
 
     # save pdf file to disk
     # fig.write_image("image.pdf", format='pdf')
@@ -562,10 +601,14 @@ if __name__ == '__main__':
     aparser.add_argument("-t", "--targets", dest="targets")
     aparser.add_argument("-f", "--fasta_path", dest="fasta_path")
     aparser.add_argument("-c", "--model_config", dest="model_config")
+    aparser.add_argument("-tl", "--true_labels", dest="true_labels")
+    aparser.add_argument("-pl", "--predicted_labels", dest="predicted_labels")
+    aparser.add_argument("-pc", "--confusion_plot_color", dest="confusion_plot_color")
     args = aparser.parse_args()
 
     main(args.inputs, args.infile_estimator, args.infile1, args.infile2,
          args.outfile_result, outfile_object=args.outfile_object,
          groups=args.groups, ref_seq=args.ref_seq, intervals=args.intervals,
          targets=args.targets, fasta_path=args.fasta_path,
-         model_config=args.model_config)
+         model_config=args.model_config, true_labels=args.true_labels,
+         predicted_labels=args.predicted_labels, confusion_plot_color=args.confusion_plot_color)
