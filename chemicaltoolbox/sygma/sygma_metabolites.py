@@ -70,8 +70,12 @@ def main():
                         decimals=5) # score rounded to 5 dp
                 ))
             outp = np.vstack((outp, out))
-    np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t")
-
+    if args.detailed:
+        np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t",
+            header="compound_id\tSMILES\tSyGMa_score\tmolecular_formula\tSyGMA_n\tSyGMa_pathway", comments="")
+    else:
+        np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t",
+            header="compound_id\tSMILES\tSyGMa_score", comments="")
 
 if __name__ == "__main__":
     main()
