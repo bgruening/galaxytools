@@ -23,5 +23,5 @@ option which uses random numbers for the predicted scores.
 
 3. Associated Python scripts.
 
-The docker image contains additional python scripts (primarily /root/train/fragalysis_test_files/predict.py)
+The docker image contains additional python scripts (primarily /train/fragalysis_test_files/predict.py)
 that are needed. If not running in a container these will need to be made available.
