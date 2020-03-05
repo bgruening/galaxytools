@@ -272,7 +272,8 @@ def main(inputs, infile_estimator=None, infile1=None,
          ref_seq=None, intervals=None,
          targets=None, fasta_path=None,
          model_config=None, true_labels=None,
-         predicted_labels=None, confusion_plot_color=None):
+         predicted_labels=None, plot_color=None,
+         title=None):
     """
     Parameter
     ---------
@@ -319,8 +320,11 @@ def main(inputs, infile_estimator=None, infile1=None,
     predicted_labels : str, default is None
         File path to dataset containing true predicted labels
         
-    confusion_plot_color : str, default is None
+    plot_color : str, default is None
         Color of the confusion matrix heatmap
+
+    title : str, default is None
+        Title of the confusion matrix heatmap
     """
     warnings.simplefilter('ignore')
 
@@ -552,7 +556,7 @@ def main(inputs, infile_estimator=None, infile1=None,
         os.rename('output.png', 'output')
 
         return 0
-    
+
     elif plot_type == 'classification_confusion_matrix':
         input_true = pd.read_csv(true_labels, sep='\t', header='infer')
         input_predicted = pd.read_csv(predicted_labels, sep='\t', header='infer')
@@ -560,25 +564,20 @@ def main(inputs, infile_estimator=None, infile1=None,
         predicted_classes = input_predicted.iloc[:, -1].copy()
         axis_labels = list(set(true_classes))
         c_matrix = confusion_matrix(true_classes, predicted_classes)
-        data = [
-            go.Heatmap(
-                z=c_matrix,
-                x=axis_labels,
-                y=axis_labels,
-                colorscale=confusion_plot_color,
-            )
-        ]
-
-        layout = go.Layout(
-            title='Confusion Matrix between true and predicted class labels',
-            xaxis=dict(title='Predicted class labels'),
-            yaxis=dict(title='True class labels')
-        )
-
-        fig = go.Figure(data=data, layout=layout)
-        plotly.offline.plot(fig, filename="output.html", auto_open=False)
-        # to be discovered by `from_work_dir`
-        os.rename('output.html', 'output')
+        fig, ax = plt.subplots(figsize=(7, 7))
+        im = plt.imshow(c_matrix, cmap=plot_color)
+        for i in range(len(c_matrix)):
+            for j in range(len(c_matrix)):
+                text = ax.text(j, i, c_matrix[i, j], ha="center", va="center", color="k")
+        ax.set_ylabel('True class labels')
+        ax.set_xlabel('Predicted class labels')
+        ax.set_title(title)
+        ax.set_xticks(axis_labels)
+        ax.set_yticks(axis_labels)
+        fig.colorbar(im, ax=ax)
+        fig.tight_layout()
+        plt.savefig("output.png", dpi=125)
+        os.rename('output.png', 'output')
 
         return 0
 
@@ -603,7 +602,8 @@ if __name__ == '__main__':
     aparser.add_argument("-c", "--model_config", dest="model_config")
     aparser.add_argument("-tl", "--true_labels", dest="true_labels")
     aparser.add_argument("-pl", "--predicted_labels", dest="predicted_labels")
-    aparser.add_argument("-pc", "--confusion_plot_color", dest="confusion_plot_color")
+    aparser.add_argument("-pc", "--plot_color", dest="plot_color")
+    aparser.add_argument("-pt", "--title", dest="title")
     args = aparser.parse_args()
 
     main(args.inputs, args.infile_estimator, args.infile1, args.infile2,
@@ -611,4 +611,6 @@ if __name__ == '__main__':
          groups=args.groups, ref_seq=args.ref_seq, intervals=args.intervals,
          targets=args.targets, fasta_path=args.fasta_path,
          model_config=args.model_config, true_labels=args.true_labels,
-         predicted_labels=args.predicted_labels, confusion_plot_color=args.confusion_plot_color)
+         predicted_labels=args.predicted_labels,
+         plot_color=args.plot_color,
+         title=args.title)
