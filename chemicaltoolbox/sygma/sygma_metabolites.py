@@ -54,8 +54,8 @@ def main():
             smiles = Chem.MolToSmiles(metabs[entry]['SyGMa_metabolite'])
             if args.detailed:
                 out = np.column_stack((
-                    smiles, # SMILES
                     'SYGMA{}MOL{}'.format(n, entry), # SMILES label
+                    smiles, # SMILES
                     np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float),
                         decimals=5), # score rounded to 5 dp
                     Chem.rdMolDescriptors.CalcMolFormula(Chem.MolFromSmiles(smiles)), # Molecular formula
@@ -64,8 +64,8 @@ def main():
                 ))
             else:
                 out = np.column_stack((
-                    smiles, # SMILES
                     'SYGMA{}MOL{}'.format(n, entry), # SMILES label
+                    smiles, # SMILES
                     np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float),
                         decimals=5) # score rounded to 5 dp
                 ))
