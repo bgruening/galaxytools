@@ -575,7 +575,8 @@ def main(inputs, infile_estimator=None, infile1=None,
     elif plot_type == 'classification_confusion_matrix':
         plot_selection = params["plotting_selection"]
         input_true = get_dataframe(true_labels, plot_selection, "header_true", "column_selector_options_true")
-        input_predicted = get_dataframe(predicted_labels, plot_selection, "header_predicted", "column_selector_options_predicted")
+        header_predicted = 'infer' if plot_selection["header_predicted"] else None
+        input_predicted = pd.read_csv(predicted_labels, sep='\t', parse_dates=True, header=header_predicted)
         true_classes = input_true.iloc[:, -1].copy()
         predicted_classes = input_predicted.iloc[:, -1].copy()
         axis_labels = list(set(true_classes))
