@@ -1,0 +1,241 @@
+<tool id="cp-measureimagequality" name="MeasureImageQuality" version="19.05">
+  <description>module of CellProfiler v3.1.9</description>
+  <requirements>
+     <requirement type="package" version="2.7.16">python</requirement>
+  </requirements>
+  <macros>
+      <import>macros.xml</import>
+      <xml name="macro_calc_threshold">
+
+        <conditional name="con_use_all_methods">
+          <param name="use_all_methods" type="select" display="radio" label="Use all thresholding methods?">
+            <option value="Yes">Yes</option>
+            <option value="No">No</option>
+          </param>
+          <when value="No">
+              <repeat name="rpt_threshold_method" title="Add another threshold method">
+                <conditional name="con_threshold_methods">
+                  <param name="select_threshold_method" type="select" label="Select a thresholding method">
+                    <option value="Otsu">Otsu</option>
+                    <option value="MoG">MoG</option>
+                    <option value="Background">Background</option>
+                    <option value="RobustBackground">RobustBackground</option>
+                    <option value="RidlerCalvard">RidlerCalvard</option>
+                    <option value="Kapur">Kapur</option>
+                    <option value="MCT">MCT</option>
+                  </param>
+                  <when value="Otsu">
+                    <expand macro="otsu_method" />
+                  </when>
+                  <when value="MoG">
+                    <expand macro="mog_method" />
+                  </when>
+                </conditional>
+              </repeat>
+          </when>
+        </conditional>
+      </xml>
+
+      <xml name="otsu_method">
+        <param name="otsu_weighted_entropy" label="Minimize the weighted variance or the entropy?" type="select">
+          <option value="Weighted variance">Weighted variance</option>
+          <option value="Entropy">Entropy</option>
+        </param>
+        <conditional name="con_threshold_classes">
+          <param name="threshold_classes" label="Two-class or three-class thresholding" type="select">
+            <option value="Two classes">Two classes</option>
+            <option value="Three classes">Three classes</option>
+          </param>
+          <when value="Three classes">
+            <param name="pixel_foreground_or_background" label="Assign pixels in the middle intensity class to the foreground or the background" type="select">
+             <option value="Foreground">Foreground</option>
+             <option value="Background">Background</option>
+           </param>
+          </when>
+        </conditional>
+      </xml>
+
+      <xml name="mog_method">
+        <param name="mog_fraction_cover" label="Typical fraction of the image covered by objects" type="text"/>
+      </xml>
+  </macros>
+  <configfiles>
+    <inputs name="inputs" filename="input.json" />
+
+ <configfile name="script_file">
+import json
+import sys
+import os
+
+FOURSPACES="    "
+NEWLINE="\n"
+
+input_json_path = sys.argv[1]
+input_pipeline= sys.argv[2]
+
+params = json.load(open(input_json_path, "r"))
+
+def writemiq():
+  f.write(NEWLINE)
+
+  f.write("MeasureImageQuality:[module_num:"+str(new_count)+"|svn_version:\\'Unknown\\'|variable_revision_number:5|show_window:False|notes:\\x5B\\x5D|batch_state:array(\\x5B\\x5D, dtype=uint8)|enabled:True|wants_pause:False]"+NEWLINE)
+
+  for_images = params['calc_for_images']
+  selected_images = ""
+
+  if for_images == "All loaded images":
+    f.write(FOURSPACES + "Calculate metrics for which images?:" + for_images + NEWLINE)
+  else:
+    f.write(FOURSPACES + "Calculate metrics for which images?:Select..." + NEWLINE)
+    selected_images = params['calc_for_images']
+
+  image_count = "1"
+  f.write(FOURSPACES + "Image count:" + image_count + NEWLINE)
+
+  if 'rpt_blur_measurements' in params['con_calc_blur_metrics']:
+    scale_count = str(len(params['con_calc_blur_metrics']['rpt_blur_measurements']))
+  else:
+    scale_count = "1"
+
+  f.write(FOURSPACES + "Scale count:" + scale_count + NEWLINE)
+
+  calc_threshold = params['con_calc_threshold']['calc_threshold']
+  if calc_threshold == "No":
+    threshold_count = "1"
+    all_method = "No"
+  else:
+    all_method = params['con_calc_threshold']['con_use_all_methods']['use_all_methods']
+    if all_method == "No":
+      threshold_count = "1"
+    else:
+      threshold_count = str(len(params['con_calc_threshold']['con_use_all_methods']['rpt_threshold_method']))
+
+  f.write(FOURSPACES + "Threshold count:" + threshold_count + NEWLINE)
+
+  f.write(FOURSPACES + "Select the images to measure:" + selected_images + NEWLINE)
+
+  include_rescaling = params['include_rescaling_value']
+  f.write(FOURSPACES + "Include the image rescaling value?:" + include_rescaling + NEWLINE)
+
+  calc_blur_metrics = params['con_calc_blur_metrics']['calc_blur_metrics']
+  f.write(FOURSPACES + "Calculate blur metrics?:" + calc_blur_metrics + NEWLINE)
+
+  if calc_blur_metrics == "Yes" and 'rpt_blur_measurements' in params['con_calc_blur_metrics']:
+    for bm in params['con_calc_blur_metrics']['rpt_blur_measurements']:
+      f.write(FOURSPACES + "Spatial scale for blur measurements:" + bm['blur_measurements'] + NEWLINE)
+
+  calc_saturation = params['calc_saturation_metrics']
+  f.write(FOURSPACES + "Calculate saturation metrics?:" + calc_saturation + NEWLINE)
+  
+  calc_intensity = params['calc_intensity_metrics']
+  f.write(FOURSPACES + "Calculate intensity metrics?:" + calc_intensity + NEWLINE)
+
+  calc_threshold = params['con_calc_threshold']['calc_threshold']
+  f.write(FOURSPACES + "Calculate thresholds?:" + calc_threshold + NEWLINE)  
+  f.write(FOURSPACES + "Use all thresholding methods?:" + all_method + NEWLINE)
+
+  if all_method == "No":
+    for method in params['con_calc_threshold']['con_use_all_methods']['rpt_threshold_method']:
+        f.write(FOURSPACES + "Select a thresholding method:" + method['con_threshold_methods']['select_threshold_method'] + NEWLINE)
+
+        fraction_cover = method['con_threshold_methods']['mog_fraction_cover'] if 'mog_fraction_cover' in method['con_threshold_methods'] else '0.1'
+
+        tt_classes = method['con_threshold_methods']['con_threshold_classes']['threshold_classes'] if 'con_threshold_classes' in method['con_threshold_methods'] else 'Two classes'
+
+        minimize = method['con_threshold_methods']['otsu_weighted_entropy'] if 'otsu_weighted_entropy' in method['con_threshold_methods'] else 'Entropy'
+
+        if tt_classes == "Three classes":
+          pixel_intensity = method['con_threshold_methods']['con_threshold_classes']['pixel_foreground_or_background']
+        else:
+          pixel_intensity = "Foreground"
+
+        f.write(FOURSPACES + "Typical fraction of the image covered by objects:" + fraction_cover + NEWLINE)
+
+        f.write(FOURSPACES + "Two-class or three-class thresholding?:" + tt_classes + NEWLINE)
+
+        f.write(FOURSPACES + "Minimize the weighted variance or the entropy:" + minimize + NEWLINE)
+
+        f.write(FOURSPACES + "Assign pixels in the middle intensity class to the foreground or the background?:" + pixel_intensity + NEWLINE)
+
+
+with open(input_pipeline) as fin:
+  lines = fin.readlines()
+  
+  k,v= lines[4].strip().split(':')
+
+  module_count = int(v)
+  new_count = module_count+1
+  lines[4]= k+":"+str(new_count)+"\n"
+  
+  with open("output","w") as f:
+    f.writelines(lines)
+    writemiq()
+
+f.close() 
+ </configfile>    
+</configfiles>
+  <command><![CDATA[
+    python $script_file $inputs $input_pipeline
+  ]]></command>
+  <inputs>
+    <expand macro="input_pipeline_macro" />
+    <param name="calc_for_images" type="text" label="Calculate metrics for which images?" value="All loaded images" />
+
+    <param name="include_rescaling_value" type="select" display="radio" label="Include the image rescaling value?">
+      <option value="Yes">Yes</option>
+      <option value="No">No</option>
+    </param>
+
+    <conditional name="con_calc_blur_metrics">
+      <param name="calc_blur_metrics" type="select" display="radio" label="Calculate blur metrics?">
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </param>
+      <when value="Yes">
+        <repeat name="rpt_blur_measurements" title="Add another scale">
+          <param name="blur_measurements" label="Spatial scale for blur measurements" type="text" />
+        </repeat>
+      </when>
+    </conditional>
+    <param name="calc_intensity_metrics" type="select" display="radio" label="Calculate intensity metrics?">
+      <option value="Yes">Yes</option>
+      <option value="No">No</option>
+    </param>
+    <param name="calc_saturation_metrics" type="select" display="radio" label="Calculate saturation metrics">
+      <option value="Yes">Yes</option>
+      <option value="No">No</option>
+    </param>
+
+    <conditional name="con_calc_threshold">
+      <param name="calc_threshold" type="select" display="radio" label="Calculate thresholds?">
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </param>
+      <when value="Yes">
+        <expand macro="macro_calc_threshold" />
+      </when>
+    </conditional>
+
+  </inputs>
+
+  <outputs>
+ 	<expand macro="output_pipeline_macro" />
+  </outputs>
+
+  <stdio>
+    <exit_code range="1:" level="fatal" description="Error occured"/>
+  </stdio>
+  <tests>
+
+  </tests>
+  <help>
+    This tool append the MeasureImageQuality module section to an existing pipeline file (.cppipe).
+
+    Input: existing pipeline file
+
+    Output: new pipeline file
+
+    Combine this tool with "Common" and "CellProfiler" together to run the module alone.
+  </help>
+</tool>
+
