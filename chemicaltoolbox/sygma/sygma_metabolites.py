@@ -72,10 +72,10 @@ def main():
             outp = np.vstack((outp, out))
     if args.detailed:
         np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t",
-            header="compound_id\tSMILES\tSyGMa_score\tmolecular_formula\tSyGMA_n\tSyGMa_pathway", comments="")
+            header="compound_id\tsmiles\tsygma_score\tmolecular_formula\tsygma_n\tsygma_pathway", comments="")
     else:
         np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t",
-            header="compound_id\tSMILES\tSyGMa_score", comments="")
+            header="compound_id\tsmiles\tsygma_score", comments="")
 
 if __name__ == "__main__":
     main()
