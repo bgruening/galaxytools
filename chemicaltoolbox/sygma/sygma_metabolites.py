@@ -54,8 +54,8 @@ def main():
             smiles = Chem.MolToSmiles(metabs[entry]['SyGMa_metabolite'])
             if args.detailed:
                 out = np.column_stack((
-                    'SYGMA{}MOL{}'.format(n, entry), # SMILES label
                     smiles, # SMILES
+                    'SYGMA{}MOL{}'.format(n, entry), # SMILES label
                     np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float),
                         decimals=5), # score rounded to 5 dp
                     Chem.rdMolDescriptors.CalcMolFormula(Chem.MolFromSmiles(smiles)), # Molecular formula
@@ -64,18 +64,18 @@ def main():
                 ))
             else:
                 out = np.column_stack((
-                    'SYGMA{}MOL{}'.format(n, entry), # SMILES label
                     smiles, # SMILES
+                    'SYGMA{}MOL{}'.format(n, entry), # SMILES label
                     np.round(np.array(metabs[entry]['SyGMa_score'], dtype=float),
                         decimals=5) # score rounded to 5 dp
                 ))
             outp = np.vstack((outp, out))
     if args.detailed:
         np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t",
-            header="compound_id\tsmiles\tsygma_score\tmolecular_formula\tsygma_n\tsygma_pathway", comments="")
+            header="smiles\tcompound_id\tsygma_score\tmolecular_formula\tsygma_n\tsygma_pathway", comments="")
     else:
         np.savetxt(args.outfile, outp, fmt="%s", delimiter="\t",
-            header="compound_id\tsmiles\tsygma_score", comments="")
+            header="smiles\tcompound_id\tsygma_score", comments="")
 
 if __name__ == "__main__":
     main()
