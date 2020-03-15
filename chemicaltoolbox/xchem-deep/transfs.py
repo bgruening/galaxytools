@@ -4,7 +4,7 @@
 #
 # Now inside the container run like this:
 #   mkdir /tmp/work
-#   rm -rf /tmp/work/* && python3 work/transfs.py -i work/test-data/ligands.sdf -r work/test-data/receptor.pdb -w /tmp/work
+#   rm -rf /tmp/work/* && python3 work/transfs.py -i work/test-data/ligands.sdf -r work/test-data/receptor.pdb -d 2 -w /tmp/work
 #
 # If testing with no GPU you can use the --mock option to generate random scores
 #
@@ -13,7 +13,7 @@
 # Inside container test like this:
 #   mkdir /tmp/work
 #   cd chemicaltoolbox/xchem-deep
-#   rm -rf /tmp/work/* && python3 transfs.py -i test-data/ligands.sdf -r test-data/receptor.pdb -w /tmp/work --mock
+#   rm -rf /tmp/work/* && python3 transfs.py -i test-data/ligands.sdf -r test-data/receptor.pdb -d 2 -w /tmp/work --mock
 #
 
 import argparse, os, sys, math
@@ -36,6 +36,16 @@ def log(*args, **kwargs):
     print(*args, file=sys.stderr, ** kwargs)
 
 def write_raw_inputs(receptor_pdb, ligands_sdf, distance):
+    """
+    Analyses the PDB file for waters that clash with each ligand in the SDF and writes out:
+    1. a PDB file named like receptor-123-543.pdb where the numeric parts are the waters that have been omitted
+    2. a corresponding directory named like receptor-123-543
+    3. an SDF named like receptor-123-543/ligands.sdf containing those ligands that correspond to that receptor.
+    :param receptor_pdb: A PDB file without the ligand but with the crystallographic waters
+    :param ligands_sdf: A SDF with the docked poses
+    :param distance: The distance to consider when removing waters. Only heavy atoms in the ligand are considered.
+    :return:
+    """
 
     global work_dir
     global inputs_protein
@@ -52,6 +62,7 @@ def write_raw_inputs(receptor_pdb, ligands_sdf, distance):
     sdf_writers = {}
     paths = []
 
+    # read the receptor once as we'll need to process it many times
     with open(receptor_pdb, 'r') as f:
         lines = f.readlines()
 
@@ -97,6 +108,7 @@ def write_raw_inputs(receptor_pdb, ligands_sdf, distance):
 
 
             if watnumcode not in sdf_writers:
+                # we've not yet encountered this combination of waters so need to write the PDB file
 
                 dir = os.path.sep.join([work_dir, name])
                 log('WRITING to :', dir)
@@ -107,11 +119,12 @@ def write_raw_inputs(receptor_pdb, ligands_sdf, distance):
                 sdf_writers[watnumcode] = pybel.Outputfile("sdf", os.path.sep.join([dir, 'ligands.sdf']))
 
                 # writing into new pdb file
-                receptor_writer = open(os.path.sep.join([dir, 'receptor.pdb']), "w+")
+                receptor_writer = open(os.path.sep.join([work_dir, name + '.pdb']), "w+")
                 for line in new_receptor_pdb:
                     receptor_writer.write(str(line))
                 receptor_writer.close()
 
+            # write the molecule to the corresponding SDF file
             sdf_out = sdf_writers[watnumcode]
             sdf_out.write(mol)
 
@@ -125,6 +138,16 @@ def write_raw_inputs(receptor_pdb, ligands_sdf, distance):
     log('Wrote', count, 'molecules and', len(sdf_writers), 'proteins')
 
 def write_inputs(protein_file, ligands_file, distance):
+    """
+    Runs gninatyper on the proteins and ligands and generates the input.types file that will tell the predictor
+    what ligands correspond to what proteins.
+
+    :param protein_file:
+    :param ligands_file:
+    :param distance:
+    :return:
+    """
+
     global types_file_name
     global work_dir
     global inputs_protein
@@ -157,7 +180,7 @@ def write_inputs(protein_file, ligands_file, distance):
             proteins_dir = os.path.sep.join([path, 'proteins'])
             os.mkdir(proteins_dir)
 
-            cmd2 = ['gninatyper', os.path.sep.join([path, 'receptor.pdb']), os.path.sep.join([proteins_dir, 'protein'])]
+            cmd2 = ['gninatyper', path + '.pdb', os.path.sep.join([proteins_dir, 'protein'])]
             log('CMD:', cmd2)
             exit_code = subprocess.call(cmd2)
             log("Status:", exit_code)
@@ -280,7 +303,7 @@ def main():
     parser = argparse.ArgumentParser(description='XChem deep - pose scoring')
 
     parser.add_argument('-i', '--input', help="SDF containing the poses to score)")
-    parser.add_argument('-r', '--receptor', help="Receptor file for scoring (PDB or Mol2 format)")
+    parser.add_argument('-r', '--receptor', help="Receptor file for scoring (PDB format)")
     parser.add_argument('-d', '--distance', type=float, default=2.0, help="Cuttoff for removing waters")
     parser.add_argument('-o', '--outfile', default='output.sdf', help="File name for results")
     parser.add_argument('-w', '--work-dir', default=".", help="Working directory")
