@@ -123,6 +123,7 @@ def get_SucosScore(ref_mol, query_mol, tani=False, ref_features=None, query_feat
             return SuCOS_score, fm_score, protrude_val
     except:
         utils.log("Failed to calculate SuCOS scores. Returning 0,0,0")
+        return 0, 0, 0
 
 def process(refmol_filename, inputs_filename, outputs_filename, refmol_index=None,
             refmol_format=None, tani=False, score_mode=FeatMaps.FeatMapScoreMode.All):
