@@ -109,17 +109,20 @@ def get_SucosScore(ref_mol, query_mol, tani=False, ref_features=None, query_feat
     fm_score = get_FeatureMapScore(ref_features, query_features, tani, score_mode)
     fm_score = np.clip(fm_score, 0, 1)
 
-    if tani:
-        tani_sim = 1 - float(rdShapeHelpers.ShapeTanimotoDist(ref_mol, query_mol))
-        tani_sim = np.clip(tani_sim, 0, 1)
-        SuCOS_score = 0.5*fm_score + 0.5*tani_sim
-        return SuCOS_score, fm_score, tani_sim
-    else:
-        protrude_dist = rdShapeHelpers.ShapeProtrudeDist(ref_mol, query_mol, allowReordering=False)
-        protrude_dist = np.clip(protrude_dist, 0, 1)
-        protrude_val = 1.0 - protrude_dist
-        SuCOS_score = 0.5 * fm_score + 0.5 * protrude_val
-        return SuCOS_score, fm_score, protrude_val
+    try :
+        if tani:
+            tani_sim = 1 - float(rdShapeHelpers.ShapeTanimotoDist(ref_mol, query_mol))
+            tani_sim = np.clip(tani_sim, 0, 1)
+            SuCOS_score = 0.5*fm_score + 0.5*tani_sim
+            return SuCOS_score, fm_score, tani_sim
+        else:
+            protrude_dist = rdShapeHelpers.ShapeProtrudeDist(ref_mol, query_mol, allowReordering=False)
+            protrude_dist = np.clip(protrude_dist, 0, 1)
+            protrude_val = 1.0 - protrude_dist
+            SuCOS_score = 0.5 * fm_score + 0.5 * protrude_val
+            return SuCOS_score, fm_score, protrude_val
+    except:
+        utils.log("Failed to calculate SuCOS scores. Returning 0,0,0")
 
 def process(refmol_filename, inputs_filename, outputs_filename, refmol_index=None,
             refmol_format=None, tani=False, score_mode=FeatMaps.FeatMapScoreMode.All):
