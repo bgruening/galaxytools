@@ -33,20 +33,13 @@ value of a given-id of the same molecule file.",
     args = parser.parse_args()
 
     output = pybel.Outputfile("sdf", args.outfile, overwrite=True)
-
-
-
     for mol in pybel.readfile("sdf", args.infile):
         if args.key in mol.data:
             mol.title = mol.data[args.key]
             if args.random:
-                print('fooo')
                 suffix = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(13))
                 mol.title += '__%s' % suffix
         output.write( mol )
-
-
-
 
     output.close()
 
