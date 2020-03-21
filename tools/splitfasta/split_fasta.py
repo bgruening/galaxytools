@@ -26,7 +26,6 @@ if num_chunks != 0:
 
     records_per_chunk = round(float(record_count) / num_chunks)
 
-
 count = 1
 with open(input_filename) as input_file:
 
@@ -34,20 +33,18 @@ with open(input_filename) as input_file:
     records = []
     for record in SeqIO.parse(input_file, 'fasta'):
         records.append(record)
-        chunk_record_count += 1
         if num_chunks == 0 or (count < num_chunks and
-           chunk_record_count >= records_per_chunk):
+           len(records) >= records_per_chunk):
             if num_chunks == 0:
-                output_filename = os.path.join('splits', record.id + '.fasta')
+                output_filename = os.path.join('splits', record.id)
             else:
-                output_filename = os.path.join('splits', 'part{}.fasta'.format(count))
+                output_filename = os.path.join('splits', 'part{}'.format(count))
             SeqIO.write(records, output_filename, 'fasta')
             count += 1
             records = []
-            chunk_record_count = 0
 
     if records:
         # this only applies for the mode where input file is
         # split into chunks
-        output_filename = os.path.join('splits', 'part{}.fasta'.format(count))
+        output_filename = os.path.join('splits', 'part{}'.format(count))
         SeqIO.write(records, output_filename, 'fasta')
