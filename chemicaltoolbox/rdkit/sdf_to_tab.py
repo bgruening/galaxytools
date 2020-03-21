@@ -16,7 +16,7 @@ def sdf_to_tab(vars):
             else:
                 d = {prop: val for (prop, val) in d.items() if prop in vars.props.replace(' ', '').split(',')}  # remove items not requested via CLI
             if vars.name:
-                d['Name'] = mols[n].GetProp('_Name')
+                d['SDFMoleculeName'] = mols[n].GetProp('_Name')
             if vars.smiles:
                 d['SMILES'] = Chem.MolToSmiles(mols[n], isomericSmiles=False)
             d['Index'] = int(n)
