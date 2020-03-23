@@ -26,7 +26,8 @@ def sdf_to_tab(vars):
             print("Molecule could not be read - skipped.")
 
     df = df.astype({'Index': int}).set_index('Index')
-    df.to_csv(vars.out, sep='\t', header=vars.header)
+    sorted_cols = sorted(df.columns.values.tolist())
+    df.to_csv(vars.out, sep='\t', header=vars.header, columns=sorted_cols)
 
 def main():
     parser = argparse.ArgumentParser(description="Convert SDF to tabular")
