@@ -177,6 +177,19 @@ class Filter(object):
             out_d[x] = Chem.SDWriter(os.path.join(dir_base, x + ".sdf"))
         return out_d
 
+    def get_writers_reactions(self, dir_base, outputs):
+        """
+        Get all the writers of the SD files
+        :param output_path:
+        :return:
+        """
+        out_d = {}
+        for output in outputs:
+            #file = open(output + ".sdf", 'w')
+            #out_d[output] = Chem.SDWriter(file)
+            out_d[output] = Chem.SDWriter(os.path.join(dir_base, output + ".sdf"))
+        return out_d
+
     def annotate_reagent(self, product, reactants, reaction_name):
         """
         Annotate the product with the input molecules (and their input molecules).
