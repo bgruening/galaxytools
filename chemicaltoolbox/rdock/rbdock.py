@@ -15,7 +15,6 @@ def main():
 
     error_counter = 0
     for stdout_line in iter(ps.stdout.readline, ''):
-        print(stdout_line)
         if 'RBT_DOCKING_ERROR' in str(stdout_line):
                 error_counter += 1
                 if error_counter == 10:
