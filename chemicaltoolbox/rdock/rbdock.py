@@ -3,7 +3,7 @@ import argparse
 
 def main():
     parser = argparse.ArgumentParser(description='Simple wrapper for rbdock')
-    parser.add_argument('-n', '--num', type=int, help='Equilibrated system as input')
+    parser.add_argument('-n', '--num', type=int, help='Number of docking poses to generate')
     parser.add_argument('-s', '--seed', type=int, help='Random seed')
     args = parser.parse_args()
 
