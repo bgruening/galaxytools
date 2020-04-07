@@ -210,14 +210,14 @@ def generate_predictions_filename(work_dir, predict_file_name):
     return "{0}{1}{2}".format(work_dir, os.path.sep, predict_file_name)
 
 
-def run_predictions():
+def run_predictions(model):
     global types_file_name
     global predict_file_name
     global work_dir
     # python3 scripts/predict.py -m resources/dense.prototxt -w resources/weights.caffemodel -i work_0/test_set.types >> work_0/caffe_output/predictions.txt
     cmd1 = ['python3', '/train/fragalysis_test_files/scripts/predict.py',
             '-m', '/train/fragalysis_test_files/resources/dense.prototxt',
-            '-w', '/train/fragalysis_test_files/resources/weights.caffemodel',
+            '-w', os.path.sep.join(['/train/fragalysis_test_files/resources', model]),
             '-i', os.path.sep.join([work_dir, types_file_name]),
             '-o', os.path.sep.join([work_dir, predict_file_name])]
     log("CMD:", cmd1)
@@ -286,13 +286,13 @@ def patch_scores_sdf(outfile, scores):
     sdf_file.close()
 
 
-def execute(ligands_sdf, protein, outfile, distance, mock=False):
+def execute(ligands_sdf, protein, outfile, distance, model='weights.caffemodel', mock=False):
 
     write_inputs(protein, ligands_sdf, distance)
     if mock:
         mock_predictions()
     else:
-        run_predictions()
+        run_predictions(model)
     scores = read_predictions()
     patch_scores_sdf(outfile, scores)
 
@@ -307,6 +307,7 @@ def main():
     parser.add_argument('-d', '--distance', type=float, default=2.0, help="Cuttoff for removing waters")
     parser.add_argument('-o', '--outfile', default='output.sdf', help="File name for results")
     parser.add_argument('-w', '--work-dir', default=".", help="Working directory")
+    parser.add_argument('-m', '--model', default="weights.caffemodel", help="Model to use for predictions")
     parser.add_argument('--mock', action='store_true', help='Generate mock scores rather than run on GPU')
 
     args = parser.parse_args()
@@ -314,7 +315,7 @@ def main():
 
     work_dir = args.work_dir
 
-    execute(args.input, args.receptor, args.outfile, args.distance, mock=args.mock)
+    execute(args.input, args.receptor, args.outfile, args.distance, model=args.model, mock=args.mock)
 
 
 if __name__ == "__main__":
