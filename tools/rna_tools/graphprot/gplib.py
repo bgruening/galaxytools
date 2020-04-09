@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 
 from distutils.spawn import find_executable
 import subprocess
@@ -331,7 +330,7 @@ def graphprot_get_param_string(params_file):
 
     >>> test_params = "test-data/test.params"
     >>> graphprot_get_param_string(test_params)
-    '-epochs 40 -lambda 0.001 -R 4 -D 6 -bitsize 14 -onlyseq '
+    '-epochs 20 -lambda 0.01 -R 1 -D 3 -bitsize 14 -onlyseq '
 
     """
     param_string = ""
@@ -523,7 +522,7 @@ def graphprot_get_param_dic(params_file):
 
     >>> params_file = "test-data/test.params"
     >>> graphprot_get_param_dic(params_file)
-    {'epochs': '40', 'lambda': '0.001', 'R': '4', 'D': '6', 'bitsize': '14', 'model_type': 'sequence', 'pos_train_ws_pred_median': '1.033690', 'pos_train_profile_median': '8.680340', 'pos_train_avg_profile_median_1': '4.027981', 'pos_train_avg_profile_median_2': '3.027981'}
+    {'epochs': '20', 'lambda': '0.01', 'R': '1', 'D': '3', 'bitsize': '14', 'model_type': 'sequence', 'pos_train_ws_pred_median': '0.760321', 'pos_train_profile_median': '5.039610', 'pos_train_avg_profile_median_1': '4.236340', 'pos_train_avg_profile_median_2': '3.868431', 'pos_train_avg_profile_median_3': '3.331277', 'pos_train_avg_profile_median_4': '2.998667', 'pos_train_avg_profile_median_5': '2.829782', 'pos_train_avg_profile_median_6': '2.626623', 'pos_train_avg_profile_median_7': '2.447083', 'pos_train_avg_profile_median_8': '2.349919', 'pos_train_avg_profile_median_9': '2.239829', 'pos_train_avg_profile_median_10': '2.161676'}
 
     """
     param_dic = {}
@@ -922,7 +921,7 @@ def list_extract_peaks(in_list,
 
 ################################################################################
 
-def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed):
+def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed, print_rows=False):
     """
     Given a .bed file of sequence peak regions (possible coordinates from 
     0 to length of s), convert peak coordinates to genomic coordinates.
@@ -978,6 +977,8 @@ def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed):
                 new_sc_pos = gen_e - sc_pos + 1 # keep 1-based.
             new_row = "%s\t%i\t%i\t%s,%i\t%f\t%s" %(gen_chr, new_s, new_e, site_id, new_sc_pos, site_sc, gen_pol)
             OUTPEAKS.write("%s\n" %(new_row))
+            if print_rows:
+                print(new_row)
     OUTPEAKS.close()
 
 

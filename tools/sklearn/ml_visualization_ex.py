@@ -1,6 +1,9 @@
 import argparse
 import json
+import matplotlib
+import matplotlib.pyplot as plt
 import numpy as np
+import os
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
@@ -10,12 +13,272 @@ from keras.models import model_from_json
 from keras.utils import plot_model
 from sklearn.feature_selection.base import SelectorMixin
 from sklearn.metrics import precision_recall_curve, average_precision_score
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, confusion_matrix
 from sklearn.pipeline import Pipeline
 from galaxy_ml.utils import load_model, read_columns, SafeEval
 
 
 safe_eval = SafeEval()
+
+# plotly default colors
+default_colors = [
+    '#1f77b4',  # muted blue
+    '#ff7f0e',  # safety orange
+    '#2ca02c',  # cooked asparagus green
+    '#d62728',  # brick red
+    '#9467bd',  # muted purple
+    '#8c564b',  # chestnut brown
+    '#e377c2',  # raspberry yogurt pink
+    '#7f7f7f',  # middle gray
+    '#bcbd22',  # curry yellow-green
+    '#17becf'   # blue-teal
+]
+
+
+def visualize_pr_curve_plotly(df1, df2, pos_label, title=None):
+    """output pr-curve in html using plotly
+
+    df1 : pandas.DataFrame
+        Containing y_true
+    df2 : pandas.DataFrame
+        Containing y_score
+    pos_label : None
+        The label of positive class
+    title : str
+        Plot title
+    """
+    data = []
+    for idx in range(df1.shape[1]):
+        y_true = df1.iloc[:, idx].values
+        y_score = df2.iloc[:, idx].values
+
+        precision, recall, _ = precision_recall_curve(
+            y_true, y_score, pos_label=pos_label)
+        ap = average_precision_score(
+            y_true, y_score, pos_label=pos_label or 1)
+
+        trace = go.Scatter(
+            x=recall,
+            y=precision,
+            mode='lines',
+            marker=dict(
+                color=default_colors[idx % len(default_colors)]
+            ),
+            name='%s (area = %.3f)' % (idx, ap)
+        )
+        data.append(trace)
+
+    layout = go.Layout(
+        xaxis=dict(
+            title='Recall',
+            linecolor='lightslategray',
+            linewidth=1
+        ),
+        yaxis=dict(
+            title='Precision',
+            linecolor='lightslategray',
+            linewidth=1
+        ),
+        title=dict(
+            text=title or 'Precision-Recall Curve',
+            x=0.5,
+            y=0.92,
+            xanchor='center',
+            yanchor='top'
+        ),
+        font=dict(
+            family="sans-serif",
+            size=11
+        ),
+        # control backgroud colors
+        plot_bgcolor='rgba(255,255,255,0)'
+    )
+    """
+    legend=dict(
+        x=0.95,
+        y=0,
+        traceorder="normal",
+        font=dict(
+            family="sans-serif",
+            size=9,
+            color="black"
+        ),
+        bgcolor="LightSteelBlue",
+        bordercolor="Black",
+        borderwidth=2
+    ),"""
+
+    fig = go.Figure(data=data, layout=layout)
+
+    plotly.offline.plot(fig, filename="output.html", auto_open=False)
+    # to be discovered by `from_work_dir`
+    os.rename('output.html', 'output')
+
+
+def visualize_pr_curve_matplotlib(df1, df2, pos_label, title=None):
+    """visualize pr-curve using matplotlib and output svg image
+    """
+    backend = matplotlib.get_backend()
+    if "inline" not in backend:
+        matplotlib.use("SVG")
+    plt.style.use('seaborn-colorblind')
+    plt.figure()
+
+    for idx in range(df1.shape[1]):
+        y_true = df1.iloc[:, idx].values
+        y_score = df2.iloc[:, idx].values
+
+        precision, recall, _ = precision_recall_curve(
+            y_true, y_score, pos_label=pos_label)
+        ap = average_precision_score(
+            y_true, y_score, pos_label=pos_label or 1)
+
+        plt.step(recall, precision, 'r-', color="black", alpha=0.3,
+                 lw=1, where="post", label='%s (area = %.3f)' % (idx, ap))
+
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('Recall')
+    plt.ylabel('Precision')
+    title = title or 'Precision-Recall Curve'
+    plt.title(title)
+    folder = os.getcwd()
+    plt.savefig(os.path.join(folder, "output.svg"), format="svg")
+    os.rename(os.path.join(folder, "output.svg"),
+              os.path.join(folder, "output"))
+
+
+def visualize_roc_curve_plotly(df1, df2, pos_label,
+                               drop_intermediate=True,
+                               title=None):
+    """output roc-curve in html using plotly
+
+    df1 : pandas.DataFrame
+        Containing y_true
+    df2 : pandas.DataFrame
+        Containing y_score
+    pos_label : None
+        The label of positive class
+    drop_intermediate : bool
+        Whether to drop some suboptimal thresholds
+    title : str
+        Plot title
+    """
+    data = []
+    for idx in range(df1.shape[1]):
+        y_true = df1.iloc[:, idx].values
+        y_score = df2.iloc[:, idx].values
+
+        fpr, tpr, _ = roc_curve(y_true, y_score, pos_label=pos_label,
+                                drop_intermediate=drop_intermediate)
+        roc_auc = auc(fpr, tpr)
+
+        trace = go.Scatter(
+            x=fpr,
+            y=tpr,
+            mode='lines',
+            marker=dict(
+                color=default_colors[idx % len(default_colors)]
+            ),
+            name='%s (area = %.3f)' % (idx, roc_auc)
+        )
+        data.append(trace)
+
+    layout = go.Layout(
+        xaxis=dict(
+            title='False Positive Rate',
+            linecolor='lightslategray',
+            linewidth=1
+        ),
+        yaxis=dict(
+            title='True Positive Rate',
+            linecolor='lightslategray',
+            linewidth=1
+        ),
+        title=dict(
+            text=title or 'Receiver Operating Characteristic (ROC) Curve',
+            x=0.5,
+            y=0.92,
+            xanchor='center',
+            yanchor='top'
+        ),
+        font=dict(
+            family="sans-serif",
+            size=11
+        ),
+        # control backgroud colors
+        plot_bgcolor='rgba(255,255,255,0)'
+    )
+    """
+    # legend=dict(
+            # x=0.95,
+            # y=0,
+            # traceorder="normal",
+            # font=dict(
+            #    family="sans-serif",
+            #    size=9,
+            #    color="black"
+            # ),
+            # bgcolor="LightSteelBlue",
+            # bordercolor="Black",
+            # borderwidth=2
+        # ),
+    """
+
+    fig = go.Figure(data=data, layout=layout)
+
+    plotly.offline.plot(fig, filename="output.html", auto_open=False)
+    # to be discovered by `from_work_dir`
+    os.rename('output.html', 'output')
+
+
+def visualize_roc_curve_matplotlib(df1, df2, pos_label,
+                                   drop_intermediate=True,
+                                   title=None):
+    """visualize roc-curve using matplotlib and output svg image
+    """
+    backend = matplotlib.get_backend()
+    if "inline" not in backend:
+        matplotlib.use("SVG")
+    plt.style.use('seaborn-colorblind')
+    plt.figure()
+
+    for idx in range(df1.shape[1]):
+        y_true = df1.iloc[:, idx].values
+        y_score = df2.iloc[:, idx].values
+
+        fpr, tpr, _ = roc_curve(y_true, y_score, pos_label=pos_label,
+                                drop_intermediate=drop_intermediate)
+        roc_auc = auc(fpr, tpr)
+
+        plt.step(fpr, tpr, 'r-', color="black", alpha=0.3, lw=1,
+                 where="post", label='%s (area = %.3f)' % (idx, roc_auc))
+
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    title = title or 'Receiver Operating Characteristic (ROC) Curve'
+    plt.title(title)
+    folder = os.getcwd()
+    plt.savefig(os.path.join(folder, "output.svg"), format="svg")
+    os.rename(os.path.join(folder, "output.svg"),
+              os.path.join(folder, "output"))
+
+
+def get_dataframe(file_path, plot_selection, header_name, column_name):
+    header = 'infer' if plot_selection[header_name] else None
+    column_option = plot_selection[column_name]["selected_column_selector_option"]
+    if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+        col = plot_selection[column_name]["col1"]
+    else:
+        col = None
+    _, input_df = read_columns(file_path, c=col,
+                                   c_option=column_option,
+                                   return_df=True,
+                                   sep='\t', header=header,
+                                   parse_dates=True)
+    return input_df
 
 
 def main(inputs, infile_estimator=None, infile1=None,
@@ -23,7 +286,9 @@ def main(inputs, infile_estimator=None, infile1=None,
          outfile_object=None, groups=None,
          ref_seq=None, intervals=None,
          targets=None, fasta_path=None,
-         model_config=None):
+         model_config=None, true_labels=None,
+         predicted_labels=None, plot_color=None,
+         title=None):
     """
     Parameter
     ---------
@@ -63,6 +328,18 @@ def main(inputs, infile_estimator=None, infile1=None,
 
     model_config : str, default is None
         File path to dataset containing JSON config for neural networks
+
+    true_labels : str, default is None
+        File path to dataset containing true labels
+
+    predicted_labels : str, default is None
+        File path to dataset containing true predicted labels
+
+    plot_color : str, default is None
+        Color of the confusion matrix heatmap
+
+    title : str, default is None
+        Title of the confusion matrix heatmap
     """
     warnings.simplefilter('ignore')
 
@@ -71,6 +348,8 @@ def main(inputs, infile_estimator=None, infile1=None,
 
     title = params['plotting_selection']['title'].strip()
     plot_type = params['plotting_selection']['plot_type']
+    plot_format = params['plotting_selection']['plot_format']
+
     if plot_type == 'feature_importances':
         with open(infile_estimator, 'rb') as estimator_handler:
             estimator = load_model(estimator_handler)
@@ -123,98 +402,46 @@ def main(inputs, infile_estimator=None, infile1=None,
         layout = go.Layout(title=title or "Feature Importances")
         fig = go.Figure(data=[trace], layout=layout)
 
-    elif plot_type == 'pr_curve':
-        df1 = pd.read_csv(infile1, sep='\t', header=None)
-        df2 = pd.read_csv(infile2, sep='\t', header=None)
+        plotly.offline.plot(fig, filename="output.html",
+                            auto_open=False)
+        # to be discovered by `from_work_dir`
+        os.rename('output.html', 'output')
 
-        precision = {}
-        recall = {}
-        ap = {}
+        return 0
 
-        pos_label = params['plotting_selection']['pos_label'].strip() \
-            or None
-        for col in df1.columns:
-            y_true = df1[col].values
-            y_score = df2[col].values
+    elif plot_type in ('pr_curve', 'roc_curve'):
+        df1 = pd.read_csv(infile1, sep='\t', header='infer')
+        df2 = pd.read_csv(infile2, sep='\t', header='infer').astype(np.float32)
 
-            precision[col], recall[col], _ = precision_recall_curve(
-                y_true, y_score, pos_label=pos_label)
-            ap[col] = average_precision_score(
-                y_true, y_score, pos_label=pos_label or 1)
-
-        if len(df1.columns) > 1:
-            precision["micro"], recall["micro"], _ = precision_recall_curve(
-                df1.values.ravel(), df2.values.ravel(), pos_label=pos_label)
-            ap['micro'] = average_precision_score(
-                df1.values, df2.values, average='micro',
-                pos_label=pos_label or 1)
-
-        data = []
-        for key in precision.keys():
-            trace = go.Scatter(
-                x=recall[key],
-                y=precision[key],
-                mode='lines',
-                name='%s (area = %.2f)' % (key, ap[key]) if key == 'micro'
-                     else 'column %s (area = %.2f)' % (key, ap[key])
-            )
-            data.append(trace)
-
-        layout = go.Layout(
-            title=title or "Precision-Recall curve",
-            xaxis=dict(title='Recall'),
-            yaxis=dict(title='Precision')
-        )
-
-        fig = go.Figure(data=data, layout=layout)
-
-    elif plot_type == 'roc_curve':
-        df1 = pd.read_csv(infile1, sep='\t', header=None)
-        df2 = pd.read_csv(infile2, sep='\t', header=None)
-
-        fpr = {}
-        tpr = {}
-        roc_auc = {}
+        minimum = params['plotting_selection']['report_minimum_n_positives']
+        # filter out columns whose n_positives is beblow the threhold
+        if minimum:
+            mask = df1.sum(axis=0) >= minimum
+            df1 = df1.loc[:, mask]
+            df2 = df2.loc[:, mask]
 
         pos_label = params['plotting_selection']['pos_label'].strip() \
             or None
-        for col in df1.columns:
-            y_true = df1[col].values
-            y_score = df2[col].values
 
-            fpr[col], tpr[col], _ = roc_curve(
-                y_true, y_score, pos_label=pos_label)
-            roc_auc[col] = auc(fpr[col], tpr[col])
+        if plot_type == 'pr_curve':
+            if plot_format == 'plotly_html':
+                visualize_pr_curve_plotly(df1, df2, pos_label, title=title)
+            else:
+                visualize_pr_curve_matplotlib(df1, df2, pos_label, title)
+        else:          # 'roc_curve'
+            drop_intermediate = (params['plotting_selection']
+                                       ['drop_intermediate'])
+            if plot_format == 'plotly_html':
+                visualize_roc_curve_plotly(df1, df2, pos_label,
+                                           drop_intermediate=drop_intermediate,
+                                           title=title)
+            else:
+                visualize_roc_curve_matplotlib(
+                    df1, df2, pos_label,
+                    drop_intermediate=drop_intermediate,
+                    title=title)
 
-        if len(df1.columns) > 1:
-            fpr["micro"], tpr["micro"], _ = roc_curve(
-                df1.values.ravel(), df2.values.ravel(), pos_label=pos_label)
-            roc_auc['micro'] = auc(fpr["micro"], tpr["micro"])
-
-        data = []
-        for key in fpr.keys():
-            trace = go.Scatter(
-                x=fpr[key],
-                y=tpr[key],
-                mode='lines',
-                name='%s (area = %.2f)' % (key, roc_auc[key]) if key == 'micro'
-                     else 'column %s (area = %.2f)' % (key, roc_auc[key])
-            )
-            data.append(trace)
-
-        trace = go.Scatter(x=[0, 1], y=[0, 1],
-                           mode='lines', 
-                           line=dict(color='black', dash='dash'),
-                           showlegend=False)
-        data.append(trace)
-
-        layout = go.Layout(
-            title=title or "Receiver operating characteristic curve",
-            xaxis=dict(title='False Positive Rate'),
-            yaxis=dict(title='True Positive Rate')
-        )
-
-        fig = go.Figure(data=data, layout=layout)
+        return 0
 
     elif plot_type == 'rfecv_gridscores':
         input_df = pd.read_csv(infile1, sep='\t', header='infer')
@@ -231,10 +458,43 @@ def main(inputs, infile_estimator=None, infile1=None,
         layout = go.Layout(
             xaxis=dict(title="Number of features selected"),
             yaxis=dict(title="Cross validation score"),
-            title=title or None
+            title=dict(
+                text=title or None,
+                x=0.5,
+                y=0.92,
+                xanchor='center',
+                yanchor='top'
+            ),
+            font=dict(
+                family="sans-serif",
+                size=11
+            ),
+            # control backgroud colors
+            plot_bgcolor='rgba(255,255,255,0)'
         )
+        """
+        # legend=dict(
+                # x=0.95,
+                # y=0,
+                # traceorder="normal",
+                # font=dict(
+                #    family="sans-serif",
+                #    size=9,
+                #    color="black"
+                # ),
+                # bgcolor="LightSteelBlue",
+                # bordercolor="Black",
+                # borderwidth=2
+            # ),
+        """
 
         fig = go.Figure(data=[data], layout=layout)
+        plotly.offline.plot(fig, filename="output.html",
+                            auto_open=False)
+        # to be discovered by `from_work_dir`
+        os.rename('output.html', 'output')
+
+        return 0
 
     elif plot_type == 'learning_curve':
         input_df = pd.read_csv(infile1, sep='\t', header='infer')
@@ -264,23 +524,83 @@ def main(inputs, infile_estimator=None, infile1=None,
             yaxis=dict(
                 title='Performance Score'
             ),
-            title=title or 'Learning Curve'
+            # modify these configurations to customize image
+            title=dict(
+                text=title or 'Learning Curve',
+                x=0.5,
+                y=0.92,
+                xanchor='center',
+                yanchor='top'
+            ),
+            font=dict(
+                family="sans-serif",
+                size=11
+            ),
+            # control backgroud colors
+            plot_bgcolor='rgba(255,255,255,0)'
         )
+        """
+        # legend=dict(
+                # x=0.95,
+                # y=0,
+                # traceorder="normal",
+                # font=dict(
+                #    family="sans-serif",
+                #    size=9,
+                #    color="black"
+                # ),
+                # bgcolor="LightSteelBlue",
+                # bordercolor="Black",
+                # borderwidth=2
+            # ),
+        """
+
         fig = go.Figure(data=[data1, data2], layout=layout)
+        plotly.offline.plot(fig, filename="output.html",
+                            auto_open=False)
+        # to be discovered by `from_work_dir`
+        os.rename('output.html', 'output')
+
+        return 0
 
     elif plot_type == 'keras_plot_model':
         with open(model_config, 'r') as f:
             model_str = f.read()
         model = model_from_json(model_str)
         plot_model(model, to_file="output.png")
-        __import__('os').rename('output.png', 'output')
+        os.rename('output.png', 'output')
 
         return 0
 
-    plotly.offline.plot(fig, filename="output.html",
-                        auto_open=False)
-    # to be discovered by `from_work_dir`
-    __import__('os').rename('output.html', 'output')
+    elif plot_type == 'classification_confusion_matrix':
+        plot_selection = params["plotting_selection"]
+        input_true = get_dataframe(true_labels, plot_selection, "header_true", "column_selector_options_true")
+        header_predicted = 'infer' if plot_selection["header_predicted"] else None
+        input_predicted = pd.read_csv(predicted_labels, sep='\t', parse_dates=True, header=header_predicted)
+        true_classes = input_true.iloc[:, -1].copy()
+        predicted_classes = input_predicted.iloc[:, -1].copy()
+        axis_labels = list(set(true_classes))
+        c_matrix = confusion_matrix(true_classes, predicted_classes)
+        fig, ax = plt.subplots(figsize=(7, 7))
+        im = plt.imshow(c_matrix, cmap=plot_color)
+        for i in range(len(c_matrix)):
+            for j in range(len(c_matrix)):
+                ax.text(j, i, c_matrix[i, j], ha="center", va="center", color="k")
+        ax.set_ylabel('True class labels')
+        ax.set_xlabel('Predicted class labels')
+        ax.set_title(title)
+        ax.set_xticks(axis_labels)
+        ax.set_yticks(axis_labels)
+        fig.colorbar(im, ax=ax)
+        fig.tight_layout()
+        plt.savefig("output.png", dpi=125)
+        os.rename('output.png', 'output')
+
+        return 0
+
+    # save pdf file to disk
+    # fig.write_image("image.pdf", format='pdf')
+    # fig.write_image("image.pdf", format='pdf', width=340*2, height=226*2)
 
 
 if __name__ == '__main__':
@@ -297,10 +617,17 @@ if __name__ == '__main__':
     aparser.add_argument("-t", "--targets", dest="targets")
     aparser.add_argument("-f", "--fasta_path", dest="fasta_path")
     aparser.add_argument("-c", "--model_config", dest="model_config")
+    aparser.add_argument("-tl", "--true_labels", dest="true_labels")
+    aparser.add_argument("-pl", "--predicted_labels", dest="predicted_labels")
+    aparser.add_argument("-pc", "--plot_color", dest="plot_color")
+    aparser.add_argument("-pt", "--title", dest="title")
     args = aparser.parse_args()
 
     main(args.inputs, args.infile_estimator, args.infile1, args.infile2,
          args.outfile_result, outfile_object=args.outfile_object,
          groups=args.groups, ref_seq=args.ref_seq, intervals=args.intervals,
          targets=args.targets, fasta_path=args.fasta_path,
-         model_config=args.model_config)
+         model_config=args.model_config, true_labels=args.true_labels,
+         predicted_labels=args.predicted_labels,
+         plot_color=args.plot_color,
+         title=args.title)

@@ -29,6 +29,10 @@ def parse_command_line():
         help="Specify the filters to apply",
         required=True,
         )
+    parser.add_argument('--list_of_names', 
+        help="A file with list of molecule names to extract. Every name is in one line.",
+        required=False,
+        )
     return parser.parse_args()
 
 def filter_precalculated_compounds(args, filters):
@@ -83,12 +87,24 @@ def filter_new_compounds(args, filters):
         sys.stdout.write(stdout.decode('utf-8'))
         sys.stdout.write(stderr.decode('utf-8'))
 
+def filter_by_name(args):
+    outfile = pybel.Outputfile(args.oformat, args.output, overwrite=True)
+    for mol in pybel.readfile('sdf', args.input):
+        for name in open(args.list_of_names):
+            if mol.title.strip() == name.strip():
+                outfile.write(mol)
+    outfile.close()
 
 def __main__():
     """
         Select compounds with certain properties from a small library
     """
     args = parse_command_line()
+    
+    if args.filters == '__filter_by_name__':
+        filter_by_name(args)
+        return
+    
     # Its a small trick to get the parameters in an easy way from the xml file.
     # To keep it readable in the xml file, many white-spaces are included in that string it needs to be removed.
     # Also the last loop creates a ',{' that is not an valid jason expression.

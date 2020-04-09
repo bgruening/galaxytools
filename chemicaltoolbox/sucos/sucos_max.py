@@ -39,8 +39,7 @@ import argparse, gzip, os
 from rdkit import Chem
 
 
-def process(inputfilename, clusterfilenames, outputfilename, mode):
-
+def process(inputfilename, clusterfilenames, outputfilename):
     all_clusters = {}
     for filename in clusterfilenames:
         cluster = []
@@ -79,7 +78,9 @@ def process(inputfilename, clusterfilenames, outputfilename, mode):
         except:
             utils.log("WARNING: failed to generate features for molecule", mol_num, "in input")
             continue
-        scores = [0, 0, 0]
+        scores_max = [0, 0, 0]
+        scores_cum = [0, 0, 0]
+        cluster_name = None
         for clusterfilename in all_clusters:
             cluster = all_clusters[clusterfilename]
             index = 0
@@ -89,42 +90,37 @@ def process(inputfilename, clusterfilenames, outputfilename, mode):
                 index += 1
                 comparisons += 1
                 sucos_score, fm_score, vol_score = sucos.get_SucosScore(hit, mol,
-                    tani=False, ref_features=ref_features, query_features=query_features)
-                if mode == 'max':
-                    if sucos_score > scores[0]:
-                        scores[0] = sucos_score
-                        scores[1] = fm_score
-                        scores[2] = vol_score
-                        cluster_name = clusterfilename
-                        cluster_index = index
-                elif mode == 'cum':
-                    scores[0] += sucos_score
-                    scores[1] += fm_score
-                    scores[2] += vol_score
-                else:
-                    raise ValueError("Invalid mode: " + mode)
+                                                                        tani=False, ref_features=ref_features,
+                                                                        query_features=query_features)
 
-        if scores[0] > 0:
-            if mode == 'max':
-                cluster_file_name_only = cluster_name.split(os.sep)[-1]
-                #utils.log("Max SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2],"File:", cluster_file_name_only, "Index:", cluster_index)
-                mol.SetDoubleProp("Max_SuCOS_Score", scores[0])
-                mol.SetDoubleProp("Max_SuCOS_FeatureMap_Score", scores[1])
-                mol.SetDoubleProp("Max_SuCOS_Protrude_Score", scores[2])
-                mol.SetProp("Max_SuCOS_Cluster", cluster_file_name_only)
-                mol.SetIntProp("Max_SuCOS_Index", cluster_index)
+                if sucos_score > scores_max[0]:
+                    scores_max[0] = sucos_score
+                    scores_max[1] = fm_score
+                    scores_max[2] = vol_score
+                    cluster_name = clusterfilename
+                    cluster_index = index
 
-            else:
-                #utils.log("Cum SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2])
-                mol.SetDoubleProp("Cum_SuCOS_Score", scores[0])
-                mol.SetDoubleProp("Cum_SuCOS_FeatureMap_Score", scores[1])
-                mol.SetDoubleProp("Cum_SuCOS_Protrude_Score", scores[2])
+                scores_cum[0] += sucos_score
+                scores_cum[1] += fm_score
+                scores_cum[2] += vol_score
 
-            writer.write(mol)
 
-        else:
-            utils.log("Molecule", mol_num, "did not overlay. Omitting from results")
+        # utils.log("Max SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2],"File:", cluster_file_name_only, "Index:", cluster_index)
+        mol.SetDoubleProp("Max_SuCOS_Score", scores_max[0] if scores_max[0] > 0 else 0)
+        mol.SetDoubleProp("Max_SuCOS_FeatureMap_Score", scores_max[1] if scores_max[1] > 0 else 0)
+        mol.SetDoubleProp("Max_SuCOS_Protrude_Score", scores_max[2] if scores_max[2] > 0 else 0)
 
+        if cluster_name:
+            cluster_file_name_only = cluster_name.split(os.sep)[-1]
+            mol.SetProp("Max_SuCOS_Cluster", cluster_file_name_only)
+            mol.SetIntProp("Max_SuCOS_Index", cluster_index)
+
+        # utils.log("Cum SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2])
+        mol.SetDoubleProp("Cum_SuCOS_Score", scores_cum[0] if scores_cum[0] > 0 else 0)
+        mol.SetDoubleProp("Cum_SuCOS_FeatureMap_Score", scores_cum[1] if scores_cum[1] > 0 else 0)
+        mol.SetDoubleProp("Cum_SuCOS_Protrude_Score", scores_cum[2] if scores_cum[2] > 0 else 0)
+
+        writer.write(mol)
 
     input_file.close()
     writer.flush()
@@ -140,14 +136,12 @@ def main():
     parser = argparse.ArgumentParser(description='Max SuCOS scores with RDKit')
     parser.add_argument('-i', '--input', help='Input file to score in SDF format. Can be gzipped (*.gz).')
     parser.add_argument('-o', '--output', help='Output file in SDF format. Can be gzipped (*.gz).')
-    parser.add_argument('-m', '--mode', choices=['max', 'cum'],
-                        default='max', help='Score mode: max = best score, cum = sum of all scores')
     parser.add_argument('clusters', nargs='*', help="One or more SDF files with the clustered hits")
 
     args = parser.parse_args()
     utils.log("Max SuCOS Args: ", args)
 
-    process(args.input, args.clusters, args.output, args.mode)
+    process(args.input, args.clusters, args.output)
 
 
 if __name__ == "__main__":
