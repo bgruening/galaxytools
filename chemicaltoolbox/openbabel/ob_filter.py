@@ -36,7 +36,7 @@ def filter_precalculated_compounds(args, filters):
     for mol in pybel.readfile('sdf', args.input):
         for key, elem in filters.items():
             # map the short description to the larger metadata names stored in the sdf file
-            property = cheminfolib.ColumnNames[key]
+            property = cheminfolib.ColumnNames.get(key, key)
             min = elem[0]
             max = elem[1]
             if float(mol.data[property]) >= float(min) and float(mol.data[property]) <= float(max):
@@ -97,7 +97,7 @@ def __main__():
         # Check if the sdf file contains all of the required metadata to invoke the precalculation filtering
         mol = next(pybel.readfile('sdf', args.input))
         for key, elem in filters.items():
-            property = cheminfolib.ColumnNames[key]
+            property = cheminfolib.ColumnNames.get(key, key)
             if not property in mol.data:
                 break
         else:
