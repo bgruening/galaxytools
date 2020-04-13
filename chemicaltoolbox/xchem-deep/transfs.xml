@@ -1,49 +1,42 @@
-<tool id="xchem_transfs_scoring" name="XChem TransFS pose scoring" version="0.3.0">
+<tool id="xchem_transfs_scoring" name="XChem TransFS pose scoring" version="0.4.0">
     <description>using deep learning</description>
 
     <requirements>
         <!--requirement type="package" version="3.0.0">openbabel</requirement-->
         <!--requirement type="package" version="3.7">python</requirement-->
         <!-- many other requirements are needed -->
-        <container type="docker">informaticsmatters/deep-app-ubuntu-1604:1.2</container>
+        <container type="docker">informaticsmatters/transfs:1.3</container>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
 
     cd /train/fragalysis_test_files/ &&
-    mkdir workdir &&
+    mkdir -p workdir/tfs &&
     cd workdir &&
 
     cp '$ligands' ligands.sdf &&
     cp '$receptor' receptor.pdb &&
-	
-    ##mkdir -p /root/train/ &&
-    ##ln -s /train/fragalysis_test_files/ /root/train/ &&
 
-    ##adduser centos --uid 1000 --quiet --no-create-home --system &&
-    ##apt install sudo -y &&
-
-    ## mkdir -p ligands &&
     cd ../ &&
-    python '$__tool_directory__/transfs.py' -i ./workdir/ligands.sdf -r ./workdir/receptor.pdb -d $distance -w /train/fragalysis_test_files/workdir --model '$model' &&
+    python transfs.py -i /train/fragalysis_test_files/workdir/ligands.sdf -r /train/fragalysis_test_files/workdir/receptor.pdb -d $distance -w workdir/tfs --model '$model' '$mock' &&
     ls -l &&
     ls -l workdir &&
-    sudo -u ubuntu cp ./workdir/output.sdf '$output' &&
-    head -n 10000 ./workdir/output.sdf &&
+    cp ./workdir/tfs/output.sdf '$output' &&
+    head -n 1000 ./workdir/tfs/output.sdf &&
 
     mkdir -p ./pdb &&
-    cp -r ./workdir/receptor*.pdb ./pdb &&
+    cp -r ./workdir/tfs/receptor*.pdb ./pdb &&
     tar -cvhf archiv.tar ./pdb &&
-    sudo -u ubuntu cp archiv.tar '$output_receptors' &&
+    cp archiv.tar '$output_receptors' &&
 
-    sudo -u ubuntu cp ./workdir/predictions.txt '$predictions'
-
+    cp ./workdir/tfs/predictions.txt '$predictions'
 
     ]]></command>
 
     <inputs>
-        <param type="data" name="receptor" format="pdb" label="Receptor" help="Select a receptor (pdb format)."/>
+        <param type="data" name="receptor" format="pdb" label="Receptor" help="Select a receptor (PDB format)."/>
         <param type="data" name="ligands" format="sdf,mol" label="Ligands" help="Ligands (docked poses) in SDF format)"/>
-        <param name="distance" type="float" value="2.0" min="1.0" max="5.0" label="Distance to waters" help="Remove waters closer than this distance to any ligand heavy atom"/>
+        <param name="distance" type="float" value="0" min="0" max="5.0" label="Distance to waters"
+               help="Remove waters closer than this distance to any ligand heavy atom (0 means skip this process)."/>
         <param name="model" type="select" label="Model for predictions">
             <option value="weights.caffemodel">No threshold (original model)</option>
             <option value="10nm.0_iter_50000.caffemodel">10nM threshold</option>
@@ -63,7 +56,7 @@
     </outputs>
 
     <tests>
-	    <test>
+        <test>
             <param name="receptor" value="receptor.pdb"/>
             <param name="ligands" value="ligands.sdf"/>
             <param name="mock" value="--mock" />
@@ -73,8 +66,21 @@
                     <has_text text="TransFSReceptor"/>
                     <has_text text="TransFSScore"/>
                 </assert_contents>
+            </output> -->
+            <!---output_collection name="pdb_files" type="list" count="2" /-->
+        </test>
+        <test>
+            <param name="receptor" value="receptor.pdb"/>
+            <param name="ligands" value="ligands.sdf"/>
+            <param name="mock" value="--mock" />
+            <param name="distance" value="0"/>
+            <output name="output" ftype="sdf">
+                <assert_contents>
+                    <not_has_text text="TransFSReceptor"/>
+                    <has_text text="TransFSScore"/>
+                </assert_contents>
             </output>
-            <!--output_collection name="pdb_files" type="list" count="2" /-->
+            <!--output_collection name="pdb_files" type="list" count="1" /-->
         </test>
     </tests>
     <help><![CDATA[
@@ -92,8 +98,23 @@ a prediction for how good the pose is.
 
 **Inputs**
 
-1. The protein receptor to dock into as a file in PDB format. This should have the ligand removed but retain the waters.
-2. A set of ligand poses to score in SDF format.
+1. The protein receptor to dock into as a file in PDB format. This should have the ligand removed but can
+   retain the waters. This is specified by the 'receptor' parameter.
+2. A set of ligand poses to score in SDF format. This is specified by the 'ligands' parameter.
+
+Other parameters:
+
+'distance': Distance in Angstroms. Waters closer than this to any heavy atom in each ligand are removed.
+  A discrete set of PDB files are created missing certain waters and the ligands corresponding to that PDB file are
+  scored against it. If a distance of zero is specified then this process is skipped and all ligands are scored against
+  the receptor 'as is'. The assumption is that all waters have already been removed in this case. Specifying a
+  distance of 0 provides a significant boost in performance as the water checking step is avoided..
+
+'model': A number of models are provided:
+- weights.caffemodel - No threshold for distinction of actives and inactives (original model)
+- 10nm.0_iter_50000.caffemodel: actives are molecules from DUDE that have better than 10nM activity
+- 50nm.0_iter_50000.caffemodel: actives are molecules from DUDE that have better than 50nM activity
+- 200nm.0_iter_50000.caffemodel: actives are molecules from DUDE that have better than 200nM activity
 
 -----
 
@@ -101,14 +122,16 @@ a prediction for how good the pose is.
 
 **Outputs**
 
-An SDF file is produced as output. The binding affinity scores are contained within the SDF file
+An SDF file is produced as output. The predicted scores are contained within the SDF file
 as the TransFSScore property and the PDB file (with the waters that clash with the ligand removed)
 that was used for the scoring as the TransFSReceptor property.
 Values for the score range from 0 (poor binding) to 1 (good binding).
 
+The raw predictions (predictions.txt) is also provided as an output.
+
 A set of PDB files is also output, each one with different crystallographic waters removed. Each ligand is
 examined against input PDB structure and the with waters that clash (any heavy atom of the ligand closer than
-the 'distance' parameter being removed. The filenames are encoded with the water numbers that are removed.
+the 'distance' parameter being removed. The file names are encoded with the water numbers that are removed.
 
     ]]></help>
 </tool>
