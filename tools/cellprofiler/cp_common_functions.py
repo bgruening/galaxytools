@@ -1,38 +1,45 @@
 INDENTATION = "    "
 
-def get_field(dictionary, path, default=None):
-    keys = path.split("/")
+def get_json_value_from_path(input_params, keys_path):
+    """Returns the value in keys_path or None if the field does not exist"""
+    key_list = keys_path.split("/")
     try:
-        temp = dictionary[keys[0]]
-        for k in keys[1:]:
-            temp = dictionary[k]
-        return(temp)
-    except KeyError: pass
+        value = input_params[keys_path[0]]
+        for k in key_list[:1]:
+            value = value[k]
+        return(value)
+    except KeyError: 
+        return(None)
 
 
 def get_total_number_of_modules(pipeline_lines):
+    """Gets the number of modules from the header of the previous pipeline"""
     number_of_modules = pipeline_lines[4].strip().split(':')[1]
     return(int(number_of_modules))
 
 
 def get_pipeline_lines(input_pipeline):
+    """Returns a list with the lines in the .cppipe file"""
     with open(input_pipeline) as f:
         lines = f.readlines()
     return(lines)
 
 
-def update_module_count(pipeline_lines, current_module_num):
+def update_module_count(pipeline_lines, count):
+    """Updates the number of modules in the .cppipe header"""
     module_count_entry = pipeline_lines[4].strip().split(':')[0]
-    pipeline_lines[4] = f"{module_count_entry}:{current_module_num}\n"
+    pipeline_lines[4] = f"{module_count_entry}:{count}\n"
     return(pipeline_lines)
         
 
 def write_pipeline(filename, lines_pipeline):
+    """Writes the lines composing the pipeline into a file"""
     with open(filename, "w") as f:
         f.writelines(lines_pipeline)
 
 
-def build_header(module_number, module_name):
+def build_header(module_name, module_number):
+    """Creates the first line of a module given the name and module number"""
     result = "|".join([f"{module_name}:[module_num:{module_number}",
                        "svn_version:\\'Unknown\\'",
                        "variable_revision_number:4",
