@@ -1,8 +1,5 @@
 import argparse
 
-from pipelines_utils import parameter_utils
-
-
 def get_coordinates(lines):
     version = lines[3][34:39]
     molecule = []
@@ -83,7 +80,14 @@ def sdfout(centers, writer):
 
 def main():
     parser = argparse.ArgumentParser(description='RDKit screen')
-    parameter_utils.add_default_io_args(parser)
+    parser.add_argument('-i', '--input',
+                        help="Input file")
+    parser.add_argument('-if', '--informat', choices=['sdf'],
+                        help="Input format.")
+    parser.add_argument('-o', '--output',
+                        help="Base name for output file (no extension).")
+    parser.add_argument('-of', '--outformat', choices=['sdf'],
+                        help="Output format")
     args = parser.parse_args()
 
     mol_coordinates = []
