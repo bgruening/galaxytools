@@ -1,17 +1,27 @@
 INDENTATION = "    "
 
-def get_json_value_from_path(input_params, keys_path):
+
+def get_json_value(input_params, keys_path):
     """Returns the value in keys_path or None if the field does not exist"""
-    key_list = keys_path.split("/")
+    if not isinstance(input_params, dict):
+        return ""
+    key_list = keys_path.split(".")
     try:
-        value = input_params[keys_path[0]]
-        for k in key_list[:1]:
+        value = input_params[key_list[0]]
+        for k in key_list[1:]:
             value = value[k]
         return(value)
-    except KeyError: 
-        return(None)
+    except KeyError:
+        return("")
 
 
+def concat_conditional(a, b):
+    if (a == "" or b == ""):
+        return ""
+    else:
+        return f"{a}_{b}"
+
+        
 def get_total_number_of_modules(pipeline_lines):
     """Gets the number of modules from the header of the previous pipeline"""
     number_of_modules = pipeline_lines[4].strip().split(':')[1]
@@ -30,7 +40,7 @@ def update_module_count(pipeline_lines, count):
     module_count_entry = pipeline_lines[4].strip().split(':')[0]
     pipeline_lines[4] = f"{module_count_entry}:{count}\n"
     return(pipeline_lines)
-        
+
 
 def write_pipeline(filename, lines_pipeline):
     """Writes the lines composing the pipeline into a file"""
