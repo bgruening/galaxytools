@@ -1,15 +1,15 @@
 INDENTATION = "    "
 LINE_NUM_MODULES = 4
 
-def get_json_value(input_params, keys_path):
-    """Returns the value in keys_path or empty string if the field does not exist"""
-    if not isinstance(input_params, dict):
+def get_json_value(json_input, keys_path):
+    """Returns the value specified in keys_path (using dot notation) or an empty string if the key doesn't exist"""
+    if not isinstance(json_input, dict):
         return ""
-    key_list = keys_path.split(".")
+    keys = keys_path.split(".")
     try:
-        value = input_params[key_list[0]]
-        for k in key_list[1:]:
-            value = value[k]
+        value = json_input[keys[0]]
+        for key in keys[1:]:
+            value = value[key]
         return value
     except KeyError:
         return ""
