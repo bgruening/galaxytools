@@ -10,7 +10,7 @@ def get_json_value(input_params, keys_path):
         value = input_params[key_list[0]]
         for k in key_list[1:]:
             value = value[k]
-        return(value)
+        return value
     except KeyError:
         return ""
 
@@ -25,21 +25,21 @@ def concat_conditional(a, b):
 def get_total_number_of_modules(pipeline_lines):
     """Gets the number of modules from the header of the previous pipeline"""
     number_of_modules = pipeline_lines[4].strip().split(':')[1]
-    return(int(number_of_modules))
+    return int(number_of_modules)
 
 
 def get_pipeline_lines(input_pipeline):
     """Returns a list with the lines in the .cppipe file"""
     with open(input_pipeline) as f:
         lines = f.readlines()
-    return(lines)
+    return lines
 
 
 def update_module_count(pipeline_lines, count):
     """Updates the number of modules in the .cppipe header"""
     module_count_entry = pipeline_lines[4].strip().split(':')[0]
     pipeline_lines[4] = f"{module_count_entry}:{count}\n"
-    return(pipeline_lines)
+    return pipeline_lines
 
 
 def write_pipeline(filename, lines_pipeline):
@@ -58,4 +58,4 @@ def build_header(module_name, module_number):
                        "batch_state:array(\\x5B\\x5D, dtype=uint8)",
                        "enabled:True",
                        "wants_pause:False]\n"])
-    return(result)
+    return result
