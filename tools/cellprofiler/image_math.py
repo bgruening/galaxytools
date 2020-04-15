@@ -29,8 +29,7 @@ def build_main_block(input_params):
     """Creates the main block of the CP pipeline with the parameters that don't depend on conditional choices"""
     operation = operator_map[get_json_value(
         input_params, 'operation.operation')]
-    result = INDENTATION.join(
-        [f"{INDENTATION}Operation:{operation}\n",
+    result = INDENTATION.join([f"{INDENTATION}Operation:{operation}\n",
          f"Raise the power of the result by:{get_json_value(input_params,'operation.op_results.raise_the_power_of_the_result_by')}\n",
          f"Multiply the result by:{get_json_value(input_params,'operation.op_results.multiply_the_result_by')}\n",
          f"Add to result:{get_json_value(input_params,'operation.op_results.add_to_result')}\n",
