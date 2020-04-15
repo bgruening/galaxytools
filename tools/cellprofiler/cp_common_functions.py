@@ -1,5 +1,5 @@
 INDENTATION = "    "
-
+LINE_NUM_MODULES = 4
 
 def get_json_value(input_params, keys_path):
     """Returns the value in keys_path or empty string if the field does not exist"""
@@ -24,7 +24,7 @@ def concat_conditional(a, b):
         
 def get_total_number_of_modules(pipeline_lines):
     """Gets the number of modules from the header of the previous pipeline"""
-    number_of_modules = pipeline_lines[4].strip().split(':')[1]
+    number_of_modules = pipeline_lines[LINE_NUM_MODULES].strip().split(':')[1]
     return int(number_of_modules)
 
 
@@ -37,7 +37,7 @@ def get_pipeline_lines(input_pipeline):
 
 def update_module_count(pipeline_lines, count):
     """Updates the number of modules in the .cppipe header"""
-    module_count_entry = pipeline_lines[4].strip().split(':')[0]
+    module_count_entry = pipeline_lines[LINE_NUM_MODULES].strip().split(':')[0]
     pipeline_lines[4] = f"{module_count_entry}:{count}\n"
     return pipeline_lines
 
