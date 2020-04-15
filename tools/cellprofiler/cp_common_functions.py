@@ -2,7 +2,7 @@ INDENTATION = "    "
 
 
 def get_json_value(input_params, keys_path):
-    """Returns the value in keys_path or None if the field does not exist"""
+    """Returns the value in keys_path or empty string if the field does not exist"""
     if not isinstance(input_params, dict):
         return ""
     key_list = keys_path.split(".")
