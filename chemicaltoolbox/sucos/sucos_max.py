@@ -39,7 +39,7 @@ import argparse, gzip, os
 from rdkit import Chem
 
 
-def process(inputfilename, clusterfilenames, outputfilename):
+def process(inputfilename, clusterfilenames, outputfilename, filter_value, filter_field):
     all_clusters = {}
     for filename in clusterfilenames:
         cluster = []
@@ -80,6 +80,7 @@ def process(inputfilename, clusterfilenames, outputfilename):
             continue
         scores_max = [0, 0, 0]
         scores_cum = [0, 0, 0]
+        cluster_name = None
         for clusterfilename in all_clusters:
             cluster = all_clusters[clusterfilename]
             index = 0
@@ -103,21 +104,29 @@ def process(inputfilename, clusterfilenames, outputfilename):
                 scores_cum[1] += fm_score
                 scores_cum[2] += vol_score
 
-        if scores_max[0] > 0:
+
+        # utils.log("Max SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2],"File:", cluster_file_name_only, "Index:", cluster_index)
+        mol.SetDoubleProp("Max_SuCOS_Score", scores_max[0] if scores_max[0] > 0 else 0)
+        mol.SetDoubleProp("Max_SuCOS_FeatureMap_Score", scores_max[1] if scores_max[1] > 0 else 0)
+        mol.SetDoubleProp("Max_SuCOS_Protrude_Score", scores_max[2] if scores_max[2] > 0 else 0)
+
+        if cluster_name:
             cluster_file_name_only = cluster_name.split(os.sep)[-1]
-            # utils.log("Max SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2],"File:", cluster_file_name_only, "Index:", cluster_index)
-            mol.SetDoubleProp("Max_SuCOS_Score", scores_max[0])
-            mol.SetDoubleProp("Max_SuCOS_FeatureMap_Score", scores_max[1])
-            mol.SetDoubleProp("Max_SuCOS_Protrude_Score", scores_max[2])
             mol.SetProp("Max_SuCOS_Cluster", cluster_file_name_only)
             mol.SetIntProp("Max_SuCOS_Index", cluster_index)
 
-            # utils.log("Cum SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2])
-            mol.SetDoubleProp("Cum_SuCOS_Score", scores_cum[0])
-            mol.SetDoubleProp("Cum_SuCOS_FeatureMap_Score", scores_cum[1])
-            mol.SetDoubleProp("Cum_SuCOS_Protrude_Score", scores_cum[2])
+        # utils.log("Cum SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2])
+        mol.SetDoubleProp("Cum_SuCOS_Score", scores_cum[0] if scores_cum[0] > 0 else 0)
+        mol.SetDoubleProp("Cum_SuCOS_FeatureMap_Score", scores_cum[1] if scores_cum[1] > 0 else 0)
+        mol.SetDoubleProp("Cum_SuCOS_Protrude_Score", scores_cum[2] if scores_cum[2] > 0 else 0)
 
-        writer.write(mol)
+        if filter_value and filter_field:
+            if mol.HasProp(filter_field):
+                val = mol.GetDoubleProp(filter_field)
+                if val > filter_value:
+                    writer.write(mol)
+        else:
+            writer.write(mol)
 
     input_file.close()
     writer.flush()
@@ -134,11 +143,13 @@ def main():
     parser.add_argument('-i', '--input', help='Input file to score in SDF format. Can be gzipped (*.gz).')
     parser.add_argument('-o', '--output', help='Output file in SDF format. Can be gzipped (*.gz).')
     parser.add_argument('clusters', nargs='*', help="One or more SDF files with the clustered hits")
+    parser.add_argument('--filter-value', type=float, help='Filter out values with scores less than this.')
+    parser.add_argument('--filter-field', help='Field to use to filter values.')
 
     args = parser.parse_args()
     utils.log("Max SuCOS Args: ", args)
 
-    process(args.input, args.clusters, args.output)
+    process(args.input, args.clusters, args.output, args.filter_value, args.filter_field)
 
 
 if __name__ == "__main__":

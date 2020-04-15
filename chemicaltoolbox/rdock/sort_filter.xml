@@ -1,4 +1,4 @@
-<tool id="rdock_sort_filter" name="SDF sort and filter" version="0.1.0">
+<tool id="rdock_sort_filter" name="SDF sort and filter" version="0.2.0">
     <description>using the sdsort provided with rDock</description>
     <macros>
         <import>rdock_macros.xml</import>
@@ -6,16 +6,38 @@
     <expand macro="requirements"/>
     <command><![CDATA[
 
-sdsort -n $descending -s -f'$sort_field' -id'$name_field' '$input' |
-  sdfilter -f'\$_COUNT <= $top' -s'$name_field' |
-  sdsort -n $descending -f'$sort_field' > '$output'
+cat '$input'
+#if $filter
+| sdfilter -f'$filter'
+#end if
+#if $name_field
+| sdsort -n $descending -s -f'$sort_field' -id'$name_field'
+| sdfilter -f'\$_COUNT <= $top' -s'$name_field'
+#end if
+#if $global_sort and $sort_field
+| sdsort -n $descending -f'$sort_field'
+#end if
+> '$output'
 
     ]]></command>
 
     <inputs>
         <param type="data" name="input" format="sdf" label="Molecules" help="Molecules in SDF format"/>
-        <param name="top" type="integer" value="1" label="Number of records to keep in output" help="Number of best scoring records to keep"/>
-        <param name="sort_field" type="text" label="Field to sort on" optional="false" help="Name of the field to sort records by">
+
+        <param name="filter" type="text" label="Filter expression" optional="true" help="Perl expression for filter">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                    <remove value="&quot;"/>
+                    <remove value="@"/>
+                    <remove value="#"/>                    
+                    <remove value="|"/>                    
+                </valid>
+                <mapping initial="none"/>
+            </sanitizer>
+        </param>
+
+        <param name="sort_field" type="text" label="Field to sort on" optional="true" help="Name of the field to sort records by">
             <sanitizer>
                 <valid initial="string.printable">
                     <remove value="&apos;"/>
@@ -23,16 +45,21 @@ sdsort -n $descending -s -f'$sort_field' -id'$name_field' '$input' |
                 <mapping initial="none"/>
             </sanitizer>
         </param>
-        <param name="name_field" type="text" label="Grouping field name" optional="false" help="Name of the field to group records by (must be sequential)">
+        <param name="descending" type="boolean" label="Sort descending" truevalue="-r" falsevalue="" checked="true"
+               help="Sort ascending or descending"/>
+        <param name="global_sort" type="boolean" label="Global sort" checked="true"
+               help="Sort all records in file after filtering (true) or just sort within the blocks identified by $name_field (false)"/>
+
+        <param name="name_field" type="text" label="Grouping field name" optional="true" help="Name of the field to group records by (must be sequential)">
             <sanitizer>
                 <valid initial="string.printable">
                     <remove value="&apos;"/>
                 </valid>
                 <mapping initial="none"/>
             </sanitizer>
-        </param>    
-        <param name="descending" type="boolean" label="Sort descending" truevalue="-r" falsevalue="" checked="true"
-               help="Generate the name field (first line) for cases where this is empty"/>
+        </param>
+        <param name="top" type="integer" value="1" label="Number of records to keep in output" optional="true" help="Number of best scoring records to keep"/>
+
     </inputs>
     <outputs>
         <data name="output" format="sdf" label="SDF sort+filter on ${on_string}"/>
@@ -42,14 +69,44 @@ sdsort -n $descending -s -f'$sort_field' -id'$name_field' '$input' |
             <param name="input" value="poses.sdf"/>
             <param name="sort_field" value="TransFSScore"/>
             <param name="name_field" value="Name"/>
-            <output name="output" file="poses-descending.sdf" ftype="sdf" />
+            <param name="descending" value="True"/>
+            <output name="output" file="poses-descending.sdf" ftype="sdf"/>
         </test>
         <test>
             <param name="input" value="poses.sdf"/>
             <param name="sort_field" value="TransFSScore"/>
             <param name="name_field" value="Name"/>
             <param name="descending" value="False"/>
-            <output name="output" file="poses-ascending.sdf" ftype="sdf" />
+            <output name="output" file="poses-ascending.sdf" ftype="sdf"/>
+        </test>
+        <test>
+            <param name="input" value="poses.sdf"/>
+            <param name="filter" value="$TransFSScore > 0.2"/>
+            <param name="sort_field" value="TransFSScore"/>
+            <param name="name_field" value="Name"/>
+            <param name="descending" value="False"/>
+            <output name="output" file="poses-filt-0.2.sdf" ftype="sdf"/>
+        </test>
+        <test>
+            <param name="input" value="poses.sdf"/>
+            <param name="filter" value="$TransFSScore > 0.1 and $TransFSScore > 0.2"/>
+            <param name="sort_field" value="TransFSScore"/>
+            <param name="name_field" value="Name"/>
+            <param name="descending" value="False"/>
+            <output name="output" file="poses-filt-0.2.sdf" ftype="sdf"/>
+        </test>
+        <test>
+            <param name="input" value="poses.sdf"/>
+            <param name="sort_field" value="TransFSScore"/>
+            <param name="name_field" value="Name"/>
+            <param name="descending" value="True"/>
+            <param name="global_sort" value="False"/>
+            <output name="output" file="poses-desc-noglobal.sdf" ftype="sdf"/>
+        </test>
+        <test>
+            <param name="input" value="poses.sdf"/>
+            <param name="filter" value="$TransFSScore > 0.2"/>
+            <output name="output" file="poses-filt-only.sdf" ftype="sdf"/>
         </test>
     </tests>
     <help><![CDATA[
@@ -65,19 +122,31 @@ The expected use is for filtering and sorting virtual screening results such as 
 .. class:: infomark
 
 **Inputs**
-An SD-file, together with names of fields to sort and group records by, and the number of records to appear in the output.
-The sorting is performed on groups of molecules, with the group being identified by a field in the SDF (the name_field
-parameter). Records from a group MUST be sequential.
-The records within each group are sorted by the value of a field in the SDF (the sort_field parameter) and you can
-specify ascending or descending order (the descending parameter).
-Finally a number of top scoring (the top parameter, typically having a value of 1) are written to the output.
+An SD-file, together with names of fields to filter, sort and group records by, and the number of records to appear in the output.
+
+An optional filter can be specified that is first applied to the records. This filter (the 'filter' parameter) must be
+specified as required by the 'sdfilter' application (see http://rdock.sourceforge.net/wp-content/uploads/2015/08/rDock_User_Guide.pdf)
+which is a Perl expression. As an example, if your SDF has a field name 'SCORE' which has numeric values then a valid
+filter expression would be '$SCORE > 90' (note the $ symbol).
+If you require to use multiple filters then you can combine them in a single expression like this:
+'$A < 5 and $B <7', or '$A < 5 or $B <7'
+
+The sorting is then performed on groups of molecules, with the groups being identified by a field in the SD-file (the 'name_field'
+parameter). Records from a group MUST be sequential in the input file. If 'name_field' is not specified then this grouping
+and sorting step is skipped. Sorting is performed by the rDock 'sdsort' application.
+The records within each group are sorted by the value of a field in the SD-file (the 'sort_field' parameter) and you can
+specify ascending or descending order (the 'descending' parameter).
+Then a number of top scoring (the 'top' parameter, typically having a value of 1) are retained.
+
+Finally, if the 'global_sort' parameter is set to 'True' then the all the records remaining are sorted according to the
+'sort_field' and 'descending' parameters. Note: this step can use lots of memory if the files are very big.
 
 -----
 
 .. class:: infomark
 
 **Outputs**
-An SD-file, containing molecules filtered by the field specified.
+An SD-file, containing molecules filtered and sorted according to the parameters.
 
     ]]></help>
     <expand macro="citations"/>
