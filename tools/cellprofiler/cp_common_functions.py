@@ -12,11 +12,11 @@ def get_json_value(input_params, keys_path):
             value = value[k]
         return(value)
     except KeyError:
-        return("")
+        return ""
 
 
 def concat_conditional(a, b):
-    if (a == "" or b == ""):
+    if a == "" or b == "":
         return ""
     else:
         return f"{a}_{b}"
