@@ -46,10 +46,10 @@ def build_variable_block(inputs_galaxy):
     result = ""
     first_image_block = build_first_image_block(
         get_json_value(inputs_galaxy, 'operation.first_image'))
-    result = "\n".join([result, first_image_block])
+    result += f"\n{first_image_block}"
     second_image_block = build_second_image_block(
         get_json_value(inputs_galaxy, 'operation.second_image'))
-    result = "\n".join([result, second_image_block])
+    result += f"\n{second_image_block}"
     return (result)
 
 
