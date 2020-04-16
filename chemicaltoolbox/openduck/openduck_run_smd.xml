@@ -5,42 +5,65 @@
     </macros>
     <expand macro="requirements" />
     <command detect_errors="exit_code"><![CDATA[
+        ## to run on GPU set OPENDUCK_GPU_PARAM to something like "--gpu-id 1"
+        cp '$ligand' ./ligand.sdf &&
+        
+        duck_prepare_sys
+            -p '$protein'
+            -l ./ligand.sdf
+            -c '$chunk'
+            ## -i is interaction, e.g. A_ASP_156_OD2
+            -i '${ia.chain_sel}'_'${ia.res_sel}'_'${ia.resid_sel}'_'${ia.atom_sel}' 
+            `echo "\${OPENDUCK_GPU_PARAM}"` &&
+
+        mv equil.chk eql.chk &&
+        mv complex_system.pickle cs.pickle &&
+
         duck_smd_runs
-            -i $input
-            -p $pickle
-            -n $num
-            -l $mdlen
-            -d $start_dist
-            -v $vel
-            #if $OPENDUCK_GPU_PARAM:
-                --gpu-id $OPENDUCK_GPU_PARAM
-            #end if &&
+            -i eql.chk
+            -p cs.pickle
+            -n '$num'
+            -l '$mdlen'
+            -d '$start_dist'
+            -v '$vel'
+            `echo "\${OPENDUCK_GPU_PARAM}"` &&
         tar -czf allfiles.tar.gz --exclude=allfiles.tar.gz * &&
-        get_wqb -l $ligand -o $ligand_wqb
+        get_wqb -l '$ligand' -o '$ligand_wqb'
     ]]></command>
     <inputs>
-        <param argument="input" type="data" format='binary' label="Chunk file from DUck equilibration"/>
-        <param argument="pickle" type="data" format='binary' label="Pickle file from DUck equilibration"/>
+        <param argument="protein" type="data" format='pdb' label="PDB file for apoprotein"/>
+        <param argument="chunk" type="data" format='pdb' label="Chunk (in PDB format)" help="PDB file produced by chunk tool."/>
         <param argument="ligand" type="data" format='sdf,mol' label="SDF/MOL file containing a single ligand"/>
-        <param argument="num" type="integer" min="0" value="1" label="Number of SMD runs" help="Number of steered molecular dynamics runs to perform."/>
+        <expand macro="interaction_params" />
         <param argument="mdlen" type="float" min="0" value="0.05" label="MD run length (ns)" help="Length of initial MD run (prior to steered molecular dynamics runs)."/>
         <param argument="start_dist" type="float" min="0" value="2.5" label="Starting distance" help="Initial length of the selected interaction between protein and ligand."/>
+        <param argument="num" type="integer" min="0" value="1" label="Number of SMD runs" help="Number of steered molecular dynamics runs to perform."/>
         <param argument="vel" type="float" min="0" value="0.00001" label="Velocity" help="Distance (in angstroms) to perturb the system per simulation step in the SMD runs. Decreasing this value will increase simulation time."/>
+        <expand macro="tar_param" />
     </inputs>
     <outputs>
-        <data name="ligand_wqb" format="sdf"/>
-        <data name="tar" hidden="true" format="tar" from_work_dir="allfiles.tar.gz"/>
+        <data name="ligand_wqb" format="sdf" label="SD-file with DUck score"/>
+        <expand macro="tar_output" />
     </outputs>
     <tests>
         <test>
-            <param name="input" value="equil.chk" />
-            <param name="pickle" value="complex_system.pickle" />
+            <param name="protein" value="1n2v_apo.pdb" />
             <param name="ligand" value="ligand.mol" />
+            <param name="chunk" value="protein_out_prot.pdb" />
+            <param name="chain_sel" value="A" />
+            <param name="res_sel" value="ASP" />
+            <param name="resid_sel" value="156" />
+            <param name="atom_sel" value="OD2" />
             <param name="num" value="1" />
             <param name="mdlen" value="0.05" />
             <param name="start_dist" value="2.5" />
             <param name="vel" value="0.00001" />
             <output name="ligand_wqb" file="ligand_wqb.mol" lines_diff="2" />
+            <output name="tar" >
+                <assert_contents>
+                    <has_size value="6718500" delta="500"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
@@ -49,7 +72,7 @@
 
 **What it does**
 
-Perform steered molecular dynamics runs for dynamic undocking (DUck) on a prepared protein-ligand system.
+Perform steered molecular dynamics runs for dynamic undocking (DUck), performing system preparation (topology calculation and minimization), an initial MD run, and SMD runs.
 
 This Galaxy tool uses OpenDUck, an open-source implementation of the original DUck method, using OpenMM and AmberTools.
 
@@ -59,9 +82,11 @@ _____
 
 **Input**
 
-       - Ligand in SDF/MOL format.  
-       - Python pickle file containing the prepared complex as an OpenMM object
-       - Chunk file for the equilibrated protein.
+       - PDB file for apoprotein
+       - PDB file for chunk
+       - SDF/MOL file for ligand
+       - Parameters defining the protein-ligand interaction
+       - Parameters for MD and SMD runs
 
 _____
 
@@ -70,9 +95,9 @@ _____
 
 **Output**
 
-       - Ligand in SDF/MOL format, with added `SCORE.DUCK_WQB` parameter.
+       - Ligand in SDF/MOL format, with added `<SCORE.DUCK_WQB>` parameter.
 
-A tar file is also produced as a hidden output, containing all files produced by the tool.
+A tar file is also produced as a optional output, containing all files produced by the tool.
 
     ]]></help>
 
