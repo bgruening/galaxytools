@@ -2,13 +2,11 @@ import argparse
 import json
 import numpy as np
 import pandas as pd
-import tabix
 import warnings
 
 from scipy.io import mmread
 from sklearn.pipeline import Pipeline
 
-from galaxy_ml.externals.selene_sdk.sequences import Genome
 from galaxy_ml.utils import (load_model, read_columns,
                              get_module, try_get_attr)
 
@@ -138,45 +136,10 @@ def main(inputs, infile_estimator, outfile_predict,
         pred_data_generator = klass(
             ref_genome_path=ref_seq, vcf_path=vcf_path, **options)
 
-        pred_data_generator.fit()
+        pred_data_generator.set_processing_attrs()
 
         variants = pred_data_generator.variants
-        # TODO : remove the following block after galaxy-ml v0.7.13
-        blacklist_tabix = getattr(pred_data_generator.reference_genome_,
-                                  '_blacklist_tabix', None)
-        clean_variants = []
-        if blacklist_tabix:
-            start_radius = pred_data_generator.start_radius_
-            end_radius = pred_data_generator.end_radius_
 
-            for chrom, pos, name, ref, alt, strand in variants:
-                center = pos + len(ref) // 2
-                start = center - start_radius
-                end = center + end_radius
-
-                if isinstance(pred_data_generator.reference_genome_, Genome):
-                    if "chr" not in chrom:
-                        chrom = "chr" + chrom
-                    if "MT" in chrom:
-                        chrom = chrom[:-1]
-                try:
-                    rows = blacklist_tabix.query(chrom, start, end)
-                    found = 0
-                    for row in rows:
-                        found = 1
-                        break
-                    if found:
-                        continue
-                except tabix.TabixError:
-                    pass
-
-                clean_variants.append((chrom, pos, name, ref, alt, strand))
-        else:
-            clean_variants = variants
-
-        setattr(pred_data_generator, 'variants', clean_variants)
-
-        variants = np.array(clean_variants)
         # predict 1600 sample at once then write to file
         gen_flow = pred_data_generator.flow(batch_size=1600)
 

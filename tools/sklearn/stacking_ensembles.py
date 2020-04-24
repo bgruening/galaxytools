@@ -82,7 +82,9 @@ def main(inputs_path, output_obj, base_paths=None, meta_path=None,
 
     weights = options.pop('weights', None)
     if weights:
-        options['weights'] = ast.literal_eval(weights)
+        weights = ast.literal_eval(weights)
+        if weights:
+            options['weights'] = weights
 
     mod_and_name = estimator_type.split('_')
     mod = sys.modules[mod_and_name[0]]

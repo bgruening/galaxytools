@@ -1,0 +1,312 @@
+<tool id="keras_train_and_eval" name="Deep learning training and evaluation" version="@VERSION@">
+    <description>conduct deep training and evaluation either implicitly or explicitly</description>
+    <macros>
+        <import>main_macros.xml</import>
+        <import>keras_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements"/>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command>
+        <![CDATA[
+        export HDF5_USE_FILE_LOCKING='FALSE';
+        #if $input_options.selected_input == 'refseq_and_interval'
+        bgzip -c '$input_options.target_file' > '${target_file.element_identifier}.gz' &&
+        tabix -p bed '${target_file.element_identifier}.gz' &&
+        cp '$input_options.ref_genome_file' '${ref_genome_file.element_identifier}' &&
+        #end if
+        python '$__tool_directory__/keras_train_and_eval.py'
+            --inputs '$inputs'
+            --estimator '$experiment_schemes.infile_estimator'
+            #if $input_options.selected_input == 'seq_fasta'
+            --fasta_path '$input_options.fasta_path'
+            #elif $input_options.selected_input == 'refseq_and_interval'
+            --ref_seq "`pwd`/${ref_genome_file.element_identifier}"
+            --interval '$input_options.interval_file'
+            --targets "`pwd`/${target_file.element_identifier}.gz"
+            #else
+            --infile1 '$input_options.infile1'
+            #end if
+            --infile2 '$input_options.infile2'
+            --outfile_result "`pwd`/tmp_outfile_result"
+            #if $save and 'save_estimator' in str($save)
+            --outfile_object '$outfile_object'
+            --outfile_weights '$outfile_weights'
+            #end if
+            #if $save and 'save_prediction' in str($save)
+            --outfile_y_true '$outfile_y_true'
+            --outfile_y_preds '$outfile_y_preds'
+            #end if
+            #if $experiment_schemes.test_split.split_algos.shuffle == 'group'
+            --groups '$experiment_schemes.test_split.split_algos.groups_selector.infile_g'
+            #end if
+            >'$outfile_result' && cp '$outfile_result' "`pwd`/../tool_stdout"
+            && cp tmp_outfile_result '$outfile_result';
+
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+    </configfiles>
+    <inputs>
+        <conditional name="experiment_schemes">
+            <param name="selected_exp_scheme" type="select" label="Select a scheme">
+                <option value="train_val" selected="true">Train and Validate</option>
+                <option value="train_val_test">Train, Validate and and Evaluate</option>
+            </param>
+            <when value="train_val">
+                <expand macro="estimator_and_hyperparameter"/>
+                <section name="test_split" title="Validation holdout" expanded="false">
+                    <expand macro="train_test_split_params">
+                        <expand macro="cv_groups"/>
+                    </expand>
+                </section>
+                <section name="metrics" title="Metrics for evaluation" expanded="false">
+                    <expand macro="scoring_selection"/>
+                </section>
+            </when>
+            <when value="train_val_test">
+                <expand macro="estimator_and_hyperparameter"/>
+                <section name="test_split" title="Test holdout" expanded="false">
+                    <expand macro="train_test_split_params">
+                        <expand macro="cv_groups"/>
+                    </expand>
+                </section>
+                <section name="val_split" title="Validation holdout (recommend using the same splitting method as for test holdout)" expanded="false">
+                    <expand macro="train_test_split_params"/>
+                </section>
+                <section name="metrics" title="Metrics for evaluation" expanded="false">
+                    <expand macro="scoring_selection"/>
+                </section>
+            </when>
+        </conditional>
+        <expand macro="sl_mixed_input_plus_sequence"/>
+        <param name="save" type="select" multiple='true' display="checkboxes" label="Save the fitted model" optional="true" help="Evaluation scores will be output by default.">
+            <option value="save_estimator" selected="true">Fitted estimator in skeleton and weights, separately</option>
+            <option value="save_prediction">True labels and prediction results from evaluation for downstream analysis</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile_result"/>
+        <data format="zip" name="outfile_object" label="Fitted estimator or estimator skeleton on ${on_string}">
+            <filter>str(save) and 'save_estimator' in str(save)</filter>
+        </data>
+        <data format="h5" name="outfile_weights" label="Weights trained on ${on_string}">
+            <filter>str(save) and 'save_estimator' in str(save)</filter>
+        </data>
+        <data format="tabular" name="outfile_y_true" label="True labels/target values on ${on_string}">
+            <filter>str(save) and 'save_prediction' in str(save)</filter>
+        </data>
+        <data format="tabular" name="outfile_y_preds" label="All predictions on ${on_string}">
+            <filter>str(save) and 'save_prediction' in str(save)</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="experiment_schemes">
+                <param name="selected_exp_scheme" value="train_val_test"/>
+                <param name="infile_estimator" value="keras_model04" ftype="zip"/>
+                <section name="hyperparams_swapping">
+                    <param name="infile_params" value="keras_params04.tabular" ftype="tabular"/>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_0_Dense__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_2_Dense__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="0.1"/>
+                        <param name="sp_name" value="lr"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="'adamax'"/>
+                        <param name="sp_name" value="optimizer"/>
+                    </repeat>
+                </section>
+                <section name="test_split">
+                    <conditional name="split_algos">
+                        <param name="shuffle" value="simple"/>
+                        <param name="test_size" value="0.2"/>
+                        <param name="random_state" value="123"/>
+                    </conditional>
+                </section>
+                <section name="val_split">
+                    <conditional name="split_algos">
+                        <param name="shuffle" value="simple"/>
+                        <param name="test_size" value="0.2"/>
+                        <param name="random_state" value="456"/>
+                    </conditional>
+                </section>
+                <section name="metrics">
+                    <conditional name="scoring">
+                        <param name="primary_scoring" value="r2"/>
+                        <param name="secondary_scoring" value="neg_mean_absolute_error"/>
+                    </conditional>
+                </section>
+            </conditional>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <param name="save" value="save_estimator"/>
+            <output name="outfile_result">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="0.6626"/>
+                    <has_text text="5.598"/>
+                </assert_contents>
+            </output>
+            <output name="outfile_object" file="train_test_eval_model01" compare="sim_size" delta="5"/>
+            <output name="outfile_weights" file="train_test_eval_weights01.h5" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <conditional name="experiment_schemes">
+                <param name="selected_exp_scheme" value="train_val_test"/>
+                <param name="infile_estimator" value="keras_model04" ftype="zip"/>
+                <section name="hyperparams_swapping">
+                    <param name="infile_params" value="keras_params04.tabular" ftype="tabular"/>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_0_Dense__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="999"/>
+                        <param name="sp_name" value="layers_2_Dense__config__kernel_initializer__config__seed"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="0.1"/>
+                        <param name="sp_name" value="lr"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="'adamax'"/>
+                        <param name="sp_name" value="optimizer"/>
+                    </repeat>
+                </section>
+                <section name="test_split">
+                    <conditional name="split_algos">
+                        <param name="shuffle" value="group"/>
+                        <param name="group_names" value="test"/>
+                        <section name="groups_selector">
+                            <param name="infile_g" value="regression_groups.tabular" ftype="tabular"/>
+                            <param name="header_g" value="true"/>
+                            <conditional name="column_selector_options_g">
+                                <param name="selected_column_selector_option_g" value="by_index_number"/>
+                                <param name="col_g" value="1"/>
+                            </conditional>
+                        </section>
+                    </conditional>
+                </section>
+                <section name="val_split">
+                    <conditional name="split_algos">
+                        <param name="shuffle" value="group"/>
+                        <param name="group_names" value="validation"/>
+                    </conditional>
+                </section>
+                <section name="metrics">
+                    <conditional name="scoring">
+                        <param name="primary_scoring" value="r2"/>
+                        <param name="secondary_scoring" value="neg_mean_absolute_error"/>
+                    </conditional>
+                </section>
+            </conditional>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <param name="save" value="save_estimator,save_prediction"/>
+            <output name="outfile_result" >
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="0.667"/>
+                    <has_text text="5.586"/>
+                </assert_contents>
+            </output>
+            <output name="outfile_weights" file="train_test_eval_weights02.h5" compare="sim_size" delta="5"/>
+            <output name="outfile_y_true" file="keras_train_eval_y_true02.tabular" ftype="tabular"/>
+        </test>
+        <test>
+            <conditional name="experiment_schemes">
+                <param name="selected_exp_scheme" value="train_val"/>
+                <param name="infile_estimator" value="pipeline10" ftype="zip"/>
+                <section name="hyperparams_swapping">
+                    <param name="infile_params" value="get_params10.tabular" ftype="tabular"/>
+                    <repeat name="param_set">
+                        <param name="sp_value" value="10"/>
+                        <param name="sp_name" value="adaboostregressor__random_state"/>
+                    </repeat>
+                    <repeat name="param_set">
+                        <param name="sp_value" value=": sklearn_tree.ExtraTreeRegressor(random_state=0)"/>
+                        <param name="sp_name" value="adaboostregressor__base_estimator"/>
+                    </repeat>
+                </section>
+                <section name="test_split">
+                    <conditional name="split_algos">
+                        <param name="shuffle" value="simple"/>
+                        <param name="test_size" value="0.2"/>
+                        <param name="random_state" value="123"/>
+                    </conditional>
+                </section>
+                <section name="val_split">
+                    <conditional name="split_algos">
+                        <param name="shuffle" value="simple"/>
+                        <param name="test_size" value="0.2"/>
+                        <param name="random_state" value="456"/>
+                    </conditional>
+                </section>
+                <section name="metrics">
+                    <conditional name="scoring">
+                        <param name="primary_scoring" value="r2"/>
+                        <param name="secondary_scoring" value="neg_mean_absolute_error"/>
+                    </conditional>
+                </section>
+            </conditional>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="header1" value="true" />
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header2" value="true" />
+            <param name="selected_column_selector_option2" value="all_columns"/>
+            <param name="save" value=""/>
+            <output name="outfile_result" file="train_test_eval03.tabular"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+**What it does**
+
+Given a pre-built keras deep learning model and labeled training dataset, this tool works in two modes.
+
+- Train and Validate: training dataset is split into train and validation portions. The model fits on the train portion, in the meantime performances are validated on the validation portion multiple times along with the training progressing. Finally, a fitted model (skeleton + weights) and its validation performance scores are outputted. 
+
+
+- Train, Validate and and Evaluate: training dataset is split into three portions, train, val and test. The same `Train and Validate` happens on the train and val portions. The test portion is hold out exclusively for testing (evaluation). As a result, a fitted model (skeleton + weights) and test performance scores are outputted.
+
+In both modes, besides the performance scores, the true labels and predicted values are able to be ouputted, which could be used in generating plots in other tools, machine learning visualization extensions, for example.
+
+Note that since all training and model parameters are accessible and changeable in the `Hyperparameter Swapping` section, the training and evaluation processes are transparent and fully controllable.
+
+**Input**
+
+- tabular
+- sparse
+- `sequnences in a fasta file` to work with DNA, RNA and Proteins with corresponding fasta data generator
+- `reference genome and intervals` exclusively work with `GenomicIntervalBatchGenerator`.
+
+**Output**
+
+- performance scores from evaluation
+- fitted estimator skeleton and weights
+- true labels or values and predicted values from the evaluation
+
+        ]]>
+    </help>
+    <expand macro="sklearn_citation">
+        <expand macro="keras_citation"/>
+    </expand>
+</tool>
