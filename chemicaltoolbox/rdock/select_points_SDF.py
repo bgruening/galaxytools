@@ -11,9 +11,7 @@ def get_coordinates(lines):
             x = float(lines[j][:10].strip())
             y = float(lines[j][11:20].strip())
             z = float(lines[j][21:30].strip())
-            temp.append(x)
-            temp.append(y)
-            temp.append(z)
+            temp.extend([x, y, z])
             molecule.append(temp)
     else:
         read = 0
@@ -24,12 +22,8 @@ def get_coordinates(lines):
             if read:
                 temp = []
                 a = line.split(" ")
-                x = float(a[5])
-                y = float(a[6])
-                z = float(a[7])
-                temp.append(x)
-                temp.append(y)
-                temp.append(z)
+                x, y, z = float(a[5]), float(a[6]), float(a[7])
+                temp.extend([x, y, z])
                 molecule.append(temp)
             if "BEGIN ATOM" in line:
                 read = 1
@@ -44,13 +38,9 @@ def select_points(all_coordinates):
         for coordinates in molecule:
             tv = 0
             temp = []
-            x = coordinates[0]
-            y = coordinates[1]
-            z = coordinates[2]
+            x, y, z = coordinates
             for record in select:
-                xr = record[0]
-                yr = record[1]
-                zr = record[2]
+                xr, yr, zr = record
                 if xr-tol < x and x < xr+tol and \
                    yr-tol < y and y < yr+tol and \
                    zr-tol < z and z < zr+tol:
@@ -58,21 +48,17 @@ def select_points(all_coordinates):
                     break
             if tv == 1:
                 continue
-            temp.append(x)
-            temp.append(y)
-            temp.append(z)
+            temp.extend([x, y, z])
             select.append(temp)
     return select
 
 
 def sdfout(centers, writer):
     n = len(centers)
-    writer.write("MOL_1\n1234567890123456789 3D\nTITLE\n")
+    writer.write("Frankenstein_ligand\nGalaxy select_points_sdf tool\n\n")
     writer.write("%3d  0  0  0  0  0  0  0  0  0999 V2000\n" % n)
     for record in centers:
-        x = record[0]
-        y = record[1]
-        z = record[2]
+        x, y, z = record
         writer.write("%10.4f%10.4f%10.4f C   0  0  0  0  0  0  0  0  0  0  0  0\n" % (x, y, z))
 
     writer.write("M  END\n$$$$\n")
@@ -82,12 +68,8 @@ def main():
     parser = argparse.ArgumentParser(description='RDKit screen')
     parser.add_argument('-i', '--input',
                         help="Input file")
-    parser.add_argument('-if', '--informat', choices=['sdf'],
-                        help="Input format.")
     parser.add_argument('-o', '--output',
                         help="Base name for output file (no extension).")
-    parser.add_argument('-of', '--outformat', choices=['sdf'],
-                        help="Output format")
     args = parser.parse_args()
 
     mol_coordinates = []
