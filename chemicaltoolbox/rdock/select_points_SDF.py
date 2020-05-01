@@ -76,15 +76,15 @@ def main():
     all_coordinates = []
     with open(args.input) as file:
         for line in file:
-            if line == '$$$$\n':
+            if line.strip() == '$$$$':
                 temp = get_coordinates(mol_coordinates)
                 all_coordinates.append(temp)
                 mol_coordinates.clear()
             else:
                 mol_coordinates.append(line)
     centers = select_points(all_coordinates)
-    writer = open(args.output, 'w+')
-    sdfout(centers, writer)
+    with open(args.output, 'w+') as writer:
+        sdfout(centers, writer)
 
 if __name__ == "__main__":
     main()
