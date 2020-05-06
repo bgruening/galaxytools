@@ -45,7 +45,7 @@ def write_metadata():
         _str += FOURSPACES + "Match file and image metadata:\x5B\x5D\n"
         _str += FOURSPACES + "Use case insensitive matching?:No\n"
     else:
-        _str += FOURSPACES + "Metadata data type:%s\n" % metadata_extraction['metadata_type']
+        _str += FOURSPACES + "Metadata data type:Text\n"  #default Text,not possible to select in Galaxy
         _str += FOURSPACES + "Metadata types:{}\n"
         _str += FOURSPACES + "Extraction method count:%d\n" % method_count
 
