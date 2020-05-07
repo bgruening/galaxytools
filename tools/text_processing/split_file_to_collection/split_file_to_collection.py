@@ -5,6 +5,8 @@ import math
 import os
 import re
 import random
+import numpy
+import imageio
 
 # configuration of the splitting for specific file types
 # - regular expression matching the record separator ('' if not splitting by regex but by number of lines)
@@ -19,6 +21,7 @@ FILETYPES = {'fasta': ('^>', 0,  False),
              'txt': ('', 1, False),
              'mgf': ('^BEGIN IONS', 0, False),
              'sdf': ('\$\$\$\$', 0, True),
+             'tiff': ('', 1, False),
              }
 
 
@@ -43,10 +46,12 @@ def main():
 
     assert ftype != "generic" or args["generic_re"] != None, "--generic_re needs to be given for generic input"
 
-    if args["ftype"] == "tabular" and args["by"] == "col":
+    if ftype == "tabular" and args["by"] == "col":
         args["match"] = replace_mapped_chars(args["match"])
         args["sub"] = replace_mapped_chars(args["sub"])
         split_by_column(args, in_file, out_dir, top)
+    elif ftype == "tiff":
+        split_tiff_by_page(args, in_file, out_dir)
     else:
         args["generic_re"] = replace_mapped_chars(args["generic_re"])
         split_by_record(args, in_file, out_dir, top, ftype)
@@ -57,35 +62,44 @@ def parser_cli():
                                                  "Can split on the column of a tabular file, " +
                                                  "with custom and useful names based on column value.")
     parser.add_argument('--in', '-i', required=True, help="The input file")
-    parser.add_argument('--out_dir', '-o', default=os.getcwd(), help="The output directory", required=True)
-    parser.add_argument('--file_names', '-a', help="If not splitting by column, the base name of the new files")
-    parser.add_argument('--file_ext', '-e', help="If not splitting by column," +
-                                                 " the extension of the new files (without a period)")
-    parser.add_argument('--ftype', '-f', help="The type of the file to split", required = True,
-        choices=["mgf", "fastq", "fasta", "sdf", "tabular", "txt", "generic"])
+    parser.add_argument('--out_dir', '-o', default=os.getcwd(),
+                        help="The output directory", required=True)
+    parser.add_argument('--file_names', '-a',
+                        help="If not splitting by column, the base name of the new files")
+    parser.add_argument('--file_ext', '-e',
+                        help="If not splitting by column, the extension of the new files (without a period)")
+    parser.add_argument('--ftype', '-f', help="The type of the file to split", required=True,
+                        choices=["mgf", "fastq", "fasta", "sdf", "tabular", "txt", "tiff", "generic"])
     parser.add_argument('--by', '-b', help="Split by line or by column (tabular only)",
-        default = "row", choices = ["col", "row"])
-    parser.add_argument('--top', '-t', type=int, default=0, help="Number of header lines to carry over to new files.")
-    parser.add_argument('--rand', '-r', help="Divide records randomly into new files", action='store_true')
+                        default="row", choices=["col", "row"])
+    parser.add_argument('--top', '-t', type=int, default=0,
+                        help="Number of header lines to carry over to new files.")
+    parser.add_argument('--rand', '-r',
+                        help="Divide records randomly into new files", action='store_true')
     parser.add_argument('--seed', '-x', help="Provide a seed for the random number generator. " +
                                              "If not provided and args[\"rand\"]==True, then date is used", type=int)
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--numnew', '-n', type=int, default = 1,
-                        help="Number of output files desired. Not valid for splitting on a column. Not compatible with chunksize and will be ignored if both are set.")
-    group.add_argument('--chunksize', '-k', type=int, default = 0,
-                        help="Number of records by file. Not valid for splitting on a column")
+    group.add_argument('--numnew', '-n', type=int, default=1,
+                       help="Number of output files desired. Not valid for splitting on a column." +
+                       " Not compatible with chunksize and will be ignored if both are set.")
+    group.add_argument('--chunksize', '-k', type=int, default=0,
+                       help="Number of records by file. Not valid for splitting on a column")
     parser.add_argument('--batch', action='store_true',
                         help="Distribute files to collection while maintaining order. Ignored if splitting on column.")
-    generic = parser.add_argument_group('Arguments controling generic splitting')
+    generic = parser.add_argument_group(
+        'Arguments controling generic splitting')
     group = generic.add_mutually_exclusive_group()
-    group.add_argument('--generic_re', '-g', default="", help="Regular expression indicating the start of a new record (only for generic)", required = False)
-    group.add_argument('--generic_num', type=int, default=0, help="Length of records in number of lines (only for generic)", required = False)
+    group.add_argument('--generic_re', '-g', default="",
+                       help="Regular expression indicating the start of a new record (only for generic)", required=False)
+    group.add_argument('--generic_num', type=int, default=0,
+                       help="Length of records in number of lines (only for generic)", required=False)
     generic.add_argument('--split_after', '-p', action='store_true',
-                        help="Split between records after separator (default is before). " + 
-                        "Only for generic splitting by regex - specific ftypes are always split in the default way")
+                         help="Split between records after separator (default is before). " +
+                         "Only for generic splitting by regex - specific ftypes are always split in the default way")
     bycol = parser.add_argument_group('If splitting on a column')
-    bycol.add_argument('--match', '-m', default = "(.*)", help="The regular expression to match id column entries")
-    bycol.add_argument('--sub', '-s', default = r'\1',
+    bycol.add_argument('--match', '-m', default="(.*)",
+                       help="The regular expression to match id column entries")
+    bycol.add_argument('--sub', '-s', default=r'\1',
                        help="The regular expression to substitute in for the matched pattern.")
     bycol.add_argument('--id_column', '-c', default="1",
                        help="Column that is used to name output files. Indexed starting from 1.", type=int)
@@ -110,7 +124,8 @@ def replace_mapped_chars(pattern):
 
 def split_by_record(args, in_file, out_dir, top, ftype):
     # get configuration (record separator, start at end) for given filetype
-    sep, num, sep_at_end = FILETYPES.get(ftype, (args["generic_re"], args["generic_num"], args["split_after"]))
+    sep, num, sep_at_end = FILETYPES.get(
+        ftype, (args["generic_re"], args["generic_num"], args["split_after"]))
     sep = re.compile(sep)
 
     chunksize = args["chunksize"]
@@ -126,13 +141,13 @@ def split_by_record(args, in_file, out_dir, top, ftype):
 
     # batched division (maintains order)
     batch = args["batch"]
-    
+
     # determine
-    # - the number of records that should be stored per file 
+    # - the number of records that should be stored per file
     #   (done always, even if used only for batch mode)
     # - if the separator is a the start / end of the record
     n_per_file = math.inf
-    if chunksize != 0 or batch: # needs to be calculated if either batch or chunksize are selected
+    if chunksize != 0 or batch:  # needs to be calculated if either batch or chunksize are selected
         with open(in_file) as f:
             # read header lines
             for i in range(top):
@@ -150,7 +165,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
         # if there are fewer records than desired files
         numnew = min(numnew, n_records)
         # approx. number of records per file
-        if chunksize == 0: # i.e. no chunking
+        if chunksize == 0:  # i.e. no chunking
             n_per_file = n_records // numnew
         else:
             numnew = n_records // chunksize
@@ -166,7 +181,8 @@ def split_by_record(args, in_file, out_dir, top, ftype):
         new_file_base = [custom_new_file_name, custom_new_file_ext]
 
     newfiles = [
-        open(os.path.join(out_dir, "%s_%06d%s" % (new_file_base[0], count, new_file_base[1])) , "w")
+        open(os.path.join(out_dir, "%s_%06d%s" %
+                          (new_file_base[0], count, new_file_base[1])), "w")
         for count in range(0, numnew)
     ]
     # bunch o' counters
@@ -203,7 +219,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                     if new_file_counter in fresh_files:
                         newfiles[new_file_counter].write(header)
                         fresh_files.remove(new_file_counter)
-                    
+
                     if sep_at_end:
                         record += line
                     # write record to file
@@ -215,7 +231,8 @@ def split_by_record(args, in_file, out_dir, top, ftype):
 
                     # change destination file
                     if rand:
-                        new_file_counter = int(math.floor(random.random() * numnew))
+                        new_file_counter = int(
+                            math.floor(random.random() * numnew))
                     elif batch:
                         # number of records read per file
                         records_in_file += 1
@@ -287,6 +304,47 @@ def split_by_column(args, in_file, out_dir, top):
 
     # finally, close all files
     close_files(new_files.values())
+
+
+def split_tiff_by_page(args, in_file, out_dir):
+    chunksize = args["chunksize"]
+    numnew = args["numnew"]
+
+    custom_new_file_name = args["file_names"]
+    custom_new_file_ext = "." + args["file_ext"]
+    if custom_new_file_name is None:
+        new_file_base = os.path.splitext(os.path.basename(in_file))
+    else:
+        new_file_base = [custom_new_file_name, custom_new_file_ext]
+
+    try:
+        # read multi-page tiff as numpy array
+        numpy_arrays = imageio.mimread(in_file)
+
+        if chunksize != 0:
+            # split in chunks of chuncksize
+            for index in range(0, len(numpy_arrays), chunksize):
+                chunk = numpy_arrays[index:index + chunksize]
+                output_file = os.path.join(out_dir, "%s_%06d%s" %
+                                           (new_file_base[0], index, new_file_base[1]))
+                imageio.mimwrite(output_file, chunk)
+        else:
+            # split in numnew files
+            chunks = numpy.array_split(numpy_arrays, numnew)
+            num_chunks = len(chunks)
+            for index in range(num_chunks):
+                chunk = chunks[index]
+                # if the chunk is empty, then there are no more splits
+                if chunk.size == 0:
+                    break
+                # write the chunk file
+                output_file = os.path.join(out_dir, "%s_%06d%s" %
+                                           (new_file_base[0], index, new_file_base[1]))
+                imageio.mimwrite(output_file, chunk)
+
+    except Exception as err:
+        print(f"ERROR: Can not generate the output tiff. Reason: {err}")
+        raise
 
 
 if __name__ == "__main__":
