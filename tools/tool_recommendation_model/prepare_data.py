@@ -220,8 +220,6 @@ class PrepareData:
         max_freq = max(last_tool_freq.values())
         for t in last_tool_freq:
             inv_freq[t] = int(np.round(max_freq / float(last_tool_freq[t]), 0))
-        utils.write_file("data/last_tool_freq.txt", last_tool_freq)
-        utils.write_file("data/inverse_last_tool_freq.txt", inv_freq)
         return last_tool_freq, inv_freq
 
     def get_toolid_samples(self, train_data, l_tool_freq):

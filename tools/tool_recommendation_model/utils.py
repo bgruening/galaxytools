@@ -16,23 +16,6 @@ def read_file(file_path):
     return file_content
 
 
-def write_file(file_path, content):
-    """
-    Write a file
-    """
-    remove_file(file_path)
-    with open(file_path, "w") as json_file:
-        json_file.write(json.dumps(content))
-
-
-def save_processed_workflows(file_path, unique_paths):
-    workflow_paths_unique = ""
-    for path in unique_paths:
-        workflow_paths_unique += path + "\n"
-    with open(file_path, "w") as workflows_file:
-        workflows_file.write(workflow_paths_unique)
-
-
 def format_tool_id(tool_link):
     """
     Extract tool id from tool link
@@ -64,11 +47,6 @@ def set_trained_model(dump_file, model_values):
     hf_file.close()
 
 
-def remove_file(file_path):
-    if os.path.exists(file_path):
-        os.remove(file_path)
-
-
 def weighted_loss(class_weights):
     """
     Create a weighted loss function. Penalise the misclassification
@@ -82,19 +60,6 @@ def weighted_loss(class_weights):
         expanded_weights = K.expand_dims(weight_values, axis=-1)
         return K.dot(K.binary_crossentropy(y_true, y_pred), expanded_weights)
     return weighted_binary_crossentropy
-
-
-def verify_oversampling_freq(oversampled_tr_data):
-    """
-    Compute the frequency of tool sequences after oversampling
-    """
-    freq_dict = dict()
-    for tr_data in oversampled_tr_data:
-        last_tool_id = str(int(tr_data[-1]))
-        if last_tool_id not in freq_dict:
-            freq_dict[last_tool_id] = 0
-        freq_dict[last_tool_id] += 1
-    print(dict(sorted(freq_dict.items(), key=lambda kv: kv[1], reverse=True)))
 
 
 def balanced_sample_generator(train_data, train_labels, batch_size, l_tool_tr_samples):
