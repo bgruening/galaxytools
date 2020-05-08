@@ -46,8 +46,8 @@ class PredictTool:
         early_stopping = callbacks.EarlyStopping(monitor='loss', mode='min', verbose=1, min_delta=1e-1, restore_best_weights=True)
         predict_callback_test = PredictCallback(test_data, test_labels, reverse_dictionary, n_epochs, usage_pred, standard_connections, lowest_tool_ids)
 
-        callbacks_list = [predict_callback_test]
-        
+        callbacks_list = [predict_callback_test, early_stopping]
+
         batch_size = int(best_params["batch_size"])
 
         print("Start training on the best model...")

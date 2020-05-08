@@ -76,6 +76,7 @@ def weighted_loss(class_weights):
     """
     weight_values = list(class_weights.values())
     weight_values.extend(weight_values)
+
     def weighted_binary_crossentropy(y_true, y_pred):
         # add another dimension to compute dot product
         expanded_weights = K.expand_dims(weight_values, axis=-1)
@@ -229,25 +230,6 @@ def verify_model(model, x, y, reverse_data_dictionary, usage_scores, standard_co
     return mean_usage, mean_precision, mean_pub_prec, mean_lowest_pub_prec, mean_lowest_norm_prec, len(epo_lowest_tools_pub_prec)
 
 
-def save_results(results):
-    if "validation_loss" in results:
-        np.savetxt("data/validation_loss.txt", results["validation_loss"])
-    if "train_loss" in results:
-        np.savetxt("data/train_loss.txt", results["train_loss"])
-    if "precision" in results:
-        np.savetxt("data/precision.txt", results["precision"])
-    if "usage_weights" in results:
-        np.savetxt("data/usage_weights.txt", results["usage_weights"])
-    if "published_precision" in results:
-        np.savetxt("data/published_precision.txt", results["published_precision"])
-    if "standard_connections" in results:
-        write_file("data/standard_connections.txt", results["standard_connections"])
-    if "lowest_pub_precision" in results:
-        np.savetxt("data/lowest_pub_precision.txt", results["lowest_pub_precision"])
-    if "lowest_norm_precision" in results:
-        np.savetxt("data/lowest_norm_precision.txt", results["lowest_norm_precision"])
-
-
 def save_model(results, data_dictionary, compatible_next_tools, trained_model_path, class_weights, standard_connections):
     # save files
     trained_model = results["model"]
@@ -264,5 +246,3 @@ def save_model(results, data_dictionary, compatible_next_tools, trained_model_pa
         "standard_connections": standard_connections
     }
     set_trained_model(trained_model_path, model_values)
-    results["standard_connections"] = standard_connections
-    save_results(results)
