@@ -21,11 +21,9 @@ main_path = os.getcwd()
 
 class ToolPopularity:
 
-    @classmethod
     def __init__(self):
         """ Init method. """
 
-    @classmethod
     def extract_tool_usage(self, tool_usage_file, cutoff_date, dictionary):
         """
         Extract the tool usage over time for each tool
@@ -63,7 +61,6 @@ class ToolPopularity:
             tool_usage_dict[tool] = collections.OrderedDict(sorted(usage.items()))
         return tool_usage_dict
 
-    @classmethod
     def learn_tool_popularity(self, x_reshaped, y_reshaped):
         """
         Fit a curve for the tool usage over time to predict future tool usage
@@ -93,7 +90,6 @@ class ToolPopularity:
         except Exception:
             return epsilon
 
-    @classmethod
     def get_pupularity_prediction(self, tools_usage):
         """
         Get the popularity prediction for each tool

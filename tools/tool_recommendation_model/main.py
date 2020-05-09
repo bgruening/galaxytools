@@ -20,7 +20,6 @@ import utils
 
 class PredictTool:
 
-    @classmethod
     def __init__(self, num_cpus):
         """ Init method. """
         # set the number of cpus
@@ -32,47 +31,47 @@ class PredictTool:
         )
         K.set_session(tf.Session(config=cpu_config))
 
-    @classmethod
-    def find_train_best_network(self, network_config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools):
+    def find_train_best_network(self, network_config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, standard_connections, l_tool_freq, l_tool_tr_samples):
         """
         Define recurrent neural network and train sequential data
         """
+        # get tools with lowest representation
+        lowest_tool_ids = utils.get_lowest_tools(l_tool_freq)
+
         print("Start hyperparameter optimisation...")
         hyper_opt = optimise_hyperparameters.HyperparameterOptimisation()
-        best_params, best_model = hyper_opt.train_model(network_config, reverse_dictionary, train_data, train_labels, class_weights)
+        best_params, best_model = hyper_opt.train_model(network_config, reverse_dictionary, train_data, train_labels, test_data, test_labels, l_tool_tr_samples, class_weights)
 
         # define callbacks
-        early_stopping = callbacks.EarlyStopping(monitor='loss', mode='min', verbose=1, min_delta=1e-4, restore_best_weights=True)
-        predict_callback_test = PredictCallback(test_data, test_labels, reverse_dictionary, n_epochs, compatible_next_tools, usage_pred)
+        early_stopping = callbacks.EarlyStopping(monitor='loss', mode='min', verbose=1, min_delta=1e-1, restore_best_weights=True)
+        predict_callback_test = PredictCallback(test_data, test_labels, reverse_dictionary, n_epochs, usage_pred, standard_connections, lowest_tool_ids)
 
         callbacks_list = [predict_callback_test, early_stopping]
 
+        batch_size = int(best_params["batch_size"])
+
         print("Start training on the best model...")
         train_performance = dict()
-        if len(test_data) > 0:
-            trained_model = best_model.fit(
+        trained_model = best_model.fit_generator(
+            utils.balanced_sample_generator(
                 train_data,
                 train_labels,
-                batch_size=int(best_params["batch_size"]),
-                epochs=n_epochs,
-                verbose=2,
-                callbacks=callbacks_list,
-                shuffle="batch",
-                validation_data=(test_data, test_labels)
-            )
-            train_performance["validation_loss"] = np.array(trained_model.history["val_loss"])
-            train_performance["precision"] = predict_callback_test.precision
-            train_performance["usage_weights"] = predict_callback_test.usage_weights
-        else:
-            trained_model = best_model.fit(
-                train_data,
-                train_labels,
-                batch_size=int(best_params["batch_size"]),
-                epochs=n_epochs,
-                verbose=2,
-                callbacks=callbacks_list,
-                shuffle="batch"
-            )
+                batch_size,
+                l_tool_tr_samples
+            ),
+            steps_per_epoch=len(train_data) // batch_size,
+            epochs=n_epochs,
+            callbacks=callbacks_list,
+            validation_data=(test_data, test_labels),
+            verbose=2,
+            shuffle=True
+        )
+        train_performance["validation_loss"] = np.array(trained_model.history["val_loss"])
+        train_performance["precision"] = predict_callback_test.precision
+        train_performance["usage_weights"] = predict_callback_test.usage_weights
+        train_performance["published_precision"] = predict_callback_test.published_precision
+        train_performance["lowest_pub_precision"] = predict_callback_test.lowest_pub_precision
+        train_performance["lowest_norm_precision"] = predict_callback_test.lowest_norm_precision
         train_performance["train_loss"] = np.array(trained_model.history["loss"])
         train_performance["model"] = best_model
         train_performance["best_parameters"] = best_params
@@ -80,26 +79,37 @@ class PredictTool:
 
 
 class PredictCallback(callbacks.Callback):
-    def __init__(self, test_data, test_labels, reverse_data_dictionary, n_epochs, next_compatible_tools, usg_scores):
+    def __init__(self, test_data, test_labels, reverse_data_dictionary, n_epochs, usg_scores, standard_connections, lowest_tool_ids):
         self.test_data = test_data
         self.test_labels = test_labels
         self.reverse_data_dictionary = reverse_data_dictionary
         self.precision = list()
         self.usage_weights = list()
+        self.published_precision = list()
         self.n_epochs = n_epochs
-        self.next_compatible_tools = next_compatible_tools
         self.pred_usage_scores = usg_scores
+        self.standard_connections = standard_connections
+        self.lowest_tool_ids = lowest_tool_ids
+        self.lowest_pub_precision = list()
+        self.lowest_norm_precision = list()
 
     def on_epoch_end(self, epoch, logs={}):
         """
         Compute absolute and compatible precision for test data
         """
         if len(self.test_data) > 0:
-            precision, usage_weights = utils.verify_model(self.model, self.test_data, self.test_labels, self.reverse_data_dictionary, self.next_compatible_tools, self.pred_usage_scores)
+            usage_weights, precision, precision_pub, low_pub_prec, low_norm_prec, low_num = utils.verify_model(self.model, self.test_data, self.test_labels, self.reverse_data_dictionary, self.pred_usage_scores, self.standard_connections, self.lowest_tool_ids)
             self.precision.append(precision)
             self.usage_weights.append(usage_weights)
-            print("Epoch %d precision: %s" % (epoch + 1, precision))
+            self.published_precision.append(precision_pub)
+            self.lowest_pub_precision.append(low_pub_prec)
+            self.lowest_norm_precision.append(low_norm_prec)
             print("Epoch %d usage weights: %s" % (epoch + 1, usage_weights))
+            print("Epoch %d normal precision: %s" % (epoch + 1, precision))
+            print("Epoch %d published precision: %s" % (epoch + 1, precision_pub))
+            print("Epoch %d lowest published precision: %s" % (epoch + 1, low_pub_prec))
+            print("Epoch %d lowest normal precision: %s" % (epoch + 1, low_norm_prec))
+            print("Epoch %d number of test samples with lowest tool ids: %s" % (epoch + 1, low_num))
 
 
 if __name__ == "__main__":
@@ -116,7 +126,6 @@ if __name__ == "__main__":
     arg_parser.add_argument("-oe", "--optimize_n_epochs", required=True, help="number of iterations to run to find best model parameters")
     arg_parser.add_argument("-me", "--max_evals", required=True, help="maximum number of configuration evaluations")
     arg_parser.add_argument("-ts", "--test_share", required=True, help="share of data to be used for testing")
-    arg_parser.add_argument("-vs", "--validation_share", required=True, help="share of data to be used for validation")
     # neural network parameters
     arg_parser.add_argument("-bs", "--batch_size", required=True, help="size of the tranining batch i.e. the number of samples per batch")
     arg_parser.add_argument("-ut", "--units", required=True, help="number of hidden recurrent units")
@@ -125,8 +134,6 @@ if __name__ == "__main__":
     arg_parser.add_argument("-sd", "--spatial_dropout", required=True, help="1d dropout used for embedding layer")
     arg_parser.add_argument("-rd", "--recurrent_dropout", required=True, help="dropout for the recurrent layers")
     arg_parser.add_argument("-lr", "--learning_rate", required=True, help="learning rate")
-    arg_parser.add_argument("-ar", "--activation_recurrent", required=True, help="activation function for recurrent layers")
-    arg_parser.add_argument("-ao", "--activation_output", required=True, help="activation function for output layers")
 
     # get argument values
     args = vars(arg_parser.parse_args())
@@ -139,7 +146,6 @@ if __name__ == "__main__":
     optimize_n_epochs = int(args["optimize_n_epochs"])
     max_evals = int(args["max_evals"])
     test_share = float(args["test_share"])
-    validation_share = float(args["validation_share"])
     batch_size = args["batch_size"]
     units = args["units"]
     embedding_size = args["embedding_size"]
@@ -147,8 +153,6 @@ if __name__ == "__main__":
     spatial_dropout = args["spatial_dropout"]
     recurrent_dropout = args["recurrent_dropout"]
     learning_rate = args["learning_rate"]
-    activation_recurrent = args["activation_recurrent"]
-    activation_output = args["activation_output"]
     num_cpus = 16
 
     config = {
@@ -158,35 +162,28 @@ if __name__ == "__main__":
         'optimize_n_epochs': optimize_n_epochs,
         'max_evals': max_evals,
         'test_share': test_share,
-        'validation_share': validation_share,
         'batch_size': batch_size,
         'units': units,
         'embedding_size': embedding_size,
         'dropout': dropout,
         'spatial_dropout': spatial_dropout,
         'recurrent_dropout': recurrent_dropout,
-        'learning_rate': learning_rate,
-        'activation_recurrent': activation_recurrent,
-        'activation_output': activation_output
+        'learning_rate': learning_rate
     }
 
     # Extract and process workflows
     connections = extract_workflow_connections.ExtractWorkflowConnections()
-    workflow_paths, compatible_next_tools = connections.read_tabular_file(workflows_path)
+    workflow_paths, compatible_next_tools, standard_connections = connections.read_tabular_file(workflows_path)
     # Process the paths from workflows
     print("Dividing data...")
     data = prepare_data.PrepareData(maximum_path_length, test_share)
-    train_data, train_labels, test_data, test_labels, data_dictionary, reverse_dictionary, class_weights, usage_pred = data.get_data_labels_matrices(workflow_paths, tool_usage_path, cutoff_date, compatible_next_tools)
+    train_data, train_labels, test_data, test_labels, data_dictionary, reverse_dictionary, class_weights, usage_pred, l_tool_freq, l_tool_tr_samples = data.get_data_labels_matrices(workflow_paths, tool_usage_path, cutoff_date, compatible_next_tools, standard_connections)
     # find the best model and start training
     predict_tool = PredictTool(num_cpus)
     # start training with weighted classes
     print("Training with weighted classes and samples ...")
-    results_weighted = predict_tool.find_train_best_network(config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, compatible_next_tools)
-    print()
-    print("Best parameters \n")
-    print(results_weighted["best_parameters"])
-    print()
-    utils.save_model(results_weighted, data_dictionary, compatible_next_tools, trained_model_path, class_weights)
+    results_weighted = predict_tool.find_train_best_network(config, reverse_dictionary, train_data, train_labels, test_data, test_labels, n_epochs, class_weights, usage_pred, standard_connections, l_tool_freq, l_tool_tr_samples)
+    utils.save_model(results_weighted, data_dictionary, compatible_next_tools, trained_model_path, class_weights, standard_connections)
     end_time = time.time()
     print()
     print("Program finished in %s seconds" % str(end_time - start_time))
