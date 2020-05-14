@@ -33,8 +33,8 @@ def main(infile_input, infile_output, infile_trained_model):
 
     layout = go.Layout(
         title='Confusion Matrix between true and predicted class labels',
-        xaxis=dict(title='True class labels'),
-        yaxis=dict(title='Predicted class labels')
+        xaxis=dict(title='Predicted class labels'),
+        yaxis=dict(title='True class labels')
     )
 
     fig = go.Figure(data=data, layout=layout)
@@ -140,7 +140,7 @@ def main(infile_input, infile_output, infile_trained_model):
         plotly.offline.plot(fig_roc, filename="output_roc.html", auto_open=False)
 
     except Exception as exp:
-        pass
+        print("Plotting the ROC-AUC graph failed. This exception was raised: {}".format(exp))
 
 
 if __name__ == "__main__":

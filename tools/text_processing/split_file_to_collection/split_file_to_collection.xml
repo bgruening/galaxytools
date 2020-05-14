@@ -1,8 +1,32 @@
-<tool id="split_file_to_collection" name="Split file" version="0.1.1">
+<tool id="split_file_to_collection" name="Split file" version="0.4.0">
     <description>to dataset collection</description>
     <macros>
+        <xml name="regex_sanitizer">
+            <sanitizer>
+                <valid>
+                    <add preset="string.printable"/>
+                    <remove value="&#92;" />
+                    <remove value="&apos;" />
+                </valid>
+                <mapping initial="none">
+                    <add source="&#92;" target="__backslash__" />
+                    <add source="&apos;" target="__sq__"/>
+                </mapping>
+            </sanitizer>
+        </xml>
         <xml name="numnew_fname">
-            <param name="numnew" type="integer" label="Number of new files" min="1" value="1"/>
+            <conditional name="select_mode">
+                <param name="mode" type="select" label="Specify number of output files or number of records per file?" help="Specify the number of records ('chunk size') to place in each file. The 'Number of new files' parameter will be ignored.">
+                    <option value="chunk">Number of records per file ('chunk mode')</option>
+                    <option value="numnew">Number of output files</option>
+                </param>
+                <when value="chunk">
+                    <param name="chunksize" type="integer" label="Chunk size" min="1" value="1" help="Number of records per output file."/>
+                </when>
+                <when value="numnew">
+                    <param name="numnew" type="integer" label="Number of new files" min="1" value="1"/>
+                </when>
+            </conditional>
             <param name="newfilenames" type="text" label="Base name for new files in collection"
                 help="This will increment automatically - if input is 'file', then output is 'file0', 'file1', etc." value="split_file"/>
             <conditional name="select_allocate">
@@ -12,7 +36,7 @@
                     <option value="byrow" selected="true">Alternate output files</option>
                 </param>
                 <when value="random">
-                    <param name="seed" type="integer" label="Random number seed" help="For reproducibility, set this to some arbitrary integer (i.e. '1010')" value="1010"/>
+                    <param name="seed" type="integer" label="Random number seed" help="For reproducibility, set this to some arbitrary integer (e.g. '1010')" value="1010"/>
                 </when>
                 <when value="batch">
                 </when>
@@ -37,8 +61,12 @@
                     --id_column '$split_parms.split_by.id_col'
                     --match '$split_parms.split_by.match_regex'
                     --sub '$split_parms.split_by.sub_regex'
-                #else 
-                    --numnew '$split_parms.split_by.numnew' 
+                #else
+                    #if $split_parms.split_by.select_mode.mode == "numnew":
+                        --numnew '$split_parms.split_by.select_mode.numnew'
+                    #else
+                        --chunksize $split_parms.split_by.select_mode.chunksize
+                    #end if
                     #if $split_parms.split_by.select_allocate.allocate == "random":
                         --rand
                         --seed '$split_parms.split_by.rand.seed'
@@ -48,7 +76,21 @@
                     #end if
                 #end if
             #else
-                --numnew '$split_parms.numnew'
+                #if $split_parms.select_ftype == "generic"
+                    #if $split_parms.split_method.select_split_method == "regex"
+                        --generic_re '$split_parms.split_method.generic_regex'
+                        #if $split_parms.split_method.split_after == 'true':
+                            --split_after
+                        #end if
+                    #else
+                        --generic_num $split_parms.split_method.record_length
+                    #end if
+                #end if
+                #if $split_parms.select_mode.mode == "numnew":
+                    --numnew '$split_parms.select_mode.numnew'
+                #else
+                    --chunksize $split_parms.select_mode.chunksize
+                #end if
                 #if $split_parms.select_allocate.allocate == "random":
                     --rand
                     --seed '$split_parms.select_allocate.seed'
@@ -63,7 +105,11 @@
         #end if
         #if $split_parms.select_ftype != "tabular":
             --file_names '$split_parms.newfilenames'
-            --file_ext '$split_parms.select_ftype'
+            #if $split_parms.select_ftype == "generic"
+                --file_ext '$split_parms.input.ext'
+            #else
+                --file_ext '$split_parms.select_ftype'
+            #end if
         #end if
     ]]></command>
     <inputs>
@@ -73,6 +119,9 @@
                 <option value="fastq">FASTQ</option>
                 <option value="tabular">Tabular</option>
                 <option value="fasta">FASTA</option>
+                <option value="sdf">SD-files</option>
+                <option value="txt">Text files</option>
+                <option value="generic">Generic</option>
             </param>
             <when value="tabular">
                 <param name="input" type="data" format="tabular" label="Tabular file to split"/>
@@ -85,30 +134,10 @@
                     <when value="col">
                         <param name="id_col" type="data_column" label="Column to split on" data_ref="input"/>
                         <param name="match_regex" type="text" label="Regex to match contents of id column" value="(.*)">
-	 		                <sanitizer>
-          		                <valid>
-            		                <add preset="string.printable"/>
-            		                <remove value="&#92;" />
-           		                    <remove value="&apos;" />
-          			            </valid>
-          		                <mapping initial="none">
-            		                <add source="&#92;" target="__backslash__" />
-            		                <add source="&apos;" target="__sq__"/>
-          		                </mapping>
-			                </sanitizer>
-		                </param>
+                            <expand macro="regex_sanitizer"/>
+                        </param>
                         <param name="sub_regex" type="text" label="Pattern to replace match with" value="\1">
-                            <sanitizer>
-                                <valid>
-                                    <add preset="string.printable"/>
-                                    <remove value="&#92;" />
-                                    <remove value="&apos;" />
-                                </valid>
-                                <mapping initial="none">
-                                    <add source="&#92;" target="__backslash__" />
-                                    <add source="&apos;" target="__sq__"/>
-                                </mapping>
-			                </sanitizer>
+                            <expand macro="regex_sanitizer"/>
                         </param>
                     </when>
                     <when value="row">
@@ -128,27 +157,70 @@
                 <param name="input" type="data" format="fasta" label="FASTA file to split"/>
                 <expand macro="numnew_fname"/>
             </when>
+            <when value="sdf">
+                <param name="input" type="data" format="sdf" label="SD-file to split"/>
+                <expand macro="numnew_fname"/>
+            </when>
+            <when value="txt">
+                <param name="input" type="data" format="txt" label="Text file to split"/>
+                <expand macro="numnew_fname"/>
+            </when>
+            <when value="generic">
+                <param name="input" type="data" format="txt" label="File to split"/>
+                <conditional name="split_method">
+                    <param name="select_split_method" type="select" label="Method to split files">
+                        <option value="regex">Specify record separator as regular expression</option>
+                        <option value="number">Specify number of lines after which a record ends</option>
+                    </param>
+                    <when value="regex">
+                        <param name="generic_regex" type="text" label="Regex to match record separator" value="^.*">
+                            <expand macro="regex_sanitizer"/>
+                        </param>
+                        <param name="split_after" type="select" value="false" label="Split records before or after the separator?" help="If before, the separator will appear at the start of each record; if after, at the end">
+                            <option value="false" selected="true">Before</option>
+                            <option value="true">After</option>
+                        </param>
+                    </when>
+                    <when value="number">
+                        <param name="record_length" type="integer" value="1" label="Record length" help="The number of lines after which each record ends"/>
+                    </when>
+                </conditional>
+                <expand macro="numnew_fname"/>
+            </when>
         </conditional>
     </inputs>
     <outputs>
-        <collection name="list_output_tab" type="list" label="${tool.name} on ${on_string}: output collection">
+        <collection name="list_output_tab" type="list" label="${tool.name} on ${on_string}">
             <discover_datasets pattern="__name__" directory="out" visible="false" format="tabular"/>
             <filter>split_parms['select_ftype'] == "tabular"</filter>
         </collection>
-        <collection name="list_output_mgf" type="list" label="${tool.name} on ${on_string}: output collection">
+        <collection name="list_output_mgf" type="list" label="${tool.name} on ${on_string}">
             <discover_datasets pattern="__name__" directory="out" visible="false" format="mgf"/>
             <filter>split_parms['select_ftype'] == "mgf"</filter>
         </collection>
-        <collection name="list_output_fasta" type="list" label="${tool.name} on ${on_string}: output collection">
+        <collection name="list_output_fasta" type="list" label="${tool.name} on ${on_string}">
             <discover_datasets pattern="__name__" directory="out" visible="false" format="fasta"/>
             <filter>split_parms['select_ftype'] == "fasta"</filter>
         </collection>
-        <collection name="list_output_fastq" type="list" label="${tool.name} on ${on_string}: output collection">
+        <collection name="list_output_fastq" type="list" label="${tool.name} on ${on_string}">
             <discover_datasets pattern="__name__" directory="out" visible="false" format="fastq"/>
             <filter>split_parms['select_ftype'] == "fastq"</filter>
         </collection>
+        <collection name="list_output_sdf" type="list" label="${tool.name} on ${on_string}">
+            <discover_datasets pattern="__name__" directory="out" visible="false" format="sdf"/>
+            <filter>split_parms['select_ftype'] == "sdf"</filter>
+        </collection>
+        <collection name="list_output_txt" type="list" label="${tool.name} on ${on_string}">
+            <discover_datasets pattern="__name__" directory="out" visible="false" format="txt"/>
+            <filter>split_parms['select_ftype'] == "txt"</filter>
+        </collection>
+        <collection name="list_output_generic" type="list" label="${tool.name} on ${on_string}">
+            <discover_datasets pattern="__name_and_ext__" directory="out" visible="false"/>
+            <filter>split_parms['select_ftype'] == "generic"</filter>
+        </collection>
     </outputs>
     <tests>
+        <!-- 1 -->
         <test>
             <param name="input" value="test.tabular" ftype="tabular"/>
             <param name="select_ftype" value="tabular"/>
@@ -163,31 +235,87 @@
                 <element name="foo3.tab" file="foo3.tab" ftype="tabular"/>
             </output_collection>
         </test>
+        <!-- 2 -->
         <test>
             <param name="input" value="test.tabular" ftype="tabular"/>
             <param name="select_ftype" value="tabular"/>
             <param name="select_split_by" value="row"/>
             <param name="top" value="2"/>
+            <param name="mode" value="numnew"/>
             <param name="numnew" value="2"/>
-            <param name="newfilenames" value="test"/> 
+            <param name="newfilenames" value="test"/>
             <output_collection name="list_output_tab" type="list">
-                <element name="test_0.tabular" file="test_0.tabular" ftype="tabular"/>
-                <element name="test_1.tabular" file="test_1.tabular" ftype="tabular"/>
+                <element name="test_000000.tabular" file="test_0.tabular" ftype="tabular"/>
+                <element name="test_000001.tabular" file="test_1.tabular" ftype="tabular"/>
             </output_collection>
         </test>
+        <!-- 3 -->
         <test>
             <param name="input" value="test.tabular" ftype="tabular"/>
             <param name="select_ftype" value="tabular"/>
             <param name="select_split_by" value="row"/>
             <param name="top" value="2"/>
+            <param name="mode" value="numnew"/>
             <param name="numnew" value="2"/>
             <param name="newfilenames" value="batch_tab"/>
-            <param name="allocate" value="batch"/> 
+            <param name="allocate" value="batch"/>
             <output_collection name="list_output_tab" type="list">
-                <element name="batch_tab_0.tabular" file="batch_tab_0.tabular" ftype="tabular"/>
-                <element name="batch_tab_1.tabular" file="batch_tab_1.tabular" ftype="tabular"/>
+                <element name="batch_tab_000000.tabular" file="batch_tab_0.tabular" ftype="tabular"/>
+                <element name="batch_tab_000001.tabular" file="batch_tab_1.tabular" ftype="tabular"/>
             </output_collection>
         </test>
+        <!-- 4 -->
+        <test>
+            <param name="input" value="test.tabular" ftype="tabular"/>
+            <param name="select_ftype" value="tabular"/>
+            <param name="select_split_by" value="row"/>
+            <param name="top" value="2"/>
+            <param name="mode" value="chunk"/>
+            <param name="chunksize" value="2"/>
+            <param name="newfilenames" value="batch_tab"/>
+            <param name="allocate" value="batch"/>
+            <output_collection name="list_output_tab" type="list">
+                <element name="batch_tab_000000.tabular" file="batch_tab_0.tabular" ftype="tabular"/>
+                <element name="batch_tab_000001.tabular" file="batch_tab_1.tabular" ftype="tabular"/>
+            </output_collection>
+        </test>
+        <!-- 5 -->
+        <test>
+            <param name="select_ftype" value="txt"/>
+            <param name="input" value="karyotype.txt" ftype="txt"/>
+            <param name="mode" value="numnew"/>
+            <param name="numnew" value="24"/>
+            <param name="newfilenames" value="chr"/>
+            <param name="allocate" value="batch"/>
+
+            <output_collection name="list_output_txt" type="list">
+                <element name="chr_000000.txt" file="chr_000000.txt" ftype="txt"/>
+                <element name="chr_000001.txt" file="chr_000001.txt" ftype="txt"/>
+                <element name="chr_000002.txt" file="chr_000002.txt" ftype="txt"/>
+                <element name="chr_000003.txt" file="chr_000003.txt" ftype="txt"/>
+                <element name="chr_000004.txt" file="chr_000004.txt" ftype="txt"/>
+                <element name="chr_000005.txt" file="chr_000005.txt" ftype="txt"/>
+                <element name="chr_000006.txt" file="chr_000006.txt" ftype="txt"/>
+                <element name="chr_000007.txt" file="chr_000007.txt" ftype="txt"/>
+                <element name="chr_000008.txt" file="chr_000008.txt" ftype="txt"/>
+                <element name="chr_000009.txt" file="chr_000009.txt" ftype="txt"/>
+                <element name="chr_000010.txt" file="chr_000010.txt" ftype="txt"/>
+                <element name="chr_000011.txt" file="chr_000011.txt" ftype="txt"/>
+                <element name="chr_000012.txt" file="chr_000012.txt" ftype="txt"/>
+                <element name="chr_000013.txt" file="chr_000013.txt" ftype="txt"/>
+                <element name="chr_000014.txt" file="chr_000014.txt" ftype="txt"/>
+                <element name="chr_000015.txt" file="chr_000015.txt" ftype="txt"/>
+                <element name="chr_000016.txt" file="chr_000016.txt" ftype="txt"/>
+                <element name="chr_000017.txt" file="chr_000017.txt" ftype="txt"/>
+                <element name="chr_000018.txt" file="chr_000018.txt" ftype="txt"/>
+                <element name="chr_000019.txt" file="chr_000019.txt" ftype="txt"/>
+                <element name="chr_000020.txt" file="chr_000020.txt" ftype="txt"/>
+                <element name="chr_000021.txt" file="chr_000021.txt" ftype="txt"/>
+                <element name="chr_000022.txt" file="chr_000022.txt" ftype="txt"/>
+                <element name="chr_000023.txt" file="chr_000023.txt" ftype="txt"/>
+            </output_collection>
+        </test>
+        <!-- 6 -->
         <test>
             <param name="input" value="psm.tabular" ftype="tabular"/>
             <param name="select_ftype" value="tabular"/>
@@ -203,82 +331,247 @@
                 <element name="file4.tab" file="file4.tab" ftype="tabular"/>
             </output_collection>
         </test>
+        <!-- 7 splitting of mgf -->
         <test>
             <param name="input" value="demo758Dacentroid.mgf" ftype="mgf"/>
             <param name="select_ftype" value="mgf"/>
+            <param name="mode" value="numnew"/>
             <param name="numnew" value="3"/>
             <param name="newfilenames" value="demo"/>
             <output_collection name="list_output_mgf" type="list">
-                <element name="demo_0.mgf" file="demo_0.mgf" ftype="mgf"/>
-                <element name="demo_1.mgf" file="demo_1.mgf" ftype="mgf"/>
-                <element name="demo_2.mgf" file="demo_2.mgf" ftype="mgf"/>
+                <element name="demo_000000.mgf" file="demo_0.mgf" ftype="mgf"/>
+                <element name="demo_000001.mgf" file="demo_1.mgf" ftype="mgf"/>
+                <element name="demo_000002.mgf" file="demo_2.mgf" ftype="mgf"/>
             </output_collection>
         </test>
+        <!-- 8 splitting of fasta + desired number of files-->
         <test>
             <param name="input" value="test.fasta" ftype="fasta"/>
             <param name="select_ftype" value="fasta"/>
+            <param name="mode" value="numnew"/>
             <param name="numnew" value="2"/>
-            <param name="newfilenames" value="test"/> 
+            <param name="newfilenames" value="test"/>
             <output_collection name="list_output_fasta" type="list">
-                <element name="test_0.fasta" file="test_0.fasta" ftype="fasta"/>
-                <element name="test_1.fasta" file="test_1.fasta" ftype="fasta"/>
+                <element name="test_000000.fasta" file="test_0.fasta" ftype="fasta"/>
+                <element name="test_000001.fasta" file="test_1.fasta" ftype="fasta"/>
             </output_collection>
         </test>
+        <!-- 9 splitting of fasta + desired chunksize -->
+        <test>
+            <param name="input" value="test.fasta" ftype="fasta"/>
+            <param name="select_ftype" value="fasta"/>
+            <param name="mode" value="chunk"/>
+            <param name="chunksize" value="3"/>
+            <param name="newfilenames" value="test"/>
+            <output_collection name="list_output_fasta" type="list">
+                <element name="test_000000.fasta" file="test_0.fasta" ftype="fasta"/>
+                <element name="test_000001.fasta" file="test_1.fasta" ftype="fasta"/>
+            </output_collection>
+        </test>
+        <!-- 10 splitting of fastq, specify desired number of files -->
         <test>
             <param name="input" value="test.fastq" ftype="fastq"/>
             <param name="select_ftype" value="fastq"/>
+            <param name="mode" value="numnew"/>
             <param name="numnew" value="2"/>
-            <param name="newfilenames" value="test"/> 
+            <param name="newfilenames" value="test"/>
             <output_collection name="list_output_fastq" type="list">
-                <element name="test_0.fastq" file="test_0.fastq" ftype="fastq"/>
-                <element name="test_1.fastq" file="test_1.fastq" ftype="fastq"/>
+                <element name="test_000000.fastq" file="test_0.fastq" ftype="fastq"/>
+                <element name="test_000001.fastq" file="test_1.fastq" ftype="fastq"/>
             </output_collection>
         </test>
+        <!-- 11 splitting of fastq, specify desired number of files 
+             same as previous test, but by specifying the number of lines per record
+             explicitely (not using the preset of the python script) -->
+        <test>
+            <param name="input" value="test.fastq" ftype="fastq"/>
+            <param name="select_ftype" value="generic"/>
+            <param name="select_split_method" value="number"/>
+            <param name="record_length" value="4"/>
+            <param name="mode" value="numnew"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="test"/>
+            <output_collection name="list_output_generic" type="list">
+                <element name="test_000000" file="test_0.fastq" ftype="fastq"/>
+                <element name="test_000001" file="test_1.fastq" ftype="fastq"/>
+            </output_collection>
+        </test>
+        <!-- splitting of fasta w random assignment and specific filename prefix -->
         <test>
             <param name="input" value="test.fasta" ftype="fasta"/>
             <param name="select_ftype" value="fasta"/>
+            <param name="mode" value="numnew"/>
             <param name="numnew" value="2"/>
             <param name="newfilenames" value="rand"/>
             <param name="allocate" value="random"/>
-            <param name="seed" value="1010"/> 
+            <param name="seed" value="1010"/>
             <output_collection name="list_output_fasta" type="list">
-                <element name="rand_0.fasta" file="rand_0.fasta" ftype="fasta"/>
-                <element name="rand_1.fasta" file="rand_1.fasta" ftype="fasta"/>
+                <element name="rand_000000.fasta" file="rand_0.fasta" ftype="fasta"/>
+                <element name="rand_000001.fasta" file="rand_1.fasta" ftype="fasta"/>
             </output_collection>
         </test>
+        <!-- splitting of fasta w batch assignment and specific filename prefix -->
         <test>
             <param name="input" value="test.fasta" ftype="fasta"/>
             <param name="select_ftype" value="fasta"/>
+            <param name="mode" value="numnew"/>
             <param name="numnew" value="2"/>
             <param name="newfilenames" value="fasta_batch"/>
             <param name="allocate" value="batch"/>
             <output_collection name="list_output_fasta" type="list">
-                <element name="fasta_batch_0.fasta" file="fasta_batch_0.fasta" ftype="fasta"/>
-                <element name="fasta_batch_1.fasta" file="fasta_batch_1.fasta" ftype="fasta"/>
+                <element name="fasta_batch_000000.fasta" file="fasta_batch_0.fasta" ftype="fasta"/>
+                <element name="fasta_batch_000001.fasta" file="fasta_batch_1.fasta" ftype="fasta"/>
             </output_collection>
-        </test> 
+        </test>
+        <!-- splitting of txt w default (alternating assignment) -->
+        <test>
+            <param name="input" value="test.tabular" ftype="txt"/>
+            <param name="select_ftype" value="txt"/>
+            <param name="mode" value="numnew"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="test"/>
+            <output_collection name="list_output_txt" type="list">
+                <element name="test_000000.txt" file="test_0.tabular" ftype="txt" lines_diff="1"/>
+                <element name="test_000001.txt" file="test_1.tabular" ftype="txt" lines_diff="1"/>
+            </output_collection>
+        </test>
+        <!-- generic-regex splitting (of txt) w default assignement (alternating) -->
+        <test>
+            <param name="input" value="test.tabular" ftype="txt"/>
+            <param name="select_ftype" value="generic"/>
+            <param name="select_split_method" value="regex"/>
+            <param name="generic_regex" value="^.*"/>
+            <param name="mode" value="numnew"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="test"/>
+            <output_collection name="list_output_generic" type="list">
+                <element name="test_000000" file="test_0.tabular" ftype="txt" lines_diff="1"/>
+                <element name="test_000001" file="test_1.tabular" ftype="txt" lines_diff="1"/>
+            </output_collection>
+        </test>
+        <!-- generic-regex splitting (of a fasta) w random assignment -->
+        <test>
+            <param name="input" value="test.fasta" ftype="fasta"/>
+            <param name="select_ftype" value="generic"/>
+            <param name="select_split_method" value="regex"/>
+            <param name="generic_regex" value="^>.*"/>
+            <param name="mode" value="numnew"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="rand"/>
+            <param name="allocate" value="random"/>
+            <param name="seed" value="1010"/>
+            <output_collection name="list_output_generic" type="list">
+                <element name="rand_000000" file="rand_0.fasta" ftype="fasta"/>
+                <element name="rand_000001" file="rand_1.fasta" ftype="fasta"/>
+            </output_collection>
+        </test>
+        <!-- sdf + specify desired number of files -->
+        <test>
+            <param name="input" value="3_molecules.sdf" ftype="sdf"/>
+            <param name="select_ftype" value="sdf"/>
+            <param name="mode" value="numnew"/>
+            <param name="numnew" value="10"/>
+            <param name="newfilenames" value="mol"/>
+            <param name="allocate" value="batch"/>
+            <output_collection name="list_output_sdf" type="list">
+                <element name="mol_000000.sdf" file="mol_0.sdf" ftype="sdf"/>
+                <element name="mol_000001.sdf" file="mol_1.sdf" ftype="sdf"/>
+                <element name="mol_000002.sdf" file="mol_2.sdf" ftype="sdf"/>
+            </output_collection>
+        </test>
+        <!-- sdf + specify desired number of records per file (chunksize) -->
+        <test>
+            <param name="input" value="3_molecules.sdf" ftype="sdf"/>
+            <param name="select_ftype" value="sdf"/>
+            <param name="mode" value="chunk"/>
+            <param name="chunksize" value="1"/>
+            <param name="newfilenames" value="mol"/>
+            <param name="allocate" value="batch"/>
+            <output_collection name="list_output_sdf" type="list">
+                <element name="mol_000000.sdf" file="mol_0.sdf" ftype="sdf"/>
+                <element name="mol_000001.sdf" file="mol_1.sdf" ftype="sdf"/>
+                <element name="mol_000002.sdf" file="mol_2.sdf" ftype="sdf"/>
+            </output_collection>
+        </test>
+        <!-- test split_after (by splitting fasta files after non-header lines) -->
+        <test>
+            <param name="input" value="test.fasta" ftype="fasta"/>
+            <param name="select_ftype" value="generic"/>
+            <param name="select_split_method" value="regex"/>
+            <param name="generic_regex" value="^[^>].*"/>
+            <param name="split_after" value="true"/>
+            <param name="mode" value="numnew"/>
+            <param name="numnew" value="2"/>
+            <param name="newfilenames" value="rand"/>
+            <param name="allocate" value="random"/>
+            <param name="seed" value="1010"/>
+            <output_collection name="list_output_generic" type="list">
+                <element name="rand_000000" file="rand_0.fasta" ftype="fasta"/>
+                <element name="rand_000001" file="rand_1.fasta" ftype="fasta"/>
+            </output_collection>
+        </test>
     </tests>
     <help><![CDATA[
 **Split file into a dataset collection**
 
-This tool can split five types of files into a separate files within a dataset collection: MGF, FASTA, FASTQ, and tabular.
+This tool splits a data set consisting of records into multiple data sets within a collection.
+A record can be for instance simply a line, a FASTA sequence (header + sequence), a FASTQ sequence
+(headers + sequence + qualities), etc. The important property is that the records either have a 
+specific length (e.g. 4 lines for FASTQ) or that the beginning/end of a new record
+can be specified by a regular expression, e.g. ".*" for lines or ">.*" for FASTA.
+The tool has presets for text, tabular data sets (which are split after each line), FASTA (new records start with ">.*"), FASTQ (records consist of 4 lines), SDF (records start with "^BEGIN IONS") and MGF (records end with "^$$$$").
+For other data types the text delimiting records or the number of lines making up a record can be specified manually using the generic splitter. 
+If the generic splitter is used, an option is also available to split records either before or after the
+separator. If a preset filetype is used, this is selected automatically (after for SDF, before for all
+others).
+
+If splitting by line (or by some other item, like a FASTA entry or an MGF record), the splitting can be either done alternatingly, in original record order, or at random.
+
+If t records are to be distributed to n new data sets, then the i-th record goes to data set
+
+* floor(i / t * n) (for batch),
+* i % n (for alternating), or
+* a random data set
+
+For instance, t=5 records are distributed as follows on n=2 data sets
+
+= === === ====
+i bat alt rand
+= === === ====
+0 0   0   0
+1 0   1   1
+2 0   0   1
+3 1   1   0
+4 1   0   0
+= === === ====
+
+If the five records are distributed on n=3 data sets:
+
+= === === ====
+i bat alt rand
+= === === ====
+0 0   0   0
+1 0   1   1
+2 1   2   2
+3 1   0   0
+4 2   1   1
+= === === ====
+
+Note that there are no guarantees when splitting at random that every result file will be non-empty, so downstream tools should be able to gracefully handle empty files.
+
 If a tabular file is used as input, you may choose to split by line or by column. If split by column, a new file is created for each unique value in the column.
 In addition, (Python) regular expressions may be used to transform the value in the column to a new value. Caution should be used with this feature, as it could transform all values to the same value, or other unexpected behavior.
-The default regular expression uses each value in the column without modifying it. 
+The default regular expression uses each value in the column without modifying it.
 
-If splitting by line (or by some other item, like a FASTA entry or an MGF section), the splitting can be either done sequentially or at random. 
-Note that there are no guarantees when splitting at random that every result file will be non-empty, so downstream tools should be able to gracefully handle empty files. 
+Two modes are available for the tool. For the main mode, the number of output files is selected. In this case, records are shared out between this number of files. Alternatively, 'chunking mode' can be selected, which puts a fixed number of records (the 'chunk size') into each output file.
 
-**Note**
-
-Due to current limitations with dataset collections, a log file is produced when running this tool. It will usually be empty, but if the tool fails, any errors will be printed to the log file. 
     ]]></help>
     <citations>
         <citation type="bibtex">
 @misc{githubsplit,
   author = {Easterly, Caleb},
   year = {2018},
-  title = {A Galxy tool for splitting a file into a collection},
+  title = {A Galaxy tool for splitting a file into a collection},
   publisher = {GitHub},
   journal = {GitHub repository},
   url = {https://github.com/bgruening/galaxytools/tools/text_processing/split_file_to_collection},
