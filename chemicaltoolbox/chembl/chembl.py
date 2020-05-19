@@ -5,7 +5,7 @@ import argparse
 
 def open_file(filename):
     with open(filename) as f:
-        return f.readline()
+        return f.readline().split()[0]
 
 def get_smiles(res):
     """
