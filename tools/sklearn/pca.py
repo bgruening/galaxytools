@@ -41,17 +41,22 @@ def main():
     args = parser.parse_args()
 
     usecols = None
+    cols = []
     pca_params = {}
 
     if args.columns != 'all':
         with open(args.infile) as f:
             num_cols = len(f.readline().split(' '))
-        cols = [int(i) for i in args.column_indices.split(' ')]
-        
+
+        for i in args.column_indices.split(' '):
+            if int(i) > num_cols - 1:
+                raise ValueError('Column index specified is greater than total number of columns available')
+            cols.append(int(i))
+
         if args.columns == "exclude":
             usecols = sorted(set(range(num_cols)) - set(cols))
         elif args.columns == "include":
-            usecols = sorted(set(range(num_cols)).intersection(set(cols)))
+            usecols = sorted(set(cols))
 
     pca_input = np.loadtxt(fname=args.infile, skiprows=int(args.header), usecols=usecols)
 
@@ -84,7 +89,7 @@ def main():
 
     pca.set_params(**pca_params)
     pca_output = pca.fit_transform(pca_input)
-    np.savetxt(args.outfile, pca_output)
+    np.savetxt(fname=args.outfile, X=pca_output, fmt='%.4f')
 
 
 if __name__ == "__main__":
