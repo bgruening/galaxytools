@@ -89,7 +89,7 @@ def main():
 
     pca.set_params(**pca_params)
     pca_output = pca.fit_transform(pca_input)
-    np.savetxt(fname=args.outfile, X=pca_output, fmt='%.4f')
+    np.savetxt(fname=args.outfile, X=pca_output, fmt='%.4f', delimiter='\t')
 
 
 if __name__ == "__main__":
