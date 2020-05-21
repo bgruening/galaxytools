@@ -55,7 +55,7 @@ def select_points(all_coordinates):
 
 def sdfout(centers, writer):
     n = len(centers)
-    writer.write("Frankenstein_ligand\nGalaxy select_points_sdf tool\n\n")
+    writer.write("Frankenstein ligand\n00000000000000000000 3D\nCreated in Galaxy\n")
     writer.write("%3d  0  0  0  0  0  0  0  0  0999 V2000\n" % n)
     for record in centers:
         x, y, z = record
