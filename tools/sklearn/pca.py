@@ -46,9 +46,9 @@ def main():
 
     if args.columns != 'all':
         with open(args.infile) as f:
-            num_cols = len(f.readline().split(' '))
+            num_cols = len(f.readline().split('\t'))
 
-        for i in args.column_indices.split(' '):
+        for i in args.column_indices.split():
             if int(i) > num_cols - 1:
                 raise ValueError('Column index specified is greater than total number of columns available')
             cols.append(int(i))
