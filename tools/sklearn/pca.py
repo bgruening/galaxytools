@@ -1,14 +1,15 @@
 import argparse
 import numpy as np
 from sklearn.decomposition import PCA, IncrementalPCA, KernelPCA
-
+from galaxy_ml.utils import read_columns
 
 def main():
     parser = argparse.ArgumentParser(description='RDKit screen')
     parser.add_argument('-i', '--infile',
                         help="Input file")
     parser.add_argument('--header', action='store_true', help="Include the header row or skip it")
-    parser.add_argument('-c', '--columns', type=str.lower, default='all', choices=['all', 'include', 'exclude'],
+    parser.add_argument('-c', '--columns', type=str.lower, default='all', choices=['by_index_number', 'all_but_by_index_number',\
+                        'by_header_name', 'all_but_by_header_name', 'all_columns'],
                         help="Choose to select all columns, or exclude/include some")
     parser.add_argument('-ci', '--column_indices', type=str.lower,
                         help="Choose to select all columns, or exclude/include some")
@@ -44,21 +45,20 @@ def main():
     cols = []
     pca_params = {}
 
-    if args.columns != 'all':
-        with open(args.infile) as f:
-            num_cols = len(f.readline().split('\t'))
+    if args.columns == 'by_index_number' or args.columns == 'all_but_by_index_number':
+        usecols = [int(i) for i in args.column_indices.split(',')]
+    elif args.columns == 'by_header_name' or args.columns == 'all_but_by_header_name':
+        usecols = args.column_indices
 
-        for i in args.column_indices.split():
-            if int(i) > num_cols - 1:
-                raise ValueError('Column index specified is greater than total number of columns available')
-            cols.append(int(i))
-
-        if args.columns == "exclude":
-            usecols = sorted(set(range(num_cols)) - set(cols))
-        elif args.columns == "include":
-            usecols = sorted(set(cols))
-
-    pca_input = np.loadtxt(fname=args.infile, skiprows=int(args.header), usecols=usecols)
+    pca_input = read_columns(
+        f=args.infile,
+        c=usecols,
+        c_option=args.columns,
+        sep='\t',
+        header=int(args.header),
+        parse_dates=True,
+        encoding=None,
+        index_col=None)
 
     pca_params.update({'n_components': args.number})
 
