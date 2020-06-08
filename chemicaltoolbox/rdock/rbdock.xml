@@ -1,4 +1,4 @@
-<tool id="rdock_rbdock" name="rDock docking" version="0.1.2">
+<tool id="rdock_rbdock" name="rDock docking" version="0.1.4" profile="19.01">
     <description>- perform protein-ligand docking with rDock</description>
     <macros>
         <import>rdock_macros.xml</import>
@@ -7,27 +7,52 @@
     <command><![CDATA[
 ln -s '$active_site' receptor.as &&
 ln -s '$receptor' receptor.mol2 &&
-ln -s $receptor_prm receptor.prm &&
+
+#if $custom_rec.custom_rec_select == 'true':
+    ## simple check that the receptor file name is correct
+    grep -q 'RECEPTOR_FILE receptor.mol2' $custom_rec.prm_file || (echo "Error: a custom receptor.prm file must contain the line 'RECEPTOR_FILE receptor.mol2'" >&2 && exit 1) &&
+    ln -s '$custom_rec.prm_file' receptor.prm &&
+#else
+    ln -s '$receptor_prm' receptor.prm &&
+#end if
+
 #if $name == 'Y':
   sdmodify -f_REC '$ligands' > ligands.sdf &&
 #else
   ln -s '$ligands' ligands.sdf &&
 #end if
-rbdock -i ligands.sdf -r receptor.prm -p dock.prm -n $num -o output &&
-sdsort -n -s -fSCORE output.sd |
-#if $score:
-  sdfilter -f'\$SCORE <= $score' |
+
+python '$__tool_directory__/rbdock.py'
+    -n '$num'
+    #if $seed:
+        -s '$seed'
+    #end if
+    &&
+
+cat rdock_output.sd 
+
+#if $filter.filter_select == "filter":
+    #if $filter.score:
+        | sdfilter -f'\$SCORE <= ${filter.score}'
+    #end if
+    #if $filter.nscore:
+        | sdfilter -f'\$SCORE.norm <= ${filter.nscore}'
+    #end if
+    #if $filter.top
+        | sdsort -n -s -fSCORE | sdfilter -f'\$_COUNT <= $filter.top'
+    #end if
 #end if
-#if $nscore:
-  sdfilter -f'\$SCORE.norm <= $nscore' |
-#end if
-sdfilter -f'\$_COUNT <= $top' > '$output'
+
+ > '$output'
+
     ]]></command>
 
     <configfiles>
         <configfile name="receptor_prm">RBT_PARAMETER_FILE_V1.00
 RECEPTOR_FILE receptor.mol2
-RECEPTOR_FLEX 3.0
+#if $custom_rec.custom_rec_select == 'false':
+RECEPTOR_FLEX $custom_rec.flex
+#end if
         </configfile>
     </configfiles>
 
@@ -35,29 +60,73 @@ RECEPTOR_FLEX 3.0
         <param type="data" name="receptor" format="mol2" label="Receptor" help="Select a receptor (mol2 format)."/>
         <param type="data" name="active_site" format="rdock_as" label="Active site" help="Active site file"/>
         <param type="data" name="ligands" format="sdf,mol" label="Ligands" help="Ligands in SDF format (or single ligand in MOL format)"/>
+        <conditional name="custom_rec">
+            <param name="custom_rec_select" type="select" label="Use a custom receptor.prm file?" help="Useful for more advanced use-cases, such as tethered docking.">
+                <option value="true">Use custom receptor.prm file</option>
+                <option value="false" selected="true">Use default options (no user upload required)</option>
+            </param>
+            <when value="true">
+                <param type="data" name="prm_file" format="txt" label="Receptor prm file" help="Note the file must contain the line 'RECEPTOR_FILE receptor.mol2', else the tool will fail."/>
+            </when>
+            <when value="false">
+                <param name="flex" type="float" value="3.0" min="0.0" label="Receptor flex" help="Value for RECEPTOR_FLEX (default 3)"/>
+            </when>
+        </conditional>
+
         <param name="num" type="integer" value="10" label="Number of dockings" help="Number of poses to generate"/>
-        <param name="top" type="integer" value="1" label="Number of best poses" help="Number of best scoring poses to keep"/>
-        <param name="score" type="float" optional="true" label="Score filter"
-               help="Exclude poses with score greater than this value"/>
-        <param name="nscore" type="float" optional="true" label="Normalised score filter"
-               help="Exclude poses with normalised score greater than this value"/>
+        <conditional name="filter">
+            <param name="filter_select" type="select" label="Filter the docking results" help="Using sdfilter">
+                <option value="filter">Show filter options</option>
+                <option value="no_filter">No filtering</option>
+            </param>
+            <when value="filter">
+                <param name="score" type="float" optional="true" label="Score filter"
+                   help="Exclude poses with score greater than this value"/>
+                <param name="nscore" type="float" optional="true" label="Normalised score filter"
+                    help="Exclude poses with normalised score greater than this value"/>
+                <param name="top" type="integer" value="1" optional="true" min="1" label="Number of best poses"
+                    help="Number of best scoring poses to keep"/>
+            </when>
+            <when value="no_filter"/>
+        </conditional>
         <param name="name" type="boolean" label="Generate name field" truevalue="Y" falsevalue="N" checked="false"
                help="Generate the name field (first line) for cases where this is empty"/>
+        <param argument="-seed" type="integer" optional="true" label="Random seed" help=""/>
     </inputs>
     <outputs>
         <data name="output" format="sdf" label="rDock on ${on_string}"/>
     </outputs>
     <tests>
+        <!-- broken ligand test -->
+        <test expect_failure="true" expect_exit_code="23">
+            <param name="receptor" value="receptor.mol2"/>
+            <param name="ligands" value="broken_ligand.sdf"/>
+            <param name="active_site" value="receptor.as"/>
+            <param name="num" value="3"/>
+            <param name="flex" value="3"/>
+            <param name="seed" value="3"/>
+            <conditional name="filter">
+                <param name="filter_select" value="filter"/>
+                <param name="top" value="1"/>
+            </conditional>
+            <param name="name" value="false"/>
+        </test>
         <test>
             <param name="receptor" value="receptor.mol2"/>
             <param name="ligands" value="ligands_names.sdf"/>
             <param name="active_site" value="receptor.as"/>
             <param name="num" value="3"/>
-            <param name="top" value="1"/>
+            <param name="flex" value="3"/>
+            <param name="seed" value="3"/>
+            <conditional name="filter">
+                <param name="filter_select" value="filter"/>
+                <param name="top" value="1"/>
+            </conditional>
             <param name="name" value="false"/>
             <output name="output">
                 <assert_contents>
                     <has_text text="Rbt.Current_Directory"/>
+                    <has_n_lines n="352"/>
                 </assert_contents>
             </output>
         </test>
@@ -66,11 +135,36 @@ RECEPTOR_FLEX 3.0
             <param name="ligands" value="ligands_nonames.sdf"/>
             <param name="active_site" value="receptor.as"/>
             <param name="num" value="3"/>
-            <param name="top" value="1"/>
+            <param name="flex" value="3"/>
+            <param name="seed" value="3"/>
+            <conditional name="filter">
+                <param name="filter_select" value="filter"/>
+                <param name="top" value="1"/>
+            </conditional>
             <param name="name" value="true"/>
             <output name="output">
                 <assert_contents>
                     <has_text text="Rbt.Current_Directory"/>
+                     <has_n_lines n="352"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- no filter test -->
+        <test>
+            <param name="receptor" value="receptor.mol2"/>
+            <param name="ligands" value="ligands_nonames.sdf"/>
+            <param name="active_site" value="receptor.as"/>
+            <param name="num" value="3"/>
+            <param name="flex" value="3"/>
+            <param name="seed" value="3"/>
+            <conditional name="filter">
+                <param name="filter_select" value="no_filter"/>
+            </conditional>
+            <param name="name" value="true"/>
+            <output name="output">
+                <assert_contents>
+                    <has_text text="Rbt.Current_Directory"/>
+                    <has_n_lines n="1056"/>
                 </assert_contents>
             </output>
         </test>
@@ -79,14 +173,56 @@ RECEPTOR_FLEX 3.0
             <param name="ligands" value="ligands_names.sdf"/>
             <param name="active_site" value="receptor.as"/>
             <param name="num" value="1"/>
-            <param name="score" value="10"/>
-            <param name="nscore" value="1"/>
-            <param name="name" value="false"/>
+            <param name="flex" value="3"/>
+            <param name="seed" value="3"/>
+            <conditional name="filter">
+                <param name="filter_select" value="filter"/>
+                <param name="score" value="10"/>
+                <param name="nscore" value="1"/>
+            </conditional>
+            <param name="name"/>
             <output name="output">
                 <assert_contents>
                     <has_text text="Rbt.Current_Directory"/>
+                     <has_n_lines n="352"/>
                 </assert_contents>
             </output>
+        </test>
+        <!-- test with custom receptor.prm -->
+        <test>
+            <param name="receptor" value="receptor.mol2"/>
+            <param name="ligands" value="ligands_names.sdf"/>
+            <param name="active_site" value="receptor.as"/>
+            <param name="custom_rec_select" value="true"/>
+            <param name="prm_file" value="receptor.prm"/>
+            <param name="num" value="1"/>
+            <param name="seed" value="3"/>
+            <conditional name="filter">
+                <param name="filter_select" value="filter"/>
+                <param name="score" value="10"/>
+                <param name="nscore" value="1"/>
+            </conditional>
+            <param name="name"/>
+            <output name="output">
+                <assert_contents>
+                    <has_text text="Rbt.Current_Directory"/>
+                     <has_n_lines n="352"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test with custom but broken receptor.prm -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="receptor" value="receptor.mol2"/>
+            <param name="ligands" value="ligands_names.sdf"/>
+            <param name="active_site" value="receptor.as"/>
+            <param name="custom_rec_select" value="true"/>
+            <param name="prm_file" value="wrong_receptor.prm"/>
+            <param name="num" value="1"/>
+            <param name="seed" value="3"/>
+            <conditional name="filter">
+                <param name="filter_select" value="no_filter"/>
+            </conditional>
+            <param name="name"/>
         </test>
     </tests>
     <help><![CDATA[

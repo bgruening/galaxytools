@@ -1,0 +1,280 @@
+<tool id="graphprot_predict_profile" name="GraphProt" version="1.1.7+galaxy1">
+    <description>- Train models and predict RBP binding profiles</description>
+    <requirements>
+        <requirement type="package" version="1.1.7">graphprot</requirement>
+    </requirements>
+
+    <command detect_errors="exit_code"><![CDATA[
+        #if $action_type.action_type_selector == 'train':
+            python '$__tool_directory__/graphprot_train_wrapper.py'
+                --data-id GraphProt
+                --pos '$action_type.pos_fasta_file'
+                --neg '$action_type.neg_fasta_file'
+                $action_type.train_str_model
+                #if $action_type.hpo_options.hpo_mode_type.hpo_mode_type_selector == 'take':
+                    --opt-set-size $action_type.hpo_options.hpo_mode_type.opt_set_size
+                #elif $action_type.hpo_options.hpo_mode_type.hpo_mode_type_selector == 'supply':
+                    --opt-pos '$action_type.hpo_options.hpo_mode_type.pos_parop_fasta'
+                    --opt-neg '$action_type.hpo_options.hpo_mode_type.neg_parop_fasta'
+                #end if
+                $action_type.training_options.disable_cv
+                $action_type.training_options.disable_motifs
+                --min-train $action_type.training_options.min_train
+
+        #elif $action_type.action_type_selector == 'predict':
+            python '$__tool_directory__/graphprot_predict_wrapper.py'
+                --data-id GraphProt
+                --fasta '$action_type.input_fasta_file'
+                --model '$action_type.model_file'
+                --params $action_type.params_file
+                #if $action_type.genomic_sites_bed_file:
+                    --gen-site-bed '$action_type.genomic_sites_bed_file'
+                #end if
+                --sc-thr $action_type.prediction_options.score_thr
+                --max-merge-dist $action_type.prediction_options.max_merge_dist
+                --ap-extlr $action_type.prediction_options.ap_extlr
+                $action_type.prediction_options.conf_out
+                $action_type.prediction_options.ws_pred_out
+        #end if
+
+
+    ]]></command>
+
+    <inputs>
+        <conditional name="action_type">
+        
+            <param name="action_type_selector" type="select" label="Select an action">
+                <option value="train" selected="true">Train a model</option>
+                <option value="predict">Predict on input sequences</option>
+            </param>
+
+            <when value="train">
+                <param name="pos_fasta_file" type="data" format="fasta"
+                       label="Positive sequences FASTA file" argument="-fasta"
+                       help="Positive sequences (== RBP binding sites) FASTA file for model training"/>
+                <param name="neg_fasta_file" type="data" format="fasta"
+                       label="Negative sequences FASTA file" argument="-negfasta"
+                       help="Negative sequences FASTA file for model training"/>
+                <param name="train_str_model" label="Train a structure model" type="boolean"
+                       truevalue="--str-model" falsevalue="" checked="False"
+                       help="Train a structure model (default: train a sequence model)"/>
+
+                <section name="hpo_options" title="Hyperparameter optimization settings">
+
+                    <conditional name="hpo_mode_type">
+                        <param name="hpo_mode_type_selector" type="select" label="Select strategy">
+                            <option value="take" selected="true">Take sequences for optimization from input</option>
+                            <option value="supply">Supply sequences for optimization</option>
+                        </param>
+                        <when value="take">
+                            <param name="opt_set_size" type="integer" value="500"
+                                   label="Number of sequences for hyperparameter optimization"
+                                   help="Hyperparameter optimization set size (taken away from both positive and negative input sequences) (default: 500)"/>
+                        </when>
+                        <when value="supply">
+                            <param name="pos_parop_fasta" type="data" format="fasta"
+                                   label="Positive sequences FASTA file"
+                                   help="Positive (== RBP binding sites) sequences FASTA file for hyperparameter optimization"/>
+                            <param name="neg_parop_fasta" type="data" format="fasta"
+                                   label="Negative sequences FASTA file"
+                                   help="Negative sequences FASTA file for hyperparameter optimization"/>
+                        </when>
+                    </conditional>
+                </section>
+
+                <section name="training_options" title="Training options">
+                    <param name="disable_cv" label="Disable 10-fold cross validation" type="boolean"
+                           truevalue="--disable-cv" falsevalue="" checked="False"
+                           help="Disable 10-fold cross validation step. As a result, no generalization performance results (.cv_results) are output. On the other hand, run time is reduced considerably (default: false)"/>
+                    <param name="disable_motifs" label="Disable motif generation" type="boolean"
+                           truevalue="--disable-motifs" falsevalue="" checked="False"
+                           help="Disable motif generation step, therefore no _motif and _motif.png files are output (default: false)"/>
+                    <param name="min_train" type="integer" value="750"
+                           label="Minimum number of training sites demanded"
+                           help="Minimum number of training sites demanded (for both negatives and positives). In general, try to get more training sites if possible (>> 1000), before lowering this number (default: 750)"/>
+                </section>
+            </when>
+            <when value="predict">
+
+                <param name="input_fasta_file" type="data" format="fasta"
+                       label="Input FASTA file" argument="-fasta"
+                       help="FASTA file with sequences for which to predict binding profiles or whole site scores"/>
+                <param name="model_file" type="data" format="data" 
+                       label="GraphProt model file" argument="-model"
+                       help="GraphProt model to use for predictions"/>
+                <param name="params_file" type="data" format="txt"
+                       label="Model parameter file" argument="-params"
+                       help="Parameter file containing model parameters"/>
+                <param name="genomic_sites_bed_file" type="data" format="bed" optional="True"
+                       label="Genomic BED file with coordinates from input sequences"
+                       help="BED file specifying the genomic regions of the input sequences, to also output peak regions with their genomic coordinates (default: false)"/>
+
+                <section name="prediction_options" title="Prediction options">
+                    <param name="score_thr" type="float" value="0"
+                           label="Set GraphProt average profile peak score threshold for reporting peak regions"
+                           help="Regions with peak score higher or equal the given value are reported (default: 0)"/>
+
+                    <param name="ap_extlr" type="integer" value="5" min="0" max="10"
+                           label="Smoothing parameter for calculating the average profile"
+                           help="Defines the average profile up- and downstream extension to produce the average profile. The mean over small sequence windows (window_length = set_value*2 + 1) is used to get the average profile position-wise scores. A value of 0 means no additional smoothing (== original profile scores), while 10 is applies fairly strong smoothing (default: 5)"/>
+
+                    <param name="max_merge_dist" type="integer" value="0" min="0" max="10"
+                           label="Maximum distance between two peak regions for merging" argument="-merge-dist"
+                           help="By default all non-overlapping regions will be reported. E.g. a distance of 1 means that two regions above the set threshold score will be merged if there is 1 nucleotide that separates the two regions"/>
+
+                    <param name="ws_pred_out" label="Predict whole site instead of profile scores" type="boolean"
+                               truevalue="--ws-pred" falsevalue="" checked="False"
+                               help="Run a whole site prediction instead of calculating profiles (default: false)"/>
+                    <param name="conf_out" label="Output high-confidence (p50) peak regions" type="boolean"
+                               truevalue="--conf-out" falsevalue="" checked="False"
+                               help="Output filtered peak regions BED file or predictions file (if whole site scores prediction enabled), using the median positive training site score (stored in .params file) for filtering (default: false)"/>
+                </section>
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data name="model_out_file" format="txt" from_work_dir="GraphProt.model" label="${tool.name} on ${on_string}: GraphProt model file">
+            <filter>action_type["action_type_selector"] == "train"</filter>
+        </data>
+
+        <data name="params_out_file" format="txt" from_work_dir="GraphProt.params" label="${tool.name} on ${on_string}: GraphProt model parameters file">
+            <filter>action_type["action_type_selector"] == "train"</filter>
+        </data>
+
+        <data name="cv_results_out_file" format="txt" from_work_dir="GraphProt.cv_results" label="${tool.name} on ${on_string}: GraphProt cross validation results file">
+            <filter>action_type["action_type_selector"] == "train" and not action_type["training_options"]["disable_cv"]</filter>
+        </data>
+
+        <data name="seq_motif_out_file" format="txt" from_work_dir="GraphProt.sequence_motif" label="${tool.name} on ${on_string}: GraphProt sequence motif text file">
+            <filter>action_type["action_type_selector"] == "train" and not action_type["training_options"]["disable_motifs"]</filter>
+        </data>
+        <data name="seq_motif_png_out_file" format="png" from_work_dir="GraphProt.sequence_motif.png" label="${tool.name} on ${on_string}: GraphProt sequence motif png file">
+            <filter>action_type["action_type_selector"] == "train" and not action_type["training_options"]["disable_motifs"]</filter>
+        </data>
+
+        <data name="str_motif_out_file" format="txt" from_work_dir="GraphProt.structure_motif" label="${tool.name} on ${on_string}: GraphProt structure motif text file">
+            <filter>action_type["action_type_selector"] == "train" and not action_type["training_options"]["disable_motifs"] and action_type["train_str_model"]</filter>
+        </data>
+
+        <data name="str_motif_png_out_file" format="png" from_work_dir="GraphProt.structure_motif.png" label="${tool.name} on ${on_string}: GraphProt structure motif png file">
+            <filter>action_type["action_type_selector"] == "train" and not action_type["training_options"]["disable_motifs"] and action_type["train_str_model"]</filter>
+        </data>
+
+        <data name="avg_profile_out_file" format="txt" from_work_dir="GraphProt.avg_profile" label="${tool.name} on ${on_string}: GraphProt average profile file">
+            <filter>action_type["action_type_selector"] == "predict" and not action_type["prediction_options"]["ws_pred_out"]</filter>
+        </data>
+
+        <data name="peaks_out_file" format="bed" from_work_dir="GraphProt.avg_profile.peaks.bed" label="${tool.name} on ${on_string}: GraphProt average profile peaks BED file">
+            <filter>action_type["action_type_selector"] == "predict" and not action_type["prediction_options"]["ws_pred_out"]</filter>
+        </data>
+
+        <data name="p50_peaks_out_file" format="bed" from_work_dir="GraphProt.avg_profile.p50.peaks.bed" label="${tool.name} on ${on_string}: GraphProt average profile p50 peaks BED file">
+            <filter>action_type["action_type_selector"] == "predict" and action_type["prediction_options"]["conf_out"] and not action_type["prediction_options"]["ws_pred_out"]</filter>
+        </data>
+
+        <data name="genomic_peaks_out_file" format="bed" from_work_dir="GraphProt.avg_profile.genomic_peaks.bed" label="${tool.name} on ${on_string}: GraphProt average profile genomic peaks BED file">
+            <filter>action_type["action_type_selector"] == "predict" and action_type["genomic_sites_bed_file"] and not action_type["prediction_options"]["ws_pred_out"]</filter>
+        </data>
+
+        <data name="genomic_p50_peaks_out_file" format="bed" from_work_dir="GraphProt.avg_profile.p50.genomic_peaks.bed" label="${tool.name} on ${on_string}: GraphProt average profile p50 genomic peaks BED file">
+            <filter>action_type["action_type_selector"] == "predict" and action_type["prediction_options"]["conf_out"] and action_type["genomic_sites_bed_file"] and not action_type["prediction_options"]["ws_pred_out"]</filter>
+        </data>
+
+        <data name="predictions_out_file" format="txt" from_work_dir="GraphProt.predictions" label="${tool.name} on ${on_string}: GraphProt whole site predictions file">
+            <filter>action_type["action_type_selector"] == "predict" and action_type["prediction_options"]["ws_pred_out"]</filter>
+        </data>
+
+        <data name="p50_predictions_out_file" format="txt" from_work_dir="GraphProt.p50.predictions" label="${tool.name} on ${on_string}: GraphProt whole site p50 predictions file">
+            <filter>action_type["action_type_selector"] == "predict" and action_type["prediction_options"]["ws_pred_out"] and action_type["prediction_options"]["conf_out"]</filter>
+        </data>
+
+    </outputs>
+
+    <tests>
+
+        <test expect_num_outputs="4">
+            <param name="action_type_selector" value="train"/>
+            <param name="pos_fasta_file" value="test_positives.train.fa" ftype="fasta"/>
+            <param name="neg_fasta_file" value="test_negatives.train.fa" ftype="fasta"/>
+            <param name="hpo_mode_type_selector" value="supply"/>
+            <param name="pos_parop_fasta" value="test_positives.parop.fa" ftype="fasta"/>
+            <param name="neg_parop_fasta" value="test_negatives.parop.fa" ftype="fasta"/>
+            <param name="disable_cv" value="True"/>
+            <param name="disable_motifs" value="False"/>
+            <param name="min_train" value="500"/>
+            <output name="model_out_file" file="test.model"/>
+            <output name="params_out_file" file="test.params"/>
+            <output name="seq_motif_out_file" file="test.sequence_motif"/>
+        </test>
+
+        <test expect_num_outputs="5">
+            <param name="action_type_selector" value="predict"/>
+            <param name="input_fasta_file" value="test_predict.fa" ftype="fasta"/>
+            <param name="model_file" value="test.model" ftype="txt"/>
+            <param name="params_file" value="test.params" ftype="txt"/>
+            <param name="genomic_sites_bed_file" value="test_predict.bed" ftype="bed"/>
+            <param name="conf_out" value="True"/>
+            <output name="genomic_peaks_out_file" file="test_predict.avg_profile.genomic_peaks.bed"/>
+            <output name="avg_profile_out_file" file="test_predict.avg_profile"/>
+            <output name="peaks_out_file" file="test_predict.avg_profile.peaks.bed"/>
+            <output name="p50_peaks_out_file" file="test_predict.avg_profile.p50.peaks.bed"/>
+            <output name="genomic_p50_peaks_out_file" file="test_predict.avg_profile.p50.genomic_peaks.bed"/>
+        </test>
+
+        <test expect_num_outputs="2">
+            <param name="action_type_selector" value="predict"/>
+            <param name="input_fasta_file" value="test_predict.fa" ftype="fasta"/>
+            <param name="model_file" value="test.model" ftype="txt"/>
+            <param name="params_file" value="test.params" ftype="txt"/>
+            <param name="ws_pred_out" value="True"/>
+            <param name="conf_out" value="True"/>
+            <output name="predictions_out_file" file="test_predict.predictions"/>
+            <output name="p50_predictions_out_file" file="test_predict.p50.predictions"/>
+        </test>
+
+    </tests>
+    <help>
+
+Use GraphProt to train a model or to predict RBP binding profiles using a pretrained RBP model.
+
+
+**Model training**
+
+To train a GraphProt model, a FASTA file with positive sequences (= RBP binding sites, usually determined by CLIP-seq) and a FASTA file with negative sequences (non-binding, e.g. randomly selected genomic sites) needs to be supplied. By default a sequence model is trained, since they often show similar performance compared to structure models while taking considerably less time to train. For hyperparameter optimization, a portion of the input FASTA sequences (usually n = 500) is taken away, but you can also provide separate optimization sets. After hyperparameter optimization, a model is trained using the input training sequences (minus the optimization set if not specified otherwise) with the determined optimized parameters. After that, a 10-fold cross validation is run on the training sequences to estimate the generalization performance of the model. Sequence and structure motifs (if structure model training enabled) are also output. Both cross validation and motif output can be disabled to further decrease the runtime. 
+
+By default, the model training output files are:
+
+1) a .model file storing the model parameters
+
+2) a .params file storing model hyperparameters and additional information
+
+3) a .cv_results file containing the cross validation results
+
+4) _motif and motif.png files (sequence and / or structure)
+
+
+**Profile prediction**
+
+This mode computes whole site or position-wise (= profile) binding scores for a given set input FASTA sequences. 
+
+By default, binding profiles are calculated, followed by average profile computation and extraction of peak regions from the average profiles. The average binding profile is more smooth regarding the position-wise (per nucleotide) scores than the initial profile GraphProt outputs and is the recommended way to extract peaks. Note that the amount of smoothness can be controlled in the prediction options (with the lowest value 0 equaling the initial profile). A peak is defined as a contiguous region in the average profile with scores >= the set score threshold (by default 0, can be changed). In addition, a set of high confidence peak regions (p50) can be output. Here the threshold gets set to the median of the scores obtained from the positive training set during model training (information stored in parameters file). Moreover, the peak regions can be converted to genomic regions, if the genomic regions for the input FASTA sequences are supplied. 
+
+Apart from predicting binding profiles, whole site predictions can be output as well. Here the output files are the scores for each input sequence, and optionally the p50 filtered set just like with the average profile peaks.
+
+
+Summing up, the profile predictions output files are:
+
+1) an avg_profile file containing the position-wise (per nucleotide) binding profile scores
+
+2) one or several BED files containing the peak regions (all peaks, p50 peaks, all genomic peaks, p50 genomic peaks)
+
+3) if whole site prediction is enabled, a .predictions file and optionally a .p50.predictions file
+
+    </help>
+    <citations>
+        <citation type="doi">10.1186/gb-2014-15-1-r17</citation>
+    </citations>
+</tool>
+
+
