@@ -92,12 +92,6 @@ def parser_cli():
     return parser
 
 
-def close_files(file_list):
-    # finally, close all files
-    for open_file in file_list:
-        open_file.close()
-
-
 def replace_mapped_chars(pattern):
     """
     handles special escaped characters when coming from galaxy
@@ -166,7 +160,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
         new_file_base = [custom_new_file_name, custom_new_file_ext]
 
     newfiles = [
-        open(os.path.join(out_dir, "%s_%06d%s" % (new_file_base[0], count, new_file_base[1])) , "w")
+        "%s_%06d%s" % (new_file_base[0], count, new_file_base[1])
         for count in range(0, numnew)
     ]
     # bunch o' counters
@@ -201,13 +195,15 @@ def split_by_record(args, in_file, out_dir, top, ftype):
                 else:
                     # if is in fresh_files, write header and drop from freshFiles
                     if new_file_counter in fresh_files:
-                        newfiles[new_file_counter].write(header)
+                        with open(newfiles[new_file_counter], "a+") as handle:
+                            handle.write(header)
                         fresh_files.remove(new_file_counter)
                     
                     if sep_at_end:
                         record += line
                     # write record to file
-                    newfiles[new_file_counter].write(record)
+                    with open(newfiles[new_file_counter], "a+") as handle:
+                        handle.write(record)
                     if not sep_at_end:
                         record = line
                     else:
@@ -231,10 +227,8 @@ def split_by_record(args, in_file, out_dir, top, ftype):
             else:
                 record += line
         # after loop, write final record to file
-        newfiles[new_file_counter].write(record)
-
-    # close new files
-    close_files(newfiles)
+        with open(newfiles[new_file_counter], "a+") as handle:
+            handle.write(record)
 
 
 def split_by_column(args, in_file, out_dir, top):
@@ -276,17 +270,17 @@ def split_by_column(args, in_file, out_dir, top):
             # write
             if out_file_name not in new_files.keys():
                 # open file (new, so not already open)
-                current_new_file = open(out_file_path, "w")
-                current_new_file.write(header)
-                current_new_file.write(line)
+                with open(out_file_path, "a+") as handle:
+                    #current_new_file = open(out_file_path, "w")
+                    handle.write(header)
+                    handle.write(line)
                 # add to dict
-                new_files[out_file_name] = current_new_file
+                new_files[out_file_name] = out_file_path
             else:
                 # file is already open, so just write to it
-                new_files[out_file_name].write(line)
-
-    # finally, close all files
-    close_files(new_files.values())
+                #new_files[out_file_name].write(line)
+                with open(new_files[out_file_name], "a") as handle:
+                    handle.write(line)
 
 
 if __name__ == "__main__":
