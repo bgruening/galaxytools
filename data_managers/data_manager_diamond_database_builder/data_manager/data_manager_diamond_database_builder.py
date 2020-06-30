@@ -51,12 +51,17 @@ def _get_stream_readers_for_bz2(file_obj, tmp_dir):
     return [bz2.BZ2File(file_obj.name, 'rb')]
 
 
-def download_from_ncbi(data_manager_dict, params, target_directory, database_id, database_name):
+def download_from_ncbi(data_manager_dict, params, target_directory,
+                       database_id, database_name):
     NCBI_FTP_SERVER = 'ftp.ncbi.nlm.nih.gov'
     NCBI_DOWNLOAD_PATH = '/blast/db/FASTA/'
-    COMPRESSED_EXTENSIONS = [('.tar.gz', _get_stream_readers_for_tar), ('.tar.bz2', _get_stream_readers_for_tar), ('.zip', _get_stream_readers_for_zip), ('.gz', _get_stream_readers_for_gzip), ('.bz2', _get_stream_readers_for_bz2)]
+    COMPRESSED_EXTENSIONS = [('.tar.gz', _get_stream_readers_for_tar),
+                             ('.tar.bz2', _get_stream_readers_for_tar),
+                             ('.zip', _get_stream_readers_for_zip),
+                             ('.gz', _get_stream_readers_for_gzip),
+                             ('.bz2', _get_stream_readers_for_bz2)]
 
-    ncbi_identifier = params['param_dict']['reference_source']['requested_identifier']
+    ncbi_identifier = params['reference_source']['requested_identifier']
     ftp = FTP(NCBI_FTP_SERVER)
     ftp.login()
 
@@ -103,7 +108,7 @@ def download_from_ncbi(data_manager_dict, params, target_directory, database_id,
 
 def download_from_url(data_manager_dict, params, target_directory, database_id, database_name):
     # TODO: we should automatically do decompression here
-    urls = list(filter(bool, [x.strip() for x in params['param_dict']['reference_source']['user_url'].split('\n')]))
+    urls = list(filter(bool, [x.strip() for x in params['reference_source']['user_url'].split('\n')]))
     fasta_reader = [urllib.request.urlopen(url) for url in urls]
 
     data_table_entry = _stream_fasta_to_file(fasta_reader, target_directory, database_id, database_name, params)
@@ -112,19 +117,19 @@ def download_from_url(data_manager_dict, params, target_directory, database_id, 
 
 def download_from_history(data_manager_dict, params, target_directory, database_id, database_name):
     # TODO: allow multiple FASTA input files
-    input_filename = params['param_dict']['reference_source']['input_fasta']
+    input_filename = params['reference_source']['input_fasta']
     if isinstance(input_filename, list):
         fasta_reader = [open(filename, 'rb') for filename in input_filename]
     else:
-        fasta_reader = open(input_filename)
+        fasta_reader = open(input_filename, 'rb')
 
     data_table_entry = _stream_fasta_to_file(fasta_reader, target_directory, database_id, database_name, params)
     _add_data_table_entry(data_manager_dict, data_table_entry)
 
 
 def copy_from_directory(data_manager_dict, params, target_directory, database_id, database_name):
-    input_filename = params['param_dict']['reference_source']['fasta_filename']
-    create_symlink = params['param_dict']['reference_source']['create_symlink'] == 'create_symlink'
+    input_filename = params['reference_source']['fasta_filename']
+    create_symlink = params['reference_source']['create_symlink'] == 'create_symlink'
     if create_symlink:
         data_table_entry = _create_symlink(input_filename, target_directory, database_id, database_name)
     else:
@@ -150,41 +155,42 @@ def _stream_fasta_to_file(fasta_stream, target_directory, database_id,
 
     temp_fasta = tempfile.NamedTemporaryFile(delete=False, suffix=".fasta")
     temp_fasta.close()
-    fasta_writer = open(temp_fasta.name, 'w+')
+    fasta_writer = open(temp_fasta.name, 'wb+')
 
-    if isinstance(fasta_stream, list) and len(fasta_stream) == 1:
-        fasta_stream = fasta_stream[0]
+    if not isinstance(fasta_stream, list):
+        fasta_stream = [fasta_stream]
 
-    if isinstance(fasta_stream, list):
-        last_char = None
-        for fh in fasta_stream:
-            if last_char not in [None, '\n', '\r']:
-                fasta_writer.write('\n')
-            while True:
-                data = fh.read(CHUNK_SIZE)
-                if data:
-                    fasta_writer.write(data)
-                    last_char = data[-1]
-                else:
-                    break
-            if close_stream:
-                fh.close()
-    else:
+    last_char = None
+    for fh in fasta_stream:
+        if last_char not in [None, '\n', '\r']:
+            fasta_writer.write('\n')
         while True:
-            data = fasta_stream.read(CHUNK_SIZE)
+            data = fh.read(CHUNK_SIZE)
             if data:
                 fasta_writer.write(data)
+                last_char = data[-1]
             else:
                 break
         if close_stream:
-            fasta_stream.close()
+            fh.close()
 
     fasta_writer.close()
 
-    args = ['diamond', 'makedb', '--in', temp_fasta.name, '--db', fasta_filename]
+    args = ['diamond', 'makedb',
+            '--in', temp_fasta.name,
+            '--db', fasta_filename]
+    if params['tax_cond']['tax_select'] == "history":
+        for i in ["taxonmap", "taxonnodes", "taxonnames"]:
+            args.extend(['--'+i, params['tax_cond'][i]])
+    elif params['tax_cond']['tax_select'] == "ncbi":
+        args.extend(['--taxonnodes',
+                     params['tax_cond']['ncbi_tax']+'nodes.dmp'])
+        args.extend(['--taxonnames',
+                     params['tax_cond']['ncbi_tax']+'names.dmp'])
 
     tmp_stderr = tempfile.NamedTemporaryFile(prefix="tmp-data-manager-diamond-database-builder-stderr")
-    proc = subprocess.Popen(args=args, shell=False, cwd=target_directory, stderr=tmp_stderr.fileno())
+    proc = subprocess.Popen(args=args, shell=False, cwd=target_directory,
+                            stderr=tmp_stderr.fileno())
     return_code = proc.wait()
     if return_code:
         tmp_stderr.flush()
@@ -198,7 +204,8 @@ def _stream_fasta_to_file(fasta_stream, target_directory, database_id,
         sys.exit(return_code)
     tmp_stderr.close()
     os.remove(temp_fasta.name)
-    return dict(value=database_id, name=database_name, db_path="%s.dmnd" % fasta_base_filename)
+    return dict(value=database_id, name=database_name, 
+                db_path="%s.dmnd" % fasta_base_filename)
 
 
 def _create_symlink(input_filename, target_directory, database_id, database_name):
@@ -208,27 +215,36 @@ def _create_symlink(input_filename, target_directory, database_id, database_name
     return dict(value=database_id, name=database_name, db_path=fasta_base_filename)
 
 
-REFERENCE_SOURCE_TO_DOWNLOAD = dict(ncbi=download_from_ncbi, url=download_from_url, history=download_from_history, directory=copy_from_directory)
+REFERENCE_SOURCE_TO_DOWNLOAD = dict(ncbi=download_from_ncbi,
+                                    url=download_from_url,
+                                    history=download_from_history,
+                                    directory=copy_from_directory)
 
 
 def main():
     # Parse Command Line
     parser = optparse.OptionParser()
-    parser.add_option('-d', '--dbkey_description', dest='dbkey_description', action='store', type="string", default=None, help='dbkey_description')
+    parser.add_option('-d', '--dbkey_description', dest='dbkey_description',
+                      action='store', type="string", default=None,
+                      help='dbkey_description')
     (options, args) = parser.parse_args()
 
     filename = args[0]
 
-    params = json.loads(open(filename).read())
+    with open(filename) as fp:
+        params = json.load(fp)
     target_directory = params['output_data'][0]['extra_files_path']
     os.mkdir(target_directory)
     data_manager_dict = {}
 
-    database_id = params['param_dict']['database_id']
-    database_name = params['param_dict']['database_name']
+    param_dict = params['param_dict']
+    database_id = param_dict['database_id']
+    database_name = param_dict['database_name']
+    if param_dict['tax_cond']['tax_select'] == "ncbi":
+        param_dict['tax_cond']['ncbi_tax'] = args[1]
 
     # Fetch the FASTA
-    REFERENCE_SOURCE_TO_DOWNLOAD[params['param_dict']['reference_source']['reference_source_selector']](data_manager_dict, params, target_directory, database_id, database_name)
+    REFERENCE_SOURCE_TO_DOWNLOAD[param_dict['reference_source']['reference_source_selector']](data_manager_dict, param_dict, target_directory, database_id, database_name)
 
     # save info to json file
     open(filename, 'w').write(json.dumps(data_manager_dict, sort_keys=True))
