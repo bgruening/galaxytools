@@ -1,17 +1,19 @@
 #!/usr/bin/env python
-import json
-import sys
-import os
-import tempfile
-import shutil
-import optparse
-import urllib2
-import subprocess
-from ftplib import FTP
-import tarfile
-import zipfile
-import gzip
 import bz2
+import gzip
+import json
+import optparse
+import os
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import urllib.error
+import urllib.parse
+import urllib.request
+import zipfile
+from ftplib import FTP
 
 CHUNK_SIZE = 2**20  # 1mb
 
@@ -19,11 +21,6 @@ CHUNK_SIZE = 2**20  # 1mb
 def cleanup_before_exit(tmp_dir):
     if tmp_dir and os.path.exists(tmp_dir):
         shutil.rmtree(tmp_dir)
-
-
-def stop_err(msg):
-    sys.stderr.write(msg)
-    sys.exit(1)
 
 
 def _get_files_in_ftp_path(ftp, path):
@@ -79,9 +76,9 @@ def download_from_ncbi(data_manager_dict, params, target_directory, database_id,
     tmp_dir = tempfile.mkdtemp(prefix='tmp-data-manager-ncbi-')
     ncbi_fasta_filename = os.path.join(tmp_dir, "%s%s" % (ncbi_identifier, ext))
 
-    fasta_base_filename = "%s.fa" % database_id
-    fasta_filename = os.path.join(target_directory, fasta_base_filename)
-    fasta_writer = open(fasta_filename, 'wb+')
+    # fasta_base_filename = "%s.fa" % database_id
+    # fasta_filename = os.path.join(target_directory, fasta_base_filename)
+    # fasta_writer = open(fasta_filename, 'wb+')
 
     tmp_extract_dir = os.path.join(tmp_dir, 'extracted_fasta')
     os.mkdir(tmp_extract_dir)
@@ -106,8 +103,8 @@ def download_from_ncbi(data_manager_dict, params, target_directory, database_id,
 
 def download_from_url(data_manager_dict, params, target_directory, database_id, database_name):
     # TODO: we should automatically do decompression here
-    urls = filter(bool, map(lambda x: x.strip(), params['param_dict']['reference_source']['user_url'].split('\n')))
-    fasta_reader = [urllib2.urlopen(url) for url in urls]
+    urls = list(filter(bool, [x.strip() for x in params['param_dict']['reference_source']['user_url'].split('\n')]))
+    fasta_reader = [urllib.request.urlopen(url) for url in urls]
 
     data_table_entry = _stream_fasta_to_file(fasta_reader, target_directory, database_id, database_name, params)
     _add_data_table_entry(data_manager_dict, data_table_entry)
@@ -146,13 +143,14 @@ def _add_data_table_entry(data_manager_dict, data_table_entry):
     return data_manager_dict
 
 
-def _stream_fasta_to_file(fasta_stream, target_directory, database_id, database_name, params, close_stream=True):
+def _stream_fasta_to_file(fasta_stream, target_directory, database_id,
+                          database_name, params, close_stream=True):
     fasta_base_filename = "%s.fa" % database_id
     fasta_filename = os.path.join(target_directory, fasta_base_filename)
 
     temp_fasta = tempfile.NamedTemporaryFile(delete=False, suffix=".fasta")
     temp_fasta.close()
-    fasta_writer = open(temp_fasta.name, 'wb+')
+    fasta_writer = open(temp_fasta.name, 'w+')
 
     if isinstance(fasta_stream, list) and len(fasta_stream) == 1:
         fasta_stream = fasta_stream[0]
@@ -191,7 +189,7 @@ def _stream_fasta_to_file(fasta_stream, target_directory, database_id, database_
     if return_code:
         tmp_stderr.flush()
         tmp_stderr.seek(0)
-        print >> sys.stderr, "Error building diamond database:"
+        print("Error building diamond database:", file=sys.stderr)
         while True:
             chunk = tmp_stderr.read(CHUNK_SIZE)
             if not chunk:
