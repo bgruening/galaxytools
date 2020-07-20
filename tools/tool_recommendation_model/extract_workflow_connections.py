@@ -11,11 +11,17 @@ import utils
 
 class ExtractWorkflowConnections:
 
-    @classmethod
     def __init__(self):
         """ Init method. """
 
-    @classmethod
+    def collect_standard_connections(self, row):
+        published = row[8]
+        deleted = row[9]
+        has_errors = row[10]
+        if published == "t" and deleted == "f" and has_errors == "f":
+            return True
+        return False
+
     def read_tabular_file(self, raw_file_path):
         """
         Read tabular file and extract workflow connections
@@ -25,7 +31,8 @@ class ExtractWorkflowConnections:
         workflow_paths_dup = ""
         workflow_parents = dict()
         workflow_paths = list()
-        unique_paths = list()
+        unique_paths = dict()
+        standard_connections = dict()
         with open(raw_file_path, 'rt') as workflow_connections_file:
             workflow_connections = csv.reader(workflow_connections_file, delimiter='\t')
             for index, row in enumerate(workflow_connections):
@@ -35,7 +42,15 @@ class ExtractWorkflowConnections:
                 if wf_id not in workflows:
                     workflows[wf_id] = list()
                 if out_tool and in_tool and out_tool != in_tool:
-                    workflows[wf_id].append((in_tool, out_tool))
+                    workflows[wf_id].append((out_tool, in_tool))
+                    qc = self.collect_standard_connections(row)
+                    if qc:
+                        i_t = utils.format_tool_id(in_tool)
+                        o_t = utils.format_tool_id(out_tool)
+                        if i_t not in standard_connections:
+                            standard_connections[i_t] = list()
+                        if o_t not in standard_connections[i_t]:
+                            standard_connections[i_t].append(o_t)
         print("Processing workflows...")
         wf_ctr = 0
         for wf_id in workflows:
@@ -54,7 +69,6 @@ class ExtractWorkflowConnections:
                     if len(paths) > 0:
                         flow_paths.extend(paths)
             workflow_paths.extend(flow_paths)
-
         print("Workflows processed: %d" % wf_ctr)
 
         # remove slashes from the tool ids
@@ -75,9 +89,8 @@ class ExtractWorkflowConnections:
 
         print("Finding compatible next tools...")
         compatible_next_tools = self.set_compatible_next_tools(no_dup_paths)
-        return unique_paths, compatible_next_tools
+        return unique_paths, compatible_next_tools, standard_connections
 
-    @classmethod
     def set_compatible_next_tools(self, workflow_paths):
         """
         Find next tools for each tool
@@ -97,7 +110,6 @@ class ExtractWorkflowConnections:
             next_tools[tool] = ",".join(list(set(next_tools[tool].split(","))))
         return next_tools
 
-    @classmethod
     def read_workflow(self, wf_id, workflow_rows):
         """
         Read all connections for a workflow
@@ -112,7 +124,6 @@ class ExtractWorkflowConnections:
                 tool_parents[out_tool].append(in_tool)
         return tool_parents
 
-    @classmethod
     def get_roots_leaves(self, graph):
         roots = list()
         leaves = list()
@@ -125,7 +136,6 @@ class ExtractWorkflowConnections:
         leaves = list(set(children).difference(set(all_parents)))
         return roots, leaves
 
-    @classmethod
     def find_tool_paths_workflow(self, graph, start, end, path=[]):
         path = path + [end]
         if start == end:
