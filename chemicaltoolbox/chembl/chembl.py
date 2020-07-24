@@ -13,7 +13,10 @@ def get_smiles(res):
     """ 
     smiles = set()
     for smi in res: 
-        smiles.add('{}\t{}'.format(smi['molecule_structures']['canonical_smiles'], smi['molecule_chembl_id']))
+        try:
+            smiles.add('{}\t{}'.format(smi['molecule_structures']['canonical_smiles'], smi['molecule_chembl_id']))
+        except TypeError:
+            continue
     return smiles
 
 def sim_search(smiles, tanimoto):
