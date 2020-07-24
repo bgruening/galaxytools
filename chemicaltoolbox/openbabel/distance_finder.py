@@ -12,8 +12,8 @@
 # there would be properties for distance1, distance2 and distance3.
 
 import argparse, os, sys, math
-from openbabel import pybel
 
+from openbabel import pybel
 
 
 def log(*args, **kwargs):

@@ -10,9 +10,9 @@ import sys, os
 import argparse
 import cheminfolib
 import json
-import pybel
 import shlex, subprocess
 
+from openbabel import pybel
 cheminfolib.pybel_stop_logging()
 
 def parse_command_line():
