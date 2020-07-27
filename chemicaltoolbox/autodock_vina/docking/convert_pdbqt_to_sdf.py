@@ -1,6 +1,6 @@
-import pybel, openbabel
 import sys
 
+from openbabel import pybel, openbabel
 
 def main():
 	if len(sys.argv) == 3:
