@@ -6,12 +6,11 @@
 """
 import sys, os
 import argparse
-import openbabel
-openbabel.obErrorLog.StopLogging()
-import pybel
 import math
 import numpy as np
 
+from openbabel import openbabel, pybel
+openbabel.obErrorLog.StopLogging()
 #TODO get rid of eval()
 
 global spectrophore

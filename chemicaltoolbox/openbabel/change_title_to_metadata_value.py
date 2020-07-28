@@ -9,12 +9,12 @@
 import os
 import sys
 import argparse
-import openbabel
-openbabel.obErrorLog.StopLogging()
-import pybel
 import random
 import string
 
+
+from openbabel import openbabel, pybel
+openbabel.obErrorLog.StopLogging()
 
 def main():
     parser = argparse.ArgumentParser(
