@@ -50,12 +50,17 @@ def main():
     elif args.columns == 'by_header_name' or args.columns == 'all_but_by_header_name':
         usecols = args.column_indices
 
+<<<<<<< HEAD
+=======
+    header = 'infer' if args.header else None
+
+>>>>>>> 43c630382e5a021a42cf0be0bad69c2c175901f5
     pca_input = read_columns(
         f=args.infile,
         c=usecols,
         c_option=args.columns,
         sep='\t',
-        header=int(args.header),
+        header=header,
         parse_dates=True,
         encoding=None,
         index_col=None)
@@ -87,6 +92,7 @@ def main():
 
         pca = KernelPCA()
 
+    print(pca_params)
     pca.set_params(**pca_params)
     pca_output = pca.fit_transform(pca_input)
     np.savetxt(fname=args.outfile, X=pca_output, fmt='%.4f', delimiter='\t')
