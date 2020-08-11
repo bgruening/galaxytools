@@ -50,6 +50,8 @@ def main():
     elif args.columns == 'by_header_name' or args.columns == 'all_but_by_header_name':
         usecols = args.column_indices
 
+    header = 'infer' if args.header else None
+
     pca_input = read_columns(
         f=args.infile,
         c=usecols,
