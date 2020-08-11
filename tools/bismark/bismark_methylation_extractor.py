@@ -97,7 +97,7 @@ def __main__():
     # Set up all options
     if args.multicore > 3:
         # divide multicore by 3 here since bismark will spawn ~3 jobs.
-        cmd.extend(['--multicore', str(math.ceil(args.multicore / 3))])
+        cmd.extend(['--multicore', str(int(math.floor(args.multicore / 3)))])
     if args.single_end:
         cmd.append('--single-end')
     else:
