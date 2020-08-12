@@ -5,9 +5,9 @@
 """
 import sys, os
 import argparse
-import openbabel
+
+from openbabel import openbabel, pybel
 openbabel.obErrorLog.StopLogging()
-import pybel
 
 def parse_command_line(argv):
     parser = argparse.ArgumentParser()

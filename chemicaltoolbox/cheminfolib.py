@@ -13,8 +13,8 @@ except:
     print('psycopg2 is not available. It is currently used in the pgchem wrappers, that are not shipped with default CTB')
 
 try:
-    import pybel
-    import openbabel
+    from openbabel import pybel
+    from openbabel import openbabel
 except:
     print('OpenBabel could not be found. A few functions are not available without OpenBabel.')
 
