@@ -8,9 +8,9 @@ import sys, os
 import argparse
 import openbabel
 openbabel.obErrorLog.StopLogging()
-import pybel
 import cheminfolib
 
+from openbabel import pybel
 
 def parse_command_line(argv):
     parser = argparse.ArgumentParser()

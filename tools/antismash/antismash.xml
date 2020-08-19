@@ -1,12 +1,14 @@
 <?xml version='1.0' encoding='utf-8'?>
-<tool id="antismash" name="Antismash" version="4.1" profile="17.01">
+<tool id="antismash" name="Antismash" version="5.1.2" profile="17.01">
     <description>allows the genome-wide identification, annotation and analysis of secondary metabolite biosynthesis gene clusters</description>
     <requirements>
-        <requirement type="package" version="4.1">antismash</requirement>
+        <requirement type="package" version="5.1.2">antismash</requirement>
     </requirements>
     <version_command>antismash --version</version_command>
     <command detect_errors="aggressive">
 <![CDATA[
+        export PYTHONWARNINGS="ignore::FutureWarning" &&
+
         #import os, glob
         #set $htmloutputfolder = $html.files_path
         #if str($infile.ext) == 'genbank':
@@ -18,21 +20,27 @@
         ln -s '$infile' input_tempfile.$file_extension &&
 
         ## create html folder
-        mkdir -p $htmloutputfolder &&
+        mkdir -p '$htmloutputfolder' &&
 
         antismash
             --cpus "\${GALAXY_SLOTS:-12}"
-            --taxon '${taxon}'
-            --input-type '${input_type}'
+            --taxon '${cond_taxon.taxon}'
 
-            ${clusterblast}
-            ${subclusterblast}
-            ${smcogs}
-            ${inclusive}
-            ${borderpredict}
-            ${tta}
+            --genefinding-tool $cond_taxon.genefinding_tool
+
+            ${cb_general}
+            ${cb_subclusters}
+            ${cb_knownclusters}
+            ${smcog_trees}
+            --tta-threshold ${tta_threshold}
             ${asf}
-            ${full_hmmer}
+
+            ${extra_cluster}
+            ${clusterhmmer}
+            ${fullhmmer}
+            #if $cond_taxon.taxon == 'fungi':
+                $cond_taxon.cassis
+            #end if
 
             input_tempfile.$file_extension &&
 
@@ -45,40 +53,61 @@
     <inputs>
         <param name="infile" type="data" format="genbank,fasta,embl" label="Sequence file in GenBank,EMBL or FASTA format"/>
 
-        <param argument="--taxon" type="select" label="Origin of DNA">
-            <option value="bacteria" selected="True">Bacteria</option>
-            <option value="fungi">Fungi</option>
-        </param>
+        <conditional name="cond_taxon">
+            <param argument="--taxon" type="select" label="Origin of DNA">
+                <option value="bacteria" selected="True">Bacteria</option>
+                <option value="fungi">Fungi</option>
+            </param>
+            <when value="bacteria">
+                <param argument="--genefinding-tool" type="select" label="Specify algorithm used for gene finding"
+                    help="The 'error' option will raise an error if genefinding is attempted. The 'none' option will not run genefinding">
+                    <option value="prodigal" selected="True">Prodigal</option>
+                    <option value="prodigal-m">Prodigal Metagenomic/Anonymous</option>
+                    <option value="glimmerhmm">GlimmerHMM</option>
+                    <option value="none">None</option>
+                    <option value="error">Error</option>
+                </param>
+            </when>
+            <when value="fungi">
+                <param argument="--genefinding-tool" type="select" label="Specify algorithm used for gene finding"
+                    help="The 'error' option will raise an error if genefinding is attempted. The 'none' option will not run genefinding">
+                    <option value="glimmerhmm">GlimmerHMM</option>
+                    <option value="none">None</option>
+                    <option value="error">Error</option>
+                </param>
+                <param argument="--cassis" type="boolean" truevalue="--cassis" falsevalue="" checked="False"
+                       label="Motif based prediction of SM gene cluster regions" />
+            </when>
+        </conditional>
 
-        <param argument="--input_type" type="select" label="Origin of DNA">
-            <option value="nucl" selected="True">Nucleotide</option>
-            <option value="prot">Amino-acid</option>
-        </param>
 
-        <param argument="--clusterblast" type="boolean" truevalue="--clusterblast" falsevalue="" checked="False"
+        <param argument="--cb-general" type="boolean" truevalue="--cb-general" falsevalue="" checked="False"
                label="BLAST identified clusters against known clusters"
                help="Compare identified clusters against a database of antiSMASH-predicted clusters." />
-        <param argument="--subclusterblast" type="boolean" truevalue="--subclusterblast" falsevalue="" checked="True"
+        <param argument="--cb-subclusters" type="boolean" truevalue="--cb-subclusters" falsevalue="" checked="True"
                label="Subcluster BLAST analysis"
                help="Compare identified clusters against known subclusters responsible for synthesising precursors." />
-        <param argument="--knownclusterblast" type="boolean" truevalue="--knownclusterblast" falsevalue="" checked="True"
+        <param argument="--cb-knownclusters" type="boolean" truevalue="--cb-knownclusters" falsevalue="" checked="True"
                label="KnowCluster BLAST analysis"
                help="Compare identified clusters against known gene clusters from the MIBiG database."/>
-        <param argument="--smcogs" type="boolean" checked="True" truevalue="--smcogs" falsevalue=""
+        <param argument="--smcog-trees" type="boolean" checked="True" truevalue="--smcog-trees" falsevalue=""
                label="Analysis of secondary metabolism gene families (smCOGs)"
                help="Look for sec. met. clusters of orthologous groups."/>
-        <param argument="--inclusive" type="boolean" truevalue="--inclusive" falsevalue="" checked="False"
-               label="Inclusive ClusterFinder algorithm"
-               help="Use inclusive ClusterFinder algorithm for additional cluster detection."/>
-        <param argument="--borderpredict" type="boolean" truevalue="--borderpredict" falsevalue="" checked="False"
-               label="Predict gene cluster borders with ClusterFinder"
-               help="Use ClusterFinder algorithm to predict gene cluster borders."/>
         <param argument="--asf" type="boolean" truevalue="--asf" falsevalue="" checked="True"
-               label="Run active site finder module" />
-        <param argument="--tta" type="boolean" truevalue="--tta" falsevalue="" checked="False"
-               label="Run TTA codon detection module" />
-        <param argument="--full_hmmer" type="boolean" truevalue="--full-hmmer" falsevalue="" checked="False"
-               label="Run a whole-genome Pfam analysis" />
+               label="Run active site finder analysus" />
+        <param argument="-pfam2go" type="boolean" truevalue="-pfam2go" falsevalue="" checked="True"
+               label="Run Pfam to Gene Ontology mapping module" />
+        <param argument="--tta-threshold" type="float" value="0.65" label="Lowest GC content to annotate TTA codons at" />
+
+        <param argument="--clusterhmmer" type="boolean" truevalue="--clusterhmmer" falsevalue="" checked="False"
+               label="Run a cluster-limited HMMer analysis" />
+        <param argument="--fullhmmer" type="boolean" truevalue="--fullhmmer" falsevalue="" checked="False"
+               label="Run a whole-genome HMMer analysis" />
+
+        <param name="extra_cluster" type="select" label="Clusters">
+            <option value="--cf-create-clusters" selected="True">Find extra clusters</option>
+            <option value="--cf-borders-only">Only annotate borders of existing clusters</option>
+        </param>
 
         <param name="outputs" type="select" multiple="true" label="Outputs">
             <option value="html" selected="True">HTML file</option>
@@ -116,8 +145,14 @@
         <test>
             <param name="infile" value="sequence.gb"/>
             <param name="outputs" value="html,gb"/>
+            <param name="taxon" value="fungi"/>
+            <param name="clusterhmmer" value="True"/>
+            <param name="fullhmmer" value="True"/>
+            <param name="extra_cluster" value="--cf-create-clusters"/>
+            <param name="cassis" value="True"/>
+            <param name="cb_general" value="True"/>
             <output_collection name="genbank" type="list">
-                <element name="ARBH01000003.1.cluster001" file="ARBH01000003.1.cluster001" ftype="genbank" compare="sim_size" />
+                <element name="ARBH01000003.1.cluster001" file="ARBH01000003.1.cluster001" ftype="genbank" />
                 <element name="ARBH01000003.1.final" file="ARBH01000003.1.final" ftype="genbank"/>
             </output_collection>
             <output name="html" file="index.2.html"/>

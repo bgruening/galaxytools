@@ -6,13 +6,13 @@
 """
 import sys, os
 import argparse
-import openbabel
-openbabel.obErrorLog.StopLogging()
-import pybel
 import multiprocessing
 import tempfile
 import subprocess
 import shutil
+
+from openbabel import openbabel, pybel
+openbabel.obErrorLog.StopLogging()
 
 def parse_command_line():
     parser = argparse.ArgumentParser()

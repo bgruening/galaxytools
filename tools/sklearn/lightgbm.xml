@@ -1,0 +1,283 @@
+<tool id="sklearn_lightgbm" name="LightGBM" version="@VERSION@">
+    <description>- train and apply LightGBM models</description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements">
+          <requirement type="package" version="2.3.0">lightgbm</requirement>
+    </expand>
+    <expand macro="macro_stdio"/>
+    <version_command>echo "@VERSION@"</version_command>
+    <command><![CDATA[
+    python '$lightgbm_script' '$inputs'
+]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs"/>
+        <configfile name="lightgbm_script">
+<![CDATA[
+import json
+import lightgbm as lgb
+import pandas
+import sys
+
+from scipy.io import mmread
+from galaxy_ml.utils import get_X_y
+
+
+N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
+
+# Get inputs, outputs.
+input_json_path = sys.argv[1]
+with open(input_json_path, "r") as param_handler:
+    params = json.load(param_handler)
+print(params)
+
+# Put all cheetah up here to avoid confusion.
+#if $selected_tasks.selected_task == "train":
+infile1 = "$selected_tasks.selected_algorithms.input_options.infile1"
+infile2 = "$selected_tasks.selected_algorithms.input_options.infile2"
+#else:
+infile_model = "$selected_tasks.infile_model"
+infile_data = "$selected_tasks.infile_data"
+#end if
+outfile_fit = "$outfile_fit"
+outfile_predict = "$outfile_predict"
+
+# All Python from here on out:
+
+if params["selected_tasks"]["selected_task"] == "train":
+    algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
+    options = params["selected_tasks"]["selected_algorithms"]["options"]
+    options['num_threads'] = N_JOBS
+    if "max_leaf_nodes" in options:
+        options["num_leaves"] = options["max_leaf_nodes"]
+        options.pop("max_leaf_nodes")
+
+    X, y = get_X_y(params, infile1, infile2)
+    lgb_train = lgb.Dataset(X, y)
+    gbm = lgb.train(options, lgb_train)
+    gbm.save_model(outfile_fit)
+
+else:
+    gbm = lgb.Booster(model_file=infile_model)
+    header = 'infer' if params["selected_tasks"]["header"] else None
+    data = pandas.read_csv(infile_data, sep='\t', header=header, index_col=None, parse_dates=True, encoding=None)
+    prediction = gbm.predict(data, num_iteration=gbm.best_iteration)
+    prediction_df = pandas.DataFrame(prediction, columns=["predicted"])
+    res = pandas.concat([data, prediction_df], axis=1)
+    res.to_csv(path_or_buf = outfile_predict, sep="\t", index=False)
+
+]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="sl_Conditional">
+            <param name="selected_algorithm" type="select" label="Classification or regression?">
+                <option value="LightGBMClassifier">Classification</option>
+                <option value="LightGBMRegressor">Regression</option>
+            </param>
+            <when value="LightGBMClassifier" >
+                <expand macro="sl_mixed_input"/>
+                <section name="options" title="Advanced Options" expanded="False">
+                    <param argument="objective" type="select" label="Loss function">
+                        <option value="binary">Binary log loss classification</option>
+                        <option value="multiclass">Multiclass - softmax objective function</option>
+                        <option value="multiclassova">Multiclass - one-vs-all binary objective function</option>
+                    </param>
+                    <param name="num_class" label="Number of classes" type="integer" value="1"/>
+                    <expand macro="n_estimators" default_value="100" help="The number of boosting stages to perform"/>
+                    <expand macro="max_depth" default_value="3" help="maximum depth of the individual regression estimators"/>
+                    <expand macro="learning_rate" default_value='0.1'/>
+                    <expand macro="max_leaf_nodes"/>
+                    <expand macro="subsample"/>
+                    <expand macro="verbose"/>
+                    <expand macro="feature_fraction"/>
+                    <expand macro="lambda_l1"/>
+                    <expand macro="lambda_l2"/>
+                    <expand macro="min_gain_to_split"/>
+                    <expand macro="min_child_weight"/>
+                    <expand macro="random_state"/>
+                </section>
+            </when>
+
+            <when value="LightGBMRegressor">
+                <expand macro="sl_mixed_input"/>
+                <section name="options" title="Advanced Options" expanded="False">
+                    <param argument="objective" type="select" label="Loss function">
+                        <option value="l1">Absolute loss</option>
+                        <option value="l2">Square loss</option>
+                        <option value="rmse">Root square loss</option>
+                        <option value="huber">Huber loss - combination of least squares regression and least absolute deviation</option>
+                        <option value="quantile">Quantile - use alpha to specify the quantile</option>
+                    </param>
+                    <expand macro="n_estimators" default_value="100" help="The number of boosting stages to perform"/>
+                    <expand macro="max_depth" default_value="3" help="maximum depth of the individual regression estimators"/>
+                    <expand macro="learning_rate" default_value='0.1'/>
+                    <expand macro="max_leaf_nodes"/>
+                    <expand macro="subsample"/>
+                    <expand macro="verbose"/>
+                    <expand macro="feature_fraction"/>
+                    <expand macro="lambda_l1"/>
+                    <expand macro="lambda_l2"/>
+                    <expand macro="min_gain_to_split"/>
+                    <expand macro="min_child_weight"/>
+                    <expand macro="random_state"/>
+                </section>
+            </when>
+        </expand>
+    </inputs>
+
+    <outputs>
+      <data format="tabular" name="outfile_predict">
+          <filter>selected_tasks['selected_task'] == 'load'</filter>
+      </data>
+      <data format="txt" name="outfile_fit" label="${tool.name}.${selected_tasks.selected_algorithms.selected_algorithm}">
+          <filter>selected_tasks['selected_task'] == 'train'</filter>
+      </data>
+    </outputs>
+
+    <tests>
+        <test>
+            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="header1" value="True"/>
+            <param name="selected_column_selector_option" value="all_columns"/>
+            <param name="header2" value="True"/>
+            <param name="col2" value="1"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="LightGBMRegressor"/>
+            <param name="objective" value="l2"/>
+            <param name="n_estimators" value="10000"/>
+            <param name="learning_rate" value="0.02"/>
+            <param name="max_leaf_nodes" value="32"/>
+            <param name="feature_fraction" value="0.9"/>
+            <param name="subsample" value="0.9"/>
+            <param name="max_depth" value="8"/>
+            <param name="lambda_l1" value="0.04"/>
+            <param name="lambda_l2" value="0.07"/>
+            <param name="min_gain_to_split" value="0.02"/>
+            <param name="min_child_weight" value="39.0"/>
+            <param name="verbose" value="-1"/>
+            <param name="random_state" value="1"/>
+            <output name="outfile_fit" file="lgb_regr_model.txt" compare="sim_size" delta="5"/>
+        </test>
+        <test>
+            <param name="infile_model" value="lgb_regr_model.txt" ftype="txt"/>
+            <param name="infile_data" value="regression_X.tabular" ftype="tabular"/>
+            <param name="selected_task" value="load"/>
+            <param name="header" value="True"/>
+            <output name="outfile_predict" file="lgb_prediction_result01.tabular"/>
+        </test>
+        <test>
+            <param name="infile1" value="train.tabular" ftype="tabular"/>
+            <param name="infile2" value="train.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4"/>
+            <param name="col2" value="5"/>
+            <param name="selected_task" value="train"/>
+            <param name="selected_algorithm" value="LightGBMClassifier"/>
+            <param name="objective" value="binary"/>
+            <param name="n_estimators" value="10000"/>
+            <param name="learning_rate" value="0.02"/>
+            <param name="max_leaf_nodes" value="32"/>
+            <param name="feature_fraction" value="0.9"/>
+            <param name="subsample" value="0.9"/>
+            <param name="max_depth" value="8"/>
+            <param name="lambda_l1" value="0.04"/>
+            <param name="lambda_l2" value="0.07"/>
+            <param name="min_gain_to_split" value="0.02"/>
+            <param name="min_child_weight" value="39.0"/>
+            <param name="verbose" value="-1"/>
+            <param name="random_state" value="1"/>
+            <output name="outfile_fit" file="lgb_class_model.txt" compare="sim_size" delta="5"/>
+        </test>
+
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+LightGBM is a gradient boosting framework that uses tree based learning algorithms.
+
+For information about the algorithm and parameter settings please refer to the `LightGBM website`_.
+
+.. _`LightGBM website`: https://lightgbm.readthedocs.io/en/latest/index.html
+
+ **1 - Methods**
+ 
+ There are two operations available:
+
+  1 - Train a model: A training set containing samples and their respective labels (or predicted values) are used as input. Based on the options selected, an estimator object is fitted to the data and is returned.
+
+  2 - Load a model and predict: An existing model is used to predict the class labels (or regression values) for a new dataset.
+
+ **2 - Training input**
+ When you choose to train a model, you need a features dataset X and a labels set y. This tool expects tabular or sparse data for X and a single column for y (tabular). You can select a subset of columns in a tabular dataset as your features dataset or labels column. Below some examples are shown:
+
+ **Sample tabular features dataset**
+ 
+ The following training dataset contains 3 feature columns and a column containing class labels. You can simply select the first 3 columns as features and the last column as labels:
+
+ ::
+
+  4.01163365529    -6.10797684314    8.29829894763     1
+  10.0788438916    1.59539821454     10.0684278289     0
+  -5.17607775503   -0.878286135332   6.92941850665     2
+  4.00975406235    -7.11847496542    9.3802423585      1
+  4.61204065139    -5.71217537352    9.12509610964     1
+
+
+ **Sample sparse features dataset**
+ 
+ In this case you cannot specify a column range.
+
+ ::
+
+  4 1048577 8738
+  1 271 0.02083333333333341
+  1 1038 0.02461995616119806
+  2 829017 0.01629088031127686
+  2 829437 0.01209127083516686
+  2 830752 0.02535100632816968
+  3 1047487 0.01485722929945572
+  3 1047980 0.02640566620767753
+  3 1048475 0.01665869913262564
+  4 608 0.01662975263094352
+  4 1651 0.02519674277562741
+  4 4053 0.04223659971350601
+
+
+ **2 - Training output**
+ 
+ The trained model is generated and output in the form of a text file.
+
+
+ **3 - Prediction input**
+
+ When you choose to load a model and do prediction, the tool expects an already trained estimator and a tabular dataset as input. The dataset contains new samples for which you want to classify or predict values.
+
+
+ .. class:: warningmark
+
+ The number of feature columns must be the same in training and prediction datasets!
+
+
+ **3 - Prediction output**
+ 
+ The tool predicts the class labels for new samples and adds them as the last column to the prediction dataset. The new dataset (i.e. tabular input plus an additional column containing predicted values) is then returned as a tabular file. The prediction output format should look like the training dataset.
+
+    ]]></help>
+    <expand macro="sklearn_citation">
+        <citation type="bibtex">
+@incollection{NIPS2017_6907,
+title = {LightGBM: A Highly Efficient Gradient Boosting Decision Tree},
+author = {Ke, Guolin and Meng, Qi and Finley, Thomas and Wang, Taifeng and Chen, Wei and Ma, Weidong and Ye, Qiwei and Liu, Tie-Yan},
+booktitle = {Advances in Neural Information Processing Systems 30},
+editor = {I. Guyon and U. V. Luxburg and S. Bengio and H. Wallach and R. Fergus and S. Vishwanathan and R. Garnett},
+pages = {3146--3154},
+year = {2017},
+publisher = {Curran Associates, Inc.},
+url = {http://papers.nips.cc/paper/6907-lightgbm-a-highly-efficient-gradient-boosting-decision-tree.pdf}
+}
+        </citation>
+    </expand>
+</tool>
