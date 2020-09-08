@@ -181,12 +181,12 @@ def _stream_fasta_to_file(fasta_stream, target_directory, database_id,
             '--db', fasta_filename]
     if params['tax_cond']['tax_select'] == "history":
         for i in ["taxonmap", "taxonnodes", "taxonnames"]:
-            args.extend(['--'+i, params['tax_cond'][i]])
+            args.extend(['--' + i, params['tax_cond'][i]])
     elif params['tax_cond']['tax_select'] == "ncbi":
         args.extend(['--taxonnodes',
-                     params['tax_cond']['ncbi_tax']+'nodes.dmp'])
+                     params['tax_cond']['ncbi_tax'] + 'nodes.dmp'])
         args.extend(['--taxonnames',
-                     params['tax_cond']['ncbi_tax']+'names.dmp'])
+                     params['tax_cond']['ncbi_tax'] + 'names.dmp'])
 
     tmp_stderr = tempfile.NamedTemporaryFile(prefix="tmp-data-manager-diamond-database-builder-stderr")
     proc = subprocess.Popen(args=args, shell=False, cwd=target_directory,
@@ -204,7 +204,7 @@ def _stream_fasta_to_file(fasta_stream, target_directory, database_id,
         sys.exit(return_code)
     tmp_stderr.close()
     os.remove(temp_fasta.name)
-    return dict(value=database_id, name=database_name, 
+    return dict(value=database_id, name=database_name,
                 db_path="%s.dmnd" % fasta_base_filename)
 
 
