@@ -1,48 +1,84 @@
-<?xml version='1.0' encoding='UTF-8'?>
 <tool id="imagej2_bunwarpj_elastic_transform" name="Apply elastic transformation" version="@WRAPPER_VERSION@.0">
     <description>with bUnwarpJ</description>
     <macros>
         <import>imagej2_macros.xml</import>
     </macros>
-    <expand macro="fiji_requirements" />
-    <command>
-<![CDATA[
-    python $__tool_directory__/imagej2_bunwarpj_elastic_transform.py
-    --target_image "$target_image"
-    --target_image_format $target_image.ext
-    --source_image "$source_image"
-    --source_image_format $source_image.ext
-    --elastic_transformation $elastic_transformation
-    --source_out "$source_out"
-    --source_out_datatype $source_out_datatype
-    --jython_script $__tool_directory__/imagej2_bunwarpj_elastic_transform_jython_script.py
-]]>
-    </command>
+    <expand macro="fiji_requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+#import os
+#import tempfile
+#set error_log = 'output_log.txt'
+#set source_out_suffix = '.' + str($source_out_datatype)
+#set tiff_suffix = '.tiff'
+#set tmp_dir = $tempfile.mkdtemp(prefix='tmp-imagej-')
+
+## ImageJ2 requires file extensions to be valid image data types.
+#set source_sans_ext = $os.path.splitext($os.path.basename($source_image.file_name))[0]
+#set source_with_ext = '.'.join([source_sans_ext, $source_image.ext])
+ln -s '$source_image.file_name' '$source_with_ext' &&
+#set target_sans_ext = $os.path.splitext($os.path.basename($target_image.file_name))[0]
+#set target_with_ext = '.'.join([target_sans_ext, $target_image.ext])
+ln -s '$target_image.file_name' '$target_with_ext' &&
+#set tup = tempfile.mkstemp(suffix=$tiff_suffix, dir=$tmp_dir)
+#set fd = $tup[0]
+#set tmp_source_out_tiff = $tup[1]
+$os.close($fd)
+touch '$tmp_source_out_tiff' &&
+#set tup = tempfile.mkstemp(suffix=$source_out_suffix, dir=$tmp_dir)
+#set fd = $tup[0]
+#set tmp_source_out = $tup[1]
+$os.close($fd)
+touch '$tmp_source_out' &&
+
+bunwarpj -elastic_transform
+'$target_with_ext'
+'$source_with_ext'
+'$elastic_transformation'
+'$tmp_source_out_tiff'
+&>'$error_log';
+if [[ $? -ne 0 ]]; then
+    cat '$error_log' >&2;
+else
+    ## bUnwarpJ produces tiff image stacks consisting of 3 slices which can be viewed in ImageJ.
+    ## The 3 slices are:: 1) the registered image, 2) the target image and 3) the black/white
+    ## warp image.  Galaxy supports only single-layered images, so we'll convert the images so
+    ## they can be viewed in Galaxy.
+    ImageJ --ij2 --headless --debug
+    --jython '$__tool_directory__/imagej2_bunwarpj_elastic_transform_jython_script.py'
+    '$tmp_source_out_tiff'
+    '$source_out_datatype'
+    '$tmp_source_out'
+    &>'$error_log';
+    if [[ $? -ne 0 ]]; then
+        cat '$error_log' >&2;
+    else
+        mv '$tmp_source_out' '$source_out';
+    fi
+fi
+]]></command>
     <inputs>
-        <param format="bmp,eps,gif,jpg,pcx,pgm,png,psd,tiff" name="target_image" type="data" label="Target image"/>
-        <param format="bmp,eps,gif,jpg,pcx,pgm,png,psd,tiff" name="source_image" type="data" label="Source image"/>
+        <expand macro="param_target_image"/>
+        <expand macro="param_source_image"/>
         <!-- Support for a bUnwarpJ elastic transformation datatype should be added to Galaxy -->
         <param format="txt" name="elastic_transformation" type="data" label="Elastic transformation" help="As saved by bUnwarpJ in elastic format"/>
         <param name="source_out_datatype" type="select" label="Save registered source image as format">
-            <expand macro="image_datatypes" />
+            <expand macro="image_datatypes"/>
         </param>
     </inputs>
     <outputs>
-        <data name="source_out" format="png" label="${tool.name} on ${on_string}: Registered source image">
+        <data name="source_out" format="png" label="${tool.name} (registered source image) on ${on_string}">
             <actions>
                 <action type="format">
-                    <option type="from_param" name="source_out_datatype" />
+                    <option type="from_param" name="source_out_datatype"/>
                 </action>
             </actions>
         </data>
     </outputs>
     <tests>
         <test>
-            <param name="target_image" value="dotblot.jpg" />
-            <param name="source_image" value="blobs.gif" />
-            <param name="elastic_transformation" value="blobs_direct_transf.txt" />
-            <param name="source_out_datatype" value="png" />
-            <output name="source_out" file="elastic_trans_registered_source1.png" compare="sim_size" />
+            <expand macro="test_target_source_images"/>
+            <param name="elastic_transformation" value="blobs_direct_transf.txt"/>
+            <output name="source_out" file="elastic_trans_registered_source1.png" compare="sim_size"/>
         </test>
     </tests>
     <help>
@@ -57,5 +93,5 @@ tool.
 ]]>
 
     </help>
-    <expand macro="bunwarpj_citations" />
+    <expand macro="bunwarpj_citations"/>
 </tool>
