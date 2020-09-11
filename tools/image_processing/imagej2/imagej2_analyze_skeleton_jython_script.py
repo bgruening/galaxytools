@@ -2,7 +2,6 @@ import math
 import sys
 
 from ij import IJ
-
 from sc.fiji.analyzeSkeleton import AnalyzeSkeleton_
 
 BASIC_NAMES = ['Branches', 'Junctions', 'End-point Voxels',
