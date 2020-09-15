@@ -14,7 +14,6 @@ touch '$error_log' &&
 ## ImageJ2 requires file extensions to be valid image data types.
 #set source_out_suffix = '.' + str($source_out_datatype)
 #set target_out_suffix = '.' + str($target_out_datatype)
-#set tiff_suffix = '.tiff'
 #set source_image_sans_ext = $os.path.splitext($os.path.basename($source_image.file_name))[0]
 #set source_image_with_ext = $os.path.join($tmp_dir, '.'.join([$source_image_sans_ext, $source_image.ext]))
 ln -s '$source_image.file_name' '$source_image_with_ext' &&
@@ -46,11 +45,6 @@ ln -s '$target_image.file_name' '$target_image_with_ext' &&
 ## it accomodates both of these requirements.  ImageJ2 also requires
 ## files to exist before use, so each file is touched.
 #if not $mono:
-    #set tup = tempfile.mkstemp(suffix=$tiff_suffix, dir=$tmp_dir)
-    #set fd = $tup[0]
-    #set tmp_target_out_tiff = $tup[1]
-    $os.close($fd)
-    touch '$tmp_target_out_tiff' &&
     #set tup = tempfile.mkstemp(suffix=$target_out_suffix, dir=$tmp_dir)
     #set fd = $tup[0]
     #set tmp_target_out = $tup[1]
@@ -59,22 +53,10 @@ ln -s '$target_image.file_name' '$target_image_with_ext' &&
 
     ## bUnwarpJ automatically names the transformation files based
     ## on the names of the source and target image file names.
-    #set tmp_target_out_transf_name = $tmp_target_out_tiff[:-5] + '_transf.txt'
-    #set tmp_target_out_transf = $os.path.join($tmp_dir, $tmp_target_out_transf_name)
-    touch '$tmp_target_out_transf' &&
+    #set tmp_target_out_transf_name_sans_ext = $os.path.splitext($target_out.file_name)[0]
+    #set tmp_target_out_transf_name = $tmp_target_out_transf_name_sans_ext + '_transf.txt'
+    touch '$tmp_target_out_transf_name' &&
 #end if
-#if $landmarks:
-    #set tup = tempfile.mkstemp(suffix=$tiff_suffix, dir=$tmp_dir)
-    #set fd = $tup[0]
-    #set tmp_landmarks_file = $tup[1]
-    $os.close($fd)
-    touch '$tmp_landmarks_file' &&
-#end if
-#set tup = tempfile.mkstemp(suffix=$tiff_suffix, dir=$tmp_dir)
-#set fd = $tup[0]
-#set tmp_source_out_tiff = $tup[1]
-$os.close($fd)
-touch '$tmp_source_out_tiff' &&
 #set tup = tempfile.mkstemp(suffix=$source_out_suffix, dir=$tmp_dir)
 #set fd = $tup[0]
 #set tmp_source_out = $tup[1]
@@ -83,9 +65,9 @@ touch '$tmp_source_out' &&
 
 ## bUnwarpJ automatically names the transformation files based
 ## on the names of the source and target image file names.
-#set tmp_source_out_transf_name = $tmp_source_out_tiff[:-5] + '_transf.txt'
-#set tmp_source_out_transf = $os.path.join($tmp_dir, $tmp_source_out_transf_name)
-touch '$tmp_source_out_transf' &&
+#set tmp_source_out_transf_name_sans_ext = $os.path.splitext($source_out.file_name)[0]
+#set tmp_source_out_transf_name = $tmp_source_out_transf_name_sans_ext + '_transf.txt'
+touch '$tmp_source_out_transf_name' &&
 
 ## Align the two images using bUnwarpJ.
 bunwarpj -align
@@ -100,14 +82,14 @@ $divergence_weight
 $curl_weight
 $image_weight
 $consistency_weight
-'$tmp_source_out_tiff'
+'$source_out'
 #if not $mono:
-    '$tmp_target_out_tiff'
+    '$target_out'
 #end if
 #if $landmarks:
     '-landmarks'
     $advanced_options_cond.landmarks_weight
-    '$tmp_landmarks_file'
+    '$landmarks_file'
 #end if
 #if $affine:
     '-affine'
@@ -121,44 +103,12 @@ $consistency_weight
     '-save_transformation'
 #end if
 &>'$error_log';
+#if $save_transformation:
+    mv '$tmp_source_out_transf_name' '$source_trans_out' &&
+    mv '$tmp_target_out_transf_name' '$target_trans_out';
+#end if
 if [[ $? -ne 0 ]]; then
     cat '$error_log' >&2;
-else
-    #if $save_transformation:
-        mv '$tmp_source_out_transf' '$source_trans_out' &&
-        mv '$tmp_target_out_transf' '$target_trans_out'  &&
-    #end if
-    ## bUnwarpJ produces tiff image stacks consisting of 3 slices which can be viewed in ImageJ.
-    ## The 3 slices are:: 1) the registered image, 2) the target image and 3) the black/white
-    ## warp image.  Galaxy supports only single-layered images, so we'll convert the images so
-    ## they can be viewed in Galaxy.
-    ImageJ --ij2 --headless --debug
-    --jython '$__tool_directory__/imagej2_bunwarpj_align_jython_script.py'
-    #if $mono:
-        ## bUnwarpJ produced only a registered source image.
-        '$tmp_source_out_tiff'
-        '$source_out_datatype'
-        '$tmp_source_out'
-         'true'
-    #else:
-        ## bUnwarpJ produced registered source and target images.
-        '$tmp_source_out_tiff'
-        '$source_out_datatype'
-        '$tmp_source_out'
-        '$tmp_target_out_tiff'
-        '$target_out_datatype'
-        '$tmp_target_out'
-        'false'
-    #end if
-    &>'$error_log';
-    if [[ $? -ne 0 ]]; then
-        cat '$error_log' >&2;
-    else
-        #if not $mono:
-            mv '$tmp_target_out' '$target_out' &&
-        #end if
-        mv '$tmp_source_out' '$source_out';
-    fi
 fi
 ]]></command>
     <inputs>
@@ -266,8 +216,8 @@ fi
             <!-- Align two images without landmarks or mask and not saving transformation matrices -->
             <expand macro="test_target_source_images"/>
             <param name="max_subsamp_fact" value="1"/>
-            <output name="source_out" file="registered_source3.png" compare="sim_size"/>
-            <output name="target_out" file="registered_target3.png" compare="sim_size"/>
+            <output name="source_out" file="registered_source1.png" compare="sim_size"/>
+            <output name="target_out" file="registered_target1.png" compare="sim_size"/>
         </test>
         <test>
             <!-- Align two images without landmarks or mask, but saving transformation matrices -->
