@@ -132,7 +132,7 @@ def __main__():
     # Run
     logger.info("Methylation extractor run with: '%s'", " ".join(cmd))
     prev_dir = os.getcwd()
-    os.chdir(output_dir) # needed due to a bug in bismark where the coverage file cannot be found
+    os.chdir(output_dir)  # needed due to a bug in bismark where the coverage file cannot be found
     process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     with process.stdout:
         log_subprocess_output(logger, process.stdout)
@@ -168,4 +168,6 @@ def __main__():
         shutil.rmtree(tmp_genome_dir)
     logger.info("Done.")
 
-if __name__ == "__main__": __main__()
+
+if __name__ == "__main__":
+    __main__()

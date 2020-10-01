@@ -4,11 +4,10 @@ import argparse
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
-import signal
 import tempfile
-from glob import glob
 
 
 def stop_err(logger, msg):
@@ -30,7 +29,7 @@ def log_subprocess_output(logger, pipe):
 
 def get_arg():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--single_or_paired',  dest='single_or_paired')
+    parser.add_argument('--single_or_paired', dest='single_or_paired')
     parser.add_argument('--input', dest='input', metavar='input')
     parser.add_argument('--output_report', dest='output_report', metavar='output_report')
     parser.add_argument('--output_bam', dest='output_bam', metavar='output_report')
@@ -73,9 +72,11 @@ def __main__():
     deduplicated_out_name = 'submitted_reads.deduplicated.bam'
     deduplicated_report_name = 'submitted_reads.deduplication_report.txt'
     logger.debug("Moving '%s' to galaxy: '%s'.", deduplicated_out_name, args.output_bam)
-    shutil.move(deduplicated_out_name, args.output_bam )
+    shutil.move(deduplicated_out_name, args.output_bam)
     logger.debug("Moving '%s' to galaxy: '%s'.", deduplicated_report_name, args.output_report)
     shutil.move('submitted_reads.deduplication_report.txt', args.output_report)
     logger.debug("Done.")
 
-if __name__=="__main__": __main__()
+
+if __name__ == "__main__":
+    __main__()

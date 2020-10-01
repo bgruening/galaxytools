@@ -91,7 +91,6 @@ def __main__():
     # default 2
     parser.add_argument('--max-reseed', dest='max_reseed', type=int)
 
-
     """
     The number of megabytes of memory a given thread is given to store path
     descriptors in --best mode. Best-first search must keep track of many paths
@@ -189,9 +188,9 @@ def __main__():
     if args.phred64:
         cmd.append('--phred64-quals')
     if args.non_directional:
-       cmd.append('--non-directional')
+        cmd.append('--non-directional')
     if args.pbat:
-       cmd.append('--pbat')
+        cmd.append('--pbat')
     if args.suppress_header:
         cmd.append('--sam-no-hd')
     if args.output_unmapped_reads or (args.output_unmapped_reads_l and args.output_unmapped_reads_r):
@@ -294,4 +293,5 @@ def __main__():
         shutil.rmtree(output_dir)
 
 
-if __name__ == "__main__": __main__()
+if __name__ == "__main__":
+    __main__()

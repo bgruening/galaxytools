@@ -68,4 +68,5 @@ def __main__():
         stop_err(logger, "Bismark pretty report error (also check the log file if any)!\n%s" % process.stderr)
 
 
-if __name__ == "__main__": __main__()
+if __name__ == "__main__":
+    __main__()
