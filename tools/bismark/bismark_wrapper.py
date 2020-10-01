@@ -268,7 +268,7 @@ def __main__():
 
         if os.path.exists(bam_path):
             if args.sort_bam:
-                cmd = ['samtools', 'sort', '-@', str(args.num_threads), bam_path, 'sorted_bam']
+                cmd = ['samtools', 'sort', '-@', str(args.num_threads), bam_path, '-o', os.path.join(output_dir, 'sorted_bam.bam')]
                 logger.info("Sorting bam with: '%s'", cmd)
                 process = subprocess.Popen(args=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 with process.stdout:
@@ -276,11 +276,11 @@ def __main__():
                 exitcode = process.wait()
                 if exitcode != 0:
                     raise Exception(process.stderr)
-                shutil.move('sorted_bam.bam', args.output)
+                shutil.move(os.path.join(output_dir, 'sorted_bam.bam'), args.output)
             else:
                 shutil.move(bam_path, args.output)
         else:
-            stop_err(logger, 'BAM file no found:\n%s' % bam_path)
+            stop_err(logger, 'BAM file not found:\n%s' % bam_path)
 
     except Exception as e:
         stop_err(logger, 'Error in merging bam files!\n%s' % e)
