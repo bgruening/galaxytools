@@ -1,17 +1,15 @@
 import argparse
 import ast
 import json
-import mlxtend.regressor
-import mlxtend.classifier
-import pandas as pd
 import pickle
-import sklearn
 import sys
 import warnings
-from sklearn import ensemble
 
-from galaxy_ml.utils import (load_model, get_cv, get_estimator,
-                             get_search_params)
+import mlxtend.classifier
+import mlxtend.regressor
+import pandas as pd
+from galaxy_ml.utils import (get_cv, get_estimator,
+                             get_search_params, load_model)
 
 
 warnings.filterwarnings('ignore')

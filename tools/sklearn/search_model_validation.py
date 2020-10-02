@@ -1,27 +1,25 @@
 import argparse
 import collections
-import imblearn
-import joblib
 import json
-import numpy as np
 import os
-import pandas as pd
 import pickle
-import skrebate
 import sys
 import warnings
+
+import imblearn
+import joblib
+import numpy as np
+import pandas as pd
+import skrebate
+from galaxy_ml.utils import (clean_params, get_cv, get_main_estimator, get_module,
+                             get_scoring, load_model, read_columns, SafeEval,
+                             try_get_attr)
 from scipy.io import mmread
 from sklearn import (cluster, decomposition, feature_selection,
                      kernel_approximation, model_selection, preprocessing)
 from sklearn.exceptions import FitFailedWarning
-from sklearn.model_selection._validation import _score, cross_validate
 from sklearn.model_selection import _search, _validation
-from sklearn.pipeline import Pipeline
-
-from galaxy_ml.utils import (SafeEval, get_cv, get_scoring, load_model,
-                             read_columns, try_get_attr, get_module,
-                             clean_params, get_main_estimator)
-
+from sklearn.model_selection._validation import _score, cross_validate
 
 _fit_and_score = try_get_attr('galaxy_ml.model_validations', '_fit_and_score')
 setattr(_search, '_fit_and_score', _fit_and_score)
@@ -267,12 +265,12 @@ def _handle_X_y(estimator, params, infile1, infile2, loaded_df={},
         loaded_df[df_key] = infile2
 
     y = read_columns(
-            infile2,
-            c=c,
-            c_option=column_option,
-            sep='\t',
-            header=header,
-            parse_dates=True)
+        infile2,
+        c=c,
+        c_option=column_option,
+        sep='\t',
+        header=header,
+        parse_dates=True)
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
     if input_type == 'refseq_and_interval':
@@ -497,12 +495,12 @@ def main(inputs, infile_estimator, infile1, infile2,
         loaded_df[df_key] = groups
 
         groups = read_columns(
-                groups,
-                c=c,
-                c_option=column_option,
-                sep='\t',
-                header=header,
-                parse_dates=True)
+            groups,
+            c=c,
+            c_option=column_option,
+            sep='\t',
+            header=header,
+            parse_dates=True)
         groups = groups.ravel()
         options['cv_selector']['groups_selector'] = groups
 

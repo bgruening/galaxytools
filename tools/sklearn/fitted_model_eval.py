@@ -1,13 +1,13 @@
 import argparse
 import json
-import pandas as pd
 import warnings
 
+import pandas as pd
+from galaxy_ml.utils import get_scoring, load_model, read_columns
 from scipy.io import mmread
-from sklearn.pipeline import Pipeline
 from sklearn.metrics.scorer import _check_multimetric_scoring
 from sklearn.model_selection._validation import _score
-from galaxy_ml.utils import get_scoring, load_model, read_columns
+from sklearn.pipeline import Pipeline
 
 
 def _get_X_y(params, infile1, infile2):
@@ -67,12 +67,12 @@ def _get_X_y(params, infile1, infile2):
         loaded_df[df_key] = infile2
 
     y = read_columns(
-            infile2,
-            c=c,
-            c_option=column_option,
-            sep='\t',
-            header=header,
-            parse_dates=True)
+        infile2,
+        c=c,
+        c_option=column_option,
+        sep='\t',
+        header=header,
+        parse_dates=True)
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
 
