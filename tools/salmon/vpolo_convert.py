@@ -1,8 +1,9 @@
 #!/usr/bin/env python
-
-from vpolo.alevin import parser as par
 import argparse
 import os
+
+from vpolo.alevin import parser as par
+
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--mtx", "-m", action="store_true", help="--dumpMtx flag set")
