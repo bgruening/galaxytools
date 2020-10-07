@@ -1,23 +1,28 @@
-from chembl_webresource_client.settings import Settings
-Settings.Instance().CACHING = False
-from chembl_webresource_client.new_client import new_client
 import argparse
+
+from chembl_webresource_client.new_client import new_client
+from chembl_webresource_client.settings import Settings
+
+Settings.Instance().CACHING = False
+
 
 def open_file(filename):
     with open(filename) as f:
         return f.readline().split()[0]
 
+
 def get_smiles(res):
     """
     Get a list of SMILES from function results
-    """ 
+    """
     smiles = set()
-    for smi in res: 
+    for smi in res:
         try:
             smiles.add('{}\t{}'.format(smi['molecule_structures']['canonical_smiles'], smi['molecule_chembl_id']))
         except TypeError:
             continue
     return smiles
+
 
 def sim_search(smiles, tanimoto):
     """
@@ -25,19 +30,22 @@ def sim_search(smiles, tanimoto):
     """
     similarity = new_client.similarity
     return similarity.filter(smiles=smiles, similarity=tanimoto).only(['molecule_structures', 'molecule_chembl_id'])
-    
+
+
 def substr_search(smiles):
     """
     Return compounds which contain the SMILES substructure input
     """
     substructure = new_client.substructure
     return substructure.filter(smiles=smiles).only(['molecule_structures', 'molecule_chembl_id'])
-    
+
+
 def filter_drugs(mols):
     """
     Return only compounds which are approved drugs
     """
     return mols.filter(max_phase=4)
+
 
 def filter_biotherapeutic(mols):
     """
@@ -45,17 +53,20 @@ def filter_biotherapeutic(mols):
     """
     return mols.filter(biotherapeutic__isnull=False)
 
+
 def filter_nat_prod(mols):
     """
     Return only natural products
     """
     return mols.filter(natural_product=1)
 
+
 def filter_ro5(mols):
     """
     Return only compounds with no RO5 violations
     """
     return mols.filter(molecule_properties__num_ro5_violations=0)
+
 
 def main():
     parser = argparse.ArgumentParser(description='Search ChEMBL database for compounds')
@@ -101,7 +112,7 @@ def main():
     # write to file
     with open(args.output, 'w') as f:
         f.write('\n'.join(mols))
-    
+
 
 if __name__ == "__main__":
     main()
