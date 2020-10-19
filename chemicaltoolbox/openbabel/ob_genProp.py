@@ -4,22 +4,24 @@
     Output: Physico-chemical properties are computed and stored as metadata in the sdf output file.
     Copyright 2012, Bjoern Gruening and Xavier Lucas
 """
-import sys, os
 import argparse
-import openbabel
-openbabel.obErrorLog.StopLogging()
-import cheminfolib
+import sys
 
+import cheminfolib
+import openbabel
 from openbabel import pybel
+openbabel.obErrorLog.StopLogging()
+
 
 def parse_command_line(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument('--iformat', default='sdf' , help='input file format')
+    parser.add_argument('--iformat', default='sdf', help='input file format')
     parser.add_argument('-i', '--input', required=True, help='input file name')
-    parser.add_argument('--oformat', default='sdf', choices = ['sdf', 'table'] , help='output file format')
+    parser.add_argument('--oformat', default='sdf', choices=['sdf', 'table'], help='output file format')
     parser.add_argument('--header', type=bool, help='Include the header as the first line of the output table')
     parser.add_argument('-o', '--output', required=True, help='output file name')
     return parser.parse_args()
+
 
 def compute_properties(args):
     if args.oformat == 'sdf':
@@ -29,17 +31,18 @@ def compute_properties(args):
         if args.header:
             mol = next(pybel.readfile(args.iformat, args.input))
             metadata = cheminfolib.get_properties_ext(mol)
-            outfile.write( '%s\n' % '\t'.join( [ cheminfolib.ColumnNames[key] for key in metadata ] ) )
+            outfile.write('%s\n' % '\t'.join([cheminfolib.ColumnNames[key] for key in metadata]))
 
     for mol in pybel.readfile(args.iformat, args.input):
         if mol.OBMol.NumHvyAtoms() > 5:
             metadata = cheminfolib.get_properties_ext(mol)
             if args.oformat == 'sdf':
-                [ mol.data.update( { cheminfolib.ColumnNames[key] : metadata[key] } ) for key in metadata ]
+                [mol.data.update({cheminfolib.ColumnNames[key]: metadata[key]}) for key in metadata]
                 outfile.write(mol)
             else:
-                outfile.write( '%s\n' % ('\t'.join( [ str(metadata[key]) for key in metadata ] ) ) )
+                outfile.write('%s\n' % ('\t'.join([str(metadata[key]) for key in metadata])))
     outfile.close()
+
 
 def __main__():
     """
@@ -48,5 +51,6 @@ def __main__():
     args = parse_command_line(sys.argv)
     compute_properties(args)
 
-if __name__ == "__main__" :
+
+if __name__ == "__main__":
     __main__()

@@ -4,18 +4,19 @@
     Output: Molecule file with removed ions and fragments.
     Copyright 2012, Bjoern Gruening and Xavier Lucas
 """
-import sys, os
 import argparse
 
 from openbabel import openbabel, pybel
 openbabel.obErrorLog.StopLogging()
 
+
 def parse_command_line():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-iformat', default='sdf' , help='input file format')
+    parser.add_argument('-iformat', default='sdf', help='input file format')
     parser.add_argument('-i', '--input', required=True, help='input file name')
     parser.add_argument('-o', '--output', required=True, help='output file name')
     return parser.parse_args()
+
 
 def remove_ions(args):
     outfile = pybel.Outputfile(args.iformat, args.output, overwrite=True)
@@ -29,6 +30,7 @@ def remove_ions(args):
                 outfile.write(mol)
     outfile.close()
 
+
 def __main__():
     """
         Remove any counterion and delete any fragment but the largest one for each molecule.
@@ -36,5 +38,6 @@ def __main__():
     args = parse_command_line()
     remove_ions(args)
 
-if __name__ == "__main__" :
+
+if __name__ == "__main__":
     __main__()
