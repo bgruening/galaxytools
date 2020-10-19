@@ -21,6 +21,8 @@ def remove_protonation( args ):
     outfile = pybel.Outputfile(args.iformat, args.output, overwrite=True)
     for mol in pybel.readfile(args.iformat, args.input):
         [atom.OBAtom.SetFormalCharge(0) for atom in mol.atoms]
+        if 'inchi' in mol.data:
+            del mol.data['inchi']  # remove inchi cache so modified mol is saved
         outfile.write( mol )
     outfile.close()
 

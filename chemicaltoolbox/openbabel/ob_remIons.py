@@ -22,6 +22,8 @@ def remove_ions(args):
     for mol in pybel.readfile(args.iformat, args.input):
         if mol.OBMol.NumHvyAtoms() > 5:
             mol.OBMol.StripSalts(0)
+            if 'inchi' in mol.data:
+                del mol.data['inchi']  # remove inchi cache so modified mol is saved
             # Check if new small fragments have been created and remove them
             if mol.OBMol.NumHvyAtoms() > 5:
                 outfile.write(mol)
