@@ -4,17 +4,16 @@
     Output: parse the target file using the same protocol used to generate the databases in our servers. Physico-chemical properties are computed and stored as metadata in the sdf output file.
     Copyright 2012, Bjoern Gruening and Xavier Lucas
 """
-import sys, os
 import argparse
-import math
-import numpy as np
 
+import numpy as np
 from openbabel import openbabel, pybel
 openbabel.obErrorLog.StopLogging()
-#TODO get rid of eval()
+# TODO get rid of eval()
 
 global spectrophore
 spectrophore = pybel.ob.OBSpectrophore()
+
 
 def parse_command_line():
     parser = argparse.ArgumentParser()
@@ -28,25 +27,28 @@ def parse_command_line():
     parser.add_argument('-r', '--resolution', type=float, default="3.0", help='Resolution')
     return parser.parse_args()
 
+
 def set_parameters(args):
     if args.normalization == 'No':
-        spectrophore.SetNormalization( spectrophore.NoNormalization )
+        spectrophore.SetNormalization(spectrophore.NoNormalization)
     else:
-        spectrophore.SetNormalization( eval('spectrophore.NormalizationTowards' + args.normalization) )
-    spectrophore.SetAccuracy( eval('spectrophore.AngStepSize' + args.accuracy) )
-    spectrophore.SetStereo( eval('spectrophore.' + args.stereo + 'StereoSpecificProbes') )
-    spectrophore.SetResolution( args.resolution )
+        spectrophore.SetNormalization(eval('spectrophore.NormalizationTowards' + args.normalization))
+    spectrophore.SetAccuracy(eval('spectrophore.AngStepSize' + args.accuracy))
+    spectrophore.SetStereo(eval('spectrophore.' + args.stereo + 'StereoSpecificProbes'))
+    spectrophore.SetResolution(args.resolution)
     return True
+
 
 def Compute_Spectrophores_distance(target_spectrophore, args):
     outfile = open(args.output, 'w')
     for mol in open(args.library, 'r'):
         try:
-            distance = ( ( np.asarray( target_spectrophore, dtype=float ) - np.asarray( mol.split('\t')[ args.column - 1 ].strip().split(', '), dtype=float) )**2).sum()
+            distance = ((np.asarray(target_spectrophore, dtype=float) - np.asarray(mol.split('\t')[args.column - 1].strip().split(', '), dtype=float))**2).sum()
         except ValueError:
             distance = 0
-        outfile.write( '%s\t%f\n' % (mol.strip(), distance ) )
+        outfile.write('%s\t%f\n' % (mol.strip(), distance))
     outfile.close()
+
 
 def __main__():
     """
@@ -59,7 +61,8 @@ def __main__():
     mol = next(pybel.readfile('sdf', args.target))
     target_spectrophore = mol.data["Spectrophores(TM)"].strip().split(', ')
     # Compute the paired-distance between every molecule in the library and the target
-    distances = Compute_Spectrophores_distance(target_spectrophore, args)
+    Compute_Spectrophores_distance(target_spectrophore, args)
 
-if __name__ == "__main__" :
+
+if __name__ == "__main__":
     __main__()

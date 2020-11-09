@@ -6,34 +6,31 @@
 
     TODO: AND/OR conditions?
 """
-import sys, os
 import argparse
-import cheminfolib
 import json
-import shlex, subprocess
+import shlex
+import subprocess
+import sys
 
+import cheminfolib
 from openbabel import pybel
 cheminfolib.pybel_stop_logging()
+
 
 def parse_command_line():
     parser = argparse.ArgumentParser()
     parser.add_argument('-i', '--input', help='Input file name')
     parser.add_argument('-iformat', help='Input file format')
-    parser.add_argument('-oformat', 
-        default='smi',
-        help='Output file format')
-    parser.add_argument('-o', '--output', 
-        help='Output file name',
-        required=True)
-    parser.add_argument('--filters', 
-        help="Specify the filters to apply",
-        required=True,
-        )
-    parser.add_argument('--list_of_names', 
-        help="A file with list of molecule names to extract. Every name is in one line.",
-        required=False,
-        )
+    parser.add_argument('-oformat', default='smi',
+                        help='Output file format')
+    parser.add_argument('-o', '--output', help='Output file name',
+                        required=True)
+    parser.add_argument('--filters', help="Specify the filters to apply",
+                        required=True)
+    parser.add_argument('--list_of_names', required=False,
+                        help="A file with list of molecule names to extract. Every name is in one line.")
     return parser.parse_args()
+
 
 def filter_precalculated_compounds(args, filters):
     outfile = pybel.Outputfile(args.oformat, args.output, overwrite=True)
@@ -53,6 +50,7 @@ def filter_precalculated_compounds(args, filters):
             outfile.write(mol)
     outfile.close()
 
+
 def filter_new_compounds(args, filters):
 
     if args.iformat == args.oformat:
@@ -70,10 +68,9 @@ def filter_new_compounds(args, filters):
         filter_cmd += ' %s>=%s %s<=%s ' % (ob_descriptor_name, min, ob_descriptor_name, max)
 
     args = shlex.split('%s "%s"' % (cmd, filter_cmd))
-    #print '%s "%s"' % (cmd, filter_cmd)
+    # print '%s "%s"' % (cmd, filter_cmd)
     # calling openbabel with subprocess and pipe potential errors occuring in openbabel to stdout
-    child = subprocess.Popen(args,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    child = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
 
     stdout, stderr = child.communicate()
     return_code = child.returncode
@@ -87,6 +84,7 @@ def filter_new_compounds(args, filters):
         sys.stdout.write(stdout.decode('utf-8'))
         sys.stdout.write(stderr.decode('utf-8'))
 
+
 def filter_by_name(args):
     outfile = pybel.Outputfile(args.oformat, args.output, overwrite=True)
     for mol in pybel.readfile('sdf', args.input):
@@ -95,16 +93,17 @@ def filter_by_name(args):
                 outfile.write(mol)
     outfile.close()
 
+
 def __main__():
     """
         Select compounds with certain properties from a small library
     """
     args = parse_command_line()
-    
+
     if args.filters == '__filter_by_name__':
         filter_by_name(args)
         return
-    
+
     # Its a small trick to get the parameters in an easy way from the xml file.
     # To keep it readable in the xml file, many white-spaces are included in that string it needs to be removed.
     # Also the last loop creates a ',{' that is not an valid jason expression.
@@ -114,7 +113,7 @@ def __main__():
         mol = next(pybel.readfile('sdf', args.input))
         for key, elem in filters.items():
             property = cheminfolib.ColumnNames.get(key, key)
-            if not property in mol.data:
+            if property not in mol.data:
                 break
         else:
             # if the for loop finishes in a normal way, we should habe all properties at least in the first molecule
@@ -124,5 +123,5 @@ def __main__():
     filter_new_compounds(args, filters)
 
 
-if __name__ == "__main__" :
+if __name__ == "__main__":
     __main__()

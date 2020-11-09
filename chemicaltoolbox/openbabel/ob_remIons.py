@@ -4,28 +4,32 @@
     Output: Molecule file with removed ions and fragments.
     Copyright 2012, Bjoern Gruening and Xavier Lucas
 """
-import sys, os
 import argparse
 
 from openbabel import openbabel, pybel
 openbabel.obErrorLog.StopLogging()
 
+
 def parse_command_line():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-iformat', default='sdf' , help='input file format')
+    parser.add_argument('-iformat', default='sdf', help='input file format')
     parser.add_argument('-i', '--input', required=True, help='input file name')
     parser.add_argument('-o', '--output', required=True, help='output file name')
     return parser.parse_args()
+
 
 def remove_ions(args):
     outfile = pybel.Outputfile(args.iformat, args.output, overwrite=True)
     for mol in pybel.readfile(args.iformat, args.input):
         if mol.OBMol.NumHvyAtoms() > 5:
             mol.OBMol.StripSalts(0)
+            if 'inchi' in mol.data:
+                del mol.data['inchi']  # remove inchi cache so modified mol is saved
             # Check if new small fragments have been created and remove them
             if mol.OBMol.NumHvyAtoms() > 5:
                 outfile.write(mol)
     outfile.close()
+
 
 def __main__():
     """
@@ -34,5 +38,6 @@ def __main__():
     args = parse_command_line()
     remove_ions(args)
 
-if __name__ == "__main__" :
+
+if __name__ == "__main__":
     __main__()
