@@ -21,20 +21,19 @@ def parse_command_line():
 
 
 def remove_ions(args):
-    outfile = open(args.output, 'w')
+    with open(args.output, 'w') as outfile:
+        for index, mol in enumerate(pybel.readfile(args.iformat, args.input)):
+            if mol.OBMol.NumHvyAtoms() > 5:
+                mol.OBMol.StripSalts(0)
+                if 'inchi' in mol.data:
+                    del mol.data['inchi']  # remove inchi cache so modified mol is saved
 
-    for index, mol in enumerate(pybel.readfile(args.iformat, args.input)):
-        if mol.OBMol.NumHvyAtoms() > 5:
-            mol.OBMol.StripSalts(0)
-            if 'inchi' in mol.data:
-                del mol.data['inchi']  # remove inchi cache so modified mol is saved
+            mol = mol.write(args.iformat) if mol.OBMol.NumHvyAtoms() > 5 else '\n'
 
-        mol = mol.write(args.iformat) if mol.OBMol.NumHvyAtoms() > 5 else '\n'
-
-        if args.idx and args.iformat in ['inchi', 'smi']:
-            outfile.write(f'{index}\t{mol}')
-        elif mol != '\n':
-            outfile.write(f'{mol}')
+            if args.idx and args.iformat in ['inchi', 'smi']:
+                outfile.write(f'{index}\t{mol}')
+            elif mol != '\n':
+                outfile.write(f'{mol}')
 
 
 def __main__():
