@@ -1,9 +1,11 @@
 import argparse
 import json
-import pandas as pd
 import pickle
 
+
+import pandas as pd
 from galaxy_ml.utils import load_model, read_columns
+from scipy.io import mmread
 from sklearn.pipeline import Pipeline
 
 
@@ -31,8 +33,8 @@ def clean_params(estimator, n_jobs=None):
                 or name.endswith('_path'):
             new_p = {name: None}
             estimator.set_params(**new_p)
-        elif n_jobs is not None and (name == 'n_jobs' or
-                                     name.endswith('__n_jobs')):
+        elif n_jobs is not None and (
+                name == 'n_jobs' or name.endswith('__n_jobs')):
             new_p = {name: n_jobs}
             estimator.set_params(**new_p)
         elif name.endswith('callbacks'):
@@ -102,12 +104,12 @@ def _get_X_y(params, infile1, infile2):
         loaded_df[df_key] = infile2
 
     y = read_columns(
-            infile2,
-            c=c,
-            c_option=column_option,
-            sep='\t',
-            header=header,
-            parse_dates=True)
+        infile2,
+        c=c,
+        c_option=column_option,
+        sep='\t',
+        header=header,
+        parse_dates=True)
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
 
@@ -150,7 +152,7 @@ def main(inputs, infile_estimator, infile1, infile2, out_object,
     X_train, y_train = _get_X_y(params, infile1, infile2)
 
     estimator.fit(X_train, y_train)
-    
+
     main_est = estimator
     if isinstance(main_est, Pipeline):
         main_est = main_est.steps[-1][-1]

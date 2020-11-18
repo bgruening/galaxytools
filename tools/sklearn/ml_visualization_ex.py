@@ -1,21 +1,21 @@
 import argparse
 import json
+import os
+import warnings
+
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
-import warnings
-
+from galaxy_ml.utils import load_model, read_columns, SafeEval
 from keras.models import model_from_json
 from keras.utils import plot_model
 from sklearn.feature_selection.base import SelectorMixin
-from sklearn.metrics import precision_recall_curve, average_precision_score
-from sklearn.metrics import roc_curve, auc, confusion_matrix
+from sklearn.metrics import (auc, average_precision_score, confusion_matrix,
+                             precision_recall_curve, roc_curve)
 from sklearn.pipeline import Pipeline
-from galaxy_ml.utils import load_model, read_columns, SafeEval
 
 
 safe_eval = SafeEval()
@@ -274,10 +274,10 @@ def get_dataframe(file_path, plot_selection, header_name, column_name):
     else:
         col = None
     _, input_df = read_columns(file_path, c=col,
-                                   c_option=column_option,
-                                   return_df=True,
-                                   sep='\t', header=header,
-                                   parse_dates=True)
+                               c_option=column_option,
+                               return_df=True,
+                               sep='\t', header=header,
+                               parse_dates=True)
     return input_df
 
 

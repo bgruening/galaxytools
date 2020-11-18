@@ -1,15 +1,14 @@
 import argparse
 import json
+import pickle
+import warnings
+from ast import literal_eval
+
 import keras
 import pandas as pd
-import pickle
 import six
-import warnings
-
-from ast import literal_eval
-from keras.models import Sequential, Model
-from galaxy_ml.utils import try_get_attr, get_search_params, SafeEval
-
+from galaxy_ml.utils import get_search_params, SafeEval, try_get_attr
+from keras.models import Model, Sequential
 
 safe_eval = SafeEval()
 
@@ -177,11 +176,11 @@ def get_functional_model(config):
         # merge layers
         if 'merging_layers' in options:
             idxs = literal_eval(options.pop('merging_layers'))
-            merging_layers = [all_layers[i-1] for i in idxs]
+            merging_layers = [all_layers[i - 1] for i in idxs]
             new_layer = klass(**options)(merging_layers)
         # non-input layers
         elif inbound_nodes is not None:
-            new_layer = klass(**options)(all_layers[inbound_nodes-1])
+            new_layer = klass(**options)(all_layers[inbound_nodes - 1])
         # input layers
         else:
             new_layer = klass(**options)
@@ -189,10 +188,10 @@ def get_functional_model(config):
         all_layers.append(new_layer)
 
     input_indexes = _handle_shape(config['input_layers'])
-    input_layers = [all_layers[i-1] for i in input_indexes]
+    input_layers = [all_layers[i - 1] for i in input_indexes]
 
     output_indexes = _handle_shape(config['output_layers'])
-    output_layers = [all_layers[i-1] for i in output_indexes]
+    output_layers = [all_layers[i - 1] for i in output_indexes]
 
     return Model(inputs=input_layers, outputs=output_layers)
 

@@ -1,26 +1,25 @@
 import argparse
-import joblib
 import json
-import numpy as np
 import os
-import pandas as pd
 import pickle
 import warnings
 from itertools import chain
-from scipy.io import mmread
-from sklearn.pipeline import Pipeline
-from sklearn.metrics.scorer import _check_multimetric_scoring
-from sklearn import model_selection
-from sklearn.model_selection._validation import _score
-from sklearn.model_selection import _search, _validation
-from sklearn.utils import indexable, safe_indexing
 
+import joblib
+import numpy as np
+import pandas as pd
 from galaxy_ml.externals.selene_sdk.utils import compute_score
-from galaxy_ml.model_validations import train_test_split
 from galaxy_ml.keras_galaxy_models import _predict_generator
-from galaxy_ml.utils import (SafeEval, get_scoring, load_model,
-                             read_columns, try_get_attr, get_module,
-                             clean_params, get_main_estimator)
+from galaxy_ml.model_validations import train_test_split
+from galaxy_ml.utils import (clean_params, get_main_estimator, get_module,
+                             get_scoring, load_model, read_columns,
+                             SafeEval, try_get_attr)
+from scipy.io import mmread
+from sklearn.metrics.scorer import _check_multimetric_scoring
+from sklearn.model_selection import _search, _validation
+from sklearn.model_selection._validation import _score
+from sklearn.pipeline import Pipeline
+from sklearn.utils import indexable, safe_indexing
 
 
 _fit_and_score = try_get_attr('galaxy_ml.model_validations', '_fit_and_score')
@@ -301,12 +300,12 @@ def main(inputs, infile_estimator, infile1, infile2,
         loaded_df[df_key] = infile2
 
     y = read_columns(
-            infile2,
-            c=c,
-            c_option=column_option,
-            sep='\t',
-            header=header,
-            parse_dates=True)
+        infile2,
+        c=c,
+        c_option=column_option,
+        sep='\t',
+        header=header,
+        parse_dates=True)
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
     if input_type == 'refseq_and_interval':
@@ -335,12 +334,12 @@ def main(inputs, infile_estimator, infile1, infile2,
             groups = loaded_df[df_key]
 
         groups = read_columns(
-                groups,
-                c=c,
-                c_option=column_option,
-                sep='\t',
-                header=header,
-                parse_dates=True)
+            groups,
+            c=c,
+            c_option=column_option,
+            sep='\t',
+            header=header,
+            parse_dates=True)
         groups = groups.ravel()
 
     # del loaded_df
