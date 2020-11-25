@@ -91,7 +91,6 @@ def __main__():
     # default 2
     parser.add_argument('--max-reseed', dest='max_reseed', type=int)
 
-
     """
     The number of megabytes of memory a given thread is given to store path
     descriptors in --best mode. Best-first search must keep track of many paths
@@ -189,9 +188,9 @@ def __main__():
     if args.phred64:
         cmd.append('--phred64-quals')
     if args.non_directional:
-       cmd.append('--non-directional')
+        cmd.append('--non-directional')
     if args.pbat:
-       cmd.append('--pbat')
+        cmd.append('--pbat')
     if args.suppress_header:
         cmd.append('--sam-no-hd')
     if args.output_unmapped_reads or (args.output_unmapped_reads_l and args.output_unmapped_reads_r):
@@ -268,7 +267,7 @@ def __main__():
 
         if os.path.exists(bam_path):
             if args.sort_bam:
-                cmd = ['samtools', 'sort', '-@', str(args.num_threads), bam_path, 'sorted_bam']
+                cmd = ['samtools', 'sort', '-@', str(args.num_threads), bam_path, '-o', os.path.join(output_dir, 'sorted_bam.bam')]
                 logger.info("Sorting bam with: '%s'", cmd)
                 process = subprocess.Popen(args=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
                 with process.stdout:
@@ -276,11 +275,11 @@ def __main__():
                 exitcode = process.wait()
                 if exitcode != 0:
                     raise Exception(process.stderr)
-                shutil.move('sorted_bam.bam', args.output)
+                shutil.move(os.path.join(output_dir, 'sorted_bam.bam'), args.output)
             else:
                 shutil.move(bam_path, args.output)
         else:
-            stop_err(logger, 'BAM file no found:\n%s' % bam_path)
+            stop_err(logger, 'BAM file not found:\n%s' % bam_path)
 
     except Exception as e:
         stop_err(logger, 'Error in merging bam files!\n%s' % e)
@@ -294,4 +293,5 @@ def __main__():
         shutil.rmtree(output_dir)
 
 
-if __name__ == "__main__": __main__()
+if __name__ == "__main__":
+    __main__()
