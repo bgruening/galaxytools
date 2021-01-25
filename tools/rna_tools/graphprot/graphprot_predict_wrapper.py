@@ -206,7 +206,7 @@ if __name__ == '__main__':
         reg_len_dic = gplib.bed_get_region_lengths(args.genomic_sites_bed)
         for seq_id in seq_len_dic:
             seq_l = seq_len_dic[seq_id]
-            assert seq_id in reg_len_dic, "sequence ID \"\" missing in input .bed \"\"" %(seq_id, args.genomic_sites_bed)
+            assert seq_id in reg_len_dic, "sequence ID \"%s\" missing in input .bed \"%s\"" %(seq_id, args.genomic_sites_bed)
             reg_l = reg_len_dic[seq_id]
             assert seq_l == reg_l, "sequence length differs from .bed region length (%i != %i)" %(seq_l, reg_l)
     # Read in model parameters.

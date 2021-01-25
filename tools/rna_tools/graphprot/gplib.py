@@ -242,6 +242,7 @@ def read_fasta_into_dic(fasta_file,
                         seqs_dic=False,
                         ids_dic=False,
                         read_dna=False,
+                        short_ensembl=False,
                         reject_lc=False,
                         convert_to_uc=False,
                         skip_n_seqs=True):
@@ -256,7 +257,7 @@ def read_fasta_into_dic(fasta_file,
     >>> read_fasta_into_dic(test_fasta)
     {}
     >>> test_fasta = "test-data/test.ensembl.fa"
-    >>> read_fasta_into_dic(test_fasta, read_dna=True)
+    >>> read_fasta_into_dic(test_fasta, read_dna=True, short_ensembl=True)
     {'ENST00000415118': 'GAAATAGT', 'ENST00000448914': 'ACTGGGGGATACGAAAA'}
 
     """
@@ -276,9 +277,10 @@ def read_fasta_into_dic(fasta_file,
             seq_id = m.group(1)
             # If there is a ".", take only first part of header.
             # This assumes ENSEMBL header format ">ENST00000631435.1 cdna ..."
-            if re.search(".+\..+", seq_id):
-                m = re.search("(.+?)\..+", seq_id)
-                seq_id = m.group(1)
+            if short_ensembl:
+                if re.search(".+\..+", seq_id):
+                    m = re.search("(.+?)\..+", seq_id)
+                    seq_id = m.group(1)
             assert seq_id not in seqs_dic, "non-unique FASTA header \"%s\" in \"%s\"" % (seq_id, fasta_file)
             if ids_dic:
                 if seq_id in ids_dic:
