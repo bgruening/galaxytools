@@ -712,8 +712,8 @@ def graphprot_profile_calc_avg_profile(in_file, out_file,
                     if scores_list:
                         aps_list = \
                             list_moving_window_average_values(
-                                 scores_list,
-                                 win_extlr=ap_extlr)
+                                scores_list,
+                                win_extlr=ap_extlr)
                         start_pos = site_starts_dic[old_id]
                         seq_id = old_id
                         # Get original FASTA sequence ID.
