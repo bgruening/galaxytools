@@ -287,12 +287,12 @@ if __name__ == '__main__':
             "Whole site prediction output .predictions file \"%s\" not found" \
             % (ws_predictions_file)
         if args.conf_out:
-            # Filter by pos_tr_ws_pred_med median.
-            assert "pos_tr_ws_pred_med" in param_dic, \
+            # Filter by pos_train_ws_pred_median median.
+            assert "pos_train_ws_pred_median" in param_dic, \
                 "whole site top scores median information "\
                 "missing in .params file"
             pos_tr_ws_pred_med = \
-                float(param_dic["pos_tr_ws_pred_med"])
+                float(param_dic["pos_train_ws_pred_median"])
             # Filtered file.
             filt_ws_predictions_file = args.data_id + ".p50.predictions"
             print("Extracting p50 sites from whole site predictions"
