@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-import subprocess
 import argparse as ap
-import gplib
-import sys
 import os
+import subprocess
+import sys
+
+import gplib
 
 
 """

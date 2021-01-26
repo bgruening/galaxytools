@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
 
-import subprocess
 import argparse as ap
-import gplib
-import sys
 import os
+import subprocess
+import sys
+
+import gplib
 
 
 """
@@ -46,8 +47,8 @@ OUTPUT FILES
 EXAMPLE CALLS
 =============
 
-PEP8 coming out of hotel room. FB enters.
-FB: Who is this f*** ??
+flake8 coming out of hotel room. FB enters.
+FB: Who is this f*** ???
 
 
 python graphprot_predict_wrapper.py --model test2.model --params test2.params

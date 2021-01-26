@@ -1,10 +1,10 @@
 
-from distutils.spawn import find_executable
-import subprocess
-import statistics
-import random
 import gzip
+import random
 import re
+import statistics
+import subprocess
+from distutils.spawn import find_executable
 
 
 """
@@ -142,10 +142,10 @@ def list_moving_window_average_values(in_list,
                 s = 0
             if e > l_list:
                 e = l_list
-            ln = e-s
+            ln = e - s
             sc_sum = 0
             for j in range(ln):
-                sc_sum += in_list[s+j]
+                sc_sum += in_list[s + j]
             new_list[i] = sc_sum / ln
     else:
         assert 0, "invalid method ID given (%i)" % (method)
@@ -270,7 +270,7 @@ def read_fasta_into_dic(fasta_file,
     seq = ""
 
     # Go through FASTA file, extract sequences.
-    if re.search(".+\.gz$", fasta_file):
+    if re.search(r".+\.gz$", fasta_file):
         f = gzip.open(fasta_file, 'rt')
     else:
         f = open(fasta_file, "r")
@@ -281,8 +281,8 @@ def read_fasta_into_dic(fasta_file,
             # If there is a ".", take only first part of header.
             # This assumes ENSEMBL header format ">ENST00000631435.1 cdna ..."
             if short_ensembl:
-                if re.search(".+\..+", seq_id):
-                    m = re.search("(.+?)\..+", seq_id)
+                if re.search(r".+\..+", seq_id):
+                    m = re.search(r"(.+?)\..+", seq_id)
                     seq_id = m.group(1)
             assert seq_id not in seqs_dic, \
                 "non-unique FASTA header \"%s\" in \"%s\"" \
@@ -811,14 +811,14 @@ def graphprot_profile_extract_peak_regions(in_file, out_file,
                                            sc_thr=sc_thr)
                     start_pos = site_starts_dic[old_id]
                     # Print out peaks in .bed format.
-                    for l in peak_list:
-                        peak_s = start_pos + l[0]
-                        peak_e = start_pos + l[1]
-                        site_id = "%s,%i" % (old_id, l[2])
+                    for ln in peak_list:
+                        peak_s = start_pos + ln[0]
+                        peak_e = start_pos + ln[1]
+                        site_id = "%s,%i" % (old_id, ln[2])
                         OUTPEAKS.write("%s\t%i\t%i"
                                        "\t%s\t%f\t+\n"
                                        % (old_id, peak_s,
-                                          peak_e, site_id, l[3]))
+                                          peak_e, site_id, ln[3]))
                     # Reset list.
                     scores_list = []
                 old_id = cur_id
@@ -836,12 +836,12 @@ def graphprot_profile_extract_peak_regions(in_file, out_file,
                                        sc_thr=sc_thr)
         start_pos = site_starts_dic[old_id]
         # Print out peaks in .bed format.
-        for l in peak_list:
-            peak_s = start_pos + l[0]
-            peak_e = start_pos + l[1]
-            site_id = "%s,%i" % (old_id, l[2])  # best score also 1-based.
+        for ln in peak_list:
+            peak_s = start_pos + ln[0]
+            peak_e = start_pos + ln[1]
+            site_id = "%s,%i" % (old_id, ln[2])  # best score also 1-based.
             OUTPEAKS.write("%s\t%i\t%i\t%s\t%f\t+\n"
-                           % (old_id, peak_s, peak_e, site_id, l[3]))
+                           % (old_id, peak_s, peak_e, site_id, ln[3]))
     OUTPEAKS.close()
 
 
@@ -1005,7 +1005,7 @@ def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed,
             site_sc = float(cols[4])
             assert re.search(".+,.+", site_id2), \
                 "regular expression failed for ID \"%s\"" % (site_id2)
-            m = re.search(".+,(\d+)", site_id2)
+            m = re.search(r".+,(\d+)", site_id2)
             sc_pos = int(m.group(1))  # 1-based.
             assert site_id in id2row_dic, \
                 "site ID \"%s\" not found in genomic sites dictionary" \
