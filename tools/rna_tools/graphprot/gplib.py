@@ -241,6 +241,34 @@ def split_fasta_into_test_train_files(in_fasta, test_out_fa, train_out_fa,
 
 ###############################################################################
 
+def check_seqs_dic_format(seqs_dic):
+    """
+    Check sequence dictionary for lowercase-only sequences or sequences
+    wich have lowercase nts in between uppercase nts.
+    Return suspicious IDs as list or empty list if not hits.
+    IDs with lowercase-only sequences.
+
+    >>> seqs_dic = {"id1" : "acguACGU", "id2" : "acgua", "id3" : "acgUUaUcc"}
+    >>> check_seqs_dic_format(seqs_dic)
+    ['id2', 'id3']
+    >>> seqs_dic = {"id1" : "acgAUaa", "id2" : "ACGUACUA"}
+    >>> check_seqs_dic_format(seqs_dic)
+    []
+
+    """
+    assert seqs_dic, "given seqs_dic empty"
+    bad_seq_ids = []
+    for seq_id in seqs_dic:
+        seq = seqs_dic[seq_id]
+        if re.search("^[acgtun]+$", seq):
+            bad_seq_ids.append(seq_id)
+        if re.search("[ACGTUN][acgtun]+[ACGTUN]", seq):
+            bad_seq_ids.append(seq_id)
+    return bad_seq_ids
+
+
+###############################################################################
+
 def read_fasta_into_dic(fasta_file,
                         seqs_dic=False,
                         ids_dic=False,
@@ -262,6 +290,9 @@ def read_fasta_into_dic(fasta_file,
     >>> test_fasta = "test-data/test.ensembl.fa"
     >>> read_fasta_into_dic(test_fasta, read_dna=True, short_ensembl=True)
     {'ENST00000415118': 'GAAATAGT', 'ENST00000448914': 'ACTGGGGGATACGAAAA'}
+    >>> test_fasta = "test-data/test4.fa"
+    >>> read_fasta_into_dic(test_fasta)
+    {'1': 'gccuAUGUuuua', '2': 'cugaAACUaugu'}
 
     """
     if not seqs_dic:

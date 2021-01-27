@@ -200,6 +200,29 @@ if __name__ == '__main__':
         assert args.opt_neg_fa, "--opt-pos but no --opt-neg given"
     if args.opt_neg_fa:
         assert args.opt_pos_fa, "--opt-neg but no --opt-pos given"
+    # Check for lowercase only sequences, which cause GP to crash.
+    error_mess = "input sequences encountered containing "\
+        "only lowercase characters or lowercase characters in between "\
+        "uppercase characters. Please provide either all uppercase "\
+        "sequences or sequences containing uppercase regions surrounded "\
+        "by lowercase context regions for structure calculation (see "\
+        "viewpoint concept in original GraphProt publication "\
+        "for more details)"
+    seqs_dic = gplib.read_fasta_into_dic(args.in_pos_fa)
+    bad_ids = gplib.check_seqs_dic_format(seqs_dic)
+    assert not bad_ids, "%s" % (error_mess)
+    seqs_dic = gplib.read_fasta_into_dic(args.in_neg_fa)
+    bad_ids = gplib.check_seqs_dic_format(seqs_dic)
+    assert not bad_ids, "%s" % (error_mess)
+    if args.opt_pos_fa:
+        seqs_dic = gplib.read_fasta_into_dic(args.opt_pos_fa)
+        bad_ids = gplib.check_seqs_dic_format(seqs_dic)
+        assert not bad_ids, "%s" % (error_mess)
+    if args.opt_neg_fa:
+        seqs_dic = gplib.read_fasta_into_dic(args.opt_neg_fa)
+        bad_ids = gplib.check_seqs_dic_format(seqs_dic)
+        assert not bad_ids, "%s" % (error_mess)
+
     # If parop .fa files given.
     if args.opt_pos_fa and args.opt_neg_fa:
         c_parop_pos_fa = gplib.count_fasta_headers(args.opt_pos_fa)
