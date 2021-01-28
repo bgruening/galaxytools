@@ -221,6 +221,18 @@ if __name__ == '__main__':
     print("# input .fa sequences:   %i" % (c_in_fa))
     # Read in FASTA sequences to check for uppercase sequences.
     seqs_dic = gplib.read_fasta_into_dic(args.in_fa)
+    # Check for lowercase only sequences, which cause GP to crash.
+    error_mess = "input sequences encountered containing "\
+        "only lowercase characters or lowercase characters in between "\
+        "uppercase characters. Please provide either all uppercase "\
+        "sequences or sequences containing uppercase regions surrounded "\
+        "by lowercase context regions for structure calculation (see "\
+        "viewpoint concept in original GraphProt publication "\
+        "for more details)"
+    if args.ws_pred:
+        bad_ids = gplib.check_seqs_dic_format(seqs_dic)
+        assert not bad_ids, "%s" % (error_mess)
+
     c_uc_nt = gplib.seqs_dic_count_uc_nts(seqs_dic)
     assert c_uc_nt, "no uppercase nucleotides in input .fa sequences. "\
                     "Please change sequences to uppercase (keep in mind "\
