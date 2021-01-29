@@ -3,15 +3,14 @@
 import argparse
 import json
 
+from cp_common_functions import build_header
 from cp_common_functions import concat_conditional
 from cp_common_functions import get_json_value
 from cp_common_functions import get_pipeline_lines
 from cp_common_functions import get_total_number_of_modules
-from cp_common_functions import update_module_count
-from cp_common_functions import build_header
-from cp_common_functions import write_pipeline
 from cp_common_functions import INDENTATION
-
+from cp_common_functions import update_module_count
+from cp_common_functions import write_pipeline
 
 MODULE_NAME = "ImageMath"
 OUTPUT_FILENAME = "output.cppipe"
