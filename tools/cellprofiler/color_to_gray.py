@@ -2,10 +2,16 @@
 
 import json
 import argparse
-from cp_common_functions import * # noqa
+from cp_common_functions import INDENTATION
+from cp_common_functions import get_json_value
+from cp_common_functions import write_pipeline
+from cp_common_functions import get_pipeline_lines
+from cp_common_functions import get_total_number_of_modules
+from cp_common_functions import update_module_count
 
 MODULE_NAME = "ColorToGray"
 OUTPUT_FILENAME = "output.cppipe"
+
 
 def build_ctg_header(module_name, module_number):
     """Creates the first line of a module given the name and module number"""
@@ -18,6 +24,7 @@ def build_ctg_header(module_name, module_number):
                        "enabled:True",
                        "wants_pause:False]\n"])
     return result
+
 
 def build_main_block(input_params):
     """Creates the main block of the CP pipeline with the parameters that don't depend on conditional choices"""
@@ -115,9 +122,9 @@ def build_main_block(input_params):
     else:
         result += INDENTATION.join(
             [f"{INDENTATION}Channel count:{channel_count}\n",
-             f"Channel number:Red\\x3A 1\n",
-             f"Relative weight of the channel:1.0\n",
-             f"Image name:Channel1"
+             "Channel number:Red\\x3A 1\n",
+             "Relative weight of the channel:1.0\n",
+             "Image name:Channel1"
              ])
 
     return result
