@@ -72,12 +72,12 @@ def build_main_block(input_params):
             split_blue = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_blue.yes_no')
             blue_output_name = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_blue.name_output_image')
         elif image_type == "HSV":
-            split_hue = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_red.yes_no')
-            hue_output_name = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_red.name_output_image')
-            split_saturation = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_green.yes_no')
-            saturation_output_name = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_green.name_output_image')
-            split_value = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_blue.yes_no')
-            value_output_name = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_blue.name_output_image')
+            split_hue = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_hue.yes_no')
+            hue_output_name = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_hue.name_output_image')
+            split_saturation = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_saturation.yes_no')
+            saturation_output_name = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_saturation.name_output_image')
+            split_value = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_value.yes_no')
+            value_output_name = get_json_value(input_params, 'con_conversion_method.con_image_type.con_convert_value.name_output_image')
 
     result += INDENTATION.join(
         [f"{INDENTATION}Name the output image:{rgb_comb_name_out}\n",
@@ -118,14 +118,14 @@ def build_main_block(input_params):
             result += INDENTATION.join(
                 [f"{INDENTATION}Channel number:{get_json_value(ch,'channel_no')}\n",
                  f"Relative weight of the channel:{str(rel_weight_ch)}\n",
-                 f"Image name:{image_name}"
+                 f"Image name:{image_name}\n"
                  ])
     else:
         result += INDENTATION.join(
             [f"{INDENTATION}Channel count:{channel_count}\n",
              "Channel number:Red\\x3A 1\n",
              "Relative weight of the channel:1.0\n",
-             "Image name:Channel1"
+             "Image name:Channel1\n"
              ])
 
     return result
