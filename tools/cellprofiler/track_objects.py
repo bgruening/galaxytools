@@ -35,11 +35,11 @@ def build_main_block(input_params):
 
     obj_measurement = "None"  # default value
     if tracking_method == "Measurements":
-        measurement_category = get_json_value(input_params, 'con_tracking_method.con_tracking_category.measurement_category')
-        measurement = get_json_value(input_params, 'con_tracking_method.con_tracking_category.measurement')
+        measurement_category = get_json_value(input_params, 'con_tracking_method.con_measurement_category.measurement_category')
+        measurement = get_json_value(input_params, 'con_tracking_method.con_measurement_category.measurement')
 
         if measurement_category == "Intensity" or measurement_category == "Location":
-            img_measure = get_json_value(input_params, 'con_tracking_method.con_tracking_category.img_measure')
+            img_measure = get_json_value(input_params, 'con_tracking_method.con_measurement_category.img_measure')
             obj_measurement = f"{measurement_category}_{measurement}_{img_measure}"
         else:
             obj_measurement = f"{measurement_category}_{measurement}"
@@ -85,8 +85,8 @@ def build_main_block(input_params):
 
     # LAP method
     if tracking_method == "LAP":
-        movement_model = get_json_value(input_params, 'con_tracking_method.movement_model')
-        no_std = get_json_value(input_params, 'con_tracking_method.movement_model')
+        movement_model = get_json_value(input_params, 'con_tracking_method.movement_method')
+        no_std = get_json_value(input_params, 'con_tracking_method.no_std_radius')
         radius_limit_max = get_json_value(input_params, 'con_tracking_method.max_radius')
         radius_limit_min = get_json_value(input_params, 'con_tracking_method.min_radius')
         radius = f"{radius_limit_min},{radius_limit_max}"
@@ -125,13 +125,13 @@ def build_main_block(input_params):
     max_life = 100  # default
 
     if filter_by_lifetime == "Yes":
-        use_min = get_json_value(input_params, 'con_tracking_method.con_fileter_by_lifetime.con_use_min.use_min')
+        use_min = get_json_value(input_params, 'con_tracking_method.con_filter_by_lifetime.con_use_min.use_min')
         if use_min == "Yes":
-            min_life = get_json_value(input_params, 'con_tracking_method.con_fileter_by_lifetime.con_use_min.min_lifetime')
+            min_life = get_json_value(input_params, 'con_tracking_method.con_filter_by_lifetime.con_use_min.min_lifetime')
 
-        use_max = get_json_value(input_params, 'con_tracking_method.con_fileter_by_lifetime.con_use_max.use_max')
+        use_max = get_json_value(input_params, 'con_tracking_method.con_filter_by_lifetime.con_use_max.use_max')
         if use_max == "Yes":
-            max_life = get_json_value(input_params, 'con_tracking_method.con_fileter_by_lifetime.con_use_max_lifetime')
+            max_life = get_json_value(input_params, 'con_tracking_method.con_filter_by_lifetime.con_use_max.max_lifetime')
 
     result += INDENTATION.join(
         [f"{INDENTATION}Filter objects by lifetime?:{filter_by_lifetime}\n",
@@ -156,16 +156,16 @@ def build_main_block(input_params):
 
     if tracking_method == "Follow Neighbors":
         avg_cell_diameter = get_json_value(input_params, 'con_tracking_method.avg_diameter')
-        use_adv = get_json_value(input_params, 'con_tracking_method.con_use_adv_parameter.use_adv_parameter')
+        use_adv = get_json_value(input_params, 'con_tracking_method.con_adv_parameter.adv_parameter')
         if use_adv == "Yes":
-            cost_of_cell = get_json_value(input_params, 'con_tracking_method.con_use_adv_parameter.cost')
-            weight_of_area_diff = get_json_value(input_params, 'con_tracking_method.con_use_adv_parameter.weight')
+            cost_of_cell = get_json_value(input_params, 'con_tracking_method.con_adv_parameter.cost')
+            weight_of_area_diff = get_json_value(input_params, 'con_tracking_method.con_adv_parameter.weight')
 
     result += INDENTATION.join(
         [f"{INDENTATION}Average cell diameter in pixels:{avg_cell_diameter}\n",
          f"Use advanced configuration parameters:{use_adv}\n",
          f"Cost of cell to empty matching:{cost_of_cell}\n",
-         f"Weight of area difference in function matching cost:{weight_of_area_diff}"
+         f"Weight of area difference in function matching cost:{weight_of_area_diff}\n"
          ])
 
     return result

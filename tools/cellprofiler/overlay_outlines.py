@@ -51,28 +51,28 @@ def build_main_block(input_params):
          ])
 
     if on_blank == "No" and display_mode == "Grayscale":
-        method_brightness == get_json_value(input_params, 'con_blank_img.con_display_mode.method_brightness')
+        method_brightness = get_json_value(input_params, 'con_blank_img.con_display_mode.method_brightness')
 
     result += INDENTATION.join(
         [f"{INDENTATION}Select method to determine brightness of outlines:{method_brightness}\n",
          f"How to outline:{howto}\n"
          ])
 
-    obj_outline_str = f"{INDENTATION}"
+    obj_outline_str = ""
 
     if display_mode == "Color":
         for obj in input_params['con_blank_img']['con_display_mode']['rpt_obj_to_display']:
             outline_color = get_json_value(obj, 'outline_color')
             obj_to_display = get_json_value(obj, 'obj_to_display')
             obj_outline_str += INDENTATION.join(
-                [f"Select outline color:{outline_color}\n",
+                [f"{INDENTATION}Select outline color:{outline_color}\n",
                  f"Select objects to display:{obj_to_display}\n"
                  ])
     else:  # grayscale
         for obj in input_params['con_blank_img']['con_display_mode']['rpt_obj_to_display']:
             obj_to_display = get_json_value(obj, 'obj_to_display')
             obj_outline_str += INDENTATION.join(
-                [f"Select outline color:{outline_color}\n",
+                [f"{INDENTATION}Select outline color:{outline_color}\n",
                  f"Select objects to display:{obj_to_display}\n"
                  ])
     obj_outline_str = obj_outline_str.rstrip("\n")
