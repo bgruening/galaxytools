@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 import argparse
-import pandas as pd
 from rdkit import Chem
 
 from rdkit_util import get_supplier
 
+
 def get_formal_charge(mols):
     return [Chem.GetFormalCharge(mol) for mol in mols]
+
 
 def main():
     parser = argparse.ArgumentParser(description="Convert SDF to tabular")
@@ -33,7 +34,7 @@ def main():
 
     with open(args.outfile, 'w') as f:
         f.write('\n'.join(charges))
-    
+
 
 if __name__ == "__main__":
     main()

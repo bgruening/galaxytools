@@ -1,3 +1,4 @@
+# flake8: noqa
 # Copyright 2018 Jacob D. Durrant
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -18,7 +19,6 @@ strings.
 """
 
 from __future__ import print_function
-import copy
 import os
 import argparse
 import sys

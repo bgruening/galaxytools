@@ -3,6 +3,7 @@ import argparse
 import pandas as pd
 from rdkit import Chem
 
+
 def sdf_to_tab(vars):
     mols = Chem.SDMolSupplier(vars.inp, sanitize=False)
     df = pd.DataFrame()  # for output
@@ -29,6 +30,7 @@ def sdf_to_tab(vars):
     sorted_cols = sorted(df.columns.values.tolist())
     df.to_csv(vars.out, sep='\t', header=vars.header, columns=sorted_cols)
 
+
 def main():
     parser = argparse.ArgumentParser(description="Convert SDF to tabular")
     parser.add_argument('--inp', '-i', help="The input file", required=True)
@@ -41,7 +43,7 @@ def main():
     parser.add_argument('--name', '-n', action='store_true',
                         help="Include molecule name in output.")
     sdf_to_tab(parser.parse_args())
-    
+
 
 if __name__ == "__main__":
     main()
