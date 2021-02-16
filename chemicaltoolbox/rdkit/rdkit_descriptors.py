@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-from rdkit.Chem import Descriptors
-from rdkit import Chem
-import sys
 import argparse
 import inspect
+import sys
 
+from rdkit import Chem
+from rdkit.Chem import Descriptors
 from rdkit_util import get_supplier
 
 
@@ -14,6 +14,8 @@ def get_rdkit_descriptor_functions():
     Returns all descriptor functions under the Chem.Descriptors Module as tuple of (name, function)
     """
     ret = [(name, f) for name, f in inspect.getmembers(Descriptors) if inspect.isfunction(f) and not name.startswith('_')]
+    # some which are not in the official Descriptors module we need to add manually
+    ret.append(('FormalCharge', Chem.GetFormalCharge))
     ret.sort()
     return ret
 
@@ -35,6 +37,9 @@ if __name__ == "__main__":
                         default=sys.stdout,
                         help="path to the result file, default it sdtout")
 
+    parser.add_argument('-s', '--single', default=None,
+                        help="path to the result file, default it sdtout")
+
     parser.add_argument("--header", dest="header", action="store_true",
                         default=False,
                         help="Write header line.")
@@ -47,8 +52,14 @@ if __name__ == "__main__":
         supplier = get_supplier(args.infile, format='smiles')
     elif args.iformat == 'inchi':
         supplier = get_supplier(args.infile, format='inchi')
+    elif args.iformat == 'pdb':
+        supplier = [Chem.MolFromPDBFile(args.infile)]
+    elif args.iformat == 'mol2':
+        supplier = [Chem.MolFromMol2File(args.infile)]
 
     functions = get_rdkit_descriptor_functions()
+    if args.single:
+        functions = [(name, f) for name, f in functions if name == args.single]
 
     if args.header:
         args.outfile.write('%s\n' % '\t'.join(['MoleculeID'] + [name for name, f in functions]))
