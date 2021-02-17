@@ -15,7 +15,7 @@ def get_rdkit_descriptor_functions():
     """
     ret = [(name, f) for name, f in inspect.getmembers(Descriptors) if inspect.isfunction(f) and not name.startswith('_')]
     # some which are not in the official Descriptors module we need to add manually
-    ret.append(('FormalCharge', Chem.GetFormalCharge))
+    ret.extend([('FormalCharge', Chem.GetFormalCharge), ('SSSR', Chem.GetSSSR)])
     ret.sort()
     return ret
 
@@ -35,10 +35,10 @@ if __name__ == "__main__":
 
     parser.add_argument('-o', '--outfile', type=argparse.FileType('w+'),
                         default=sys.stdout,
-                        help="path to the result file, default it sdtout")
+                        help="path to the result file, default is stdout")
 
-    parser.add_argument('-s', '--single', default=None,
-                        help="path to the result file, default it sdtout")
+    parser.add_argument('-s', '--select', default=None,
+                        help="select a subset of comma-separated descriptors to use")
 
     parser.add_argument("--header", dest="header", action="store_true",
                         default=False,
@@ -58,8 +58,9 @@ if __name__ == "__main__":
         supplier = [Chem.MolFromMol2File(args.infile)]
 
     functions = get_rdkit_descriptor_functions()
-    if args.single:
-        functions = [(name, f) for name, f in functions if name == args.single]
+    if args.select and args.select != 'None':
+        selected = args.select.split(',')
+        functions = [(name, f) for name, f in functions if name in selected]
 
     if args.header:
         args.outfile.write('%s\n' % '\t'.join(['MoleculeID'] + [name for name, f in functions]))
@@ -68,5 +69,8 @@ if __name__ == "__main__":
         if not mol:
             continue
         descs = descriptors(mol, functions)
-        molecule_id = mol.GetProp("_Name")
+        try:
+            molecule_id = mol.GetProp("_Name")
+        except KeyError:
+            molecule_id = Chem.MolToSmiles(mol)
         args.outfile.write("%s\n" % '\t'.join([molecule_id] + [str(round(res, 6)) for name, res in descs]))
