@@ -12,7 +12,7 @@ def write_images():
     filter_images = params['images']['filter_images']
 
     _str = "\nImages:[module_num:1|svn_version:\\'Unknown\\'|variable_revision_number:2|show_window:False|notes:\\x5B\\'To begin creating your project, use the Images module to compile a list of files and/or folders that you want to analyze. You can also specify a set of rules to include only the desired files in your selected folders.\\'\\x5D|batch_state:array(\\x5B\\x5D, dtype=uint8)|enabled:True|wants_pause:False]\n"
-    _str += FOURSPACES+":\n"
+    _str += FOURSPACES + ":\n"
     _str += FOURSPACES + "Filter images?:%s\n" % filter_images
     _str += FOURSPACES + "Select the rule criteria:and (extension does isimage) (directory doesnot startwith \".\")\n"
 
