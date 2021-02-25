@@ -127,7 +127,7 @@ def build_main_block(input_params):
              "Relative weight of the channel:1.0\n",
              "Image name:Channel1\n"
              ])
-
+    result = result.rstrip("\n")
     return result
 
 

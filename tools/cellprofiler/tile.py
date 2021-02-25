@@ -68,7 +68,7 @@ def build_main_block(input_params):
             result += INDENTATION.join(
                 [f"{INDENTATION}Select an additional image to tile:{get_json_value(img, 'additional_img')}\n"
                  ])
-
+    result = result.rstrip("\n")
     return result
 
 
