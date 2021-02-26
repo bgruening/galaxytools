@@ -167,7 +167,7 @@ def build_main_block(input_params):
          f"Cost of cell to empty matching:{cost_of_cell}\n",
          f"Weight of area difference in function matching cost:{weight_of_area_diff}\n"
          ])
-
+    result = result.rstrip("\n")
     return result
 
 
