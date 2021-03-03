@@ -1,10 +1,10 @@
-<tool id="hifiasm" name="Hifiasm" version="@VERSION@">
+<tool id="hifiasm" name="Hifiasm" version="@VERSION@+galaxy0">
     <description>de novo assembler</description>
     <macros>
         <token name="@VERSION@">0.14</token>
         <token name="@FORMATS@">fasta,fasta.gz,fastq,fastq.gz</token>
         <xml name="reads">
-            <param name="reads" type="data" format="@FORMATS@" label="Input reads" />
+            <param name="reads" type="data" format="@FORMATS@" multiple="true" label="Input reads" />
         </xml>
     </macros>
     <requirements>
@@ -14,15 +14,35 @@
     <version_command>hifiasm --version</version_command>
     <command detect_errors="exit_code">
         <![CDATA[
-        #if str($mode.mode_selector) == 'standard':
-            ln -s '$mode.reads' input.${mode.reads.extension} &&
-        #else:
-            ln -s '$mode.hap1_reads' hap1_reads.${mode.hap1_reads.extension} &&
-            ln -s '$mode.hap2_reads' hap2_reads.${mode.hap2_reads.extension} &&
-            yak count -k31 -b37 -t\${GALAXY_SLOTS:-1} -o hap1.yak hap1_reads.${mode.hap1_reads.extension} &&
-            yak count -k31 -b37 -t\${GALAXY_SLOTS:-1} -o hap2.yak hap2_reads.${mode.hap2_reads.extension} &&
+        #set $input_files = list()
+        #set $hap1_inputs = list()
+        #set $hap2_inputs = list()
+        #for idx, read in enumerate($mode.reads):
+            #set $inputfile = 'input_%d.%s' % ($idx, $read.dataset.extension)
+            ln -s '$read' $inputfile &&
+            $input_files.append($inputfile)
+        #end for
+        #set $input_filenames = ' '.join($input_files)
+        #if str($mode.mode_selector) == 'trio':
+            #for idx, read in enumerate($mode.hap1_reads):
+                #set $inputfile = 'hap1_input_%d.%s' % ($idx, $read.dataset.extension)
+                ln -s '$read' $inputfile &&
+                $hap1_inputs.append($inputfile)
+            #end for
+            #for idx, read in enumerate($mode.hap2_reads):
+                #set $inputfile = 'hap2_input_%d.%s' % ($idx, $read.dataset.extension)
+                ln -s '$read' $inputfile &&
+                $hap2_inputs.append($inputfile)
+            #end for
+            #set $hap1_filenames = ' '.join($hap1_inputs)
+            #set $hap2_filenames = ' '.join($hap2_inputs)
+            yak count -k31 -b37 -t\${GALAXY_SLOTS:-1} -o hap1.yak $hap1_filenames &&
+            yak count -k31 -b37 -t\${GALAXY_SLOTS:-1} -o hap2.yak $hap2_filenames &&
         #end if
-        hifiasm -i input.${mode.reads.extension} -t \${GALAXY_SLOTS:-1} -o output -f $filter_bits
+        hifiasm -i $input_filenames -t \${GALAXY_SLOTS:-1} -o output -f $filter_bits
+        #if str($mode.mode_selector) == 'trio':
+            -1 hap1.yak -2 hap2.yak
+        #end if
         #if str($advanced_options.advanced_selector) == 'set':
             -z $advanced_options.adapter_length
             -k $advanced_options.kmer_length
@@ -69,8 +89,8 @@
             </when>
             <when value="trio">
                 <expand macro="reads" />
-                <param name="hap1_reads" type="data" format="fastq,fastq.gz" label="Haplotype 1 reads" />
-                <param name="hap2_reads" type="data" format="fastq,fastq.gz" label="Haplotype 2 reads" />
+                <param name="hap1_reads" type="data" format="fastq,fastq.gz" multiple="true" label="Haplotype 1 reads" />
+                <param name="hap2_reads" type="data" format="fastq,fastq.gz" multiple="true" label="Haplotype 2 reads" />
                 <param name="max_kmers" argument="-c" type="integer" value="2" label="Lower bound of the binned k-mer's frequency" />
                 <param name="min_kmers" argument="-d" type="integer" value="5" label="Upper bound of the binned k-mer's frequency" />
             </when>
@@ -128,25 +148,25 @@
         </conditional>
     </inputs>
     <outputs>
-        <data name="raw_unitigs" format="gfa1" from_work_dir="output.r_utg.gfa" label="${tool.name} on ${on_string} Haplotype-resolved raw unitig graph">
+        <data name="raw_unitigs" format="gfa1" from_work_dir="output.r_utg.gfa" label="${tool.name} on ${on_string}, haplotype-resolved raw unitig graph">
             <filter>mode['mode_selector'] == 'standard'</filter>
         </data>
-        <data name="raw_unitigs" format="gfa1" from_work_dir="output.dip.r_utg.gfa" label="${tool.name} on ${on_string} Haplotype-resolved raw unitig graph">
+        <data name="raw_unitigs" format="gfa1" from_work_dir="output.dip.r_utg.gfa" label="${tool.name} on ${on_string}, haplotype-resolved raw unitig graph">
             <filter>mode['mode_selector'] == 'trio'</filter>
         </data>
-        <data name="processed_unitigs" format="gfa1" from_work_dir="output.p_utg.gfa" label="${tool.name} on ${on_string} Processed unitig graph">
+        <data name="processed_unitigs" format="gfa1" from_work_dir="output.p_utg.gfa" label="${tool.name} on ${on_string}, processed unitig graph">
             <filter>mode['mode_selector'] == 'standard'</filter>
         </data>
-        <data name="primary_contig_graph" format="gfa1" from_work_dir="output.p_ctg.gfa" label="${tool.name} on ${on_string} Primary assembly contig graph">
+        <data name="primary_contig_graph" format="gfa1" from_work_dir="output.p_ctg.gfa" label="${tool.name} on ${on_string}, primary assembly contig graph">
             <filter>mode['mode_selector'] == 'standard'</filter>
         </data>
-        <data name="alternate_contig_graph" format="gfa1" from_work_dir="output.a_ctg.gfa" label="${tool.name} on ${on_string} Alternate assembly contig graph">
+        <data name="alternate_contig_graph" format="gfa1" from_work_dir="output.a_ctg.gfa" label="${tool.name} on ${on_string}, alternate assembly contig graph">
             <filter>mode['mode_selector'] == 'standard'</filter>
         </data>
-        <data name="hap1_contigs" format="gfa1" from_work_dir="output.hap1.p_ctg.gfa" label="${tool.name} ${mode.hap1_reads.name} contig graph">
+        <data name="hap1_contigs" format="gfa1" from_work_dir="output.hap1.p_ctg.gfa" label="${tool.name} ${mode.hap1_reads.name}, contig graph">
             <filter>mode['mode_selector'] == 'trio'</filter>
         </data>
-        <data name="hap2_contigs" format="gfa1" from_work_dir="output.hap2.p_ctg.gfa" label="${tool.name} ${mode.hap2_reads.name} contig graph">
+        <data name="hap2_contigs" format="gfa1" from_work_dir="output.hap2.p_ctg.gfa" label="${tool.name} ${mode.hap2_reads.name}, contig graph">
             <filter>mode['mode_selector'] == 'trio'</filter>
         </data>
     </outputs>
