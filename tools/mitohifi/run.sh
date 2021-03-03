@@ -83,9 +83,9 @@ python parse_blast.py
 python filterfasta.py -i contig.id ${contigs} > ${contigs}.mito.fa
 #We check for circularisation
 python circularization_check.py ${contigs}.mito.fa
-##If it circularises, we cut the fasta to get only one copy of the mitogenome
-#python cut_coords.py ${contigs}.mito.fa  > mitogenome.fasta
-#
+#If it circularises, we cut the fasta to get only one copy of the mitogenome
+python cut_coords.py ${contigs}.mito.fa  > mitogenome.fasta
+
 ## #annotate the mitogenome with mitofinder
 ##python mitofinder3 -j mitogenome.annotation -a mitogenome.fasta -r ${genbank} -o ${mitocode}
 
