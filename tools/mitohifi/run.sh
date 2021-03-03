@@ -65,6 +65,12 @@ done
 
 
 
+# touch all scripts not included in tool wrapper
+touch parse_blat.py
+touch filterfasta.py
+touch circularization_check.py
+touch cut_coords.py
+
 cd "$(dirname "$0")"
 
 
