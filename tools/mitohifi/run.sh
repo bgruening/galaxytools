@@ -64,31 +64,29 @@ while getopts ":c:f:g:t:o:" opt; do
 done
 
 
-printf "42\n"
+printf "\n\n++++                        mitoHiFi beta version                       ++++\n"
+printf     "++++ Darwin Tree of Life Hifi mitogenome circularisation and annotation ++++\n"
+printf     "++++                      Credit: M Uliano-Silva                        ++++\n\n"
+printf "\nStarted at at: $(date "+%Y-%m-%d %H-%M-%S")\n"
+echo -e "\nFirst let's run the blast with the close-related mitogenome\n"
+makeblastdb -in ${fasta} -dbtype nucl
+echo -e "\nmakeblastdb done. Running blast with CCS contigs\n"
+blastn -query ${contigs} -db ${fasta} -num_threads ${threads} -out contigs.blastn -outfmt '6 std qlen slen'
+echo -e "Blast done!\n"
+#the next script parses a series of conditions to exclude blast with NUMTs. 
+python parse_blast.py 
+#Next, we extract the mitogenome contig
+python filterfasta.py -i contig.id ${contigs} > ${contigs}.mito.fa
+#We check for circularisation
+python circularization_check.py ${contigs}.mito.fa
+#If it circularises, we cut the fasta to get only one copy of the mitogenome
+python cut_coords.py ${contigs}.mito.fa  > mitogenome.fasta
 
-##printf "\n\n++++                        mitoHiFi beta version                       ++++\n"
-##printf     "++++ Darwin Tree of Life Hifi mitogenome circularisation and annotation ++++\n"
-##printf     "++++                      Credit: M Uliano-Silva                        ++++\n\n"
-##printf "\nStarted at at: $(date "+%Y-%m-%d %H-%M-%S")\n"
-##echo -e "\nFirst let's run the blast with the close-related mitogenome\n"
-#makeblastdb -in ${fasta} -dbtype nucl
-##echo -e "\nmakeblastdb done. Running blast with CCS contigs\n"
-#blastn -query ${contigs} -db ${fasta} -num_threads ${threads} -out contigs.blastn -outfmt '6 std qlen slen'
-##echo -e "Blast done!\n"
-##the next script parses a series of conditions to exclude blast with NUMTs. 
-#python scripts/parse_blast.py 
-##Next, we extract the mitogenome contig
-#python scripts/filterfasta.py -i contig.id ${contigs} > ${contigs}.mito.fa
-##We check for circularisation
-#python scripts/circularization_check.py ${contigs}.mito.fa
-##If it circularises, we cut the fasta to get only one copy of the mitogenome
-#python scripts/cut_coords.py ${contigs}.mito.fa  > mitogenome.fasta
-#
-## #annotate the mitogenome with mitofinder
-##python mitofinder3 -j mitogenome.annotation -a mitogenome.fasta -r ${genbank} -o ${mitocode}
-#
-## cleanup
-#rm *.nsq *.nin *.nhr *.xml
-##echo -e "\nPipeline done!!!\n Your mito genome is the file mitogenome.fasta. \n Annotation: Please look inside 'mitogenome.annotation/mitogenome.annotation_Final_Results/' folder to find your mitogenome annotated in genbank format.\n"
-##printf "\n\nDone!" &&
-##printf "\n\nCompleted at: $(date "+%Y-%m-%d %H-%M-%S")\n\n"
+# #annotate the mitogenome with mitofinder
+#python mitofinder3 -j mitogenome.annotation -a mitogenome.fasta -r ${genbank} -o ${mitocode}
+
+# cleanup
+rm *.nsq *.nin *.nhr *.xml
+echo -e "\nPipeline done!!!\n Your mito genome is the file mitogenome.fasta. \n Annotation: Please look inside 'mitogenome.annotation/mitogenome.annotation_Final_Results/' folder to find your mitogenome annotated in genbank format.\n"
+printf "\n\nDone!" &&
+printf "\n\nCompleted at: $(date "+%Y-%m-%d %H-%M-%S")\n\n"
