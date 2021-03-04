@@ -63,7 +63,8 @@ while getopts ":c:f:g:t:o:" opt; do
 	esac
 done
 
-
+# Get output file
+output=${@: -1}
 
 # touch all scripts not included in tool wrapper
 touch parse_blat.py
@@ -72,7 +73,6 @@ touch circularization_check.py
 touch cut_coords.py
 
 cd "$(dirname "$0")"
-
 
 printf "\n\n++++                        mitoHiFi beta version                       ++++\n"
 printf     "++++ Darwin Tree of Life Hifi mitogenome circularisation and annotation ++++\n"
@@ -90,7 +90,7 @@ python filterfasta.py -i contig.id ${contigs} > ${contigs}.mito.fa
 #We check for circularisation
 python circularization_check.py ${contigs}.mito.fa
 #If it circularises, we cut the fasta to get only one copy of the mitogenome
-python cut_coords.py ${contigs}.mito.fa  > mitogenome.fasta
+python cut_coords.py ${contigs}.mito.fa  > ${output}
 
 ## #annotate the mitogenome with mitofinder
 ##python mitofinder3 -j mitogenome.annotation -a mitogenome.fasta -r ${genbank} -o ${mitocode}
