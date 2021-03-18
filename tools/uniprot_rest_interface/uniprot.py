@@ -22,13 +22,9 @@ def _retrieve(query, format='txt'):
     tool = 'uploadlists/'
 
     query = list(set(query.split('\n')))
-    queries = [query[i:i+100] for i in range(0, len(query), 100)]
+    queries = [query[i:i + 100] for i in range(0, len(query), 100)]
 
-    data = {
-            'format': format,
-            'from': 'ACC+ID',
-            'to': 'ACC'
-            }
+    data = {'format': format, 'from': 'ACC+ID', 'to': 'ACC'}
     responses = []
     for _ in queries:
         r = requests.post(url + tool, data=data, files={'file': ' '.join(_)})
@@ -43,12 +39,7 @@ def _map(query, f, t, format='tab'):
     """
     tool = 'uploadlists/'
 
-    data = {
-            'from': f,
-            'to': t,
-            'format': format,
-            'query': query
-            }
+    data = {'from': f, 'to': t, 'format': format, 'query': query}
     response = requests.post(url + tool, data=data)
     response.raise_for_status()
     page = response.text
