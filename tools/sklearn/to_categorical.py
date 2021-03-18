@@ -6,7 +6,7 @@ import warnings
 from galaxy_ml.utils import to_categorical
 
 
-def main(inputs, infile, num_classes=None, dtype="float32", outfile):
+def main(inputs, infile, outfile, num_classes=None):
     """
     Parameter
     ---------
@@ -16,11 +16,11 @@ def main(inputs, infile, num_classes=None, dtype="float32", outfile):
     infile : str
         File paths of input vector
 
-    num_classes : str
-        Total number of classes. If None, this would be inferred as the (largest number in y) + 1
-
     outfile : str
         File path to output matrix
+
+    num_classes : str
+        Total number of classes. If None, this would be inferred as the (largest number in y) + 1
 
     """
     warnings.simplefilter('ignore')
@@ -49,4 +49,4 @@ if __name__ == '__main__':
     aparser.add_argument("-o", "--outfile", dest="outfile")
     args = aparser.parse_args()
 
-    main(args.inputs, args.infile, args.num_classes, args.outfile)
+    main(args.inputs, args.infile, args.outfile, args.num_classes)
