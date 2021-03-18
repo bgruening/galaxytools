@@ -1,7 +1,8 @@
 import argparse
 import json
-import pandas as pd
 import warnings
+
+import pandas as pd
 
 from galaxy_ml.utils import to_categorical
 
