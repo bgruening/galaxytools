@@ -26,20 +26,28 @@
         #if $method_cond.method_select == "blastx"
           --query-gencode '$method_cond.query_gencode'
           --strand '$method_cond.query_strand'
-	  --min-orf $method_cond.min_orf
-	  #if $method_cond.frameshift_cond.frameshift_select == 'yes'
-	          --frameshift $method_cond.frameshift_cond.frameshift
-		  $method_cond.frameshift_cond.range_culling
+          --min-orf $method_cond.min_orf
+          #if $method_cond.frameshift_cond.frameshift_select == 'yes'
+            --frameshift $method_cond.frameshift_cond.frameshift
+            $method_cond.frameshift_cond.range_culling
           #end if
+        #else if $method_cond.method_select == "blastp"
+            $method_cond.no_self_hits
         #end if
 
         @OUTPUT_ARGS@
 
         --compress '0'
-        #if $sensitivity == "1"
+        #if $sens_cond.sensitivity == "mid"
+          --mid-sensitive
+        #else if $sens_cond.sensitivity == "1"
           --sensitive
-        #else if $sensitivity == "2"
+        #else if $sens_cond.sensitivity == "2"
           --more-sensitive
+        #else if $sens_cond.sensitivity == "3"
+          --very-sensitive
+        #else if $sens_cond.sensitivity == "4"
+          --ultra-sensitive
         #end if
 
         #if str($gapopen) != "":
@@ -49,7 +57,7 @@
           --gapextend '$gapextend'
         #end if
         --matrix '$matrix'
-        --comp-based-stats '$comp_based_stats'
+        --comp-based-stats '$method_cond.comp_based_stats'
         --masking '$masking'
 
         @HITFILTER_ARGS@
@@ -63,11 +71,10 @@
         --id '$id'
         --query-cover '$query_cover'
         --subject-cover '$subject_cover'
-        --block-size '$block_size'
+        --block-size '$sens_cond.block_size'
         #if str($unal) == '1':
             --unal 1 --un '$unalqueries'
         #end if
-        $no_self_hits
         #if $tax_cond.tax_select == 'file':
             --taxonlist `cat '$tax_cond.taxonlistfile' | grep -v "^#" | grep -v "^$" | tr "\n" "," | sed 's/,$//'`
         #else if  $tax_cond.tax_select == 'list':
@@ -121,8 +128,22 @@
                     </when>
                     <when value="no"/>
                 </conditional>
+
+                <param name="comp_based_stats" argument="--comp-based-stats" type="select" label="Composition based statistics" help="Compositionally biased sequences often cause false positive matches, which are effectively filtered by this algorithm in a way similar to the composition based statistics used by BLAST">
+                    <option value="0">Disable</option>
+                    <option value="1" selected="True">Default mode (Hauser, 2016)</option>
+                </param>
             </when>
             <when value="blastp">
+                <param name="no_self_hits" argument="--no-self-hits" type="boolean" truevalue="--no-self-hits" falsevalue="" checked="true" label="suppress reporting of identical self hits?" help=""/>
+
+                <param name="comp_based_stats" argument="--comp-based-stats" type="select" label="Composition based statistics" help="Compositionally biased sequences often cause false positive matches, which are effectively filtered by this algorithm in a way similar to the composition based statistics used by BLAST">
+                    <option value="0">Disable</option>
+                    <option value="1" selected="True">Default mode (Hauser, 2016)</option>
+                    <option value="2">Compositional matrix adjust conditioned on sequence properties, simplified (Yu, 2005)</option>
+                    <option value="3">Compositional matrix adjust conditioned on sequence properties (Yu, 2005)</option>
+                    <option value="4">Compositional matrix adjust unconditionally (Yu, 2005)</option>
+                </param>
             </when>
         </conditional>
         <param argument="--query" type="data" format="fasta,fastq" label="Input query file in FASTA or FASTQ format" />
@@ -151,12 +172,31 @@
             <option value="skingdoms">Subject kingdoms</option>
             <option value="sphylums">Subject phylums</option>
         </expand>
-        <param name="no_self_hits" argument="--no-self-hits" type="boolean" truevalue="--no-self-hits" falsevalue="" checked="true" label="suppress reporting of identical self hits?" help=""/>
-        <param name='sensitivity' type="select" label="Sensitivity Mode" help="Choose one of the sensitivity modes. The default mode is mainly designed for short read alignment, i.e. finding significant matches of >50 bits on 30-40aa fragments. The sensitive mode is a lot more sensitive than the default and generally recommended for aligning longer sequences. The more sensitive mode provides even more sensitivity. More sensitivity may increase computation time.">
-            <option value="0" selected="True">Default</option>
-            <option value="1">Sensitive (--sensitive)</option>
-            <option value="2">More Sensitive (--more-sensitive)</option>
-        </param>
+        <conditional name="sens_cond">
+            <param name='sensitivity' type="select" label="Sensitivity Mode" help="Choose one of the sensitivity modes. The default mode is mainly designed for short read alignment, i.e. finding significant matches of >50 bits on 30-40aa fragments. The sensitive mode is a lot more sensitive than the default and generally recommended for aligning longer sequences. The more sensitive mode provides even more sensitivity. More sensitivity may increase computation time.">
+                <option value="0" selected="True">Default</option>
+                <option value="mid">Mid Sensitive (--mid-sensitive)</option>
+                <option value="1">Sensitive (--sensitive)</option>
+                <option value="2">More Sensitive (--more-sensitive)</option>
+                <option value="3">Very Sensitive (--very-sensitive)</option>
+                <option value="4">Ultra Sensitive (--ultra-sensitive)</option>
+            </param>
+            <when value="0">
+                <expand macro="block_size_low_sens"/>
+            </when>
+            <when value="1">
+                <expand macro="block_size_low_sens"/>
+            </when>
+            <when value="2">
+                <expand macro="block_size_low_sens"/>
+            </when>
+            <when value="3">
+                <expand macro="block_size_hi_sens"/>
+            </when>
+            <when value="4">
+                <expand macro="block_size_hi_sens"/>
+            </when>
+        </conditional>
         <param argument="--matrix" type="select" label="Scoring matrix" help="In parentheses are the supported values for (gap open)/(gap extend). In brackets are default gap penalties">
             <option value="BLOSUM45">BLOSUM45 ((10-13)/3; (12-16)/2; (16-19)/1) [14/2]</option>
             <option value="BLOSUM50">BLOSUM50 ((9-13)/3; (12-16)/2; (15-19)/1) [13/2]</option>
@@ -169,7 +209,6 @@
         </param>
         <param argument="--gapopen" type="integer" optional="True" value="" label="Gap open penalty" help="leave empty for default (see scoring matrix)" />
         <param argument="--gapextend" type="integer" optional="True" value="" label="Gap extension penalty" help="leave empty for default (see scoring matrix)" />
-        <param name="comp_based_stats" argument="--comp-based-stats" type="boolean" truevalue="1" falsevalue="0" checked="true" label="enable composition based statistics?" help="Compositionally biased sequences often cause false positive matches, which are effectively filtered by this algorithm in a way similar to the composition based statistics used by BLAST"/>
         <param argument="--masking" type="boolean" truevalue="1" falsevalue="0" checked="true" label="enable masking of low complexity regions?" help="Masked residues appear in the output as X"/>
         <conditional name="tax_cond">
             <param name="tax_select" type="select" label="Restrict search taxonomically?" help="Any taxonomic rank can be used, and only reference sequences matching one of the specified taxon ids will be searched against">
@@ -204,7 +243,6 @@
         <param argument="--id" type="integer" value="0" label="Minimum identity percentage to report an alignment" help="" />
         <param name="query_cover" argument="--query-cover" type="integer" value="0" label="Minimum query cover percentage to report an alignment" help="" />
         <param name="subject_cover" argument="--subject-cover" type="integer" value="0" label="Minimum subject cover percentage to report an alignment" help="" />
-        <param name="block_size" argument="--block-size" type="float" value="2" label="Block size in billions of sequence letters to be processed at a time" help="" />
         <param argument="--unal" type="boolean" truevalue="1" falsevalue="0" checked="false" label="report unaligned queries" help=""/>
     </inputs>
     <outputs>
@@ -227,7 +265,9 @@
                 <param name="outfmt" value="6"/>
                 <param name="fields" value="qseqid,sseqid,pident,length,mismatch,gapopen,qstart,qend,sstart,send,evalue,bitscore,cigar,scovhsp,sskingdoms,skingdoms,sphylums"/>
             </conditional>
-            <param name="sensitivity" value="0"/>
+            <conditional name="sens_cond">
+                <param name="sensitivity" value="0"/>
+            </conditional>
             <param name="matrix" value="BLOSUM62"/>
             <param name="comp-based-stat" value="1"/>
             <param name="masking" value="1"/>
@@ -241,7 +281,9 @@
             </conditional>
             <param name="id" value="0"/>
             <param name="query_cover" value="0"/>
-            <param name="block_size" value="2"/>
+            <conditional name="sens_cond">
+                <param name="block_size" value="2"/>
+            </conditional>
             <output name="blast_tabular" file="diamond_results.tabular"/>
         </test>
         <test>
@@ -261,7 +303,9 @@
                 <param name="outfmt" value="6"/>
                 <param name="fields" value="qseqid,sseqid,pident,length,mismatch,gapopen,qstart,qend,sstart,send,evalue,bitscore"/>
             </conditional>
-            <param name="sensitivity" value="0"/>
+            <conditional name="sens_cond">
+                <param name="sensitivity" value="0"/>
+            </conditional>
             <param name="matrix" value="BLOSUM62"/>
             <param name="comp-based-stat" value="1"/>
             <param name="masking" value="1"/>
@@ -275,7 +319,9 @@
             </conditional>
             <param name="id" value="0"/>
             <param name="query_cover" value="0"/>
-            <param name="block_size" value="2"/>
+            <conditional name="sens_cond">
+                <param name="block_size" value="2"/>
+            </conditional>
             <output name="blast_tabular" file="diamond_results.wtax.tabular"/>
         </test>
         <test>
@@ -293,7 +339,9 @@
             <conditional name="output">
                 <param name="outfmt" value="0"/>
             </conditional>
-            <param name="sensitivity" value="0"/>
+            <conditional name="sens_cond">
+                <param name="sensitivity" value="0"/>
+            </conditional>
             <param name="matrix" value="BLOSUM62"/>
             <param name="comp-based-stat" value="1"/>
             <param name="masking" value="1"/>
@@ -307,7 +355,9 @@
             </conditional>
             <param name="id" value="0"/>
             <param name="query_cover" value="0"/>
-            <param name="block_size" value="2"/>
+            <conditional name="sens_cond">
+                <param name="block_size" value="2"/>
+            </conditional>
             <output name="blast_tabular" file="diamond_results.pairwise"/>
         </test>
         <test>
