@@ -29,8 +29,11 @@ def _retrieve(query, format='txt'):
             'from': 'ACC+ID',
             'to': 'ACC'
             }
-
-    responses = [requests.post(url + tool, data=data, files={'file': ' '.join(_)}) for _ in queries]
+    responses = []
+    for _ in queries:
+        r = requests.post(url + tool, data=data, files={'file': ' '.join(_)})
+        r.raise_for_status()
+        responses.append(r)
     page = ''.join(response.text for response in responses)
     return page
 
@@ -47,6 +50,7 @@ def _map(query, f, t, format='tab'):
             'query': query
             }
     response = requests.post(url + tool, data=data)
+    response.raise_for_status()
     page = response.text
     return page
 
