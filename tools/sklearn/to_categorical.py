@@ -3,7 +3,6 @@ import json
 import warnings
 
 import pandas as pd
-
 from galaxy_ml.utils import to_categorical
 
 
