@@ -1,7 +1,14 @@
-<tool id="canu" name="Canu assembler" version="1.8">
-    <description>Assembler optimized for long error-prone reads such as PacBio, Oxford Nanopore </description>
+<tool id="canu" name="Canu assembler" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
+    <description>Assembler optimized for long error-prone reads such as PacBio, Oxford Nanopore</description>
+    <xrefs>
+        <xref type="bio.tools">canu</xref>
+    </xrefs>
+    <macros>
+        <token name="@TOOL_VERSION@">2.1.1</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
     <requirements>
-        <requirement type="package" version="1.8">canu</requirement>
+        <requirement type="package" version="@TOOL_VERSION@">canu</requirement>
     </requirements>
     <version_command>canu --version</version_command>
     <command detect_errors="exit_code">
@@ -19,11 +26,10 @@
             $stage
         #end if
         -p canu
-        -d out_dir
+        -d ./out_dir
         #if $s:
             -s '$s'
         #end if
-        genomeSize=$genomeSize
         #if $rawErrorRate:
             rawErrorRate=$rawErrorRate
         #end if
@@ -33,6 +39,12 @@
         minReadLength=$minReadLength
         minOverlapLength=$minOverlapLength
         corOutCoverage=$corOutCoverage
+        #if $stopOnLowCoverage
+            stopOnLowCoverage=$stopOnLowCoverage
+        #end if
+        #if $minInputCoverage
+            minInputCoverage=$minInputCoverage
+        #end if
         contigFilter='
             ${contigFilter.minReads}
             ${contigFilter.minLength}
@@ -40,9 +52,12 @@
             ${contigFilter.lowCovSpan}
             ${contigFilter.lowCovDepth}
         '
-        genomeSize=$genomeSize
+
+        genomeSize='$genomeSize'
         minThreads=\${GALAXY_SLOTS:-4}
         maxThreads=\${GALAXY_SLOTS:-4}
+        redMemory=\${GALAXY_MEMORY_MB:-4096}M
+        redThreads=\${GALAXY_SLOTS:-4}
         obtovlThreads=\${GALAXY_SLOTS:-4}
         utgovlThreads=\${GALAXY_SLOTS:-4}
         batThreads=\${GALAXY_SLOTS:-4}
@@ -50,11 +65,23 @@
         cormhapMemory=\${GALAXY_MEMORY_MB:-4096}M
         obtovlMemory=\${GALAXY_MEMORY_MB:-4096}M
         utgovlMemory=\${GALAXY_MEMORY_MB:-4096}M
-        gfaThreads=\${GALAXY_SLOTS:-4}
         corThreads=\${GALAXY_SLOTS:-4}
+        corMemory=\${GALAXY_MEMORY_MB:-4096}M
         cnsThreads=\${GALAXY_SLOTS:-4}
+        cnsMemory=\${GALAXY_MEMORY_MB:-4096}M
+        oeaMemory=\${GALAXY_MEMORY_MB:-4096}M
+        oeaThreads=\${GALAXY_SLOTS:-4}
         useGrid=false
-        $mode
+
+        #for $haplotype in $haplotypes:
+            -haplotype${haplotype.haplotype_name} '${haplotype.haplotype_input}'
+        #end for
+
+        $technology
+        #if $processing:
+            $processing
+        #end if
+
         #for $counter, $input in enumerate($inputs):
             #if $input.ext in ['fastq.gz', 'fasta.gz']
                 ./input_${counter}.gz
@@ -63,55 +90,58 @@
             #end if
         #end for
         2>&1
-        &&  
-        echo "Check echo"
+
     ]]>
     </command>
     <inputs>
-        <param name="inputs" type="data" format="fasta,fasta.gz,fastq,fastq.gz" multiple="true" label="Input reads" />
-        <param name="mode" type="select" label="Mode">
-            <option value="-nanopore-raw" selected="true">Nanopore raw</option>
-            <option value="-nanopore-corrected">Nanopore corrected</option>
-            <option value="-pacbio-raw">PacBio raw</option>
-            <option value="-pacbio-corrected">PacBio corrected</option>
+        <param name="inputs" type="data" format="fasta,fasta.gz,fastq,fastq.gz" multiple="true" label="Input reads"/>
+        <repeat name="haplotypes" min="0" max="2" title="Haplotypes for Trio Binning Assembly" help="Canu has support for using parental short-read sequencing to classify and bin">
+            <param name="haplotype_input" type="data" format="fasta,fastq" multiple="true" label="Haplotype input reads"/>
+            <param name="haplotype_name" type="text" label="Shot name to identify your haplotype"/>
+        </repeat>
+        <param name="technology" type="select" label="Technology">
+            <option value="-nanopore" selected="true">Nanopore</option>
+            <option value="-pacbio">PacBio</option>
+            <option value="-pacbio-hifi">PacBio HiFi</option>
+        </param>
+        <param name="processing" type="select" optional="true" label="Processing">
+            <option value="-corrected">Corrected</option>
+            <option value="-trimmed">Trimmed</option>
         </param>
         <param name="stage" type="select" label="To restrict canu to only a specific stage, use">
             <option value="all" selected="true">all</option>
+            <option value="-haplotype">generate haplotype-specific reads</option>
             <option value="-correct">generate corrected reads</option>
             <option value="-trim">generate trimmed reads</option>
             <option value="-assemble">generate an assembly</option>
             <option value="-trim-assemble">generate trimmed reads and then assemble them</option>
         </param>
-        <param argument="genomeSize" type="text" label="Estimated genome size (e.g. 80m, 15k, 2g)">
-            <validator type="empty_field" />
+        <param argument="genomeSize" type="text" label="Estimated genome size (e.g. 8.0m, 15k, 2g)">
+            <validator type="empty_field"/>
+            <validator type="expression" message="Only values similar to 8.0m, 15k or 2g are allowed.">value.replace('.', '').isalnum() and value[-1] in ['m', 'k', 'g'] and float(value[:-1])</validator>
         </param>
-        <param argument="rawErrorRate" type="float" value="" optional="true" min="0" max="1"
-            label="Maximum raw overlap mismatch" help="The defaults are 0.300 for PacBio reads and 0.500 for Nanopore reads." />
-        <param argument="correctedErrorRate" type="float" value="" optional="true" min="0" max="1"
-            label="Maximum corrected overlap mismatch" help="The allowed difference in an overlap between two corrected reads.  Assemblies of
-                low coverage or data with biological differences will benefit from a slight increase
-                in this.  Defaults are 0.045 for PacBio reads and 0.144 for Nanopore reads." />
-        <param argument="minReadLength" type="integer" value="1000" min="1" label="Minimum read length" />
-        <param argument="minOverlapLength" type="integer" value="500" min="1" label="Minimum overlap" />
-        <param argument="corOutCoverage" type="integer" value="40" min="1" label="Target coverage for corrected reads" />
-        <param argument="-s" type="data" format="txt" optional="true" label="Additonal options" help="Additional specifications provided in a canu spec file." />
-
+        <param argument="rawErrorRate" type="float" value="" optional="true" min="0" max="1" label="Maximum raw overlap mismatch" help="The defaults are 0.300 for PacBio reads and 0.500 for Nanopore reads."/>
+        <param argument="correctedErrorRate" type="float" value="" optional="true" min="0" max="1" label="Maximum corrected overlap mismatch" help="The allowed difference in an overlap between two corrected reads.  Assemblies of                 low coverage or data with biological differences will benefit from a slight increase                 in this.  Defaults are 0.045 for PacBio reads and 0.144 for Nanopore reads."/>
+        <param argument="minReadLength" type="integer" value="1000" min="1" label="Minimum read length"/>
+        <param argument="minOverlapLength" type="integer" value="500" min="1" label="Minimum overlap"/>
+        <param argument="minInputCoverage" type="integer" value="" min="1" optional="true" label="Minimum Input Coverage"/>
+        <param argument="corOutCoverage" type="integer" value="40" min="1" label="Target coverage for corrected reads"/>
+        <param argument="-s" type="data" format="txt" optional="true" label="Additonal options" help="Additional specifications provided in a canu spec file."/>
+        <param argument="stopOnLowCoverage" type="integer" value="10" min="1" label="Stop the assembly if read coverage is too low to be useful" help="Coverage is checked whene when input sequences are initially loaded into the sequence store, when corrected reads are generated, and when read ends are trimmed off."/>
         <section name="contigFilter" title="Contig Filters">
-            <param argument="minReads" type="integer" value="2" min="0" label="Minimum reads" />
-            <param argument="minLength" type="integer" value="0" min="0" label="Minimum length" />
-            <param argument="singleReadSpan" type="float" value="1.0" min="0.0" max="1.0" label="Maximum single read span (fraction)" />
-            <param argument="lowCovSpan" type="float" value="0.5" min="0.0" max="1.0" label="Low coverage span (fraction)" />
-            <param argument="lowCovDepth" type="integer" value="5" min="0" label="Low coverage depth" />
+            <param argument="minReads" type="integer" value="2" min="0" label="Minimum reads"/>
+            <param argument="minLength" type="integer" value="0" min="0" label="Minimum length"/>
+            <param argument="singleReadSpan" type="float" value="1.0" min="0.0" max="1.0" label="Maximum single read span (fraction)"/>
+            <param argument="lowCovSpan" type="float" value="0.5" min="0.0" max="1.0" label="Low coverage span (fraction)"/>
+            <param argument="lowCovDepth" type="integer" value="5" min="0" label="Low coverage depth"/>
         </section>
     </inputs>
     <outputs>
+        <data name="report" format="txt" from_work_dir="out_dir/canu.report" label="${tool.name} on ${on_string} (report)"/>
         <data name="contigs" format="fasta" from_work_dir="out_dir/canu.contigs.fasta" label="${tool.name} on ${on_string} (contigs)">
             <filter>stage == 'all'</filter>
         </data>
         <data name="unassembled" format="fasta" from_work_dir="out_dir/canu.unassembled.fasta" label="${tool.name} on ${on_string} (unassembled)">
-            <filter>stage == 'all'</filter>
-        </data>
-        <data name="unitigs" format="fasta" from_work_dir="out_dir/canu.unitigs.fasta" label="${tool.name} on ${on_string} (unitigs)">
             <filter>stage == 'all'</filter>
         </data>
         <data name="corrected_reads" format="fasta.gz" from_work_dir="out_dir/canu.correctedReads.fasta.gz" label="${tool.name} on ${on_string} (corrected reads)">
@@ -121,45 +151,100 @@
             <filter>'-trim' in stage or stage == 'all'</filter>
         </data>
     </outputs>
-     <tests>
-       <test expect_num_outputs="5">
+    <tests>
+        <test expect_num_outputs="5">
             <param name="inputs" ftype="fasta" value="ecoli-reads.fasta"/>
-            <param name="genomeSize" value="4.6m" />
-            <param name="minReadLength" value="2000" />
+            <param name="technology" value="-nanopore"/>
+            <param name="genomeSize" value="20k"/>
+            <param name="stopOnLowCoverage" value="1"/>
+            <param name="minInputCoverage" value="1"/>
+            <param name="minReadLength" value="2000"/>
             <output name="contigs" ftype="fasta" file="ecoli_canu_contigs_result1.fa"/>
-            <output name="unitigs" ftype="fasta" file="ecoli_canu_unitigs_result1.fa"/>
             <output name="unassembled" ftype="fasta" file="ecoli_canu_unassembled_result1.fa"/>
             <output name="corrected_reads" ftype="fasta.gz" decompress="True" file="ecoli_canu_corrected_reads_result1.fa.gz"/>
             <output name="trimmed_reads" ftype="fasta.gz" decompress="True" file="ecoli_canu_trimmed_reads_result1.fa.gz"/>
+            <output name="report">
+                <assert_contents>
+                    <has_n_lines n="488"/>
+                    <has_text_matching expression="[UNITIGGING/CONTIGS]"/>
+                    <has_text_matching expression="-- Contig sizes based on genome size 20kbp:"/>
+                </assert_contents>
+            </output>
         </test>
         <test expect_num_outputs="5">
             <param name="inputs" ftype="fasta" value="ecoli-reads.fasta"/>
-            <param name="genomeSize" value="4.6m" />
-            <param name="minReadLength" value="2000" />
-            <param name="minOverlapLength" value="800" />
-            <param name="rawErrorRate" value="0.2" />
-            <param name="correctedErrorRate" value="0.05" />
-            <param name="corOutCoverage" value="2" />
+            <param name="technology" value="-nanopore"/>
+            <param name="genomeSize" value="20k"/>
+            <param name="stopOnLowCoverage" value="1"/>
+            <param name="minInputCoverage" value="1"/>
+            <param name="minReadLength" value="2000"/>
+            <param name="minOverlapLength" value="800"/>
+            <param name="rawErrorRate" value="0.2"/>
+            <param name="correctedErrorRate" value="0.05"/>
+            <param name="corOutCoverage" value="2"/>
             <output name="contigs" ftype="fasta" file="ecoli_canu_contigs_result2.fa"/>
-            <output name="unitigs" ftype="fasta" file="ecoli_canu_unitigs_result2.fa"/>
             <output name="unassembled" ftype="fasta" file="ecoli_canu_unassembled_result2.fa"/>
             <output name="corrected_reads" ftype="fasta.gz" decompress="True" file="ecoli_canu_corrected_reads_result2.fa.gz"/>
             <output name="trimmed_reads" ftype="fasta.gz" decompress="True" file="ecoli_canu_trimmed_reads_result2.fa.gz"/>
+            <output name="report">
+                <assert_contents>
+                    <has_n_lines n="464"/>
+                    <has_text_matching expression="[UNITIGGING/CONTIGS]"/>
+                    <has_text_matching expression="-- Contig sizes based on genome size 20kbp:"/>
+                </assert_contents>
+            </output>
         </test>
-        <test expect_num_outputs="1">
+        <test expect_num_outputs="2">
             <param name="inputs" ftype="fasta" value="ecoli-reads.fasta"/>
+            <param name="technology" value="-nanopore"/>
+            <param name="genomeSize" value="20k"/>
             <param name="stage" value="-correct"/>
-            <param name="minReadLength" value="2500" />
-            <param name="genomeSize" value="4.6m" />
+            <param name="stopOnLowCoverage" value="1"/>
+            <param name="minReadLength" value="2500"/>
             <output name="corrected_reads" ftype="fasta.gz" decompress="True" file="ecoli_canu_corrected_reads_result3.fa.gz"/>
-        </test> 
-        <test expect_num_outputs="1">
+            <output name="report">
+                <assert_contents>
+                    <has_n_lines n="187"/>
+                    <has_text_matching expression="[TRIMMING/READS]"/>
+                    <has_text_matching expression="--   Found 89 reads."/>
+                </assert_contents>
+            </output>
+        </test>
+        <!--trimming test - it does currently not trim anything due to the input data -->
+        <test expect_num_outputs="2">
             <param name="inputs" ftype="fasta" value="ecoli-reads.fasta"/>
+            <param name="technology" value="-nanopore"/>
+            <param name="genomeSize" value="3.4m"/>
             <param name="stage" value="-trim"/>
-            <param name="minReadLength" value="2500" />
-            <param name="genomeSize" value="4.6m" />
-            <output name="trimmed_reads" ftype="fasta.gz" compare="sim_size" delta="12000" file="ecoli_canu_trimmed_reads_result4.fa.gz"/>
-        </test>  
+            <param name="minReadLength" value="500"/>
+            <output name="report">
+                <assert_contents>
+                    <has_text_matching expression="[TRIMMING/READS]"/>
+                    <has_n_lines n="6"/>
+                    <has_text_matching expression="Found 0 reads."/>
+                </assert_contents>
+            </output>
+        </test>
+        <!--test expect_num_outputs="5">
+            <param name="inputs" ftype="fasta" value="ecoli-reads.fasta"/>
+            <param name="technology" value="-pacbio"/>
+            <repeat name="haplotypes">
+                <param name="haplotype_name" value="K12"/>
+                <param name="haplotype_input" ftype="fasta" value="ecoli-reads.fasta"/>
+            </repeat>
+            <repeat name="haplotypes">
+                <param name="haplotype_name" value="K13"/>
+                <param name="haplotype_input" ftype="fasta" value="ecoli-reads.fasta"/>
+            </repeat>
+            <param name="genomeSize" value="20k"/>
+            <param name="stopOnLowCoverage" value="1"/>
+            <param name="minInputCoverage" value="1"/>
+            <param name="minReadLength" value="2000"/>
+            <output name="contigs" ftype="fasta" file="ecoli_canu_contigs_result5.fa"/>
+            <output name="unassembled" ftype="fasta" file="ecoli_canu_unassembled_result5.fa"/>
+            <output name="corrected_reads" ftype="fasta.gz" decompress="True" file="ecoli_canu_corrected_reads_result5.fa.gz"/>
+            <output name="trimmed_reads" ftype="fasta.gz" decompress="True" file="ecoli_canu_trimmed_reads_result5.fa.gz"/>
+        </test-->
     </tests>
     <help>
     <![CDATA[

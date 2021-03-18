@@ -11,7 +11,9 @@
 # a property named distance1 where the numeric part is the index (starting from 1) of the points (in that example
 # there would be properties for distance1, distance2 and distance3.
 
-import argparse, os, sys, math
+import argparse
+import math
+import sys
 
 from openbabel import pybel
 
@@ -30,7 +32,6 @@ def execute(ligands_sdf, points_file, outfile):
     :return:
     """
 
-
     points = []
 
     # read the points
@@ -41,7 +42,7 @@ def execute(ligands_sdf, points_file, outfile):
                 p = line.split()
                 if len(p) == 3:
                     points.append((float(p[0]), float(p[1]), float(p[2])))
-                    log("Read points",p)
+                    log("Read points", p)
                     continue
             log("Failed to read line:", line)
     log('Found', len(points), 'atom points')
@@ -56,7 +57,6 @@ def execute(ligands_sdf, points_file, outfile):
 
         try:
             # print("Processing mol", mol.title)
-
             clone = pybel.Molecule(mol)
             clone.removeh()
 
@@ -82,7 +82,7 @@ def execute(ligands_sdf, points_file, outfile):
             sdf_writer.write(mol)
 
         except Exception as e:
-            log('Failed to handle molecule: '+ str(e))
+            log('Failed to handle molecule: ' + str(e))
             continue
 
     sdf_writer.close()
@@ -93,11 +93,9 @@ def main():
     global work_dir
 
     parser = argparse.ArgumentParser(description='XChem distances - measure distances to particular points')
-
     parser.add_argument('-i', '--input', help="SDF containing the 3D molecules to score)")
     parser.add_argument('-p', '--points', help="PDB format file with atoms")
     parser.add_argument('-o', '--outfile', default='output.sdf', help="File name for results")
-
 
     args = parser.parse_args()
     log("XChem distances args: ", args)

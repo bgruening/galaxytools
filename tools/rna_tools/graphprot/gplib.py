@@ -1,13 +1,11 @@
 
-from distutils.spawn import find_executable
-import subprocess
-import statistics
-import random
 import gzip
-import uuid
-import sys
+import random
 import re
-import os
+import statistics
+import subprocess
+from distutils.spawn import find_executable
+
 
 """
 
@@ -19,11 +17,11 @@ python3 -m doctest gplib.py
 """
 
 
-################################################################################
+###############################################################################
 
 def graphprot_predictions_get_median(predictions_file):
     """
-    Given a GraphProt .predictions file, read in site scores and return 
+    Given a GraphProt .predictions file, read in site scores and return
     the median value.
 
     >>> test_file = "test-data/test.predictions"
@@ -43,29 +41,29 @@ def graphprot_predictions_get_median(predictions_file):
     return statistics.median(sc_list)
 
 
-################################################################################
+###############################################################################
 
-def graphprot_profile_get_top_scores_median(profile_file,
-                                            profile_type="profile",
-                                            avg_profile_extlr=5):
+def graphprot_profile_get_tsm(profile_file,
+                              profile_type="profile",
+                              avg_profile_extlr=5):
 
     """
-    Given a GraphProt .profile file, extract for each site (identified by 
-    column 1 ID) the top (= highest) score. Then return the median of these 
+    Given a GraphProt .profile file, extract for each site (identified by
+    column 1 ID) the top (= highest) score. Then return the median of these
     top scores.
-    
+
     profile_type can be either "profile" or "avg_profile".
-    "avg_profile means that the position-wise scores will first get smoothed 
-    out by calculating for each position a new score through taking a 
-    sequence window -avg_profile_extlr to +avg_profile_extlr of the position 
-    and calculate the mean score over this window and assign it to the position.
-    After that, the maximum score of each site is chosen, and the median over 
-    all maximum scores is returned.
-    "profile" leaves the position-wise scores as they are, directly extracting 
+    "avg_profile means that the position-wise scores will first get smoothed
+    out by calculating for each position a new score through taking a
+    sequence window -avg_profile_extlr to +avg_profile_extlr of the position
+    and calculate the mean score over this window and assign it to the
+    position. After that, the maximum score of each site is chosen, and the
+    median over all maximum scores is returned.
+    "profile" leaves the position-wise scores as they are, directly extracting
     the maximum for each site and then reporting the median.
-    
+
     >>> test_file = "test-data/test.profile"
-    >>> graphprot_profile_get_top_scores_median(test_file)
+    >>> graphprot_profile_get_tsm(test_file)
     3.2
 
     """
@@ -90,25 +88,27 @@ def graphprot_profile_get_top_scores_median(profile_file,
             max_list.append(max_sc)
         elif profile_type == "avg_profile":
             # Convert profile score list to average profile scores list.
-            aps_list = list_moving_window_average_values(lists_dic[seq_id],
-                                                         win_extlr=avg_profile_extlr)
+            aps_list = \
+                list_moving_window_average_values(lists_dic[seq_id],
+                                                  win_extlr=avg_profile_extlr)
             max_sc = max(aps_list)
             max_list.append(max_sc)
         else:
-            assert 0, "invalid profile_type argument given: \"%s\"" %(profile_type)
+            assert 0, "invalid profile_type argument given: \"%s\"" \
+                % (profile_type)
     # Return the median.
     return statistics.median(max_list)
 
 
-################################################################################
+###############################################################################
 
-def list_moving_window_average_values(in_list, 
+def list_moving_window_average_values(in_list,
                                       win_extlr=5,
                                       method=1):
     """
-    Take a list of numeric values, and calculate for each position a new value, 
-    by taking the mean value of the window of positions -win_extlr and 
-    +win_extlr. If full extension is not possible (at list ends), it just 
+    Take a list of numeric values, and calculate for each position a new value,
+    by taking the mean value of the window of positions -win_extlr and
+    +win_extlr. If full extension is not possible (at list ends), it just
     takes what it gets.
     Two implementations of the task are given, chose by method=1 or method=2.
 
@@ -142,17 +142,17 @@ def list_moving_window_average_values(in_list,
                 s = 0
             if e > l_list:
                 e = l_list
-            l = e-s
+            ln = e - s
             sc_sum = 0
-            for j in range(l):
-                sc_sum += in_list[s+j]
-            new_list[i] = sc_sum / l
+            for j in range(ln):
+                sc_sum += in_list[s + j]
+            new_list[i] = sc_sum / ln
     else:
-        assert 0, "invalid method ID given (%i)" %(method)
+        assert 0, "invalid method ID given (%i)" % (method)
     return new_list
 
 
-################################################################################
+###############################################################################
 
 def echo_add_to_file(echo_string, out_file):
     """
@@ -164,17 +164,17 @@ def echo_add_to_file(echo_string, out_file):
     error = False
     if output:
         error = True
-    assert error == False, "echo is complaining:\n%s\n%s" %(check_cmd, output)
+    assert not error, "echo is complaining:\n%s\n%s" % (check_cmd, output)
 
 
-################################################################################
+###############################################################################
 
 def is_tool(name):
     """Check whether tool "name" is in PATH."""
     return find_executable(name) is not None
 
 
-################################################################################
+###############################################################################
 
 def count_fasta_headers(fasta_file):
     """
@@ -194,7 +194,7 @@ def count_fasta_headers(fasta_file):
     return row_count
 
 
-################################################################################
+###############################################################################
 
 def make_file_copy(in_file, out_file):
     """
@@ -202,17 +202,20 @@ def make_file_copy(in_file, out_file):
 
     """
     check_cmd = "cat " + in_file + " > " + out_file
-    assert in_file != out_file, "cat does not like to cat file into same file (%s)" %(check_cmd)
+    assert in_file != out_file, \
+        "cat does not like to cat file into same file (%s)" % (check_cmd)
     output = subprocess.getoutput(check_cmd)
     error = False
     if output:
         error = True
-    assert error == False, "cat did not like your input (in_file: %s, out_file: %s):\n%s" %(in_file, out_file, output)
+    assert not error, \
+        "cat did not like your input (in_file: %s, out_file: %s):\n%s" \
+        % (in_file, out_file, output)
 
 
-################################################################################
+###############################################################################
 
-def split_fasta_into_test_train_files(in_fasta, test_out_fa, train_out_fa, 
+def split_fasta_into_test_train_files(in_fasta, test_out_fa, train_out_fa,
                                       test_size=500):
     """
     Split in_fasta .fa file into two files (e.g. test, train).
@@ -236,19 +239,48 @@ def split_fasta_into_test_train_files(in_fasta, test_out_fa, train_out_fa,
     TRAINOUT.close()
 
 
-################################################################################
+###############################################################################
+
+def check_seqs_dic_format(seqs_dic):
+    """
+    Check sequence dictionary for lowercase-only sequences or sequences
+    wich have lowercase nts in between uppercase nts.
+    Return suspicious IDs as list or empty list if not hits.
+    IDs with lowercase-only sequences.
+
+    >>> seqs_dic = {"id1" : "acguACGU", "id2" : "acgua", "id3" : "acgUUaUcc"}
+    >>> check_seqs_dic_format(seqs_dic)
+    ['id2', 'id3']
+    >>> seqs_dic = {"id1" : "acgAUaa", "id2" : "ACGUACUA"}
+    >>> check_seqs_dic_format(seqs_dic)
+    []
+
+    """
+    assert seqs_dic, "given seqs_dic empty"
+    bad_seq_ids = []
+    for seq_id in seqs_dic:
+        seq = seqs_dic[seq_id]
+        if re.search("^[acgtun]+$", seq):
+            bad_seq_ids.append(seq_id)
+        if re.search("[ACGTUN][acgtun]+[ACGTUN]", seq):
+            bad_seq_ids.append(seq_id)
+    return bad_seq_ids
+
+
+###############################################################################
 
 def read_fasta_into_dic(fasta_file,
                         seqs_dic=False,
                         ids_dic=False,
                         read_dna=False,
+                        short_ensembl=False,
                         reject_lc=False,
                         convert_to_uc=False,
                         skip_n_seqs=True):
     """
-    Read in FASTA sequences, convert to RNA, store in dictionary 
+    Read in FASTA sequences, convert to RNA, store in dictionary
     and return dictionary.
-    
+
     >>> test_fasta = "test-data/test.fa"
     >>> read_fasta_into_dic(test_fasta)
     {'seq1': 'acguACGUacgu', 'seq2': 'ugcaUGCAugcaACGUacgu'}
@@ -256,8 +288,11 @@ def read_fasta_into_dic(fasta_file,
     >>> read_fasta_into_dic(test_fasta)
     {}
     >>> test_fasta = "test-data/test.ensembl.fa"
-    >>> read_fasta_into_dic(test_fasta, read_dna=True)
+    >>> read_fasta_into_dic(test_fasta, read_dna=True, short_ensembl=True)
     {'ENST00000415118': 'GAAATAGT', 'ENST00000448914': 'ACTGGGGGATACGAAAA'}
+    >>> test_fasta = "test-data/test4.fa"
+    >>> read_fasta_into_dic(test_fasta)
+    {'1': 'gccuAUGUuuua', '2': 'cugaAACUaugu'}
 
     """
     if not seqs_dic:
@@ -266,9 +301,9 @@ def read_fasta_into_dic(fasta_file,
     seq = ""
 
     # Go through FASTA file, extract sequences.
-    if re.search(".+\.gz$", fasta_file):
+    if re.search(r".+\.gz$", fasta_file):
         f = gzip.open(fasta_file, 'rt')
-    else: 
+    else:
         f = open(fasta_file, "r")
     for line in f:
         if re.search(">.+", line):
@@ -276,10 +311,13 @@ def read_fasta_into_dic(fasta_file,
             seq_id = m.group(1)
             # If there is a ".", take only first part of header.
             # This assumes ENSEMBL header format ">ENST00000631435.1 cdna ..."
-            if re.search(".+\..+", seq_id):
-                m = re.search("(.+?)\..+", seq_id)
-                seq_id = m.group(1)
-            assert seq_id not in seqs_dic, "non-unique FASTA header \"%s\" in \"%s\"" % (seq_id, fasta_file)
+            if short_ensembl:
+                if re.search(r".+\..+", seq_id):
+                    m = re.search(r"(.+?)\..+", seq_id)
+                    seq_id = m.group(1)
+            assert seq_id not in seqs_dic, \
+                "non-unique FASTA header \"%s\" in \"%s\"" \
+                % (seq_id, fasta_file)
             if ids_dic:
                 if seq_id in ids_dic:
                     seqs_dic[seq_id] = ""
@@ -290,25 +328,31 @@ def read_fasta_into_dic(fasta_file,
                 m = re.search("([ACGTUN]+)", line, re.I)
                 seq = m.group(1)
                 if reject_lc:
-                    assert not re.search("[a-z]", seq), "lowercase characters detected in sequence \"%i\" (reject_lc=True)" %(seq_id)
+                    assert \
+                        not re.search("[a-z]", seq), \
+                        "lc char detected in seq \"%i\" (reject_lc=True)" \
+                        % (seq_id)
                 if convert_to_uc:
                     seq = seq.upper()
                 # If sequences with N nucleotides should be skipped.
                 if skip_n_seqs:
                     if "n" in m.group(1) or "N" in m.group(1):
-                        print ("WARNING: \"%s\" contains N nucleotides. Discarding sequence ... " % (seq_id))
+                        print("WARNING: \"%s\" contains N. Discarding "
+                              "sequence ... " % (seq_id))
                         del seqs_dic[seq_id]
                         continue
                 # Convert to RNA, concatenate sequence.
                 if read_dna:
-                    seqs_dic[seq_id] += m.group(1).replace("U","T").replace("u","t")
+                    seqs_dic[seq_id] += \
+                        m.group(1).replace("U", "T").replace("u", "t")
                 else:
-                    seqs_dic[seq_id] += m.group(1).replace("T","U").replace("t","u")
+                    seqs_dic[seq_id] += \
+                        m.group(1).replace("T", "U").replace("t", "u")
     f.close()
     return seqs_dic
 
 
-################################################################################
+###############################################################################
 
 def random_order_dic_keys_into_list(in_dic):
     """
@@ -322,7 +366,7 @@ def random_order_dic_keys_into_list(in_dic):
     return id_list
 
 
-################################################################################
+###############################################################################
 
 def graphprot_get_param_string(params_file):
     """
@@ -348,19 +392,19 @@ def graphprot_get_param_string(params_file):
                     if setting == "sequence":
                         param_string += "-onlyseq "
                 else:
-                    param_string += "-%s %s " %(par, setting)
+                    param_string += "-%s %s " % (par, setting)
             else:
-                assert 0, "pattern matching failed for string \"%s\"" %(param)
+                assert 0, "pattern matching failed for string \"%s\"" % (param)
     return param_string
 
 
-################################################################################
+###############################################################################
 
 def seqs_dic_count_uc_nts(seqs_dic):
     """
-    Count number of uppercase nucleotides in sequences stored in sequence 
+    Count number of uppercase nucleotides in sequences stored in sequence
     dictionary.
-    
+
     >>> seqs_dic = {'seq1': "acgtACGTacgt", 'seq2': 'acgtACacgt'}
     >>> seqs_dic_count_uc_nts(seqs_dic)
     6
@@ -376,13 +420,13 @@ def seqs_dic_count_uc_nts(seqs_dic):
     return c_uc
 
 
-################################################################################
+###############################################################################
 
 def seqs_dic_count_lc_nts(seqs_dic):
     """
-    Count number of lowercase nucleotides in sequences stored in sequence 
+    Count number of lowercase nucleotides in sequences stored in sequence
     dictionary.
-    
+
     >>> seqs_dic = {'seq1': "gtACGTac", 'seq2': 'cgtACacg'}
     >>> seqs_dic_count_lc_nts(seqs_dic)
     10
@@ -398,12 +442,12 @@ def seqs_dic_count_lc_nts(seqs_dic):
     return c_uc
 
 
-################################################################################
+###############################################################################
 
 def count_file_rows(in_file):
     """
     Count number of file rows for given input file.
-    
+
     >>> test_file = "test-data/test1.bed"
     >>> count_file_rows(test_file)
     7
@@ -418,7 +462,7 @@ def count_file_rows(in_file):
     return row_count
 
 
-################################################################################
+###############################################################################
 
 def bed_check_six_col_format(bed_file):
     """
@@ -444,13 +488,13 @@ def bed_check_six_col_format(bed_file):
     return six_col_format
 
 
-################################################################################
+###############################################################################
 
 def bed_check_unique_ids(bed_file):
     """
-    Check whether .bed file (6 column format with IDs in column 4) 
+    Check whether .bed file (6 column format with IDs in column 4)
     has unique column 4 IDs.
-    
+
     >>> test_bed = "test-data/test1.bed"
     >>> bed_check_unique_ids(test_bed)
     True
@@ -468,7 +512,7 @@ def bed_check_unique_ids(bed_file):
         return True
 
 
-################################################################################
+###############################################################################
 
 def get_seq_lengths_from_seqs_dic(seqs_dic):
     """
@@ -483,7 +527,7 @@ def get_seq_lengths_from_seqs_dic(seqs_dic):
     return seq_len_dic
 
 
-################################################################################
+###############################################################################
 
 def bed_get_region_lengths(bed_file):
     """
@@ -499,20 +543,24 @@ def bed_get_region_lengths(bed_file):
     id2len_dic = {}
     with open(bed_file) as f:
         for line in f:
-            row = line.strip()
             cols = line.strip().split("\t")
             site_s = int(cols[1])
             site_e = int(cols[2])
             site_id = cols[3]
             site_l = site_e - site_s
-            assert site_id not in id2len_dic, "column 4 IDs not unique in given .bed file \"%s\"" %(bed_file)
+            assert site_id \
+                not in id2len_dic, \
+                "column 4 IDs not unique in given .bed file \"%s\"" \
+                % (bed_file)
             id2len_dic[site_id] = site_l
     f.closed
-    assert id2len_dic, "No IDs read into dictionary (input file \"%s\" empty or malformatted?)" % (in_bed)
+    assert id2len_dic, \
+        "No IDs read into dic (input file \"%s\" empty or malformatted?)" \
+        % (bed_file)
     return id2len_dic
 
 
-################################################################################
+###############################################################################
 
 def graphprot_get_param_dic(params_file):
     """
@@ -522,7 +570,19 @@ def graphprot_get_param_dic(params_file):
 
     >>> params_file = "test-data/test.params"
     >>> graphprot_get_param_dic(params_file)
-    {'epochs': '20', 'lambda': '0.01', 'R': '1', 'D': '3', 'bitsize': '14', 'model_type': 'sequence', 'pos_train_ws_pred_median': '0.760321', 'pos_train_profile_median': '5.039610', 'pos_train_avg_profile_median_1': '4.236340', 'pos_train_avg_profile_median_2': '3.868431', 'pos_train_avg_profile_median_3': '3.331277', 'pos_train_avg_profile_median_4': '2.998667', 'pos_train_avg_profile_median_5': '2.829782', 'pos_train_avg_profile_median_6': '2.626623', 'pos_train_avg_profile_median_7': '2.447083', 'pos_train_avg_profile_median_8': '2.349919', 'pos_train_avg_profile_median_9': '2.239829', 'pos_train_avg_profile_median_10': '2.161676'}
+    {'epochs': '20', 'lambda': '0.01', 'R': '1', 'D': '3', 'bitsize': '14', \
+'model_type': 'sequence', 'pos_train_ws_pred_median': '0.760321', \
+'pos_train_profile_median': '5.039610', \
+'pos_train_avg_profile_median_1': '4.236340', \
+'pos_train_avg_profile_median_2': '3.868431', \
+'pos_train_avg_profile_median_3': '3.331277', \
+'pos_train_avg_profile_median_4': '2.998667', \
+'pos_train_avg_profile_median_5': '2.829782', \
+'pos_train_avg_profile_median_6': '2.626623', \
+'pos_train_avg_profile_median_7': '2.447083', \
+'pos_train_avg_profile_median_8': '2.349919', \
+'pos_train_avg_profile_median_9': '2.239829', \
+'pos_train_avg_profile_median_10': '2.161676'}
 
     """
     param_dic = {}
@@ -539,7 +599,7 @@ def graphprot_get_param_dic(params_file):
     return param_dic
 
 
-################################################################################
+###############################################################################
 
 def graphprot_filter_predictions_file(in_file, out_file,
                                       sc_thr=0):
@@ -554,16 +614,16 @@ def graphprot_filter_predictions_file(in_file, out_file,
             score = float(cols[2])
             if score < sc_thr:
                 continue
-            OUTPRED.write("%s\n" %(row))
+            OUTPRED.write("%s\n" % (row))
     f.close()
     OUTPRED.close()
 
 
-################################################################################
+###############################################################################
 
 def fasta_read_in_ids(fasta_file):
     """
-    Given a .fa file, read in header IDs in order appearing in file, 
+    Given a .fa file, read in header IDs in order appearing in file,
     and store in list.
 
     >>> test_file = "test-data/test3.fa"
@@ -582,19 +642,19 @@ def fasta_read_in_ids(fasta_file):
     return ids_list
 
 
-################################################################################
+###############################################################################
 
-def graphprot_profile_calculate_avg_profile(in_file, out_file,
-                                            ap_extlr=5,
-                                            seq_ids_list=False,
-                                            method=1):
+def graphprot_profile_calc_avg_profile(in_file, out_file,
+                                       ap_extlr=5,
+                                       seq_ids_list=False,
+                                       method=1):
     """
-    Given a GraphProt .profile file, calculate average profiles and output 
+    Given a GraphProt .profile file, calculate average profiles and output
     average profile file.
-    Average profile means that the position-wise scores will get smoothed 
-    out by calculating for each position a new score, taking a sequence 
-    window -ap_extlr to +ap_extlr relative to the position 
-    and calculate the mean score over this window. The mean score then 
+    Average profile means that the position-wise scores will get smoothed
+    out by calculating for each position a new score, taking a sequence
+    window -ap_extlr to +ap_extlr relative to the position
+    and calculate the mean score over this window. The mean score then
     becomes the new average profile score at this position.
     Two different implementations of the task are given:
     method=1 (new python implementation, slower + more memory but easy to read)
@@ -604,14 +664,17 @@ def graphprot_profile_calculate_avg_profile(in_file, out_file,
     >>> out_file1 = "test-data/test2_1.avg_profile"
     >>> out_file2 = "test-data/test2_2.avg_profile"
     >>> out_file4 = "test-data/test2_3.avg_profile"
-    >>> graphprot_profile_calculate_avg_profile(in_file, out_file1, ap_extlr=2, method=1)
-    >>> graphprot_profile_calculate_avg_profile(in_file, out_file2, ap_extlr=2, method=2)
+    >>> graphprot_profile_calc_avg_profile(in_file, \
+    out_file1, ap_extlr=2, method=1)
+    >>> graphprot_profile_calc_avg_profile(in_file, \
+    out_file2, ap_extlr=2, method=2)
     >>> diff_two_files_identical(out_file1, out_file2)
     True
     >>> test_list = ["s1", "s2", "s3", "s4"]
     >>> out_file3_exp = "test-data/test3_added_ids_exp.avg_profile"
     >>> out_file3 = "test-data/test3_added_ids_out.avg_profile"
-    >>> graphprot_profile_calculate_avg_profile(in_file, out_file3, ap_extlr=2, method=1, seq_ids_list=test_list)
+    >>> graphprot_profile_calc_avg_profile(in_file, out_file3, \
+    ap_extlr=2, method=1, seq_ids_list=test_list)
     >>> diff_two_files_identical(out_file3_exp, out_file3)
     True
 
@@ -624,7 +687,7 @@ def graphprot_profile_calculate_avg_profile(in_file, out_file,
             for line in f:
                 cols = line.strip().split("\t")
                 site_id = int(cols[0])
-                pos = int(cols[1]) # 0-based.
+                pos = int(cols[1])  # 0-based.
                 score = float(cols[2])
                 # Store first position of site.
                 if site_id not in site_starts_dic:
@@ -635,14 +698,15 @@ def graphprot_profile_calculate_avg_profile(in_file, out_file,
                     lists_dic[site_id] = []
                     lists_dic[site_id].append(score)
         f.close()
-        # Check number of IDs (# FASTA sequence IDs has to be same as # site IDs).
+        # Check number of IDs (# FASTA IDs has to be same as # site IDs).
         if seq_ids_list:
             c_seq_ids = len(seq_ids_list)
             c_site_ids = len(site_starts_dic)
-            assert c_seq_ids == c_site_ids, "# sequence IDs != # site IDs (%i != %i)" %(c_seq_ids, c_site_ids)
+            assert c_seq_ids == c_site_ids, \
+                "# sequence IDs != # site IDs (%i != %i)" \
+                % (c_seq_ids, c_site_ids)
         OUTPROF = open(out_file, "w")
         # For each site, calculate average profile scores list.
-        max_list = []
         for site_id in lists_dic:
             # Convert profile score list to average profile scores list.
             aps_list = list_moving_window_average_values(lists_dic[site_id],
@@ -652,8 +716,8 @@ def graphprot_profile_calculate_avg_profile(in_file, out_file,
             if seq_ids_list:
                 site_id = seq_ids_list[site_id]
             for i, sc in enumerate(aps_list):
-                pos = i + start_pos + 1 # make 1-based.
-                OUTPROF.write("%s\t%i\t%f\n" %(site_id, pos, sc))
+                pos = i + start_pos + 1  # make 1-based.
+                OUTPROF.write("%s\t%i\t%f\n" % (site_id, pos, sc))
         OUTPROF.close()
     elif method == 2:
         OUTPROF = open(out_file, "w")
@@ -668,7 +732,7 @@ def graphprot_profile_calculate_avg_profile(in_file, out_file,
             for line in f:
                 cols = line.strip().split("\t")
                 cur_id = int(cols[0])
-                pos = int(cols[1]) # 0-based.
+                pos = int(cols[1])  # 0-based.
                 score = float(cols[2])
                 # Store first position of site.
                 if cur_id not in site_starts_dic:
@@ -677,16 +741,18 @@ def graphprot_profile_calculate_avg_profile(in_file, out_file,
                 if cur_id != old_id:
                     # Process old id scores.
                     if scores_list:
-                        aps_list = list_moving_window_average_values(scores_list,
-                                                                     win_extlr=ap_extlr)
+                        aps_list = \
+                            list_moving_window_average_values(
+                                scores_list,
+                                win_extlr=ap_extlr)
                         start_pos = site_starts_dic[old_id]
                         seq_id = old_id
                         # Get original FASTA sequence ID.
                         if seq_ids_list:
                             seq_id = seq_ids_list[old_id]
                         for i, sc in enumerate(aps_list):
-                            pos = i + start_pos + 1 # make 1-based.
-                            OUTPROF.write("%s\t%i\t%f\n" %(seq_id, pos, sc))
+                            pos = i + start_pos + 1  # make 1-based.
+                            OUTPROF.write("%s\t%i\t%f\n" % (seq_id, pos, sc))
                         # Reset list.
                         scores_list = []
                     old_id = cur_id
@@ -705,19 +771,19 @@ def graphprot_profile_calculate_avg_profile(in_file, out_file,
             if seq_ids_list:
                 seq_id = seq_ids_list[old_id]
             for i, sc in enumerate(aps_list):
-                pos = i + start_pos + 1 # make 1-based.
-                OUTPROF.write("%s\t%i\t%f\n" %(seq_id, pos, sc))
+                pos = i + start_pos + 1  # make 1-based.
+                OUTPROF.write("%s\t%i\t%f\n" % (seq_id, pos, sc))
         OUTPROF.close()
 
 
-################################################################################
+###############################################################################
 
 def graphprot_profile_extract_peak_regions(in_file, out_file,
                                            max_merge_dist=0,
                                            sc_thr=0):
     """
     Extract peak regions from GraphProt .profile file.
-    Store the peak regions (defined as regions with scores >= sc_thr) 
+    Store the peak regions (defined as regions with scores >= sc_thr)
     as to out_file in 6-column .bed.
 
     TODO:
@@ -735,7 +801,8 @@ def graphprot_profile_extract_peak_regions(in_file, out_file,
     >>> graphprot_profile_extract_peak_regions(in_file, out_file, sc_thr=10)
     >>> diff_two_files_identical(out_file, empty_file)
     True
-    >>> graphprot_profile_extract_peak_regions(in_file, out_file, max_merge_dist=2)
+    >>> graphprot_profile_extract_peak_regions(in_file, out_file, \
+    max_merge_dist=2)
     >>> diff_two_files_identical(out_file, exp2_file)
     True
 
@@ -753,7 +820,7 @@ def graphprot_profile_extract_peak_regions(in_file, out_file,
         for line in f:
             cols = line.strip().split("\t")
             cur_id = cols[0]
-            pos = int(cols[1]) # 0-based.
+            pos = int(cols[1])  # 0-based.
             score = float(cols[2])
             # Store first position of site.
             if cur_id not in site_starts_dic:
@@ -768,17 +835,21 @@ def graphprot_profile_extract_peak_regions(in_file, out_file,
                 # Process old id scores.
                 if scores_list:
                     # Extract peaks from region.
-                    peak_list = list_extract_peaks(scores_list, 
-                                                   max_merge_dist=max_merge_dist,
-                                                   coords="bed",
-                                                   sc_thr=sc_thr)
+                    peak_list = \
+                        list_extract_peaks(scores_list,
+                                           max_merge_dist=max_merge_dist,
+                                           coords="bed",
+                                           sc_thr=sc_thr)
                     start_pos = site_starts_dic[old_id]
                     # Print out peaks in .bed format.
-                    for l in peak_list:
-                        peak_s = start_pos + l[0]
-                        peak_e = start_pos + l[1]
-                        site_id = "%s,%i" %(old_id, l[2])
-                        OUTPEAKS.write("%s\t%i\t%i\t%s\t%f\t+\n" %(old_id, peak_s, peak_e, site_id, l[3]))
+                    for ln in peak_list:
+                        peak_s = start_pos + ln[0]
+                        peak_e = start_pos + ln[1]
+                        site_id = "%s,%i" % (old_id, ln[2])
+                        OUTPEAKS.write("%s\t%i\t%i"
+                                       "\t%s\t%f\t+\n"
+                                       % (old_id, peak_s,
+                                          peak_e, site_id, ln[3]))
                     # Reset list.
                     scores_list = []
                 old_id = cur_id
@@ -790,33 +861,34 @@ def graphprot_profile_extract_peak_regions(in_file, out_file,
     # Process last block.
     if scores_list:
         # Extract peaks from region.
-        peak_list = list_extract_peaks(scores_list, 
+        peak_list = list_extract_peaks(scores_list,
                                        max_merge_dist=max_merge_dist,
                                        coords="bed",
                                        sc_thr=sc_thr)
         start_pos = site_starts_dic[old_id]
         # Print out peaks in .bed format.
-        for l in peak_list:
-            peak_s = start_pos + l[0]
-            peak_e = start_pos + l[1]
-            site_id = "%s,%i" %(old_id, l[2]) # best score also 1-based.
-            OUTPEAKS.write("%s\t%i\t%i\t%s\t%f\t+\n" %(old_id, peak_s, peak_e, site_id, l[3]))
+        for ln in peak_list:
+            peak_s = start_pos + ln[0]
+            peak_e = start_pos + ln[1]
+            site_id = "%s,%i" % (old_id, ln[2])  # best score also 1-based.
+            OUTPEAKS.write("%s\t%i\t%i\t%s\t%f\t+\n"
+                           % (old_id, peak_s, peak_e, site_id, ln[3]))
     OUTPEAKS.close()
 
 
-################################################################################
+###############################################################################
 
 def list_extract_peaks(in_list,
                        max_merge_dist=0,
                        coords="list",
                        sc_thr=0):
     """
-    Extract peak regions from list. 
+    Extract peak regions from list.
     Peak region is defined as region >= score threshold.
-    
+
     coords=bed  :  peak start 0-based, peak end 1-based.
     coords=list :  peak start 0-based, peak end 0-based.
-    
+
     >>> test_list = [-1, 0, 2, 4.5, 1, -1, 5, 6.5]
     >>> list_extract_peaks(test_list)
     [[1, 4, 3, 4.5], [6, 7, 7, 6.5]]
@@ -862,7 +934,6 @@ def list_extract_peaks(in_list,
             # Before was peak region?
             if inside:
                 # Store peak region.
-                #peak_infos = "%i,%i,%i,%f" %(pr_s, pr_e, pr_top_pos, pr_top_sc)
                 peak_infos = [pr_s, pr_e, pr_top_pos, pr_top_sc]
                 peak_list.append(peak_infos)
                 inside = False
@@ -898,7 +969,8 @@ def list_extract_peaks(in_list,
                     if peak_list[i][3] < peak_list[j][3]:
                         new_top_pos = peak_list[j][2]
                         new_top_sc = peak_list[j][3]
-                    new_peak = [peak_list[i][0], peak_list[j][1], new_top_pos, new_top_sc]
+                    new_peak = [peak_list[i][0], peak_list[j][1],
+                                new_top_pos, new_top_sc]
                 # If two peaks were merged.
                 if new_peak:
                     merged_peak_list.append(new_peak)
@@ -915,15 +987,16 @@ def list_extract_peaks(in_list,
     if coords == "bed":
         for i in range(len(peak_list)):
             peak_list[i][1] += 1
-            peak_list[i][2] += 1 # 1-base best score position too.
+            peak_list[i][2] += 1  # 1-base best score position too.
     return peak_list
 
 
-################################################################################
+###############################################################################
 
-def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed, print_rows=False):
+def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed,
+                               print_rows=False):
     """
-    Given a .bed file of sequence peak regions (possible coordinates from 
+    Given a .bed file of sequence peak regions (possible coordinates from
     0 to length of s), convert peak coordinates to genomic coordinates.
     Do this by taking genomic regions of sequences as input.
 
@@ -944,7 +1017,10 @@ def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed, 
             row = line.strip()
             cols = line.strip().split("\t")
             site_id = cols[3]
-            assert site_id not in id2row_dic, "column 4 IDs not unique in given .bed file \"%s\"" %(args.genomic_sites_bed)
+            assert site_id \
+                not in id2row_dic, \
+                "column 4 IDs not unique in given .bed file \"%s\"" \
+                % (genomic_sites_bed)
             id2row_dic[site_id] = row
     f.close()
 
@@ -958,10 +1034,13 @@ def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed, 
             site_e = int(cols[2])
             site_id2 = cols[3]
             site_sc = float(cols[4])
-            assert re.search(".+,.+", site_id2), "regular expression failed for ID \"%s\"" %(site_id2)
-            m = re.search(".+,(\d+)", site_id2)
-            sc_pos = int(m.group(1)) # 1-based.
-            assert site_id in id2row_dic, "site ID \"%s\" not found in genomic sites dictionary" %(site_id)
+            assert re.search(".+,.+", site_id2), \
+                "regular expression failed for ID \"%s\"" % (site_id2)
+            m = re.search(r".+,(\d+)", site_id2)
+            sc_pos = int(m.group(1))  # 1-based.
+            assert site_id in id2row_dic, \
+                "site ID \"%s\" not found in genomic sites dictionary" \
+                % (site_id)
             row = id2row_dic[site_id]
             rowl = row.split("\t")
             gen_chr = rowl[0]
@@ -974,21 +1053,23 @@ def bed_peaks_to_genomic_peaks(peak_file, genomic_peak_file, genomic_sites_bed, 
             if gen_pol == "-":
                 new_s = gen_e - site_e
                 new_e = gen_e - site_s
-                new_sc_pos = gen_e - sc_pos + 1 # keep 1-based.
-            new_row = "%s\t%i\t%i\t%s,%i\t%f\t%s" %(gen_chr, new_s, new_e, site_id, new_sc_pos, site_sc, gen_pol)
-            OUTPEAKS.write("%s\n" %(new_row))
+                new_sc_pos = gen_e - sc_pos + 1  # keep 1-based.
+            new_row = "%s\t%i\t%i\t%s,%i\t%f\t%s" \
+                      % (gen_chr, new_s, new_e,
+                         site_id, new_sc_pos, site_sc, gen_pol)
+            OUTPEAKS.write("%s\n" % (new_row))
             if print_rows:
                 print(new_row)
     OUTPEAKS.close()
 
 
-################################################################################
+###############################################################################
 
 def diff_two_files_identical(file1, file2):
     """
-    Check whether two files are identical. Return true if diff reports no 
+    Check whether two files are identical. Return true if diff reports no
     differences.
-    
+
     >>> file1 = "test-data/file1"
     >>> file2 = "test-data/file2"
     >>> diff_two_files_identical(file1, file2)
@@ -1006,6 +1087,4 @@ def diff_two_files_identical(file1, file2):
     return same
 
 
-################################################################################
-
-
+###############################################################################
