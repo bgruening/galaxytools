@@ -183,10 +183,25 @@ def _stream_fasta_to_file(fasta_stream, target_directory, database_id,
         for i in ["taxonmap", "taxonnodes", "taxonnames"]:
             args.extend(['--' + i, params['tax_cond'][i]])
     elif params['tax_cond']['tax_select'] == "ncbi":
+        if os.path.isfile(os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid.FULL.gz')):
+            args.extend(['--taxonmap',
+                         os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid.FULL.gz')])
+        elif os.path.isfile(os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid.FULL')):
+            args.extend(['--taxonmap',
+                         os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid.FULL')])
+        elif os.path.isfile(os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid.gz')):
+            args.extend(['--taxonmap',
+                         os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid.gz')])
+        elif os.path.isfile(os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid')):
+            args.extend(['--taxonmap',
+                         os.path.join(params['tax_cond']['ncbi_tax'], 'prot.accession2taxid')])
+        else:
+            raise Exception('Unable to find prot.accession2taxid file in %s' % (params['tax_cond']['ncbi_tax']))
+
         args.extend(['--taxonnodes',
-                     params['tax_cond']['ncbi_tax'] + 'nodes.dmp'])
+                     os.path.join(params['tax_cond']['ncbi_tax'], 'nodes.dmp')])
         args.extend(['--taxonnames',
-                     params['tax_cond']['ncbi_tax'] + 'names.dmp'])
+                     os.path.join(params['tax_cond']['ncbi_tax'], 'names.dmp')])
 
     tmp_stderr = tempfile.NamedTemporaryFile(prefix="tmp-data-manager-diamond-database-builder-stderr")
     proc = subprocess.Popen(args=args, shell=False, cwd=target_directory,
@@ -200,7 +215,7 @@ def _stream_fasta_to_file(fasta_stream, target_directory, database_id,
             chunk = tmp_stderr.read(CHUNK_SIZE)
             if not chunk:
                 break
-            sys.stderr.write(chunk)
+            sys.stderr.write(chunk.decode('utf-8'))
         sys.exit(return_code)
     tmp_stderr.close()
     os.remove(temp_fasta.name)
