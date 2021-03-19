@@ -7,40 +7,57 @@ Based on work from Jan Rudolph: https://github.com/jdrudolph/uniprot
 available services:
     map
     retrieve
+
+rewitten using inspiration form: https://findwork.dev/blog/advanced-usage-python-requests-timeouts-retries-hooks/
 """
 import argparse
 import sys
 
 import requests
-
-url = 'https://www.uniprot.org/'
-
-
-def _retrieve(query, format='txt'):
-    """_retrieve is not meant for use with the python interface, use `retrieve`
-    instead"""
-    tool = 'uploadlists/'
-
-    query = list(set(query.split('\n')))
-    queries = [query[i:i + 100] for i in range(0, len(query), 100)]
-
-    data = {'format': format, 'from': 'ACC+ID', 'to': 'ACC'}
-    responses = []
-    for _ in queries:
-        r = requests.post(url + tool, data=data, files={'file': ' '.join(_)})
-        r.raise_for_status()
-        responses.append(r)
-    page = ''.join(response.text for response in responses)
-    return page
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 
-def _map(query, f, t, format='tab'):
+DEFAULT_TIMEOUT = 5  # seconds
+URL = 'https://www.uniprot.org/'
+
+retry_strategy = Retry(
+    total=5,
+    backoff_factor=2,
+    status_forcelist=[429, 500, 502, 503, 504],
+    allowed_methods=["HEAD", "GET", "OPTIONS", "POST"]
+)
+
+
+class TimeoutHTTPAdapter(HTTPAdapter):
+    def __init__(self, *args, **kwargs):
+        self.timeout = DEFAULT_TIMEOUT
+        if "timeout" in kwargs:
+            self.timeout = kwargs["timeout"]
+            del kwargs["timeout"]
+        super().__init__(*args, **kwargs)
+
+    def send(self, request, **kwargs):
+        timeout = kwargs.get("timeout")
+        if timeout is None:
+            kwargs["timeout"] = self.timeout
+        return super().send(request, **kwargs)
+
+
+def _map(query, f, t, format='tab', chunk_size=100):
     """ _map is not meant for use with the python interface, use `map` instead
     """
     tool = 'uploadlists/'
+    data = {'format': format, 'from': f, 'to': t}
 
-    data = {'from': f, 'to': t, 'format': format, 'query': query}
-    response = requests.post(url + tool, data=data)
+    req = []
+    for i in range(0, len(query), chunk_size):
+        q = query[i:i + chunk_size]
+        req.append(dict([("url", URL + tool),
+                         ('data', data),
+                         ("files", {'file': ' '.join(q)})]))
+    return req
+    response = requests.post(URL + tool, data=data)
     response.raise_for_status()
     page = response.text
     return page
@@ -65,12 +82,24 @@ if __name__ == '__main__':
     retrieve.add_argument('out', nargs='?', type=argparse.FileType('w'),
                           default=sys.stdout, help='output file (default: stdout)')
     retrieve.add_argument('-f', '--format', help='specify output format', default='txt')
-
     args = parser.parse_args()
-    query = args.inp.read()
+
+    # get the IDs from the file as sorted list
+    # (sorted is convenient for testing)
+    query = set()
+    for line in args.inp:
+        query.add(line.strip())
+    query = sorted(query)
 
     if args.tool == 'map':
-        args.out.write(_map(query, args.f, args.t, args.format))
-
+        pload = _map(query, args.f, args.t, chunk_size=100)
     elif args.tool == 'retrieve':
-        args.out.write(_retrieve(query, format=args.format))
+        pload = _map(query, 'ACC+ID', 'ACC', args.format, chunk_size=100)
+
+    adapter = TimeoutHTTPAdapter(max_retries=retry_strategy)
+    http = requests.Session()
+    http.mount("https://", adapter)
+    for i, p in enumerate(pload):
+        response = http.post(**p)
+        args.out.write(response.text)
+    http.close()
