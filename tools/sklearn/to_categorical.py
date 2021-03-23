@@ -2,8 +2,9 @@ import argparse
 import json
 import warnings
 
+import numpy as np
 import pandas as pd
-from galaxy_ml.utils import to_categorical
+from keras.utils import to_categorical
 
 
 def main(inputs, infile, outfile, num_classes=None):
@@ -35,10 +36,7 @@ def main(inputs, infile, outfile, num_classes=None):
 
     output_matrix = to_categorical(input_vector, num_classes=num_classes)
 
-    print("Input vector shape: %s" % repr(input_vector.shape))
-    print("Output matrix shape: %s" % repr(output_matrix.shape))
-
-    output_matrix.to_csv(outfile, sep='\t', header=input_header, index=False)
+    np.savetxt(outfile, output_matrix, fmt="%d", delimiter='\t')
 
 
 if __name__ == '__main__':
