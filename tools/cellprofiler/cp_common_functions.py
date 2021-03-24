@@ -1,6 +1,7 @@
 INDENTATION = "    "
 LINE_NUM_MODULES = 4
 
+
 def get_json_value(json_input, keys_path):
     """Returns the value specified in keys_path (using dot notation) or an empty string if the key doesn't exist"""
     if not isinstance(json_input, dict):
@@ -21,7 +22,7 @@ def concat_conditional(a, b):
     else:
         return f"{a}_{b}"
 
-        
+
 def get_total_number_of_modules(pipeline_lines):
     """Gets the number of modules from the header of the previous pipeline"""
     number_of_modules = pipeline_lines[LINE_NUM_MODULES].strip().split(':')[1]

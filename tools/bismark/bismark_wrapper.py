@@ -68,7 +68,7 @@ def __main__():
     parser.add_argument('--fastq', action='store_true', help='Query filetype is in FASTQ format')
     parser.add_argument('--fasta', action='store_true', help='Query filetype is in FASTA format')
     parser.add_argument('--phred64-quals', dest='phred64', action="store_true")
-    parser.add_argument('--non-directional', dest='non_directional', action="store_true")
+    parser.add_argument('--non_directional', dest='non_directional', action="store_true")
     parser.add_argument('--pbat', dest='pbat', action="store_true")
 
     parser.add_argument('--skip-reads', dest='skip_reads', type=int)
@@ -189,7 +189,7 @@ def __main__():
     if args.phred64:
         cmd.append('--phred64-quals')
     if args.non_directional:
-       cmd.append('--non-directional')
+       cmd.append('--non_directional')
     if args.pbat:
        cmd.append('--pbat')
     if args.suppress_header:

@@ -1,6 +1,5 @@
 import json
 import sys
-import os
 
 FOURSPACES = "    "
 
@@ -12,8 +11,8 @@ params = json.load(open(input_json_path, "r"))
 def write_images():
     filter_images = params['images']['filter_images']
 
-    _str = "\nImages:[module_num:1|svn_version:\\'Unknown\\'|variable_revision_number:2|show_window:False|notes:\\x5B\\'To begin creating your project, use the Images module to compile a list of files and/or folders that you want to analyze. You can also specify a set of rules to include only the desired files in your selected folders.\\'\x5D|batch_state:array(\x5B\x5D, dtype=uint8)|enabled:True|wants_pause:False]\n"
-    _str += FOURSPACES+":\n"
+    _str = "\nImages:[module_num:1|svn_version:\\'Unknown\\'|variable_revision_number:2|show_window:False|notes:\\x5B\\'To begin creating your project, use the Images module to compile a list of files and/or folders that you want to analyze. You can also specify a set of rules to include only the desired files in your selected folders.\\'\\x5D|batch_state:array(\\x5B\\x5D, dtype=uint8)|enabled:True|wants_pause:False]\n"
+    _str += FOURSPACES + ":\n"
     _str += FOURSPACES + "Filter images?:%s\n" % filter_images
     _str += FOURSPACES + "Select the rule criteria:and (extension does isimage) (directory doesnot startwith \".\")\n"
 
@@ -29,7 +28,7 @@ def write_metadata():
     else:
         method_count = 1
 
-    _str = "\nMetadata:[module_num:2|svn_version:\\'Unknown\\'|variable_revision_number:4|show_window:False|notes:\\x5B\\'The Metadata module optionally allows you to extract information describing your images (i.e, metadata) which will be stored along with your measurements. This information can be contained in the file name and/or location, or in an external file.\\'\x5D|batch_state:array(\x5B\x5D, dtype=uint8)|enabled:True|wants_pause:False]\n"
+    _str = "\nMetadata:[module_num:2|svn_version:\\'Unknown\\'|variable_revision_number:4|show_window:False|notes:\\x5B\\'The Metadata module optionally allows you to extract information describing your images (i.e, metadata) which will be stored along with your measurements. This information can be contained in the file name and/or location, or in an external file.\\'\\x5D|batch_state:array(\\x5B\\x5D, dtype=uint8)|enabled:True|wants_pause:False]\n"
     _str += FOURSPACES + "Extract metadata?:%s\n" % extract
 
     if extract == "No":
@@ -45,7 +44,7 @@ def write_metadata():
         _str += FOURSPACES + "Match file and image metadata:\x5B\x5D\n"
         _str += FOURSPACES + "Use case insensitive matching?:No\n"
     else:
-        _str += FOURSPACES + "Metadata data type:Text\n"  #default Text,not possible to select in Galaxy
+        _str += FOURSPACES + "Metadata data type:Text\n"  # default Text,not possible to select in Galaxy
         _str += FOURSPACES + "Metadata types:{}\n"
         _str += FOURSPACES + "Extraction method count:%d\n" % method_count
 
@@ -70,19 +69,18 @@ def write_metadata():
             _str += FOURSPACES + "Extract metadata from:%s\n" % methods["con_metadata_extract_from"]["extract_metadata_from"]
 
             if methods["con_metadata_extract_from"]["extract_metadata_from"] == "Images matching a rule":
-                rule_str =""
+                rule_str = ""
                 for r in methods["con_metadata_extract_from"]["r_match"]:
                     if r["con_match"]["rule_type"] == "extension":
                         rule_str += " (" + r["con_match"]["rule_type"] + " " + r["con_match"]["operator"] + " " + \
-                                    r["con_match"]["match_type"]+")"
+                                    r["con_match"]["match_type"] + ")"
                     else:
-                        rule_str +=" (" + r["con_match"]["rule_type"] + " " + r["con_match"]["operator"] + " " +\
-                                   r["con_match"]["contain"] + " \"" + r["con_match"]["match_value"] +"\")"
+                        rule_str += " (" + r["con_match"]["rule_type"] + " " + r["con_match"]["operator"] + " " +\
+                            r["con_match"]["contain"] + " \"" + r["con_match"]["match_value"] + "\")"
 
-
-                _str += FOURSPACES + "Select the filtering criteria:" + methods["con_metadata_extract_from"]["match_all_any"] + rule_str +"\n"
+                _str += FOURSPACES + "Select the filtering criteria:" + methods["con_metadata_extract_from"]["match_all_any"] + rule_str + "\n"
             else:
-                _str += FOURSPACES + "Select the filtering criteria:and (file does contain \"\")\n" #this line is required even if it's not used
+                _str += FOURSPACES + "Select the filtering criteria:and (file does contain \"\")\n"  # this line is required even if it's not used
 
             _str += FOURSPACES + "Metadata file location:\n"
             _str += FOURSPACES + "Match file and image metadata:\x5B\x5D\n"
@@ -127,7 +125,7 @@ def write_nameandtypes():
         _str += FOURSPACES + "Process as 3D?:%s\n" % process_3d
 
     else:
-        #the below lines are not relevant to "images matching rules", but needed in pipeline file
+        # the below lines are not relevant to "images matching rules", but needed in pipeline file
         _str += FOURSPACES + "Select the image type:Grayscale image\n"
         _str += FOURSPACES + "Name to assign these images:DNA\n"
         _str += FOURSPACES + "Match metadata:[]\n"
@@ -147,18 +145,18 @@ def write_nameandtypes():
         for rule in nameandtypes["con_assign_a_name_to"]["r_match_rule"]:
 
             rule_str = ""
-            if len(rule["r_match"]) >0 :
+            if len(rule["r_match"]) > 0:
                 for r in rule["r_match"]:
-                        if r["con_match"]["rule_type"] == "file" or r["con_match"]["rule_type"] == "directory":
-                            rule_str += " (" + r["con_match"]["rule_type"] + " "+r["con_match"]["operator"]+" "+\
-                                        r["con_match"]["contain"]+" \"" + r["con_match"]["match_value"] +"\")"
-                        else:
-                            rule_str += " ("+ r["con_match"]["rule_type"] + " " + r["con_match"]["operator"] + " " + \
-                                        r["con_match"]["match_type"] + ")"
+                    if r["con_match"]["rule_type"] == "file" or r["con_match"]["rule_type"] == "directory":
+                        rule_str += " (" + r["con_match"]["rule_type"] + " " + r["con_match"]["operator"] + " " + \
+                            r["con_match"]["contain"] + " \"" + r["con_match"]["match_value"] + "\")"
+                    else:
+                        rule_str += " (" + r["con_match"]["rule_type"] + " " + r["con_match"]["operator"] + " " + \
+                            r["con_match"]["match_type"] + ")"
             else:
-                rule_str = " (file does contain \"\")"  #need to have a value even if it is not used
+                rule_str = " (file does contain \"\")"  # need to have a value even if it is not used
 
-            _str += FOURSPACES + "Select the rule criteria:" + rule["match_all_any"] + rule_str +"\n"
+            _str += FOURSPACES + "Select the rule criteria:" + rule["match_all_any"] + rule_str + "\n"
 
             img_or_obj = rule["con_select_image_type"]["select_image_type"]
 
@@ -171,8 +169,7 @@ def write_nameandtypes():
 
             _str += FOURSPACES + "Select the image type:%s\n" % img_or_obj
 
-
-            intensity_range="Image metadata" #default value
+            intensity_range = "Image metadata"  # default value
             if img_or_obj == "Grayscale image" or img_or_obj == "Color image":
                 intensity_range = rule["con_select_image_type"]["con_set_intensity"]["set_intensity_range_from"]
 
@@ -183,7 +180,6 @@ def write_nameandtypes():
             else:
                 _str += FOURSPACES + "Maximum intensity:255.0\n"
 
-
     return _str
 
 
@@ -192,7 +188,7 @@ def write_groups():
 
     _str = "\nGroups:[module_num:4|svn_version:\\'Unknown\\'|variable_revision_number:2|show_window:False|notes:\\x5B\\\'The Groups module optionally allows you to split your list of images into image subsets (groups) which will be processed independently of each other. Examples of groupings include screening batches, microtiter plates, time-lapse movies, etc.\\'\\x5D|batch_state:array(\\x5B\\x5D, dtype=uint8)|enabled:True|wants_pause:False]\n"
 
-    group_images =  groups["con_groups"]["group_images"]
+    group_images = groups["con_groups"]["group_images"]
 
     _str += FOURSPACES + "Do you want to group your images?:%s\n" % group_images
     _str += FOURSPACES + "grouping metadata count:1\n"
