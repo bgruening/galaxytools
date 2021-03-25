@@ -73,8 +73,18 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
     rules['antecedents'] = rules['antecedents'].apply(list)
     rules['consequents'] = rules['consequents'].apply(list)
 
+    # Sort items in columns
+    rules['antecedents'] = rules['antecedents'].apply(lambda row: sorted(row))
+    rules['consequents'] = rules['consequents'].apply(lambda row: sorted(row))
+
+    # Create two temporary string columns to srot on
+    rules['ant_str'] = rules['antecedents'].apply(lambda row: " ".join(row))
+    rules['con_str'] = rules['consequents'].apply(lambda row: " ".join(row))
+
     # Sort results so they are re-producable
-    rules.sort_values(by=['support', 'confidence', 'lift', 'conviction'], inplace=True)
+    rules.sort_values(by=['ant_str', 'con_str'], inplace=True)
+    del rules['ant_str']
+    del rules['con_str']
     rules.reset_index(drop=True, inplace=True)
 
     rules.to_csv(outfile, sep="\t")
