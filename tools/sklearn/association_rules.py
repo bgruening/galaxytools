@@ -53,7 +53,7 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
 
     dataset = []
     for line in lines:
-      line_items = line.split(",")
+      line_items = line.split("\t")
       dataset.append(line_items)
   
     te = TransactionEncoder()
@@ -73,7 +73,7 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
     rules['antecedents'] = rules['antecedents'].apply(list)
     rules['consequents'] = rules['consequents'].apply(list)
 
-    rules.to_csv(outfile)
+    rules.to_csv(outfile, sep="\t")
 
 
 if __name__ == '__main__':
@@ -89,5 +89,5 @@ if __name__ == '__main__':
     args = aparser.parse_args()
 
     main(args.inputs, args.infile, args.outfile, 
-         min_support=args.support, min_confidence=args.confidence, 
-         min_lift=args.lift, min_conviction=args.conviction, max_length=args.length)
+         min_support=float(args.support), min_confidence=float(args.confidence), 
+         min_lift=float(args.lift), min_conviction=float(args.conviction), max_length=int(args.length))
