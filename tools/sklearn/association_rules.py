@@ -73,6 +73,10 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
     rules['antecedents'] = rules['antecedents'].apply(list)
     rules['consequents'] = rules['consequents'].apply(list)
 
+    # Sort results so they are re-producable
+    rules.sort_values(by=['support', 'confidence', 'lift', 'conviction'], inplace=True)
+    rules.reset_index(drop=True, inplace=True)
+
     rules.to_csv(outfile, sep="\t")
 
 
