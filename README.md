@@ -30,3 +30,28 @@ Other repositories with high quality tools
  * [Biopython repo](https://github.com/biopython/galaxy_packages)
  * [Galaxy Proteomics repo](https://github.com/galaxyproteomics/tools-galaxyp)
 
+Running the tests
+====================
+
+First, install Planemo at the root directory
+```
+python3 -m venv planemo
+. planemo/bin/activate
+pip install planemo
+```
+
+To run the tests for a specific tool (e.g., pca) in a specific folder (e.g. sklearn)
+```
+planemo test --docker tools/sklearn/pca.xml
+```
+
+To run the tests for all tools in a specific folder (e.g. sklearn)
+```
+planemo test --docker tools/sklearn
+```
+
+To run the tests for all tools in all folders 
+```
+planemo test --docker tools
+```
+
