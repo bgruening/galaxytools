@@ -33,7 +33,7 @@ Other repositories with high quality tools
 Running the tests
 ====================
 
-First, install Planemo at the root directory
+First, install Planemo. Run the commands at the root directory.
 ```
 python3 -m venv planemo
 . planemo/bin/activate
