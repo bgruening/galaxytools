@@ -399,10 +399,14 @@ def main(inputs, infile_estimator, infile1, infile2,
                 and hasattr(main_est, 'save_weights'):
             if outfile_weights:
                 main_est.save_weights(outfile_weights)
-            del main_est.model_
-            del main_est.fit_params
-            del main_est.model_class_
-            del main_est.validation_data
+            if getattr(main_est, 'model_', None):
+                del main_est.model_
+            if getattr(main_est, 'fit_params', None):
+                del main_est.fit_params
+            if getattr(main_est, 'model_class_', None):
+                del main_est.model_class_
+            if getattr(main_est, 'validation_data', None):
+                del main_est.validation_data
             if getattr(main_est, 'data_generator_', None):
                 del main_est.data_generator_
 
