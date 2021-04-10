@@ -509,6 +509,12 @@ def main(inputs, infile_estimator, infile1, infile2,
     splitter, groups = get_cv(options.pop('cv_selector'))
     options['cv'] = splitter
     primary_scoring = options['scoring']['primary_scoring']
+    # get_scoring() expects secondary_scoring to be a comma separated string (not a list)
+    # Check if secondary_scoring is specified
+    secondary_scoring = options['scoring'].get('secondary_scoring', None)
+    if secondary_scoring is not None:
+        # If secondary_scoring is specified, convert the list into comman separated string
+        options['scoring']['secondary_scoring'] = ",".join(options['scoring']['secondary_scoring'])
     options['scoring'] = get_scoring(options['scoring'])
     if options['error_score']:
         options['error_score'] = 'raise'
