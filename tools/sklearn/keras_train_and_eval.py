@@ -10,7 +10,6 @@ from itertools import chain
 from scipy.io import mmread
 from sklearn.pipeline import Pipeline
 from sklearn.metrics.scorer import _check_multimetric_scoring
-from sklearn import model_selection
 from sklearn.model_selection._validation import _score
 from sklearn.model_selection import _search, _validation
 from sklearn.utils import indexable, safe_indexing
@@ -300,13 +299,12 @@ def main(inputs, infile_estimator, infile1, infile2,
                               header=header, parse_dates=True)
         loaded_df[df_key] = infile2
 
-    y = read_columns(
-            infile2,
-            c=c,
-            c_option=column_option,
-            sep='\t',
-            header=header,
-            parse_dates=True)
+    y = read_columns(infile2,
+                     c=c,
+                     c_option=column_option,
+                     sep='\t',
+                     header=header,
+                     parse_dates=True)
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
     if input_type == 'refseq_and_interval':
@@ -334,13 +332,12 @@ def main(inputs, infile_estimator, infile1, infile2,
         if df_key in loaded_df:
             groups = loaded_df[df_key]
 
-        groups = read_columns(
-                groups,
-                c=c,
-                c_option=column_option,
-                sep='\t',
-                header=header,
-                parse_dates=True)
+        groups = read_columns(groups,
+                              c=c,
+                              c_option=column_option,
+                              sep='\t',
+                              header=header,
+                              parse_dates=True)
         groups = groups.ravel()
 
     # del loaded_df

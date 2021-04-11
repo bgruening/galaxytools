@@ -274,10 +274,10 @@ def get_dataframe(file_path, plot_selection, header_name, column_name):
     else:
         col = None
     _, input_df = read_columns(file_path, c=col,
-                                   c_option=column_option,
-                                   return_df=True,
-                                   sep='\t', header=header,
-                                   parse_dates=True)
+                               c_option=column_option,
+                               return_df=True,
+                               sep='\t', header=header,
+                               parse_dates=True)
     return input_df
 
 
