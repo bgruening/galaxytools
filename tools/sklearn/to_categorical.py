@@ -24,22 +24,22 @@ def main(inputs, infile, outfile, num_classes=None):
         Total number of classes. If None, this would be inferred as the (largest number in y) + 1
 
     """
-    warnings.simplefilter('ignore')
+    warnings.simplefilter("ignore")
 
-    with open(inputs, 'r') as param_handler:
+    with open(inputs, "r") as param_handler:
         params = json.load(param_handler)
 
-    input_header = params['header0']
-    header = 'infer' if input_header else None
+    input_header = params["header0"]
+    header = "infer" if input_header else None
 
-    input_vector = pd.read_csv(infile, sep='\t', header=header)
+    input_vector = pd.read_csv(infile, sep="\t", header=header)
 
     output_matrix = to_categorical(input_vector, num_classes=num_classes)
 
-    np.savetxt(outfile, output_matrix, fmt="%d", delimiter='\t')
+    np.savetxt(outfile, output_matrix, fmt="%d", delimiter="\t")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
     aparser.add_argument("-y", "--infile", dest="infile")
