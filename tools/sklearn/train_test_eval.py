@@ -348,7 +348,11 @@ def main(
         estimator.set_params(**new_params)
 
     # handle scorer, convert to scorer dict
-    scoring = params["experiment_schemes"]["metrics"]["scoring"]
+    # Check if scoring is specified
+    scoring = params["experiment_schemes"]["metrics"].get("scoring", None)
+    if scoring is not None:
+        # If scoring is specified, convert the list into comman separated string
+        scoring = ",".join(scoring)
     scorer = get_scoring(scoring)
     scorer, _ = _check_multimetric_scoring(estimator, scoring=scorer)
 

@@ -300,8 +300,7 @@ def build_keras_model(inputs, outfile, model_json, infile_weights=None,
         options.update((inputs['mode_selection']['compile_params']
                         ['optimizer_selection']['optimizer_options']))
 
-        train_metrics = (inputs['mode_selection']['compile_params']
-                         ['metrics']).split(',')
+        train_metrics = inputs['mode_selection']['compile_params']['metrics']
         if train_metrics[-1] == 'none':
             train_metrics = train_metrics[:-1]
         options['metrics'] = train_metrics
