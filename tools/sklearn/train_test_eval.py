@@ -351,8 +351,12 @@ def main(
     # Check if scoring is specified
     scoring = params["experiment_schemes"]["metrics"].get("scoring", None)
     if scoring is not None:
-        # If scoring is specified, convert the list into comman separated string
-        scoring = ",".join(scoring)
+        # get_scoring() expects secondary_scoring to be a comma separated string (not a list)
+        # Check if secondary_scoring is specified
+        secondary_scoring = scoring.get("secondary_scoring", None)
+        if secondary_scoring is not None:
+            # If secondary_scoring is specified, convert the list into comman separated string
+            scoring["secondary_scoring"] = ",".join(scoring["secondary_scoring"])
     scorer = get_scoring(scoring)
     scorer, _ = _check_multimetric_scoring(estimator, scoring=scorer)
 
