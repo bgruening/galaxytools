@@ -107,7 +107,7 @@ def get_SucosScore(ref_mol, query_mol, tani=False, ref_features=None, query_feat
         query_features = getRawFeatures(query_mol)
 
     fm_score = get_FeatureMapScore(ref_features, query_features, tani, score_mode)
-    fm_score = np.clip(fm_score, 0, 1)
+    fm_score = np.float(np.clip(fm_score, 0, 1))
 
     try :
         if tani:
