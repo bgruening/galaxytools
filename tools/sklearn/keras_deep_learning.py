@@ -1,14 +1,14 @@
 import argparse
 import json
+import pickle
+import warnings
+from ast import literal_eval
+
 import keras
 import pandas as pd
-import pickle
 import six
-import warnings
-
-from ast import literal_eval
-from keras.models import Sequential, Model
-from galaxy_ml.utils import try_get_attr, get_search_params, SafeEval
+from galaxy_ml.utils import get_search_params, SafeEval, try_get_attr
+from keras.models import Model, Sequential
 
 
 safe_eval = SafeEval()
