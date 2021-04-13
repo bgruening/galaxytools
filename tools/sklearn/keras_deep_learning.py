@@ -177,11 +177,11 @@ def get_functional_model(config):
         # merge layers
         if 'merging_layers' in options:
             idxs = literal_eval(options.pop('merging_layers'))
-            merging_layers = [all_layers[i-1] for i in idxs]
+            merging_layers = [all_layers[i - 1] for i in idxs]
             new_layer = klass(**options)(merging_layers)
         # non-input layers
         elif inbound_nodes is not None:
-            new_layer = klass(**options)(all_layers[inbound_nodes-1])
+            new_layer = klass(**options)(all_layers[inbound_nodes - 1])
         # input layers
         else:
             new_layer = klass(**options)
@@ -189,10 +189,10 @@ def get_functional_model(config):
         all_layers.append(new_layer)
 
     input_indexes = _handle_shape(config['input_layers'])
-    input_layers = [all_layers[i-1] for i in input_indexes]
+    input_layers = [all_layers[i - 1] for i in input_indexes]
 
     output_indexes = _handle_shape(config['output_layers'])
-    output_layers = [all_layers[i-1] for i in output_indexes]
+    output_layers = [all_layers[i - 1] for i in output_indexes]
 
     return Model(inputs=input_layers, outputs=output_layers)
 
@@ -300,8 +300,7 @@ def build_keras_model(inputs, outfile, model_json, infile_weights=None,
         options.update((inputs['mode_selection']['compile_params']
                         ['optimizer_selection']['optimizer_options']))
 
-        train_metrics = (inputs['mode_selection']['compile_params']
-                         ['metrics']).split(',')
+        train_metrics = inputs['mode_selection']['compile_params']['metrics']
         if train_metrics[-1] == 'none':
             train_metrics = train_metrics[:-1]
         options['metrics'] = train_metrics
