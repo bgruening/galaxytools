@@ -3,7 +3,6 @@ import json
 import os
 import pickle
 import warnings
-
 from itertools import chain
 
 import joblib
@@ -21,7 +20,6 @@ from galaxy_ml.utils import (
 from scipy.io import mmread
 from sklearn import pipeline
 from sklearn.metrics.scorer import _check_multimetric_scoring
-from sklearn.model_selection._validation import _score
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score
 from sklearn.utils import indexable, safe_indexing

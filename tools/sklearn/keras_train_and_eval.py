@@ -1,32 +1,32 @@
 import argparse
-import joblib
 import json
-import numpy as np
 import os
-import pandas as pd
 import pickle
 import warnings
 from itertools import chain
-from scipy.io import mmread
-from sklearn.pipeline import Pipeline
-from sklearn.metrics.scorer import _check_multimetric_scoring
-from sklearn.model_selection._validation import _score
-from sklearn.model_selection import _search, _validation
-from sklearn.utils import indexable, safe_indexing
 
+import joblib
+import numpy as np
+import pandas as pd
 from galaxy_ml.externals.selene_sdk.utils import compute_score
-from galaxy_ml.model_validations import train_test_split
 from galaxy_ml.keras_galaxy_models import _predict_generator
+from galaxy_ml.model_validations import train_test_split
 from galaxy_ml.utils import (
-    SafeEval,
+    clean_params,
+    get_main_estimator,
+    get_module,
     get_scoring,
     load_model,
     read_columns,
+    SafeEval,
     try_get_attr,
-    get_module,
-    clean_params,
-    get_main_estimator,
 )
+from scipy.io import mmread
+from sklearn.metrics.scorer import _check_multimetric_scoring
+from sklearn.model_selection import _search, _validation
+from sklearn.model_selection._validation import _score
+from sklearn.pipeline import Pipeline
+from sklearn.utils import indexable, safe_indexing
 
 
 _fit_and_score = try_get_attr("galaxy_ml.model_validations", "_fit_and_score")
@@ -104,7 +104,7 @@ def train_test_split_none(*arrays, **kwargs):
         rval = train_test_split(*new_arrays, **kwargs)
 
     for pos in nones:
-        rval[pos * 2 : 2] = [None, None]
+        rval[pos * 2: 2] = [None, None]
 
     return rval
 
