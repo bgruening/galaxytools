@@ -9,7 +9,7 @@
 import re
 import sys
 
-from Bio import AlignIO, SeqIO
+from Bio import AlignIO
 
 try:
     from StringIO import StringIO
@@ -73,13 +73,12 @@ with open(target_f, "w") as out_stk_handle:
         print(ID, chunks)
 
         index_start, index_end = int(chunks[1]) - 1, int(chunks[2]) - 1
-        subalign = cur_alignment[
-            :,
-            index_start
-            + dic_gap_counts[index_start] : index_end
-            + dic_gap_counts[index_end]
-            + 1,
-        ]
+        subalign = cur_alignment[:,
+                                 index_start
+                                 + dic_gap_counts[index_start]:index_end
+                                 + dic_gap_counts[index_end]
+                                 + 1,
+                                 ]
 
         # ----------------------
         # BioPython does not handel the GF ID entry for alignment

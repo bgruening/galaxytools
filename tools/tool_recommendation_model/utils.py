@@ -181,7 +181,7 @@ def compute_precision(
 def get_lowest_tools(l_tool_freq, fraction=0.25):
     l_tool_freq = dict(sorted(l_tool_freq.items(), key=lambda kv: kv[1], reverse=True))
     tool_ids = list(l_tool_freq.keys())
-    lowest_ids = tool_ids[-int(len(tool_ids) * fraction) :]
+    lowest_ids = tool_ids[-int(len(tool_ids) * fraction):]
     return lowest_ids
 
 

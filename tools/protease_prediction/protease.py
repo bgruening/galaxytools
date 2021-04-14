@@ -5,7 +5,7 @@ import os
 
 from eden.converter.fasta import fasta_to_sequence, sequence_to_eden
 from eden.graph import Vectorizer
-from eden.model_base import ModelInitializerBase, main_script
+from eden.model_base import main_script, ModelInitializerBase
 from eden.modifier.seq import mark_modifier, seq_to_seq, shuffle_modifier
 
 description = """

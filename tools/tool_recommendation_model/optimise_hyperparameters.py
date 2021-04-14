@@ -4,9 +4,9 @@ Find the optimal combination of hyperparameters
 
 import numpy as np
 import utils
-from hyperopt import STATUS_OK, Trials, fmin, hp, tpe
+from hyperopt import fmin, hp, STATUS_OK, tpe, Trials
 from keras.callbacks import EarlyStopping
-from keras.layers import GRU, Dense, Dropout
+from keras.layers import Dense, Dropout, GRU
 from keras.layers.core import SpatialDropout1D
 from keras.layers.embeddings import Embedding
 from keras.models import Sequential

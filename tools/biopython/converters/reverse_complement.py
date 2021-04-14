@@ -15,7 +15,7 @@ from Bio.SeqRecord import SeqRecord
 def main(sequence_file, ofile, iformat, oformat, alphabet="dna"):
 
     handle = open(sequence_file, "rU")
-    recs = _reverse_complement(SeqIO.parse(handle, iformat), alphabet)
+    recs = reverse_complement(SeqIO.parse(handle, iformat), alphabet)
     SeqIO.write(recs, ofile, oformat)
     handle.close()
 

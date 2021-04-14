@@ -18,6 +18,7 @@ Usage:
 import operator
 import os
 import sys
+from functools import reduce
 
 from BCBio import GFF
 from Bio import SeqIO
@@ -46,7 +47,7 @@ def protein_recs(glimmer_file, ref_recs, to_protein):
                 seq_exons = []
                 for cds in feature.sub_features:
                     seq_exons.append(
-                        rec.seq[cds.location.nofuzzy_start : cds.location.nofuzzy_end]
+                        rec.seq[cds.location.nofuzzy_start: cds.location.nofuzzy_end]
                     )
                 gene_seq = reduce(operator.add, seq_exons)
                 if feature.strand == -1:

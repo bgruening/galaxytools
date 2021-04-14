@@ -16,7 +16,7 @@ k = 0
 
 with open(cdhitcluster, "r+") as f:
     content = f.read()
-    reps = re.compile("^.*\*$", re.MULTILINE).findall(content)
+    reps = re.compile("^.*\*$", re.MULTILINE).findall(content)  # noqa W605
     lines = content.split("\n")
 
     for i in range(0, len(lines)):

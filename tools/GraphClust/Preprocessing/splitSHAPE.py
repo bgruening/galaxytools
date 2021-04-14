@@ -51,7 +51,7 @@ for i in range(len(orig_id)):
     toWrite += ">" + str(seq_id[i]) + " " + seq_string[i] + "\n"
     chunks = re.findall(r"\d+", seq_string[i])
 
-    for j in react_val[int(chunks[1]) - 1 : int(chunks[2])]:
+    for j in react_val[int(chunks[1]) - 1: int(chunks[2])]:
         id_s = int(j.split()[0])
 
         id_s = id_s - int(chunks[1]) + 1

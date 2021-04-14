@@ -21,6 +21,7 @@ Usage:
 import operator
 import os
 import sys
+from functools import reduce
 
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord

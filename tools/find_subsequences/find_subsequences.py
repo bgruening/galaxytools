@@ -63,13 +63,13 @@ def complex_pattern_search(sequence, pattern, outfile, strand="+"):
     Searching for pattern with biopyhon's nt_search().
     This allows for ambiguous values, like N = A or T or C or G, R = A or G ...
     """
-    l = len(pattern)
+    pattern_length = len(pattern)
     matches = nt_search(str(sequence.seq), pattern)
     bed_template = "%s\t%s\t%s\t%s\t%s\t%s\n"
     for match in matches[1:]:
         outfile.write(
             bed_template
-            % (sequence.id, match, match + l, sequence.description, "", strand)
+            % (sequence.id, match, match + pattern_length, sequence.description, "", strand)
         )
 
 

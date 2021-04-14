@@ -30,7 +30,7 @@ class PrepareData:
         for item in raw_paths:
             split_items = item.split(",")
             for token in split_items:
-                if token is not "":
+                if token != "":
                     tokens.append(token)
         tokens = list(set(tokens))
         tokens = np.array(tokens)
@@ -79,7 +79,7 @@ class PrepareData:
             len_tools = len(tools)
             if len_tools <= self.max_tool_sequence_len:
                 for window in range(1, len_tools):
-                    sequence = tools[0 : window + 1]
+                    sequence = tools[0: window + 1]
                     tools_pos = [
                         str(dictionary[str(tool_item)]) for tool_item in sequence
                     ]

@@ -22,7 +22,6 @@ import os
 import re
 import urllib
 
-import simplejson
 
 # Make defaultdict compatible with versions of python older than 2.4
 try:
@@ -32,8 +31,9 @@ except AttributeError:
 
     collections.defaultdict = _utils.defaultdict
 
+import simplejson
 from Bio import SeqIO
-from Bio.Seq import Seq, UnknownSeq
+from Bio.Seq import UnknownSeq
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 from Bio.SeqRecord import SeqRecord
 
@@ -48,7 +48,7 @@ def _gff_line_map(line, params):
         - determines the type of attribute (flat, parent, child or annotation)
         - generates a dictionary of GFF info which can be serialized as JSON
     """
-    gff3_kw_pat = re.compile("\w+=")
+    gff3_kw_pat = re.compile("\w+=")  # noqa W605
 
     def _split_keyvals(keyval_str):
         """Split key-value pairs in a GFF2, GTF and GFF3 compatible way.

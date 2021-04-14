@@ -10,7 +10,7 @@
 import argparse
 
 from BCBio import GFF
-from Bio import Seq, SeqIO
+from Bio import SeqIO
 from Bio.Alphabet import generic_dna
 from utils import check_gff, fix_ncbi_id
 

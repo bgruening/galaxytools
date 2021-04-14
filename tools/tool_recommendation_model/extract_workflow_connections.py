@@ -98,7 +98,7 @@ class ExtractWorkflowConnections:
         for path in workflow_paths:
             path_split = path.split(",")
             for window in range(0, len(path_split) - 1):
-                current_next_tools = path_split[window : window + 2]
+                current_next_tools = path_split[window: window + 2]
                 current_tool = current_next_tools[0]
                 next_tool = current_next_tools[1]
                 try:

@@ -22,7 +22,7 @@ def _retrieve(query, format="txt"):
     tool = "uploadlists/"
 
     query = list(set(query.split("\n")))
-    queries = [query[i : i + 100] for i in range(0, len(query), 100)]
+    queries = [query[i: i + 100] for i in range(0, len(query), 100)]
 
     data = {"format": format, "from": "ACC+ID", "to": "ACC"}
 

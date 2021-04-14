@@ -7,7 +7,7 @@ import sys
     sort -u
         $ignore_case
         $is_numeric
-        -t \$'\t'
+        -t $'\t'
         #if $adv_opts.adv_opts_selector=="advanced":
             -k$adv_opts.column_start,$adv_opts.column_end
         #end if

@@ -17,7 +17,7 @@ with open(sys.argv[1]) as handle:
         for elem in column_content.split(sep):
             out.write(
                 "\t".join(
-                    cols[:unfolding_column] + [elem] + cols[unfolding_column + 1 :]
+                    cols[:unfolding_column] + [elem] + cols[unfolding_column + 1:]
                 )
             )
 out.close()

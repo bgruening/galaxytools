@@ -16,7 +16,7 @@ def main(
 ):
 
     handle = open(genbank_file, "rU")
-    recs = _extract_features(
+    recs = extract_features(
         SeqIO.parse(handle, "genbank"),
         feature_name,
         transl_table,
@@ -38,7 +38,7 @@ def extract_features(
             if feature.type == feature_name:
                 # if the translation table is not set explicitly through the user, try to extract it from the genbank file
                 # otherwise take the standard value 1
-                if transl_table == -1 and qualifiers.key_exists("transl_table"):
+                if transl_table == -1 and feature.qualifiers.key_exists("transl_table"):
                     transl_table = feature.qualifiers["transl_table"][0]
                 elif transl_table == -1:
                     transl_table = 1

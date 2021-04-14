@@ -56,7 +56,7 @@ def parse_clusters():
     cluster_nums = defaultdict(list)
     for cluster_file in cluster_files:
         cluster_color = next(palette)
-        df_cluster = pd.read_csv(cluster_file, sep="\s+", header=None)
+        df_cluster = pd.read_csv(cluster_file, sep="\s+", header=None)  # noqa W605
         for irow, row in df_cluster.iterrows():
             seq, start, end, strand = row[0].split("#")
             ranges[seq].append((int(start), int(end) - int(start) + 1))

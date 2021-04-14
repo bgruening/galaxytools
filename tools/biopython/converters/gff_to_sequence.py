@@ -75,7 +75,7 @@ def protein_recs(gff_iter, ref_recs, seq_type, to_protein=False):
                 else:
                     seq = SeqRecord(
                         Seq.Seq(feature.extract(rec.seq), generic_dna).translate(
-                            table=codon_table, to_stop=True, cds=is_complete_cds
+                            table=codon_table, to_stop=True, cds=is_complete_cds  # noqa F821  # SBCHECK
                         ),
                         id=iid,
                         name=iid,
