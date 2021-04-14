@@ -10,7 +10,7 @@ def check_gff(gff_iterator):
     """
     for rec in gff_iterator:
         if isinstance(rec.seq, Seq.UnknownSeq):
-            print "Warning: FASTA sequence not found for '%s' in GFF file" % (rec.id)
+            print("Warning: FASTA sequence not found for '%s' in GFF file" % (rec.id))
             rec.seq.alphabet = generic_dna
         yield flatten_features(rec)
 
@@ -43,7 +43,7 @@ def fix_ncbi_id(fasta_iter):
     for rec in fasta_iter:
         if len(rec.name) > 16 and rec.name.find("|") > 0:
             new_id = [x for x in rec.name.split("|") if x][0]
-            print "Warning: shortening NCBI name %s to %s" % (rec.id, new_id)
+            print("Warning: shortening NCBI name %s to %s" % (rec.id, new_id))
             rec.id = new_id
             rec.name = new_id
         yield rec

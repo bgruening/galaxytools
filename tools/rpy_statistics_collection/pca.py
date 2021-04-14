@@ -119,11 +119,11 @@ for i in range(ncomps):
     comps.append("Comp.%s" % (i + 1))
 sd = summary.rx2("sdev")
 
-print >> fout, "#Component\t%s" % (
+print("#Component\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # print >>fout, "#Std. deviation\t%s" %("\t".join(["%.4g" % el for el in sd]))
-print >> fout, "#Std. deviation\t%s" % ("\t".join(["%.4g" % el for el in sd]))
+print("#Std. deviation\t%s" % ("\t".join(["%.4g" % el for el in sd])), file=fout)
 total_var = 0
 vars = []
 for s in sd:
@@ -133,11 +133,11 @@ for s in sd:
 for i, var in enumerate(vars):
     vars[i] = vars[i] / total_var
 
-print >> fout, "#Proportion of variance explained\t%s" % (
+print("#Proportion of variance explained\t%s" % (
     "\t".join(["%.4g" % el for el in vars])
-)
+), file=fout)
 
-print >> fout, "#Loadings\t%s" % ("\t".join(["%s" % el for el in range(1, ncomps + 1)]))
+print("#Loadings\t%s" % ("\t".join(["%s" % el for el in range(1, ncomps + 1)])), file=fout)
 xcolnames = ["c%d" % (el + 1) for el in x_cols]
 # if 'loadings' in summary: #in case of princomp
 if "loadings" in summary.names:  # in case of princomp
@@ -152,9 +152,9 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (xcolnames[i], "\t".join(vals))
+    print("%s\t%s" % (xcolnames[i], "\t".join(vals)), file=fout)
 
-print >> fout, "#Scores\t%s" % ("\t".join(["%s" % el for el in range(1, ncomps + 1)]))
+print("#Scores\t%s" % ("\t".join(["%s" % el for el in range(1, ncomps + 1)])), file=fout)
 # if 'scores' in summary: #in case of princomp
 if "scores" in summary.names:  # in case of princomp
     scores = "scores"
@@ -168,7 +168,7 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (i + 1, "\t".join(vals))
+    print("%s\t%s" % (i + 1, "\t".join(vals)), file=fout)
 r.pdf(outfile2, 8, 8)
 r.biplot(pc)
 # r.dev_off()

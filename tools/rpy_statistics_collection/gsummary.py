@@ -175,18 +175,18 @@ def main():
             stop_err("Computation resulted in the following error: %s" % str(s))
         # summary = summary.as_py( BASIC_CONVERSION )
         outfile.write("#%s\n" % headings_str)
-        print summary
-        print summary.r_repr()
+        print(summary)
+        print(summary.r_repr())
         outfile.write(
             "%s\n" % "\t".join(["%g" % (summary.rx2(k)[0]) for k in headings])
         )
         outfile.close()
 
         if skipped_lines:
-            print "Skipped %d invalid lines beginning with line #%d.  See tool tips for data requirements." % (
+            print("Skipped %d invalid lines beginning with line #%d.  See tool tips for data requirements." % (
                 skipped_lines,
                 first_invalid_line,
-            )
+            ))
 
 
 if __name__ == "__main__":

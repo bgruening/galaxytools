@@ -124,7 +124,7 @@ def write_json(graph, outfile):
 def main(args):
 
     if args.informat not in graph_types:
-        print "EXCEPTION COMPUTER EXPLODING"
+        print("EXCEPTION COMPUTER EXPLODING")
     # everything networkx can do by itself ;)
     elif args.informat in completely_supported_types:
         function = func_dic_read[args.informat]
@@ -175,7 +175,7 @@ if __name__ == "__main__":
         choices=graph_types,
     )
     if len(sys.argv) < 8:
-        print "Too few arguments..."
+        print("Too few arguments...")
         parser.print_help()
         exit(1)
     args = parser.parse_args()

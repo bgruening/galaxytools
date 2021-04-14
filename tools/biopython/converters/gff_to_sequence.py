@@ -51,7 +51,7 @@ def protein_recs(gff_iter, ref_recs, seq_type, to_protein=False):
     """
     seq_counter = 0
     for rec in gff_iter:
-        print rec
+        print(rec)
         for feature in rec.features:
             if feature.type.lower() in seq_type.lower():
                 seq_counter += 1
@@ -63,9 +63,9 @@ def protein_recs(gff_iter, ref_recs, seq_type, to_protein=False):
                 # Augustus special cases
                 if "gene_id" in feature.qualifiers.keys():
                     iid = feature.qualifiers["gene_id"][0]
-                    print iid
+                    print(iid)
                     desc = "%s_%s %s" % (rec.name, iid, seq_type)
-                    print desc
+                    print(desc)
                 else:
                     for qualifier, value in feature.qualifiers.items():
                         if value and qualifier.startswith("g"):

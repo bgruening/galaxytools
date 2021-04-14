@@ -95,7 +95,7 @@ def main():
             out.close()
             stop_err("%s" % str(exc))
         for row in value:
-            print >> out, "\t".join(map(str, row))
+            print("\t".join(map(str, row)), file=out)
         out.close()
 
     if skipped_lines > 0:
@@ -108,7 +108,7 @@ def main():
                 invalid_value,
                 invalid_column,
             )
-        print msg
+        print(msg)
 
 
 if __name__ == "__main__":

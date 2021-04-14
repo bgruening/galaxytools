@@ -129,10 +129,10 @@ def run(data_dir, feature_table_path, locus_tag, min_coverage, min_ident):
             min_coverage,
             min_ident,
         )
-    print "From %s total genes %s are annotated." % (
+    print("From %s total genes %s are annotated." % (
         gene_counter,
         annotation_count_with_putative_function,
-    )
+    ))
 
 
 def parse_blastxml(
@@ -154,7 +154,7 @@ def parse_blastxml(
             if entry.application == "BLASTX":
                 query_length = entry.query_length
                 if type(query_length) == type(1.7):
-                    print "Query length is not a multiple of three"
+                    print("Query length is not a multiple of three")
                     break
                 query_id = entry.query.split()[0]
                 query_info = glimmer_mapping[query_id]
@@ -197,7 +197,7 @@ def parse_blastxml(
                         Hit_def changed: It now looks like: 
                         'RecName: Full=Erythronolide synthase, modules 3 and 4; Short=PKS; AltName: Full=6-deoxyerythronolide B synthase II; AltName: Full=DEBS 2; AltName: Full=ORF 2'
                         """
-                        print alignment.hit_def
+                        print(alignment.hit_def)
                         accession = alignment.hit_def.encode("utf8")
                         accession = filter(
                             lambda token: token.startswith("RecName:"),
@@ -519,7 +519,7 @@ if __name__ == "__main__":
 
     # options.data_dir = '/tmp/tmpomltKT'
 
-    print options.data_dir
+    print(options.data_dir)
 
     nocontamination_path = os.path.join(options.data_dir, "nocontamination.fsa")
 

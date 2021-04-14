@@ -54,7 +54,7 @@ ncomps = int(options.features)
 fout = open(outfile, "w")
 
 if ncomps < 1:
-    print "You chose to return '0' canonical components. Please try rerunning the tool with number of components = 1 or more."
+    print("You chose to return '0' canonical components. Please try rerunning the tool with number of components = 1 or more.")
     sys.exit()
 elems = []
 for i, line in enumerate(file(infile)):
@@ -158,31 +158,31 @@ if ncomps == 1:
 xcoef = r.xcoef(kcc)
 ycoef = r.ycoef(kcc)
 
-print >> fout, "#Component\t%s" % (
+print("#Component\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 
-print >> fout, "#Correlation\t%s" % ("\t".join(["%.4g" % el for el in kcor]))
+print("#Correlation\t%s" % ("\t".join(["%.4g" % el for el in kcor])), file=fout)
 
-print >> fout, "#Estimated X-coefficients\t%s" % (
+print("#Estimated X-coefficients\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for obs,val in enumerate(xcoef):
 #    print >>fout, "%s\t%s" %(obs+1, "\t".join(["%.4g" % el for el in val]))
 for i in range(1, xcoef.nrow + 1):
     vals = []
     for j in range(1, xcoef.ncol + 1):
         vals.append("%.4g" % xcoef.rx2(i, j)[0])
-    print >> fout, "%s\t%s" % (i, "\t".join(vals))
+    print("%s\t%s" % (i, "\t".join(vals)), file=fout)
 
 
-print >> fout, "#Estimated Y-coefficients\t%s" % (
+print("#Estimated Y-coefficients\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for obs,val in enumerate(ycoef):
 #    print >>fout, "%s\t%s" %(obs+1, "\t".join(["%.4g" % el for el in val]))
 for i in range(1, ycoef.nrow + 1):
     vals = []
     for j in range(1, ycoef.ncol + 1):
         vals.append("%.4g" % ycoef.rx2(i, j)[0])
-    print >> fout, "%s\t%s" % (i, "\t".join(vals))
+    print("%s\t%s" % (i, "\t".join(vals)), file=fout)

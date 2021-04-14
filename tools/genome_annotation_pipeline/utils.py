@@ -327,6 +327,6 @@ if __name__ == "__main__":
             if line.startswith("#"):
                 continue
             in_, out_ = line.strip().split("\t")
-            print in_, out_, "-->", change_according_reviewer(in_.strip(), False)
+            print(in_, out_, "-->", change_according_reviewer(in_.strip(), False))
             assert change_according_reviewer(in_.strip(), False) == out_
     sys.stdout.write("*** All tests passed. ***\n")

@@ -37,7 +37,7 @@ if __name__ == "__main__":
         help="Specify output file",
     )
     if len(sys.argv) < 2:
-        print "Too few arguments..."
+        print("Too few arguments...")
         parser.print_help()
         exit(1)
     args = parser.parse_args()

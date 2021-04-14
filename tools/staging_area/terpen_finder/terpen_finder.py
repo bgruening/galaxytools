@@ -102,7 +102,7 @@ def run(
         consisting_of_isoprens_required,
     )
 ):
-    print "Processing:\t%s" % input_path, id_string
+    print("Processing:\t%s" % input_path, id_string)
     file_handles = create_file_handles(id_string, is_dir)
 
     for mol in pybel.readfile("mol", input_path):
@@ -145,7 +145,7 @@ def run(
                             ),
                         )
                 except Exception:
-                    print "no image for %s" % cid
+                    print("no image for %s" % cid)
             elif largest_component == 0:
                 # print 'Largest Component is Zero:', cid
                 pass

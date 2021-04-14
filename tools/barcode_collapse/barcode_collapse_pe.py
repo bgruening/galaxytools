@@ -49,7 +49,7 @@ def barcode_collapse(in_bam, out_bam):
             samfile_read2 = itertools.islice(samfile2, 1, None, 2)
             for read1, read2 in itertools.izip(samfile_read1, samfile_read2):
                 if not read1.qname == read2.qname:
-                    print read1.qname, read2.qname
+                    print(read1.qname, read2.qname)
                     raise Exception("Read Names don't match")
                 if read1.is_unmapped and read1.is_unmapped:
                     # Both reads don't map, don't even both saving them.

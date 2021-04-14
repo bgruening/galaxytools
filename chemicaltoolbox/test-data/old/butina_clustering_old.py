@@ -55,7 +55,7 @@ for (size, fp_idx, hits) in results:
         # Can't use a centroid which is already assigned
         continue
     seen.add(fp_idx)
-    print size, fp_idx, hits
+    print(size, fp_idx, hits)
     if size == 1:
         # The only fingerprint in the exclusion sphere is itself
         true_singletons.append(fp_idx)

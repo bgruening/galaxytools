@@ -48,10 +48,10 @@ aa_table = {
 
 
 def output_line(gff3):
-    print "\t".join(str(gff3[x]) for x in KEY_ORDER)
+    print("\t".join(str(gff3[x]) for x in KEY_ORDER))
 
 
-print "##gff-version 3"
+print("##gff-version 3")
 for line in sys.stdin:
     if line.startswith(">"):
         genome_id = line[1:].strip()

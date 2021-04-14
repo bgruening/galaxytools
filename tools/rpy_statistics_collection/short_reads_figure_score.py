@@ -228,7 +228,7 @@ def __main__():
     # outfile_R_pdf = outfile_R_name
     # r.pdf( outfile_R_pdf )
     outfile_R_png = outfile_R_name
-    print "Writing bitmap"
+    print("Writing bitmap")
     r.bitmap(outfile_R_png)
 
     title = "boxplot of quality scores"
@@ -239,10 +239,10 @@ def __main__():
             score_matrix[i] = [0]
 
     if not variable_length:
-        print "Creating fixed boxplot "
+        print("Creating fixed boxplot ")
         r.boxplot(score_matrix, xlab="location in read length", main=title)
     else:
-        print "Creating variable boxplot"
+        print("Creating variable boxplot")
         r.boxplot(
             score_matrix,
             xlab="position within read (% of total length)",
@@ -255,18 +255,18 @@ def __main__():
         for i in xrange(0, read_length_threshold, step):
             x_old_range.append((i / step))
             x_new_range.append(i)
-        print "Writing axis"
+        print("Writing axis")
         r.axis(1, x_old_range, x_new_range)
 
-    print "calling dev.off()"
+    print("calling dev.off()")
     r("dev.off()")
 
     if invalid_scores > 0:
-        print "Skipped %d invalid scores. " % invalid_scores
+        print("Skipped %d invalid scores. " % invalid_scores)
     if invalid_lines > 0:
-        print "Skipped %d invalid lines. " % invalid_lines
+        print("Skipped %d invalid lines. " % invalid_lines)
     if empty_score_matrix_columns > 0:
-        print "%d missing scores in score_matrix. " % empty_score_matrix_columns
+        print("%d missing scores in score_matrix. " % empty_score_matrix_columns)
 
     # r.quit(save = "no")
 

@@ -26,6 +26,6 @@ def main(glimmer_file, ref_file, out_file, to_protein=False):
 
 if __name__ == "__main__":
     if len(sys.argv) != 5:
-        print __doc__
+        print(__doc__)
         sys.exit()
     main(*sys.argv[1:])

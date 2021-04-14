@@ -35,7 +35,7 @@ def main(args):
         url += "xml"
     if args.operation in check_for_id_type and not args.id_type is None:
         url += "?" + args.operation + "_type=" + args.id_type
-    print ("The constructed REST URL is: %s" % url)
+    print(("The constructed REST URL is: %s" % url))
     data = readfile.getresult(url)
     outfile = args.outfile
     outfile.write(data)
@@ -70,7 +70,7 @@ if __name__ == "__main__":
         help="Specify a file with a list of ids, one per line",
     )
     if len(sys.argv) < 8:
-        print "Too few arguments..."
+        print("Too few arguments...")
         parser.print_help()
         exit(1)
     args = parser.parse_args()

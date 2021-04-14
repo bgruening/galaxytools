@@ -60,7 +60,7 @@ def sequence_search(seq_id, seq):
         root = ET.fromstring(xml)
     # sometimes Pfam returns the HTML code
     except ParseError:
-        print "resending: %s" % seq_id
+        print("resending: %s" % seq_id)
         return "%s" % sequence_search(seq_id, seq)
 
     result_url = root[0][1].text

@@ -46,4 +46,4 @@ if __name__ == "__main__":
         directory_path = sys.argv[1]
     else:
         top = "."
-    print make_html(directory_path)
+    print(make_html(directory_path))

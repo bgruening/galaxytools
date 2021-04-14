@@ -29,7 +29,7 @@ def test():
     assert filecmp.cmp("./tests/1_result.tbl", tmp.name)
     os.remove(tmp.name)
 
-    print "All tests passed."
+    print("All tests passed.")
 
 
 def main(tbl_file, discrep_file, outfile):

@@ -27,7 +27,7 @@ def getAllCidsForAssayActivity(activity):
     listkey = readfile.getresult(url)
     #    url="http://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/listkey/"+listkey+"/cids/xml"
     url = "http://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/aid/25425,12345/cids/xml"
-    print ("url: " + url)
+    print(("url: " + url))
     xml = readfile.getresult(url)
 
     # init parser
@@ -41,10 +41,10 @@ def getAllCidsForAssayActivity(activity):
     # print(lastline_arr)
 
     print ("l: ")
-    print (len(lastline_arr))
+    print((len(lastline_arr)))
     lastline = lastline_arr[len(lastline_arr) - 1]
-    print ("lastline: " + lastline)
-    print ("lastline-2: " + lastline_arr[len(lastline_arr) - 2])
+    print(("lastline: " + lastline))
+    print(("lastline-2: " + lastline_arr[len(lastline_arr) - 2]))
     cidlastline = getIDofLine(lastline)
     aidkey = "-1"
     if cidlastline != "-1":
@@ -86,7 +86,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--target", type=str, help="Specify output file")
     if len(sys.argv) < 2:
-        print "Too few arguments..."
+        print("Too few arguments...")
         parser.print_help()
         exit(1)
     args = parser.parse_args()

@@ -49,25 +49,25 @@ def main():
 
     args = parser.parse_args()
 
-    print "################################################"
-    print "Wrapper debugging"
-    print "################################################"
-    print "Sample files:"
+    print("################################################")
+    print("Wrapper debugging")
+    print("################################################")
+    print("Sample files:")
     for j in args.input:
-        print j
+        print(j)
     if args.control is not None:
-        print "Control files:"
+        print("Control files:")
         for j in args.control:
-            print j
+            print(j)
 
-    print "output files:"
-    print args.peakfile
-    print args.filteredpeakfile
-    print "current working dir:"
-    print os.getcwd()
-    print "dir with jammwrapper in it:"
+    print("output files:")
+    print(args.peakfile)
+    print(args.filteredpeakfile)
+    print("current working dir:")
+    print(os.getcwd())
+    print("dir with jammwrapper in it:")
     path = os.path.abspath(os.path.dirname(sys.argv[0]))
-    print path
+    print(path)
 
     # optparse was depracted, can still be found in may of the example wrappers
     # parser = optparse.OptionParser()
@@ -83,7 +83,7 @@ def main():
         filen = (
             tmp_dir + "/sample/" + os.path.basename(os.path.splitext(file)[0]) + ".bed"
         )
-        print "input files mapped: %s" % filen
+        print("input files mapped: %s" % filen)
         os.symlink(file, filen)
 
     # Here comes some unnecessary repetition
@@ -99,7 +99,7 @@ def main():
                 + os.path.basename(os.path.splitext(file)[0])
                 + ".bed"
             )
-            print "input files mapped: %s" % filen
+            print("input files mapped: %s" % filen)
             os.symlink(file, filen)
         command = "bash %s/JAMM.sh -s %s/sample -c %s/control -g %s -o results -m %s -r %s -p %s -t %s -f %s -b %s" % (
             path,
@@ -126,8 +126,8 @@ def main():
             args.binsize,
         )
 
-    print "Command called by bash:"
-    print command
+    print("Command called by bash:")
+    print(command)
     # depending on how your programm is called, it may be necessary to use shlex.split on the command string before
     # in this case, this was actually harmful. idk why
     #    command = shlex.split(command)

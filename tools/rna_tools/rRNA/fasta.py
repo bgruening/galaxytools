@@ -162,26 +162,26 @@ if __name__ == "__main__":
     import sys
 
     if len(sys.argv) != 2:
-        print "wrong programmer error"
+        print("wrong programmer error")
         sys.exit(2)
 
-    print "iterating through all sequences in input file"
+    print("iterating through all sequences in input file")
     for rec in fasta_itr(sys.argv[1]):
-        print rec
-    print
+        print(rec)
+    print()
 
     # print 'input sequences (terminated with ^D)'
     # for rec in fasta_itr(sys.stdin):
     #    print rec
     # print
 
-    print "iterating through input, from the second sequence"
+    print("iterating through input, from the second sequence")
     for rec in fasta_slice(sys.argv[1], 1, 3):
-        print rec
-    print
+        print(rec)
+    print()
 
-    print 'the sequence for "bar"'
-    print fasta_itr(sys.argv[1])["bar"]
-    print fasta_slice(sys.argv[1], 0, 3)["bar"]
-    print get_sequence(sys.argv[1], "bar")
-    print
+    print('the sequence for "bar"')
+    print(fasta_itr(sys.argv[1])["bar"])
+    print(fasta_slice(sys.argv[1], 0, 3)["bar"])
+    print(get_sequence(sys.argv[1], "bar"))
+    print()

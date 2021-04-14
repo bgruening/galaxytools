@@ -36,7 +36,7 @@ y_col = int(sys.argv[2]) - 1
 x_cols = sys.argv[3].split(",")
 outfile = sys.argv[4]
 
-print "Predictor columns: %s; Response column: %d" % (x_cols, y_col + 1)
+print("Predictor columns: %s; Response column: %d" % (x_cols, y_col + 1))
 fout = open(outfile, "w")
 
 for i, line in enumerate(file(infile)):
@@ -129,7 +129,7 @@ if len(x_vals) < 10:
 else:
     stop_err("This tool only works with less than 10 predictors.")
 
-print >> fout, "#Model\tR-sq\tpartial_R_Terms\tpartial_R_Value"
+print("#Model\tR-sq\tpartial_R_Terms\tpartial_R_Value", file=fout)
 all_combos = sorted(sscombs(s), key=len)
 all_combos.reverse()
 for j, cols in enumerate(all_combos):
@@ -190,4 +190,4 @@ for j, cols in enumerate(all_combos):
         partial_R = "%.4f" % (float(partial_R))
     except Exception:
         pass
-    print >> fout, "%s\t%s\t%s\t%s" % (col_str, redr2, partial_R_col_str, partial_R)
+    print("%s\t%s\t%s\t%s" % (col_str, redr2, partial_R_col_str, partial_R), file=fout)

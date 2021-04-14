@@ -24,7 +24,7 @@ x_cols = sys.argv[3].split(",")
 outfile = sys.argv[4]
 outfile2 = sys.argv[5]
 
-print "Predictor columns: %s; Response column: %d" % (x_cols, y_col + 1)
+print("Predictor columns: %s; Response column: %d" % (x_cols, y_col + 1))
 fout = open(outfile, "w")
 elems = []
 for i, line in enumerate(file(infile)):
@@ -100,7 +100,7 @@ if len(co) != len(x_vals)+1:
     stop_err("Stopped performing linear regression on the input data, since one of the predictor columns contains only non-numeric or invalid values.")
 """
 # print >>fout, "p-value (Y-intercept)\t%s" %(co[0][3])
-print >> fout, "p-value (Y-intercept)\t%s" % (co.rx(1, 4)[0])
+print("p-value (Y-intercept)\t%s" % (co.rx(1, 4)[0]), file=fout)
 
 if len(x_vals) == 1:  # Simple linear  regression case with 1 predictor variable
     try:
@@ -113,23 +113,23 @@ if len(x_vals) == 1:  # Simple linear  regression case with 1 predictor variable
         pval = r.round(float(co.rx(2, 4)[0]), digits=10)
     except Exception:
         pval = "NA"
-    print >> fout, "Slope (c%d)\t%s" % (x_cols[0] + 1, slope)
-    print >> fout, "p-value (c%d)\t%s" % (x_cols[0] + 1, pval)
+    print("Slope (c%d)\t%s" % (x_cols[0] + 1, slope), file=fout)
+    print("p-value (c%d)\t%s" % (x_cols[0] + 1, pval), file=fout)
 else:  # Multiple regression case with >1 predictors
     ind = 1
     # while ind < len(coeffs.keys()):
     while ind < len(coeffs.names):
         # print >>fout, "Slope (c%d)\t%s" %(x_cols[ind-1]+1,coeffs['x'+str(ind)])
-        print >> fout, "Slope (c%d)\t%s" % (
+        print("Slope (c%d)\t%s" % (
             x_cols[ind - 1] + 1,
             coeffs.rx2(coeffs.names[ind])[0],
-        )
+        ), file=fout)
         try:
             # pval = co[ind][3]
             pval = r.round(float(co.rx(ind + 1, 4)[0]), digits=10)
         except Exception:
             pval = "NA"
-        print >> fout, "p-value (c%d)\t%s" % (x_cols[ind - 1] + 1, pval)
+        print("p-value (c%d)\t%s" % (x_cols[ind - 1] + 1, pval), file=fout)
         ind += 1
 
 rsq = summary.rx2("r.squared")[0]
@@ -146,10 +146,10 @@ try:
 except Exception:
     pass
 
-print >> fout, "R-squared\t%s" % (rsq)
-print >> fout, "Adjusted R-squared\t%s" % (adjrsq)
-print >> fout, "F-statistic\t%s" % (fstat)
-print >> fout, "Sigma\t%s" % (sigma)
+print("R-squared\t%s" % (rsq), file=fout)
+print("Adjusted R-squared\t%s" % (adjrsq), file=fout)
+print("F-statistic\t%s" % (fstat), file=fout)
+print("Sigma\t%s" % (sigma), file=fout)
 
 r.pdf(outfile2, 8, 8)
 if len(x_vals) == 1:  # Simple linear  regression case with 1 predictor variable

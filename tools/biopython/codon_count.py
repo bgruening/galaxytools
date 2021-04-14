@@ -24,7 +24,7 @@ def __main__():
         codon_count = open(sys.argv[2], "w")
 
     else:
-        print "da fehlt was da oben"
+        print("da fehlt was da oben")
         sys.exit()
 
     a = cu.CodonAdaptationIndex()

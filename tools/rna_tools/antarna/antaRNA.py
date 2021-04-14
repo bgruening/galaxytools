@@ -43,23 +43,23 @@ def checkSequenceConstraint(SC):
             if c == "T":
                 c = "U"
             else:
-                print "\tIllegal Character in the constraint sequence!"
-                print "\tPlease use the IUPAC nomenclature for defining nucleotides in the constraint sequence!"
-                print "\tA       Adenine"
-                print "\tC       Cytosine"
-                print "\tG       Guanine"
-                print "\tT/U     Thymine/Uracil"
-                print "\tR     A or G"
-                print "\tY     C or T/U"
-                print "\tS     G or C"
-                print "\tW     A or T/U"
-                print "\tK     G or T/U"
-                print "\tM     A or C"
-                print "\tB     C or G or T/U"
-                print "\tD     A or G or T/U"
-                print "\tH     A or C or T/U"
-                print "\tV     A or C or G"
-                print "\tN    any base"
+                print("\tIllegal Character in the constraint sequence!")
+                print("\tPlease use the IUPAC nomenclature for defining nucleotides in the constraint sequence!")
+                print("\tA       Adenine")
+                print("\tC       Cytosine")
+                print("\tG       Guanine")
+                print("\tT/U     Thymine/Uracil")
+                print("\tR     A or G")
+                print("\tY     C or T/U")
+                print("\tS     G or C")
+                print("\tW     A or T/U")
+                print("\tK     G or T/U")
+                print("\tM     A or C")
+                print("\tB     C or G or T/U")
+                print("\tD     A or G or T/U")
+                print("\tH     A or C or T/U")
+                print("\tV     A or C or G")
+                print("\tN    any base")
                 exit(0)
         out += c
     return (1, out)
@@ -151,7 +151,7 @@ def isValidStructure(s):
     if Structure == 1 and Balanced == 1 and HairpinRule == 1:
         return 1
     else:
-        print Structure, Balanced, HairpinRule
+        print(Structure, Balanced, HairpinRule)
         return 0
 
 
@@ -666,17 +666,17 @@ def printTerrain(terrain):
     for a, i in enumerate(sorted(terrain.keys())):
         # print a
         if i.split(".")[0] != tmp_i:
-            print "\nElements:", tmp_c, "\n#########################\n", i, terrain[i]
+            print("\nElements:", tmp_c, "\n#########################\n", i, terrain[i])
 
             tmp_c = 1
             tmp_i = i.split(".")[0]
         else:
-            print i, terrain[i]
+            print(i, terrain[i])
             tmp_c += 1
 
-    print "\nElements:", tmp_c
-    print "#########################"
-    print len(terrain)
+    print("\nElements:", tmp_c)
+    print("#########################")
+    print(len(terrain))
 
 
 def pickStep(tmp_steps, summe):
@@ -1198,7 +1198,7 @@ def good2Go(SC, L, CC, STR):
     if SC == 1 and L == 1 and CC == 1 and STR == 1:
         return True
     else:
-        print SC, L, CC, STR
+        print(SC, L, CC, STR)
         return False
 
 
@@ -1354,10 +1354,10 @@ def runColony(
     rGC = reachableGC(SC)
     GC_message = ""
     if GC > rGC:
-        print >> sys.stderr, "WARNING: Chosen target GC %s content is not reachable due to sequence constraint! Sequence Constraint GC-content is: %s" % (
+        print("WARNING: Chosen target GC %s content is not reachable due to sequence constraint! Sequence Constraint GC-content is: %s" % (
             GC,
             rGC,
-        )
+        ), file=sys.stderr)
         GC = rGC
 
     # Initial Constraint Checks prior to execution
@@ -1532,19 +1532,19 @@ def runColony(
             distance_DN = 0
 
             if verbose:
-                print "SCORE " + str(Dscore) + " Resets " + str(
+                print("SCORE " + str(Dscore) + " Resets " + str(
                     resets
                 ) + " #Ant " + str(global_ant_count) + " out of " + str(
                     ants_per_selection
                 ) + " cc " + str(
                     convergence_counter
-                )
+                ))
 
-                print s, " <- target struct"
-                print best_solution[0], " <- BS since ", str(
+                print(s, " <- target struct")
+                print(best_solution[0], " <- BS since ", str(
                     best_solution_since
-                ), "Size of Terrrain:", len(terrain[0])
-                print best_solution[1], " <- BS Dscore " + str(
+                ), "Size of Terrrain:", len(terrain[0]))
+                print(best_solution[1], " <- BS Dscore " + str(
                     best_solution[2]
                 ) + " ds " + str(best_solution[3]) + " dGC " + str(
                     best_solution[4]
@@ -1552,14 +1552,14 @@ def runColony(
                     best_solution[5]
                 ) + " LP " + str(
                     len(LP)
-                ) + " <- best solution stats"
-                print curr_structure, " <- CS"
-                print path,
-                print " <- CS", "Dscore", str(
+                ) + " <- best solution stats")
+                print(curr_structure, " <- CS")
+                print(path, end=' ')
+                print(" <- CS", "Dscore", str(
                     Dscore
                 ), "ds", distance_structural, "dGC", distance_GC, "GC", getGC(
                     path
-                ) * 100, "Dseq", distance_seq
+                ) * 100, "Dseq", distance_seq)
 
             #### UPDATING THE TERRAIN ACCORDING TO THE QUALITY OF THE CURRENT BESTO-OUT-OF-k SOLUTION
             updateTerrain(
@@ -1579,7 +1579,7 @@ def runColony(
             )
             ####
             if verbose:
-                print "Used time for one iteration", time.time() - iteration_start
+                print("Used time for one iteration", time.time() - iteration_start)
 
             # CONVERGENCE AND TERMINATION CRITERION MANAGEMENT
             # print distance_structural, distance_GC, best_solution_local[3], best_solution_local[4]
@@ -1917,7 +1917,7 @@ def findSequence(
             line += "\n" + output_w[1]
         if return_mod == False:
             if print_to_STDOUT:
-                print line
+                print(line)
             else:
                 if col == 0:
                     print2file(file_id, line, "w")
@@ -1953,7 +1953,7 @@ def execute(args):
     beta = args.beta
     tGC = args.tGC
     if tGC < 0 or tGC > 1:
-        print "Error: Chosen tGC not in range [0,1]"
+        print("Error: Chosen tGC not in range [0,1]")
         exit(1)
     evaporation_rate = args.ER
     struct_correction_term = args.Cstrweight
@@ -2286,8 +2286,8 @@ def checkForViennaTools():
     ):
         return True
     else:
-        print "It seems the Vienna RNA Package is not installed on your machine. Please do so!"
-        print "You can get it at http://www.tbi.univie.ac.at/"
+        print("It seems the Vienna RNA Package is not installed on your machine. Please do so!")
+        print("You can get it at http://www.tbi.univie.ac.at/")
         exit(0)
 
 
@@ -2307,8 +2307,8 @@ def checkForpKiss():
     ):
         return True
     else:
-        print "It seems that pKiss is not installed on your machine. Please do so!"
-        print "You can get it at http://bibiserv2.cebitec.uni-bielefeld.de/pkiss"
+        print("It seems that pKiss is not installed on your machine. Please do so!")
+        print("You can get it at http://bibiserv2.cebitec.uni-bielefeld.de/pkiss")
         exit(0)
 
 

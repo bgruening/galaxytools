@@ -142,34 +142,34 @@ comps = eig.names
 # for i in range(ncomps):
 #    eigv[comps.index('Comp.%s' %(i+1))] = eig.values()[i]
 
-print >> fout, "#Component\t%s" % (
+print("#Component\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 
 # print >>fout, "#Eigenvalue\t%s" %("\t".join(["%.4g" % el for el in eig.values()]))
-print >> fout, "#Eigenvalue\t%s" % ("\t".join(["%.4g" % el for el in eig]))
-print >> fout, "#Principal component vectors\t%s" % (
+print("#Eigenvalue\t%s" % ("\t".join(["%.4g" % el for el in eig])), file=fout)
+print("#Principal component vectors\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for obs,val in enumerate(pcv):
 #    print >>fout, "%s\t%s" %(obs+1, "\t".join(["%.4g" % el for el in val]))
 for i in range(1, pcv.nrow + 1):
     vals = []
     for j in range(1, pcv.ncol + 1):
         vals.append("%.4g" % pcv.rx2(i, j)[0])
-    print >> fout, "%s\t%s" % (i, "\t".join(vals))
+    print("%s\t%s" % (i, "\t".join(vals)), file=fout)
 
 
-print >> fout, "#Rotated values\t%s" % (
+print("#Rotated values\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for obs,val in enumerate(rotated):
 #    print >>fout, "%s\t%s" %(obs+1, "\t".join(["%.4g" % el for el in val]))
 for i in range(1, rotated.nrow + 1):
     vals = []
     for j in range(1, rotated.ncol + 1):
         vals.append("%.4g" % rotated.rx2(i, j)[0])
-    print >> fout, "%s\t%s" % (i, "\t".join(vals))
+    print("%s\t%s" % (i, "\t".join(vals)), file=fout)
 
 r.pdf(outfile2, 8, 8)
 if ncomps != 1:

@@ -17,7 +17,7 @@ def __main__():
         sequence = sys.argv[2]
         orf2seq = sys.argv[3]
     else:
-        print "Missing input values."
+        print("Missing input values.")
         sys.exit()
     glimmer2sequence(sequence, glimmerfile, orf2seq)
 

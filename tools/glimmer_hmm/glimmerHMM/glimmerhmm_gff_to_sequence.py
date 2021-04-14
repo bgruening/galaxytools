@@ -70,6 +70,6 @@ def glimmer_predictions(in_handle, ref_recs):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print __doc__
+        print(__doc__)
         sys.exit()
     main(*sys.argv[1:])

@@ -159,23 +159,23 @@ for i in range(ncomps):
     # corr[comps.index('CV %s' %(i+1))] = summary['corr'].values()[i]
 
 # ftest=ftest.as_py()
-print >> fout, "#Component\t%s" % (
+print("#Component\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
-print >> fout, "#Correlation\t%s" % ("\t".join(["%.4g" % el for el in corr]))
+), file=fout)
+print("#Correlation\t%s" % ("\t".join(["%.4g" % el for el in corr])), file=fout)
 # print >>fout, "#F-statistic\t%s" %("\t".join(["%.4g" % el for el in ftest['statistic']]))
-print >> fout, "#F-statistic\t%s" % (
+print("#F-statistic\t%s" % (
     "\t".join(["%.4g" % el for el in ftest.rx2("statistic")])
-)
+), file=fout)
 # print >>fout, "#p-value\t%s" %("\t".join(["%.4g" % el for el in ftest['p.value']]))
-print >> fout, "#p-value\t%s" % (
+print("#p-value\t%s" % (
     "\t".join(["%.4g" % el for el in ftest.rx2("p.value")])
-)
+), file=fout)
 
 
-print >> fout, "#X-Coefficients\t%s" % (
+print("#X-Coefficients\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for i,val in enumerate(summary['xcoef']):
 #    print >>fout, "%s\t%s" %(xlab[i], "\t".join(["%.4g" % el for el in val]))
 vm = summary.rx2("xcoef")
@@ -183,11 +183,11 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (xlab[i][0], "\t".join(vals))
+    print("%s\t%s" % (xlab[i][0], "\t".join(vals)), file=fout)
 
-print >> fout, "#Y-Coefficients\t%s" % (
+print("#Y-Coefficients\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for i,val in enumerate(summary['ycoef']):
 #    print >>fout, "%s\t%s" %(ylab[i], "\t".join(["%.4g" % el for el in val]))
 vm = summary.rx2("ycoef")
@@ -195,11 +195,11 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (ylab[i][0], "\t".join(vals))
+    print("%s\t%s" % (ylab[i][0], "\t".join(vals)), file=fout)
 
-print >> fout, "#X-Loadings\t%s" % (
+print("#X-Loadings\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for i,val in enumerate(summary['xstructcorr']):
 #    print >>fout, "%s\t%s" %(xlab[i], "\t".join(["%.4g" % el for el in val]))
 vm = summary.rx2("xstructcorr")
@@ -207,11 +207,11 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (xlab[i][0], "\t".join(vals))
+    print("%s\t%s" % (xlab[i][0], "\t".join(vals)), file=fout)
 
-print >> fout, "#Y-Loadings\t%s" % (
+print("#Y-Loadings\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for i,val in enumerate(summary['ystructcorr']):
 #    print >>fout, "%s\t%s" %(ylab[i], "\t".join(["%.4g" % el for el in val]))
 vm = summary.rx2("ystructcorr")
@@ -219,11 +219,11 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (ylab[i][0], "\t".join(vals))
+    print("%s\t%s" % (ylab[i][0], "\t".join(vals)), file=fout)
 
-print >> fout, "#X-CrossLoadings\t%s" % (
+print("#X-CrossLoadings\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for i,val in enumerate(summary['xcrosscorr']):
 #    print >>fout, "%s\t%s" %(xlab[i], "\t".join(["%.4g" % el for el in val]))
 vm = summary.rx2("xcrosscorr")
@@ -231,11 +231,11 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (xlab[i][0], "\t".join(vals))
+    print("%s\t%s" % (xlab[i][0], "\t".join(vals)), file=fout)
 
-print >> fout, "#Y-CrossLoadings\t%s" % (
+print("#Y-CrossLoadings\t%s" % (
     "\t".join(["%s" % el for el in range(1, ncomps + 1)])
-)
+), file=fout)
 # for i,val in enumerate(summary['ycrosscorr']):
 #    print >>fout, "%s\t%s" %(ylab[i], "\t".join(["%.4g" % el for el in val]))
 vm = summary.rx2("ycrosscorr")
@@ -243,7 +243,7 @@ for i in range(vm.nrow):
     vals = []
     for j in range(vm.ncol):
         vals.append("%.4g" % vm.rx2(i + 1, j + 1)[0])
-    print >> fout, "%s\t%s" % (ylab[i][0], "\t".join(vals))
+    print("%s\t%s" % (ylab[i][0], "\t".join(vals)), file=fout)
 
 r.pdf(outfile2, 8, 8)
 # r.plot(cc)
