@@ -32,13 +32,8 @@ from Bio.Graphics import GenomeDiagram
 from Bio.SeqFeature import FeatureLocation, SeqFeature
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from svg_stack import (
-    AlignCenter,
-    Document,
-    VBoxLayout,
-    convert_to_pixels,
-    get_unit_attr,
-)
+from svg_stack import (AlignCenter, Document, VBoxLayout, convert_to_pixels,
+                       get_unit_attr)
 
 
 def basic_parsing(gffFile):

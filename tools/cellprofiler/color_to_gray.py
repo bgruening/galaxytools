@@ -3,14 +3,10 @@
 import argparse
 import json
 
-from cp_common_functions import (
-    INDENTATION,
-    get_json_value,
-    get_pipeline_lines,
-    get_total_number_of_modules,
-    update_module_count,
-    write_pipeline,
-)
+from cp_common_functions import (INDENTATION, get_json_value,
+                                 get_pipeline_lines,
+                                 get_total_number_of_modules,
+                                 update_module_count, write_pipeline)
 
 MODULE_NAME = "ColorToGray"
 OUTPUT_FILENAME = "output.cppipe"

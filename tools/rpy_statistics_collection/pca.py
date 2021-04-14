@@ -5,7 +5,6 @@ import sys
 
 import numpy
 import rpy2.rlike.container as rlc
-
 # from rpy import *
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr

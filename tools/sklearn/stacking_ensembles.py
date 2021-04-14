@@ -8,7 +8,8 @@ import warnings
 import mlxtend.classifier
 import mlxtend.regressor
 import pandas as pd
-from galaxy_ml.utils import get_cv, get_estimator, get_search_params, load_model
+from galaxy_ml.utils import (get_cv, get_estimator, get_search_params,
+                             load_model)
 
 warnings.filterwarnings("ignore")
 

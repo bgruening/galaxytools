@@ -5,13 +5,11 @@ import argparse
 import os
 import re
 import sys
-
 # General
 from copy import deepcopy
 from math import exp, log
 
 from rdkit import Chem
-
 # RDKit
 from rdkit.Chem import Descriptors
 
