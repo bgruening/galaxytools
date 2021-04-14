@@ -28,17 +28,23 @@ def _get_single_cv_split(params, array, infile_labels=None, infile_groups=None):
 
     # read groups
     if infile_groups:
-        header = "infer" if (params["mode_selection"]["cv_selector"]["groups_selector"]["header_g"]) else None
-        column_option = params["mode_selection"]["cv_selector"]["groups_selector"]["column_selector_options_g"][
-            "selected_column_selector_option_g"
-        ]
+        header = (
+            "infer"
+            if (params["mode_selection"]["cv_selector"]["groups_selector"]["header_g"])
+            else None
+        )
+        column_option = params["mode_selection"]["cv_selector"]["groups_selector"][
+            "column_selector_options_g"
+        ]["selected_column_selector_option_g"]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
             "by_header_name",
             "all_but_by_header_name",
         ]:
-            c = params["mode_selection"]["cv_selector"]["groups_selector"]["column_selector_options_g"]["col_g"]
+            c = params["mode_selection"]["cv_selector"]["groups_selector"][
+                "column_selector_options_g"
+            ]["col_g"]
         else:
             c = None
 
@@ -67,7 +73,10 @@ def _get_single_cv_split(params, array, infile_labels=None, infile_groups=None):
 
     total_n_splits = splitter.get_n_splits(array.values, y=y, groups=groups)
     if nth_split > total_n_splits:
-        raise ValueError("Total number of splits is {}, but got `nth_split` " "= {}".format(total_n_splits, nth_split))
+        raise ValueError(
+            "Total number of splits is {}, but got `nth_split` "
+            "= {}".format(total_n_splits, nth_split)
+        )
 
     i = 1
     for train_index, test_index in splitter.split(array.values, y=y, groups=groups):
@@ -137,7 +146,9 @@ def main(
 
     # cv splitter
     else:
-        train, test = _get_single_cv_split(params, array, infile_labels=infile_labels, infile_groups=infile_groups)
+        train, test = _get_single_cv_split(
+            params, array, infile_labels=infile_labels, infile_groups=infile_groups
+        )
 
     print("Input shape: %s" % repr(array.shape))
     print("Train shape: %s" % repr(train.shape))

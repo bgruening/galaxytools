@@ -15,7 +15,8 @@ safe_eval = SafeEval()
 
 
 def _handle_shape(literal):
-    """Eval integer or list/tuple of integers from string
+    """
+    Eval integer or list/tuple of integers from string
 
     Parameters:
     -----------
@@ -32,7 +33,8 @@ def _handle_shape(literal):
 
 
 def _handle_regularizer(literal):
-    """Construct regularizer from string literal
+    """
+    Construct regularizer from string literal
 
     Parameters
     ----------
@@ -56,7 +58,8 @@ def _handle_regularizer(literal):
 
 
 def _handle_constraint(config):
-    """Construct constraint from galaxy tool parameters.
+    """
+    Construct constraint from galaxy tool parameters.
     Suppose correct dictionary format
 
     Parameters
@@ -89,7 +92,8 @@ def _handle_lambda(literal):
 
 
 def _handle_layer_parameters(params):
-    """Access to handle all kinds of parameters
+    """
+    Access to handle all kinds of parameters
     """
     for key, value in six.iteritems(params):
         if value in ('None', ''):
@@ -120,7 +124,8 @@ def _handle_layer_parameters(params):
 
 
 def get_sequential_model(config):
-    """Construct keras Sequential model from Galaxy tool parameters
+    """
+    Construct keras Sequential model from Galaxy tool parameters
 
     Parameters:
     -----------
@@ -152,7 +157,8 @@ def get_sequential_model(config):
 
 
 def get_functional_model(config):
-    """Construct keras functional model from Galaxy tool parameters
+    """
+    Construct keras functional model from Galaxy tool parameters
 
     Parameters
     -----------
@@ -198,7 +204,8 @@ def get_functional_model(config):
 
 
 def get_batch_generator(config):
-    """Construct keras online data generator from Galaxy tool parameters
+    """
+    Construct keras online data generator from Galaxy tool parameters
 
     Parameters
     -----------
@@ -222,7 +229,8 @@ def get_batch_generator(config):
 
 
 def config_keras_model(inputs, outfile):
-    """ config keras model layers and output JSON
+    """
+    config keras model layers and output JSON
 
     Parameters
     ----------
@@ -248,7 +256,8 @@ def config_keras_model(inputs, outfile):
 
 def build_keras_model(inputs, outfile, model_json, infile_weights=None,
                       batch_mode=False, outfile_params=None):
-    """ for `keras_model_builder` tool
+    """
+    for `keras_model_builder` tool
 
     Parameters
     ----------

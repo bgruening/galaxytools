@@ -15,22 +15,34 @@ import subprocess
         $input
 """
 
-if sys.argv[1].strip() != 'false':
+if sys.argv[1].strip() != "false":
     ignore_case = sys.argv[1]
 else:
-    ignore_case = ''
+    ignore_case = ""
 
-if sys.argv[2].strip() != 'false':
+if sys.argv[2].strip() != "false":
     is_numeric = sys.argv[2]
 else:
-    is_numeric = ''
+    is_numeric = ""
 
 try:
     col_start = sys.argv[3]
     col_end = sys.argv[4]
-    com = "sort -u %s %s -t '	' -k%s,%s -o %s %s" % (is_numeric, ignore_case, col_start, col_end, sys.argv[5], sys.argv[6])
+    com = "sort -u %s %s -t '	' -k%s,%s -o %s %s" % (
+        is_numeric,
+        ignore_case,
+        col_start,
+        col_end,
+        sys.argv[5],
+        sys.argv[6],
+    )
 except:
     # no advanced options selected
-    com = "sort -u %s %s -t '	' -o %s %s" % (is_numeric, ignore_case, sys.argv[3], sys.argv[4])
+    com = "sort -u %s %s -t '	' -o %s %s" % (
+        is_numeric,
+        ignore_case,
+        sys.argv[3],
+        sys.argv[4],
+    )
 
 subprocess.call(com, shell=True)

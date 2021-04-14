@@ -43,7 +43,9 @@ if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
     aparser.add_argument("-y", "--infile", dest="infile")
-    aparser.add_argument("-n", "--num_classes", dest="num_classes", type=int, default=None)
+    aparser.add_argument(
+        "-n", "--num_classes", dest="num_classes", type=int, default=None
+    )
     aparser.add_argument("-o", "--outfile", dest="outfile")
     args = aparser.parse_args()
 

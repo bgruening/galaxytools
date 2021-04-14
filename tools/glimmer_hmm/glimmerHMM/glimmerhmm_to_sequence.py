@@ -13,8 +13,9 @@ import os
 import glimmerhmm_tabular_to_sequence
 import glimmerhmm_gff_to_sequence
 
-def main(glimmer_file, ref_file, out_file, to_protein = False):
-    if to_protein == 'True':
+
+def main(glimmer_file, ref_file, out_file, to_protein=False):
+    if to_protein == "True":
         to_protein = True
     else:
         to_protein = False

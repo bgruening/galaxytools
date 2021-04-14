@@ -13,7 +13,7 @@ elif len(sys.argv) == 2:
 else:
     exit("Usage: split_fasta.py <input_filename> [<num_chunks>]")
 
-os.mkdir('splits')
+os.mkdir("splits")
 
 if num_chunks != 0:
     # if splitting into chunks we need to count how many records are in the
@@ -21,7 +21,7 @@ if num_chunks != 0:
     record_count = 0
     with open(input_filename) as input_file:
         for line in input_file:
-            if line.lstrip().startswith('>'):
+            if line.lstrip().startswith(">"):
                 record_count += 1
 
     records_per_chunk = round(float(record_count) / num_chunks)
@@ -31,20 +31,21 @@ with open(input_filename) as input_file:
 
     chunk_record_count = 0  # how many lines have we written to the output file
     records = []
-    for record in SeqIO.parse(input_file, 'fasta'):
+    for record in SeqIO.parse(input_file, "fasta"):
         records.append(record)
-        if num_chunks == 0 or (count < num_chunks and
-           len(records) >= records_per_chunk):
+        if num_chunks == 0 or (
+            count < num_chunks and len(records) >= records_per_chunk
+        ):
             if num_chunks == 0:
-                output_filename = os.path.join('splits', record.id)
+                output_filename = os.path.join("splits", record.id)
             else:
-                output_filename = os.path.join('splits', 'part{}'.format(count))
-            SeqIO.write(records, output_filename, 'fasta')
+                output_filename = os.path.join("splits", "part{}".format(count))
+            SeqIO.write(records, output_filename, "fasta")
             count += 1
             records = []
 
     if records:
         # this only applies for the mode where input file is
         # split into chunks
-        output_filename = os.path.join('splits', 'part{}'.format(count))
-        SeqIO.write(records, output_filename, 'fasta')
+        output_filename = os.path.join("splits", "part{}".format(count))
+        SeqIO.write(records, output_filename, "fasta")

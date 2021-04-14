@@ -36,6 +36,7 @@ import time, zipfile
 from svg_stack import convert_to_pixels, get_unit_attr
 from svg_stack import VBoxLayout, Document, AlignCenter
 
+
 def basic_parsing(gffFile):
     """ GFF3 parse, extract information """
 
@@ -48,27 +49,33 @@ def basic_parsing(gffFile):
                 sub_features_temp = []
                 for sub_feature in feature.sub_features:
                     sub_features_temp.append(sub_feature)
-                yield SeqFeature(type=feature.type, location=feature.location, strand=feature.strand, qualifiers=feature.qualifiers, sub_features=sub_features_temp)
+                yield SeqFeature(
+                    type=feature.type,
+                    location=feature.location,
+                    strand=feature.strand,
+                    qualifiers=feature.qualifiers,
+                    sub_features=sub_features_temp,
+                )
 
 
-def visualize_gff3(gffFile, oformat, circular, outfile, compressed_archive = False):
+def visualize_gff3(gffFile, oformat, circular, outfile, compressed_archive=False):
     """ """
     index = 0
     outname = os.path.splitext(os.path.basename(gffFile))[0]
     temp_dir = tempfile.mkdtemp()
 
-    if oformat == 'svg' and not compressed_archive:
+    if oformat == "svg" and not compressed_archive:
         # Use svg_stack to bundle the different plots together in one file
-        margin = '100px'
+        margin = "100px"
         margin_gx = convert_to_pixels(*get_unit_attr(margin))
         layout = VBoxLayout()
         doc = Document()
-        svg_handle = open(outfile, mode='w')
+        svg_handle = open(outfile, mode="w")
 
     # iterate the features in gff3 file
     for feature in basic_parsing(gffFile):
         index += 1
-        temp_plot = os.path.join(temp_dir, '%s_%d' % (outname, index))
+        temp_plot = os.path.join(temp_dir, "%s_%d" % (outname, index))
 
         seq_starts = []
         seq_ends = []
@@ -82,55 +89,78 @@ def visualize_gff3(gffFile, oformat, circular, outfile, compressed_archive = Fal
                 color = colors.blue
             else:
                 color = colors.lightblue
-            gd_feature_set.add_feature(sub_feature, sigil="ARROW", 
-                arrowshaft_height=0.2, arrowhead_length=0.25, 
-                label_position="middle", color=color, 
-                label=True, label_size = 14, label_angle=20,
-                name=sub_feature.qualifiers.get('Name', ['no name'])[0]
+            gd_feature_set.add_feature(
+                sub_feature,
+                sigil="ARROW",
+                arrowshaft_height=0.2,
+                arrowhead_length=0.25,
+                label_position="middle",
+                color=color,
+                label=True,
+                label_size=14,
+                label_angle=20,
+                name=sub_feature.qualifiers.get("Name", ["no name"])[0],
             )
-            seq_ends.append( sub_feature.location.end.position )
-            seq_starts.append( sub_feature.location.start.position )
+            seq_ends.append(sub_feature.location.end.position)
+            seq_starts.append(sub_feature.location.start.position)
 
         # draw linear or circular
         if not circular:
-            gd_diagram.draw(format="linear", pagesize='A4', fragments=4, start=min(seq_starts), end=max(seq_ends))
+            gd_diagram.draw(
+                format="linear",
+                pagesize="A4",
+                fragments=4,
+                start=min(seq_starts),
+                end=max(seq_ends),
+            )
         else:
-            gd_diagram.draw(format="circular", circular=True, pagesize=(20*cm,20*cm), start=min(seq_starts), end=max(seq_ends))
+            gd_diagram.draw(
+                format="circular",
+                circular=True,
+                pagesize=(20 * cm, 20 * cm),
+                start=min(seq_starts),
+                end=max(seq_ends),
+            )
 
         # specify the output format
-        if oformat == 'pdf':
-            gd_diagram.write( temp_plot+'.pdf', "PDF")
-        elif oformat == 'eps':
-            gd_diagram.write( temp_plot+'.eps', "EPS")
-        elif oformat == 'svg':
-            gd_diagram.write( temp_plot+'.svg', "SVG")
+        if oformat == "pdf":
+            gd_diagram.write(temp_plot + ".pdf", "PDF")
+        elif oformat == "eps":
+            gd_diagram.write(temp_plot + ".eps", "EPS")
+        elif oformat == "svg":
+            gd_diagram.write(temp_plot + ".svg", "SVG")
             if not compressed_archive:
-                layout.addSVG(temp_plot+'.svg', alignment=AlignCenter)
+                layout.addSVG(temp_plot + ".svg", alignment=AlignCenter)
 
     if compressed_archive:
         outfile = zipper(temp_dir, outfile)
     else:
         # merge files and clean files
-        if oformat == 'pdf':
-            os.system('gs -dNOPAUSE -sDEVICE=pdfwrite -sOUTPUTFILE=%s -dBATCH %s/*pdf' % (outfile, temp_dir))
-        elif oformat == 'eps':
-            os.system('gs -dNOPAUSE -sDEVICE=epswrite -dSAFER -sOutputFile=%s.eps -dBATCH  %s/*eps' % (outfile, temp_dir))
-        elif oformat == 'svg':
+        if oformat == "pdf":
+            os.system(
+                "gs -dNOPAUSE -sDEVICE=pdfwrite -sOUTPUTFILE=%s -dBATCH %s/*pdf"
+                % (outfile, temp_dir)
+            )
+        elif oformat == "eps":
+            os.system(
+                "gs -dNOPAUSE -sDEVICE=epswrite -dSAFER -sOutputFile=%s.eps -dBATCH  %s/*eps"
+                % (outfile, temp_dir)
+            )
+        elif oformat == "svg":
             layout.setSpacing(margin_gx)
-            doc.setLayout( layout )
-            doc.save( svg_handle )
+            doc.setLayout(layout)
+            doc.save(svg_handle)
 
-
-    #cairosvg.svg2png(url=svg_filename, write_to=png_filename, dpi=72)
-    #cairosvg.svg2pdf(url=outfile, write_to=outfile+'.png')
+    # cairosvg.svg2png(url=svg_filename, write_to=png_filename, dpi=72)
+    # cairosvg.svg2pdf(url=outfile, write_to=outfile+'.png')
     # remove temp dir with all single images
     shutil.rmtree(temp_dir)
 
 
 def zipper(dir, zip_file):
     """ """
-    zip = zipfile.ZipFile(zip_file, 'w', compression=zipfile.ZIP_DEFLATED)
-    root_len = len( os.path.abspath(dir) )
+    zip = zipfile.ZipFile(zip_file, "w", compression=zipfile.ZIP_DEFLATED)
+    root_len = len(os.path.abspath(dir))
     for root, dirs, files in os.walk(dir):
         archive_root = os.path.abspath(root)[root_len:]
         for filename in files:
@@ -143,15 +173,38 @@ def zipper(dir, zip_file):
 
 if __name__ == "__main__":
 
-    parser = argparse.ArgumentParser(description='Extract sequence information from gff file.')
+    parser = argparse.ArgumentParser(
+        description="Extract sequence information from gff file."
+    )
     parser.add_argument("-o", "--outfile", help="path to the image")
-    parser.add_argument("-f", "--oformat", dest="oformat", default="svg", choices=['pdf', 'eps','svg'], help="Output format.")
-    parser.add_argument('--circular', action='store_true', default=False, help='Circulat plots.')
-    parser.add_argument('--compressed-archive', dest="compressed_archive", action='store_true', default=False, help="create one single file with all genes, rather than multiple files")
-    parser.add_argument("-g", "--gff", dest="gff_path", required=True, help="GFF input file.")
+    parser.add_argument(
+        "-f",
+        "--oformat",
+        dest="oformat",
+        default="svg",
+        choices=["pdf", "eps", "svg"],
+        help="Output format.",
+    )
+    parser.add_argument(
+        "--circular", action="store_true", default=False, help="Circulat plots."
+    )
+    parser.add_argument(
+        "--compressed-archive",
+        dest="compressed_archive",
+        action="store_true",
+        default=False,
+        help="create one single file with all genes, rather than multiple files",
+    )
+    parser.add_argument(
+        "-g", "--gff", dest="gff_path", required=True, help="GFF input file."
+    )
 
     options = parser.parse_args()
 
-    visualize_gff3(options.gff_path, options.oformat, options.circular, options.outfile, options.compressed_archive)
-
-
+    visualize_gff3(
+        options.gff_path,
+        options.oformat,
+        options.circular,
+        options.outfile,
+        options.compressed_archive,
+    )

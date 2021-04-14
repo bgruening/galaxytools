@@ -56,7 +56,10 @@ def _eval_swap_params(params_builder):
 
         param_name = p["sp_name"]
         if param_name.lower().endswith(NON_SEARCHABLE):
-            warnings.warn("Warning: `%s` is not eligible for search and was " "omitted!" % param_name)
+            warnings.warn(
+                "Warning: `%s` is not eligible for search and was "
+                "omitted!" % param_name
+            )
             continue
 
         if not swap_value.startswith(":"):
@@ -99,12 +102,16 @@ def train_test_split_none(*arrays, **kwargs):
         index_arr = np.arange(n_samples)
         test = index_arr[np.isin(groups, group_names)]
         train = index_arr[~np.isin(groups, group_names)]
-        rval = list(chain.from_iterable((safe_indexing(a, train), safe_indexing(a, test)) for a in new_arrays))
+        rval = list(
+            chain.from_iterable(
+                (safe_indexing(a, train), safe_indexing(a, test)) for a in new_arrays
+            )
+        )
     else:
         rval = train_test_split(*new_arrays, **kwargs)
 
     for pos in nones:
-        rval[pos * 2: 2] = [None, None]
+        rval[pos * 2 : 2] = [None, None]
 
     return rval
 
@@ -127,14 +134,22 @@ def _evaluate(y_true, pred_probas, scorer, is_multimetric=True):
         pred_labels = (pred_probas > 0.5).astype("int32")
         targets = y_true.ravel().astype("int32")
         if not is_multimetric:
-            preds = pred_labels if scorer.__class__.__name__ == "_PredictScorer" else pred_probas
+            preds = (
+                pred_labels
+                if scorer.__class__.__name__ == "_PredictScorer"
+                else pred_probas
+            )
             score = scorer._score_func(targets, preds, **scorer._kwargs)
 
             return score
         else:
             scores = {}
             for name, one_scorer in scorer.items():
-                preds = pred_labels if one_scorer.__class__.__name__ == "_PredictScorer" else pred_probas
+                preds = (
+                    pred_labels
+                    if one_scorer.__class__.__name__ == "_PredictScorer"
+                    else pred_probas
+                )
                 score = one_scorer._score_func(targets, preds, **one_scorer._kwargs)
                 scores[name] = score
 
@@ -144,13 +159,21 @@ def _evaluate(y_true, pred_probas, scorer, is_multimetric=True):
         pred_labels = (pred_probas > 0.5).astype("int32")
         targets = y_true.astype("int32")
         if not is_multimetric:
-            preds = pred_labels if scorer.__class__.__name__ == "_PredictScorer" else pred_probas
+            preds = (
+                pred_labels
+                if scorer.__class__.__name__ == "_PredictScorer"
+                else pred_probas
+            )
             score, _ = compute_score(preds, targets, scorer._score_func)
             return score
         else:
             scores = {}
             for name, one_scorer in scorer.items():
-                preds = pred_labels if one_scorer.__class__.__name__ == "_PredictScorer" else pred_probas
+                preds = (
+                    pred_labels
+                    if one_scorer.__class__.__name__ == "_PredictScorer"
+                    else pred_probas
+                )
                 score, _ = compute_score(preds, targets, one_scorer._score_func)
                 scores[name] = score
 
@@ -243,7 +266,9 @@ def main(
     # tabular input
     if input_type == "tabular":
         header = "infer" if params["input_options"]["header1"] else None
-        column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
+        column_option = params["input_options"]["column_selector_options_1"][
+            "selected_column_selector_option"
+        ]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
@@ -295,7 +320,9 @@ def main(
 
     # Get target y
     header = "infer" if params["input_options"]["header2"] else None
-    column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
+    column_option = params["input_options"]["column_selector_options_2"][
+        "selected_column_selector_option2"
+    ]
     if column_option in [
         "by_index_number",
         "all_but_by_index_number",
@@ -313,12 +340,9 @@ def main(
         infile2 = pd.read_csv(infile2, sep="\t", header=header, parse_dates=True)
         loaded_df[df_key] = infile2
 
-    y = read_columns(infile2,
-                     c=c,
-                     c_option=column_option,
-                     sep='\t',
-                     header=header,
-                     parse_dates=True)
+    y = read_columns(
+        infile2, c=c, c_option=column_option, sep="\t", header=header, parse_dates=True
+    )
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
     if input_type == "refseq_and_interval":
@@ -328,10 +352,14 @@ def main(
 
     # load groups
     if groups:
-        groups_selector = (params["experiment_schemes"]["test_split"]["split_algos"]).pop("groups_selector")
+        groups_selector = (
+            params["experiment_schemes"]["test_split"]["split_algos"]
+        ).pop("groups_selector")
 
         header = "infer" if groups_selector["header_g"] else None
-        column_option = groups_selector["column_selector_options_g"]["selected_column_selector_option_g"]
+        column_option = groups_selector["column_selector_options_g"][
+            "selected_column_selector_option_g"
+        ]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
@@ -346,12 +374,14 @@ def main(
         if df_key in loaded_df:
             groups = loaded_df[df_key]
 
-        groups = read_columns(groups,
-                              c=c,
-                              c_option=column_option,
-                              sep='\t',
-                              header=header,
-                              parse_dates=True)
+        groups = read_columns(
+            groups,
+            c=c,
+            c_option=column_option,
+            sep="\t",
+            header=header,
+            parse_dates=True,
+        )
         groups = groups.ravel()
 
     # del loaded_df
@@ -364,7 +394,7 @@ def main(
         main_est.set_params(memory=memory)
 
     # handle scorer, convert to scorer dict
-    scoring = params['experiment_schemes']['metrics']['scoring']
+    scoring = params["experiment_schemes"]["metrics"]["scoring"]
     if scoring is not None:
         # get_scoring() expects secondary_scoring to be a comma separated string (not a list)
         # Check if secondary_scoring is specified
@@ -385,7 +415,9 @@ def main(
         if y is not None:
             test_split_options["labels"] = y
         else:
-            raise ValueError("Stratified shuffle split is not " "applicable on empty target values!")
+            raise ValueError(
+                "Stratified shuffle split is not " "applicable on empty target values!"
+            )
 
     (
         X_train,
@@ -408,7 +440,10 @@ def main(
             if y_train is not None:
                 val_split_options["labels"] = y_train
             else:
-                raise ValueError("Stratified shuffle split is not " "applicable on empty target values!")
+                raise ValueError(
+                    "Stratified shuffle split is not "
+                    "applicable on empty target values!"
+                )
 
         (
             X_train,
@@ -431,8 +466,12 @@ def main(
     if hasattr(estimator, "evaluate"):
         steps = estimator.prediction_steps
         batch_size = estimator.batch_size
-        generator = estimator.data_generator_.flow(X_test, y=y_test, batch_size=batch_size)
-        predictions, y_true = _predict_generator(estimator.model_, generator, steps=steps)
+        generator = estimator.data_generator_.flow(
+            X_test, y=y_test, batch_size=batch_size
+        )
+        predictions, y_true = _predict_generator(
+            estimator.model_, generator, steps=steps
+        )
         scores = _evaluate(y_true, predictions, scorer, is_multimetric=True)
 
     else:

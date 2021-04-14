@@ -11,9 +11,9 @@ import os
 import tempfile
 
 temp_file = tempfile.NamedTemporaryFile()
-temp_link = "%s.%s" % (temp_file.name, 'fps')
+temp_link = "%s.%s" % (temp_file.name, "fps")
 temp_file.close()
-os.system('ln -s %s %s' % (os.path.realpath(sys.argv[1]), temp_link) )
+os.system("ln -s %s %s" % (os.path.realpath(sys.argv[1]), temp_link))
 
 
 chemfp_fingerprint_file = temp_link
@@ -25,17 +25,21 @@ processors = int(sys.argv[4])
 def get_hit_indicies(hits):
     return [id for (id, score) in hits]
 
-out = open(outfile, 'w')
-dataset = chemfp.load_fingerprints( chemfp_fingerprint_file )
 
-chemfp.set_num_threads( processors )
-search = dataset.threshold_tanimoto_search_arena(dataset, threshold = tanimoto_threshold)
-#search = chemfp.search.threshold_tanimoto_search_symmetric (dataset, threshold = tanimoto_threshold)
+out = open(outfile, "w")
+dataset = chemfp.load_fingerprints(chemfp_fingerprint_file)
+
+chemfp.set_num_threads(processors)
+search = dataset.threshold_tanimoto_search_arena(dataset, threshold=tanimoto_threshold)
+# search = chemfp.search.threshold_tanimoto_search_symmetric (dataset, threshold = tanimoto_threshold)
 
 # Reorder so the centroid with the most hits comes first.
 # (That's why I do a reverse search.)
 # Ignore the arbitrariness of breaking ties by fingerprint index
-results = sorted( (  (len(hits), i, hits) for (i, hits) in enumerate(search.iter_indices_and_scores())  ),reverse=True)
+results = sorted(
+    ((len(hits), i, hits) for (i, hits) in enumerate(search.iter_indices_and_scores())),
+    reverse=True,
+)
 
 
 # Determine the true/false singletons and the clusters
@@ -65,16 +69,16 @@ for (size, fp_idx, hits) in results:
         continue
 
     # this is a new cluster
-    clusters.append( (fp_idx, unassigned) )
+    clusters.append((fp_idx, unassigned))
     seen.update(unassigned)
 
 len_cluster = len(clusters)
-#out.write( "#%s true singletons: %s\n" % ( len(true_singletons), " ".join(sorted(dataset.ids[idx] for idx in true_singletons)) ) )
-#out.write( "#%s false singletons: %s\n" % ( len(false_singletons), " ".join(sorted(dataset.ids[idx] for idx in false_singletons)) ) )
+# out.write( "#%s true singletons: %s\n" % ( len(true_singletons), " ".join(sorted(dataset.ids[idx] for idx in true_singletons)) ) )
+# out.write( "#%s false singletons: %s\n" % ( len(false_singletons), " ".join(sorted(dataset.ids[idx] for idx in false_singletons)) ) )
 
-out.write( "#%s true singletons\n" % len(true_singletons) )
-out.write( "#%s false singletons\n" % len(false_singletons) )
-out.write( "#clusters: %s\n" % len_cluster )
+out.write("#%s true singletons\n" % len(true_singletons))
+out.write("#%s false singletons\n" % len(false_singletons))
+out.write("#clusters: %s\n" % len_cluster)
 
 # Sort so the cluster with the most compounds comes first,
 # then by alphabetically smallest id
@@ -82,16 +86,24 @@ def cluster_sort_key(cluster):
     centroid_idx, members = cluster
     return -len(members), dataset.ids[centroid_idx]
 
+
 clusters.sort(key=cluster_sort_key)
 
 
 for centroid_idx, members in clusters:
     centroid_name = dataset.ids[centroid_idx]
-    out.write("%s\t%s\t%s\n" % (centroid_name, len(members), " ".join(sorted(dataset.ids[idx] for idx in members))))
-    #ToDo: len(members) need to be some biggest top 90% or something ...
+    out.write(
+        "%s\t%s\t%s\n"
+        % (
+            centroid_name,
+            len(members),
+            " ".join(sorted(dataset.ids[idx] for idx in members)),
+        )
+    )
+    # ToDo: len(members) need to be some biggest top 90% or something ...
 
 for idx in sorted(true_singletons):
     out.write("%s\t%s\n" % (dataset.ids[idx], 0))
 
 out.close()
-os.remove( temp_link )
+os.remove(temp_link)

@@ -39,7 +39,9 @@ import argparse, gzip, os
 from rdkit import Chem
 
 
-def process(inputfilename, clusterfilenames, outputfilename, filter_value, filter_field):
+def process(
+    inputfilename, clusterfilenames, outputfilename, filter_value, filter_field
+):
     all_clusters = {}
     for filename in clusterfilenames:
         cluster = []
@@ -49,13 +51,20 @@ def process(inputfilename, clusterfilenames, outputfilename, filter_value, filte
         for mol in suppl:
             i += 1
             if not mol:
-                utils.log("WARNING: failed to generate molecule", i, "in cluster", filename)
+                utils.log(
+                    "WARNING: failed to generate molecule", i, "in cluster", filename
+                )
                 continue
             try:
                 features = sucos.getRawFeatures(mol)
                 cluster.append((mol, features))
             except:
-                utils.log("WARNING: failed to generate features for molecule", i, "in cluster", filename)
+                utils.log(
+                    "WARNING: failed to generate features for molecule",
+                    i,
+                    "in cluster",
+                    filename,
+                )
 
         cluster_file.close()
         all_clusters[filename] = cluster
@@ -76,7 +85,9 @@ def process(inputfilename, clusterfilenames, outputfilename, filter_value, filte
         try:
             query_features = sucos.getRawFeatures(mol)
         except:
-            utils.log("WARNING: failed to generate features for molecule", mol_num, "in input")
+            utils.log(
+                "WARNING: failed to generate features for molecule", mol_num, "in input"
+            )
             continue
         scores_max = [0, 0, 0]
         scores_cum = [0, 0, 0]
@@ -89,9 +100,13 @@ def process(inputfilename, clusterfilenames, outputfilename, filter_value, filte
                 ref_features = entry[1]
                 index += 1
                 comparisons += 1
-                sucos_score, fm_score, vol_score = sucos.get_SucosScore(hit, mol,
-                                                                        tani=False, ref_features=ref_features,
-                                                                        query_features=query_features)
+                sucos_score, fm_score, vol_score = sucos.get_SucosScore(
+                    hit,
+                    mol,
+                    tani=False,
+                    ref_features=ref_features,
+                    query_features=query_features,
+                )
 
                 if sucos_score > scores_max[0]:
                     scores_max[0] = sucos_score
@@ -104,11 +119,14 @@ def process(inputfilename, clusterfilenames, outputfilename, filter_value, filte
                 scores_cum[1] += fm_score
                 scores_cum[2] += vol_score
 
-
         # utils.log("Max SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2],"File:", cluster_file_name_only, "Index:", cluster_index)
         mol.SetDoubleProp("Max_SuCOS_Score", scores_max[0] if scores_max[0] > 0 else 0)
-        mol.SetDoubleProp("Max_SuCOS_FeatureMap_Score", scores_max[1] if scores_max[1] > 0 else 0)
-        mol.SetDoubleProp("Max_SuCOS_Protrude_Score", scores_max[2] if scores_max[2] > 0 else 0)
+        mol.SetDoubleProp(
+            "Max_SuCOS_FeatureMap_Score", scores_max[1] if scores_max[1] > 0 else 0
+        )
+        mol.SetDoubleProp(
+            "Max_SuCOS_Protrude_Score", scores_max[2] if scores_max[2] > 0 else 0
+        )
 
         if cluster_name:
             cluster_file_name_only = cluster_name.split(os.sep)[-1]
@@ -117,8 +135,12 @@ def process(inputfilename, clusterfilenames, outputfilename, filter_value, filte
 
         # utils.log("Cum SuCOS:", scores[0], "FM:", scores[1], "P:", scores[2])
         mol.SetDoubleProp("Cum_SuCOS_Score", scores_cum[0] if scores_cum[0] > 0 else 0)
-        mol.SetDoubleProp("Cum_SuCOS_FeatureMap_Score", scores_cum[1] if scores_cum[1] > 0 else 0)
-        mol.SetDoubleProp("Cum_SuCOS_Protrude_Score", scores_cum[2] if scores_cum[2] > 0 else 0)
+        mol.SetDoubleProp(
+            "Cum_SuCOS_FeatureMap_Score", scores_cum[1] if scores_cum[1] > 0 else 0
+        )
+        mol.SetDoubleProp(
+            "Cum_SuCOS_Protrude_Score", scores_cum[2] if scores_cum[2] > 0 else 0
+        )
 
         if filter_value and filter_field:
             if mol.HasProp(filter_field):
@@ -138,18 +160,33 @@ def process(inputfilename, clusterfilenames, outputfilename, filter_value, filte
 
 ### start main execution #########################################
 
+
 def main():
-    parser = argparse.ArgumentParser(description='Max SuCOS scores with RDKit')
-    parser.add_argument('-i', '--input', help='Input file to score in SDF format. Can be gzipped (*.gz).')
-    parser.add_argument('-o', '--output', help='Output file in SDF format. Can be gzipped (*.gz).')
-    parser.add_argument('clusters', nargs='*', help="One or more SDF files with the clustered hits")
-    parser.add_argument('--filter-value', type=float, help='Filter out values with scores less than this.')
-    parser.add_argument('--filter-field', help='Field to use to filter values.')
+    parser = argparse.ArgumentParser(description="Max SuCOS scores with RDKit")
+    parser.add_argument(
+        "-i",
+        "--input",
+        help="Input file to score in SDF format. Can be gzipped (*.gz).",
+    )
+    parser.add_argument(
+        "-o", "--output", help="Output file in SDF format. Can be gzipped (*.gz)."
+    )
+    parser.add_argument(
+        "clusters", nargs="*", help="One or more SDF files with the clustered hits"
+    )
+    parser.add_argument(
+        "--filter-value",
+        type=float,
+        help="Filter out values with scores less than this.",
+    )
+    parser.add_argument("--filter-field", help="Field to use to filter values.")
 
     args = parser.parse_args()
     utils.log("Max SuCOS Args: ", args)
 
-    process(args.input, args.clusters, args.output, args.filter_value, args.filter_field)
+    process(
+        args.input, args.clusters, args.output, args.filter_value, args.filter_field
+    )
 
 
 if __name__ == "__main__":

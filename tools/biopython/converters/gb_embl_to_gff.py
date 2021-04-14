@@ -14,9 +14,11 @@ from Bio import Seq
 
 from BCBio import GFF
 
+
 def main(gb_file, ofile, iformat):
     with open(ofile, "w") as out_handle:
         GFF.write(SeqIO.parse(gb_file, iformat), out_handle)
+
 
 if __name__ == "__main__":
     main(*sys.argv[1:])

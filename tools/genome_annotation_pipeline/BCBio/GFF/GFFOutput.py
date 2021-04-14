@@ -7,17 +7,17 @@ import urllib
 
 from Bio import SeqIO
 
+
 class _IdHandler:
-    """Generate IDs for GFF3 Parent/Child relationships where they don't exist.
-    """
+    """Generate IDs for GFF3 Parent/Child relationships where they don't exist."""
+
     def __init__(self):
         self._prefix = "biopygen"
         self._counter = 1
         self._seen_ids = []
 
     def _generate_id(self, quals):
-        """Generate a unique ID not present in our existing IDs.
-        """
+        """Generate a unique ID not present in our existing IDs."""
         gen_id = self._get_standard_id(quals)
         if gen_id is None:
             while 1:
@@ -44,8 +44,7 @@ class _IdHandler:
         return None
 
     def update_quals(self, quals, has_children):
-        """Update a set of qualifiers, adding an ID if necessary.
-        """
+        """Update a set of qualifiers, adding an ID if necessary."""
         cur_id = quals.get("ID", None)
         # if we have an ID, record it
         if cur_id:
@@ -60,15 +59,15 @@ class _IdHandler:
             quals["ID"] = [new_id]
         return quals
 
+
 class GFF3Writer:
-    """Write GFF3 files starting with standard Biopython objects.
-    """
+    """Write GFF3 files starting with standard Biopython objects."""
+
     def __init__(self):
         pass
 
     def write(self, recs, out_handle, include_fasta=False):
-        """Write the provided records to the given handle in GFF3 format.
-        """
+        """Write the provided records to the given handle in GFF3 format."""
         id_handler = _IdHandler()
         self._write_header(out_handle)
         fasta_recs = []
@@ -81,8 +80,7 @@ class GFF3Writer:
             self._write_annotations(rec.annotations, rec.id, len(rec.seq), out_handle)
             for sf in rec.features:
                 sf = self._clean_feature(sf)
-                id_handler = self._write_feature(sf, rec.id, out_handle,
-                        id_handler)
+                id_handler = self._write_feature(sf, rec.id, out_handle, id_handler)
             if include_fasta and len(rec.seq) > 0:
                 fasta_recs.append(rec)
         if len(fasta_recs) > 0:
@@ -114,16 +112,14 @@ class GFF3Writer:
             phase = "."
         return str(phase)
 
-    def _write_feature(self, feature, rec_id, out_handle, id_handler,
-            parent_id=None):
-        """Write a feature with location information.
-        """
+    def _write_feature(self, feature, rec_id, out_handle, id_handler, parent_id=None):
+        """Write a feature with location information."""
         if feature.strand == 1:
-            strand = '+'
+            strand = "+"
         elif feature.strand == -1:
-            strand = '-'
+            strand = "-"
         else:
-            strand = '.'
+            strand = "."
         # remove any standard features from the qualifiers
         quals = feature.qualifiers.copy()
         for std_qual in ["source", "score", "phase"]:
@@ -139,19 +135,22 @@ class GFF3Writer:
             ftype = feature.type
         else:
             ftype = "sequence_feature"
-        parts = [str(rec_id),
-                 feature.qualifiers.get("source", ["feature"])[0],
-                 ftype,
-                 str(feature.location.nofuzzy_start + 1), # 1-based indexing
-                 str(feature.location.nofuzzy_end),
-                 feature.qualifiers.get("score", ["."])[0],
-                 strand,
-                 self._get_phase(feature),
-                 self._format_keyvals(quals)]
+        parts = [
+            str(rec_id),
+            feature.qualifiers.get("source", ["feature"])[0],
+            ftype,
+            str(feature.location.nofuzzy_start + 1),  # 1-based indexing
+            str(feature.location.nofuzzy_end),
+            feature.qualifiers.get("score", ["."])[0],
+            strand,
+            self._get_phase(feature),
+            self._format_keyvals(quals),
+        ]
         out_handle.write("\t".join(parts) + "\n")
         for sub_feature in feature.sub_features:
-            id_handler = self._write_feature(sub_feature, rec_id, out_handle,
-                    id_handler, quals["ID"][0])
+            id_handler = self._write_feature(
+                sub_feature, rec_id, out_handle, id_handler, quals["ID"][0]
+            )
         return id_handler
 
     def _format_keyvals(self, keyvals):
@@ -164,30 +163,37 @@ class GFF3Writer:
                 values = [values]
             for val in values:
                 val = urllib.quote(str(val).strip(), safe=":/ ")
-                if ((key and val) and val not in format_vals):
+                if (key and val) and val not in format_vals:
                     format_vals.append(val)
             format_kvs.append("%s=%s" % (key, ",".join(format_vals)))
         return ";".join(format_kvs)
 
     def _write_annotations(self, anns, rec_id, size, out_handle):
-        """Add annotations which refer to an entire sequence.
-        """
+        """Add annotations which refer to an entire sequence."""
         format_anns = self._format_keyvals(anns)
         if format_anns:
-            parts = [rec_id, "annotation", "remark", "1", str(size if size > 1 else 1),
-                     ".", ".", ".", format_anns]
+            parts = [
+                rec_id,
+                "annotation",
+                "remark",
+                "1",
+                str(size if size > 1 else 1),
+                ".",
+                ".",
+                ".",
+                format_anns,
+            ]
             out_handle.write("\t".join(parts) + "\n")
 
     def _write_header(self, out_handle):
-        """Write out standard header directives.
-        """
+        """Write out standard header directives."""
         out_handle.write("##gff-version 3\n")
 
     def _write_fasta(self, recs, out_handle):
-        """Write sequence records using the ##FASTA directive.
-        """
+        """Write sequence records using the ##FASTA directive."""
         out_handle.write("##FASTA\n")
         SeqIO.write(recs, out_handle, "fasta")
+
 
 def write(recs, out_handle, include_fasta=False):
     """High level interface to write GFF3 files from SeqRecords and SeqFeatures.

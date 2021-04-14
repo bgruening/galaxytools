@@ -36,7 +36,7 @@ def clean_params(estimator, n_jobs=None):
         if name == "memory" or name.endswith("__memory") or name.endswith("_path"):
             new_p = {name: None}
             estimator.set_params(**new_p)
-        elif n_jobs is not None and (name == 'n_jobs' or name.endswith('__n_jobs')):
+        elif n_jobs is not None and (name == "n_jobs" or name.endswith("__n_jobs")):
             new_p = {name: n_jobs}
             estimator.set_params(**new_p)
         elif name.endswith("callbacks"):
@@ -68,7 +68,9 @@ def _get_X_y(params, infile1, infile2):
     # tabular input
     if input_type == "tabular":
         header = "infer" if params["input_options"]["header1"] else None
-        column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
+        column_option = params["input_options"]["column_selector_options_1"][
+            "selected_column_selector_option"
+        ]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
@@ -90,7 +92,9 @@ def _get_X_y(params, infile1, infile2):
 
     # Get target y
     header = "infer" if params["input_options"]["header2"] else None
-    column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
+    column_option = params["input_options"]["column_selector_options_2"][
+        "selected_column_selector_option2"
+    ]
     if column_option in [
         "by_index_number",
         "all_but_by_index_number",
@@ -108,12 +112,9 @@ def _get_X_y(params, infile1, infile2):
         infile2 = pd.read_csv(infile2, sep="\t", header=header, parse_dates=True)
         loaded_df[df_key] = infile2
 
-    y = read_columns(infile2,
-                     c=c,
-                     c_option=column_option,
-                     sep='\t',
-                     header=header,
-                     parse_dates=True)
+    y = read_columns(
+        infile2, c=c, c_option=column_option, sep="\t", header=header, parse_dates=True
+    )
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
 

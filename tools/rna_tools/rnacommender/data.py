@@ -15,8 +15,7 @@ __status__ = "Production"
 class Dataset(object):
     """General dataset."""
 
-    def __init__(self, fp, fr, standardize_proteins=False,
-                 standardize_rnas=False):
+    def __init__(self, fp, fr, standardize_proteins=False, standardize_rnas=False):
         """
         Constructor.
 
@@ -28,10 +27,10 @@ class Dataset(object):
         fr : str
             The name of the HDF5 file containing features for the RNAs.
         """
-        self.Fp = fp.astype('float32')
+        self.Fp = fp.astype("float32")
 
         store = pd.io.pytables.HDFStore(fr)
-        self.Fr = store.features.astype('float32')
+        self.Fr = store.features.astype("float32")
         store.close()
 
     def load(self):
@@ -72,9 +71,9 @@ class PredictDataset(Dataset):
         protein_input_dim = self.Fp.shape[0]
         rna_input_dim = self.Fr.shape[0]
         num_examples = self.Fp.shape[1] * self.Fr.shape[1]
-        p = np.zeros((num_examples, protein_input_dim)).astype('float32')
+        p = np.zeros((num_examples, protein_input_dim)).astype("float32")
         p_names = []
-        r = np.zeros((num_examples, rna_input_dim)).astype('float32')
+        r = np.zeros((num_examples, rna_input_dim)).astype("float32")
         r_names = []
         index = 0
         for protein in self.Fp.columns:

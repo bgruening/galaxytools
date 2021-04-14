@@ -10,7 +10,8 @@ from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Alphabet import DNAAlphabet, RNAAlphabet
 
-def main(sequence_file, ofile, iformat, oformat, alphabet = 'dna'):
+
+def main(sequence_file, ofile, iformat, oformat, alphabet="dna"):
 
     handle = open(sequence_file, "rU")
     recs = _reverse_complement(SeqIO.parse(handle, iformat), alphabet)
@@ -20,18 +21,20 @@ def main(sequence_file, ofile, iformat, oformat, alphabet = 'dna'):
 
 def reverse_complement(seq_iter, alphabet):
     """
-        calculate the reverse complement for given sequence records
+    calculate the reverse complement for given sequence records
     """
     for record in seq_iter:
-        if alphabet == 'rna':
+        if alphabet == "rna":
             record.seq.alphabet = RNAAlphabet()
         else:
             record.seq.alphabet = DNAAlphabet()
-        yield SeqRecord( record.seq.reverse_complement(), 
-            description = record.description.strip(), 
-            id = record.id, 
-            name = record.name )
+        yield SeqRecord(
+            record.seq.reverse_complement(),
+            description=record.description.strip(),
+            id=record.id,
+            name=record.name,
+        )
 
 
-if __name__ == "__main__" :
+if __name__ == "__main__":
     main(*sys.argv[1:])

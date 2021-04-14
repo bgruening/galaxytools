@@ -39,4 +39,4 @@ def get_serendipity_val(dic, key):
         return dic[key]
     # The key wasn't in the training set, then the serendipity is 1
     except KeyError:
-        return 1.
+        return 1.0

@@ -29,10 +29,10 @@ def set_trained_model(dump_file, model_values):
     """
     Create an h5 file with the trained weights and associated dicts
     """
-    hf_file = h5py.File(dump_file, 'w')
+    hf_file = h5py.File(dump_file, "w")
     for key in model_values:
         value = model_values[key]
-        if key == 'model_weights':
+        if key == "model_weights":
             for idx, item in enumerate(value):
                 w_key = "weight_" + str(idx)
                 if w_key in hf_file:
@@ -54,14 +54,18 @@ def weighted_loss(class_weights):
     """
     weight_values = list(class_weights.values())
     weight_values.extend(weight_values)
+
     def weighted_binary_crossentropy(y_true, y_pred):
         # add another dimension to compute dot product
         expanded_weights = K.expand_dims(weight_values, axis=-1)
         return K.dot(K.binary_crossentropy(y_true, y_pred), expanded_weights)
+
     return weighted_binary_crossentropy
 
 
-def balanced_sample_generator(train_data, train_labels, batch_size, l_tool_tr_samples, reverse_dictionary):
+def balanced_sample_generator(
+    train_data, train_labels, batch_size, l_tool_tr_samples, reverse_dictionary
+):
     while True:
         dimension = train_data.shape[1]
         n_classes = train_labels.shape[1]
@@ -80,7 +84,18 @@ def balanced_sample_generator(train_data, train_labels, batch_size, l_tool_tr_sa
         yield generator_batch_data, generator_batch_labels
 
 
-def compute_precision(model, x, y, reverse_data_dictionary, usage_scores, actual_classes_pos, topk, standard_conn, last_tool_id, lowest_tool_ids):
+def compute_precision(
+    model,
+    x,
+    y,
+    reverse_data_dictionary,
+    usage_scores,
+    actual_classes_pos,
+    topk,
+    standard_conn,
+    last_tool_id,
+    lowest_tool_ids,
+):
     """
     Compute absolute and compatible precision
     """
@@ -137,7 +152,9 @@ def compute_precision(model, x, y, reverse_data_dictionary, usage_scores, actual
                 else:
                     lowest_pub_prec = np.nan
                 if standard_topk_prediction_pos in usage_scores:
-                    usage_wt_score.append(np.log(usage_scores[standard_topk_prediction_pos] + 1.0))
+                    usage_wt_score.append(
+                        np.log(usage_scores[standard_topk_prediction_pos] + 1.0)
+                    )
         else:
             # count precision only when there is actually true published tools
             # else set to np.nan. Set to 0 only when there is wrong prediction
@@ -148,7 +165,9 @@ def compute_precision(model, x, y, reverse_data_dictionary, usage_scores, actual
         pred_t_name = reverse_data_dictionary[int(normal_topk_prediction_pos)]
         if pred_t_name in actual_next_tool_names:
             if normal_topk_prediction_pos in usage_scores:
-                usage_wt_score.append(np.log(usage_scores[normal_topk_prediction_pos] + 1.0))
+                usage_wt_score.append(
+                    np.log(usage_scores[normal_topk_prediction_pos] + 1.0)
+                )
             top_precision = 1.0
             if last_tool_id in lowest_tool_ids:
                 lowest_norm_prec = 1.0
@@ -162,11 +181,20 @@ def compute_precision(model, x, y, reverse_data_dictionary, usage_scores, actual
 def get_lowest_tools(l_tool_freq, fraction=0.25):
     l_tool_freq = dict(sorted(l_tool_freq.items(), key=lambda kv: kv[1], reverse=True))
     tool_ids = list(l_tool_freq.keys())
-    lowest_ids = tool_ids[-int(len(tool_ids) * fraction):]
+    lowest_ids = tool_ids[-int(len(tool_ids) * fraction) :]
     return lowest_ids
 
 
-def verify_model(model, x, y, reverse_data_dictionary, usage_scores, standard_conn, lowest_tool_ids, topk_list=[1, 2, 3]):
+def verify_model(
+    model,
+    x,
+    y,
+    reverse_data_dictionary,
+    usage_scores,
+    standard_conn,
+    lowest_tool_ids,
+    topk_list=[1, 2, 3],
+):
     """
     Verify the model on test data
     """
@@ -187,7 +215,24 @@ def verify_model(model, x, y, reverse_data_dictionary, usage_scores, standard_co
         test_sample = x[i, :]
         last_tool_id = str(int(test_sample[-1]))
         for index, abs_topk in enumerate(topk_list):
-            usg_wt_score, absolute_precision, pub_prec, lowest_p_prec, lowest_n_prec = compute_precision(model, test_sample, y, reverse_data_dictionary, usage_scores, actual_classes_pos, abs_topk, standard_conn, last_tool_id, lowest_tool_ids)
+            (
+                usg_wt_score,
+                absolute_precision,
+                pub_prec,
+                lowest_p_prec,
+                lowest_n_prec,
+            ) = compute_precision(
+                model,
+                test_sample,
+                y,
+                reverse_data_dictionary,
+                usage_scores,
+                actual_classes_pos,
+                abs_topk,
+                standard_conn,
+                last_tool_id,
+                lowest_tool_ids,
+            )
             precision[i][index] = absolute_precision
             usage_weights[i][index] = usg_wt_score
             epo_pub_prec[i][index] = pub_prec
@@ -202,22 +247,36 @@ def verify_model(model, x, y, reverse_data_dictionary, usage_scores, standard_co
     mean_pub_prec = np.nanmean(epo_pub_prec, axis=0)
     mean_lowest_pub_prec = np.nanmean(epo_lowest_tools_pub_prec, axis=0)
     mean_lowest_norm_prec = np.nanmean(epo_lowest_tools_norm_prec, axis=0)
-    return mean_usage, mean_precision, mean_pub_prec, mean_lowest_pub_prec, mean_lowest_norm_prec, lowest_counter
+    return (
+        mean_usage,
+        mean_precision,
+        mean_pub_prec,
+        mean_lowest_pub_prec,
+        mean_lowest_norm_prec,
+        lowest_counter,
+    )
 
 
-def save_model(results, data_dictionary, compatible_next_tools, trained_model_path, class_weights, standard_connections):
+def save_model(
+    results,
+    data_dictionary,
+    compatible_next_tools,
+    trained_model_path,
+    class_weights,
+    standard_connections,
+):
     # save files
     trained_model = results["model"]
     best_model_parameters = results["best_parameters"]
     model_config = trained_model.to_json()
     model_weights = trained_model.get_weights()
     model_values = {
-        'data_dictionary': data_dictionary,
-        'model_config': model_config,
-        'best_parameters': best_model_parameters,
-        'model_weights': model_weights,
+        "data_dictionary": data_dictionary,
+        "model_config": model_config,
+        "best_parameters": best_model_parameters,
+        "model_weights": model_weights,
         "compatible_tools": compatible_next_tools,
         "class_weights": class_weights,
-        "standard_connections": standard_connections
+        "standard_connections": standard_connections,
     }
     set_trained_model(trained_model_path, model_values)

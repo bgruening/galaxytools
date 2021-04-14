@@ -10,7 +10,6 @@ import utils
 
 
 class ExtractWorkflowConnections:
-
     def __init__(self):
         """ Init method. """
 
@@ -33,8 +32,8 @@ class ExtractWorkflowConnections:
         workflow_paths = list()
         unique_paths = dict()
         standard_connections = dict()
-        with open(raw_file_path, 'rt') as workflow_connections_file:
-            workflow_connections = csv.reader(workflow_connections_file, delimiter='\t')
+        with open(raw_file_path, "rt") as workflow_connections_file:
+            workflow_connections = csv.reader(workflow_connections_file, delimiter="\t")
             for index, row in enumerate(workflow_connections):
                 wf_id = str(row[0])
                 in_tool = row[3]
@@ -99,7 +98,7 @@ class ExtractWorkflowConnections:
         for path in workflow_paths:
             path_split = path.split(",")
             for window in range(0, len(path_split) - 1):
-                current_next_tools = path_split[window: window + 2]
+                current_next_tools = path_split[window : window + 2]
                 current_tool = current_next_tools[0]
                 next_tool = current_next_tools[1]
                 try:
@@ -144,7 +143,9 @@ class ExtractWorkflowConnections:
         if end in graph:
             for node in graph[end]:
                 if node not in path:
-                    new_tools_paths = self.find_tool_paths_workflow(graph, start, node, path)
+                    new_tools_paths = self.find_tool_paths_workflow(
+                        graph, start, node, path
+                    )
                     for tool_path in new_tools_paths:
                         path_list.append(tool_path)
         return path_list

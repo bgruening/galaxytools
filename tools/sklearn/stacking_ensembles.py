@@ -62,7 +62,9 @@ def main(inputs_path, output_obj, base_paths=None, meta_path=None, outfile_param
             with open(meta_path, "rb") as f:
                 meta_estimator = load_model(f)
         else:
-            estimator_json = params["algo_selection"]["meta_estimator"]["estimator_selector"]
+            estimator_json = params["algo_selection"]["meta_estimator"][
+                "estimator_selector"
+            ]
             meta_estimator = get_estimator(estimator_json)
 
     options = params["algo_selection"]["options"]
@@ -89,10 +91,14 @@ def main(inputs_path, output_obj, base_paths=None, meta_path=None, outfile_param
         ensemble_estimator = klass(base_estimators, **options)
 
     elif mod == mlxtend.classifier:
-        ensemble_estimator = klass(classifiers=base_estimators, meta_classifier=meta_estimator, **options)
+        ensemble_estimator = klass(
+            classifiers=base_estimators, meta_classifier=meta_estimator, **options
+        )
 
     else:
-        ensemble_estimator = klass(regressors=base_estimators, meta_regressor=meta_estimator, **options)
+        ensemble_estimator = klass(
+            regressors=base_estimators, meta_regressor=meta_estimator, **options
+        )
 
     print(ensemble_estimator)
     for base_est in base_estimators:

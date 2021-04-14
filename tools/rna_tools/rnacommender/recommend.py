@@ -15,11 +15,12 @@ __email__ = "gianluca.corrado@unitn.it"
 __status__ = "Production"
 
 
-class Predictor():
+class Predictor:
     """Predict interactions."""
 
-    def __init__(self, predict_dataset, trained_model, serendipity_dic=None,
-                 output=None):
+    def __init__(
+        self, predict_dataset, trained_model, serendipity_dic=None, output=None
+    ):
         """
         Constructor.
 
@@ -53,12 +54,11 @@ class Predictor():
         """Predict interaction values."""
         # predict the y_hat
         (p, p_names, r, r_names) = self.predict_dataset
-        assert p.dtype == 'float32'
-        assert r.dtype == 'float32'
+        assert p.dtype == "float32"
+        assert r.dtype == "float32"
         y_hat = self.model.predict(p, r)
         # sort the interactions according to y_hat
-        ordering = sorted(range(len(y_hat)),
-                          key=lambda x: y_hat[x], reverse=True)
+        ordering = sorted(range(len(y_hat)), key=lambda x: y_hat[x], reverse=True)
         p_names = p_names[ordering]
         r_names = r_names[ordering]
         y_hat = y_hat[ordering]
@@ -72,9 +72,10 @@ class Predictor():
                     sys.stdout.flush()
             else:
                 for (p_, r_, s_) in izip(p_names, r_names, y_hat):
-                    print("%s\t%s\t%.3f\t%.2f" %
-                          (p_, r_, s_,
-                           get_serendipity_val(self.serendipity_dic, r_)))
+                    print(
+                        "%s\t%s\t%.3f\t%.2f"
+                        % (p_, r_, s_, get_serendipity_val(self.serendipity_dic, r_))
+                    )
                     sys.stdout.flush()
         # output to file
         else:
@@ -85,7 +86,8 @@ class Predictor():
                     nf.write("%s\t%s\t%.3f\t---\n" % (p_, r_, s_))
             else:
                 for (p_, r_, s_) in izip(p_names, r_names, y_hat):
-                    nf.write("%s\t%s\t%.3f\t%.2f\n" %
-                             (p_, r_, s_,
-                              get_serendipity_val(self.serendipity_dic, r_)))
+                    nf.write(
+                        "%s\t%s\t%.3f\t%.2f\n"
+                        % (p_, r_, s_, get_serendipity_val(self.serendipity_dic, r_))
+                    )
             nf.close()

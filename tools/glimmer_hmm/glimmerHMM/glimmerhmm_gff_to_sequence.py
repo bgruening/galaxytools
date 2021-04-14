@@ -24,6 +24,7 @@ from Bio.SeqRecord import SeqRecord
 
 from BCBio import GFF
 
+
 def main(glimmer_file, ref_file, out_file, to_protein):
     with open(ref_file) as in_handle:
         ref_recs = SeqIO.to_dict(SeqIO.parse(in_handle, "fasta"))
@@ -31,33 +32,42 @@ def main(glimmer_file, ref_file, out_file, to_protein):
     base, ext = os.path.splitext(glimmer_file)
 
     with open(out_file, "w") as out_handle:
-        SeqIO.write(protein_recs(glimmer_file, ref_recs, to_protein), out_handle, "fasta")
+        SeqIO.write(
+            protein_recs(glimmer_file, ref_recs, to_protein), out_handle, "fasta"
+        )
+
 
 def protein_recs(glimmer_file, ref_recs, to_protein):
-    """Generate protein records from GlimmerHMM gene predictions.
+    """
+    Generate protein records from GlimmerHMM gene predictions.
     """
     with open(glimmer_file) as in_handle:
         for rec in glimmer_predictions(in_handle, ref_recs):
             for feature in rec.features:
                 seq_exons = []
                 for cds in feature.sub_features:
-                    seq_exons.append(rec.seq[
-                        cds.location.nofuzzy_start:
-                        cds.location.nofuzzy_end])
+                    seq_exons.append(
+                        rec.seq[cds.location.nofuzzy_start : cds.location.nofuzzy_end]
+                    )
                 gene_seq = reduce(operator.add, seq_exons)
                 if feature.strand == -1:
                     gene_seq = gene_seq.reverse_complement()
 
                 if to_protein:
-                    yield SeqRecord(gene_seq.translate(), feature.qualifiers["ID"][0], "", "")
+                    yield SeqRecord(
+                        gene_seq.translate(), feature.qualifiers["ID"][0], "", ""
+                    )
                 else:
                     yield SeqRecord(gene_seq, feature.qualifiers["ID"][0], "", "")
 
+
 def glimmer_predictions(in_handle, ref_recs):
-    """Parse Glimmer output, generating SeqRecord and SeqFeatures for predictions
+    """
+    Parse Glimmer output, generating SeqRecord and SeqFeatures for predictions
     """
     for rec in GFF.parse(in_handle, target_lines=1000, base_dict=ref_recs):
         yield rec
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:

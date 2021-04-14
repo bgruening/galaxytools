@@ -8,7 +8,7 @@ title = sys.argv[-6]
 width = int(sys.argv[-5])
 height = int(sys.argv[-4])
 depth = int(sys.argv[-3])
-type = sys.argv[-2].replace('_', ' ')
+type = sys.argv[-2].replace("_", " ")
 tmp_image_path = sys.argv[-1]
 
 imp = IJ.newImage(title, type, width, height, depth)

@@ -19,8 +19,8 @@ codon_count: anika/Annotation/data/codon_count2  outputfile
 def __main__():
 
     if len(sys.argv) >= 3:
-        orf2dna_out = sys.argv [1]
-        codon_count = open(sys.argv [2], "w")
+        orf2dna_out = sys.argv[1]
+        codon_count = open(sys.argv[2], "w")
 
     else:
         print "da fehlt was da oben"
@@ -29,15 +29,14 @@ def __main__():
     a = cu.CodonAdaptationIndex()
     a.generate_index(orf2dna_out)
 
-    #for record in Bio.SeqIO.parse(open(orf2dna_out), "fasta"):
+    # for record in Bio.SeqIO.parse(open(orf2dna_out), "fasta"):
     #    print record.seq
-        
+
     for key, value in a.codon_count.items():
         codon_count.write(key + "\t" + str(value) + "\n")
 
     codon_count.close()
 
 
-
-if __name__ == "__main__" :
+if __name__ == "__main__":
     __main__()

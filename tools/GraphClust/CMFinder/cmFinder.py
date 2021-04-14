@@ -26,7 +26,10 @@ alifoldCmd = "%salifold.pl -file  %s" % (path, model_tree_stk)
 # alifoldCmd = "perl " + path + "/alifold.pl -file " + model_tree_stk
 sh(alifoldCmd)
 
-cmd_stk = "%smloc2stockholm.pl -file model.cmfinder.stk  -split_input yes --con_struct %s.alifold" % (path, model_tree_stk)
+cmd_stk = (
+    "%smloc2stockholm.pl -file model.cmfinder.stk  -split_input yes --con_struct %s.alifold"
+    % (path, model_tree_stk)
+)
 # cmd_stk = "perl " + path + "/mloc2stockholm.pl -file model.cmfinder.stk  -split_input yes --con_struct " + model_tree_stk + ".alifold"
 sh(cmd_stk)
 
@@ -34,10 +37,13 @@ model_tree_stk_sth = "model.cmfinder.stk.sth"
 x = "cat " + model_tree_stk_sth
 sh("mv model.cmfinder.stk.sth model.tree.stk")
 
-sh("cmfinder %s %s -a model.tree.stk %s output > model.cmfinder.stk" % (gapCmd, gapVal, cmfinder_fa))
+sh(
+    "cmfinder %s %s -a model.tree.stk %s output > model.cmfinder.stk"
+    % (gapCmd, gapVal, cmfinder_fa)
+)
 # sh("cmfinder " + gapCmd + " " + gapVal + " -a model.tree.stk" + " " + cmfinder_fa + " " + " output > model.cmfinder.stk")
 
-if os.path.isfile('output'):
+if os.path.isfile("output"):
     sh("rm output")
 else:
     copyfile("model.tree.stk", "model.cmfinder.stk")

@@ -4,7 +4,7 @@ from ij import IJ
 from ij.plugin.filter import Analyzer
 
 
-OPTIONS = ['edm=Overwrite', 'iterations=1', 'count=1']
+OPTIONS = ["edm=Overwrite", "iterations=1", "count=1"]
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
@@ -43,24 +43,24 @@ if not image_processor_copy.isBinary():
     IJ.run(input_image_plus_copy, "Make Binary", "")
 
 # Set the options.
-options = ['size=%s' % size]
-circularity_str = '%.3f-%.3f' % (circularity_min, circularity_max)
-options.append('circularity=%s' % circularity_str)
-if show.find('_') >= 0:
-    show_str = '[%s]' % show.replace('_', ' ')
+options = ["size=%s" % size]
+circularity_str = "%.3f-%.3f" % (circularity_min, circularity_max)
+options.append("circularity=%s" % circularity_str)
+if show.find("_") >= 0:
+    show_str = "[%s]" % show.replace("_", " ")
 else:
     show_str = show
-options.append('show=%s' % show_str)
+options.append("show=%s" % show_str)
 if display_results:
-    options.append('display')
+    options.append("display")
     if not all_results:
-        options.append('summarize')
+        options.append("summarize")
 if exclude_edges:
-    options.append('exclude')
+    options.append("exclude")
 if include_holes:
-    options.append('include')
+    options.append("include")
 # Always run "in_situ".
-options.append('in_situ')
+options.append("in_situ")
 
 # Run the command.
 IJ.run(input_image_plus_copy, "Analyze Particles...", " ".join(options))

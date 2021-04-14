@@ -20,7 +20,6 @@ main_path = os.getcwd()
 
 
 class ToolPopularity:
-
     def __init__(self):
         """ Init method. """
 
@@ -31,8 +30,8 @@ class ToolPopularity:
         tool_usage_dict = dict()
         all_dates = list()
         all_tool_list = list(dictionary.keys())
-        with open(tool_usage_file, 'rt') as usage_file:
-            tool_usage = csv.reader(usage_file, delimiter='\t')
+        with open(tool_usage_file, "rt") as usage_file:
+            tool_usage = csv.reader(usage_file, delimiter="\t")
             for index, row in enumerate(tool_usage):
                 if (str(row[1]) > cutoff_date) is True:
                     tool_id = utils.format_tool_id(row[0])
@@ -67,18 +66,27 @@ class ToolPopularity:
         """
         epsilon = 0.0
         cv = 5
-        s_typ = 'neg_mean_absolute_error'
+        s_typ = "neg_mean_absolute_error"
         n_jobs = 4
         s_error = 1
         iid = True
         tr_score = False
         try:
-            pipe = Pipeline(steps=[('regressor', SVR(gamma='scale'))])
+            pipe = Pipeline(steps=[("regressor", SVR(gamma="scale"))])
             param_grid = {
-                'regressor__kernel': ['rbf', 'poly', 'linear'],
-                'regressor__degree': [2, 3]
+                "regressor__kernel": ["rbf", "poly", "linear"],
+                "regressor__degree": [2, 3],
             }
-            search = GridSearchCV(pipe, param_grid, iid=iid, cv=cv, scoring=s_typ, n_jobs=n_jobs, error_score=s_error, return_train_score=tr_score)
+            search = GridSearchCV(
+                pipe,
+                param_grid,
+                iid=iid,
+                cv=cv,
+                scoring=s_typ,
+                n_jobs=n_jobs,
+                error_score=s_error,
+                return_train_score=tr_score,
+            )
             search.fit(x_reshaped, y_reshaped.ravel())
             model = search.best_estimator_
             # set the next time point to get prediction for
