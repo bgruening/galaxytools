@@ -58,7 +58,7 @@ def change_according_reviewer(accession, note_line):
     """
         BRA0749/BS1330_II0742
     """
-    accession = re.sub("\w*\d\d\d\d\/.*\d\d\d\d_\w*", "", accession)
+    accession = re.sub("\w*\d\d\d\d\/.*\d\d\d\d_\w*", "", accession)  # noqa W605
 
     """
         Meiotically up-regulated gene 72 protein -> skip it
