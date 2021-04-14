@@ -58,7 +58,7 @@ def process(
             try:
                 features = sucos.getRawFeatures(mol)
                 cluster.append((mol, features))
-            except:
+            except Exception:
                 utils.log(
                     "WARNING: failed to generate features for molecule",
                     i,
@@ -84,7 +84,7 @@ def process(
             continue
         try:
             query_features = sucos.getRawFeatures(mol)
-        except:
+        except Exception:
             utils.log(
                 "WARNING: failed to generate features for molecule", mol_num, "in input"
             )

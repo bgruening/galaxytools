@@ -36,7 +36,7 @@ try:
         sys.argv[5],
         sys.argv[6],
     )
-except:
+except Exception:
     # no advanced options selected
     com = "sort -u %s %s -t '	' -o %s %s" % (
         is_numeric,

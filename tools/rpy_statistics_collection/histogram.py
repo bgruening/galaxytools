@@ -26,7 +26,7 @@ def main():
     out_fname = sys.argv[2]
     try:
         column = int(sys.argv[3]) - 1
-    except:
+    except Exception:
         stop_err(
             "Column not specified, your query does not contain a column of numerical data."
         )
@@ -61,7 +61,7 @@ def main():
                 val = fields[column]
                 if val.lower() == "na":
                     row.append(float("nan"))
-            except:
+            except Exception:
                 valid = False
                 skipped_lines += 1
                 if not first_invalid_line:

@@ -40,7 +40,7 @@ def fetch_fasta(identifiers, args):
         cmd = "cat %s >> %s" % (path, args.output)
         try:
             subprocess.call(cmd, shell=True)
-        except:
+        except Exception:
             print "UniProt entry %s not found" % elem
             continue
 

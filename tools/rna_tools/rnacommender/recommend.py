@@ -46,7 +46,7 @@ class Predictor:
             f = open(serendipity_dic)
             self.serendipity_dic = cPickle.load(f)
             f.close()
-        except:
+        except Exception:
             self.serendipity_dic = None
         self.output = output
 

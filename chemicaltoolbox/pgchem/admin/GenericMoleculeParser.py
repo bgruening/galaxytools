@@ -59,14 +59,14 @@ class GenericMoleculeParser:
             try:
                 self.session.add(DBMolecule)
                 self.session.commit()
-            except:
+            except Exception:
                 self.session.rollback()
                 sys.stderr.write(mol.write("smi"))
 
         self.session.add(GenericMoleculeDB.File(self.filepath))
         try:
             self.session.commit()
-        except:
+        except Exception:
             self.session.rollback()
             sys.stderr.write(mol.write("smi"))
         self.session.close()

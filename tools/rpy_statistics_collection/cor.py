@@ -24,7 +24,7 @@ def main():
 
     try:
         columns = map(int, sys.argv[3].split(","))
-    except:
+    except Exception:
         stop_err(
             "Problem determining columns, perhaps your query does not contain a column of numerical data."
         )
@@ -54,7 +54,7 @@ def main():
                     else:
                         try:
                             row.append(float(fields[column]))
-                        except:
+                        except Exception:
                             valid = False
                             skipped_lines += 1
                             if not first_invalid_line:
@@ -74,7 +74,7 @@ def main():
     if skipped_lines < i:
         try:
             out = open(sys.argv[2], "w")
-        except:
+        except Exception:
             stop_err("Unable to open output file")
 
         # Run correlation

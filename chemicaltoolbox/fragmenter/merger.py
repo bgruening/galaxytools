@@ -231,7 +231,7 @@ def merge(mol_one, mol_two, options, iteration_depth=1):
                     ).GetAtomicNum()
                 ]
             )
-        except:
+        except Exception:
             loggin.debug(
                 "Bond could not be created for the following molecule.\nBond1: %s - Bond2: %s - SMILES: %s.%s\n"
                 % (bond_atom1, bond_atom2, mol_one_smiles, mol_two_smiles)

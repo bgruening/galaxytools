@@ -111,7 +111,7 @@ def main(infile_input, infile_output, infile_trained_model):
         else:
             try:
                 y_score_binary = y_score[:, 1]
-            except:
+            except Exception:
                 y_score_binary = y_score
             fpr, tpr, _ = roc_curve(one_hot_labels, y_score_binary, pos_label=1)
             roc_auc = auc(fpr, tpr)

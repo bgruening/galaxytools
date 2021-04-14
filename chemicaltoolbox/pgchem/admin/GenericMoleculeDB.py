@@ -210,7 +210,7 @@ def create_tables(con, schema):
         # Base.metadata = metadata
         Base.metadata.drop_all(engine)
         Base.metadata.create_all(engine)
-    except:
+    except Exception:
         sys.stderr.write("Can't create table")
         sys.exit(1)
 
@@ -221,7 +221,7 @@ def create_schema(dbname, user, password, host, schema):
             "dbname='%s' user='%s' host='%s' password='%s'"
             % (dbname, user, host, password)
         )
-    except:
+    except Exception:
         sys.stderr.write("Unable to connect to the database.")
         sys.exit(1)
 
@@ -245,7 +245,7 @@ def create_indices(con, schema):
         )
         connection.close()
         engine.dispose()
-    except:
+    except Exception:
         sys.stderr.write("Error in creating the GIST index!\n")
         sys.exit(1)
 
@@ -261,7 +261,7 @@ def build_database():
         con = "postgresql://%s:%s@%s/%s" % (user, password, host, database)
         create_schema(database, user, password, host, schema)
 
-    except:
+    except Exception:
         sys.stderr.write("Error: Can't access informations in the config file.")
         sys.exit(1)
 

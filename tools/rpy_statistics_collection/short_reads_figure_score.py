@@ -90,7 +90,7 @@ def __main__():
                         data_type = "tabular"
                         seq_method = "solexa"
                         break
-                    except:
+                    except Exception:
                         break
         elif data_type == "fasta":
             fields = line.split()
@@ -99,7 +99,7 @@ def __main__():
                     int(score)
                     seq_method = "454"
                     break
-                except:
+                except Exception:
                     break
         if i == 100:
             break
@@ -169,7 +169,7 @@ def __main__():
                     nuc_errors[2] = int(nuc_errors[2])
                     nuc_errors[3] = int(nuc_errors[3])
                     big = max(nuc_errors)
-                except:
+                except Exception:
                     # print 'Invalid numbers in the file. Skipped.'
                     invalid_scores += 1
                     big = 0
@@ -215,7 +215,7 @@ def __main__():
         for j in range(len(score_points)):
             try:
                 tmp_array.append(int(score_points[j][i]))
-            except:
+            except Exception:
                 invalid_lines += 1
         score_matrix.append(tmp_array)
 

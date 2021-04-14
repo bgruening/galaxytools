@@ -22,7 +22,7 @@ class Gspan(Tabular):
     def display_peek(self, dataset):
         try:
             return dataset.peek
-        except:
+        except Exception:
             return "Tabular gSpan file (%s)" % (data.nice_size(dataset.get_size()))
 
 
@@ -42,7 +42,7 @@ class SparseVector(Tabular):
     def display_peek(self, dataset):
         try:
             return dataset.peek
-        except:
+        except Exception:
             return "Tabular SparseVector file (%s)" % (
                 data.nice_size(dataset.get_size())
             )

@@ -142,7 +142,7 @@ def run(
                                 cid + ".sdf",
                             ),
                         )
-                except:
+                except Exception:
                     print "no image for %s" % cid
             elif largest_component == 0:
                 # print 'Largest Component is Zero:', cid
@@ -168,7 +168,7 @@ def run(
                                 cid + ".sdf",
                             ),
                         )
-                except:
+                except Exception:
                     pass  # print 'no image for %s' % cid
         else:
             # __not__ a multiple of 5 carbon atoms
@@ -176,7 +176,7 @@ def run(
             """
             try:
                 mol.draw(show=False, update=True, usecoords=True, filename = os.path.join( os.path.dirname( file_handles['potential_terpenoids'].name ), cid + '.png') )
-            except:
+            except Exception:
                 print 'no image for %s' % cid
             """
 

@@ -23,7 +23,7 @@ def distance_matrix(arena, tanimoto_threshold=0.0):
     # Start off a similarity matrix with 1.0s along the diagonal
     try:
         similarities = numpy.identity(n, "d")
-    except:
+    except Exception:
         raise Exception("Input dataset is to large!")
     chemfp.set_num_threads(args.processors)
 

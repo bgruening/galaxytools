@@ -497,7 +497,7 @@ def parse_blastxml(
                             protein_accession_ref = hit_def.split('ref|')[1].split('|')[0] #try to extract the genbank accession number >gi|302432474|gb|EFL04290.1|; -> EFL04290.1
                             inference = "similar to AA sequence:RefSeq: %s" % protein_accession_ref
                             feature_table_text[ hsp.bits ] += '\t\t\tinference\t%s\n' % (inference)
-                        except:
+                        except Exception:
                             pass
                         """
                         inference = """ab initio prediction:Augustus:2.5.5"""

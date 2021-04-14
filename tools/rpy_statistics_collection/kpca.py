@@ -82,12 +82,12 @@ for ind, line in enumerate(file(infile)):
             for k, col in enumerate(x_cols):
                 try:
                     xval = float(fields[col])
-                except:
+                except Exception:
                     # xval = r('NA')
                     xval = NaN  #
                 # x_vals[k].append(xval)
                 x_vals.append(xval)
-        except:
+        except Exception:
             skipped += 1
 
 # x_vals1 = numpy.asarray(x_vals).transpose()
@@ -97,7 +97,7 @@ dat = r["matrix"](robjects.FloatVector(x_vals), ncol=len(x_cols), byrow=True)
 
 try:
     r.suppressWarnings(r.library("kernlab"))
-except:
+except Exception:
     stop_err("Missing R library kernlab")
 
 # set_default_mode(NO_CONVERSION)

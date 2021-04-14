@@ -53,13 +53,13 @@ for ind, line in enumerate(file(infile)):
             fields = line.split("\t")
             try:
                 yval = float(fields[y_col])
-            except:
+            except Exception:
                 yval = r("NA")
             y_vals.append(yval)
             for k, col in enumerate(x_cols):
                 try:
                     xval = float(fields[col])
-                except:
+                except Exception:
                     xval = r("NA")
                 x_vals[k].append(xval)
                 x_vector.append(xval)
@@ -175,12 +175,12 @@ if len(x_vals) == 1:  # Simple linear  regression case with 1 predictor variable
         # slope = r.round(float(coeffs['x']), digits=10)
         raw_slope = coeffs.rx2("x")[0]
         slope = r.round(float(raw_slope), digits=10)[0]
-    except:
+    except Exception:
         slope = "NA"
     try:
         # pval = r.round(float(co[1][3]), digits=10)
         pval = r.round(float(co.rx2(2, 4)[0]), digits=10)[0]
-    except:
+    except Exception:
         pval = "NA"
     print >> fout, "Slope (c%d)\t%s" % (x_cols[0] + 1, slope)
     print >> fout, "p-value (c%d)\t%s" % (x_cols[0] + 1, pval)
@@ -193,14 +193,14 @@ else:  # Multiple regression case with >1 predictors
             # slope = r.round(float(coeffs['x'+str(ind)]), digits=10)
             raw_slope = coeffs.rx2("x." + str(ind))[0]
             slope = r.round(float(raw_slope), digits=10)[0]
-        except:
+        except Exception:
             slope = "NA"
         print >> fout, "Slope (c%d)\t%s" % (x_cols[ind - 1] + 1, slope)
 
         try:
             # pval = r.round(float(co[ind][3]), digits=10)
             pval = r.round(float(co.rx2(ind + 1, 4)[0]), digits=10)[0]
-        except:
+        except Exception:
             pval = "NA"
         print >> fout, "p-value (c%d)\t%s" % (x_cols[ind - 1] + 1, pval)
         ind += 1
@@ -223,7 +223,7 @@ try:
     # residual_deviance= r.round(float(residual_deviance), digits=5)
     residual_deviance = r.round(float(residual_deviance), digits=5)[0]
 
-except:
+except Exception:
     pass
 
 print >> fout, "Null deviance\t%s" % (null_deviance)

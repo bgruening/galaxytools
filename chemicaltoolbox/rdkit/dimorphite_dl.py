@@ -43,7 +43,7 @@ try:
     import rdkit
     from rdkit import Chem
     from rdkit.Chem import AllChem
-except:
+except Exception:
     msg = "Dimorphite-DL requires RDKit. See https://www.rdkit.org/"
     print(msg)
     raise Exception(msg)
@@ -466,7 +466,7 @@ class LoadSMIFile(object):
             # Remove the hydrogens.
             try:
                 mol = Chem.RemoveHs(mol)
-            except:
+            except Exception:
                 UtilFuncs.eprint(
                     "WARNING: Skipping poorly formed SMILES string: " + line
                 )
@@ -726,7 +726,7 @@ class ProtSubstructFuncs:
         # Try to Add hydrogens. if failed return []
         try:
             mol = Chem.AddHs(mol)
-        except:
+        except Exception:
             UtilFuncs.eprint("ERROR:   ", smi)
             return []
 

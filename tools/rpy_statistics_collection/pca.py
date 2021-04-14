@@ -63,7 +63,7 @@ for ind, line in enumerate(file(infile)):
             for k, col in enumerate(x_cols):
                 try:
                     xval = float(fields[col])
-                except:
+                except Exception:
                     skipped += 1
                     valid_line = False
                     break
@@ -72,7 +72,7 @@ for ind, line in enumerate(file(infile)):
                     xval = float(fields[col])
                     # x_vals[k].append(xval)
                     x_vals.append(xval)
-        except:
+        except Exception:
             skipped += 1
 
 # x_vals1 = numpy.asarray(x_vals).transpose()

@@ -126,7 +126,7 @@ class TagDirectory(Html):
         """Create HTML content, used for displaying peek."""
         try:
             return dataset.peek
-        except:
+        except Exception:
             return "HOMER database (multiple files)"
 
     def get_mime(self):

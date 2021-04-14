@@ -79,7 +79,7 @@ parser.add_option(
 
 try:
     (options, args) = parser.parse_args()
-except:
+except Exception:
     parser.print_help()
     sys.exit(1)
 

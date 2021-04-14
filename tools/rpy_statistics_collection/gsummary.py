@@ -84,7 +84,7 @@ def main():
         datafile = sys.argv[1]
         outfile_name = sys.argv[2]
         expression = sys.argv[3]
-    except:
+    except Exception:
         stop_err("Usage: python gsummary.py input_file ouput_file expression")
 
     math_allowed = S3_METHODS()["Math"]
@@ -118,7 +118,7 @@ def main():
     for col in re.compile("c[0-9]+").findall(expression):
         try:
             cols.append(int(col[1:]) - 1)
-        except:
+        except Exception:
             pass
 
     tmp_file = tempfile.NamedTemporaryFile("w+b")
@@ -137,7 +137,7 @@ def main():
             for col in cols:
                 try:
                     float(fields[col])
-                except:
+                except Exception:
                     skipped_lines += 1
                     if not first_invalid_line:
                         first_invalid_line = i + 1

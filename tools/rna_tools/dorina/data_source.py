@@ -32,14 +32,14 @@ def load_input_parameters(filename, erase_file=True):
     try:
         json_params = loads(open(filename, "r").read())
         datasource_params = json_params.get("param_dict")
-    except:
+    except Exception:
         json_params = None
         for line in open(filename, "r"):
             try:
                 line = line.strip()
                 fields = line.split("\t")
                 datasource_params[fields[0]] = fields[1]
-            except:
+            except Exception:
                 continue
     if erase_file:
         open(
@@ -52,7 +52,7 @@ def __main__():
     filename = sys.argv[1]
     try:
         max_file_size = int(sys.argv[2])
-    except:
+    except Exception:
         max_file_size = 0
 
     job_params, params = load_input_parameters(filename)

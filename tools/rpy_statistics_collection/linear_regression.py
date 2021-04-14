@@ -52,17 +52,17 @@ for ind, line in enumerate(file(infile)):
             fields = line.split("\t")
             try:
                 yval = float(fields[y_col])
-            except:
+            except Exception:
                 yval = r("NA")
             y_vals.append(yval)
             for k, col in enumerate(x_cols):
                 try:
                     xval = float(fields[col])
-                except:
+                except Exception:
                     xval = r("NA")
                 # x_vals[k].append(xval)
                 x_vals.append(xval)
-        except:
+        except Exception:
             pass
 # x_vals1 = numpy.asarray(x_vals).transpose()
 # dat= r.list(x=array(x_vals1), y=y_vals)
@@ -104,12 +104,12 @@ if len(x_vals) == 1:  # Simple linear  regression case with 1 predictor variable
     try:
         # slope = coeffs['x']
         slope = r.round(float(coeffs.rx2("x")[0]), digits=10)
-    except:
+    except Exception:
         slope = "NA"
     try:
         # pval = co[1][3]
         pval = r.round(float(co.rx(2, 4)[0]), digits=10)
-    except:
+    except Exception:
         pval = "NA"
     print >> fout, "Slope (c%d)\t%s" % (x_cols[0] + 1, slope)
     print >> fout, "p-value (c%d)\t%s" % (x_cols[0] + 1, pval)
@@ -125,7 +125,7 @@ else:  # Multiple regression case with >1 predictors
         try:
             # pval = co[ind][3]
             pval = r.round(float(co.rx(ind + 1, 4)[0]), digits=10)
-        except:
+        except Exception:
             pval = "NA"
         print >> fout, "p-value (c%d)\t%s" % (x_cols[ind - 1] + 1, pval)
         ind += 1
@@ -141,7 +141,7 @@ try:
     fval = r.round(fstat["value"], digits=5)
     fstat["value"] = str(fval)
     sigma = r.round(float(sigma), digits=10)
-except:
+except Exception:
     pass
 
 print >> fout, "R-squared\t%s" % (rsq)
@@ -162,13 +162,13 @@ if len(x_vals) == 1:  # Simple linear  regression case with 1 predictor variable
             main="Scatterplot with regression",
         )
         r.abline(a=yintercept, b=slope, col="red")
-    except:
+    except Exception:
         pass
 else:
     r.pairs(dat, main="Scatterplot Matrix", col="blue")
 try:
     r.plot(linear_model)
-except:
+except Exception:
     pass
 # r.dev_off()
 grdevices.dev_off()

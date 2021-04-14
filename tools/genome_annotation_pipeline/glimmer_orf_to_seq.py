@@ -40,7 +40,7 @@ def glimmer2sequence(
             try:
                 orf_start = int(columns[1])
                 orf_end = int(columns[2])
-            except:
+            except Exception:
                 sys.stderr.write(
                     "Error: Failed to convert %s or %s to an integer. Is the input really a glimmer prediction file?\n"
                     % (columns[1], columns[2])

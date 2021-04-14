@@ -87,7 +87,7 @@ for ind, line in enumerate(file(infile)):
             for col in x_cols + y_cols:
                 try:
                     assert float(fields[col])
-                except:
+                except Exception:
                     skipped += 1
                     valid_line = False
                     break
@@ -95,18 +95,18 @@ for ind, line in enumerate(file(infile)):
                 for k, col in enumerate(x_cols):
                     try:
                         xval = float(fields[col])
-                    except:
+                    except Exception:
                         xval = NaN  #
                     # x_vals[k].append(xval)
                     x_vals.append(xval)
                 for k, col in enumerate(y_cols):
                     try:
                         yval = float(fields[col])
-                    except:
+                    except Exception:
                         yval = NaN  #
                     # y_vals[k].append(yval)
                     y_vals.append(yval)
-        except:
+        except Exception:
             skipped += 1
 
 # x_vals1 = numpy.asarray(x_vals).transpose()
@@ -120,7 +120,7 @@ y_dat = r["matrix"](robjects.FloatVector(y_vals), ncol=len(y_cols), byrow=True)
 
 try:
     r.suppressWarnings(r.library("kernlab"))
-except:
+except Exception:
     stop_err("Missing R library kernlab")
 
 # set_default_mode(NO_CONVERSION)

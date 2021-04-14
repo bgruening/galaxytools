@@ -22,7 +22,7 @@ def main():
     out_fname = sys.argv[2]
     try:
         columns = int(sys.argv[3]) - 1, int(sys.argv[4]) - 1
-    except:
+    except Exception:
         stop_err(
             "Columns not specified, your query does not contain a column of numerical data."
         )
@@ -49,14 +49,14 @@ def main():
                         row.append(float("nan"))
                     else:
                         row.append(float(fields[column]))
-                except:
+                except Exception:
                     valid = False
                     skipped_lines += 1
                     if not first_invalid_line:
                         first_invalid_line = i + 1
                         try:
                             invalid_value = fields[column]
-                        except:
+                        except Exception:
                             invalid_value = ""
                         invalid_column = column + 1
                     break

@@ -10,7 +10,7 @@ try:
     from galaxy import eggs
 
     eggs.require("psycopg2")
-except:
+except Exception:
     print(
         "psycopg2 is not available. It is currently used in the pgchem wrappers, that are not shipped with default CTB"
     )
@@ -18,7 +18,7 @@ except:
 try:
     from openbabel import pybel
     from openbabel import openbabel
-except:
+except Exception:
     print(
         "OpenBabel could not be found. A few functions are not available without OpenBabel."
     )
@@ -76,7 +76,7 @@ def db_connect(args):
             % (args.dbname, args.dbuser, args.dbhost, args.dbpasswd)
         )
         return db_conn
-    except:
+    except Exception:
         sys.exit("Unable to connect to the db")
 
 
@@ -180,7 +180,7 @@ def print_output(args, rows):
                         if key
                     ]
                 outfile.write(mol)
-            except:
+            except Exception:
                 pass
     else:
         outfile = open(args.output, "w")
@@ -206,7 +206,7 @@ def get_properties_ext(mol):
 
     try:
         logp = calc_desc_dict["logP"]
-    except:
+    except Exception:
         logp = calc_desc_dict["LogP"]
 
     return {

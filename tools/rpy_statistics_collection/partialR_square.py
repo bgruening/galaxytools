@@ -59,10 +59,10 @@ for k, col in enumerate(x_cols):
     """
     try:
         float( elems[x_cols[k]] )
-    except:
+    except Exception:
         try:
             msg = "This operation cannot be performed on non-numeric column %d containing value '%s'." %( col, elems[x_cols[k]] )
-        except:
+        except Exception:
             msg = "This operation cannot be performed on non-numeric data."
         stop_err( msg )
     """
@@ -85,7 +85,7 @@ for ind, line in enumerate(file(infile)):
                     # print >>sys.stderr, "ex = %s" %ex
                 x_vals[k].append(xval)
                 x_vector.append(xval)
-        except:
+        except Exception:
             pass
 
 # x_vals1 = numpy.asarray(x_vals).transpose()
@@ -166,7 +166,7 @@ for j, cols in enumerate(all_combos):
 
     try:
         partial_R = (float(fullr2) - float(redr2)) / (1 - float(redr2))
-    except:
+    except Exception:
         partial_R = "NA"
     col_str = ""
     for col in cols:
@@ -182,10 +182,10 @@ for j, cols in enumerate(all_combos):
         partial_R = "-"
     try:
         redr2 = "%.4f" % (float(redr2))
-    except:
+    except Exception:
         pass
     try:
         partial_R = "%.4f" % (float(partial_R))
-    except:
+    except Exception:
         pass
     print >> fout, "%s\t%s\t%s\t%s" % (col_str, redr2, partial_R_col_str, partial_R)

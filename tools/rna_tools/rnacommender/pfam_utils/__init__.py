@@ -130,7 +130,7 @@ def read_pfam_output(pfam_out_file):
             names=cols,
             engine="python",
         )
-    except:
+    except Exception:
         return None
     return data
 
