@@ -4,7 +4,6 @@ Input: DNA Fasta File + Glimmer ORF File
 Output: ORF-sequence as FASTA file
 Author: Bjoern Gruening
 """
-import os
 import sys
 
 import Bio.SeqIO

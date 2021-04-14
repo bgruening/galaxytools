@@ -2,8 +2,6 @@
 # Aufruf convert_graph.py --infile datei --informat typ --outfile ausgabedatei --outformat ausgabetyp
 
 import argparse
-import json
-import os
 import sys
 
 import networkx as nx

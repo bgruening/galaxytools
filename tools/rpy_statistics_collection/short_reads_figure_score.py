@@ -9,10 +9,7 @@ boxplot:
 """
 
 import math
-import os
-import re
 import sys
-import tempfile
 
 import rpy2.rinterface as ri
 import rpy2.rlike.container as rlc

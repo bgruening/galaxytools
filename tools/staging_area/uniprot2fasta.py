@@ -6,7 +6,6 @@ Sept 2011
 Xavier Lucas, Bjoern Gruening
 """
 import argparse
-import os
 import subprocess
 import sys
 

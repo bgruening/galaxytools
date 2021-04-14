@@ -7,9 +7,7 @@
 import argparse
 import copy
 import os
-import pprint
 import shutil
-import sys
 import tempfile
 
 tbl_file = "STAFG.tbl"

@@ -8,7 +8,6 @@ Usage:
     glimmerhmm_to_sequence.py <glimmer output> <ref fasta> <output file> <format> <protein>
 
 """
-import os
 import sys
 
 import glimmerhmm_gff_to_sequence

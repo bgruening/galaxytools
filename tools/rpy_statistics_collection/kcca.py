@@ -19,7 +19,6 @@ usage: %prog [options]
 usage: %prog input output1 x_cols y_cols kernel features sigma(or_None) degree(or_None) scale(or_None) offset(or_None) order(or_None)
 """
 
-import string
 import sys
 
 import numpy

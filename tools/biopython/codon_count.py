@@ -4,7 +4,6 @@ Input: DNA Fasta File
 Output: gezaehlte Codons ueber das gesamte File, nicht jedes einzelne ORF
 Anika Erxleben
 """
-import os
 import sys
 
 import Bio.SeqIO

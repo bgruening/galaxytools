@@ -22,10 +22,7 @@ http://www.cbcb.umd.edu/software/GlimmerHMM/
 Its based on code from from Brad Chapman: https://github.com/chapmanb/bcbb/blob/master/biopython/glimmergff_to_proteins.py
 
 """
-import operator
 import os
-import sys
-from collections import Iterable
 
 from BCBio import GFF
 from Bio import Seq, SeqIO

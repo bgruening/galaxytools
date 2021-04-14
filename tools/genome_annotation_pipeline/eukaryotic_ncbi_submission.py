@@ -12,13 +12,9 @@ required for submission of Serquence data.
 http://www.ncbi.nlm.nih.gov/WebSub/index.cgi?tool=genbank
 TODO: include t-RNA results
 """
-import csv
 import os
-import re
 import subprocess
-import sys
 import zipfile
-from collections import defaultdict
 
 from Bio import SeqIO
 from Bio.Blast import NCBIXML

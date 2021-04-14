@@ -13,10 +13,8 @@ http://www.ncbi.nlm.nih.gov/WebSub/index.cgi?tool=genbank
 TODO: include t-RNA results
 """
 import os
-import re
 import shutil
 import subprocess
-import sys
 import zipfile
 
 from Bio import SeqIO

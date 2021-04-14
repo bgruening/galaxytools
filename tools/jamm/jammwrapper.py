@@ -11,7 +11,6 @@
 # import optparse
 import argparse
 import os
-import shlex
 import shutil
 import subprocess
 import sys
