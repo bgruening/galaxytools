@@ -2,10 +2,8 @@
 
 # from galaxy import eggs
 
-import string
 import sys
 
-import numpy
 import rpy2.rlike.container as rlc
 import rpy2.robjects as robjects
 
@@ -39,7 +37,7 @@ outfile = sys.argv[4]
 print("Predictor columns: %s; Response column: %d" % (x_cols, y_col + 1))
 fout = open(outfile, "w")
 
-for i, line in enumerate(file(infile)):
+for i, line in enumerate(file(infile)):  # noqa F821
     line = line.rstrip("\r\n")
     if len(line) > 0 and not line.startswith("#"):
         elems = line.split("\t")
@@ -69,20 +67,20 @@ for k, col in enumerate(x_cols):
         stop_err( msg )
     """
 NA = "NA"
-for ind, line in enumerate(file(infile)):
+for ind, line in enumerate(file(infile)):  # noqa F821
     if line and not line.startswith("#"):
         try:
             fields = line.split("\t")
             try:
                 yval = float(fields[y_col])
-            except Exception, ey:
+            except Exception:
                 yval = r("NA")
                 # print >>sys.stderr, "ey = %s" %ey
             y_vals.append(yval)
             for k, col in enumerate(x_cols):
                 try:
                     xval = float(fields[col])
-                except Exception, ex:
+                except Exception:
                     xval = r("NA")
                     # print >>sys.stderr, "ex = %s" %ex
                 x_vals[k].append(xval)
@@ -109,7 +107,7 @@ dat = robjects.DataFrame(od)
 formula = " + ".join(dat.names).replace("+", "~", 1)
 try:
     full = r.lm(formula, data=r["na.exclude"](dat))
-except Exception as rex:
+except Exception:
     stop_err(
         "Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values."
     )
@@ -120,7 +118,7 @@ summary = r.summary(full)
 fullr2 = summary.rx2("r.squared")[0]
 
 if fullr2 == "NA":
-    stop_error("Error in linear regression")
+    stop_err("Error in linear regression")
 
 if len(x_vals) < 10:
     s = ""
@@ -157,7 +155,7 @@ for j, cols in enumerate(all_combos):
     formula = " + ".join(dat.names).replace("+", "~", 1)
     try:
         red = r.lm(formula, data=r["na.exclude"](dat))
-    except Exception as rex:
+    except Exception:
         stop_err(
             "Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values."
         )

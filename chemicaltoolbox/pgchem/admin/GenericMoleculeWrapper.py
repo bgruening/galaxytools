@@ -109,7 +109,7 @@ try:
         sys.argv[7],
     ]
     child = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-except Exception, err:
+except Exception as err:
     sys.stderr.write(
         "Return error code %i from command:\n%s\n" % (return_code, " ".join(args))
     )

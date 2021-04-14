@@ -11,8 +11,6 @@ boxplot:
 import math
 import sys
 
-import rpy2.rinterface as ri
-import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
 
@@ -36,7 +34,7 @@ def merge_to_20_datapoints(score):
     step_average = 0
     score_points = 0
 
-    for i in xrange(1, read_length):
+    for i in range(1, read_length):
         if i < (point * step):
             point_sum += int(score[i])
             step_average += 1
@@ -51,7 +49,7 @@ def merge_to_20_datapoints(score):
         scores.append(point_avg)
     if len(scores) > number_of_points:
         last_avg = 0
-        for j in xrange(number_of_points - 1, len(scores)):
+        for j in range(number_of_points - 1, len(scores)):
             last_avg += scores[j]
         last_avg = last_avg / (len(scores) - number_of_points + 1)
     else:
@@ -75,7 +73,7 @@ def __main__():
     # Determine tabular or fasta format within the first 100 lines
     seq_method = None
     data_type = None
-    for i, line in enumerate(file(infile_name)):
+    for i, line in enumerate(file(infile_name)):  # noqa F821
         line = line.rstrip("\r\n")
         if not line or line.startswith("#"):
             continue
@@ -114,7 +112,7 @@ def __main__():
     read_length = 0
     variable_length = False
     if seq_method == "solexa":
-        for i, line in enumerate(file(infile_name)):
+        for i, line in enumerate(file(infile_name)):  # noqa F821
             line = line.rstrip("\r\n")
             if not line or line.startswith("#"):
                 continue
@@ -128,7 +126,7 @@ def __main__():
                 break
     elif seq_method == "454":
         score = ""
-        for i, line in enumerate(file(infile_name)):
+        for i, line in enumerate(file(infile_name)):  # noqa F821
             line = line.rstrip("\r\n")
             if not line or line.startswith("#"):
                 continue
@@ -248,7 +246,7 @@ def __main__():
         x_old_range = []
         x_new_range = []
         step = read_length_threshold / number_of_points
-        for i in xrange(0, read_length_threshold, step):
+        for i in range(0, read_length_threshold, step):
             x_old_range.append((i / step))
             x_new_range.append(i)
         print("Writing axis")

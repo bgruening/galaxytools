@@ -75,7 +75,7 @@ def S3_METHODS(all="key"):
         "~",
         ",",
     ]
-    if all is "key":
+    if all == "key":
         return {"Math": Group_Math, "Ops": Group_Ops}
 
 
@@ -92,14 +92,14 @@ def main():
 
     # Check for invalid expressions
     for word in re.compile("[a-zA-Z]+").findall(expression):
-        if word and not word in math_allowed:
+        if word and word not in math_allowed:
             stop_err(
                 "Invalid expression '%s': term '%s' is not recognized or allowed"
                 % (expression, word)
             )
     symbols = set()
-    for symbol in re.compile("[^a-z0-9\s]+").findall(expression):
-        if symbol and not symbol in ops_allowed:
+    for symbol in re.compile("[^a-z0-9\s]+").findall(expression):  # noqa W605
+        if symbol and symbol not in ops_allowed:
             stop_err(
                 "Invalid expression '%s': operator '%s' is not recognized or allowed"
                 % (expression, symbol)
@@ -128,7 +128,7 @@ def main():
     skipped_lines = 0
     first_invalid_line = 0
     i = 0
-    for i, line in enumerate(file(datafile)):
+    for i, line in enumerate(file(datafile)):  # noqa F821
         line = line.rstrip("\r\n")
         if line and not line.startswith("#"):
             valid = True
@@ -170,7 +170,7 @@ def main():
             r.assign(col, r["$"](r_data_frame, col))
         try:
             summary = summary_func(r(expression))
-        except RException, s:
+        except Exception as s:
             outfile.close()
             stop_err("Computation resulted in the following error: %s" % str(s))
         # summary = summary.as_py( BASIC_CONVERSION )

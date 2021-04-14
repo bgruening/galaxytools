@@ -1,10 +1,8 @@
 #!/usr/bin/env python
 
 # from galaxy import eggs
-import string
 import sys
 
-import numpy
 import rpy2.rinterface as ri
 import rpy2.rlike.container as rlc
 # from rpy import *
@@ -27,7 +25,7 @@ outfile = sys.argv[4]
 print("Predictor columns: %s; Response column: %d" % (x_cols, y_col + 1))
 fout = open(outfile, "w")
 elems = []
-for i, line in enumerate(file(infile)):
+for i, line in enumerate(file(infile)):  # noqa F821
     line = line.rstrip("\r\n")
     if len(line) > 0 and not line.startswith("#"):
         elems = line.split("\t")
@@ -48,7 +46,7 @@ for k, col in enumerate(x_cols):
     x_vals.append([])
 
 NA = "NA"
-for ind, line in enumerate(file(infile)):
+for ind, line in enumerate(file(infile)):  # noqa F821
     if line and not line.startswith("#"):
         try:
             fields = line.split("\t")
@@ -64,7 +62,7 @@ for ind, line in enumerate(file(infile)):
                     xval = r("NA")
                 x_vals[k].append(xval)
                 x_vector.append(xval)
-        except Exception, e:
+        except Exception as e:
             print(e)
 
 # x_vals1 = numpy.asarray(x_vals).transpose()
@@ -110,7 +108,7 @@ formula = " + ".join(dat.names).replace("+", "~", 1)
 print(formula)
 try:
     linear_model = r.glm(formula, data=r["na.exclude"](dat), family="binomial")
-except Exception, rex:
+except Exception:
     stop_err(
         "Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values."
     )
@@ -128,7 +126,7 @@ if len(x_cols) > 1:
         )
         print("Have glm")
         vif = r.vif(glm_result)
-    except Exception, rex:
+    except Exception as rex:
         print(rex)
 else:
     novif = 1
@@ -157,7 +155,7 @@ try:
     yintercept = r.round(float(yintercept), digits=10)[0]
     # pvaly = r.round(float(co[0][3]), digits=10)
     pvaly = r.round(float(co.rx(1, 4)[0]), digits=10)[0]
-except Exception, e:
+except Exception as e:
     print(str(e))
 print("response column\tc%d" % (y_col + 1), file=fout)
 tempP = []

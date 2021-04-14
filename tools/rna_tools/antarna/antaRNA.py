@@ -108,7 +108,7 @@ def isBalanced(s):
     balance = 1
     for bracket in ["()", "[]", "{}", "<>"]:
         counter = 0
-        for a in xrange(len(s)):
+        for a in range(len(s)):
             if s[a] in bracket[0]:
                 counter += 1
             elif s[a] in bracket[1]:
@@ -128,7 +128,7 @@ def fulfillsHairpinRule(s):
     for bracket in ["()", "[]", "{}", "<>"]:
         last_opening_char = 0
         check = 0
-        for a in xrange(len(s)):
+        for a in range(len(s)):
             if s[a] == bracket[0]:
                 last_opening_char = a
                 check = 1
@@ -335,7 +335,7 @@ def getBPStack(s, seq):
     """
     tmp_stack = {"()": [], "{}": [], "[]": [], "<>": []}
     bpstack = {}
-    for i in xrange(len(s)):
+    for i in range(len(s)):
 
         # REGULAR SECONDARY STRUCTURE DETECTION
         if s[i] in "(){}[]<>":
@@ -380,7 +380,7 @@ def getbpStack(s):
     tmp_stack = {"()": [], "{}": [], "[]": [], "<>": []}
     bpstack = {}
 
-    for i in xrange(len(s)):
+    for i in range(len(s)):
         if s[i] in "(){}[]<>":
 
             no = 0
@@ -631,7 +631,7 @@ def initTerrain(s):  # THE CLASSIC
     e = {}
     pathlength = 1
     pheromone = 1
-    for p in xrange(len(s)):
+    for p in range(len(s)):
         if p == 0:
             for i in nt:
                 e["%s.%s" % (p, i)] = (pheromone, pathlength)
@@ -688,7 +688,7 @@ def pickStep(tmp_steps, summe):
     else:
         rand = random.random()  # draw random number
         mainval = 0
-        for choice in xrange(len(tmp_steps)):
+        for choice in range(len(tmp_steps)):
             val, label = tmp_steps[choice]
             mainval += val / float(summe)
             if (
@@ -815,7 +815,7 @@ def consult_RNAfold(seq, p):
     """
     p.stdin.write(seq + "\n")
     out = ""
-    for i in xrange(2):
+    for i in range(2):
         out += p.stdout.readline()
     return out
 
@@ -1086,7 +1086,7 @@ def getSequenceEditDistance(SC, path):
         "N": "ACGU",
     }
     edit = 0
-    for i in xrange(len(SC)):
+    for i in range(len(SC)):
         if path[i] not in IUPAC[SC[i]]:
             edit += 1
     return edit / float(len(path))
@@ -1097,7 +1097,7 @@ def getTransitions(p):
     Retreive transitions of a specific path/sequence
     """
     transitions = []
-    for pos in xrange(len(p)):
+    for pos in range(len(p)):
         if pos == 0:
             transitions.append(str(pos) + "." + p[pos])
 
@@ -1152,7 +1152,7 @@ def trailBlaze(p, c_s, s, ds, dgc, dseq, dn, t, correction_terms, BPstack, verbo
         d = bs + bGC
     transitions = getTransitions(p)
 
-    for trans in xrange(len(transitions)):  # for each transition in the path
+    for trans in range(len(transitions)):  # for each transition in the path
         id1 = int(transitions[trans].split(".")[0])
         tar_id2 = int(BPstack[id1][1][0])  # getting requested  position id2
         curr_id2 = int(bpstack[id1])  # getting the current situation
@@ -1226,7 +1226,7 @@ def getPathFromSelection(
     """
     terr, BPs = terrain
     win_path = 0
-    for i in xrange(aps):
+    for i in range(aps):
         # Generate Sequence
         path = getPath(s, terr, BPs, alpha, beta, IUPAC, IUPAC_reverseComplements)
         # Measure sequence features and transform them into singular distances
@@ -1884,7 +1884,7 @@ def findSequence(
         }
 
     result = []
-    for col in xrange(colonies):
+    for col in range(colonies):
         # Checking the kind of taget GC value should be used
         GC = getGCSamplingValue(tGC, tGCmax, tGCvar)
 

@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 
-import string
 import sys
 
-import numpy
-import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
@@ -35,7 +32,7 @@ if method == "svd":
 
 fout = open(outfile, "w")
 elems = []
-for i, line in enumerate(file(infile)):
+for i, line in enumerate(file(infile)):  # noqa F821
     line = line.rstrip("\r\n")
     if len(line) > 0 and not line.startswith("#"):
         elems = line.split("\t")
@@ -56,7 +53,7 @@ for k, col in enumerate(x_cols):
 
 NA = "NA"
 skipped = 0
-for ind, line in enumerate(file(infile)):
+for ind, line in enumerate(file(infile)):  # noqa F821
     if line and not line.startswith("#"):
         try:
             fields = line.strip().split("\t")
@@ -92,7 +89,7 @@ try:
         # pc = r.prcomp(r.na_exclude(dat), center = r(center), scale = r(scale))
         pc = r.prcomp(r["na.exclude"](dat), center=r(center), scale=r(scale))
 # except Exception as rex:
-except Exception, rex:  # need to find rpy2 RException
+except Exception as rex:  # need to find rpy2 RException
     stop_err("Encountered error while performing PCA on the input data: %s" % (rex))
 
 # set_default_mode(BASIC_CONVERSION)

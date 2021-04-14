@@ -36,7 +36,7 @@ class FastaRecord:
 
     def __str__(self):
         result = [">" + self.header]
-        for i in xrange(0, len(self.sequence), 60):
+        for i in range(0, len(self.sequence), 60):
             result.append(self.sequence[i : i + 60])
         return "\n".join(result)
 

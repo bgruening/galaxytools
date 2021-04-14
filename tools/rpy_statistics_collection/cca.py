@@ -3,7 +3,6 @@
 import sys
 
 import numpy
-import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
@@ -46,7 +45,7 @@ outfile2 = sys.argv[8]
 
 fout = open(outfile, "w")
 elems = []
-for i, line in enumerate(file(infile)):
+for i, line in enumerate(file(infile)):  # noqa F821
     line = line.rstrip("\r\n")
     if len(line) > 0 and not line.startswith("#"):
         elems = line.split("\t")
@@ -72,7 +71,7 @@ for k, col in enumerate(y_cols):
     # y_vals.append([])
 
 skipped = 0
-for ind, line in enumerate(file(infile)):
+for ind, line in enumerate(file(infile)):  # noqa F821
     if line and not line.startswith("#"):
         try:
             fields = line.strip().split("\t")
@@ -89,14 +88,14 @@ for ind, line in enumerate(file(infile)):
                     try:
                         xval = float(fields[col])
                     except Exception:
-                        xval = NaN  #
+                        xval = numpy.nan  #
                     # x_vals[k].append(xval)
                     x_vals.append(xval)
                 for k, col in enumerate(y_cols):
                     try:
                         yval = float(fields[col])
                     except Exception:
-                        yval = NaN  #
+                        yval = numpy.nan
                     # y_vals[k].append(yval)
                     y_vals.append(yval)
         except Exception:

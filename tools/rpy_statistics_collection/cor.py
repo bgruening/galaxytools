@@ -35,7 +35,7 @@ def main():
     invalid_value = ""
     invalid_column = 0
 
-    for i, line in enumerate(file(sys.argv[1])):
+    for i, line in enumerate(file(sys.argv[1])):  # noqa F821
         valid = True
         line = line.rstrip("\n\r")
 
@@ -91,7 +91,7 @@ def main():
                 for ci in range(1, rslt_mat.ncol + 1):
                     row.append(rslt_mat.rx(ri, ci)[0])
                 value.append(row)
-        except Exception, exc:
+        except Exception as exc:
             out.close()
             stop_err("%s" % str(exc))
         for row in value:

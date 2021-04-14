@@ -49,7 +49,7 @@ def main():
     first_invalid_line = 0
     invalid_value = ""
     i = 0
-    for i, line in enumerate(file(in_fname)):
+    for i, line in enumerate(file(in_fname)):  # noqa F821
         valid = True
         line = line.rstrip("\r\n")
         # Skip comments
@@ -104,7 +104,7 @@ def main():
                 r.lines(density)
             # r.dev_off()
             grdevices.dev_off()
-        except Exception, exc:
+        except Exception as exc:
             stop_err("%s" % str(exc))
     else:
         if i == 0:

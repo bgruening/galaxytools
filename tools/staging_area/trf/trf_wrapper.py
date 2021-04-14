@@ -118,7 +118,7 @@ def __main__():
         proc = subprocess.Popen(
             args=cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE
         )
-    except Exception, err:
+    except Exception as err:
         sys.stderr.write("Error invoking command: \n%s\n\n%s\n" % (cmd, err))
         sys.exit(1)
     stdout, stderr = proc.communicate()
@@ -141,7 +141,7 @@ def __main__():
         shutil.copyfile(os.path.basename(output_indices), output_indices_filename)
         if opts.masked and opts.masked:
             shutil.copyfile(os.path.basename(output_mask), output_mask_filename)
-    except Exception, err:
+    except Exception as err:
         sys.stderr.write("Error copying output files: \n%s\n" % err)
 
 

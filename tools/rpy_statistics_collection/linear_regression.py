@@ -2,7 +2,6 @@
 
 import sys
 
-import numpy
 import rpy2.rlike.container as rlc
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
@@ -26,7 +25,7 @@ outfile2 = sys.argv[5]
 print("Predictor columns: %s; Response column: %d" % (x_cols, y_col + 1))
 fout = open(outfile, "w")
 elems = []
-for i, line in enumerate(file(infile)):
+for i, line in enumerate(file(infile)):  # noqa F821
     line = line.rstrip("\r\n")
     if len(line) > 0 and not line.startswith("#"):
         elems = line.split("\t")
@@ -47,7 +46,7 @@ for k, col in enumerate(x_cols):
     # x_vals.append([])
 
 NA = "NA"
-for ind, line in enumerate(file(infile)):
+for ind, line in enumerate(file(infile)):  # noqa F821
     if line and not line.startswith("#"):
         try:
             fields = line.split("\t")
@@ -79,7 +78,7 @@ formula = " + ".join(dat.names).replace("+", "~", 1)
 try:
     # linear_model = r.lm(r("y ~ x"), data = r.na_exclude(dat))
     linear_model = r.lm(formula, data=r["na.exclude"](dat))
-except Exception as rex:
+except Exception:
     stop_err(
         "Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values."
     )

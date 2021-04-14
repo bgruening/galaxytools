@@ -23,12 +23,9 @@ import sys
 
 import numpy
 import pkg_resources
-import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
 from bx.cookbook import doc_optparse
-from galaxy import eggs
-from rpy2.robjects.packages import importr
 
 r = robjects.r
 pkg_resources.require("bx-python")
@@ -57,7 +54,7 @@ if ncomps < 1:
     )
     sys.exit()
 elems = []
-for i, line in enumerate(file(infile)):
+for i, line in enumerate(file(infile)):  # noqa F821
     line = line.rstrip("\r\n")
     if len(line) > 0 and not line.startswith("#"):
         elems = line.split("\t")
@@ -80,7 +77,7 @@ for k, col in enumerate(y_cols):
     # y_vals.append([])
 NA = "NA"
 skipped = 0
-for ind, line in enumerate(file(infile)):
+for ind, line in enumerate(file(infile)):  # noqa F821
     if line and not line.startswith("#"):
         try:
             fields = line.strip().split("\t")
@@ -97,14 +94,14 @@ for ind, line in enumerate(file(infile)):
                     try:
                         xval = float(fields[col])
                     except Exception:
-                        xval = NaN  #
+                        xval = numpy.nan
                     # x_vals[k].append(xval)
                     x_vals.append(xval)
                 for k, col in enumerate(y_cols):
                     try:
                         yval = float(fields[col])
                     except Exception:
-                        yval = NaN  #
+                        yval = numpy.nan
                     # y_vals[k].append(yval)
                     y_vals.append(yval)
         except Exception:
@@ -144,7 +141,7 @@ elif kernel == "besseldot":
 elif kernel == "anovadot":
     pars = r.list(degree=float(options.degree), sigma=float(options.sigma))
 else:
-    pars = rlist()
+    pars = r.list()
 
 try:
     kcc = r.kcca(x=x_dat, y=y_dat, kernel=kernel, kpar=pars, ncomps=ncomps)

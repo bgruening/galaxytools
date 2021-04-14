@@ -568,7 +568,7 @@ def main(
     if options["error_score"]:
         options["error_score"] = "raise"
     else:
-        options["error_score"] = np.NaN
+        options["error_score"] = np.nan
     if options["refit"] and isinstance(options["scoring"], dict):
         options["refit"] = primary_scoring
     if "pre_dispatch" in options and options["pre_dispatch"] == "":

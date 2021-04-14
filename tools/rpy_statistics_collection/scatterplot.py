@@ -36,7 +36,7 @@ def main():
     invalid_value = ""
     invalid_column = 0
     i = 0
-    for i, line in enumerate(file(in_fname)):
+    for i, line in enumerate(file(in_fname)):  # noqa F821
         valid = True
         line = line.rstrip("\r\n")
         if line and not line.startswith("#"):
@@ -79,7 +79,7 @@ def main():
             r.plot(m, type="p", main=title, xlab=xlab, ylab=ylab, col="blue", pch=19)
             # r.dev_off()
             grdevices.dev_off()
-        except Exception, exc:
+        except Exception as exc:
             stop_err("%s" % str(exc))
     else:
         stop_err(

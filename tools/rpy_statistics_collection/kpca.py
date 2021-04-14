@@ -19,22 +19,19 @@ usage: %prog [options]
 usage: %prog input output1 output2 var_cols kernel features sigma(or_None) degree(or_None) scale(or_None) offset(or_None) order(or_None)
 """
 
-import string
 import sys
 
 import numpy
 import pkg_resources
-import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
-from galaxy import eggs
+from bx.cookbook import doc_optparse
 from rpy2.robjects.packages import importr
 
 r = robjects.r
 grdevices = importr("grDevices")
 
 pkg_resources.require("bx-python")
-from bx.cookbook import doc_optparse
 
 
 def stop_err(msg):
@@ -55,7 +52,7 @@ ncomps = int(options.features)
 fout = open(outfile, "w")
 
 elems = []
-for i, line in enumerate(file(infile)):
+for i, line in enumerate(file(infile)):  # noqa F821
     line = line.rstrip("\r\n")
     if len(line) > 0 and not line.startswith("#"):
         elems = line.split("\t")
@@ -76,7 +73,7 @@ for k, col in enumerate(x_cols):
 
 NA = "NA"
 skipped = 0
-for ind, line in enumerate(file(infile)):
+for ind, line in enumerate(file(infile)):  # noqa F821
     if line and not line.startswith("#"):
         try:
             fields = line.strip().split("\t")
@@ -85,7 +82,7 @@ for ind, line in enumerate(file(infile)):
                     xval = float(fields[col])
                 except Exception:
                     # xval = r('NA')
-                    xval = NaN  #
+                    xval = numpy.nan  #
                 # x_vals[k].append(xval)
                 x_vals.append(xval)
         except Exception:
@@ -127,7 +124,7 @@ try:
     # kpc = r.kpca(x=r.na_exclude(dat), kernel=kernel, kpar=pars, features=ncomps)
     kpc = r.kpca(x=r["na.exclude"](dat), kernel=kernel, kpar=pars, features=ncomps)
 # except Exception as rex:
-except Exception, rex:  # need to find rpy2 RException
+except Exception as rex:  # need to find rpy2 RException
     stop_err("Encountered error while performing kPCA on the input data: %s" % (rex))
 # set_default_mode(BASIC_CONVERSION)
 

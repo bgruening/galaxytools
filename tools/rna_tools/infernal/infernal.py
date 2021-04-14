@@ -133,7 +133,7 @@ class Infernal_CM_1_1(Text):
                     cm_lines_accumulated = []
             if cm_lines_accumulated:
                 _write_part_cm_file(cm_lines_accumulated)
-        except Exception, e:
+        except Exception as e:
             log.error("Unable to split files: %s" % str(e))
             raise
 
