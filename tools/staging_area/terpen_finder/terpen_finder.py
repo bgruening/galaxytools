@@ -4,10 +4,7 @@
 import argparse
 import datetime
 import os
-import shutil
-import sys
 
-import matplotlib.pyplot as plt
 import networkx as nx
 import openbabel as ob
 import pybel
@@ -17,7 +14,6 @@ isoprene_smarts = pybel.Smarts("C~C(~C)~C~C")
 
 def mol_to_networkxgraph(mol):
     edges = []
-    bondorders = []
     for bond in ob.OBMolBondIter(mol.OBMol):
         # bondorders.append(bond.GetBO())
         if bond.GetBeginAtom().IsCarbon() and bond.GetEndAtom().IsCarbon():
@@ -91,17 +87,14 @@ def consisting_of_isoprens(mol):
     return False
 
 
-def run(
-    (
-        input_path,
+def run(input_path,
         id_string,
         is_dir,
         inchi,
         images,
         write_mol,
         consisting_of_isoprens_required,
-    )
-):
+        ):
     print("Processing:\t%s" % input_path, id_string)
     file_handles = create_file_handles(id_string, is_dir)
 
@@ -204,12 +197,12 @@ class Grouper:
         self.sets = temp
 
 
-def chunks(l, n):
+def chunks(lk, n):
     """
     Yield successive n-sized chunks from l.
     """
-    for i in range(0, len(l), n):
-        yield l[i : i + n]
+    for i in range(0, len(lk), n):
+        yield lk[i: i + n]
 
 
 def create_file_handles(key_name, is_dir):

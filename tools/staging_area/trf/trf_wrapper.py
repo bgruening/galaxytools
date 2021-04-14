@@ -21,7 +21,6 @@ import re
 import shutil
 import subprocess
 import sys
-from os.path import abspath
 
 
 def remove_html(infilename, outfilename):
@@ -131,8 +130,8 @@ def __main__():
     else:
         sys.stdout.write(stdout)
         sys.stdout.write(stderr)
-    cdir = os.getcwd()
-    file_list = os.listdir(cdir)
+    # cdir = os.getcwd()
+    # file_list = os.listdir(cdir)
     try:
         report_file = os.path.basename(output_report)
         remove_html(report_file, output_report_filename)

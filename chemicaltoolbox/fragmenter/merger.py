@@ -82,8 +82,6 @@ def unique_files(file_paths, unique_file, temp=False):
     if return_code:
         sys.stdout.write(stdout)
         sys.stderr.write(stderr)
-        sys.stderr.write("Return error code %i from command:\n" % return_code)
-        sys.stderr.write("%s\n" % cmd)
     unique_file.close()
     os.remove(concat.name)
     return return_code
@@ -166,7 +164,7 @@ def is_fragment(smiles):
     Checks if the molecule has a marker defined. If so return True, otherweise False.
     If the mol is a string we assume a SMILES input and convert it to a real pybel molecule
     """
-    if type(smiles) != type(""):
+    if not isinstance(smiles, str):
         smiles = smiles.write("smi").split()[0]
     hits = len(atomic_num_regex.findall(smiles))
     return hits
@@ -230,7 +228,7 @@ def merge(mol_one, mol_two, options, iteration_depth=1):
                 ]
             )
         except Exception:
-            loggin.debug(
+            logging.debug(
                 "Bond could not be created for the following molecule.\nBond1: %s - Bond2: %s - SMILES: %s.%s\n"
                 % (bond_atom1, bond_atom2, mol_one_smiles, mol_two_smiles)
             )
@@ -247,7 +245,7 @@ def merge(mol_one, mol_two, options, iteration_depth=1):
             tokens = mol_one.title.split(":")
             sticky_ends = int(tokens[1]) - 1
             concat_mol.title = re.sub(
-                "sticky_ends:\d*:", "sticky_ends:%s:" % (sticky_ends), mol_one.title
+                "sticky_ends:\d*:", "sticky_ends:%s:" % (sticky_ends), mol_one.title  # noqa W605
             )
             # logging.debug('decrease sticky ends to: %s' % sticky_ends)
         elif mol_one.title.strip() or mol_one.title.find("Fragment1:") == -1:

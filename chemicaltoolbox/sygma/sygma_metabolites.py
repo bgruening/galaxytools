@@ -5,7 +5,7 @@ import argparse
 import numpy as np
 import sygma
 from rdkit import Chem
-from rdkit.Chem.rdmolfiles import SDMolSupplier, SmilesMolSupplier
+from rdkit.Chem.rdmolfiles import SDMolSupplier
 
 
 def mol_supplier(filename, ext):

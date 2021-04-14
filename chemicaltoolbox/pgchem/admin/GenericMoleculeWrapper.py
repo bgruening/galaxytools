@@ -1,14 +1,12 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-import argparse
+import ConfigParser
 import os
 import shutil
 import subprocess
 import sys
 import tempfile
-
-import ConfigParser
 
 
 def manage_loc_file(path, data):
@@ -109,9 +107,9 @@ try:
         sys.argv[7],
     ]
     child = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-except Exception as err:
+except Exception:
     sys.stderr.write(
-        "Return error code %i from command:\n%s\n" % (return_code, " ".join(args))
+        "Return error code %i from command:\n%s\n" % (child.returncode, " ".join(args))
     )
     sys.exit(1)
 
@@ -122,7 +120,7 @@ if return_code:
     sys.stdout.write(stdout)
     sys.stderr.write(stderr)
     sys.stderr.write(
-        "Return error code %i from command:\n%s\n" % (return_code, " ".join(args))
+        "Return error code %i from command:\n%s\n" % (child.returncode, " ".join(args))
     )
 else:
     sys.stdout.write(stdout)

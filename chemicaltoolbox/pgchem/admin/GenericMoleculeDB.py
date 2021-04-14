@@ -15,12 +15,12 @@ import sys
 import cheminfolib
 import generic as config
 import psycopg2
-from sqlalchemy import MetaData, create_engine
+from sqlalchemy import create_engine, MetaData
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relation
 from sqlalchemy.schema import (Column, ForeignKeyConstraint,
                                PrimaryKeyConstraint)
-from sqlalchemy.types import *
+from sqlalchemy.types import CHAR, DateTime, Integer, Numeric, String, Text, UserDefinedType
 
 
 class molecule_type(UserDefinedType):
@@ -93,7 +93,7 @@ class Molecule(Base):
         for i in molecule.calcfp('FP3').bits:
             fp3[i-1] = '1'
         self.fp3 = ''.join(fp3)
-        
+
         fp4 = ['0']*1024
         for i in molecule.calcfp('FP4').bits:
             fp4[i-1] = '1'

@@ -14,7 +14,6 @@ def index_genbank_features(gb_record, feature_type, qualifier):
             answer.append((start, end, feature.qualifiers))
             """
             if qualifier in feature.qualifiers :
-                
                 for value in feature.qualifiers[qualifier] :
                     if value in answer :
                         print "WARNING - Duplicate key %s for %s features %i and %i" \

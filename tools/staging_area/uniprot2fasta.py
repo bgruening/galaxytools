@@ -9,8 +9,6 @@ import argparse
 import subprocess
 import sys
 
-import psycopg2.extras
-
 LIB_PATH = "/media/data/databases/uniprot/devided/"
 
 

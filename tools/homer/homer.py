@@ -3,9 +3,7 @@ HOMER special datatypes
 """
 import os
 
-from galaxy.datatypes.data import Data, Text, get_file_peek
 from galaxy.datatypes.images import Html
-from galaxy.datatypes.metadata import MetadataElement
 
 
 class TagDirectory(Html):
@@ -69,7 +67,7 @@ class TagDirectory(Html):
             sfname = os.path.split(fname)[-1]
             rval.append('<li><a href="%s" type="text/html">%s</a>' % (sfname, sfname))
         rval.append("</ul></body></html>")
-        f = file(dataset.file_name, "w")
+        f = file(dataset.file_name, "w")  # noqa F821
         f.write("%s\n" % "\n".join(rval))
         f.close()
         if not dataset.info:

@@ -9,7 +9,6 @@ import sys
 
 from kegg import KEGGDB
 from sqlalchemy.orm import sessionmaker
-from sqlalchemy.sql.expression import alias, cast, func
 
 KEGGDBEngine, KEGGDBBase = KEGGDB.init("postgres://bag:bag@10.4.56.8:5432/phabidb")
 KEGGSession = sessionmaker(bind=KEGGDBEngine)()

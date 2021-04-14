@@ -3,8 +3,6 @@
 
 import sys
 
-from Bio import SeqIO
-
 
 def change_fasta_header(infile, outfile, mode):
     pass

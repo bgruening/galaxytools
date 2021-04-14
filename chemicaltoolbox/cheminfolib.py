@@ -4,13 +4,20 @@
     Copyright 2012, Bjoern Gruening and Xavier Lucas
 """
 
+import glob
+import re
+import subprocess
 import sys
+import tempfile
+from multiprocessing import Pool
 
+import numpy as np
 try:
     from galaxy import eggs
 
     eggs.require("psycopg2")
 except Exception:
+    psycopg2 = None
     print(
         "psycopg2 is not available. It is currently used in the pgchem wrappers, that are not shipped with default CTB"
     )
@@ -21,12 +28,6 @@ except Exception:
     print(
         "OpenBabel could not be found. A few functions are not available without OpenBabel."
     )
-
-import glob
-import re
-import subprocess
-import tempfile
-from multiprocessing import Pool
 
 
 def CountLines(path):
@@ -58,7 +59,7 @@ def check_filetype(filepath):
             return "drf"
         elif possible_inchi and re.findall("^InChI=", line):
             return "inchi"
-        elif re.findall("^M\s+END", line):
+        elif re.findall("^M\s+END", line):  # noqa W605
             mol = True
         # first line is not an InChI, so it can't be an InChI file
         possible_inchi = False
@@ -220,7 +221,7 @@ def get_properties_ext(mol):
         "rotbonds": mol.OBMol.NumRotors(),
         "can": mol.write("can")
         .split()[0]
-        .strip(),  ### tthis one works fine for both zinc and chembl (no ZINC code added after can descriptor string)
+        .strip(),  # this one works fine for both zinc and chembl (no ZINC code added after can descriptor string)
         "inchi": mol.write("inchi").strip(),
         "inchi_key": get_inchikey(mol).strip(),
         "rings": len(mol.sssr),
