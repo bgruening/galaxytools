@@ -15,7 +15,7 @@ import os
 
 import numpy as np
 import utils
-from rdkit import Chem, RDConfig, rdBase
+from rdkit import Chem, RDConfig
 from rdkit.Chem import AllChem, rdShapeHelpers
 from rdkit.Chem.FeatMaps import FeatMaps
 
@@ -138,7 +138,7 @@ def get_SucosScore(
         query_features = getRawFeatures(query_mol)
 
     fm_score = get_FeatureMapScore(ref_features, query_features, tani, score_mode)
-    fm_score = np.clip(fm_score, 0, 1)
+    fm_score = np.float(np.clip(fm_score, 0, 1))
 
     try:
         if tani:
@@ -154,7 +154,7 @@ def get_SucosScore(
             protrude_val = 1.0 - protrude_dist
             SuCOS_score = 0.5 * fm_score + 0.5 * protrude_val
             return SuCOS_score, fm_score, protrude_val
-    except:
+    except Exception:
         utils.log("Failed to calculate SuCOS scores. Returning 0,0,0")
         return 0, 0, 0
 

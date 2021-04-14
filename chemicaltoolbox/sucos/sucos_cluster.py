@@ -10,7 +10,6 @@ SuCOS is the work of Susan Leung.
 GitHub: https://github.com/susanhleung/SuCOS
 Publication: https://doi.org/10.26434/chemrxiv.8100203.v1
 """
-
 import argparse
 
 import numpy as np
