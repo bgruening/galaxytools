@@ -11,7 +11,6 @@ Usage:
 import sys
 
 import glimmerhmm_gff_to_sequence
-import glimmerhmm_tabular_to_sequence
 
 
 def main(glimmer_file, ref_file, out_file, to_protein=False):

@@ -50,7 +50,7 @@ def glimmer2sequence(
             orf_name = columns[0]
 
             if orf_start <= orf_end:
-                sequence = entry.seq[orf_start - 1 : orf_end]
+                sequence = entry.seq[orf_start - 1: orf_end]
                 if to_protein:
                     sequence = sequence.translate(to_stop=True, table=translation_table)
                 new_line = (
@@ -60,7 +60,7 @@ def glimmer2sequence(
                     + "\n"
                 )
             else:
-                sequence = entry.seq[orf_end - 1 : orf_start].reverse_complement()
+                sequence = entry.seq[orf_end - 1: orf_start].reverse_complement()
                 if to_protein:
                     sequence = sequence.translate(to_stop=True, table=translation_table)
                 new_line = (

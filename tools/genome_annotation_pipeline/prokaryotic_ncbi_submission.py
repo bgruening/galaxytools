@@ -154,7 +154,7 @@ def parse_blastxml(
         for entry in NCBIXML.parse(blast_handle):
             if entry.application == "BLASTX":
                 query_length = entry.query_length
-                if type(query_length) == type(1.7):
+                if isinstance(query_length, float):
                     print("Query length is not a multiple of three")
                     break
                 query_id = entry.query.split()[0]
@@ -195,7 +195,7 @@ def parse_blastxml(
                         hsp_has_annotation = True
 
                         """
-                        Hit_def changed: It now looks like: 
+                        Hit_def changed: It now looks like:
                         'RecName: Full=Erythronolide synthase, modules 3 and 4; Short=PKS; AltName: Full=6-deoxyerythronolide B synthase II; AltName: Full=DEBS 2; AltName: Full=ORF 2'
                         """
                         print(alignment.hit_def)
@@ -291,7 +291,7 @@ def parse_blastxml(
                             inference
                         )
 
-                        note = """similar to UniProtKB/Swiss-Prot Entry: %(hit_accession)s""" % {
+                        note = """similar to UniProtKB/Swiss-Prot Entry: %(hit_accession)s""" % {  # noqa F504
                             "gene_counter": gene_counter,
                             "accession": accession,
                             "alignment_hit_def": accession,
@@ -356,11 +356,9 @@ def zipper(dir, zip_file):
 
 if __name__ == "__main__":
     import argparse
-    import shutil
     import tempfile
 
     import Scaffold2Fasta
-    from change_fasta_header import change_fasta_header
 
     parser = argparse.ArgumentParser(description="Creates a NCBI FeatureTable.")
 
@@ -496,7 +494,7 @@ if __name__ == "__main__":
         "--sequence-description",
         dest="seq_description",
         default="",
-        help="""The sequence description will be inserted in each FASTA header and will be 
+        help="""The sequence description will be inserted in each FASTA header and will be
                       included in the genbank file. The NCBI reviever suggested something like [organism=Glarea lozoyensis 74030] [strain=74030]""",
     )
 

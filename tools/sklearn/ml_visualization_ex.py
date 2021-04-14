@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
-from galaxy_ml.utils import SafeEval, load_model, read_columns
+from galaxy_ml.utils import load_model, read_columns, SafeEval
 from keras.models import model_from_json
 from keras.utils import plot_model
 from sklearn.feature_selection.base import SelectorMixin

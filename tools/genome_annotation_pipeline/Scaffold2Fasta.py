@@ -41,7 +41,7 @@ def run(
 
     # sequence_description = '[organism=Glarea lozoyensis 74030] [strain=74030]'
 
-    if agp_file != False:
+    if agp_file is not False:
         agp_file = open(agp_file, "w+")
 
     new_sequence_array = []
@@ -101,7 +101,7 @@ def run(
         # find all N-runs with at least two N's
         # a single N letter will not be touched
         for match in re.finditer("[nN]{2,}", record_seq):
-            seq_before_match = match.string[sequence_start : match.start()]
+            seq_before_match = match.string[sequence_start: match.start()]
 
             linecount += 1
             sequence_counter += 1
@@ -119,7 +119,7 @@ def run(
                 ),  # end position and len of the contig
                 "gap_len": gap_len,  # Gap length
             }
-            if agp_file != False:
+            if agp_file is not False:
                 agp_file.write(agp_contig_string % data)
             linecount += 1
             sequence_start += len(seq_before_match)
@@ -136,7 +136,7 @@ def run(
                 # GAP is at the end of the scaffold, do not track that, in theory that should never happen
                 continue
             # write to AGP file
-            if agp_file != False:
+            if agp_file is not False:
                 agp_file.write(agp_gap_string % data)
             sequence_start = sequence_end
 
@@ -151,7 +151,7 @@ def run(
             sequence after the last gap
         """
         if len(record_seq) > sequence_start:
-            seq_after_last_match = record_seq[sequence_start : len(record_seq)]
+            seq_after_last_match = record_seq[sequence_start: len(record_seq)]
             if len(seq_after_last_match) >= 200:
                 linecount += 1
                 sequence_end = len(record_seq)
@@ -164,7 +164,7 @@ def run(
                     "scaffold_counter": scaffold_counter,  # counting the scaffold
                     "end_part_sequence": sequence_end - sequence_start,
                 }
-                if agp_file != False:
+                if agp_file is not False:
                     agp_file.write(agp_contig_string % data)
                 seq_obj = Seq(seq_after_last_match, IUPAC.IUPACUnambiguousDNA)
                 temp = SeqRecord(

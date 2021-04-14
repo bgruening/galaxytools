@@ -29,7 +29,7 @@ except AttributeError:
     import _utils
 
     collections.defaultdict = _utils.defaultdict
-
+import simplejson
 from Bio import SeqFeature, SeqIO
 from Bio.Seq import UnknownSeq
 from Bio.SeqRecord import SeqRecord
@@ -45,7 +45,7 @@ def _gff_line_map(line, params):
         - determines the type of attribute (flat, parent, child or annotation)
         - generates a dictionary of GFF info which can be serialized as JSON
     """
-    gff3_kw_pat = re.compile("\w+=")
+    gff3_kw_pat = re.compile("\w+=")  # noqa W605
 
     def _split_keyvals(keyval_str):
         """Split key-value pairs in a GFF2, GTF and GFF3 compatible way.
@@ -670,7 +670,7 @@ class GFFParser(_AbstractMapReduceGFF):
                 self._iter = line_iter
 
             def read(self):
-                return "".join(l for l in self._iter)
+                return "".join(lk for lk in self._iter)
 
             def readline(self):
                 try:

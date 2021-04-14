@@ -127,7 +127,7 @@ class GFF3Writer:
                 del quals[std_qual]
         # add a link to a parent identifier if it exists
         if parent_id:
-            if not "Parent" in quals:
+            if "Parent" not in quals:
                 quals["Parent"] = []
             quals["Parent"].append(parent_id)
         quals = id_handler.update_quals(quals, len(feature.sub_features) > 0)

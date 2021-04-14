@@ -2,7 +2,7 @@ import argparse
 
 import numpy as np
 from galaxy_ml.utils import read_columns
-from sklearn.decomposition import PCA, IncrementalPCA, KernelPCA
+from sklearn.decomposition import IncrementalPCA, KernelPCA, PCA
 
 
 def main():

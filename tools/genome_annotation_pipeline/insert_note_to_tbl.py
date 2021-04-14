@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# !/usr/bin/env python
 
 """
     Insert note tag into the ncbi tbl file
@@ -42,7 +42,7 @@ def main(tbl_file, discrep_file, outfile):
             start = True
             continue
         if start:
-            ### typical line: STAFG:CDS	putative Precorrin-6Y C(5,15)-methyltransferase	lcl|Seq1234:1866-2915	STAFG_0415
+            # typical line: STAFG:CDS	putative Precorrin-6Y C(5,15)-methyltransferase	lcl|Seq1234:1866-2915	STAFG_0415
             discrep_id, name, seq_pos, iid = line.split("\t")
             temp_dict = {
                 "discrep_id": discrep_id,

@@ -74,11 +74,11 @@ def change_according_reviewer(accession, note_line):
     accession = accession.replace("Staphylococcal ", "")
 
     # delete numbers and ids -- do not include locus_tags or database identifer in product names)
-    accession = re.sub("\s\w*\d{3}[\w\d.]*", "", accession)
+    accession = re.sub("\s\w*\d{3}[\w\d.]*", "", accession)  # noqa W605
 
     # contains 'Homolog' (use -like protein instead)
     # special case: Beige protein homolog 1
-    accession = re.sub("homolog[\s\d]*$", "like protein", accession, re.IGNORECASE)
+    accession = re.sub("homolog[\s\d]*$", "like protein", accession, re.IGNORECASE)  # noqa W605
     # normal use case
     accession = re.sub("homolog", "like protein", accession, re.IGNORECASE)
 
@@ -198,7 +198,7 @@ def change_according_reviewer(accession, note_line):
             "sp|Q9P6P9|PDK_SCHPO", "Pyruvate dehydrogenase kinase"
         )
         accession = re.sub(
-            "sp\|\w{6}\|\w+_\w+", "", accession
+            "sp\|\w{6}\|\w+_\w+", "", accession  # noqa W605
         )  # replace names like sp|P51831|FABG_BACSU
 
         # filter out swissprot ID's sp|O69873|GLND_STRCO

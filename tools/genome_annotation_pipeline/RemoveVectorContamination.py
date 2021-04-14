@@ -1,7 +1,7 @@
-#!/usr/bin/env python
+# !/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-#!/usr/bin/env python
+# !/usr/bin/env python
 
 __author__ = "Bjoern Gruening"
 __version__ = "0.1"
@@ -45,7 +45,7 @@ def remove_vector_contamination(query, univec_db, ofile="noncontamination.fasta"
             if record.id in seq_ids.keys():
                 sequence = str(record.seq)
                 sequence = sequence.replace(
-                    sequence[seq_ids[record.id][0] - 1 : seq_ids[record.id][1]], ""
+                    sequence[seq_ids[record.id][0] - 1: seq_ids[record.id][1]], ""
                 )
                 record.seq = sequence
                 d = Seq(sequence, IUPAC.IUPACUnambiguousDNA)

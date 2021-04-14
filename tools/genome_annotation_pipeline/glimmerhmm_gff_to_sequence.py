@@ -18,6 +18,7 @@ Usage:
 import operator
 import os
 import sys
+from functools import reduce
 
 from BCBio import GFF
 from Bio import SeqIO
@@ -58,14 +59,14 @@ def protein_recs(glimmer_file, ref_recs, to_protein, ncbi_traslation_table=1):
                             if cds.type == "CDS":
                                 seq_exons.append(
                                     rec.seq[
-                                        cds.location.nofuzzy_start : cds.location.nofuzzy_end
+                                        cds.location.nofuzzy_start: cds.location.nofuzzy_end
                                     ]
                                 )
                     else:
                         if cds.type == "CDS":
                             seq_exons.append(
                                 rec.seq[
-                                    cds.location.nofuzzy_start : cds.location.nofuzzy_end
+                                    cds.location.nofuzzy_start: cds.location.nofuzzy_end
                                 ]
                             )
                 gene_seq = reduce(operator.add, seq_exons)

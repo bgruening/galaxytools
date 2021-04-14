@@ -19,7 +19,7 @@ import zipfile
 from Bio import SeqIO
 from Bio.Blast import NCBIXML
 from glimmerhmm_gff_to_sequence import main as gff2seq
-from RemoveVectorContamination import *
+from RemoveVectorContamination import remove_vector_contamination  # noqa F403
 from utils import change_according_reviewer
 
 
@@ -347,7 +347,7 @@ def parse_blastxml(
         for entry in NCBIXML.parse(blast_handle):
             if entry.application == "BLASTX":
                 query_length = entry.query_length / 3
-                if type(query_length) == type(1.7):
+                if isinstance(query_length, float):
                     print("Query length is not a multiple of three")
                     break
                 query_id = entry.query.split()[0]
@@ -357,7 +357,6 @@ def parse_blastxml(
                 gene_start = query_info.mRNA.start
                 gene_end = query_info.mRNA.stop
                 cds = query_info.exons
-                mRNA = query_info.mRNA
             else:
                 break
 
@@ -382,7 +381,7 @@ def parse_blastxml(
                         feature_table_text[hsp.bits] = ""
                         hsp_has_annotation = True
                         """
-                        Hit_def changed: It now looks like: 
+                        Hit_def changed: It now looks like:
                         'RecName: Full=Erythronolide synthase, modules 3 and 4; Short=PKS; AltName: Full=6-deoxyerythronolide B synthase II; AltName: Full=DEBS 2; AltName: Full=ORF 2'
                         """
                         print(alignment.hit_def)
@@ -506,7 +505,7 @@ def parse_blastxml(
                             inference
                         )
 
-                        note = """similar to UniProtKB/Swiss-Prot Entry: %(hit_accession)s""" % {
+                        note = """similar to UniProtKB/Swiss-Prot Entry: %(hit_accession)s""" % {  # noqa F504
                             "gene_counter": gene_counter,
                             "accession": accession,
                             "alignment_hit_def": hit_def,
@@ -715,7 +714,7 @@ if __name__ == "__main__":
         "--sequence-description",
         dest="seq_description",
         default="",
-        help="""The sequence description will be inserted in each FASTA header and will be 
+        help="""The sequence description will be inserted in each FASTA header and will be
                       included in the genbank file. The NCBI reviever suggested something like [organism=Glarea lozoyensis 74030] [strain=74030]""",
     )
     parser.add_argument(
