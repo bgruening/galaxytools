@@ -32,7 +32,7 @@ def main(args):
         url += "txt"
     else:
         url += "xml"
-    if args.operation in check_for_id_type and not args.id_type is None:
+    if args.operation in check_for_id_type and args.id_type is not None:
         url += "?" + args.operation + "_type=" + args.id_type
     print(("The constructed REST URL is: %s" % url))
     data = readfile.getresult(url)

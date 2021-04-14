@@ -3,23 +3,13 @@
 import tempfile
 import xml.sax as sax
 
-import httplib
 import readfile
-import urllib2
 
 
 class DictHandler(sax.handler.ContentHandler):
     """
     Parse XML files with AID/CID/SID as key and mappings to several other IDs
     """
-
-    def __init__(self):
-        self.ergebnis = {}
-        self.schluessel = ""
-        self.wert = ""
-        self.aktiv = None
-        self.keywert = "AID"
-        self.valuewert = "CID"
 
     def __init__(self, key, value):
         self.ergebnis = {}
@@ -81,15 +71,6 @@ def get_dict_key_value(url, key, value):
     dic = dict_from_xml(tmp, key, value)
     tmp.close()
     return dic
-
-
-def getIDofLine(line):
-    arr = line.split(">")
-    if len(arr) > 1:
-        self.keywert = arr[1].split("<")[0]
-        return self.keywert
-    else:
-        return "-1"
 
 
 def write_to_sf(iddict, outfile, sep):

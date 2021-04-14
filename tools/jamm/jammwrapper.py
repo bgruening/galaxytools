@@ -134,7 +134,6 @@ def main():
     # Note that shell = True can be a security hazard.
     #    proc = subprocess.Popen( command, executable = '/bin/bash', shell=True )
     proc = subprocess.Popen(command, shell=True)
-    returncode = proc.wait()
 
     # mv files to a place where galaxy wrapper can find them
     # mvcommand = "mv %s/results/peaks/all.peaks.narrowPeak %s" % ( tmp_dir, args.peakfile )

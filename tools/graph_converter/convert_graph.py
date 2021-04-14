@@ -43,7 +43,7 @@ def read_gspan(infile):
             idoffset += 1
         elif line[0] == "e":
             if length_split < 3:
-                raise InvalidGraph(line)
+                raise Exception  # InvalidGraph(line)
             elif length_split > 3:
                 G.add_edge(
                     old_id_start + int(line_split[1]),
@@ -146,7 +146,7 @@ def main(args):
     elif args.outformat == "xgmml":
         # xgmml=XGMMLParserHelper(graph)
         # xgmml.parseFile(open(sys.argv[1]))
-        a = XGMMLWriter(args.outfile, graph, "MyGraph")
+        XGMMLWriter(args.outfile, graph, "MyGraph")
 
 
 if __name__ == "__main__":

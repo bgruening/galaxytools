@@ -104,14 +104,14 @@ def XGMMLWriter(file, graph, graph_name):
     - `graph`:
     """
 
-    print >> file, """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+    print("""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <graph directed="1"  xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#" xmlns="http://www.cs.rpi.edu/XGMML">
 <att name="selected" value="1" type="boolean" />
 <att name="name" value="{0}" type="string"/>
 <att name="shared name" value="{0}" type="string"/>
 """.format(
         graph_name
-    )
+    ), file=file)
 
     for onenode in graph.nodes(data=True):
         id = onenode[0]
@@ -123,14 +123,14 @@ def XGMMLWriter(file, graph, graph_name):
         else:
             label = id
 
-        print >> file, '<node id="{id}" label="{label}">'.format(id=id, label=label)
+        print('<node id="{id}" label="{label}">'.format(id=id, label=label), file=file)
         for k, v in attr.iteritems():
-            print >> file, '<att name="{}" value="{}" type="string" />'.format(k, v)
-        print >> file, "</node>"
+            print('<att name="{}" value="{}" type="string" />'.format(k, v), file=file)
+        print("</node>", file=file)
 
     for oneedge in graph.edges(data=True):
-        print >> file, '<edge source="{}" target="{}">'.format(oneedge[0], oneedge[1])
+        print('<edge source="{}" target="{}">'.format(oneedge[0], oneedge[1]), file=file)
         for k, v in oneedge[2].iteritems():
-            print >> file, '<att name="{}" value="{}" type="string" />'.format(k, v)
-        print >> file, "</edge>"
-    print >> file, "</graph>"
+            print('<att name="{}" value="{}" type="string" />'.format(k, v), file=file)
+        print("</edge>", file=file)
+    print("</graph>", file=file)

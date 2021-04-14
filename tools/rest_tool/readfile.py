@@ -1,9 +1,6 @@
 #!/usr/bin/env python
 
-import io
 import urllib
-
-import httplib
 import urllib2
 
 
@@ -27,7 +24,7 @@ def getListString(args):
 def getresult(url):
     try:
         connection = urllib2.urlopen(url)
-    except urllib2.HTTPError, e:
+    except urllib2.HTTPError:
         return ""
     else:
         return connection.read().rstrip()

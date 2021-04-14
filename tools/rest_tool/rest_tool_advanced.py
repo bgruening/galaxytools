@@ -32,7 +32,7 @@ id_dict = {"compound": "cid", "assay": "aid", "substance": "sid"}
 def main(args):
     url = "http://pubchem.ncbi.nlm.nih.gov/rest/pug/%s/%s/" % (args.type, args.id_type)
     # check if we are POST then skip this part otherwise insert the ids into the url
-    if not args.id_type in post_id_types:
+    if args.id_type not in post_id_types:
         if args.id_type == id_dict[args.type]:
             url += readfile.getListString(args) + "/"
         else:

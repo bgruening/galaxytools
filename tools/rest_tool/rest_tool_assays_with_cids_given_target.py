@@ -3,8 +3,10 @@
 
 import argparse
 import sys
+import xml.sax as sax
 
 import readfile
+from rest_tool_functions import DictHandler
 
 
 def getIDofLine(line):
@@ -23,7 +25,7 @@ def getAllCidsForAssayActivity(activity):
         + activity
         + "/aids/txt?list_return=listkey"
     )
-    listkey = readfile.getresult(url)
+    readfile.getresult(url)
     #    url="http://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/listkey/"+listkey+"/cids/xml"
     url = "http://pubchem.ncbi.nlm.nih.gov/rest/pug/assay/aid/25425,12345/cids/xml"
     print(("url: " + url))
@@ -45,16 +47,16 @@ def getAllCidsForAssayActivity(activity):
     print(("lastline: " + lastline))
     print(("lastline-2: " + lastline_arr[len(lastline_arr) - 2]))
     cidlastline = getIDofLine(lastline)
-    aidkey = "-1"
+    # aidkey = "-1"
     if cidlastline != "-1":
         i = len(lastline_arr) - 2
         # search for nex aid entry
         while i >= 0 and "AID" not in lastline_arr[i]:
             i -= 1
-        if i >= 0:
-            aid = getIDofLine(lastline_arr[i])
-            if aid != "-1":
-                aidkey = aid
+        # if i >= 0:
+        #     aid = getIDofLine(lastline_arr[i])
+            # if aid != "-1":
+            #     aidkey = aid
     # remove the last line and put the array back together
 
     lastline_arr_list = list(lastline_arr)
@@ -75,7 +77,7 @@ def getAllCidsForAssayActivity(activity):
 
 def main(args):
     aid_cid_dict = getAllCidsForAssayActivity(args.target)
-    write_to_csv(aid_cid_dict, args.outfile)
+    write_to_csv(aid_cid_dict, args.outfile) # noqa F821  # ???
 
 
 if __name__ == "__main__":
