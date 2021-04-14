@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Input: DNA Fasta File 
+Input: DNA Fasta File
 Output: gezaehlte Codons ueber das gesamte File, nicht jedes einzelne ORF
 Anika Erxleben
 """
@@ -9,10 +9,9 @@ import Bio.SeqIO
 from Bio.SeqRecord import SeqRecord as record
 import Bio.SeqUtils.CodonUsage as cu
 
-""" 
+"""
 strepto_orf2dna_out_plus1: anika/Annotation/data/strepto_orf2dna_out_plus1
 codon_count: anika/Annotation/data/codon_count2  outputfile
-
 """
 
 

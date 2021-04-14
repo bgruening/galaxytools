@@ -12,7 +12,7 @@ import types
 import argparse
 #from argparse import RawTextHelpFormatter
 
-#############################
+#####################
 # FUNCTIONS
 
 def print2file(f, i, m):
@@ -651,9 +651,9 @@ def getPath(s, tmp_terrain, tmp_BPstack, alpha, beta, IUPAC, IUPAC_reverseComple
 	return sequence
 
 
-###
+#
 # STRUCTURE PREDICTORS
-###
+#
 def getPKStructure(sequence, temperature, mode = "A"):
 	"""
 		Initialization pKiss mfe pseudoknot prediction

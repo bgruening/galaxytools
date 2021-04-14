@@ -5,7 +5,7 @@
     Usage:
     reverse.py <sequence file> <output file> <sequence file format> <output file format> <alphabet: dna or rna>
 """
-import sys, os
+import sys
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Alphabet import DNAAlphabet, RNAAlphabet

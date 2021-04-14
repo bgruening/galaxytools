@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-########
+##
 # This script reads multiple alignments merged in single stockholm file
 # and splits the alignment blocks according to data.names table
 # The first sequence of each alignment file assumed to match to names table entries
 # Author: M. Miladi
-########
+##
 import os
 import re
 import sys

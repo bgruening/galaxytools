@@ -5,7 +5,8 @@
     Usage:
     translate.py <sequence file> <output file> <sequence file format> <output file format> <codon table number> <is complete cds? true or false> <quiet at stop codons: true or false>
 """
-import sys, os
+import sys
+
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 

@@ -8,7 +8,7 @@ __license__ = "GLP3+"
 """
     Housten we have a problem. NCBI does not accept sequences with gaps in it.
     Scaffold on the other hands can have large amounts of N-runs in it.
-    These script, remove all N-runs and creates an additional sequence out of 
+    These script, remove all N-runs and creates an additional sequence out of
     it. After that these script will give proper names for each entry with a
     unique ID.
     Usage:
@@ -237,7 +237,7 @@ if __name__ == "__main__":
         "--agp-file",
         dest="agp_file",
         default=False,
-        help="""The output path where the AGP file 
+        help="""The output path where the AGP file
                             should be stored""",
     )
     parser.add_argument(
@@ -245,7 +245,7 @@ if __name__ == "__main__":
         dest="seq_description",
         default=False,
         required=True,
-        help="""The sequence description will be inserted in each FASTA header and will be 
+        help="""The sequence description will be inserted in each FASTA header and will be
                       included in the genbank file. The NCBI reviever suggested something like [organism=Glarea lozoyensis 74030] [strain=74030]""",
     )
 

@@ -17,7 +17,7 @@ from rdkit.Chem.FeatMaps import FeatMaps
 import utils
 
 
-### start function definitions #########################################
+# start function definitions #########################################
 
 # Setting up the features to use in FeatureMap
 fdef = AllChem.BuildFeatureFactory(
@@ -228,7 +228,7 @@ def parse_score_mode(value):
         raise ValueError(value + " is not a valid scoring mode option")
 
 
-### start main execution #########################################
+# start main execution #########################################
 
 
 def main():

@@ -158,7 +158,7 @@ def process(
     utils.log("Completed", comparisons, "comparisons")
 
 
-### start main execution #########################################
+# start main execution #########################################
 
 
 def main():

@@ -5,8 +5,8 @@ Extract sequences from a GFF3 file.
 
 This works for examlpe with the GlimmerHMM GFF3 output format:
 
-##gff-version 3
-##sequence-region Glarea 1 38755942
+#gff-version 3
+#sequence-region Glarea 1 38755942
 Glarea	GlimmerHMM	mRNA	1017	1644	.	-	.	ID=Glarea.path1.gene1;Name=Glarea.path1.gene1
 Glarea	GlimmerHMM	CDS	1017	1126	.	-	2	ID=Glarea.cds1.1;Parent=Glarea.path1.gene1;Name=Glarea.path1.gene1;Note=final-exon
 Glarea	GlimmerHMM	CDS	1258	1317	.	-	2	ID=Glarea.cds1.2;Parent=Glarea.path1.gene1;Name=Glarea.path1.gene1;Note=internal-exon

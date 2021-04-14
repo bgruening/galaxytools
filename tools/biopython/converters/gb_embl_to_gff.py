@@ -7,12 +7,9 @@ Usage:
     gb_embl_to_gff.py <genbank_file> <gff_file> <input_format embl or genbank>
 """
 import sys
-import os
-
-from Bio import SeqIO
-from Bio import Seq
 
 from BCBio import GFF
+from Bio import SeqIO
 
 
 def main(gb_file, ofile, iformat):

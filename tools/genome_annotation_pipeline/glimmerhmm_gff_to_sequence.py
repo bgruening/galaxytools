@@ -3,8 +3,8 @@
 
 This works with the GlimmerHMM GFF3 output format:
 
-##gff-version 3
-##sequence-region Contig5.15 1 47390
+#gff-version 3
+#sequence-region Contig5.15 1 47390
 Contig5.15      GlimmerHMM      mRNA    323     325     .       +       .       ID=Contig5.15.path1.gene1;Name=Contig5.15.path1.gene1
 Contig5.15      GlimmerHMM      CDS     323     325     .       +       0       ID=Contig5.15.cds1.1;Parent=Contig5.15.path1.gene1;Name=Contig5.15.path1.gene1;Note=final-exon
 

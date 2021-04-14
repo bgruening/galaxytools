@@ -231,11 +231,11 @@ def closefile(file):
         print("".join(tbe.format()), file=sys.stderr)
 
 
-####################
-####    MAIN    ####
-####################
+############
+#    MAIN    ####
+############
 if __name__ == "__main__":
     args = parseargs()
     annotate(args.bed, args.input, args.bedout, args.rnazout)
-######################################################################
+##############################################################
 # AnnotateRnaz.py ends here

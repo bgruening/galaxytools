@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 from scipy.cluster.hierarchy import linkage, fcluster
 
-### start main execution #########################################
+# start main execution #########################################
 
 
 def calc_distance_matrix(mols):

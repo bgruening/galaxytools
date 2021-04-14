@@ -4,7 +4,7 @@ import subprocess
 """
     We only need that file because galaxy do not understand the -t $'\t' term.
     Otherwise that would be the right XML-only solution:
-    sort -u 
+    sort -u
         $ignore_case
         $is_numeric
         -t \$'\t'

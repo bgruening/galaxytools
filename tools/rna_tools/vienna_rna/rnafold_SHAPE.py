@@ -1,6 +1,6 @@
 ### overcoming the problem of SHAPE data working with a single line.
-### creating multiple multiple files containg SHAPE data for a single sequence and running RNAfold for every
-### single sequence.
+# creating multiple multiple files containg SHAPE data for a single sequence and running RNAfold for every
+# single sequence.
 
 import os
 import sys
