@@ -133,7 +133,7 @@ def main():
     # Please read the docs for subprocess.Popen. You can't just pass as string as variables need to be extended
     # Note that shell = True can be a security hazard.
     #    proc = subprocess.Popen( command, executable = '/bin/bash', shell=True )
-    proc = subprocess.Popen(command, shell=True)
+    subprocess.Popen(command, shell=True)
 
     # mv files to a place where galaxy wrapper can find them
     # mvcommand = "mv %s/results/peaks/all.peaks.narrowPeak %s" % ( tmp_dir, args.peakfile )

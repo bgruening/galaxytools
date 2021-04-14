@@ -67,9 +67,9 @@ def convert_to_pixels(val, units):
 def fix_ids(elem, prefix, level=0):
     ns = "{http://www.w3.org/2000/svg}"
 
-    if isinstance(elem.tag, basestring) and elem.tag.startswith(ns):
+    if isinstance(elem.tag, str) and elem.tag.startswith(ns):
 
-        tag = elem.tag[len(ns) :]
+        elem.tag[len(ns):]
 
         if "id" in elem.attrib:
             elem.attrib["id"] = prefix + elem.attrib["id"]
@@ -107,6 +107,7 @@ header_str = """<?xml version="1.0" standalone="no"?>
 <!-- Created with svg_stack (http://github.com/astraw/svg_stack) -->
 """
 
+
 # ------------------------------------------------------------------
 class Document(object):
     def __init__(self):
@@ -120,7 +121,7 @@ class Document(object):
             raise ValueError("No layout, cannot save.")
         accum = LayoutAccumulator(**kwargs)
         self._layout.render(accum, debug_boxes=debug_boxes)
-        if isinstance(fileobj, file):
+        if isinstance(fileobj, file):  # noqa F821  # python 2
             fd = fileobj
             close = False
         else:

@@ -4,8 +4,8 @@ That tools tries so solve a simply mapping problem in the easiest and propably d
 In galaxy we need often so called mapping of identifiers, e.g. EC-2-GO, UniProt-2-PDB, UniProt-2-PDB and so on.
 Normally such mapping files are available in a tab-separated format.
 
-AIM: Write a mapping tool, suitable for many different mapping-files with as 
-less as possible modifications to the actual wrapper and with less admin-work as possible. 
+AIM: Write a mapping tool, suitable for many different mapping-files with as
+less as possible modifications to the actual wrapper and with less admin-work as possible.
 So no database involved, no index creation ... just copy in the new mapping-file and it should work.
 
 Idea: Writing a small wrapper around grep, take the information about the columns from a config-file stored next to the mapping file.
@@ -20,8 +20,6 @@ import re
 import subprocess
 import tempfile
 from multiprocessing import Pool
-
-import ConfigParser
 
 
 def read_config_file(config_path="data.cfg"):
@@ -43,7 +41,7 @@ def chunks(list, size):
     Yield successive n-sized chunks from list.
     """
     for i in range(0, len(list), size):
-        yield list[i : i + size]
+        yield list[i: i + size]
 
 
 def single_grep(args):
@@ -74,7 +72,7 @@ def main(mapping, query, column_number, outfile):
     temp_files = list()
 
     for chunck in chunks(iids, 10000):
-        pattern = "\|".join(chunck)
+        pattern = "\|".join(chunck)  # noqa W605
         t = tempfile.NamedTemporaryFile(delete=False)
         t.close()
         patterns.append((pattern, t.name, mapping))
