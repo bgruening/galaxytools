@@ -96,7 +96,7 @@ for ind, line in enumerate(file(infile)):
 # set_default_mode(NO_CONVERSION)
 # try:
 #    full = r.lm(r("y ~ x"), data= r.na_exclude(dat))    #full model includes all the predictor variables specified by the user
-# except RException, rex:
+# except Exception as rex:
 #    stop_err("Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain no numeric values.")
 # set_default_mode(BASIC_CONVERSION)
 
@@ -109,7 +109,7 @@ dat = robjects.DataFrame(od)
 formula = " + ".join(dat.names).replace("+", "~", 1)
 try:
     full = r.lm(formula, data=r["na.exclude"](dat))
-except RException, rex:
+except Exception as rex:
     stop_err(
         "Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values."
     )
@@ -157,7 +157,7 @@ for j, cols in enumerate(all_combos):
     formula = " + ".join(dat.names).replace("+", "~", 1)
     try:
         red = r.lm(formula, data=r["na.exclude"](dat))
-    except RException, rex:
+    except Exception as rex:
         stop_err(
             "Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values."
         )

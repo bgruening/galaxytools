@@ -80,7 +80,7 @@ formula = " + ".join(dat.names).replace("+", "~", 1)
 try:
     # linear_model = r.lm(r("y ~ x"), data = r.na_exclude(dat))
     linear_model = r.lm(formula, data=r["na.exclude"](dat))
-except RException, rex:
+except Exception as rex:
     stop_err(
         "Error performing linear regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values."
     )

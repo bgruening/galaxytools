@@ -136,7 +136,7 @@ try:
     )
     # ftest = r.F_test_cca(cc)
     ftest = r["F.test.cca"](cc)
-except RException, rex:
+except Exception as rex:
     stop_err("Encountered error while performing CCA on the input data: %s" % (rex))
 
 # set_default_mode(BASIC_CONVERSION)

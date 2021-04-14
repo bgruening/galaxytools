@@ -92,7 +92,7 @@ try:
     elif method == "svd":
         # pc = r.prcomp(r.na_exclude(dat), center = r(center), scale = r(scale))
         pc = r.prcomp(r["na.exclude"](dat), center=r(center), scale=r(scale))
-# except RException, rex:
+# except Exception as rex:
 except Exception, rex:  # need to find rpy2 RException
     stop_err("Encountered error while performing PCA on the input data: %s" % (rex))
 

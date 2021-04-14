@@ -98,7 +98,7 @@ novif = 0
 #    #r.assign('ncols',len(x_cols))
 #    #r.vif(r('glm(dat$y ~ ., data = na.exclude(data.frame(as.matrix(dat$x,ncol=ncols))->datx),family="binomial")')).as_py()
 #
-# except RException, rex:
+# except Exception as rex:
 #    stop_err("Error performing logistic regression on the input data.\nEither the response column or one of the predictor columns contain only non-numeric or invalid values.")
 
 fv = robjects.FloatVector(x_vector)
