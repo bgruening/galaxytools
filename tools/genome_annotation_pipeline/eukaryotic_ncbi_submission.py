@@ -292,7 +292,7 @@ def iter_islast(iterable):
 
 
 def check_short_introns(cds):
-    """ 
+    """
     Check for short introns!
     'We prefer not to annotate every possible open reading frame.  Instead, only annotate features when you think they represent real genes.
     Do you believe these are real genes with frameshifts?  If so, we prefer not to include translations for CDS features when the translation is known to be incorrect.
