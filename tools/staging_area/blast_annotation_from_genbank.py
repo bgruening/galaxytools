@@ -1,7 +1,8 @@
 #!/usr/bin/env python
 
+import sys
+
 from Bio import SeqIO
-import sys, os
 
 
 def index_genbank_features(gb_record, feature_type, qualifier):

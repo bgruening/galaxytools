@@ -3,14 +3,15 @@
 import matplotlib
 
 matplotlib.use("Agg")
-from matplotlib import pyplot as plt
-import matplotlib.patches as mpatches
-from collections import defaultdict
 import glob
-import pandas as pd
 import itertools
-import seaborn as sns
+from collections import defaultdict
+
+import matplotlib.patches as mpatches
 import numpy as np
+import pandas as pd
+import seaborn as sns
+from matplotlib import pyplot as plt
 
 
 def plot_bar(ranges, colors, orig_names, cluster_nums):

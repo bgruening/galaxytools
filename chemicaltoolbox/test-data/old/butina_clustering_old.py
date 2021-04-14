@@ -5,10 +5,11 @@
     Thanks to Andrew Dalke of Andrew Dalke Scientific!
 """
 
-import chemfp
-import sys
 import os
+import sys
 import tempfile
+
+import chemfp
 
 temp_file = tempfile.NamedTemporaryFile()
 temp_link = "%s.%s" % (temp_file.name, "fps")

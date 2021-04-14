@@ -1,11 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-import os, sys
 import argparse
-import tempfile, os, shutil, sys
-import ConfigParser
+import os
+import shutil
 import subprocess
+import sys
+import tempfile
+
+import ConfigParser
 
 
 def manage_loc_file(path, data):

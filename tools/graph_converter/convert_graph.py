@@ -1,13 +1,14 @@
 #!/usr/bin/env python
 # Aufruf convert_graph.py --infile datei --informat typ --outfile ausgabedatei --outformat ausgabetyp
 
-import sys, os
-import networkx as nx
 import argparse
 import json
+import os
+import sys
 
-from xgmml_networkx import XGMMLParserHelper, XGMMLWriter
+import networkx as nx
 from networkx.readwrite import json_graph
+from xgmml_networkx import XGMMLParserHelper, XGMMLWriter
 
 # supported graph_types
 graph_types = ["gml", "yaml", "gspan", "xgmml", "gexf", "graphml", "json", "pajek"]

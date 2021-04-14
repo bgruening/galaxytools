@@ -4,7 +4,7 @@
     Copyright 2012, Bjoern Gruening and Xavier Lucas
 """
 
-import os, sys
+import sys
 
 try:
     from galaxy import eggs
@@ -16,16 +16,17 @@ except Exception:
     )
 
 try:
-    from openbabel import pybel
-    from openbabel import openbabel
+    from openbabel import openbabel, pybel
 except Exception:
     print(
         "OpenBabel could not be found. A few functions are not available without OpenBabel."
     )
 
-from multiprocessing import Pool
-import glob, tempfile, re
+import glob
+import re
 import subprocess
+import tempfile
+from multiprocessing import Pool
 
 
 def CountLines(path):

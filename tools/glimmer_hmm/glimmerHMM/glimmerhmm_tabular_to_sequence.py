@@ -18,9 +18,9 @@ Usage:
     glimmer_to_proteins.py <glimmer output> <ref fasta> <output file> <convert to protein ... False|True>
 """
 
-import sys
-import os
 import operator
+import os
+import sys
 
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord

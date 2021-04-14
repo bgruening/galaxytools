@@ -4,10 +4,12 @@ Input: DNA Fasta File
 Output: gezaehlte Codons ueber das gesamte File, nicht jedes einzelne ORF
 Anika Erxleben
 """
-import sys, os
+import os
+import sys
+
 import Bio.SeqIO
-from Bio.SeqRecord import SeqRecord as record
 import Bio.SeqUtils.CodonUsage as cu
+from Bio.SeqRecord import SeqRecord as record
 
 """
 strepto_orf2dna_out_plus1: anika/Annotation/data/strepto_orf2dna_out_plus1

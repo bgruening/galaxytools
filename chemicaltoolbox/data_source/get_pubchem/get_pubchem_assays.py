@@ -5,17 +5,15 @@ __version__ = "0.1"
 __date__ = "2014"
 __license__ = "GLP3+"
 
-import ftplib
-import os, sys
 import argparse
-import subprocess
-from multiprocessing import Pool
-import tempfile
+import ftplib
+import gzip
+import os
 import shutil
+import tempfile
 import urllib
 import zipfile
-import gzip
-
+from multiprocessing import Pool
 
 PUBCHEM_URL = "ftp://ftp.ncbi.nlm.nih.gov/pubchem/Bioassay/CSV/Data/"
 

@@ -6,7 +6,6 @@
 # The first sequence of each alignment file assumed to match to names table entries
 # Author: M. Miladi
 ##
-import os
 import re
 import sys
 

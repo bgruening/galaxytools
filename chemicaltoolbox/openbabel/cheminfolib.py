@@ -11,7 +11,6 @@ import sys
 import tempfile
 from multiprocessing import Pool
 
-
 try:
     from galaxy import eggs
 

@@ -2,9 +2,10 @@
 import openbabel
 
 openbabel.obErrorLog.StopLogging()
-import pybel
-import sys
 import argparse
+import sys
+
+import pybel
 
 """
 Based on a script from TJ O'Donnell

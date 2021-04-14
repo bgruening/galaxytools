@@ -3,19 +3,18 @@ Predict next tools in the Galaxy workflows
 using machine learning (recurrent neural network)
 """
 
-import numpy as np
 import argparse
 import time
 
+import extract_workflow_connections
+import keras.callbacks as callbacks
+import numpy as np
+import optimise_hyperparameters
+import prepare_data
 # machine learning library
 import tensorflow as tf
-from keras import backend as K
-import keras.callbacks as callbacks
-
-import extract_workflow_connections
-import prepare_data
-import optimise_hyperparameters
 import utils
+from keras import backend as K
 
 
 class PredictTool:

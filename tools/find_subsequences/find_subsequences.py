@@ -1,12 +1,12 @@
 #!/usr/bin/env python
 
-import re
-import sys
 import argparse
+import re
+
 from Bio import SeqIO
+from Bio.Alphabet import generic_dna
 from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
-from Bio.Alphabet import generic_dna
 
 choices = [
     "embl",

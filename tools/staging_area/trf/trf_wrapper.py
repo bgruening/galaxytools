@@ -15,7 +15,12 @@ usage: trf_wrapper.py input_file <required parameters> [options]
     maximum period size (1-2000)
 """
 
-import optparse, os, shutil, subprocess, sys, re
+import optparse
+import os
+import re
+import shutil
+import subprocess
+import sys
 from os.path import abspath
 
 

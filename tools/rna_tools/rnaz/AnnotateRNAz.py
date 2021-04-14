@@ -47,15 +47,13 @@
 
 #!/usr/bin/env python3
 
-import sys
-import glob
 import argparse
-from io import StringIO
 import gzip
-import traceback as tb
-import pybedtools
 import re
-import tempfile
+import sys
+import traceback as tb
+
+import pybedtools
 
 
 def parseargs():
@@ -87,7 +85,7 @@ def annotate(bed, input, bedout, rnazout):
 
         return 1
 
-    except Exception as err:
+    except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         tbe = tb.TracebackException(
             exc_type,
@@ -105,7 +103,7 @@ def readin(file):
             f = open(file, "rt")
         return f
 
-    except Exception as err:
+    except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         tbe = tb.TracebackException(
             exc_type,
@@ -119,7 +117,6 @@ def readrnaz(rnaz):
     try:
         toparse = readin(rnaz)
         tointersect = {}
-        header = []
         for line in toparse:
             if "#" in line[0]:
                 tointersect["header"] = line.strip()
@@ -161,7 +158,7 @@ def readrnaz(rnaz):
 
         return tointersect
 
-    except Exception as err:
+    except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         tbe = tb.TracebackException(
             exc_type,
@@ -180,7 +177,7 @@ def rnaztobed(rnaz):
 
         return "\n".join(tmpbed)
 
-    except Exception as err:
+    except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         tbe = tb.TracebackException(
             exc_type,
@@ -207,7 +204,7 @@ def bedtornaz(bed, rnaz, bedout, rnazout):
         print(str.join("\n", annotatedbed), file=b)
         print(str.join("\n", annotatedrnaz), file=r)
 
-    except Exception as err:
+    except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         tbe = tb.TracebackException(
             exc_type,
@@ -221,7 +218,7 @@ def closefile(file):
     try:
         file.close()
 
-    except Exception as err:
+    except Exception:
         exc_type, exc_value, exc_tb = sys.exc_info()
         tbe = tb.TracebackException(
             exc_type,

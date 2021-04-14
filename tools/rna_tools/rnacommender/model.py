@@ -4,9 +4,8 @@ from __future__ import print_function
 import sys
 
 import numpy as np
-
-from theano import function, shared
 import theano.tensor as T
+from theano import function, shared
 
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"

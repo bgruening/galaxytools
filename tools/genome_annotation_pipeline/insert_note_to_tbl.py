@@ -4,12 +4,13 @@
     Insert note tag into the ncbi tbl file
 """
 
-import pprint
-import copy
-import tempfile
-import os, sys
-import shutil
 import argparse
+import copy
+import os
+import pprint
+import shutil
+import sys
+import tempfile
 
 tbl_file = "STAFG.tbl"
 discrep_file = "discrep.report"

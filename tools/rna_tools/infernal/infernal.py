@@ -1,13 +1,12 @@
 # -*- coding: utf-8 -*-
 
-from galaxy.datatypes.data import Text
-from galaxy.datatypes.sniff import get_headers, get_test_fname
-from galaxy.datatypes.data import get_file_peek
-import subprocess
 import os
+import subprocess
 
-from galaxy.datatypes.metadata import MetadataElement
 from galaxy.datatypes import metadata
+from galaxy.datatypes.data import Text, get_file_peek
+from galaxy.datatypes.metadata import MetadataElement
+from galaxy.datatypes.sniff import get_headers, get_test_fname
 
 
 def count_special_lines(word, filename, invert=False):

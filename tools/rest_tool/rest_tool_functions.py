@@ -1,11 +1,11 @@
 #!/usr/bin/env python
 
-import sys, os
 import tempfile
-import argparse
-import urllib2, urllib, httplib
-import readfile
 import xml.sax as sax
+
+import httplib
+import readfile
+import urllib2
 
 
 class DictHandler(sax.handler.ContentHandler):

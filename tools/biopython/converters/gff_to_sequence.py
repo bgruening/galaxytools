@@ -22,17 +22,15 @@ http://www.cbcb.umd.edu/software/GlimmerHMM/
 Its based on code from from Brad Chapman: https://github.com/chapmanb/bcbb/blob/master/biopython/glimmergff_to_proteins.py
 
 """
-import sys
-import os
 import operator
+import os
+import sys
 from collections import Iterable
 
-from Bio import SeqIO
-from Bio import Seq
+from BCBio import GFF
+from Bio import Seq, SeqIO
 from Bio.Alphabet import generic_dna
 from Bio.SeqRecord import SeqRecord
-from BCBio import GFF
-
 from utils import check_gff
 
 

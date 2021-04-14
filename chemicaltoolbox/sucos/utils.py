@@ -4,7 +4,10 @@ Utility functions for SuCOS and other RDKit modules
 """
 
 from __future__ import print_function
-import sys, gzip
+
+import gzip
+import sys
+
 from rdkit import Chem
 
 

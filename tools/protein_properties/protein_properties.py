@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+
 from Bio import SeqIO
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 

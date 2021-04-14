@@ -1,12 +1,12 @@
 #! /usr/bin/env python
-import os
-import re
-import sys
-import string
-import optparse
-import fasta
 import math
+import optparse
+import os
+import string
+import sys
 import tempfile
+
+import fasta
 
 
 def format(seq, N=60):

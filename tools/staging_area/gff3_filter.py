@@ -1,6 +1,6 @@
 #! /usr/bin/python
 
-import sys, os
+import sys
 from collections import defaultdict
 
 

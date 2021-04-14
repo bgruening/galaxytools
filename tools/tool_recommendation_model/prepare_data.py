@@ -4,11 +4,11 @@ machine learning algorithm. The paths are divided
 into the test and training sets
 """
 
-import os
 import collections
-import numpy as np
+import os
 import random
 
+import numpy as np
 import predict_tool_usage
 
 main_path = os.getcwd()

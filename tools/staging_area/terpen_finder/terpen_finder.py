@@ -1,14 +1,16 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-import os, sys
-import shutil
-import networkx as nx
-import pybel
-import openbabel as ob
-import matplotlib.pyplot as plt
 import argparse
 import datetime
+import os
+import shutil
+import sys
+
+import matplotlib.pyplot as plt
+import networkx as nx
+import openbabel as ob
+import pybel
 
 isoprene_smarts = pybel.Smarts("C~C(~C)~C~C")
 

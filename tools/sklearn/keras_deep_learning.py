@@ -7,9 +7,8 @@ from ast import literal_eval
 import keras
 import pandas as pd
 import six
-from galaxy_ml.utils import get_search_params, SafeEval, try_get_attr
+from galaxy_ml.utils import SafeEval, get_search_params, try_get_attr
 from keras.models import Model, Sequential
-
 
 safe_eval = SafeEval()
 

@@ -2,12 +2,11 @@
 # creating multiple multiple files containg SHAPE data for a single sequence and running RNAfold for every
 # single sequence.
 
-import os
-import sys
-from os import system
-from Bio import SeqIO
 import re
-from subprocess import Popen, PIPE
+import sys
+from subprocess import PIPE, Popen
+
+from Bio import SeqIO
 
 params_list = sys.argv[1:]
 param_list_no_shape = [s for s in params_list if not "--shape=" in s]

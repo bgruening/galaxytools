@@ -11,23 +11,15 @@ import pandas as pd
 from galaxy_ml.externals.selene_sdk.utils import compute_score
 from galaxy_ml.keras_galaxy_models import _predict_generator
 from galaxy_ml.model_validations import train_test_split
-from galaxy_ml.utils import (
-    clean_params,
-    get_main_estimator,
-    get_module,
-    get_scoring,
-    load_model,
-    read_columns,
-    SafeEval,
-    try_get_attr,
-)
+from galaxy_ml.utils import (SafeEval, clean_params, get_main_estimator,
+                             get_module, get_scoring, load_model, read_columns,
+                             try_get_attr)
 from scipy.io import mmread
 from sklearn.metrics.scorer import _check_multimetric_scoring
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score
 from sklearn.pipeline import Pipeline
 from sklearn.utils import indexable, safe_indexing
-
 
 _fit_and_score = try_get_attr("galaxy_ml.model_validations", "_fit_and_score")
 setattr(_search, "_fit_and_score", _fit_and_score)

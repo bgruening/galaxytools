@@ -3,11 +3,12 @@
     Input:  Molecular pattern of molecule.
     Output: Multiple substructurally related molecules file.
 """
-import sys, os
 import argparse
+import sys
+
+import cheminfolib
 import psycopg2.extras
 import pybel
-import cheminfolib
 
 cheminfolib.pybel_stop_logging()
 

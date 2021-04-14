@@ -2,10 +2,10 @@
 HOMER special datatypes
 """
 import os
-from galaxy.datatypes.data import get_file_peek
-from galaxy.datatypes.data import Text, Data
-from galaxy.datatypes.metadata import MetadataElement
+
+from galaxy.datatypes.data import Data, Text, get_file_peek
 from galaxy.datatypes.images import Html
+from galaxy.datatypes.metadata import MetadataElement
 
 
 class TagDirectory(Html):

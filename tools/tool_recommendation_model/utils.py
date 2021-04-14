@@ -1,10 +1,10 @@
-import numpy as np
 import json
-import h5py
 import random
-from numpy.random import choice
 
+import h5py
+import numpy as np
 from keras import backend as K
+from numpy.random import choice
 
 
 def read_file(file_path):

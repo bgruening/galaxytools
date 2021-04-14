@@ -9,8 +9,13 @@
 # map the resulting tabular files back to history items
 
 # import optparse
-import argparse, os, shutil, subprocess, sys, tempfile
+import argparse
+import os
 import shlex
+import shutil
+import subprocess
+import sys
+import tempfile
 
 # importing some of the modules used, especially for symlinking, dir manipulation and tool calling.
 # since python2.7, argparse is preferred over optparse.

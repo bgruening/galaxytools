@@ -4,11 +4,10 @@ import argparse
 import logging
 import os
 import shutil
+import signal
 import subprocess
 import sys
-import signal
 import tempfile
-from glob import glob
 
 
 def stop_err(logger, msg):

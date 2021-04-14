@@ -6,9 +6,10 @@
     reverse.py <sequence file> <output file> <sequence file format> <output file format> <alphabet: dna or rna>
 """
 import sys
+
 from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
 from Bio.Alphabet import DNAAlphabet, RNAAlphabet
+from Bio.SeqRecord import SeqRecord
 
 
 def main(sequence_file, ofile, iformat, oformat, alphabet="dna"):

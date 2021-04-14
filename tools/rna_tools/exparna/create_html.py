@@ -4,7 +4,6 @@ import os
 import sys
 import zipfile
 
-
 os.chdir(sys.argv[2])
 o = open("results.html", "w+")
 

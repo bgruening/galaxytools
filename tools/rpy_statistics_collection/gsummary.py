@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-import sys
 import re
+import sys
 import tempfile
 
 # from rpy import *

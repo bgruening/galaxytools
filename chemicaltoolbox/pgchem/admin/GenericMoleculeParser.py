@@ -5,16 +5,16 @@ __version__ = "0.1"
 __date__ = "2012"
 __license__ = "GLP3+"
 
-import os, sys
 import argparse
-import pybel
-from sqlalchemy.orm import sessionmaker
-import GenericMoleculeDB
-from GenericMoleculeDB import build_database
-from GenericMoleculeDB import create_indices
+import os
+import sys
 from multiprocessing import Pool
-import GenericMoleculeDB
+
 import cheminfolib
+import GenericMoleculeDB
+import pybel
+from GenericMoleculeDB import build_database, create_indices
+from sqlalchemy.orm import sessionmaker
 
 
 class GenericMoleculeParser:

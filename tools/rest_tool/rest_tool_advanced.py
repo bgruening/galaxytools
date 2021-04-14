@@ -1,6 +1,5 @@
 #!/usr/bin/env python
 
-import sys, os
 import argparse
 
 import readfile

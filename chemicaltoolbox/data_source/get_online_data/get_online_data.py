@@ -1,10 +1,10 @@
-import os
-import urllib.request
-import gzip, tempfile
-import zipfile
-import subprocess
-import shutil
 import argparse
+import gzip
+import os
+import shutil
+import tempfile
+import urllib.request
+import zipfile
 from io import BytesIO
 
 
@@ -56,7 +56,6 @@ def get_files(options):
                     zf.extractall(tmpdir)
 
                 os.remove(temp.name)
-                molfiles = []
                 for root, dirs, files in os.walk(tmpdir):
                     for filename in files:
                         if (

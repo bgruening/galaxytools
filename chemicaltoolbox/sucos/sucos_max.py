@@ -34,8 +34,11 @@ GitHub: https://github.com/susanhleung/SuCOS
 Publication: https://doi.org/10.26434/chemrxiv.8100203.v1
 """
 
-import sucos, utils
-import argparse, gzip, os
+import argparse
+import os
+
+import sucos
+import utils
 from rdkit import Chem
 
 

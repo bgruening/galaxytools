@@ -1,8 +1,8 @@
+import argparse
+
 import numpy as np
 from rdkit import Chem
 from rdkit.Chem import rdShapeHelpers
-import argparse
-from random import randint
 
 
 def get_mol_from_file(fname, ftype):

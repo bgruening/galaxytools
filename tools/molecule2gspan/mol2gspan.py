@@ -4,9 +4,10 @@
     Converts a SD-file to a GSPAN file.
 """
 
+import argparse
 import os
 import sys
-import argparse
+
 import openbabel
 import pybel
 
@@ -42,8 +43,8 @@ def main(args):
                     label = "d"
                 elif bond.IsTriple():
                     label = "t"
-                atom1 = bond.GetBeginAtom()
-                atom2 = bond.GetEndAtom()
+                bond.GetBeginAtom()
+                bond.GetEndAtom()
                 args.outfile.write("e %s %s %s\n" % (src_index, dest_index, label))
 
 

@@ -1,7 +1,9 @@
 #!/usr/bin/env python
 
-import sys, os
 import argparse
+import os
+import sys
+
 import readfile
 
 txt_output = ["cids", "aids", "sids", "synonyms"]

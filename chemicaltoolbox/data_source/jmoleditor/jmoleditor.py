@@ -1,15 +1,17 @@
 #!/usr/bin/env python
 # Retrieves data from external data source applications and stores in a dataset file.
 # Data source application parameters are temporarily stored in the dataset file.
-import socket, urllib, sys, os
-from galaxy import (
-    eggs,
-)  # eggs needs to be imported so that galaxy.util can find docutils egg...
-from galaxy.util.json import from_json_string, to_json_string
+import os
+import socket
+import sys
+
 import galaxy.model  # need to import model before sniff to resolve a circular import dependency
+from galaxy import \
+    eggs  # eggs needs to be imported so that galaxy.util can find docutils egg...
 from galaxy.datatypes import sniff
 from galaxy.datatypes.registry import Registry
 from galaxy.jobs import TOOL_PROVIDED_JOB_METADATA_FILE
+from galaxy.util.json import from_json_string, to_json_string
 
 assert sys.version_info[:2] >= (2, 4)
 
@@ -50,13 +52,12 @@ def load_input_parameters(filename, erase_file=True):
 def __main__():
     filename = sys.argv[1]
     try:
-        max_file_size = int(sys.argv[2])
+        int(sys.argv[2])
     except Exception:
-        max_file_size = 0
+        pass
 
     job_params, params = load_input_parameters(filename)
     if job_params is None:  # using an older tabular file
-        enhanced_handling = False
         job_params = dict(param_dict=params)
         job_params["output_data"] = [
             dict(
@@ -69,7 +70,6 @@ def __main__():
             TOOL_PROVIDED_JOB_METADATA_FILE=TOOL_PROVIDED_JOB_METADATA_FILE,
         )
     else:
-        enhanced_handling = True
         json_file = open(
             job_params["job_config"]["TOOL_PROVIDED_JOB_METADATA_FILE"], "w"
         )  # specially named file for output junk to pass onto set metadata
@@ -83,7 +83,7 @@ def __main__():
     URL = params.get(
         "URL", None
     )  # using exactly URL indicates that only one dataset is being downloaded
-    URL_method = params.get("URL_method", None)
+    params.get("URL_method", None)
     simpleD = params.get("galaxyData")
     # The Python support for fetching resources from the web is layered. urllib uses the httplib
     # library, which in turn uses the socket library.  As of Python 2.3 you can specify how long
@@ -93,7 +93,7 @@ def __main__():
     # doing the following.
     socket.setdefaulttimeout(600)
     cur_filename = params.get("output")
-    outputfile = open(cur_filename, "w").write(simpleD)
+    open(cur_filename, "w").write(simpleD)
 
 
 if __name__ == "__main__":

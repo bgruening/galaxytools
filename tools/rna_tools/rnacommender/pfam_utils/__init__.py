@@ -5,11 +5,9 @@ from math import ceil
 from time import sleep
 from xml.etree.ElementTree import ParseError
 
-import requests
-
-import pandas as pd
-
 import fasta_utils
+import pandas as pd
+import requests
 
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"

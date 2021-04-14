@@ -15,12 +15,14 @@ __license__ = "GLP3+"
     scipt.py old_scaffold_file.fasta new_contig_file.fasta
 """
 
+import argparse
+import os
+import re
+
 from Bio import SeqIO
+from Bio.Alphabet import IUPAC
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from Bio.Alphabet import IUPAC
-import sys, re, os
-import argparse
 
 
 def run(

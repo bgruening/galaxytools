@@ -1,14 +1,11 @@
 import argparse
+import pickle
+
 import pandas as pd
 import plotly
-import pickle
 import plotly.graph_objs as go
-from sklearn.metrics import (
-    confusion_matrix,
-    precision_recall_fscore_support,
-    roc_curve,
-    auc,
-)
+from sklearn.metrics import (auc, confusion_matrix,
+                             precision_recall_fscore_support, roc_curve)
 from sklearn.preprocessing import label_binarize
 
 

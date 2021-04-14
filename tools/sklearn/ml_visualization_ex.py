@@ -9,19 +9,13 @@ import numpy as np
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
-from galaxy_ml.utils import load_model, read_columns, SafeEval
+from galaxy_ml.utils import SafeEval, load_model, read_columns
 from keras.models import model_from_json
 from keras.utils import plot_model
 from sklearn.feature_selection.base import SelectorMixin
-from sklearn.metrics import (
-    auc,
-    average_precision_score,
-    confusion_matrix,
-    precision_recall_curve,
-    roc_curve,
-)
+from sklearn.metrics import (auc, average_precision_score, confusion_matrix,
+                             precision_recall_curve, roc_curve)
 from sklearn.pipeline import Pipeline
-
 
 safe_eval = SafeEval()
 

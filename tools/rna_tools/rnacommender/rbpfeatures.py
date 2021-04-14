@@ -1,20 +1,16 @@
 """Compute the RBP features."""
 
 import re
-import sys
 import subprocess as sp
+import sys
 import uuid
-from os import mkdir
-from os import listdir
+from os import devnull, listdir, mkdir
 from os.path import isfile, join
-from os import devnull
 from shutil import rmtree
 
-import numpy as np
-
-import pandas as pd
-
 import fasta_utils
+import numpy as np
+import pandas as pd
 import pfam_utils
 
 __author__ = "Gianluca Corrado"

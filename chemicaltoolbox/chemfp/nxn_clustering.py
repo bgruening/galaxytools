@@ -11,11 +11,11 @@ from matplotlib import rcParams
 
 rcParams.update({"figure.autolayout": True})
 import argparse
-import os
+
 import chemfp
-import scipy.cluster.hierarchy as hcluster
-import pylab
 import numpy
+import pylab
+import scipy.cluster.hierarchy as hcluster
 
 
 def distance_matrix(arena, tanimoto_threshold=0.0):

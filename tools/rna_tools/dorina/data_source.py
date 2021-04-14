@@ -1,16 +1,19 @@
 #!/usr/bin/env python
 # Retrieves data from external data source applications and stores in a dataset file.
 # Data source application parameters are temporarily stored in the dataset file.
-import socket, urllib, sys, os
-from galaxy import (
-    eggs,
-)  # eggs needs to be imported so that galaxy.util can find docutils egg...
-from galaxy.util import get_charset_from_http_headers
+import os
+import socket
+import sys
+import urllib
+from json import dumps, loads
+
 import galaxy.model  # need to import model before sniff to resolve a circular import dependency
+from galaxy import \
+    eggs  # eggs needs to be imported so that galaxy.util can find docutils egg...
 from galaxy.datatypes import sniff
 from galaxy.datatypes.registry import Registry
 from galaxy.jobs import TOOL_PROVIDED_JOB_METADATA_FILE
-from json import loads, dumps
+from galaxy.util import get_charset_from_http_headers
 
 assert sys.version_info[:2] >= (2, 4)
 

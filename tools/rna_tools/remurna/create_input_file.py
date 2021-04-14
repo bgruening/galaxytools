@@ -1,5 +1,4 @@
 import sys
-import os
 
 wild_fa = sys.argv[1]
 snp_tags = sys.argv[2]

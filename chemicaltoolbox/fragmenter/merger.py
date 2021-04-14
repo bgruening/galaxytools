@@ -11,19 +11,18 @@ version: 0.3
 import openbabel
 
 openbabel.obErrorLog.StopLogging()
+import argparse
+import logging
+import multiprocessing
 import os
 import re
-import sys
-import pybel
 import shutil
-import logging
-import argparse
-import tempfile
 import subprocess
-import multiprocessing
+import sys
+import tempfile
 
-from cheminfolib import split_smi_library, check_filetype, CountLines
-
+import pybel
+from cheminfolib import CountLines, check_filetype, split_smi_library
 
 original_atomic_num_mapping = {
     89: 6,
@@ -203,8 +202,6 @@ def merge(mol_one, mol_two, options, iteration_depth=1):
                     bond_order = 1
                 possible_bonds.append([idx_atom1, idx_atom2, bond_order])
 
-    no_fragments = True
-    no_result = True
     # Create each possible bond and build a new molecule
     for bond_atom1, bond_atom2, bond_order in possible_bonds:
         # merge two molecules together with the concatination of SMILES
@@ -279,12 +276,10 @@ def merge(mol_one, mol_two, options, iteration_depth=1):
 
         if check_constraint(true_mol, options):
             temp_results.append(smi2can(true_mol))
-            no_result = False
             if is_fragment(concat_mol_smiles.split()[0]):
                 if sticky_ends == 0:
                     continue
                 temp_fragments.append(concat_mol_smiles)
-                no_fragments = False
 
     return temp_results, temp_fragments
 

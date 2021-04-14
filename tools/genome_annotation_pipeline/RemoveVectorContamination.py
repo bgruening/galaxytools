@@ -8,14 +8,15 @@ __version__ = "0.1"
 __date__ = ""
 __license__ = "GLP3+"
 
-import os, sys
 import argparse
+import os
+import subprocess
+import tempfile
+
 from Bio import SeqIO
+from Bio.Alphabet import IUPAC
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from Bio.Alphabet import IUPAC
-import tempfile
-import subprocess
 
 
 def remove_vector_contamination(query, univec_db, ofile="noncontamination.fasta"):

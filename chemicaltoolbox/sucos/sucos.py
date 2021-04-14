@@ -9,13 +9,15 @@ Publication: https://doi.org/10.26434/chemrxiv.8100203.v1
 """
 
 from __future__ import print_function
-import argparse, os, sys, gzip
+
+import argparse
+import os
+
 import numpy as np
-from rdkit import Chem, rdBase, RDConfig
+import utils
+from rdkit import Chem, RDConfig, rdBase
 from rdkit.Chem import AllChem, rdShapeHelpers
 from rdkit.Chem.FeatMaps import FeatMaps
-import utils
-
 
 # start function definitions #########################################
 

@@ -3,8 +3,9 @@
 
 import argparse
 import sys
-from rbpfeatures import RBPVectorizer
+
 from data import PredictDataset
+from rbpfeatures import RBPVectorizer
 from recommend import Predictor
 
 __author__ = "Gianluca Corrado"

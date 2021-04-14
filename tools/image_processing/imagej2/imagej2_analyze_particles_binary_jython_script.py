@@ -3,7 +3,6 @@ import sys
 from ij import IJ
 from ij.plugin.filter import Analyzer
 
-
 OPTIONS = ["edm=Overwrite", "iterations=1", "count=1"]
 
 # Fiji Jython interpreter implements Python 2.5 which does not

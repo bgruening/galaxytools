@@ -13,18 +13,17 @@ http://www.ncbi.nlm.nih.gov/WebSub/index.cgi?tool=genbank
 TODO: include t-RNA results
 """
 import os
-import sys
 import re
 import shutil
 import subprocess
+import sys
 import zipfile
-from Bio.Blast import NCBIXML
-from Bio import SeqIO
 
-from utils import change_according_reviewer
-from utils import change_glimmer3_prediction_output
-from RemoveVectorContamination import remove_vector_contamination
+from Bio import SeqIO
+from Bio.Blast import NCBIXML
 from glimmer_orf_to_seq import glimmer2sequence as g2seq
+from RemoveVectorContamination import remove_vector_contamination
+from utils import change_according_reviewer, change_glimmer3_prediction_output
 
 
 def glimmer_prediction(
@@ -356,10 +355,11 @@ def zipper(dir, zip_file):
 
 if __name__ == "__main__":
     import argparse
+    import shutil
     import tempfile
+
     import Scaffold2Fasta
     from change_fasta_header import change_fasta_header
-    import shutil
 
     parser = argparse.ArgumentParser(description="Creates a NCBI FeatureTable.")
 

@@ -3,11 +3,12 @@
 Input:  File with a single molecule or SMILES string
 Output: Similar molecules.
 """
-import sys, os
 import argparse
+import sys
+
+import cheminfolib
 import psycopg2.extras
 import pybel
-import cheminfolib
 
 cheminfolib.pybel_stop_logging()
 

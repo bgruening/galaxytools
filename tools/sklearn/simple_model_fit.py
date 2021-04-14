@@ -7,7 +7,6 @@ from galaxy_ml.utils import load_model, read_columns
 from scipy.io import mmread
 from sklearn.pipeline import Pipeline
 
-
 N_JOBS = int(__import__("os").environ.get("GALAXY_SLOTS", 1))
 
 

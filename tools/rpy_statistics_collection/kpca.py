@@ -19,12 +19,13 @@ usage: %prog [options]
 usage: %prog input output1 output2 var_cols kernel features sigma(or_None) degree(or_None) scale(or_None) offset(or_None) order(or_None)
 """
 
-from galaxy import eggs
-import sys, string
+import string
+import sys
 
+import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
-import rpy2.rlike.container as rlc
+from galaxy import eggs
 from rpy2.robjects.packages import importr
 
 r = robjects.r

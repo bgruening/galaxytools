@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-import glob
-from os import system
+import fnmatch
+import os
 import re
-from sklearn import metrics
-from shutil import make_archive
 import sys
-import fnmatch, os
+from os import system
+from shutil import make_archive
+
+from sklearn import metrics
 
 
 def sh(script):

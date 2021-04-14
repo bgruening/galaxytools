@@ -2,8 +2,8 @@
     EDeN filetypes
 """
 
-from galaxy.datatypes.tabular import Tabular
 from galaxy.datatypes import data
+from galaxy.datatypes.tabular import Tabular
 
 
 class Gspan(Tabular):

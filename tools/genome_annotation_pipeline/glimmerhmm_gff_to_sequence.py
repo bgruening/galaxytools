@@ -15,14 +15,13 @@ Modified version of the converter from Brad Chapman: https://github.com/chapmanb
 Usage:
     glimmer_to_proteins.py <glimmer output> <ref fasta> <output file> <convert to protein ... False|True>
 """
-import sys
-import os
 import operator
-
-from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
+import os
+import sys
 
 from BCBio import GFF
+from Bio import SeqIO
+from Bio.SeqRecord import SeqRecord
 
 
 def main(glimmer_file, ref_file, out_file, to_protein, ncbi_traslation_table=1):

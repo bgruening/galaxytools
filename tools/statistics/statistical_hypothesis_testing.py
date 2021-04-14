@@ -3,8 +3,8 @@
 """
 
 """
-import sys
 import argparse
+
 from scipy import stats
 
 

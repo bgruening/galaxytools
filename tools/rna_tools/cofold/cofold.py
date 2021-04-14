@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
-import sys, os
 import argparse
+import os
 import shlex
 import subprocess
 

@@ -5,10 +5,12 @@ Output: uniprot protein sequence(s)
 Sept 2011
 Xavier Lucas, Bjoern Gruening
 """
-import sys, os
 import argparse
-import psycopg2.extras
+import os
 import subprocess
+import sys
+
+import psycopg2.extras
 
 LIB_PATH = "/media/data/databases/uniprot/devided/"
 

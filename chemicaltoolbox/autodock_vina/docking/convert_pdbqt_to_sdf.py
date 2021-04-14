@@ -1,6 +1,6 @@
 import sys
 
-from openbabel import pybel, openbabel
+from openbabel import openbabel, pybel
 
 
 def main():

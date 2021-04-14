@@ -14,14 +14,14 @@ Column headers and separaters can be stored in the config file.
 
 """
 
-import sys, os
 import argparse
+import os
+import re
 import subprocess
-import ConfigParser
-import re, tempfile
 import tempfile
 from multiprocessing import Pool
-import subprocess
+
+import ConfigParser
 
 
 def read_config_file(config_path="data.cfg"):

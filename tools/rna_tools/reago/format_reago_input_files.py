@@ -1,10 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import sys
-import os
 import argparse
-import re
 
 
 def add_read_pair_num(input_filepath, output_filepath, read_pair_num):

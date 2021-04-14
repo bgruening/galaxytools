@@ -3,11 +3,12 @@
 Input:  User-defined set of filters and the database authentifications.
 Output: set of compounds that pass all the selected filters.
 """
-import sys, os
 import argparse
-import psycopg2.extras
-import cheminfolib
 import json
+import sys
+
+import cheminfolib
+import psycopg2.extras
 
 cheminfolib.pybel_stop_logging()
 

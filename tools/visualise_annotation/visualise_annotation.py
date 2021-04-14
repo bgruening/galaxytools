@@ -20,27 +20,25 @@ Glarea	GlimmerHMM	mRNA	6580	7583	.	+	.	ID=Glarea.path1.gene3;Name=Glarea.path1.g
 
 """
 
+import argparse
+import os
+import shutil
+import tempfile
+import zipfile
+
+from BCBio import GFF
+from Bio import SeqIO
+from Bio.Graphics import GenomeDiagram
+from Bio.SeqFeature import FeatureLocation, SeqFeature
 from reportlab.lib import colors
 from reportlab.lib.units import cm
-from Bio.Graphics import GenomeDiagram
-from Bio import SeqIO
-from Bio.SeqFeature import SeqFeature, FeatureLocation
-from BCBio import GFF
-from collections import defaultdict
-import argparse
-import os, sys
-import tempfile
-import shutil
-import time, zipfile
-
-from svg_stack import convert_to_pixels, get_unit_attr
-from svg_stack import VBoxLayout, Document, AlignCenter
+from svg_stack import (AlignCenter, Document, VBoxLayout, convert_to_pixels,
+                       get_unit_attr)
 
 
 def basic_parsing(gffFile):
     """ GFF3 parse, extract information """
 
-    returnFeatures = []
     with open(gffFile) as in_handle:
         for rec in GFF.parse(in_handle):
             # iterate features

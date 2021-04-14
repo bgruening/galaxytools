@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
-import sys, os, re
+import sys
+
 from Bio import SeqIO
 
 

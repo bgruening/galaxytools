@@ -3,10 +3,11 @@
 """
     Converts tRNAScan output back to fasta-sequences.
 """
+import subprocess
 import sys
+
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
-import subprocess
 
 
 def main(args):

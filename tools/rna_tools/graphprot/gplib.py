@@ -5,7 +5,6 @@ import statistics
 import subprocess
 from distutils.spawn import find_executable
 
-
 """
 
 Run doctests:

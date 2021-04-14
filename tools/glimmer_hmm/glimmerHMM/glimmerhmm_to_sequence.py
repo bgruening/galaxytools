@@ -8,10 +8,11 @@ Usage:
     glimmerhmm_to_sequence.py <glimmer output> <ref fasta> <output file> <format> <protein>
 
 """
-import sys
 import os
-import glimmerhmm_tabular_to_sequence
+import sys
+
 import glimmerhmm_gff_to_sequence
+import glimmerhmm_tabular_to_sequence
 
 
 def main(glimmer_file, ref_file, out_file, to_protein=False):

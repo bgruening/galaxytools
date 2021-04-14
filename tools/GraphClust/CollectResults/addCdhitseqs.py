@@ -1,5 +1,5 @@
-import re
 import glob
+import re
 import sys
 
 cdhitcluster = sys.argv[1]

@@ -1,7 +1,7 @@
 """Util functions."""
 
-import pandas as pd
 import cPickle
+import pandas as pd
 
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"

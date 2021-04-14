@@ -1,12 +1,13 @@
 #!/usr/bin/env python
 
 # from galaxy import eggs
-import sys, string
+import string
+import sys
 
+import rpy2.rinterface as ri
+import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
-import rpy2.rlike.container as rlc
-import rpy2.rinterface as ri
 
 r = robjects.r
 import numpy
@@ -65,7 +66,6 @@ for ind, line in enumerate(file(infile)):
                 x_vector.append(xval)
         except Exception, e:
             print e
-            pass
 
 # x_vals1 = numpy.asarray(x_vals).transpose()
 
@@ -159,7 +159,6 @@ try:
     pvaly = r.round(float(co.rx(1, 4)[0]), digits=10)[0]
 except Exception, e:
     print str(e)
-    pass
 print >> fout, "response column\tc%d" % (y_col + 1)
 tempP = []
 for i in x_cols:

@@ -5,13 +5,13 @@ __version__ = "0.1"
 __date__ = "2012"
 __license__ = "GLP3+"
 
-import ftplib
-import os, sys
 import argparse
-import subprocess
-from multiprocessing import Pool
-import tempfile
+import ftplib
+import os
 import shutil
+import subprocess
+import tempfile
+from multiprocessing import Pool
 
 
 def main(output, processors=4):

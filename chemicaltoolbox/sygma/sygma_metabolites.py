@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
-import csv
-import sygma
+
 import numpy as np
+import sygma
 from rdkit import Chem
 from rdkit.Chem.rdmolfiles import SDMolSupplier, SmilesMolSupplier
 

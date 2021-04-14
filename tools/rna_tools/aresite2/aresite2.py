@@ -4,9 +4,11 @@
 import json
 import optparse
 import sys
-import urllib.request, urllib.parse, urllib.error
-import urllib.request, urllib.error, urllib.parse
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+
 import requests
 from six.moves.urllib.parse import urljoin
 

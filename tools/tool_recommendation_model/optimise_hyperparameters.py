@@ -3,16 +3,14 @@ Find the optimal combination of hyperparameters
 """
 
 import numpy as np
-from hyperopt import fmin, tpe, hp, STATUS_OK, Trials
-
-from keras.models import Sequential
-from keras.layers import Dense, GRU, Dropout
-from keras.layers.embeddings import Embedding
-from keras.layers.core import SpatialDropout1D
-from keras.optimizers import RMSprop
-from keras.callbacks import EarlyStopping
-
 import utils
+from hyperopt import STATUS_OK, Trials, fmin, hp, tpe
+from keras.callbacks import EarlyStopping
+from keras.layers import GRU, Dense, Dropout
+from keras.layers.core import SpatialDropout1D
+from keras.layers.embeddings import Embedding
+from keras.models import Sequential
+from keras.optimizers import RMSprop
 
 
 class HyperparameterOptimisation:

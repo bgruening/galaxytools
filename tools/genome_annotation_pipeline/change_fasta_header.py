@@ -1,13 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-import os, sys
-import argparse
+import sys
+
 from Bio import SeqIO
 
 
 def change_fasta_header(infile, outfile, mode):
-    new_sequence_array = []
+    pass
 
     ofile = open(outfile, "w+")
     for line in open(infile):

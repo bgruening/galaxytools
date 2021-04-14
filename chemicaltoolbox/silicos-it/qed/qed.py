@@ -1,21 +1,22 @@
 #!/usr/bin/env python
 __all__ = ["weights_max", "weights_mean", "weights_none", "default"]
 
-# RDKit
-from rdkit.Chem import Descriptors
-from rdkit import Chem
-
+import argparse
+import os
+import re
+import sys
 # General
 from copy import deepcopy
 from math import exp, log
-import sys, os, re
-import argparse
+
+from rdkit import Chem
+# RDKit
+from rdkit.Chem import Descriptors
 
 
 class SilicosItError(Exception):
     """Base class for exceptions in Silicos-it code"""
 
-    pass
 
 
 class WrongArgument(SilicosItError):

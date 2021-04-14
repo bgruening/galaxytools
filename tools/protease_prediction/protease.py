@@ -17,16 +17,13 @@ Cite:  Costa, Fabrizio, and Kurt De Grave, 'Fast neighborhood subgraph pairwise
 distance kernel', Proceedings of the 26th International Conference on Machine
 Learning. 2010. """
 
-import os
 import logging
+import os
 
+from eden.converter.fasta import fasta_to_sequence, sequence_to_eden
 from eden.graph import Vectorizer
 from eden.model_base import ModelInitializerBase, main_script
-from eden.converter.fasta import fasta_to_sequence
-from eden.modifier.seq import seq_to_seq
-from eden.modifier.seq import shuffle_modifier
-from eden.modifier.seq import mark_modifier
-from eden.converter.fasta import sequence_to_eden
+from eden.modifier.seq import mark_modifier, seq_to_seq, shuffle_modifier
 
 
 class ModelInitializer(ModelInitializerBase):

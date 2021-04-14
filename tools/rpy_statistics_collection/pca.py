@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-import sys, string
+import string
+import sys
 
+import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
-import rpy2.rlike.container as rlc
 from rpy2.robjects.packages import importr
 
 r = robjects.r

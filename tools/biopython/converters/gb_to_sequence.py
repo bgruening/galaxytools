@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-import sys
 import argparse
+
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 
@@ -34,8 +34,6 @@ def extract_features(
 
     feature_count = 0
     for gb_record in gb_iter:
-        nucleotide = []
-        protein = []
         for feature in gb_record.features:
             if feature.type == feature_name:
                 # if the translation table is not set explicitly through the user, try to extract it from the genbank file

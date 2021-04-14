@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-import os, sys
-import argparse
+import sys
 
 
 def change_glimmer3_prediction_output(infile, outfile):

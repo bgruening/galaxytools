@@ -24,7 +24,6 @@ Copyright (C) 2003, 2004, 2006 by  Thomas Mailund <mailund@birc.au.dk>
 
 class MalformedInput:
     "Exception raised when the input file does not look like a fasta file."
-    pass
 
 
 class FastaRecord:

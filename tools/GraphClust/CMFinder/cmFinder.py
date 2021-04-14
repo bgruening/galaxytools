@@ -1,7 +1,7 @@
 import os
 import sys
-from shutil import copyfile
 from os import system
+from shutil import copyfile
 
 
 def sh(script):

@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
 
-import os, sys
 import argparse
+import os
 import re
+import sys
 
 
 def change_according_reviewer(accession, note_line):

@@ -15,12 +15,12 @@ The implementation utilizes map/reduce parsing of GFF using Disco. Disco
 Erlang for parallelization. The code works on a single processor without
 Disco using the same architecture.
 """
-import os
-import copy
-import re
 import collections
-import urllib
+import copy
 import itertools
+import os
+import re
+import urllib
 
 # Make defaultdict compatible with versions of python older than 2.4
 try:
@@ -30,10 +30,10 @@ except AttributeError:
 
     collections.defaultdict = _utils.defaultdict
 
-from Bio.Seq import Seq, UnknownSeq
-from Bio.SeqRecord import SeqRecord
-from Bio.SeqFeature import SeqFeature, FeatureLocation
 from Bio import SeqIO
+from Bio.Seq import Seq, UnknownSeq
+from Bio.SeqFeature import FeatureLocation, SeqFeature
+from Bio.SeqRecord import SeqRecord
 
 
 def _gff_line_map(line, params):
@@ -628,7 +628,6 @@ class GFFParser(_AbstractMapReduceGFF):
             else:
                 need_close = True
                 in_handle = open(gff_file)
-            found_seqs = False
             while 1:
                 line = in_handle.readline()
                 if not line:
@@ -697,8 +696,8 @@ class DiscoGFFParser(_AbstractMapReduceGFF):
         """Process GFF addition, using Disco to parallelize the process."""
         assert target_lines is None, "Cannot split parallelized jobs"
         # make these imports local; only need them when using disco
-        import simplejson
         import disco
+        import simplejson
 
         # absolute path names unless they are special disco files
         full_files = []

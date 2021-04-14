@@ -5,10 +5,11 @@
             that should to be retrieved.
     Output: Retrieved compounds
 """
-import sys, os
 import argparse
-import psycopg2.extras
+import sys
+
 import cheminfolib
+import psycopg2.extras
 import pybel
 
 cheminfolib.pybel_stop_logging()

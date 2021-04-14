@@ -2,12 +2,14 @@
 
 # from galaxy import eggs
 
-import sys, string
+import string
+import sys
+
+import rpy2.rlike.container as rlc
+import rpy2.robjects as robjects
 
 # from rpy import *
 
-import rpy2.robjects as robjects
-import rpy2.rlike.container as rlc
 
 r = robjects.r
 import numpy

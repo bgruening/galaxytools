@@ -1,9 +1,10 @@
 #!/usr/bin/env python
 
 import io
-import urllib2
 import urllib
+
 import httplib
+import urllib2
 
 
 def getListFromFile(infile):

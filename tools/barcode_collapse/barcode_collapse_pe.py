@@ -9,10 +9,11 @@ From: https://github.com/YeoLab/gscripts
 
 """
 
-from collections import Counter
 import itertools
-from optparse import OptionParser
 import sys
+from collections import Counter
+from optparse import OptionParser
+
 import pysam
 
 

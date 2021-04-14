@@ -1,15 +1,16 @@
-import numpy
-import sys
-import random
-import subprocess
-import re
+import argparse
 import decimal
 import math
 import os
+import random
+import re
 import shutil
+import subprocess
+import sys
 import time
 import types
-import argparse
+
+import numpy
 
 # from argparse import RawTextHelpFormatter
 

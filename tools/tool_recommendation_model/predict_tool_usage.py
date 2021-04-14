@@ -2,17 +2,16 @@
 Predict tool usage to weigh the predicted tools
 """
 
-import os
-import numpy as np
-import warnings
-import csv
 import collections
+import csv
+import os
+import warnings
 
-from sklearn.svm import SVR
+import numpy as np
+import utils
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
-
-import utils
+from sklearn.svm import SVR
 
 warnings.filterwarnings("ignore")
 

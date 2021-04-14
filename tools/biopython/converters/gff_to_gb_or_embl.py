@@ -7,14 +7,11 @@
     Usage:
     gff_to_gb_or_embl.py <GFF annotation file> <FASTA sequence file> <Output file> <Output format genbank or embl>
 """
-import os, sys
 import argparse
 
-from Bio import SeqIO
-from Bio.Alphabet import generic_dna
 from BCBio import GFF
-from Bio import Seq
-
+from Bio import Seq, SeqIO
+from Bio.Alphabet import generic_dna
 from utils import check_gff, fix_ncbi_id
 
 
@@ -31,7 +28,6 @@ def main(gff_file, fasta_file, outfile, oformat):
 
 def add_translation(recs):
     """"""
-    out = []
     for rec in recs:
         for f in rec.features:
             f.qualifiers.update({"translation": f.extract(rec.seq).translate(table=4)})

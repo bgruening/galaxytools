@@ -1,5 +1,5 @@
-import sys
 import subprocess
+import sys
 
 """
     We only need that file because galaxy do not understand the -t $'\t' term.

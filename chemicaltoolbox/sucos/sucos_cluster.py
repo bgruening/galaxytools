@@ -11,12 +11,14 @@ GitHub: https://github.com/susanhleung/SuCOS
 Publication: https://doi.org/10.26434/chemrxiv.8100203.v1
 """
 
-import sucos, utils
-import argparse, gzip
-from rdkit import Chem
+import argparse
+
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage, fcluster
+import sucos
+import utils
+from rdkit import Chem
+from scipy.cluster.hierarchy import fcluster, linkage
 
 # start main execution #########################################
 

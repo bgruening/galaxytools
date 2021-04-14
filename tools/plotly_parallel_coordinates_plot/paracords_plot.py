@@ -1,9 +1,10 @@
-import sys
 import argparse
+import re
+import sys
+
+import pandas as pd
 import plotly
 import plotly.graph_objs as go
-import pandas as pd
-import re
 
 
 def main(infile, col_dimensions, categorized, col_color, dimension_mode="by_index"):

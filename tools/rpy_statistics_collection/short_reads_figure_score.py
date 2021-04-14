@@ -8,12 +8,16 @@ boxplot:
 - The smallest/largest value that is not an outlier is connected to the box by with a horizontal line.
 """
 
-import os, sys, math, tempfile, re
+import math
+import os
+import re
+import sys
+import tempfile
 
+import rpy2.rinterface as ri
+import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
-import rpy2.rlike.container as rlc
-import rpy2.rinterface as ri
 
 r = robjects.r
 

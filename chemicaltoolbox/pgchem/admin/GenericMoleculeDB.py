@@ -8,21 +8,19 @@ __license__ = "GLP3+"
 """
     Creates a GenericMolecule Database, with tables and schema
 """
-import sys, os
-from sqlalchemy import create_engine
-from sqlalchemy.schema import Column
-from sqlalchemy import MetaData
-from sqlalchemy.schema import ForeignKeyConstraint
-from sqlalchemy.schema import PrimaryKeyConstraint
-from sqlalchemy.types import *
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relation, backref
-
-import generic as config
-import cheminfolib
-import datetime
-import psycopg2
 import argparse
+import datetime
+import sys
+
+import cheminfolib
+import generic as config
+import psycopg2
+from sqlalchemy import MetaData, create_engine
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import backref, relation
+from sqlalchemy.schema import (Column, ForeignKeyConstraint,
+                               PrimaryKeyConstraint)
+from sqlalchemy.types import *
 
 
 class molecule_type(UserDefinedType):
@@ -189,7 +187,7 @@ def init(con, schema):
     """
     engine = create_engine(con, pool_recycle=900)
     connection = engine.connect()
-    result = connection.execute("SET search_path TO %s" % schema)
+    connection.execute("SET search_path TO %s" % schema)
     metadata = MetaData(schema=schema)
     metadata.bind = engine
     # print MetaData

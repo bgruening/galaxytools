@@ -20,9 +20,11 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 # THE SOFTWARE.
 
-from lxml import etree  # Ubuntu Karmic package: python-lxml
-import sys, re
+import re
+import sys
 from optparse import OptionParser
+
+from lxml import etree  # Ubuntu Karmic package: python-lxml
 
 VERSION = "0.0.1"  # keep in sync with setup.py
 

@@ -12,16 +12,18 @@ required for submission of Serquence data.
 http://www.ncbi.nlm.nih.gov/WebSub/index.cgi?tool=genbank
 TODO: include t-RNA results
 """
-import os, sys
 import csv
-from Bio.Blast import NCBIXML
-from Bio import SeqIO
+import os
 import re
-from collections import defaultdict
-from glimmerhmm_gff_to_sequence import main as gff2seq
 import subprocess
-from RemoveVectorContamination import *
+import sys
 import zipfile
+from collections import defaultdict
+
+from Bio import SeqIO
+from Bio.Blast import NCBIXML
+from glimmerhmm_gff_to_sequence import main as gff2seq
+from RemoveVectorContamination import *
 from utils import change_according_reviewer
 
 
@@ -609,9 +611,10 @@ def zipper(dir, zip_file):
 if __name__ == "__main__":
 
     import argparse
-    import tempfile
-    import Scaffold2Fasta
     import shutil
+    import tempfile
+
+    import Scaffold2Fasta
 
     parser = argparse.ArgumentParser(description="Creates a NCBI FeatureTable.")
 

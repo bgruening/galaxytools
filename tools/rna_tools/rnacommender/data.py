@@ -1,7 +1,6 @@
 """Dataset handler."""
 
 import numpy as np
-
 import pandas as pd
 
 __author__ = "Gianluca Corrado"

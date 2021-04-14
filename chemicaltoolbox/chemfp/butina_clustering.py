@@ -5,12 +5,13 @@
     Thanks to Andrew Dalke of Andrew Dalke Scientific!
 """
 
-import chemfp
-import sys
-import os
-import tempfile
 import argparse
+import os
 import subprocess
+import sys
+import tempfile
+
+import chemfp
 from chemfp import search
 
 

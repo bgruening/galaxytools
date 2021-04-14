@@ -3,6 +3,7 @@ __copyright__ = "Copyright (c) 2012 Y.Okamura"
 __license__ = "GPL v3+"
 
 import xml.parsers.expat
+
 import networkx as nx
 
 
