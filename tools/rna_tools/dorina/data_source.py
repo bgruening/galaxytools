@@ -8,8 +8,9 @@ import urllib
 from json import dumps, loads
 
 import galaxy.model  # need to import model before sniff to resolve a circular import dependency
-from galaxy import \
-    eggs  # eggs needs to be imported so that galaxy.util can find docutils egg...
+from galaxy import (
+    eggs,
+)  # eggs needs to be imported so that galaxy.util can find docutils egg...
 from galaxy.datatypes import sniff
 from galaxy.datatypes.registry import Registry
 from galaxy.jobs import TOOL_PROVIDED_JOB_METADATA_FILE

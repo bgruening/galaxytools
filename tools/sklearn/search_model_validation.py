@@ -11,12 +11,26 @@ import joblib
 import numpy as np
 import pandas as pd
 import skrebate
-from galaxy_ml.utils import (SafeEval, clean_params, get_cv,
-                             get_main_estimator, get_module, get_scoring,
-                             load_model, read_columns, try_get_attr)
+from galaxy_ml.utils import (
+    SafeEval,
+    clean_params,
+    get_cv,
+    get_main_estimator,
+    get_module,
+    get_scoring,
+    load_model,
+    read_columns,
+    try_get_attr,
+)
 from scipy.io import mmread
-from sklearn import (cluster, decomposition, feature_selection,
-                     kernel_approximation, model_selection, preprocessing)
+from sklearn import (
+    cluster,
+    decomposition,
+    feature_selection,
+    kernel_approximation,
+    model_selection,
+    preprocessing,
+)
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score, cross_validate

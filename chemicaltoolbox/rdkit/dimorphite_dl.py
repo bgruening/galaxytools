@@ -86,7 +86,7 @@ def main(params=None):
             with open(args["output_file"], "w") as file:
                 for protonated_smi in Protonate(args):
                     file.write(protonated_smi + "\n")
-        elif "return_as_list" in args and args["return_as_list"] == True:
+        elif "return_as_list" in args and args["return_as_list"]:
             return list(Protonate(args))
         else:
             # No output file specified. Just print it to the screen.

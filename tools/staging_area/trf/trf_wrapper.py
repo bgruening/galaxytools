@@ -94,11 +94,11 @@ def __main__():
     output_report = "%s.%s.%s.%s.%s.%s.%s.%s.1.html" % (tuple(arguments))
     output_indices = "%s.%s.%s.%s.%s.%s.%s.%s.1.txt.html" % (tuple(arguments))
 
-    if opts.masked and opts.masked == True:
+    if opts.masked and opts.masked:
         arguments.append("-m")
-    if opts.flanking and opts.flanking == True:
+    if opts.flanking and opts.flanking:
         arguments.append("-f")
-    if opts.redundancy and opts.redundancy == True:
+    if opts.redundancy and opts.redundancy:
         arguments.append("-r")
     if opts.datoutput and opts.datoutput != "":
         output_dat_filename = opts.datoutput
@@ -139,7 +139,7 @@ def __main__():
         shutil.copyfile(os.path.basename(output_dat), output_dat_filename)
         #        shutil.copyfile(os.path.basename(output_report), output_report_filename)
         shutil.copyfile(os.path.basename(output_indices), output_indices_filename)
-        if opts.masked and opts.masked == True:
+        if opts.masked and opts.masked:
             shutil.copyfile(os.path.basename(output_mask), output_mask_filename)
     except Exception, err:
         sys.stderr.write("Error copying output files: \n%s\n" % err)

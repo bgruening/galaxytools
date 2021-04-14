@@ -21,12 +21,12 @@ def test():
 
     tmp = tempfile.NamedTemporaryFile(delete=False)
     main("./tests/STAFG.tbl", "./tests/STAFG_discrep.report", tmp.name)
-    assert filecmp.cmp("./tests/STAFG_result.tbl", tmp.name) == True
+    assert filecmp.cmp("./tests/STAFG_result.tbl", tmp.name)
     os.remove(tmp.name)
 
     tmp = tempfile.NamedTemporaryFile(delete=False)
     main("./tests/STAFG.tbl", "./tests/1_discrep.report", tmp.name)
-    assert filecmp.cmp("./tests/1_result.tbl", tmp.name) == True
+    assert filecmp.cmp("./tests/1_result.tbl", tmp.name)
     os.remove(tmp.name)
 
     print "All tests passed."

@@ -37,7 +37,7 @@ def main(blast_tabular_file, outfile, score_column="12", sort_order="high"):
         query_id = cols[0]
 
         score = float(cols[score_column])
-        if not best_hits.has_key(query_id):
+        if query_id not in best_hits:
             best_hits[query_id] = (score, line)
         elif want_highest and best_hits[query_id][0] < score:
             best_hits[query_id] = (score, line)

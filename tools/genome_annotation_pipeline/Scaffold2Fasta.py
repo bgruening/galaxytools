@@ -200,19 +200,13 @@ def run_test(testdir):
                 "AFG",
                 "BBBB",
             )
-            assert (
-                filecmp.cmp(
-                    os.path.join(testdir, "results", filename),
-                    "/tmp/scaffold2fasta_test_output.fsa",
-                )
-                == True
+            assert filecmp.cmp(
+                os.path.join(testdir, "results", filename),
+                "/tmp/scaffold2fasta_test_output.fsa",
             )
-            assert (
-                filecmp.cmp(
-                    os.path.join(testdir, "results", filename.replace(".fsa", ".agp")),
-                    "/tmp/scaffold2fasta_test_output.agp",
-                )
-                == True
+            assert filecmp.cmp(
+                os.path.join(testdir, "results", filename.replace(".fsa", ".agp")),
+                "/tmp/scaffold2fasta_test_output.agp",
             )
 
 

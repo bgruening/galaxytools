@@ -9,8 +9,14 @@ import joblib
 import numpy as np
 import pandas as pd
 from galaxy_ml.model_validations import train_test_split
-from galaxy_ml.utils import (SafeEval, get_module, get_scoring, load_model,
-                             read_columns, try_get_attr)
+from galaxy_ml.utils import (
+    SafeEval,
+    get_module,
+    get_scoring,
+    load_model,
+    read_columns,
+    try_get_attr,
+)
 from scipy.io import mmread
 from sklearn import pipeline
 from sklearn.metrics.scorer import _check_multimetric_scoring

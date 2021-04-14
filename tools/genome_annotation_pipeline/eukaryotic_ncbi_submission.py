@@ -201,7 +201,7 @@ def get_augustus_mapping(path):
                 iid = metadata.split("ID=")[-1].split(";")[0].split(".")[0]
 
                 if seq_type in ["CDS", "gene"]:
-                    if mapping.has_key(iid):
+                    if iid in mapping:
                         mapping[iid].add_segment(start, stop, strand, seq_type, frame)
                     else:
                         ge = AugustusEntry(iid, seq_id)

@@ -18,8 +18,7 @@ import psycopg2
 from sqlalchemy import MetaData, create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import backref, relation
-from sqlalchemy.schema import (Column, ForeignKeyConstraint,
-                               PrimaryKeyConstraint)
+from sqlalchemy.schema import Column, ForeignKeyConstraint, PrimaryKeyConstraint
 from sqlalchemy.types import *
 
 

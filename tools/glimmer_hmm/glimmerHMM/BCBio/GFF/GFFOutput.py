@@ -33,7 +33,7 @@ class _IdHandler:
         """
         possible_keys = ["transcript_id", "protein_id"]
         for test_key in possible_keys:
-            if quals.has_key(test_key):
+            if test_key in quals:
                 cur_id = quals[test_key]
                 if isinstance(cur_id, tuple) or isinstance(cur_id, list):
                     return cur_id[0]
@@ -103,11 +103,11 @@ class GFF3Writer:
         # remove any standard features from the qualifiers
         quals = feature.qualifiers.copy()
         for std_qual in ["source", "score", "phase"]:
-            if quals.has_key(std_qual) and len(quals[std_qual]) == 1:
+            if std_qual in quals and len(quals[std_qual]) == 1:
                 del quals[std_qual]
         # add a link to a parent identifier if it exists
         if parent_id:
-            if not quals.has_key("Parent"):
+            if not "Parent" in quals:
                 quals["Parent"] = []
             quals["Parent"].append(parent_id)
         quals = id_handler.update_quals(quals, len(feature.sub_features) > 0)

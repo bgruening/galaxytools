@@ -69,7 +69,7 @@ def main(args):
         # print(post_dict)
         readfile.store_result_post(url, post_dict, args.outfile)
     # check if we have to create a tsv file
-    elif create_dict_tsv == True:
+    elif create_dict_tsv:
         key = dic_key_value_type[args.type]
         value = dic_key_value_operation[args.operation]
         dic = rest_tool_functions.get_dict_key_value(url, key, value)

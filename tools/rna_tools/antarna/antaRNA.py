@@ -176,7 +176,7 @@ def loadIUPACcompatibilities(IUPAC, useGU):
                     sn2
                 ):  # ITERATING OVER THE SINGLE NUCLEOTIDES WITHIN THE RESPECTIVE IUPAC CODE:
                     # CHECKING THEIR COMPATIBILITY
-                    if useGU == True:
+                    if useGU:
                         if (
                             (c1 == "A" and c2 == "U")
                             or (c1 == "U" and c2 == "A")
@@ -1926,7 +1926,7 @@ def findSequence(
         else:
             result.append(line)
 
-    if return_mod == True:
+    if return_mod:
         return result
     if not print_to_STDOUT:
         os.chdir(curr_dir)
