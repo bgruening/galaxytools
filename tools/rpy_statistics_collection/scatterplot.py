@@ -89,12 +89,15 @@ def main():
 
     print("Scatter plot on columns %s, %s. " % (sys.argv[3], sys.argv[4]))
     if skipped_lines > 0:
-        print("Skipped %d lines starting with line #%d, value '%s' in column %d is not numeric." % (
-            skipped_lines,
-            first_invalid_line,
-            invalid_value,
-            invalid_column,
-        ))
+        print(
+            "Skipped %d lines starting with line #%d, value '%s' in column %d is not numeric."
+            % (
+                skipped_lines,
+                first_invalid_line,
+                invalid_value,
+                invalid_column,
+            )
+        )
 
     # r.quit( save="no" )
 

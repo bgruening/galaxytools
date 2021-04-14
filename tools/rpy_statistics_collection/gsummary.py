@@ -183,10 +183,13 @@ def main():
         outfile.close()
 
         if skipped_lines:
-            print("Skipped %d invalid lines beginning with line #%d.  See tool tips for data requirements." % (
-                skipped_lines,
-                first_invalid_line,
-            ))
+            print(
+                "Skipped %d invalid lines beginning with line #%d.  See tool tips for data requirements."
+                % (
+                    skipped_lines,
+                    first_invalid_line,
+                )
+            )
 
 
 if __name__ == "__main__":

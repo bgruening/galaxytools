@@ -271,10 +271,13 @@ def run(data_dir, feature_table_path, locus_tag, min_coverage, min_ident):
             min_ident,
         )
 
-    print("From %s total genes %s are annotated." % (
-        gene_counter,
-        annotation_count_with_putative_function,
-    ))
+    print(
+        "From %s total genes %s are annotated."
+        % (
+            gene_counter,
+            annotation_count_with_putative_function,
+        )
+    )
 
 
 def iter_islast(iterable):

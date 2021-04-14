@@ -114,11 +114,14 @@ def main():
 
     print("Histogram of column %s. " % sys.argv[3])
     if skipped_lines > 0:
-        print("Skipped %d invalid lines starting with line #%d, '%s'." % (
-            skipped_lines,
-            first_invalid_line,
-            invalid_value,
-        ))
+        print(
+            "Skipped %d invalid lines starting with line #%d, '%s'."
+            % (
+                skipped_lines,
+                first_invalid_line,
+                invalid_value,
+            )
+        )
 
     # r.quit( save="no" )
 

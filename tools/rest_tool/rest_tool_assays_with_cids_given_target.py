@@ -40,7 +40,7 @@ def getAllCidsForAssayActivity(activity):
     lastline_arr = xml.split("\n")
     # print(lastline_arr)
 
-    print ("l: ")
+    print("l: ")
     print((len(lastline_arr)))
     lastline = lastline_arr[len(lastline_arr) - 1]
     print(("lastline: " + lastline))

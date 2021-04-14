@@ -44,7 +44,9 @@ def checkSequenceConstraint(SC):
                 c = "U"
             else:
                 print("\tIllegal Character in the constraint sequence!")
-                print("\tPlease use the IUPAC nomenclature for defining nucleotides in the constraint sequence!")
+                print(
+                    "\tPlease use the IUPAC nomenclature for defining nucleotides in the constraint sequence!"
+                )
                 print("\tA       Adenine")
                 print("\tC       Cytosine")
                 print("\tG       Guanine")
@@ -1354,10 +1356,14 @@ def runColony(
     rGC = reachableGC(SC)
     GC_message = ""
     if GC > rGC:
-        print("WARNING: Chosen target GC %s content is not reachable due to sequence constraint! Sequence Constraint GC-content is: %s" % (
-            GC,
-            rGC,
-        ), file=sys.stderr)
+        print(
+            "WARNING: Chosen target GC %s content is not reachable due to sequence constraint! Sequence Constraint GC-content is: %s"
+            % (
+                GC,
+                rGC,
+            ),
+            file=sys.stderr,
+        )
         GC = rGC
 
     # Initial Constraint Checks prior to execution
@@ -1532,34 +1538,56 @@ def runColony(
             distance_DN = 0
 
             if verbose:
-                print("SCORE " + str(Dscore) + " Resets " + str(
-                    resets
-                ) + " #Ant " + str(global_ant_count) + " out of " + str(
-                    ants_per_selection
-                ) + " cc " + str(
-                    convergence_counter
-                ))
+                print(
+                    "SCORE "
+                    + str(Dscore)
+                    + " Resets "
+                    + str(resets)
+                    + " #Ant "
+                    + str(global_ant_count)
+                    + " out of "
+                    + str(ants_per_selection)
+                    + " cc "
+                    + str(convergence_counter)
+                )
 
                 print(s, " <- target struct")
-                print(best_solution[0], " <- BS since ", str(
-                    best_solution_since
-                ), "Size of Terrrain:", len(terrain[0]))
-                print(best_solution[1], " <- BS Dscore " + str(
-                    best_solution[2]
-                ) + " ds " + str(best_solution[3]) + " dGC " + str(
-                    best_solution[4]
-                ) + " dseq " + str(
-                    best_solution[5]
-                ) + " LP " + str(
-                    len(LP)
-                ) + " <- best solution stats")
+                print(
+                    best_solution[0],
+                    " <- BS since ",
+                    str(best_solution_since),
+                    "Size of Terrrain:",
+                    len(terrain[0]),
+                )
+                print(
+                    best_solution[1],
+                    " <- BS Dscore "
+                    + str(best_solution[2])
+                    + " ds "
+                    + str(best_solution[3])
+                    + " dGC "
+                    + str(best_solution[4])
+                    + " dseq "
+                    + str(best_solution[5])
+                    + " LP "
+                    + str(len(LP))
+                    + " <- best solution stats",
+                )
                 print(curr_structure, " <- CS")
-                print(path, end=' ')
-                print(" <- CS", "Dscore", str(
-                    Dscore
-                ), "ds", distance_structural, "dGC", distance_GC, "GC", getGC(
-                    path
-                ) * 100, "Dseq", distance_seq)
+                print(path, end=" ")
+                print(
+                    " <- CS",
+                    "Dscore",
+                    str(Dscore),
+                    "ds",
+                    distance_structural,
+                    "dGC",
+                    distance_GC,
+                    "GC",
+                    getGC(path) * 100,
+                    "Dseq",
+                    distance_seq,
+                )
 
             #### UPDATING THE TERRAIN ACCORDING TO THE QUALITY OF THE CURRENT BESTO-OUT-OF-k SOLUTION
             updateTerrain(
@@ -2286,7 +2314,9 @@ def checkForViennaTools():
     ):
         return True
     else:
-        print("It seems the Vienna RNA Package is not installed on your machine. Please do so!")
+        print(
+            "It seems the Vienna RNA Package is not installed on your machine. Please do so!"
+        )
         print("You can get it at http://www.tbi.univie.ac.at/")
         exit(0)
 

@@ -120,10 +120,14 @@ else:  # Multiple regression case with >1 predictors
     # while ind < len(coeffs.keys()):
     while ind < len(coeffs.names):
         # print >>fout, "Slope (c%d)\t%s" %(x_cols[ind-1]+1,coeffs['x'+str(ind)])
-        print("Slope (c%d)\t%s" % (
-            x_cols[ind - 1] + 1,
-            coeffs.rx2(coeffs.names[ind])[0],
-        ), file=fout)
+        print(
+            "Slope (c%d)\t%s"
+            % (
+                x_cols[ind - 1] + 1,
+                coeffs.rx2(coeffs.names[ind])[0],
+            ),
+            file=fout,
+        )
         try:
             # pval = co[ind][3]
             pval = r.round(float(co.rx(ind + 1, 4)[0]), digits=10)
