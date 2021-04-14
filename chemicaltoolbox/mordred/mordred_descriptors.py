@@ -1,11 +1,9 @@
 import argparse
 
 import numpy as np
-import pandas as pd
 from mordred import Calculator, descriptors
-from mordred.error import Error, Missing
 from rdkit import Chem
-from rdkit.Chem.rdmolfiles import SDMolSupplier, SmilesMolSupplier
+from rdkit.Chem.rdmolfiles import SDMolSupplier
 
 
 def convert_errors_to_nan(el):

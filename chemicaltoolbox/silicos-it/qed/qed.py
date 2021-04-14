@@ -46,7 +46,7 @@ def check_filetype(filepath):
             return "drf"
         elif possible_inchi and re.findall("^InChI=", line):
             return "inchi"
-        elif re.findall("^M\s+END", line):
+        elif re.findall("^M\s+END", line):  # noqa W605
             mol = True
         # first line is not an InChI, so it can't be an InChI file
         possible_inchi = False

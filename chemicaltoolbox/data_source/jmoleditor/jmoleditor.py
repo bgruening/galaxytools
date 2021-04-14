@@ -5,13 +5,12 @@ import os
 import socket
 import sys
 
-import galaxy.model  # need to import model before sniff to resolve a circular import dependency
+import galaxy.model  # noqa F401  # need to import model before sniff to resolve a circular import dependency
 from galaxy import \
-    eggs  # eggs needs to be imported so that galaxy.util can find docutils egg...
-from galaxy.datatypes import sniff
+    eggs  # noqa F401  # eggs needs to be imported so that galaxy.util can find docutils egg...
 from galaxy.datatypes.registry import Registry
 from galaxy.jobs import TOOL_PROVIDED_JOB_METADATA_FILE
-from galaxy.util.json import from_json_string, to_json_string
+from galaxy.util.json import from_json_string
 
 assert sys.version_info[:2] >= (2, 4)
 
@@ -69,10 +68,10 @@ def __main__():
             GALAXY_DATATYPES_CONF_FILE=GALAXY_DATATYPES_CONF_FILE,
             TOOL_PROVIDED_JOB_METADATA_FILE=TOOL_PROVIDED_JOB_METADATA_FILE,
         )
-    else:
-        json_file = open(
-            job_params["job_config"]["TOOL_PROVIDED_JOB_METADATA_FILE"], "w"
-        )  # specially named file for output junk to pass onto set metadata
+    # else:
+    #     json_file = open(
+    #         job_params["job_config"]["TOOL_PROVIDED_JOB_METADATA_FILE"], "w"
+    #     )  # specially named file for output junk to pass onto set metadata
 
     datatypes_registry = Registry()
     datatypes_registry.load_datatypes(
@@ -80,9 +79,9 @@ def __main__():
         config=job_params["job_config"]["GALAXY_DATATYPES_CONF_FILE"],
     )
 
-    URL = params.get(
-        "URL", None
-    )  # using exactly URL indicates that only one dataset is being downloaded
+    # URL = params.get(
+    #     "URL", None
+    # )  # using exactly URL indicates that only one dataset is being downloaded
     params.get("URL_method", None)
     simpleD = params.get("galaxyData")
     # The Python support for fetching resources from the web is layered. urllib uses the httplib

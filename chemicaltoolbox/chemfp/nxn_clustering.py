@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+# !/usr/bin/env python
 """
     Modified version of code examples from the chemfp project.
     http://code.google.com/p/chem-fingerprints/
@@ -28,7 +28,7 @@ def distance_matrix(arena, tanimoto_threshold=0.0):
         raise Exception("Input dataset is to large!")
     chemfp.set_num_threads(args.processors)
 
-    ## Compute the full similarity matrix.
+    # Compute the full similarity matrix.
     # The implementation computes the upper-triangle then copies
     # the upper-triangle into lower-triangle. It does not include
     # terms for the diagonal.

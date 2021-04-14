@@ -86,8 +86,8 @@ def run(compound_path, procs, schema, conn_string, filetype):
     clean_up_files = False
     if os.path.isdir(compound_path):
         paths = []
-        for root, dirs, files in os.walk(compund_path):
-            for filename in files:
+        for root, dirs, files in os.walk(compound_path):
+            for compound_file in files:
                 path = os.path.join(root, compound_file)
                 paths.append((path, schema, conn_string, filetype))
         paths.sort()

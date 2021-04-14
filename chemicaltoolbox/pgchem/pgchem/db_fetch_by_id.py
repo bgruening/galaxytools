@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
-    Input:  File with tab separated columns. 
-            One column contains the id's of a collection of molecules 
+    Input:  File with tab separated columns.
+            One column contains the id's of a collection of molecules
             that should to be retrieved.
     Output: Retrieved compounds
 """
@@ -10,7 +10,6 @@ import sys
 
 import cheminfolib
 import psycopg2.extras
-import pybel
 
 cheminfolib.pybel_stop_logging()
 
