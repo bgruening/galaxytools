@@ -45,7 +45,7 @@
 
 # Code:
 
-#!/usr/bin/env python3
+# !/usr/bin/env python3
 
 import argparse
 import gzip
@@ -131,7 +131,7 @@ def readrnaz(rnaz):
                     df = None
             else:
                 content = line.strip().split("\t")
-                newid = re.split("\.|\,|\s|\\|\/|\_", content[foi])[
+                newid = re.split("\.|\,|\s|\\|\/|\_", content[foi])[  # noqa W605
                     1
                 ]  # I can only hope that we have species.chromosome.whatever as annotation in aln or maf, if not this is hardly parseable
                 if df:

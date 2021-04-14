@@ -11,7 +11,7 @@ import fasta
 
 def format(seq, N=60):
     nseg = int(math.ceil(len(seq) / (N + 0.0)))
-    return "\n".join([seq[i * N : (i + 1) * N] for i in range(nseg)])
+    return "\n".join([seq[i * N: (i + 1) * N] for i in range(nseg)])
 
 
 # write into fasta format file
@@ -286,10 +286,10 @@ for rec in fasta.fasta_itr(options.input_fasta):
                 % (header, tno, start, end, strand, rRNA_type)
             )
             if strand == "+":  # forward strand
-                f_seq.write(format(rec.sequence[(start - 1) : end]) + "\n")
+                f_seq.write(format(rec.sequence[(start - 1): end]) + "\n")
             else:
                 f_seq.write(
-                    format(rec.sequence[(start - 1) : end][::-1].translate(tr)) + "\n"
+                    format(rec.sequence[(start - 1): end][::-1].translate(tr)) + "\n"
                 )
         tno = tno + 1
 

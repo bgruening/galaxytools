@@ -56,13 +56,13 @@ for line in sys.stdin:
     if line.startswith(">"):
         genome_id = line[1:].strip()
         if " " in genome_id:
-            genome_id = genome_id[0 : genome_id.index(" ")]
+            genome_id = genome_id[0: genome_id.index(" ")]
     else:
         data = line.split()
         if len(data) == 5:
             # Parse data
             strand = "-" if data[2].startswith("c") else "+"
-            start, end = data[2][data[2].index("[") + 1 : -1].split(",")
+            start, end = data[2][data[2].index("[") + 1: -1].split(",")
 
             gff3 = {
                 "parent": genome_id,
@@ -76,7 +76,7 @@ for line in sys.stdin:
 
             aa_long = data[1][5:]
             aa_short = aa_table[aa_long]
-            anticodon = data[4][1 : data[4].index(")")].upper().replace("T", "U")
+            anticodon = data[4][1: data[4].index(")")].upper().replace("T", "U")
             name = "trn{}-{}".format(aa_short, anticodon)
 
             if not full_gene_model:
@@ -115,7 +115,7 @@ for line in sys.stdin:
                     gff3["quals"] = "Parent=tRNA{0}.{1}".format(genome_id, *data)
                     output_line(gff3)
                 else:
-                    intron_location = data[4][data[4].rindex("(") + 1 : -1].split(",")
+                    intron_location = data[4][data[4].rindex("(") + 1: -1].split(",")
                     intron_start, intron_length = map(int, intron_location)
                     if strand == "+":
                         original_end = gff3["end"]

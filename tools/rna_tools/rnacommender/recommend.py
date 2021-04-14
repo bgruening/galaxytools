@@ -1,10 +1,10 @@
 """Recommend RNAs."""
 from __future__ import print_function
 
+import cPickle
 import sys
 from itertools import izip
 
-import cPickle
 from utils import get_serendipity_val
 
 __author__ = "Gianluca Corrado"

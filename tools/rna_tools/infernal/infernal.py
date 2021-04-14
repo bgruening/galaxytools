@@ -1,12 +1,11 @@
 # -*- coding: utf-8 -*-
 
+import logging
 import os
 import subprocess
 
-from galaxy.datatypes import metadata
-from galaxy.datatypes.data import Text, get_file_peek
+from galaxy.datatypes.data import get_file_peek, Text
 from galaxy.datatypes.metadata import MetadataElement
-from galaxy.datatypes.sniff import get_headers, get_test_fname
 
 
 def count_special_lines(word, filename, invert=False):
@@ -34,7 +33,7 @@ def count_lines(filename, non_empty=False):
     try:
         if non_empty:
             out = subprocess.Popen(
-                ["grep", "-cve", "^\s*$", filename], stdout=subprocess.PIPE
+                ["grep", "-cve", "^\s*$", filename], stdout=subprocess.PIPE  # noqa W605
             )
         else:
             out = subprocess.Popen(["wc", "-l", filename], stdout=subprocess.PIPE)
@@ -134,7 +133,7 @@ class Infernal_CM_1_1(Text):
             if cm_lines_accumulated:
                 _write_part_cm_file(cm_lines_accumulated)
         except Exception as e:
-            log.error("Unable to split files: %s" % str(e))
+            logging.error("Unable to split files: %s" % str(e))
             raise
 
     split = classmethod(split)
@@ -142,4 +141,4 @@ class Infernal_CM_1_1(Text):
 
 if __name__ == "__main__":
     Infernal_CM_1_1()
-    Stockholm_1_0()
+    # Stockholm_1_0()  # ???

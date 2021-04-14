@@ -8,9 +8,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-
-import requests
-from six.moves.urllib.parse import urljoin
+import urllib2
 
 usage = "usage: %prog [options] arg1 arg2"
 parser = optparse.OptionParser(usage=usage)

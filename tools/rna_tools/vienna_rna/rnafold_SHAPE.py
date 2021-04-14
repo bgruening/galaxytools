@@ -1,4 +1,4 @@
-### overcoming the problem of SHAPE data working with a single line.
+# overcoming the problem of SHAPE data working with a single line.
 # creating multiple multiple files containg SHAPE data for a single sequence and running RNAfold for every
 # single sequence.
 
@@ -9,7 +9,7 @@ from subprocess import PIPE, Popen
 from Bio import SeqIO
 
 params_list = sys.argv[1:]
-param_list_no_shape = [s for s in params_list if not "--shape=" in s]
+param_list_no_shape = [s for s in params_list if "--shape=" not in s]
 shape_file = [s for s in params_list if "--shape=" in s]
 assert len(shape_file) == 1
 

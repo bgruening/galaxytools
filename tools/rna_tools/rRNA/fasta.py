@@ -37,7 +37,7 @@ class FastaRecord:
     def __str__(self):
         result = [">" + self.header]
         for i in range(0, len(self.sequence), 60):
-            result.append(self.sequence[i : i + 60])
+            result.append(self.sequence[i: i + 60])
         return "\n".join(result)
 
 
@@ -80,7 +80,7 @@ def _fasta_itr(src):
     """
     if type(src) == str:
         return _fasta_itr_from_name(src)
-    elif type(src) == file:
+    elif type(src) == file:  # noqa F821  # python 2
         return _fasta_itr_from_file(src)
     else:
         raise TypeError

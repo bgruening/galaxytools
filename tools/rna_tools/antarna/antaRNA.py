@@ -124,7 +124,7 @@ def fulfillsHairpinRule(s):
     for all kind of basepairs, even wihtin the pdeudoknots
     """
 
-    fulfillsRules = 1
+    # fulfillsRules = 1
     for bracket in ["()", "[]", "{}", "<>"]:
         last_opening_char = 0
         check = 0
@@ -279,7 +279,7 @@ def getLP(BPSTACK):
     # geting single base pairs
     stack = {}
     LP = {}
-    if type(BPSTACK[random.choice(BPSTACK.keys())]) == types.TupleType:
+    if isinstance(BPSTACK[random.choice(BPSTACK.keys())], types.TupleType):
         for i in BPSTACK.keys():
             # if str(BPSTACK[i][1][0]) not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
             stack[i] = int(BPSTACK[i][1][0])
@@ -301,7 +301,7 @@ def getLP(BPSTACK):
         ):
             LP[i] = stack[i]
 
-    ##actual removal of 2er lonley base pairs
+    # actual removal of 2er lonley base pairs
     for i in stack.keys():
         if (
             not (i - 1 in stack and stack[i - 1] == stack[i] + 1)
@@ -314,12 +314,12 @@ def getLP(BPSTACK):
     # if type(BPSTACK[random.choice(BPSTACK.keys())]) == types.TupleType:
     # for i in BPSTACK.keys():
 
-    ##if str(BPSTACK[i][1][0]) not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+    # if str(BPSTACK[i][1][0]) not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
     # stack[i] = int(BPSTACK[i][1][0])
-    ##print i , BPSTACK[i][1][0]
+    # print i , BPSTACK[i][1][0]
     # else:
     # for i in BPSTACK.keys():
-    ##if str(BPSTACK[i]) not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
+    # if str(BPSTACK[i]) not in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
     # stack[i] = BPSTACK[i]
 
     # for i in stack.keys():
@@ -341,7 +341,7 @@ def getBPStack(s, seq):
         if s[i] in "(){}[]<>":
 
             no = 0
-            ### opening
+            # opening
             if s[i] in "([{<":
                 if s[i] == "(":
                     tmp_stack["()"].append((i, seq[i]))
@@ -384,7 +384,7 @@ def getbpStack(s):
         if s[i] in "(){}[]<>":
 
             no = 0
-            ### opening
+            # opening
             if s[i] in "([{<":
                 if s[i] == "(":
                     tmp_stack["()"].append(i)
@@ -421,8 +421,8 @@ def getbpStack(s):
             bpstack[i] = i
 
     # elif s[i] in "ABCDEFGHIJKLMNOPQRSTUVWXYZ":
-    ## per position, assigned to a certain block, the target nucleotide, with whcih it should interact is marked with the specific
-    ## block character
+    # per position, assigned to a certain block, the target nucleotide, with whcih it should interact is marked with the specific
+    # block character
     # bpstack[i] = s[i]
 
     return (bpstack, getLP(bpstack))
@@ -499,12 +499,12 @@ def getConstraint(TE, BPstack):
   # val :: BPstack information of the specific position
   # constr1 :: constraining character of pos id1
   # constr2 :: constraining character of pos id2
-  
+
   ### BPstack [id1] = (constr1, (id2, constr2))
-  
+
   id1 = TE.split(".")[0]
   #print id1
-  #id1 = TE.find(TE.strip("_")) #  strip the path section and getting the position of the section 
+  #id1 = TE.find(TE.strip("_")) #  strip the path section and getting the position of the section
   #if len(TE.strip("_")) == 2: # check if the path section is from an internal and not an initial transition
     #id1 += 1 # increase position id1 by 1, since the last character of the section is the destination character
   val = BPstack[int(id1)] # check out the value of the destination character in the basepair/constraint stack
@@ -512,19 +512,19 @@ def getConstraint(TE, BPstack):
   id2 = val[1][0] # getting position id2
   constr2 = val[1][1] # getting the sequence constraint for position id2
   #print TE, id1, constr1, id2, constr2,
-  
+
   #TE.split(".")[1][-1:]
   if id1 == id2: # both ids were the same with either character, sequential or no sequential constraint -> no basepair constraint
     if constr1 == TE.split(".")[1][-1:] and constr2 == TE.split(".")[1][-1:]: # case if the single base constraints on position id1 == id2 are the same as the destination character on id1
       #print 1
       return 1
-    elif constr1 == constr2 == "N": # case if the single base constraints on position id1 == id2 has no constraint 
+    elif constr1 == constr2 == "N": # case if the single base constraints on position id1 == id2 has no constraint
       #print 1
       return 1
     else: # single base sequence constraints differ
       #print 0
       return 0
-    
+
   elif id1 != id2: # showing differentq ids, indicating a bp, (basepair structural constraint)
     if constr1 == "N" and constr2 == "N": # no sequence constraint
       #print 1
@@ -702,11 +702,11 @@ def getPath(s, tmp_terrain, tmp_BPstack, alpha, beta, IUPAC, IUPAC_reverseComple
     Performs a walk through the terrain and assembles a sequence, while respecting the structure constraint and IUPAC base complementarity
         of the base pairs GU, GC and AT
     """
-    nt = ["A", "C", "G", "U"]
+    # nt = ["A", "C", "G", "U"]
     prev_edge = "00.XY"
     sequence = ""
     while len(sequence) < len(s):
-        coming_from = sequence[-1:]
+        # coming_from = sequence[-1:]
         summe = 0
         steps = []
         i = len(sequence)
@@ -825,10 +825,10 @@ def getRNAfoldStructure(struct2, process1):
     Retrieves folded structure of a RNAfold call
     """
 
-    RNAfold_pattern = re.compile(".+\n([.()]+)\s.+")
+    RNAfold_pattern = re.compile(".+\n([.()]+)\s.+")  # noqa W605
     # RNAdist_pattern = re.compile('.*\s([\d]+)')
     RNAfold_match = RNAfold_pattern.match(consult_RNAfold(struct2, process1))
-    current_structure = ""
+    # current_structure = ""
     # if RNAfold_match:
     return RNAfold_match.group(1)
 
@@ -1011,7 +1011,7 @@ def getStructuralDistance(
 
         if bp[lp] != LP[lp]:
 
-            isComp = isCompatible(path[lp], path[LP[lp]], IUPAC_compatibles)
+            # isComp = isCompatible(path[lp], path[LP[lp]], IUPAC_compatibles)
             isStru = isStructureCompatible(lp, LP[lp], bp)
             if not (
                 isStru and isStru
@@ -1266,7 +1266,7 @@ def substr(x, string, subst):
     """
     s1 = string[: x - 1]
 
-    s2 = string[x - 1 : x]
+    # s2 = string[x - 1 : x]
     s3 = string[x:]
     # s2 = s[x+len(string)-x-1:]
 
@@ -1352,7 +1352,7 @@ def runColony(
     BPstack, LP = getBPStack(s, SC)
 
     rGC = reachableGC(SC)
-    GC_message = ""
+    # GC_message = ""
     if GC > rGC:
         print(
             "WARNING: Chosen target GC %s content is not reachable due to sequence constraint! Sequence Constraint GC-content is: %s"
@@ -1382,7 +1382,7 @@ def runColony(
         #
         RNAfold = init_RNAfold(213, temperature, paramFile)
         # RNAdistance = init_RNAdistance()
-        RNAfold_pattern = re.compile(".+\n([.()]+)\s.+")
+        RNAfold_pattern = re.compile(".+\n([.()]+)\s.+")  # noqa W605
         # RNAdist_pattern = re.compile('.*\s([\d]+)')
         #
         ####
@@ -1407,13 +1407,13 @@ def runColony(
         criterion = False
         met = True
         ant_no = 1
-        prev_res = 0
-        seq = ""
+        # prev_res = 0
+        # seq = ""
 
-        counter = 0
+        # counter = 0
 
-        dstruct_log = []
-        dGC_log = []
+        # dstruct_log = []
+        # dGC_log = []
 
         distance_structural = 1000
         distance_GC = 1000
@@ -1456,7 +1456,7 @@ def runColony(
                 s = substr(lp + 1, s, ".")
                 s = substr(LP[lp] + 1, s, ".")
 
-        init = 1
+        # init = 1
         while criterion != met and getUsedTime(start_time) < max_time:
             iteration_start = time.time()
             global_ant_count += 1
@@ -1484,7 +1484,7 @@ def runColony(
 
             distance_structural_prev = distance_structural
             distance_GC_prev = distance_GC
-            distance_seq_prev = distance_seq
+            # distance_seq_prev = distance_seq
 
             path, Dscore, distance_structural, distance_GC, distance_seq = path_info
             curr_structure = ""
@@ -1587,7 +1587,7 @@ def runColony(
                     distance_seq,
                 )
 
-            #### UPDATING THE TERRAIN ACCORDING TO THE QUALITY OF THE CURRENT BESTO-OUT-OF-k SOLUTION
+            # UPDATING THE TERRAIN ACCORDING TO THE QUALITY OF THE CURRENT BESTO-OUT-OF-k SOLUTION
             updateTerrain(
                 path,
                 curr_structure,
@@ -1655,11 +1655,11 @@ def runColony(
                 criterion = False
                 met = True
                 ant_no = 1
-                prev_res = 0
-                pre_path = "_" * len(s)
+                # prev_res = 0
+                # pre_path = "_" * len(s)
                 path = ""
                 curr_structure = ""
-                counter = 0
+                # counter = 0
                 Dscore = 100000
                 distance_structural = 1000
                 distance_GC = 1000
@@ -1864,7 +1864,7 @@ def findSequence(
             "V": "UGC",
             "N": "ACGU",
         }
-    else:  ## allowing the GU basepair
+    else:  # allowing the GU basepair
         IUPAC_reverseComplements = {
             "A": "U",
             "C": "G",
@@ -1941,7 +1941,7 @@ def findSequence(
             )
         else:
             line += "\n" + output_w[1]
-        if return_mod == False:
+        if not return_mod:
             if print_to_STDOUT:
                 print(line)
             else:
@@ -2001,7 +2001,7 @@ def execute(args):
 
     improve = args.improve_procedure
 
-    ### RNAfold parameterfile
+    # RNAfold parameterfile
     paramFile = args.paramFile
 
     # Using the pkiss program under user changeable parameters
@@ -2062,7 +2062,7 @@ def exe():
 
     argument_parser = argparse.ArgumentParser(
         description="""
-    
+
     #########################################################################
     #       antaRNA - ant assembled RNA                                     #
     #       -> Ant Colony Optimized RNA Sequence Design                     #
@@ -2070,18 +2070,18 @@ def exe():
     #       Robert Kleinkauf (c) 2015                                       #
     #       Bioinformatics, Albert-Ludwigs University Freiburg, Germany     #
     #########################################################################
-  
+
     - For antaRNA only the VIENNNA RNA Package must be installed on your linux system.
-      antaRNA will only check, if the executables of RNAfold and RNAdistance of the ViennaRNA package can be found. If those programs are 
+      antaRNA will only check, if the executables of RNAfold and RNAdistance of the ViennaRNA package can be found. If those programs are
       not installed correctly, no output will be generated, an also no warning will be prompted.
       So the binary path of the Vienna Tools must be set up correctly in your system's PATH variable in order to run antaRNA correctly!
-   
+
     - antaRNA was only tested under Linux.
-    
+
     - For questions and remarks please feel free to contact us at http://www.bioinf.uni-freiburg.de/
 
     """,
-        epilog="""   
+        epilog="""
     Example calls:
         python antaRNA.py --Cstr "...(((...)))..." --tGC 0.5 -n 2
         python antaRNA.py --Cstr ".........AAA(((...)))AAA........." --tGC 0.5 -n 10 --output_file /path/to/antaRNA_TESTRUN -ov

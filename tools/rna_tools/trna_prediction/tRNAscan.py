@@ -7,7 +7,6 @@ import subprocess
 import sys
 
 from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
 
 
 def main(args):

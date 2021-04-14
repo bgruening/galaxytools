@@ -45,9 +45,9 @@ def sequence_search(seq_id, seq):
 
     def add_spaces(text, mul=8):
         """Add spaces to a string."""
-        l = len(text)
-        next_mul = int(ceil(l / mul) + 1) * mul
-        offset = next_mul - l
+        text_length = len(text)
+        next_mul = int(ceil(text_length / mul) + 1) * mul
+        offset = next_mul - text_length
         if offset == 0:
             offset = 8
         return text + " " * offset
@@ -122,7 +122,7 @@ def read_pfam_output(pfam_out_file):
     try:
         data = pd.read_table(
             pfam_out_file,
-            sep="\s*",
+            sep="\s*",  # noqa W605
             skip_blank_lines=True,
             skiprows=1,
             names=cols,
