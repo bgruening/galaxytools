@@ -5,6 +5,7 @@
 import string
 import sys
 
+import numpy
 import rpy2.rlike.container as rlc
 import rpy2.robjects as robjects
 
@@ -12,7 +13,6 @@ import rpy2.robjects as robjects
 
 
 r = robjects.r
-import numpy
 
 # export PYTHONPATH=~/galaxy/lib/
 # running command python partialR_square.py reg_inp.tab 4 1,2,3 partialR_result.tabular

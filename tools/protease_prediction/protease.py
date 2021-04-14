@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 
+import logging
+import os
+
+from eden.converter.fasta import fasta_to_sequence, sequence_to_eden
+from eden.graph import Vectorizer
+from eden.model_base import ModelInitializerBase, main_script
+from eden.modifier.seq import mark_modifier, seq_to_seq, shuffle_modifier
+
 description = """
 Explicit Decomposition with Neighborhood (EDeN) utility program.
 Protease modelling driver.
@@ -16,14 +24,6 @@ Status: Production
 Cite:  Costa, Fabrizio, and Kurt De Grave, 'Fast neighborhood subgraph pairwise
 distance kernel', Proceedings of the 26th International Conference on Machine
 Learning. 2010. """
-
-import logging
-import os
-
-from eden.converter.fasta import fasta_to_sequence, sequence_to_eden
-from eden.graph import Vectorizer
-from eden.model_base import ModelInitializerBase, main_script
-from eden.modifier.seq import mark_modifier, seq_to_seq, shuffle_modifier
 
 
 class ModelInitializer(ModelInitializerBase):

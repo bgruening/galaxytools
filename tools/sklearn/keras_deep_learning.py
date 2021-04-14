@@ -104,24 +104,28 @@ def _handle_layer_parameters(params):
         ):
             continue
 
-        if key in [
-            "input_shape",
-            "noise_shape",
-            "shape",
-            "batch_shape",
-            "target_shape",
-            "dims",
-            "kernel_size",
-            "strides",
-            "dilation_rate",
-            "output_padding",
-            "cropping",
-            "size",
-            "padding",
-            "pool_size",
-            "axis",
-            "shared_axes",
-        ] and isinstance(value, str):
+        if (
+            key
+            in [
+                "input_shape",
+                "noise_shape",
+                "shape",
+                "batch_shape",
+                "target_shape",
+                "dims",
+                "kernel_size",
+                "strides",
+                "dilation_rate",
+                "output_padding",
+                "cropping",
+                "size",
+                "padding",
+                "pool_size",
+                "axis",
+                "shared_axes",
+            ]
+            and isinstance(value, str)
+        ):
             params[key] = _handle_shape(value)
 
         elif key.endswith("_regularizer") and isinstance(value, dict):

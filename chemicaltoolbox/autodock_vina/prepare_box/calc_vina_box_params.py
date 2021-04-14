@@ -41,9 +41,9 @@ def get_params(options):
 
     optionalvals = ""
 
-    if options.seed != None:
+    if options.seed is not None:
         optionalvals += "seed = " + str(options.seed) + "\n"
-    if options.exhaustiveness != None:
+    if options.exhaustiveness is not None:
         optionalvals += "exhaustiveness = " + str(options.exhaustiveness) + "\n"
 
     with open(options.output, "w") as f:

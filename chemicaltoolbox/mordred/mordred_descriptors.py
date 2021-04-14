@@ -43,7 +43,7 @@ def mordred_descriptors(mols, output, header, use_3d, smi_as_col):
     Calculate Mordred descriptors and save as tabular
     """
     calc = Calculator(descriptors, ignore_3D=(not use_3d))
-    invalid_mols = np.where(np.array(mols) == None)[
+    invalid_mols = np.where(np.array(mols) is None)[
         0
     ]  # indices of invalid SMILES/SDMols
     mols = [

@@ -153,7 +153,7 @@ class Synonym(Base):
         """
         self.synonym = synonym
         # True is a placeholder for nothing in the parser so ignore any insert
-        if note == False:
+        if not note:
             self.note = note
         else:
             self.note = None

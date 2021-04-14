@@ -101,35 +101,29 @@ def main():
             )
             print "input files mapped: %s" % filen
             os.symlink(file, filen)
-        command = (
-            "bash %s/JAMM.sh -s %s/sample -c %s/control -g %s -o results -m %s -r %s -p %s -t %s -f %s -b %s"
-            % (
-                path,
-                tmp_dir,
-                tmp_dir,
-                args.gsize,
-                args.mode,
-                args.resolution,
-                args.processes,
-                args.type,
-                args.fraglen,
-                args.binsize,
-            )
+        command = "bash %s/JAMM.sh -s %s/sample -c %s/control -g %s -o results -m %s -r %s -p %s -t %s -f %s -b %s" % (
+            path,
+            tmp_dir,
+            tmp_dir,
+            args.gsize,
+            args.mode,
+            args.resolution,
+            args.processes,
+            args.type,
+            args.fraglen,
+            args.binsize,
         )
     else:
-        command = (
-            "bash %s/JAMM.sh -s %s/sample -g %s -o results -m %s -r %s -p %s -t %s -f %s -b %s"
-            % (
-                path,
-                tmp_dir,
-                args.gsize,
-                args.mode,
-                args.resolution,
-                args.processes,
-                args.type,
-                args.fraglen,
-                args.binsize,
-            )
+        command = "bash %s/JAMM.sh -s %s/sample -g %s -o results -m %s -r %s -p %s -t %s -f %s -b %s" % (
+            path,
+            tmp_dir,
+            args.gsize,
+            args.mode,
+            args.resolution,
+            args.processes,
+            args.type,
+            args.fraglen,
+            args.binsize,
         )
 
     print "Command called by bash:"

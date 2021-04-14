@@ -194,15 +194,15 @@ def main():
     sample0 = 0
     sample1 = 0
     sample2 = 0
-    if args.sample_cols != None:
+    if args.sample_cols is not None:
         sample0 = 1
         barlett_samples = []
         for sample in args.sample_cols.split(";"):
             barlett_samples.append(map(int, sample.split(",")))
-    if args.sample_one_cols != None:
+    if args.sample_one_cols is not None:
         sample1 = 1
         sample_one_cols = args.sample_one_cols.split(",")
-    if args.sample_two_cols != None:
+    if args.sample_two_cols is not None:
         sample_two_cols = args.sample_two_cols.split(",")
         sample2 = 1
     for line in open(infile):
@@ -352,7 +352,7 @@ def main():
             cols.append(dof)
             cols.append(ex)
         elif test_id.strip() == "tmean":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 mean = stats.tmean(map(float, sample_one))
             else:
                 mean = stats.tmean(
@@ -360,7 +360,7 @@ def main():
                 )
             cols.append(mean)
         elif test_id.strip() == "tmin":
-            if mf is 0:
+            if mf == 0:
                 min = stats.tmin(map(float, sample_one))
             else:
                 min = stats.tmin(
@@ -368,7 +368,7 @@ def main():
                 )
             cols.append(min)
         elif test_id.strip() == "tmax":
-            if nf is 0:
+            if nf == 0:
                 max = stats.tmax(map(float, sample_one))
             else:
                 max = stats.tmax(
@@ -376,7 +376,7 @@ def main():
                 )
             cols.append(max)
         elif test_id.strip() == "tvar":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 var = stats.tvar(map(float, sample_one))
             else:
                 var = stats.tvar(
@@ -384,7 +384,7 @@ def main():
                 )
             cols.append(var)
         elif test_id.strip() == "tstd":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 std = stats.tstd(map(float, sample_one))
             else:
                 std = stats.tstd(
@@ -392,7 +392,7 @@ def main():
                 )
             cols.append(std)
         elif test_id.strip() == "tsem":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 s = stats.tsem(map(float, sample_one))
             else:
                 s = stats.tsem(
@@ -400,7 +400,7 @@ def main():
                 )
             cols.append(s)
         elif test_id.strip() == "scoreatpercentile":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 s = stats.scoreatpercentile(
                     map(float, sample_one),
                     map(float, sample_two),
@@ -416,7 +416,7 @@ def main():
             for list in s:
                 cols.append(list)
         elif test_id.strip() == "relfreq":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 rel, low_range, binsize, ex = stats.relfreq(
                     map(float, sample_one), args.b
                 )
@@ -430,7 +430,7 @@ def main():
             cols.append(binsize)
             cols.append(ex)
         elif test_id.strip() == "binned_statistic":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 st, b_edge, b_n = stats.binned_statistic(
                     map(float, sample_one),
                     map(float, sample_two),
@@ -449,7 +449,7 @@ def main():
             cols.append(b_edge)
             cols.append(b_n)
         elif test_id.strip() == "threshold":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 o = stats.threshold(map(float, sample_one), newval=args.new)
             else:
                 o = stats.threshold(map(float, sample_one), mf, nf, newval=args.new)
@@ -470,7 +470,7 @@ def main():
             for list in t1:
                 cols.append(list)
         elif test_id.strip() == "histogram":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 hi, low_range, binsize, ex = stats.histogram(
                     map(float, sample_one), args.b
                 )
@@ -483,7 +483,7 @@ def main():
             cols.append(binsize)
             cols.append(ex)
         elif test_id.strip() == "cumfreq":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 cum, low_range, binsize, ex = stats.cumfreq(
                     map(float, sample_one), args.b
                 )
@@ -496,7 +496,7 @@ def main():
             cols.append(binsize)
             cols.append(ex)
         elif test_id.strip() == "boxcox_normmax":
-            if nf is 0 and mf is 0:
+            if nf == 0 and mf == 0:
                 ma = stats.boxcox_normmax(map(float, sample_one))
             else:
                 ma = stats.boxcox_normmax(
@@ -504,7 +504,7 @@ def main():
                 )
             cols.append(ma)
         elif test_id.strip() == "boxcox":
-            if imbda is 0:
+            if imbda == 0:
                 box, ma, ci = stats.boxcox(map(float, sample_one), alpha=args.alpha)
                 cols.append(box)
                 cols.append(ma)

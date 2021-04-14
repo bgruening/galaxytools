@@ -6,9 +6,9 @@ import tempfile
 
 # from rpy import *
 import rpy2.robjects as robjects
+from rpy2.robjects.vectors import DataFrame
 
 r = robjects.r
-from rpy2.robjects.vectors import DataFrame
 
 assert sys.version_info[:2] >= (2, 4)
 

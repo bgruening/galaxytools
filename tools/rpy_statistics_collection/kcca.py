@@ -22,18 +22,17 @@ usage: %prog input output1 x_cols y_cols kernel features sigma(or_None) degree(o
 import string
 import sys
 
+import numpy
+import pkg_resources
 import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
+from bx.cookbook import doc_optparse
 from galaxy import eggs
 from rpy2.robjects.packages import importr
 
 r = robjects.r
-import numpy
-import pkg_resources
-
 pkg_resources.require("bx-python")
-from bx.cookbook import doc_optparse
 
 
 def stop_err(msg):

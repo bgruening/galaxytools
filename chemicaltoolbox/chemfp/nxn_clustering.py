@@ -4,18 +4,19 @@
     http://code.google.com/p/chem-fingerprints/
     Thanks to Andrew Dalke of Andrew Dalke Scientific!
 """
-import matplotlib
 
-matplotlib.use("Agg")
-from matplotlib import rcParams
-
-rcParams.update({"figure.autolayout": True})
 import argparse
 
 import chemfp
+import matplotlib
 import numpy
 import pylab
 import scipy.cluster.hierarchy as hcluster
+from matplotlib import rcParams
+
+matplotlib.use("Agg")
+
+rcParams.update({"figure.autolayout": True})
 
 
 def distance_matrix(arena, tanimoto_threshold=0.0):

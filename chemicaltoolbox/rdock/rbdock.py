@@ -23,7 +23,7 @@ def main():
         "-o",
         "rdock_output",
     ]
-    if args.seed != None:
+    if args.seed is not None:
         cmd += ["-s", str(args.seed)]
 
     ps = subprocess.Popen(cmd, stdout=subprocess.PIPE)
@@ -35,7 +35,7 @@ def main():
             if error_counter == 10:
                 print(ps.stdout)
                 exit(23)
-        if ps.poll() != None:
+        if ps.poll() is not None:
             print(ps.stdout)
             exit(int(ps.poll()))
 

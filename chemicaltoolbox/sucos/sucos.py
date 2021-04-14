@@ -220,7 +220,7 @@ def process(
 
 
 def parse_score_mode(value):
-    if value == None or value == "all":
+    if value is None or value == "all":
         return FeatMaps.FeatMapScoreMode.All
     elif value == "closest":
         return FeatMaps.FeatMapScoreMode.Closest

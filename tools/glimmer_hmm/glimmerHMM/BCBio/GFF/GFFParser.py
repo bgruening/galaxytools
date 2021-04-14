@@ -22,6 +22,8 @@ import os
 import re
 import urllib
 
+import simplejson
+
 # Make defaultdict compatible with versions of python older than 2.4
 try:
     collections.defaultdict
@@ -126,7 +128,7 @@ def _gff_line_map(line, params):
                 pass
         # case for WormBase GFF -- everything labelled as Transcript or CDS
         for flat_name in ["Transcript", "CDS"]:
-            if gff_parts["quals"].has_key(flat_name):
+            if flat_name in gff_parts["quals"]:
                 # parent types
                 if gff_parts["type"] in [flat_name]:
                     if not gff_parts["id"]:
@@ -196,7 +198,7 @@ def _gff_line_map(line, params):
                     gff_info = _nest_gff2_features(gff_info)
                 # features that have parents need to link so we can pick up
                 # the relationship
-                if gff_info["quals"].has_key("Parent"):
+                if "Parent" in gff_info["quals"]:
                     # check for self referential parent/child relationships
                     # remove the ID, which is not useful
                     for p in gff_info["quals"]["Parent"]:
@@ -385,7 +387,7 @@ class _AbstractMapReduceGFF:
     def _add_seqs(self, base, recs):
         """Add sequence information contained in the GFF3 to records."""
         for rec in recs:
-            if base.has_key(rec.id):
+            if rec.id in base:
                 base[rec.id].seq = rec.seq
             else:
                 base[rec.id] = rec
@@ -399,7 +401,7 @@ class _AbstractMapReduceGFF:
         for child_dict in children:
             child_feature = self._get_feature(child_dict)
             for pindex, pid in enumerate(child_feature.qualifiers["Parent"]):
-                if multi_remap.has_key(pid):
+                if pid in multi_remap:
                     pid = multi_remap[pid].remap_id(child_dict)
                     child_feature.qualifiers["Parent"][pindex] = pid
                 children_prep[pid].append((child_dict["rec_id"], child_feature))
@@ -407,7 +409,7 @@ class _AbstractMapReduceGFF:
         # add children to parents that exist
         for cur_parent_dict in parents:
             cur_id = cur_parent_dict["id"]
-            if multi_remap.has_key(cur_id):
+            if cur_id in multi_remap:
                 cur_parent_dict["id"] = multi_remap[cur_id].remap_id(cur_parent_dict)
             cur_parent, base = self._add_toplevel_feature(base, cur_parent_dict)
             cur_parent, children = self._add_children_to_parent(cur_parent, children)
@@ -450,7 +452,7 @@ class _AbstractMapReduceGFF:
 
     def _add_children_to_parent(self, cur_parent, children):
         """Recursively add children to parent features."""
-        if children.has_key(cur_parent.id):
+        if cur_parent.id in children:
             cur_children = children[cur_parent.id]
             for rec_id, cur_child in cur_children:
                 cur_child, children = self._add_children_to_parent(cur_child, children)
@@ -471,7 +473,7 @@ class _AbstractMapReduceGFF:
 
     def _add_ann_to_rec(self, rec, key, vals):
         """Add a key/value annotation to the given SeqRecord."""
-        if rec.annotations.has_key(key):
+        if key in rec.annotations:
             try:
                 rec.annotations[key].extend(vals)
             except AttributeError:
@@ -665,7 +667,7 @@ class GFFParser(_AbstractMapReduceGFF):
                 self._iter = line_iter
 
             def read(self):
-                return "".join(l for l in self._iter)
+                return "".join(lin for lin in self._iter)
 
             def readline(self):
                 try:

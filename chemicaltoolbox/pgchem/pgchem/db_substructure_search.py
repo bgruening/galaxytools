@@ -60,7 +60,7 @@ def parse_command_line(argv):
 def create_query(args, mol):
     """
     Create a substructure search query using pgchem.
-    Replace \ by \\, otherwise PostGreSQL changes the canonical SMILES.
+    Replace '\' by '\\', otherwise PostGreSQL changes the canonical SMILES.
     """
     return """SELECT *
                 FROM %(libname)s.tbl_molecule molec
@@ -94,7 +94,7 @@ def __main__():
             cur.execute(create_query(args, mol))
             old_rows.append(cur.fetchall())
 
-        ### TODO: if i have a testing env, try to not append the cur.fetchall ... + it and save the one loop here
+        # TODO: if i have a testing env, try to not append the cur.fetchall ... + it and save the one loop here
         rows = []
         for first_row in old_rows:
             for row in first_row:

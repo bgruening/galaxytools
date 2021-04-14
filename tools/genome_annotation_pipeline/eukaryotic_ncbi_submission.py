@@ -143,7 +143,7 @@ class AugustusEntry:
             self.exons.append(s)
 
     def __getsegments__(self):
-        if self.mRNA == None:
+        if self.mRNA is None:
             segments = self.exons
         else:
             segments = [self.mRNA] + self.exons
@@ -524,7 +524,7 @@ def parse_blastxml(
                 #    mRNA_annotation += '%i\t%i\n' % (region.start, region.stop)
                 #    feature_table.write('%i\t%i\n' % (region.start, region.stop))
 
-            if hsp_has_annotation == False:
+            if not hsp_has_annotation:
 
                 """
                 If hsp has no annotation, insert a hypothetical protein
@@ -776,23 +776,23 @@ if __name__ == "__main__":
     print options.data_dir
 
     nocontamination_path = os.path.join(options.data_dir, "nocontamination.fsa")
-    if options.cleaned_sequence == False:
+    if not options.cleaned_sequence:
         # its not set throught the user
         options.cleaned_sequence = os.path.join(
             options.data_dir, "ncbi_submission_sequence.fsa"
         )
 
-    if options.agp_file == False:
+    if not options.agp_file:
         # its not set throught the user
         options.agp_file = os.path.join(options.data_dir, "scaffold.agp")
 
-    if options.feature_table == False:
+    if not options.feature_table:
         # its not set throught the user
         options.feature_table = os.path.join(options.data_dir, "feature_table.tbl")
 
     # If no cleand sequence is provided, clean it in two steps.
     # The galaxy wrapper provides a cleaned sequence, because the two steps running extern, we we don't need that steps.
-    if options.cleaned_sequence == False:
+    if not options.cleaned_sequence:
         remove_vector_contamination(
             options.scaffold, options.univec_path, nocontamination_path
         )

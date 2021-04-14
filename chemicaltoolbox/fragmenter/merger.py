@@ -8,9 +8,7 @@ Copyright 2013 B. Gruening and Hitesh Patel
 version: 0.3
 """
 
-import openbabel
 
-openbabel.obErrorLog.StopLogging()
 import argparse
 import logging
 import multiprocessing
@@ -21,8 +19,11 @@ import subprocess
 import sys
 import tempfile
 
+import openbabel
 import pybel
-from cheminfolib import CountLines, check_filetype, split_smi_library
+from cheminfolib import CountLines, split_smi_library
+
+openbabel.obErrorLog.StopLogging()
 
 original_atomic_num_mapping = {
     89: 6,

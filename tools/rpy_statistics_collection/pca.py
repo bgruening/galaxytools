@@ -3,6 +3,7 @@
 import string
 import sys
 
+import numpy
 import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
@@ -10,7 +11,6 @@ from rpy2.robjects.packages import importr
 
 r = robjects.r
 grdevices = importr("grDevices")
-import numpy
 
 
 def stop_err(msg):

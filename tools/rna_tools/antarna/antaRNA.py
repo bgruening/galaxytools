@@ -207,7 +207,7 @@ def isCompatibleToSet(c1, c2, IUPAC_compatibles):
     compatible = True
     for setmember in c2:
         # print setmember
-        if isCompatible(c1, setmember, IUPAC_compatibles) == False:
+        if not isCompatible(c1, setmember, IUPAC_compatibles):
             return False
     return compatible
 
@@ -1785,8 +1785,8 @@ def findSequence(
 
     useGU = useGU
 
-    if return_mod == False:
-        if print_to_STDOUT == False:
+    if not return_mod:
+        if not print_to_STDOUT:
             outfolder = "/".join(file_id.strip().split("/")[:-1])
             curr_dir = os.getcwd()
             if not os.path.exists(outfolder):
@@ -1820,7 +1820,7 @@ def findSequence(
     IUPAC_compatibles = loadIUPACcompatibilities(IUPAC, useGU)
 
     IUPAC_reverseComplements = {}
-    if useGU == False:  ## Without the GU basepair
+    if not useGU:  # Without the GU basepair
         IUPAC_reverseComplements = {
             "A": "U",
             "C": "G",
@@ -1928,7 +1928,7 @@ def findSequence(
 
     if return_mod == True:
         return result
-    if print_to_STDOUT == False:
+    if not print_to_STDOUT:
         os.chdir(curr_dir)
 
 

@@ -1,11 +1,12 @@
 #!/usr/bin/env python
-import openbabel
-
-openbabel.obErrorLog.StopLogging()
 import argparse
 import sys
 
+import openbabel
 import pybel
+
+openbabel.obErrorLog.StopLogging()
+
 
 """
 Based on a script from TJ O'Donnell
@@ -145,7 +146,7 @@ class Fragmenter:
                 if multiples[a.GetIdx()] > 1 or multiples[b.GetIdx()] > 1:
                     # remove larger fragment(s) if a-b were broken
                     fsize = self.fragment_size(a, b)
-                    if currpair == None:
+                    if currpair is None:
                         currpair = pair
                         currsize = fsize
                     else:

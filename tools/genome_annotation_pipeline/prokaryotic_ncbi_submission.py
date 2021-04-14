@@ -302,7 +302,7 @@ def parse_blastxml(
                         }
                         feature_table_text[hsp.bits] += "\t\t\tnote\t%s\n" % (note)
 
-            if hsp_has_annotation == False:
+            if not hsp_has_annotation:
                 """
                 If hsp has no annotation with the specified identity and coverage, insert a hypothetical protein
                 """
@@ -523,17 +523,17 @@ if __name__ == "__main__":
 
     nocontamination_path = os.path.join(options.data_dir, "nocontamination.fsa")
 
-    if options.agp_file == False:
+    if not options.agp_file:
         # its not set throught the user
         options.agp_file = os.path.join(options.data_dir, "scaffold.agp")
 
-    if options.feature_table == False:
+    if not options.feature_table:
         # its not set throught the user
         options.feature_table = os.path.join(options.data_dir, "feature_table.tbl")
 
     # If no cleand sequence is provided, clean it in two steps.
     # The galaxy wrapper provides a cleaned sequence, because the two steps running extern, we we don't need that steps.
-    if options.cleaned_sequence == False:
+    if not options.cleaned_sequence:
         # its not set throught the user
         options.cleaned_sequence = os.path.join(
             options.data_dir, "ncbi_submission_sequence.fsa"

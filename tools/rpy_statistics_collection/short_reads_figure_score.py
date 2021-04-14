@@ -82,7 +82,7 @@ def __main__():
         line = line.rstrip("\r\n")
         if not line or line.startswith("#"):
             continue
-        if data_type == None:
+        if data_type is None:
             if line.startswith(">"):
                 data_type = "fasta"
                 continue

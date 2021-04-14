@@ -18,7 +18,6 @@ class SilicosItError(Exception):
     """Base class for exceptions in Silicos-it code"""
 
 
-
 class WrongArgument(SilicosItError):
     """
     Exception raised when argument to function is not of correct type.

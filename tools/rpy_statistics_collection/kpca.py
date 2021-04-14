@@ -22,6 +22,8 @@ usage: %prog input output1 output2 var_cols kernel features sigma(or_None) degre
 import string
 import sys
 
+import numpy
+import pkg_resources
 import rpy2.rlike.container as rlc
 # from rpy import *
 import rpy2.robjects as robjects
@@ -30,8 +32,6 @@ from rpy2.robjects.packages import importr
 
 r = robjects.r
 grdevices = importr("grDevices")
-import numpy
-import pkg_resources
 
 pkg_resources.require("bx-python")
 from bx.cookbook import doc_optparse

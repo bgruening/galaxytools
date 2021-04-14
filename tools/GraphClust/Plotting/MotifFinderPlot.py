@@ -1,17 +1,17 @@
 #!/usr/bin/env python
 
-import matplotlib
-
-matplotlib.use("Agg")
 import glob
 import itertools
 from collections import defaultdict
 
+import matplotlib
 import matplotlib.patches as mpatches
 import numpy as np
 import pandas as pd
 import seaborn as sns
 from matplotlib import pyplot as plt
+
+matplotlib.use("Agg")
 
 
 def plot_bar(ranges, colors, orig_names, cluster_nums):
