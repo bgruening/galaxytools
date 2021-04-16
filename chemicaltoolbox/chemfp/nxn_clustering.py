@@ -9,14 +9,12 @@ import argparse
 
 import chemfp
 import matplotlib
-import numpy
-import pylab
-import scipy.cluster.hierarchy as hcluster
-from matplotlib import rcParams
-
-matplotlib.use("Agg")
-
-rcParams.update({"figure.autolayout": True})
+matplotlib.use("Agg")  # noqa
+from matplotlib import rcParams  # noqa
+rcParams.update({"figure.autolayout": True})  # noqa
+import numpy  # noqa
+import pylab  # noqa
+import scipy.cluster.hierarchy as hcluster  # noqa
 
 
 def distance_matrix(arena, tanimoto_threshold=0.0):

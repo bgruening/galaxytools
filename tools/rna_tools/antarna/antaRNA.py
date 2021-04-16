@@ -1360,7 +1360,7 @@ def runColony(
                 GC,
                 rGC,
             ),
-            file=sys.stderr,
+            file=sys.stderr
         )
         GC = rGC
 

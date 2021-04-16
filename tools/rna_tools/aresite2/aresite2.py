@@ -8,7 +8,6 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
-import urllib2
 
 usage = "usage: %prog [options] arg1 arg2"
 parser = optparse.OptionParser(usage=usage)
@@ -74,7 +73,7 @@ class AREsiteRestClient(object):
                 data = json.loads(content)
             self.req_count += 1
 
-        except urllib2.HTTPError as e:
+        except urllib.error.HTTPError as e:
             # check if we are being rate limited by the server
             if e.code == 429:
                 if "Retry-After" in e.headers:
