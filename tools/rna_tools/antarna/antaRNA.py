@@ -1354,13 +1354,12 @@ def runColony(
     rGC = reachableGC(SC)
     # GC_message = ""
     if GC > rGC:
-        print(
+        sys.stderr.write(
             "WARNING: Chosen target GC %s content is not reachable due to sequence constraint! Sequence Constraint GC-content is: %s"
             % (
                 GC,
                 rGC,
             ),
-            file=sys.stderr
         )
         GC = rGC
 
@@ -1572,7 +1571,8 @@ def runColony(
                     + " <- best solution stats",
                 )
                 print(curr_structure, " <- CS")
-                print(path, end=" ")
+                sys.stdout.write(path)
+                sys.stdout.write(" ")
                 print(
                     " <- CS",
                     "Dscore",
