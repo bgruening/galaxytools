@@ -11,30 +11,15 @@ import joblib
 import numpy as np
 import pandas as pd
 import skrebate
-from galaxy_ml.utils import (
-    clean_params,
-    get_cv,
-    get_main_estimator,
-    get_module,
-    get_scoring,
-    load_model,
-    read_columns,
-    SafeEval,
-    try_get_attr
-)
+from galaxy_ml.utils import (clean_params, get_cv,
+                             get_main_estimator, get_module, get_scoring,
+                             load_model, read_columns, SafeEval, try_get_attr)
 from scipy.io import mmread
-from sklearn import (
-    cluster,
-    decomposition,
-    feature_selection,
-    kernel_approximation,
-    model_selection,
-    preprocessing,
-)
+from sklearn import (cluster, decomposition, feature_selection,
+                     kernel_approximation, model_selection, preprocessing)
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score, cross_validate
-
 
 _fit_and_score = try_get_attr("galaxy_ml.model_validations", "_fit_and_score")
 setattr(_search, "_fit_and_score", _fit_and_score)
@@ -57,7 +42,10 @@ def _eval_search_params(params_builder):
 
         param_name = p["sp_name"]
         if param_name.lower().endswith(NON_SEARCHABLE):
-            print("Warning: `%s` is not eligible for search and was " "omitted!" % param_name)
+            print(
+                "Warning: `%s` is not eligible for search and was "
+                "omitted!" % param_name
+            )
             continue
 
         if not search_list.startswith(":"):
@@ -90,7 +78,9 @@ def _eval_search_params(params_builder):
                 decomposition.IncrementalPCA(),
                 decomposition.KernelPCA(random_state=0, n_jobs=N_JOBS),
                 decomposition.LatentDirichletAllocation(random_state=0, n_jobs=N_JOBS),
-                decomposition.MiniBatchDictionaryLearning(random_state=0, n_jobs=N_JOBS),
+                decomposition.MiniBatchDictionaryLearning(
+                    random_state=0, n_jobs=N_JOBS
+                ),
                 decomposition.MiniBatchSparsePCA(random_state=0, n_jobs=N_JOBS),
                 decomposition.NMF(random_state=0),
                 decomposition.PCA(random_state=0),
@@ -107,14 +97,26 @@ def _eval_search_params(params_builder):
                 skrebate.MultiSURF(n_jobs=N_JOBS),
                 skrebate.MultiSURFstar(n_jobs=N_JOBS),
                 imblearn.under_sampling.ClusterCentroids(random_state=0, n_jobs=N_JOBS),
-                imblearn.under_sampling.CondensedNearestNeighbour(random_state=0, n_jobs=N_JOBS),
-                imblearn.under_sampling.EditedNearestNeighbours(random_state=0, n_jobs=N_JOBS),
-                imblearn.under_sampling.RepeatedEditedNearestNeighbours(random_state=0, n_jobs=N_JOBS),
+                imblearn.under_sampling.CondensedNearestNeighbour(
+                    random_state=0, n_jobs=N_JOBS
+                ),
+                imblearn.under_sampling.EditedNearestNeighbours(
+                    random_state=0, n_jobs=N_JOBS
+                ),
+                imblearn.under_sampling.RepeatedEditedNearestNeighbours(
+                    random_state=0, n_jobs=N_JOBS
+                ),
                 imblearn.under_sampling.AllKNN(random_state=0, n_jobs=N_JOBS),
-                imblearn.under_sampling.InstanceHardnessThreshold(random_state=0, n_jobs=N_JOBS),
+                imblearn.under_sampling.InstanceHardnessThreshold(
+                    random_state=0, n_jobs=N_JOBS
+                ),
                 imblearn.under_sampling.NearMiss(random_state=0, n_jobs=N_JOBS),
-                imblearn.under_sampling.NeighbourhoodCleaningRule(random_state=0, n_jobs=N_JOBS),
-                imblearn.under_sampling.OneSidedSelection(random_state=0, n_jobs=N_JOBS),
+                imblearn.under_sampling.NeighbourhoodCleaningRule(
+                    random_state=0, n_jobs=N_JOBS
+                ),
+                imblearn.under_sampling.OneSidedSelection(
+                    random_state=0, n_jobs=N_JOBS
+                ),
                 imblearn.under_sampling.RandomUnderSampler(random_state=0),
                 imblearn.under_sampling.TomekLinks(random_state=0, n_jobs=N_JOBS),
                 imblearn.over_sampling.ADASYN(random_state=0, n_jobs=N_JOBS),
@@ -122,7 +124,9 @@ def _eval_search_params(params_builder):
                 imblearn.over_sampling.SMOTE(random_state=0, n_jobs=N_JOBS),
                 imblearn.over_sampling.SVMSMOTE(random_state=0, n_jobs=N_JOBS),
                 imblearn.over_sampling.BorderlineSMOTE(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.SMOTENC(categorical_features=[], random_state=0, n_jobs=N_JOBS),
+                imblearn.over_sampling.SMOTENC(
+                    categorical_features=[], random_state=0, n_jobs=N_JOBS
+                ),
                 imblearn.combine.SMOTEENN(random_state=0),
                 imblearn.combine.SMOTETomek(random_state=0),
             )
@@ -205,7 +209,9 @@ def _handle_X_y(
     # tabular input
     if input_type == "tabular":
         header = "infer" if params["input_options"]["header1"] else None
-        column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
+        column_option = params["input_options"]["column_selector_options_1"][
+            "selected_column_selector_option"
+        ]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
@@ -261,7 +267,9 @@ def _handle_X_y(
 
     # Get target y
     header = "infer" if params["input_options"]["header2"] else None
-    column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
+    column_option = params["input_options"]["column_selector_options_2"][
+        "selected_column_selector_option2"
+    ]
     if column_option in [
         "by_index_number",
         "all_but_by_index_number",
@@ -279,7 +287,9 @@ def _handle_X_y(
         infile2 = pd.read_csv(infile2, sep="\t", header=header, parse_dates=True)
         loaded_df[df_key] = infile2
 
-    y = read_columns(infile2, c=c, c_option=column_option, sep="\t", header=header, parse_dates=True)
+    y = read_columns(
+        infile2, c=c, c_option=column_option, sep="\t", header=header, parse_dates=True
+    )
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
     if input_type == "refseq_and_interval":
@@ -378,12 +388,16 @@ def _do_train_test_split_val(
         X, X_test, y, y_test = train_test_split(X, y, **split_options)
     elif split_options["shuffle"] == "group":
         if groups is None:
-            raise ValueError("No group based CV option was choosen for " "group shuffle!")
+            raise ValueError(
+                "No group based CV option was choosen for " "group shuffle!"
+            )
         split_options["labels"] = groups
         if y is None:
             X, X_test, groups, _ = train_test_split(X, groups, **split_options)
         else:
-            X, X_test, y, y_test, groups, _ = train_test_split(X, y, groups, **split_options)
+            X, X_test, y, y_test, groups, _ = train_test_split(
+                X, y, groups, **split_options
+            )
     else:
         if split_options["shuffle"] == "None":
             split_options["shuffle"] = None
@@ -411,9 +425,13 @@ def _do_train_test_split_val(
 
     # TODO Solve deep learning models in pipeline
     if best_estimator_.__class__.__name__ == "KerasGBatchClassifier":
-        test_score = best_estimator_.evaluate(X_test, scorer=scorer_, is_multimetric=is_multimetric)
+        test_score = best_estimator_.evaluate(
+            X_test, scorer=scorer_, is_multimetric=is_multimetric
+        )
     else:
-        test_score = _score(best_estimator_, X_test, y_test, scorer_, is_multimetric=is_multimetric)
+        test_score = _score(
+            best_estimator_, X_test, y_test, scorer_, is_multimetric=is_multimetric
+        )
 
     if not is_multimetric:
         test_score = {primary_scoring: test_score}
@@ -487,7 +505,9 @@ def main(
         params = json.load(param_handler)
 
     # Override the refit parameter
-    params["search_schemes"]["options"]["refit"] = True if params["save"] != "nope" else False
+    params["search_schemes"]["options"]["refit"] = (
+        True if params["save"] != "nope" else False
+    )
 
     with open(infile_estimator, "rb") as estimator_handler:
         estimator = load_model(estimator_handler)
@@ -499,17 +519,21 @@ def main(
     options = params["search_schemes"]["options"]
 
     if groups:
-        header = "infer" if (options["cv_selector"]["groups_selector"]["header_g"]) else None
-        column_option = options["cv_selector"]["groups_selector"]["column_selector_options_g"][
-            "selected_column_selector_option_g"
-        ]
+        header = (
+            "infer" if (options["cv_selector"]["groups_selector"]["header_g"]) else None
+        )
+        column_option = options["cv_selector"]["groups_selector"][
+            "column_selector_options_g"
+        ]["selected_column_selector_option_g"]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
             "by_header_name",
             "all_but_by_header_name",
         ]:
-            c = options["cv_selector"]["groups_selector"]["column_selector_options_g"]["col_g"]
+            c = options["cv_selector"]["groups_selector"]["column_selector_options_g"][
+                "col_g"
+            ]
         else:
             c = None
 
@@ -537,12 +561,14 @@ def main(
     secondary_scoring = options["scoring"].get("secondary_scoring", None)
     if secondary_scoring is not None:
         # If secondary_scoring is specified, convert the list into comman separated string
-        options["scoring"]["secondary_scoring"] = ",".join(options["scoring"]["secondary_scoring"])
+        options["scoring"]["secondary_scoring"] = ",".join(
+            options["scoring"]["secondary_scoring"]
+        )
     options["scoring"] = get_scoring(options["scoring"])
     if options["error_score"]:
         options["error_score"] = "raise"
     else:
-        options["error_score"] = np.NaN
+        options["error_score"] = np.nan
     if options["refit"] and isinstance(options["scoring"], dict):
         options["refit"] = primary_scoring
     if "pre_dispatch" in options and options["pre_dispatch"] == "":
@@ -588,7 +614,9 @@ def main(
         # make sure refit is choosen
         # this could be True for sklearn models, but not the case for
         # deep learning models
-        if not options["refit"] and not all(hasattr(estimator, attr) for attr in ("config", "model_type")):
+        if not options["refit"] and not all(
+            hasattr(estimator, attr) for attr in ("config", "model_type")
+        ):
             warnings.warn("Refit is change to `True` for nested validation!")
             setattr(searcher, "refit", True)
 
@@ -687,7 +715,9 @@ def main(
 
         cv_results = pd.DataFrame(searcher.cv_results_)
         cv_results = cv_results[sorted(cv_results.columns)]
-        cv_results.to_csv(path_or_buf=outfile_result, sep="\t", header=True, index=False)
+        cv_results.to_csv(
+            path_or_buf=outfile_result, sep="\t", header=True, index=False
+        )
 
     memory.clear(warn=False)
 

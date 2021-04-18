@@ -5,17 +5,17 @@ The target format is GFF3, the current GFF standard:
 """
 import urllib
 
+
 class _IdHandler:
-    """Generate IDs for GFF3 Parent/Child relationships where they don't exist.
-    """
+    """Generate IDs for GFF3 Parent/Child relationships where they don't exist."""
+
     def __init__(self):
         self._prefix = "biopygen"
         self._counter = 1
         self._seen_ids = []
 
     def _generate_id(self, quals):
-        """Generate a unique ID not present in our existing IDs.
-        """
+        """Generate a unique ID not present in our existing IDs."""
         gen_id = self._get_standard_id(quals)
         if gen_id is None:
             while 1:
@@ -33,7 +33,7 @@ class _IdHandler:
         """
         possible_keys = ["transcript_id", "protein_id"]
         for test_key in possible_keys:
-            if quals.has_key(test_key):
+            if test_key in quals:
                 cur_id = quals[test_key]
                 if isinstance(cur_id, tuple) or isinstance(cur_id, list):
                     return cur_id[0]
@@ -42,8 +42,7 @@ class _IdHandler:
         return None
 
     def update_quals(self, quals, has_children):
-        """Update a set of qualifiers, adding an ID if necessary.
-        """
+        """Update a set of qualifiers, adding an ID if necessary."""
         cur_id = quals.get("ID", None)
         # if we have an ID, record it
         if cur_id:
@@ -58,15 +57,15 @@ class _IdHandler:
             quals["ID"] = [new_id]
         return quals
 
+
 class GFF3Writer:
-    """Write GFF3 files starting with standard Biopython objects.
-    """
+    """Write GFF3 files starting with standard Biopython objects."""
+
     def __init__(self):
         pass
 
     def write(self, recs, out_handle):
-        """Write the provided records to the given handle in GFF3 format.
-        """
+        """Write the provided records to the given handle in GFF3 format."""
         id_handler = _IdHandler()
         self._write_header(out_handle)
         for rec in recs:
@@ -74,8 +73,7 @@ class GFF3Writer:
             self._write_annotations(rec.annotations, rec.id, out_handle)
             for sf in rec.features:
                 sf = self._clean_feature(sf)
-                id_handler = self._write_feature(sf, rec.id, out_handle,
-                        id_handler)
+                id_handler = self._write_feature(sf, rec.id, out_handle, id_handler)
 
     def _clean_feature(self, feature):
         quals = {}
@@ -94,24 +92,22 @@ class GFF3Writer:
         if len(rec.seq) > 0:
             out_handle.write("##sequence-region %s 1 %s\n" % (rec.id, len(rec.seq)))
 
-    def _write_feature(self, feature, rec_id, out_handle, id_handler,
-            parent_id=None):
-        """Write a feature with location information.
-        """
+    def _write_feature(self, feature, rec_id, out_handle, id_handler, parent_id=None):
+        """Write a feature with location information."""
         if feature.strand == 1:
-            strand = '+'
+            strand = "+"
         elif feature.strand == -1:
-            strand = '-'
+            strand = "-"
         else:
-            strand = '.'
+            strand = "."
         # remove any standard features from the qualifiers
         quals = feature.qualifiers.copy()
         for std_qual in ["source", "score", "phase"]:
-            if quals.has_key(std_qual) and len(quals[std_qual]) == 1:
+            if std_qual in quals and len(quals[std_qual]) == 1:
                 del quals[std_qual]
         # add a link to a parent identifier if it exists
         if parent_id:
-            if not quals.has_key("Parent"):
+            if "Parent" not in quals:
                 quals["Parent"] = []
             quals["Parent"].append(parent_id)
         quals = id_handler.update_quals(quals, len(feature.sub_features) > 0)
@@ -119,19 +115,22 @@ class GFF3Writer:
             ftype = feature.type
         else:
             ftype = "sequence_feature"
-        parts = [str(rec_id),
-                 feature.qualifiers.get("source", ["feature"])[0],
-                 ftype,
-                 str(feature.location.nofuzzy_start + 1), # 1-based indexing
-                 str(feature.location.nofuzzy_end),
-                 feature.qualifiers.get("score", ["."])[0],
-                 strand,
-                 str(feature.qualifiers.get("phase", ["."])[0]),
-                 self._format_keyvals(quals)]
+        parts = [
+            str(rec_id),
+            feature.qualifiers.get("source", ["feature"])[0],
+            ftype,
+            str(feature.location.nofuzzy_start + 1),  # 1-based indexing
+            str(feature.location.nofuzzy_end),
+            feature.qualifiers.get("score", ["."])[0],
+            strand,
+            str(feature.qualifiers.get("phase", ["."])[0]),
+            self._format_keyvals(quals),
+        ]
         out_handle.write("\t".join(parts) + "\n")
         for sub_feature in feature.sub_features:
-            id_handler = self._write_feature(sub_feature, rec_id, out_handle,
-                    id_handler, quals["ID"][0])
+            id_handler = self._write_feature(
+                sub_feature, rec_id, out_handle, id_handler, quals["ID"][0]
+            )
         return id_handler
 
     def _format_keyvals(self, keyvals):
@@ -143,27 +142,34 @@ class GFF3Writer:
                 values = [values]
             for val in values:
                 val = urllib.quote(str(val).strip())
-                if ((key and val) and val not in format_vals):
+                if (key and val) and val not in format_vals:
                     format_vals.append(val)
             format_kvs.append("%s=%s" % (key, ",".join(format_vals)))
         return ";".join(format_kvs)
 
     def _write_annotations(self, anns, rec_id, out_handle):
-        """Add annotations which refer to an entire sequence.
-        """
+        """Add annotations which refer to an entire sequence."""
         format_anns = self._format_keyvals(anns)
         if format_anns:
-            parts = [rec_id, "annotation", "remark", ".", ".", ".", ".", ".",
-                     format_anns]
+            parts = [
+                rec_id,
+                "annotation",
+                "remark",
+                ".",
+                ".",
+                ".",
+                ".",
+                ".",
+                format_anns,
+            ]
             out_handle.write("\t".join(parts) + "\n")
 
     def _write_header(self, out_handle):
-        """Write out standard header directives.
-        """
+        """Write out standard header directives."""
         out_handle.write("##gff-version 3\n")
 
+
 def write(recs, out_handle):
-    """High level interface to write GFF3 files from SeqRecords and SeqFeatures.
-    """
+    """High level interface to write GFF3 files from SeqRecords and SeqFeatures."""
     writer = GFF3Writer()
     return writer.write(recs, out_handle)

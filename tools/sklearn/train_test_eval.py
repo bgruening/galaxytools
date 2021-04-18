@@ -9,21 +9,14 @@ import joblib
 import numpy as np
 import pandas as pd
 from galaxy_ml.model_validations import train_test_split
-from galaxy_ml.utils import (
-    get_module,
-    get_scoring,
-    load_model,
-    read_columns,
-    SafeEval,
-    try_get_attr,
-)
+from galaxy_ml.utils import (get_module, get_scoring, load_model,
+                             read_columns, SafeEval, try_get_attr)
 from scipy.io import mmread
 from sklearn import pipeline
 from sklearn.metrics.scorer import _check_multimetric_scoring
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score
 from sklearn.utils import indexable, safe_indexing
-
 
 _fit_and_score = try_get_attr("galaxy_ml.model_validations", "_fit_and_score")
 setattr(_search, "_fit_and_score", _fit_and_score)
@@ -262,12 +255,9 @@ def main(
         infile2 = pd.read_csv(infile2, sep="\t", header=header, parse_dates=True)
         loaded_df[df_key] = infile2
 
-    y = read_columns(infile2,
-                     c=c,
-                     c_option=column_option,
-                     sep='\t',
-                     header=header,
-                     parse_dates=True)
+    y = read_columns(
+        infile2, c=c, c_option=column_option, sep="\t", header=header, parse_dates=True
+    )
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
     if input_type == "refseq_and_interval":
@@ -299,12 +289,14 @@ def main(
         if df_key in loaded_df:
             groups = loaded_df[df_key]
 
-        groups = read_columns(groups,
-                              c=c,
-                              c_option=column_option,
-                              sep='\t',
-                              header=header,
-                              parse_dates=True)
+        groups = read_columns(
+            groups,
+            c=c,
+            c_option=column_option,
+            sep="\t",
+            header=header,
+            parse_dates=True,
+        )
         groups = groups.ravel()
 
     # del loaded_df
@@ -371,9 +363,14 @@ def main(
                 "Stratified shuffle split is not " "applicable on empty target values!"
             )
 
-    X_train, X_test, y_train, y_test, groups_train, _groups_test = train_test_split_none(
-        X, y, groups, **test_split_options
-    )
+    (
+        X_train,
+        X_test,
+        y_train,
+        y_test,
+        groups_train,
+        _groups_test,
+    ) = train_test_split_none(X, y, groups, **test_split_options)
 
     exp_scheme = params["experiment_schemes"]["selected_exp_scheme"]
 

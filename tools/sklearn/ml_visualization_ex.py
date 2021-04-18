@@ -13,9 +13,9 @@ from galaxy_ml.utils import load_model, read_columns, SafeEval
 from keras.models import model_from_json
 from keras.utils import plot_model
 from sklearn.feature_selection.base import SelectorMixin
-from sklearn.metrics import auc, average_precision_score, confusion_matrix, precision_recall_curve, roc_curve
+from sklearn.metrics import (auc, average_precision_score, confusion_matrix,
+                             precision_recall_curve, roc_curve)
 from sklearn.pipeline import Pipeline
-
 
 safe_eval = SafeEval()
 
@@ -51,7 +51,9 @@ def visualize_pr_curve_plotly(df1, df2, pos_label, title=None):
         y_true = df1.iloc[:, idx].values
         y_score = df2.iloc[:, idx].values
 
-        precision, recall, _ = precision_recall_curve(y_true, y_score, pos_label=pos_label)
+        precision, recall, _ = precision_recall_curve(
+            y_true, y_score, pos_label=pos_label
+        )
         ap = average_precision_score(y_true, y_score, pos_label=pos_label or 1)
 
         trace = go.Scatter(
@@ -111,7 +113,9 @@ def visualize_pr_curve_matplotlib(df1, df2, pos_label, title=None):
         y_true = df1.iloc[:, idx].values
         y_score = df2.iloc[:, idx].values
 
-        precision, recall, _ = precision_recall_curve(y_true, y_score, pos_label=pos_label)
+        precision, recall, _ = precision_recall_curve(
+            y_true, y_score, pos_label=pos_label
+        )
         ap = average_precision_score(y_true, y_score, pos_label=pos_label or 1)
 
         plt.step(
@@ -155,7 +159,9 @@ def visualize_roc_curve_plotly(df1, df2, pos_label, drop_intermediate=True, titl
         y_true = df1.iloc[:, idx].values
         y_score = df2.iloc[:, idx].values
 
-        fpr, tpr, _ = roc_curve(y_true, y_score, pos_label=pos_label, drop_intermediate=drop_intermediate)
+        fpr, tpr, _ = roc_curve(
+            y_true, y_score, pos_label=pos_label, drop_intermediate=drop_intermediate
+        )
         roc_auc = auc(fpr, tpr)
 
         trace = go.Scatter(
@@ -168,7 +174,9 @@ def visualize_roc_curve_plotly(df1, df2, pos_label, drop_intermediate=True, titl
         data.append(trace)
 
     layout = go.Layout(
-        xaxis=dict(title="False Positive Rate", linecolor="lightslategray", linewidth=1),
+        xaxis=dict(
+            title="False Positive Rate", linecolor="lightslategray", linewidth=1
+        ),
         yaxis=dict(title="True Positive Rate", linecolor="lightslategray", linewidth=1),
         title=dict(
             text=title or "Receiver Operating Characteristic (ROC) Curve",
@@ -204,7 +212,9 @@ def visualize_roc_curve_plotly(df1, df2, pos_label, drop_intermediate=True, titl
     os.rename("output.html", "output")
 
 
-def visualize_roc_curve_matplotlib(df1, df2, pos_label, drop_intermediate=True, title=None):
+def visualize_roc_curve_matplotlib(
+    df1, df2, pos_label, drop_intermediate=True, title=None
+):
     """visualize roc-curve using matplotlib and output svg image"""
     backend = matplotlib.get_backend()
     if "inline" not in backend:
@@ -216,7 +226,9 @@ def visualize_roc_curve_matplotlib(df1, df2, pos_label, drop_intermediate=True, 
         y_true = df1.iloc[:, idx].values
         y_score = df2.iloc[:, idx].values
 
-        fpr, tpr, _ = roc_curve(y_true, y_score, pos_label=pos_label, drop_intermediate=drop_intermediate)
+        fpr, tpr, _ = roc_curve(
+            y_true, y_score, pos_label=pos_label, drop_intermediate=drop_intermediate
+        )
         roc_auc = auc(fpr, tpr)
 
         plt.step(
@@ -253,11 +265,15 @@ def get_dataframe(file_path, plot_selection, header_name, column_name):
         col = plot_selection[column_name]["col1"]
     else:
         col = None
-    _, input_df = read_columns(file_path, c=col,
-                               c_option=column_option,
-                               return_df=True,
-                               sep='\t', header=header,
-                               parse_dates=True)
+    _, input_df = read_columns(
+        file_path,
+        c=col,
+        c_option=column_option,
+        return_df=True,
+        sep="\t",
+        header=header,
+        parse_dates=True,
+    )
     return input_df
 
 
@@ -344,7 +360,9 @@ def main(
         with open(infile_estimator, "rb") as estimator_handler:
             estimator = load_model(estimator_handler)
 
-        column_option = params["plotting_selection"]["column_selector_options"]["selected_column_selector_option"]
+        column_option = params["plotting_selection"]["column_selector_options"][
+            "selected_column_selector_option"
+        ]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
@@ -379,7 +397,11 @@ def main(
         else:
             coefs = getattr(estimator, "feature_importances_", None)
         if coefs is None:
-            raise RuntimeError("The classifier does not expose " '"coef_" or "feature_importances_" ' "attributes")
+            raise RuntimeError(
+                "The classifier does not expose "
+                '"coef_" or "feature_importances_" '
+                "attributes"
+            )
 
         threshold = params["plotting_selection"]["threshold"]
         if threshold is not None:
@@ -454,7 +476,9 @@ def main(
         layout = go.Layout(
             xaxis=dict(title="Number of features selected"),
             yaxis=dict(title="Cross validation score"),
-            title=dict(text=title or None, x=0.5, y=0.92, xanchor="center", yanchor="top"),
+            title=dict(
+                text=title or None, x=0.5, y=0.92, xanchor="center", yanchor="top"
+            ),
             font=dict(family="sans-serif", size=11),
             # control backgroud colors
             plot_bgcolor="rgba(255,255,255,0)",
@@ -548,9 +572,13 @@ def main(
 
     elif plot_type == "classification_confusion_matrix":
         plot_selection = params["plotting_selection"]
-        input_true = get_dataframe(true_labels, plot_selection, "header_true", "column_selector_options_true")
+        input_true = get_dataframe(
+            true_labels, plot_selection, "header_true", "column_selector_options_true"
+        )
         header_predicted = "infer" if plot_selection["header_predicted"] else None
-        input_predicted = pd.read_csv(predicted_labels, sep="\t", parse_dates=True, header=header_predicted)
+        input_predicted = pd.read_csv(
+            predicted_labels, sep="\t", parse_dates=True, header=header_predicted
+        )
         true_classes = input_true.iloc[:, -1].copy()
         predicted_classes = input_predicted.iloc[:, -1].copy()
         axis_labels = list(set(true_classes))

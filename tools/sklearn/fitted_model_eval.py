@@ -30,7 +30,9 @@ def _get_X_y(params, infile1, infile2):
     # tabular input
     if input_type == "tabular":
         header = "infer" if params["input_options"]["header1"] else None
-        column_option = params["input_options"]["column_selector_options_1"]["selected_column_selector_option"]
+        column_option = params["input_options"]["column_selector_options_1"][
+            "selected_column_selector_option"
+        ]
         if column_option in [
             "by_index_number",
             "all_but_by_index_number",
@@ -52,7 +54,9 @@ def _get_X_y(params, infile1, infile2):
 
     # Get target y
     header = "infer" if params["input_options"]["header2"] else None
-    column_option = params["input_options"]["column_selector_options_2"]["selected_column_selector_option2"]
+    column_option = params["input_options"]["column_selector_options_2"][
+        "selected_column_selector_option2"
+    ]
     if column_option in [
         "by_index_number",
         "all_but_by_index_number",
@@ -70,7 +74,9 @@ def _get_X_y(params, infile1, infile2):
         infile2 = pd.read_csv(infile2, sep="\t", header=header, parse_dates=True)
         loaded_df[df_key] = infile2
 
-    y = read_columns(infile2, c=c, c_option=column_option, sep="\t", header=header, parse_dates=True)
+    y = read_columns(
+        infile2, c=c, c_option=column_option, sep="\t", header=header, parse_dates=True
+    )
     if len(y.shape) == 2 and y.shape[1] == 1:
         y = y.ravel()
 
@@ -123,7 +129,8 @@ def main(
     if hasattr(main_est, "config") and hasattr(main_est, "load_weights"):
         if not infile_weights or infile_weights == "None":
             raise ValueError(
-                "The selected model skeleton asks for weights, " "but no dataset for weights was provided!"
+                "The selected model skeleton asks for weights, "
+                "but no dataset for weights was provided!"
             )
         main_est.load_weights(infile_weights)
 
@@ -142,7 +149,9 @@ def main(
     scorer, _ = _check_multimetric_scoring(estimator, scoring=scorer)
 
     if hasattr(estimator, "evaluate"):
-        scores = estimator.evaluate(X_test, y_test=y_test, scorer=scorer, is_multimetric=True)
+        scores = estimator.evaluate(
+            X_test, y_test=y_test, scorer=scorer, is_multimetric=True
+        )
     else:
         scores = _score(estimator, X_test, y_test, scorer, is_multimetric=True)
 

@@ -21,7 +21,7 @@ input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
 
 # Set binary options.
-options_list = ['edm=Overwrite', 'iterations=%d' % iterations, 'count=%d' % count]
+options_list = ["edm=Overwrite", "iterations=%d" % iterations, "count=%d" % count]
 if black_background:
     options_list.append("black")
 if pad_edges_when_eroding:
