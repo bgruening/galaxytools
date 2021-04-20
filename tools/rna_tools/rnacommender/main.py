@@ -3,8 +3,9 @@
 
 import argparse
 import sys
-from rbpfeatures import RBPVectorizer
+
 from data import PredictDataset
+from rbpfeatures import RBPVectorizer
 from recommend import Predictor
 
 __author__ = "Gianluca Corrado"
@@ -15,13 +16,17 @@ __email__ = "gianluca.corrado@unitn.it"
 __status__ = "Production"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description=__doc__,
-        formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-    parser.add_argument('fasta', metavar='fasta', type=str,
-                        help="""Fasta file containing the RBP \
-                        sequences.""")
+        description=__doc__, formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    parser.add_argument(
+        "fasta",
+        metavar="fasta",
+        type=str,
+        help="""Fasta file containing the RBP \
+                        sequences.""",
+    )
 
     args = parser.parse_args()
 
@@ -30,21 +35,24 @@ if __name__ == '__main__':
 
     if rbp_fea is not None:
         # Define and load dataset
-        D = PredictDataset(
-            fp=rbp_fea, fr="AURA_Human_data/RNA_features/HT_utrs.h5")
+        D = PredictDataset(fp=rbp_fea, fr="AURA_Human_data/RNA_features/HT_utrs.h5")
         dataset = D.load()
 
         model = "AURA_Human_data/model/trained_model.pkl"
 
         # Define the Trainer and train the model
-        P = Predictor(predict_dataset=dataset,
-                      trained_model=model,
-                      serendipity_dic=model + '_',
-                      output="output.txt")
+        P = Predictor(
+            predict_dataset=dataset,
+            trained_model=model,
+            serendipity_dic=model + "_",
+            output="output.txt",
+        )
         P.predict()
     else:
-        sys.stdout.write("""
+        sys.stdout.write(
+            """
         ########################################
         WARNING: The queried protein has no domain similarity with the proteins in the training dataset. It cannot be predicted.
         ########################################
-        """)
+        """
+        )

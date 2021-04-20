@@ -1,7 +1,8 @@
 """Util functions."""
 
-import pandas as pd
 import cPickle
+
+import pandas as pd
 
 __author__ = "Gianluca Corrado"
 __copyright__ = "Copyright 2016, Gianluca Corrado"
@@ -39,4 +40,4 @@ def get_serendipity_val(dic, key):
         return dic[key]
     # The key wasn't in the training set, then the serendipity is 1
     except KeyError:
-        return 1.
+        return 1.0

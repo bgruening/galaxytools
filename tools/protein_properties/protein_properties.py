@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+
 from Bio import SeqIO
 from Bio.SeqUtils.ProtParam import ProteinAnalysis
 
@@ -19,5 +20,4 @@ for record in SeqIO.parse(sys.stdin, "fasta"):
     properties.append(a.aromaticity())
     # always last column to make the output more readable
     properties.append(a.sequence)
-    sys.stdout.write( '\t'.join(map(str, properties))+"\n" )
-
+    sys.stdout.write("\t".join(map(str, properties)) + "\n")

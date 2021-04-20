@@ -34,7 +34,7 @@ class Ipynb( Text ):
                 return True
             else:
                 return False
-        except:
+        except Exception:
             return False
 
     def display_data(self, trans, dataset, preview=False, filename=None, to_ext=None, chunk=None, **kwd):
@@ -51,7 +51,7 @@ class Ipynb( Text ):
                 cmd = 'ipython nbconvert --to html --template basic %s --output %s' % (dataset.file_name, ofilename)
                 subprocess.call(cmd, shell=True)
                 ofilename = '%s.html' % ofilename
-            except:
+            except Exception:
                 ofilename = dataset.file_name
                 log.exception( 'Command "%s" failed. Could not convert the IPython Notebook to HTML, defaulting to plain text.' % cmd )
             return open( ofilename )
