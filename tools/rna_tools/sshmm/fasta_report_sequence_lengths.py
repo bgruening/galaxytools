@@ -38,4 +38,3 @@ with open(fasta_file) as f:
 # Print last sequence length.
 if seq_len:
     print("%s\t%i" % (seq_id, seq_len))
-

@@ -23,13 +23,13 @@ class Json( Text ):
         try:
             json.load( open(filename) )
             return True
-        except:
+        except Exception:
             return False
 
     def display_peek( self, dataset ):
         try:
             return dataset.peek
-        except:
+        except Exception:
             return "JSON file (%s)" % ( data.nice_size( dataset.get_size() ) )
 
 

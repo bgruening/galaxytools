@@ -1,6 +1,7 @@
 import argparse
 
 from chembl_webresource_client.settings import Settings
+
 Settings.Instance().CACHING = False
 from chembl_webresource_client.new_client import new_client  # noqa
 
@@ -17,7 +18,12 @@ def get_smiles(res):
     smiles = set()
     for smi in res:
         try:
-            smiles.add('{}\t{}'.format(smi['molecule_structures']['canonical_smiles'], smi['molecule_chembl_id']))
+            smiles.add(
+                "{}\t{}".format(
+                    smi["molecule_structures"]["canonical_smiles"],
+                    smi["molecule_chembl_id"],
+                )
+            )
         except TypeError:
             continue
     return smiles
@@ -28,7 +34,9 @@ def sim_search(smiles, tanimoto):
     Return compounds which are within a Tanimoto range of the SMILES input
     """
     similarity = new_client.similarity
-    return similarity.filter(smiles=smiles, similarity=tanimoto).only(['molecule_structures', 'molecule_chembl_id'])
+    return similarity.filter(smiles=smiles, similarity=tanimoto).only(
+        ["molecule_structures", "molecule_chembl_id"]
+    )
 
 
 def substr_search(smiles):
@@ -36,7 +44,9 @@ def substr_search(smiles):
     Return compounds which contain the SMILES substructure input
     """
     substructure = new_client.substructure
-    return substructure.filter(smiles=smiles).only(['molecule_structures', 'molecule_chembl_id'])
+    return substructure.filter(smiles=smiles).only(
+        ["molecule_structures", "molecule_chembl_id"]
+    )
 
 
 def filter_drugs(mols):
@@ -68,16 +78,35 @@ def filter_ro5(mols):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Search ChEMBL database for compounds')
-    parser.add_argument('-i', '--input', help='SMILES input')
-    parser.add_argument('-f', '--file', help='SMILES input as file')
-    parser.add_argument('-o', '--output', help="SMILES output")
-    parser.add_argument('-t', '--tanimoto', type=int, help='Tanimoto similarity score')
-    parser.add_argument('-s', '--substructure', action='store_true', help='Substructure search using the SMILES input.')
-    parser.add_argument('-d', '--drugs', action='store_true', help='Filter approved drugs')
-    parser.add_argument('-b', '--biotherapeutic', action='store_true', help='Filter biotherapeutic molecules')
-    parser.add_argument('-n', '--nat-prod', action='store_true', help='Filter natural products')
-    parser.add_argument('-r', '--ro5', action='store_true', help='Filter compounds that pass Lipinski RO5')
+    parser = argparse.ArgumentParser(description="Search ChEMBL database for compounds")
+    parser.add_argument("-i", "--input", help="SMILES input")
+    parser.add_argument("-f", "--file", help="SMILES input as file")
+    parser.add_argument("-o", "--output", help="SMILES output")
+    parser.add_argument("-t", "--tanimoto", type=int, help="Tanimoto similarity score")
+    parser.add_argument(
+        "-s",
+        "--substructure",
+        action="store_true",
+        help="Substructure search using the SMILES input.",
+    )
+    parser.add_argument(
+        "-d", "--drugs", action="store_true", help="Filter approved drugs"
+    )
+    parser.add_argument(
+        "-b",
+        "--biotherapeutic",
+        action="store_true",
+        help="Filter biotherapeutic molecules",
+    )
+    parser.add_argument(
+        "-n", "--nat-prod", action="store_true", help="Filter natural products"
+    )
+    parser.add_argument(
+        "-r",
+        "--ro5",
+        action="store_true",
+        help="Filter compounds that pass Lipinski RO5",
+    )
 
     args = parser.parse_args()
 
@@ -85,7 +114,7 @@ def main():
         args.input = open_file(args.file)
 
     if len(args.input) < 5:
-        raise IOError('SMILES must be at least 5 characters long.')
+        raise IOError("SMILES must be at least 5 characters long.")
 
     if args.substructure:  # specify search type: substructure or similarity
         mols = substr_search(args.input)
@@ -109,8 +138,8 @@ def main():
     mols = get_smiles(mols)
 
     # write to file
-    with open(args.output, 'w') as f:
-        f.write('\n'.join(mols))
+    with open(args.output, "w") as f:
+        f.write("\n".join(mols))
 
 
 if __name__ == "__main__":

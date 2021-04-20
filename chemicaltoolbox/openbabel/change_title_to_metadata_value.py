@@ -11,6 +11,7 @@ import random
 import string
 
 from openbabel import openbabel, pybel
+
 openbabel.obErrorLog.StopLogging()
 
 
@@ -19,14 +20,19 @@ def main():
         description="Change the title from a molecule file to metadata \
                      value of a given-id of the same molecule file.",
     )
-    parser.add_argument('--infile', '-i', required=True,
-                        help="path to the input file")
-    parser.add_argument('--outfile', '-o', required=True,
-                        help="path to the output file")
-    parser.add_argument('--key', '-k', required=True,
-                        help="the metadata key from the sdf file which should inlcude the new title")
-    parser.add_argument('--random', '-r', action="store_true",
-                        help="Add random suffix to the title.")
+    parser.add_argument("--infile", "-i", required=True, help="path to the input file")
+    parser.add_argument(
+        "--outfile", "-o", required=True, help="path to the output file"
+    )
+    parser.add_argument(
+        "--key",
+        "-k",
+        required=True,
+        help="the metadata key from the sdf file which should inlcude the new title",
+    )
+    parser.add_argument(
+        "--random", "-r", action="store_true", help="Add random suffix to the title."
+    )
 
     args = parser.parse_args()
 
@@ -35,8 +41,11 @@ def main():
         if args.key in mol.data:
             mol.title = mol.data[args.key]
             if args.random:
-                suffix = ''.join(random.choice(string.ascii_lowercase + string.digits) for _ in range(13))
-                mol.title += '__%s' % suffix
+                suffix = "".join(
+                    random.choice(string.ascii_lowercase + string.digits)
+                    for _ in range(13)
+                )
+                mol.title += "__%s" % suffix
         output.write(mol)
 
     output.close()

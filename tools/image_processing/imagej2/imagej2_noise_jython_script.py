@@ -35,33 +35,51 @@ image_plus_copy = image_plus.duplicate()
 image_processor_copy = image_plus_copy.getProcessor()
 
 # Perform the analysis on the ImagePlus object.
-if noise == 'add_noise':
+if noise == "add_noise":
     IJ.run(image_plus_copy, "Add Noise", "")
-elif noise == 'add_specified_noise':
+elif noise == "add_specified_noise":
     IJ.run(image_plus_copy, "Add Specified Noise", "standard=&standard_deviation")
-elif noise == 'salt_and_pepper':
+elif noise == "salt_and_pepper":
     IJ.run(image_plus_copy, "Salt and Pepper", "")
-elif noise == 'despeckle':
+elif noise == "despeckle":
     IJ.run(image_plus_copy, "Despeckle", "")
-elif noise == 'remove_outliers':
-    IJ.run(image_plus_copy, "Remove Outliers", "radius=&radius threshold=&threshold which=&which_outliers")
-elif noise == 'remove_nans':
+elif noise == "remove_outliers":
+    IJ.run(
+        image_plus_copy,
+        "Remove Outliers",
+        "radius=&radius threshold=&threshold which=&which_outliers",
+    )
+elif noise == "remove_nans":
     IJ.run(image_plus_copy, "Remove NaNs", "")
-elif noise == 'rof_denoise':
+elif noise == "rof_denoise":
     IJ.run(image_plus_copy, "ROF Denoise", "")
-elif noise == 'randomj':
-    if randomj == 'randomj_binomial':
-        IJ.run(image_plus_copy, "RandomJ Binomial", "trials=&trials probability=&probability insertion=&insertion")
-    elif randomj == 'randomj_exponential':
-        IJ.run(image_plus_copy, "RandomJ Exponential", "lambda=&lammbda insertion=&insertion")
-    elif randomj == 'randomj_gamma':
+elif noise == "randomj":
+    if randomj == "randomj_binomial":
+        IJ.run(
+            image_plus_copy,
+            "RandomJ Binomial",
+            "trials=&trials probability=&probability insertion=&insertion",
+        )
+    elif randomj == "randomj_exponential":
+        IJ.run(
+            image_plus_copy,
+            "RandomJ Exponential",
+            "lambda=&lammbda insertion=&insertion",
+        )
+    elif randomj == "randomj_gamma":
         IJ.run(image_plus_copy, "RandomJ Gamma", "order=&order insertion=&insertion")
-    elif randomj == 'randomj_gaussian':
-        IJ.run(image_plus_copy, "RandomJ Gaussian", "mean=&mean sigma=&sigma insertion=&insertion")
-    elif randomj == 'randomj_poisson':
+    elif randomj == "randomj_gaussian":
+        IJ.run(
+            image_plus_copy,
+            "RandomJ Gaussian",
+            "mean=&mean sigma=&sigma insertion=&insertion",
+        )
+    elif randomj == "randomj_poisson":
         IJ.run(image_plus_copy, "RandomJ Poisson", "mean=&mean insertion=&insertion")
-    elif randomj == 'randomj_uniform':
-        IJ.run(image_plus_copy, "RandomJ Uniform", "min=&min max=&max insertion=&insertion")
+    elif randomj == "randomj_uniform":
+        IJ.run(
+            image_plus_copy, "RandomJ Uniform", "min=&min max=&max insertion=&insertion"
+        )
 
 # Save the ImagePlus object as a new image.
 IJ.saveAs(image_plus_copy, image_datatype, tmp_output_path)

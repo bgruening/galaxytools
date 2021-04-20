@@ -9,12 +9,12 @@ Usage:
 
 """
 import sys
-import os
-import glimmerhmm_tabular_to_sequence
+
 import glimmerhmm_gff_to_sequence
 
-def main(glimmer_file, ref_file, out_file, to_protein = False):
-    if to_protein == 'True':
+
+def main(glimmer_file, ref_file, out_file, to_protein=False):
+    if to_protein == "True":
         to_protein = True
     else:
         to_protein = False
@@ -24,6 +24,6 @@ def main(glimmer_file, ref_file, out_file, to_protein = False):
 
 if __name__ == "__main__":
     if len(sys.argv) != 5:
-        print __doc__
+        print(__doc__)
         sys.exit()
     main(*sys.argv[1:])
