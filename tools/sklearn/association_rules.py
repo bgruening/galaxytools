@@ -2,9 +2,8 @@ import argparse
 import json
 import warnings
 
-import numpy as np
 import pandas as pd
-from mlxtend.frequent_patterns import fpgrowth, association_rules
+from mlxtend.frequent_patterns import association_rules, fpgrowth
 from mlxtend.preprocessing import TransactionEncoder
 
 
@@ -29,10 +28,10 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
 
     min_lift: float
         Minimum lift
-  
+
     min_conviction: float
         Minimum conviction
-  
+
     max_length: int
         Maximum length
 
@@ -46,16 +45,16 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
     header = 'infer' if input_header else None
 
     with open(infile) as fp:
-        lines = fp.read().splitlines() 
+        lines = fp.read().splitlines()
 
     if header is not None:
         lines = lines[1:]
 
     dataset = []
     for line in lines:
-      line_items = line.split("\t")
-      dataset.append(line_items)
-  
+        line_items = line.split("\t")
+        dataset.append(line_items)
+
     # TransactionEncoder learns the unique labels in the dataset and transforms the
     # input dataset (a Python list of lists) into a one-hot encoded NumPy boolean array
     te = TransactionEncoder()
@@ -72,7 +71,7 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
     rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=min_confidence)
 
     # Filter association rules, keeping rules with lift and conviction larger than min_liftand and min_conviction
-    rules = rules[ (rules['lift'] >= min_lift) & (rules['conviction'] >= min_conviction) ]
+    rules = rules[(rules['lift'] >= min_lift) & (rules['conviction'] >= min_conviction)]
 
     # Convert columns from frozenset to list (more readable)
     rules['antecedents'] = rules['antecedents'].apply(list)
@@ -80,7 +79,7 @@ def main(inputs, infile, outfile, min_support=0.5, min_confidence=0.5, min_lift=
 
     # The next 3 steps are intended to fix the order of the association
     # rules generated, so tests that rely on diff'ing a desired output
-    # with an expected output can pass.  
+    # with an expected output can pass
 
     # 1) Sort entry in every row/column for columns 'antecedents' and 'consequents'
     rules['antecedents'] = rules['antecedents'].apply(lambda row: sorted(row))
@@ -112,6 +111,6 @@ if __name__ == '__main__':
     aparser.add_argument("-t", "--length", dest="length", default=5)
     args = aparser.parse_args()
 
-    main(args.inputs, args.infile, args.outfile, 
-         min_support=float(args.support), min_confidence=float(args.confidence), 
+    main(args.inputs, args.infile, args.outfile,
+         min_support=float(args.support), min_confidence=float(args.confidence),
          min_lift=float(args.lift), min_conviction=float(args.conviction), max_length=int(args.length))
