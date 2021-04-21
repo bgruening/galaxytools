@@ -60,6 +60,8 @@ def _map(query, f, t, format='tab', chunk_size=100):
     response = requests.post(URL + tool, data=data)
     response.raise_for_status()
     page = response.text
+    if "The service is temporarily unavailable" in page:
+        exit("The UNIPROT service is temporarily unavailable. Please try again later.")
     return page
 
 
