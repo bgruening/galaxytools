@@ -1,9 +1,10 @@
 import argparse
 
+
 def get_coordinates(lines):
     version = lines[3][34:39]
     molecule = []
-    if version == 'V2000':
+    if version == "V2000":
         natom = int(lines[3][:3].strip())
         for i in range(1, natom + 1):
             temp = []
@@ -41,9 +42,14 @@ def select_points(all_coordinates):
             x, y, z = coordinates
             for record in select:
                 xr, yr, zr = record
-                if xr-tol < x and x < xr+tol and \
-                   yr-tol < y and y < yr+tol and \
-                   zr-tol < z and z < zr+tol:
+                if (
+                    xr - tol < x
+                    and x < xr + tol
+                    and yr - tol < y
+                    and y < yr + tol
+                    and zr - tol < z
+                    and z < zr + tol
+                ):
                     tv = 1
                     break
             if tv == 1:
@@ -59,32 +65,35 @@ def sdfout(centers, writer):
     writer.write("%3d  0  0  0  0  0  0  0  0  0999 V2000\n" % n)
     for record in centers:
         x, y, z = record
-        writer.write("%10.4f%10.4f%10.4f C   0  0  0  0  0  0  0  0  0  0  0  0\n" % (x, y, z))
+        writer.write(
+            "%10.4f%10.4f%10.4f C   0  0  0  0  0  0  0  0  0  0  0  0\n" % (x, y, z)
+        )
 
     writer.write("M  END\n$$$$\n")
 
 
 def main():
-    parser = argparse.ArgumentParser(description='RDKit screen')
-    parser.add_argument('-i', '--input',
-                        help="Input file")
-    parser.add_argument('-o', '--output',
-                        help="Base name for output file (no extension).")
+    parser = argparse.ArgumentParser(description="RDKit screen")
+    parser.add_argument("-i", "--input", help="Input file")
+    parser.add_argument(
+        "-o", "--output", help="Base name for output file (no extension)."
+    )
     args = parser.parse_args()
 
     mol_coordinates = []
     all_coordinates = []
     with open(args.input) as file:
         for line in file:
-            if line.strip() == '$$$$':
+            if line.strip() == "$$$$":
                 temp = get_coordinates(mol_coordinates)
                 all_coordinates.append(temp)
                 mol_coordinates.clear()
             else:
                 mol_coordinates.append(line)
     centers = select_points(all_coordinates)
-    with open(args.output, 'w+') as writer:
+    with open(args.output, "w+") as writer:
         sdfout(centers, writer)
+
 
 if __name__ == "__main__":
     main()

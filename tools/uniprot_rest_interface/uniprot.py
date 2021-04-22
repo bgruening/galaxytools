@@ -84,6 +84,7 @@ if __name__ == '__main__':
     retrieve.add_argument('out', nargs='?', type=argparse.FileType('w'),
                           default=sys.stdout, help='output file (default: stdout)')
     retrieve.add_argument('-f', '--format', help='specify output format', default='txt')
+
     args = parser.parse_args()
 
     # get the IDs from the file as sorted list

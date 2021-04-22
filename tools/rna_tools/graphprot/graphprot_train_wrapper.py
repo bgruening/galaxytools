@@ -7,7 +7,6 @@ import sys
 
 import gplib
 
-
 """
 
 TOOL DEPENDENCIES
@@ -62,7 +61,8 @@ python graphprot_train_wrapper.py --pos test-data/test_positives.train.fa
 """
 
 
-###############################################################################
+#######################################################################
+
 
 def setup_argument_parser():
     """Setup argparse parser."""
@@ -84,89 +84,107 @@ def setup_argument_parser():
 
     """
     # Define argument parser.
-    p = ap.ArgumentParser(add_help=False,
-                          prog="graphprot_train_wrapper.py",
-                          description=help_description,
-                          formatter_class=ap.MetavarTypeHelpFormatter)
+    p = ap.ArgumentParser(
+        add_help=False,
+        prog="graphprot_train_wrapper.py",
+        description=help_description,
+        formatter_class=ap.MetavarTypeHelpFormatter,
+    )
 
     # Argument groups.
     p_man = p.add_argument_group("REQUIRED ARGUMENTS")
     p_opt = p.add_argument_group("OPTIONAL ARGUMENTS")
 
     # Required arguments.
-    p_opt.add_argument("-h", "--help",
-                       action="help",
-                       help="Print help message")
-    p_man.add_argument("--pos",
-                       dest="in_pos_fa",
-                       type=str,
-                       required=True,
-                       help="Positive (= binding site) sequences .fa file "
-                            "for model training (option -fasta)")
-    p_man.add_argument("--neg",
-                       dest="in_neg_fa",
-                       type=str,
-                       required=True,
-                       help="Negative sequences .fa file for model "
-                            "training (option -negfasta)")
-    p_man.add_argument("--data-id",
-                       dest="data_id",
-                       type=str,
-                       required=True,
-                       help="Data ID (option -prefix)")
+    p_opt.add_argument("-h", "--help", action="help", help="Print help message")
+    p_man.add_argument(
+        "--pos",
+        dest="in_pos_fa",
+        type=str,
+        required=True,
+        help="Positive (= binding site) sequences .fa file "
+        "for model training (option -fasta)",
+    )
+    p_man.add_argument(
+        "--neg",
+        dest="in_neg_fa",
+        type=str,
+        required=True,
+        help="Negative sequences .fa file for model " "training (option -negfasta)",
+    )
+    p_man.add_argument(
+        "--data-id",
+        dest="data_id",
+        type=str,
+        required=True,
+        help="Data ID (option -prefix)",
+    )
     # Additional arguments.
-    p_opt.add_argument("--opt-set-size",
-                       dest="opt_set_size",
-                       type=int,
-                       default=500,
-                       help="Hyperparameter optimization set size (taken "
-                            "away from both --pos and --neg) (default: 500)")
-    p_opt.add_argument("--opt-pos",
-                       dest="opt_pos_fa",
-                       type=str,
-                       help="Positive (= binding site) sequences .fa file "
-                            "for hyperparameter optimization (default: take "
-                            "--opt-set-size from --pos)")
-    p_opt.add_argument("--opt-neg",
-                       dest="opt_neg_fa",
-                       type=str,
-                       help="Negative sequences .fa file for hyperparameter "
-                            "optimization (default: take --opt-set-size "
-                            "from --neg)")
-    p_opt.add_argument("--min-train",
-                       dest="min_train",
-                       type=int,
-                       default=500,
-                       help="Minimum amount of training sites demanded "
-                            "(default: 500)")
-    p_opt.add_argument("--disable-cv",
-                       dest="disable_cv",
-                       default=False,
-                       action="store_true",
-                       help="Disable cross validation step (default: false)")
-    p_opt.add_argument("--disable-motifs",
-                       dest="disable_motifs",
-                       default=False,
-                       action="store_true",
-                       help="Disable motif generation step (default: false)")
-    p_opt.add_argument("--gp-output",
-                       dest="gp_output",
-                       default=False,
-                       action="store_true",
-                       help="Print output produced by GraphProt "
-                            "(default: false)")
-    p_opt.add_argument("--str-model",
-                       dest="train_str_model",
-                       default=False,
-                       action="store_true",
-                       help="Train a structure model (default: train "
-                            "a sequence model)")
+    p_opt.add_argument(
+        "--opt-set-size",
+        dest="opt_set_size",
+        type=int,
+        default=500,
+        help="Hyperparameter optimization set size (taken "
+        "away from both --pos and --neg) (default: 500)",
+    )
+    p_opt.add_argument(
+        "--opt-pos",
+        dest="opt_pos_fa",
+        type=str,
+        help="Positive (= binding site) sequences .fa file "
+        "for hyperparameter optimization (default: take "
+        "--opt-set-size from --pos)",
+    )
+    p_opt.add_argument(
+        "--opt-neg",
+        dest="opt_neg_fa",
+        type=str,
+        help="Negative sequences .fa file for hyperparameter "
+        "optimization (default: take --opt-set-size "
+        "from --neg)",
+    )
+    p_opt.add_argument(
+        "--min-train",
+        dest="min_train",
+        type=int,
+        default=500,
+        help="Minimum amount of training sites demanded " "(default: 500)",
+    )
+    p_opt.add_argument(
+        "--disable-cv",
+        dest="disable_cv",
+        default=False,
+        action="store_true",
+        help="Disable cross validation step (default: false)",
+    )
+    p_opt.add_argument(
+        "--disable-motifs",
+        dest="disable_motifs",
+        default=False,
+        action="store_true",
+        help="Disable motif generation step (default: false)",
+    )
+    p_opt.add_argument(
+        "--gp-output",
+        dest="gp_output",
+        default=False,
+        action="store_true",
+        help="Print output produced by GraphProt " "(default: false)",
+    )
+    p_opt.add_argument(
+        "--str-model",
+        dest="train_str_model",
+        default=False,
+        action="store_true",
+        help="Train a structure model (default: train " "a sequence model)",
+    )
     return p
 
 
-###############################################################################
+#######################################################################
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
     # Setup argparse.
     parser = setup_argument_parser()
@@ -182,17 +200,17 @@ if __name__ == '__main__':
     # Check tool availability.
     assert gplib.is_tool("GraphProt.pl"), "GraphProt.pl not in PATH"
     # Check file inputs.
-    assert os.path.exists(args.in_pos_fa), \
-        "positives .fa file \"%s\" not found" % (args.in_pos_fa)
-    assert os.path.exists(args.in_neg_fa), \
-        "negatives .fa file \"%s\" not found" % (args.in_neg_fa)
+    assert os.path.exists(args.in_pos_fa), 'positives .fa file "%s" not found' % (
+        args.in_pos_fa
+    )
+    assert os.path.exists(args.in_neg_fa), 'negatives .fa file "%s" not found' % (
+        args.in_neg_fa
+    )
     # Count .fa entries.
     c_pos_fa = gplib.count_fasta_headers(args.in_pos_fa)
     c_neg_fa = gplib.count_fasta_headers(args.in_neg_fa)
-    assert c_pos_fa, "positives .fa file \"%s\" no headers found" % \
-        (args.in_pos_fa)
-    assert c_neg_fa, "negatives .fa file \"%s\" no headers found" % \
-        (args.in_neg_fa)
+    assert c_pos_fa, 'positives .fa file "%s" no headers found' % (args.in_pos_fa)
+    assert c_neg_fa, 'negatives .fa file "%s" no headers found' % (args.in_neg_fa)
     print("# positive .fa sequences:   %i" % (c_pos_fa))
     print("# negative .fa sequences:   %i" % (c_neg_fa))
     # Check additional files.
@@ -201,13 +219,15 @@ if __name__ == '__main__':
     if args.opt_neg_fa:
         assert args.opt_pos_fa, "--opt-neg but no --opt-pos given"
     # Check for lowercase only sequences, which cause GP to crash.
-    error_mess = "input sequences encountered containing "\
-        "only lowercase characters or lowercase characters in between "\
-        "uppercase characters. Please provide either all uppercase "\
-        "sequences or sequences containing uppercase regions surrounded "\
-        "by lowercase context regions for structure calculation (see "\
-        "viewpoint concept in original GraphProt publication "\
+    error_mess = (
+        "input sequences encountered containing "
+        "only lowercase characters or lowercase characters in between "
+        "uppercase characters. Please provide either all uppercase "
+        "sequences or sequences containing uppercase regions surrounded "
+        "by lowercase context regions for structure calculation (see "
+        "viewpoint concept in original GraphProt publication "
         "for more details)"
+    )
     seqs_dic = gplib.read_fasta_into_dic(args.in_pos_fa)
     bad_ids = gplib.check_seqs_dic_format(seqs_dic)
     assert not bad_ids, "%s" % (error_mess)
@@ -227,57 +247,73 @@ if __name__ == '__main__':
     if args.opt_pos_fa and args.opt_neg_fa:
         c_parop_pos_fa = gplib.count_fasta_headers(args.opt_pos_fa)
         c_parop_neg_fa = gplib.count_fasta_headers(args.opt_neg_fa)
-        assert c_parop_pos_fa, "--opt-pos .fa file \"%s\" no headers found" \
-            % (args.opt_pos_fa)
-        assert c_parop_neg_fa, "--opt-neg .fa file \"%s\" no headers found" \
-            % (args.opt_neg_fa)
+        assert c_parop_pos_fa, '--opt-pos .fa file "%s" no headers found' % (
+            args.opt_pos_fa
+        )
+        assert c_parop_neg_fa, '--opt-neg .fa file "%s" no headers found' % (
+            args.opt_neg_fa
+        )
         # Less than 500 for training?? You gotta be kidding.
-        assert c_pos_fa >= args.min_train, \
-            "--pos for training < %i, please provide more (try at least "\
+        assert c_pos_fa >= args.min_train, (
+            "--pos for training < %i, please provide more (try at least "
             "> 1000, the more the better)" % (args.min_train)
-        assert c_neg_fa >= args.min_train, \
-            "--neg for training < %i, please provide more (try at least "\
+        )
+        assert c_neg_fa >= args.min_train, (
+            "--neg for training < %i, please provide more (try at least "
             "> 1000, the more the better)" % (args.min_train)
+        )
         # Looking closer at ratios.
         pos_neg_ratio = c_parop_pos_fa / c_parop_neg_fa
         if pos_neg_ratio < 0.8 or pos_neg_ratio > 1.25:
-            assert 0, "ratio of --opt-pos to --opt-neg < 0.8 or > 1.25 "\
-                "(ratio = %f). Try to keep ratio closer to 1 or better use "\
-                "identical numbers (keep in mind that performance measures "\
-                "such as accuracy or AUROC are not suitable for imbalanced "\
+            assert 0, (
+                "ratio of --opt-pos to --opt-neg < 0.8 or > 1.25 "
+                "(ratio = %f). Try to keep ratio closer to 1 or better use "
+                "identical numbers (keep in mind that performance measures "
+                "such as accuracy or AUROC are not suitable for imbalanced "
                 " datasets!)" % (pos_neg_ratio)
+            )
     else:
         # Define some minimum amount of training sites for the sake of sanity.
         c_pos_train = c_pos_fa - args.opt_set_size
         c_neg_train = c_neg_fa - args.opt_set_size
         # Start complaining.
-        assert c_pos_fa >= args.opt_set_size, \
-            "# positives < --opt-set-size (%i < %i)" \
-            % (c_pos_fa, args.opt_set_size)
-        assert c_neg_fa >= args.opt_set_size, \
-            "# negatives < --opt-set-size (%i < %i)" \
-            % (c_neg_fa, args.opt_set_size)
-        assert c_pos_train >= args.opt_set_size, \
-            "# positives remaining for training < --opt-set-size "\
-            "(%i < %i)" % (c_pos_train, args.opt_set_size)
-        assert c_neg_train >= args.opt_set_size, "# negatives remaining "\
-            "for training < --opt-set-size (%i < %i)" \
-            % (c_neg_train, args.opt_set_size)
+        assert (
+            c_pos_fa >= args.opt_set_size
+        ), "# positives < --opt-set-size (%i < %i)" % (c_pos_fa, args.opt_set_size)
+        assert (
+            c_neg_fa >= args.opt_set_size
+        ), "# negatives < --opt-set-size (%i < %i)" % (c_neg_fa, args.opt_set_size)
+        assert (
+            c_pos_train >= args.opt_set_size
+        ), "# positives remaining for training < --opt-set-size " "(%i < %i)" % (
+            c_pos_train,
+            args.opt_set_size,
+        )
+        assert (
+            c_neg_train >= args.opt_set_size
+        ), "# negatives remaining " "for training < --opt-set-size (%i < %i)" % (
+            c_neg_train,
+            args.opt_set_size,
+        )
         # Less than 500?? You gotta be kidding.
-        assert c_pos_train >= args.min_train, \
-            "# positives remaining for training < %i, please provide more "\
+        assert c_pos_train >= args.min_train, (
+            "# positives remaining for training < %i, please provide more "
             " (try at least > 1000, the more the better)" % (args.min_train)
-        assert c_neg_train >= args.min_train, \
-            "# negatives remaining for training < %i, please provide more "\
+        )
+        assert c_neg_train >= args.min_train, (
+            "# negatives remaining for training < %i, please provide more "
             "(try at least > 1000, the more the better)" % (args.min_train)
+        )
         # Looking closer at ratios.
         pos_neg_ratio = c_pos_train / c_neg_train
         if pos_neg_ratio < 0.8 or pos_neg_ratio > 1.25:
-            assert 0, "ratio of --pos to --neg < 0.8 or > 1.25 "\
-                "(ratio = %f). Try to keep ratio closer to 1 or better use "\
-                "identical numbers (keep in mind that performance measures "\
-                "such as accuracy or AUROC are not suitable for imbalanced "\
+            assert 0, (
+                "ratio of --pos to --neg < 0.8 or > 1.25 "
+                "(ratio = %f). Try to keep ratio closer to 1 or better use "
+                "identical numbers (keep in mind that performance measures "
+                "such as accuracy or AUROC are not suitable for imbalanced "
                 "datasets!)" % (pos_neg_ratio)
+            )
 
     """
     Generate parop + train .fa output files for hyperparameter
@@ -299,28 +335,37 @@ if __name__ == '__main__':
         gplib.make_file_copy(args.in_neg_fa, neg_train_fa)
     else:
         # Generate parop + train .fa files from input .fa files.
-        gplib.split_fasta_into_test_train_files(args.in_pos_fa, pos_parop_fa,
-                                                pos_train_fa,
-                                                test_size=args.opt_set_size)
-        gplib.split_fasta_into_test_train_files(args.in_neg_fa, neg_parop_fa,
-                                                neg_train_fa,
-                                                test_size=args.opt_set_size)
+        gplib.split_fasta_into_test_train_files(
+            args.in_pos_fa, pos_parop_fa, pos_train_fa, test_size=args.opt_set_size
+        )
+        gplib.split_fasta_into_test_train_files(
+            args.in_neg_fa, neg_parop_fa, neg_train_fa, test_size=args.opt_set_size
+        )
 
     """
     Do the hyperparameter optimization.
 
     """
     print("Starting hyperparameter optimization (-action ls) ... ")
-    check_cmd = "GraphProt.pl -action ls -prefix " + args.data_id + \
-        " -fasta " + pos_parop_fa + " -negfasta " + neg_parop_fa
+    check_cmd = (
+        "GraphProt.pl -action ls -prefix "
+        + args.data_id
+        + " -fasta "
+        + pos_parop_fa
+        + " -negfasta "
+        + neg_parop_fa
+    )
     # If sequence model should be trained (default).
     if not args.train_str_model:
         check_cmd += " -onlyseq"
     print(check_cmd)
     output = subprocess.getoutput(check_cmd)
     params_file = args.data_id + ".params"
-    assert os.path.exists(params_file), "Hyperparameter optimization output "\
-        " .params file \"%s\" not found" % (params_file)
+    assert os.path.exists(
+        params_file
+    ), "Hyperparameter optimization output " ' .params file "%s" not found' % (
+        params_file
+    )
     # Add model type to params file.
     if args.train_str_model:
         gplib.echo_add_to_file("model_type: structure", params_file)
@@ -334,19 +379,27 @@ if __name__ == '__main__':
 
     """
     print("Starting model training (-action train) ... ")
-    check_cmd = "GraphProt.pl -action train -prefix " + args.data_id \
-        + " -fasta " + pos_train_fa + " -negfasta " + neg_train_fa \
-        + " " + param_string
+    check_cmd = (
+        "GraphProt.pl -action train -prefix "
+        + args.data_id
+        + " -fasta "
+        + pos_train_fa
+        + " -negfasta "
+        + neg_train_fa
+        + " "
+        + param_string
+    )
     print(check_cmd)
     output = subprocess.getoutput(check_cmd)
-    assert output, \
-        "The following call of GraphProt.pl produced no output:\n%s" \
-        % (check_cmd)
+    assert output, "The following call of GraphProt.pl produced no output:\n%s" % (
+        check_cmd
+    )
     if args.gp_output:
         print(output)
     model_file = args.data_id + ".model"
-    assert os.path.exists(model_file), \
-        "Training output .model file \"%s\" not found" % (model_file)
+    assert os.path.exists(model_file), 'Training output .model file "%s" not found' % (
+        model_file
+    )
 
     """
     Do the 10-fold cross validation.
@@ -354,19 +407,29 @@ if __name__ == '__main__':
     """
     if not args.disable_cv:
         print("Starting 10-fold cross validation (-action cv) ... ")
-        check_cmd = "GraphProt.pl -action cv -prefix " + args.data_id \
-            + " -fasta " + pos_train_fa + " -negfasta " + neg_train_fa \
-            + " " + param_string + " -model " + model_file
+        check_cmd = (
+            "GraphProt.pl -action cv -prefix "
+            + args.data_id
+            + " -fasta "
+            + pos_train_fa
+            + " -negfasta "
+            + neg_train_fa
+            + " "
+            + param_string
+            + " -model "
+            + model_file
+        )
         print(check_cmd)
         output = subprocess.getoutput(check_cmd)
-        assert output, \
-            "The following call of GraphProt.pl produced no output:\n%s" \
-            % (check_cmd)
+        assert output, "The following call of GraphProt.pl produced no output:\n%s" % (
+            check_cmd
+        )
         if args.gp_output:
             print(output)
         cv_results_file = args.data_id + ".cv_results"
-        assert os.path.exists(cv_results_file), \
-            "CV output .cv_results file \"%s\" not found" % (cv_results_file)
+        assert os.path.exists(
+            cv_results_file
+        ), 'CV output .cv_results file "%s" not found' % (cv_results_file)
 
     """
     Do the motif generation.
@@ -374,75 +437,108 @@ if __name__ == '__main__':
     """
     if not args.disable_motifs:
         print("Starting motif generation (-action motif) ... ")
-        check_cmd = "GraphProt.pl -action motif -prefix " + args.data_id \
-            + " -fasta " + pos_train_fa + " -negfasta " + neg_train_fa \
-            + " " + param_string + " -model " + model_file
+        check_cmd = (
+            "GraphProt.pl -action motif -prefix "
+            + args.data_id
+            + " -fasta "
+            + pos_train_fa
+            + " -negfasta "
+            + neg_train_fa
+            + " "
+            + param_string
+            + " -model "
+            + model_file
+        )
         print(check_cmd)
         output = subprocess.getoutput(check_cmd)
-        assert output, \
-            "The following call of GraphProt.pl produced no output:\n%s" \
-            % (check_cmd)
+        assert output, "The following call of GraphProt.pl produced no output:\n%s" % (
+            check_cmd
+        )
         if args.gp_output:
             print(output)
         seq_motif_file = args.data_id + ".sequence_motif"
         seq_motif_png_file = args.data_id + ".sequence_motif.png"
-        assert os.path.exists(seq_motif_file), \
-            "Motif output .sequence_motif file \"%s\" not found" \
-            % (seq_motif_file)
-        assert os.path.exists(seq_motif_png_file), \
-            "Motif output .sequence_motif.png file \"%s\" not found" \
-            % (seq_motif_png_file)
+        assert os.path.exists(
+            seq_motif_file
+        ), 'Motif output .sequence_motif file "%s" not found' % (seq_motif_file)
+        assert os.path.exists(
+            seq_motif_png_file
+        ), 'Motif output .sequence_motif.png file "%s" not found' % (seq_motif_png_file)
         if args.train_str_model:
             str_motif_file = args.data_id + ".structure_motif"
             str_motif_png_file = args.data_id + ".structure_motif.png"
-            assert os.path.exists(str_motif_file), \
-                "Motif output .structure_motif file \"%s\" not found" \
-                % (str_motif_file)
-            assert os.path.exists(str_motif_png_file), \
-                "Motif output .structure_motif.png file \"%s\" not found" \
-                % (str_motif_png_file)
+            assert os.path.exists(
+                str_motif_file
+            ), 'Motif output .structure_motif file "%s" not found' % (str_motif_file)
+            assert os.path.exists(
+                str_motif_png_file
+            ), 'Motif output .structure_motif.png file "%s" not found' % (
+                str_motif_png_file
+            )
 
     """
     Do whole site predictions on positive training set.
 
     """
-    print("Starting whole site predictions on positive training set "
-          " (-action predict) ... ")
-    check_cmd = "GraphProt.pl -action predict -prefix " + args.data_id \
-        + " -fasta " + pos_train_fa + " " + param_string \
-        + " -model " + model_file
+    print(
+        "Starting whole site predictions on positive training set "
+        " (-action predict) ... "
+    )
+    check_cmd = (
+        "GraphProt.pl -action predict -prefix "
+        + args.data_id
+        + " -fasta "
+        + pos_train_fa
+        + " "
+        + param_string
+        + " -model "
+        + model_file
+    )
     print(check_cmd)
     output = subprocess.getoutput(check_cmd)
-    assert output, \
-        "The following call of GraphProt.pl produced no output:\n%s" \
-        % (check_cmd)
+    assert output, "The following call of GraphProt.pl produced no output:\n%s" % (
+        check_cmd
+    )
     if args.gp_output:
         print(output)
     ws_predictions_file = args.data_id + ".predictions"
-    assert os.path.exists(ws_predictions_file), \
-        "Whole site prediction output .predictions file \"%s\" not found" \
-        % (ws_predictions_file)
+    assert os.path.exists(
+        ws_predictions_file
+    ), 'Whole site prediction output .predictions file "%s" not found' % (
+        ws_predictions_file
+    )
 
     """
     Do profile predictions on positive training set.
 
     """
-    print("Starting profile predictions on positive training set "
-          "-action predict_profile) ... ")
-    check_cmd = "GraphProt.pl -action predict_profile -prefix " \
-        + args.data_id + " -fasta " + pos_train_fa + " " \
-        + param_string + " -model " + model_file
+    print(
+        "Starting profile predictions on positive training set "
+        "-action predict_profile) ... "
+    )
+    check_cmd = (
+        "GraphProt.pl -action predict_profile -prefix "
+        + args.data_id
+        + " -fasta "
+        + pos_train_fa
+        + " "
+        + param_string
+        + " -model "
+        + model_file
+    )
     print(check_cmd)
     output = subprocess.getoutput(check_cmd)
-    assert output, \
-        "The following call of GraphProt.pl produced no output:\n%s" \
-        % (check_cmd)
+    assert output, "The following call of GraphProt.pl produced no output:\n%s" % (
+        check_cmd
+    )
     if args.gp_output:
         print(output)
     profile_predictions_file = args.data_id + ".profile"
-    assert os.path.exists(profile_predictions_file), \
-        "Profile prediction output .profile file \"%s\" not found" \
-        % (profile_predictions_file)
+    assert os.path.exists(
+        profile_predictions_file
+    ), 'Profile prediction output .profile file "%s" not found' % (
+        profile_predictions_file
+    )
 
     """
     Get 50 % score (median) for .predictions and .profile file.
@@ -454,12 +550,11 @@ if __name__ == '__main__':
     print("Getting .profile and .predictions median scores ... ")
 
     # Whole site scores median.
-    ws_pred_median = \
-        gplib.graphprot_predictions_get_median(ws_predictions_file)
+    ws_pred_median = gplib.graphprot_predictions_get_median(ws_predictions_file)
     # Profile top site scores median.
-    profile_median = \
-        gplib.graphprot_profile_get_tsm(profile_predictions_file,
-                                        profile_type="profile")
+    profile_median = gplib.graphprot_profile_get_tsm(
+        profile_predictions_file, profile_type="profile"
+    )
     ws_pred_string = "pos_train_ws_pred_median: %f" % (ws_pred_median)
     profile_string = "pos_train_profile_median: %f" % (profile_median)
     gplib.echo_add_to_file(ws_pred_string, params_file)
@@ -467,13 +562,14 @@ if __name__ == '__main__':
     # Average profile top site scores median for extlr 1 to 10.
     for i in range(10):
         i += 1
-        avg_profile_median = \
-            gplib.graphprot_profile_get_tsm(profile_predictions_file,
-                                            profile_type="avg_profile",
-                                            avg_profile_extlr=i)
+        avg_profile_median = gplib.graphprot_profile_get_tsm(
+            profile_predictions_file, profile_type="avg_profile", avg_profile_extlr=i
+        )
 
-        avg_profile_string = "pos_train_avg_profile_median_%i: %f" \
-            % (i, avg_profile_median)
+        avg_profile_string = "pos_train_avg_profile_median_%i: %f" % (
+            i,
+            avg_profile_median,
+        )
         gplib.echo_add_to_file(avg_profile_string, params_file)
 
     print("Script: I'm done.")
