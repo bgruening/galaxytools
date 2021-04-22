@@ -366,9 +366,9 @@ def __main__():
                 "-@",
                 str(args.num_threads),
                 "-f",
-                tmp_res,
-                ",".join(bam_files),
+                tmp_res
             ]
+            [cmd.append(x) for x in bam_files]
             logger.info("Merging bams with: '%s'", cmd)
             process = subprocess.Popen(
                 args=cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT
