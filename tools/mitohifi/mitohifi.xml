@@ -1,0 +1,349 @@
+<tool id='mitohifi' name='MitoHiFi' version='@TOOL_VERSION@+@GALAXY_TOOL_VERSION@' profile='20.01'>
+    <description>assembly mitogenomes from Pacbio HiFi reads</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro='edam_ontology' />
+    <expand macro='requirements' />
+    <version_command>python mitohifi_v2.py -h</version_command>
+    <command detect_errors='exit_code'><![CDATA[
+        #if $operation_mode.command == 'find_reference'
+            findMitoReference.py 
+            --species '${operation_mode.species}'
+            --email '${operation_mode.email}'
+            --outfolder ./ 
+            #if $operation_mode.min_length
+                --min_length $operation_mode.min_length
+            #end if
+            $operation_mode.exact_specie
+            && mv ./*fasta ./reference_genome.fasta
+            && mv ./*gb ./reference_genome.gb
+        #elif $operation_mode.command == 'mitohifi'
+            mitohifi_v2.py 
+            #if $operation_mode.input_option.input == 'pacbio'
+                -r '${ ' '.join(["%s" % $x for $x in $operation_mode.input_option.input_reads]) }'
+            #else
+                -c '${operation_mode.input_option.input_assembly}'
+            #end if
+            -f '${operation_mode.reference_fasta}'
+            -g '${operation_mode.reference_genbank}'
+            #if $operation_mode.advanced_options.query_blast
+                -p $operation_mode.advanced_options.query_blast
+            #end if
+            #if $operation_mode.advanced_options.circular_size
+                --circular-size $operation_mode.advanced_options.circular_size
+            #end if
+            #if $operation_mode.advanced_options.circular_offset
+                --circular_offset $operation_mode.advanced_options.circular_offset
+            #end if
+            -o $operation_mode.genetic_code
+            -t \${GALAXY_SLOTS:-1}
+        #end if
+        && ls -lah
+    ]]>    </command>
+    <inputs>
+        <conditional name="operation_mode">
+            <param name="command" type="select" label="Operation type selector" help="Select a type of operation">
+                <option value="find_reference">Find a close-related mitochondrial reference genome</option>
+                <option value="mitohifi">Run MitoHiFi</option>
+            </param>
+            <when value="find_reference">
+                <param argument="--species" type="text" value="" label="Specie name" help="Specie name in binomial nomenclature">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.letters,string.digits">
+                            <add value=" "/>
+                        </valid>
+                    </sanitizer>
+                </param>
+                <param argument="--email" type="text" value="" label="Email" help="Required for NCBI database query">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.letters,string.digits">
+                            <add value="@"/>
+                            <add value="."/>
+                            <add value="_"/>
+                            <add value=" "/>                        
+                        </valid>
+                    </sanitizer>
+                </param>
+                <param argument="--min_length" type="integer" 
+                    min="0" max="15000000" value="" optional="True" label="Minimal appropriate length" />
+                <param name="exact_specie" argument="-s" type="boolean" 
+                    truevalue="-s" falsevalue="" checked="False" optional="True" label="Search for an exact species"/>
+            </when>
+            <when value="mitohifi">
+                <conditional name="input_option">
+                    <param name="input" type="select" label="Input mode">
+                        <option value="pacbio">Pacbio Hifi Reads</option>
+                        <option value="assembly">Assembled contigs/scaffolds</option>
+                    </param>
+                    <when value="pacbio">
+                        <param name="input_reads" argument="-r" type="data"
+                            format="fasta,fasta.gz,fastq,fastq.gz" multiple="True" label="Pacbio Hifi reads"
+                            help="The reads are mapped to close-related species (to pull out mito-reads and exclude possible NUMTS) and assembled by using Hifiasm"/>
+                    </when>
+                    <when value="assembly">
+                        <param name="input_assembly" argument="-c" type="data"
+                            format="fasta,fasta.gz" multiple="True" label="Assembled contigs/scaffolds"
+                            help="Assembled contigs/scaffolds in FASTA format will be used to find the mitogenome"/>
+                    </when>
+                </conditional>
+                <param name="reference_fasta" argument="-f" type="data"
+                    format="fasta,fasta.gz" multiple="True" label="Close-related mitogenome in fasta format"
+                    help="Close-related mitogenome is fasta format"/>
+                <param name="reference_genbank" argument="-g" type="data"
+                    format="genbank,genbank.gz" multiple="True" optional="True" label="Close-related mitogenome in genbank format"
+                    help="Close-related mitogenome is genbank format"/>
+                <param name="genetic_code" type="select" label="Genetic code" help="Organism genetic code following NCBI table (for mitogenome annotation)">
+                        <option value="1">Standard code</option>
+                        <option value="2">Vertebrate mitochondrial code</option>
+                        <option value="3">Yeast mitochondrial code</option>
+                        <option value="4">Mold, Protozoan and Coelenterate mitochondrial code and the Mycoplasma/Spiroplasma code </option>
+                        <option value="5">Invertebrate mitochondrial code </option>
+                        <option value="6">Ciliate, Dasycladacean and Hexamita nuclear code</option>
+                        <option value="9">Echinoderm and Flatworm mitochondrial code</option>
+                        <option value="10">Euplotid nuclear code</option>
+                        <option value="11">Bacterial, Archaeal and plant plastid code</option>
+                        <option value="12">Alternative yeast nuclear code</option>
+                        <option value="13">Ascidian mitochondrial code</option>
+                        <option value="14">Alternative flatworm mitochondrial code</option>
+                        <option value="16">Chlorophycean mitochondrial code</option>
+                        <option value="21">Trematode mitochondrial code</option>
+                        <option value="22">Scenedesmus obliquus mitochondrial code</option>
+                        <option value="23">Thraustochytrium mitochondrial code</option>
+                        <option value="24">Pterobranchia mitochondrial code</option>
+                        <option value="25">Candidate Division SR1 and Gracilibacteria code</option>
+                    </param>
+                <section name="advanced_options" title="Advanced options">
+                    <param name="query_blast" argument="-p" type="integer" 
+                        min="0" max="100" value="50" label="Blast percentage identity"
+                        help="Percentage of query in the blast match with close-related mito. By default it is going to chose any contig which has 50% or more of its length in the blast match." />
+                    <param argument="--circular-size" type="integer" 
+                        min="0" max="15000000" value="" optional="True" label="Estimated mtDNA size"
+                        help="Size to consider when checking for circularization" />
+                    <param argument="--circular_offset" type="integer" 
+                        min="0" max="5000" value="" optional="True" label="Circularization offset" 
+                        help="Offset from start and finish to consider when looking for circularization" />
+                    <param name="outputs" type="select" label="Optional outputs" multiple="True" display="checkboxes">
+                        <option value="contigs_filtering">Contigs filtering</option>
+                        <option value="contigs_circularization">Contigs circularization</option>
+                        <option value="potential_contigs">Potential contigs</option>
+                        <option value="final_mitogenome">Final mitogenome</option>
+                    </param>
+                </section>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="fasta_reference" format="fasta" from_work_dir="reference_genome.fasta" label="${tool.name} on ${on_string}: reference genome (FASTA)">
+            <filter> operation_mode['command'] == 'find_reference'</filter>
+        </data>
+        <data name="genbank_reference" format="genbank" from_work_dir="reference_genome.gb" label="${tool.name} on ${on_string}: reference genome (genbank)">
+            <filter> operation_mode['command'] == 'find_reference'</filter>
+        </data>
+        <data name="mitogenome_fasta" format="fasta" from_work_dir="final_mitogenome.fasta" label="${tool.name} on ${on_string}: final mitogenome (FASTA)">
+            <filter> operation_mode['command'] == 'mitohifi'</filter>
+        </data>
+        <data name="mitogenome_genbank" format="genbank" from_work_dir="final_mitogenome.gb" label="${tool.name} on ${on_string}: final mitogenome (genbank)">
+            <filter> operation_mode['command'] == 'mitohifi'</filter>
+        </data>
+        <data name="parsed_blast" format="txt" from_work_dir="contigs_filtering/parsed_blast.txt" label="${tool.name} on ${on_string}: parsed BLAST">
+            <filter> operation_mode['command'] == 'mitohifi' and 'contigs_filtering' in advanced_options['outputs']</filter>
+        </data> 
+        <data name="parsed_blast_all" format="txt" from_work_dir="contigs_filtering/parsed_blast_all.txt" label="${tool.name} on ${on_string}: parsed BLAST (all)">
+            <filter> operation_mode['command'] == 'mitohifi' and 'contigs_filtering' in advanced_options['outputs']</filter>
+        </data> 
+        <data name="contigs_ids" format="txt" from_work_dir="contigs_filtering/contigs_ids.txt" label="${tool.name} on ${on_string}: contigs IDS">
+            <filter> operation_mode['command'] == 'mitohifi' and 'contigs_filtering' in advanced_options['outputs']</filter>
+        </data>
+        <data name="contigs_circularization" format="txt" from_work_dir="contigs_circularization/all_contigs.circularisationCheck.txt" label="${tool.name} on ${on_string}: contigs circularization">
+            <filter> operation_mode['command'] == 'mitohifi' and 'contigs_circularization' in advanced_options['outputs']</filter>
+        </data>
+        <collection name="potential_contigs" type='list' label='${tool.name} on ${on_string}: potential contigs'>
+            <discover_datasets pattern='__designation_and_ext__' format='txt' directory='potential_contigs' />
+            <filter> operation_mode['command'] == 'mitohifi' and 'potential_contigs' in advanced_options['outputs']</filter>
+        </collection>
+        <data name="final_mitogenome" format="fasta" from_work_dir="final_mitogenome_choice/all_mitogenomes.rotated.aligned.fa" label="${tool.name} on ${on_string}: mitogenomes alignment">
+            <filter> operation_mode['command'] == 'mitohifi' and 'contigs_circularization' in advanced_options['outputs']</filter>
+        </data>
+        <data name="hifiasm" format="fasta" from_work_dir="reads_mapping_and_assembly/gbk.HiFiMapped.bam.fasta" label="${tool.name} on ${on_string}: reads mapped to close-related mtDNA">
+            <filter> operation_mode['command'] == 'mitohifi' and operation_mode['input_option']['input'] == 'pacbio'</filter>
+        </data>
+        <data name="hifiasm_filtered" format="fasta" from_work_dir="reads_mapping_and_assembly/gbk.HiFiMapped.bam.filtered.fasta" label="${tool.name} on ${on_string}: mapped reads filtered by size">
+            <filter> operation_mode['command'] == 'mitohifi' and operation_mode['input_option']['input'] == 'pacbio'</filter>
+        </data>
+        <data name="hifiasm_contigs" format="fasta" from_work_dir="reads_mapping_and_assembly/hifiasm.contigs.fasta" label="${tool.name} on ${on_string}: Hifiasm contigs">
+            <filter> operation_mode['command'] == 'mitohifi' and operation_mode['input_option']['input'] == 'pacbio'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="2">
+            <conditional name="operation_mode">
+                <param name="command" value="find_reference"/>
+                <param name="species" value="Amphipyra berbera"/>
+                <param name="email" value="kk16@sanger.ac.uk"/>
+                <param name="min_length" value="1500"/>
+            </conditional>
+            <output name="fasta_reference" file="test_01_reference.fasta" ftype="fasta"/>
+            <output name="genbank_reference" file="test_01_reference.gb" ftype="genbank"/>
+        </test>
+        <test expect_num_outputs="5">
+            <conditional name="operation_mode">
+                <param name="command" value="mitohifi"/>
+                <conditional name="input_option">
+                    <param name='input' value="pacbio"/>
+                    <param name="input_reads" value="pacbio_01.fasta.gz,pacbio_02.fasta.gz"/>
+                </conditional>
+                <param name="reference_fasta" value="related_mitogenome.fasta"/>
+                <param name="reference_genbank" value="related_mitogenome.gb"/>
+                <param name="genetic_code" value="5"/>
+            </conditional>
+            <output name="mitogenome_fasta" file="test_02_mitogenome.fasta" ftype="fasta"/>
+            <output name="mitogenome_genbank" file="test_02_reference.gb" ftype="genbank"/>
+            <output name="hifiasm" file="test_02_hifiasm.fasta" ftype="fasta"/>
+            <output name="hifiasm_filtered" file="test_02_hifiasm_filtered.fasta" ftype="fasta"/>
+            <output name="hifiasm_contigs" file="test_02_hifiasm_contigs.fasta" ftype="fasta"/>
+        </test>
+        <test expect_num_outputs="5">
+            <conditional name="operation_mode">
+                <param name="command" value="mitohifi"/>
+                <conditional name="input_option">
+                    <param name='input' value="pacbio"/>
+                    <param name="input_reads" value="pacbio_01.fasta.gz,pacbio_02.fasta.gz"/>
+                </conditional>
+                <param name="reference_fasta" value="related_mitogenome.fasta"/>
+                <param name="reference_genbank" value="related_mitogenome.gb"/>
+                <param name="genetic_code" value="5"/>
+                <section name="advanced_options">
+                    <param name="query_blast" value="40"/>
+                </section>
+            </conditional>
+            <output name="mitogenome_fasta" file="test_03_mitogenome.fasta" ftype="fasta"/>
+            <output name="mitogenome_genbank" file="test_03_reference.gb" ftype="genbank"/>
+            <output name="hifiasm" file="test_03_hifiasm.fasta" ftype="fasta"/>
+            <output name="hifiasm_filtered" file="test_03_hifiasm_filtered.fasta" ftype="fasta"/>
+            <output name="hifiasm_contigs" file="test_03_hifiasm_contigs.fasta" ftype="fasta"/>
+        </test>
+        <test expect_num_outputs="5">
+            <conditional name="operation_mode">
+                <param name="command" value="mitohifi"/>
+                <conditional name="input_option">
+                    <param name='input' value="pacbio"/>
+                    <param name="input_reads" value="pacbio_01.fasta.gz,pacbio_02.fasta.gz"/>
+                </conditional>
+                <param name="reference_fasta" value="related_mitogenome.fasta"/>
+                <param name="reference_genbank" value="related_mitogenome.gb"/>
+                <param name="genetic_code" value="5"/>
+                <section name="advanced_options">
+                    <param name="circular_size" value="120000"/>
+                </section>
+            </conditional>
+            <output name="mitogenome_fasta" file="test_04_mitogenome.fasta" ftype="fasta"/>
+            <output name="mitogenome_genbank" file="test_04_reference.gb" ftype="genbank"/>
+            <output name="hifiasm" file="test_04_hifiasm.fasta" ftype="fasta"/>
+            <output name="hifiasm_filtered" file="test_04_hifiasm_filtered.fasta" ftype="fasta"/>
+            <output name="hifiasm_contigs" file="test_04_hifiasm_contigs.fasta" ftype="fasta"/>
+        </test>
+        <test expect_num_outputs="5">
+            <conditional name="operation_mode">
+                <param name="command" value="mitohifi"/>
+                <conditional name="input_option">
+                    <param name='input' value="pacbio"/>
+                    <param name="input_reads" value="pacbio_01.fasta.gz,pacbio_02.fasta.gz"/>
+                </conditional>
+                <param name="reference_fasta" value="related_mitogenome.fasta"/>
+                <param name="reference_genbank" value="related_mitogenome.gb"/>
+                <param name="genetic_code" value="5"/>
+                <section name="advanced_options">
+                    <param name="circular_offset" value="20"/>
+                </section>
+            </conditional>
+            <output name="mitogenome_fasta" file="test_05_mitogenome.fasta" ftype="fasta"/>
+            <output name="mitogenome_genbank" file="test_05_reference.gb" ftype="genbank"/>
+            <output name="hifiasm" file="test_05_hifiasm.fasta" ftype="fasta"/>
+            <output name="hifiasm_filtered" file="test_05_hifiasm_filtered.fasta" ftype="fasta"/>
+            <output name="hifiasm_contigs" file="test_05_hifiasm_contigs.fasta" ftype="fasta"/>
+        </test>
+        <test expect_num_outputs="8">
+            <conditional name="operation_mode">
+                <param name="command" value="mitohifi"/>
+                <conditional name="input_option">
+                    <param name='input' value="pacbio"/>
+                    <param name="input_reads" value="pacbio_01.fasta.gz,pacbio_02.fasta.gz"/>
+                </conditional>
+                <param name="reference_fasta" value="related_mitogenome.fasta"/>
+                <param name="reference_genbank" value="related_mitogenome.gb"/>
+                <param name="genetic_code" value="5"/>
+                <section name="advanced_options">
+                    <param name="outputs" value="contigs_filtering"/>
+                </section>
+            </conditional>
+            <output name="mitogenome_fasta" file="test_06_mitogenome.fasta" ftype="fasta"/>
+            <output name="mitogenome_genbank" file="test_06_reference.gb" ftype="genbank"/>
+            <output name="hifiasm" file="test_06_hifiasm.fasta" ftype="fasta"/>
+            <output name="hifiasm_filtered" file="test_06_hifiasm_filtered.fasta" ftype="fasta"/>
+            <output name="hifiasm_contigs" file="test_06_hifiasm_contigs.fasta" ftype="fasta"/>
+            <output name="parsed_blast" file="test_06_parsed_blast.txt" ftype="txt"/>
+            <output name="parsed_blast_all" file="test_06_parsed_blast_all.txt" ftype="txt"/>
+            <output name="contigs_ids" file="test_06_contig_ids.txt" ftype="txt"/>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="operation_mode">
+                <param name="command" value="mitohifi"/>
+                <conditional name="input_option">
+                    <param name='input' value="pacbio"/>
+                    <param name="input_reads" value="pacbio_01.fasta.gz,pacbio_02.fasta.gz"/>
+                </conditional>
+                <param name="reference_fasta" value="related_mitogenome.fasta"/>
+                <param name="reference_genbank" value="related_mitogenome.gb"/>
+                <param name="genetic_code" value="5"/>
+                <section name="advanced_options">
+                    <param name="outputs" value="contigs_circularization"/>
+                </section>
+            </conditional>
+            <output name="mitogenome_fasta" file="test_07_mitogenome.fasta" ftype="fasta"/>
+            <output name="mitogenome_genbank" file="test_07_reference.gb" ftype="genbank"/>
+            <output name="hifiasm" file="test_07_hifiasm.fasta" ftype="fasta"/>
+            <output name="hifiasm_filtered" file="test_07_hifiasm_filtered.fasta" ftype="fasta"/>
+            <output name="hifiasm_contigs" file="test_07_hifiasm_contigs.fasta" ftype="fasta"/>
+            <output name="contigs_circularization" file="test_07_contig_circularization.txt" ftype="txt"/>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="operation_mode">
+                <param name="command" value="mitohifi"/>
+                <conditional name="input_option">
+                    <param name='input' value="pacbio"/>
+                    <param name="input_reads" value="pacbio_01.fasta.gz,pacbio_02.fasta.gz"/>
+                </conditional>
+                <param name="reference_fasta" value="related_mitogenome.fasta"/>
+                <param name="reference_genbank" value="related_mitogenome.gb"/>
+                <param name="genetic_code" value="5"/>
+                <section name="advanced_options">
+                    <param name="outputs" value="contigs_circularization"/>
+                </section>
+            </conditional>
+            <output name="mitogenome_fasta" file="test_08_mitogenome.fasta" ftype="fasta"/>
+            <output name="mitogenome_genbank" file="test_08_reference.gb" ftype="genbank"/>
+            <output name="hifiasm" file="test_08_hifiasm.fasta" ftype="fasta"/>
+            <output name="hifiasm_filtered" file="test_08_hifiasm_filtered.fasta" ftype="fasta"/>
+            <output name="hifiasm_contigs" file="test_08_hifiasm_contigs.fasta" ftype="fasta"/>
+            <output name="final_mitogenome" file="test_08_final_mitogenome.fa" ftype="fasta"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+.. class:: infomark
+
+**Purpose**
+
+
+The dissemination of high-quality long reads (such as PacBio HiFi) makes the assembly of high-quality mitogenome straight forward. Because of the circular nature of the molecule, however, the mitocontig is usually assembled redundantly resulting in multiple-copy mitogenome-contigs. This pipeline was developed to finalise the assembly and annotation of the mitogenome. It will also dected different variants of the mitogenome present in your sample. At the end you are going to have all the variants assembled and annotated, and MitoHiFi.v2 is going to choose a final consensus sequence. In addtion, you will find an aligment of all the variants to facilitate your analysis of mitochondria heteroplasmy.
+
+.. class:: infomark
+
+**Important parameter to change and test (-p)**
+
+Mitohifi is going to pull possible mito contigs by blasting your contigs with the close-related mito. The Default parameter -p is going to chose any contig which has 50% or more of its length in the blast match. This is the default because with invertebrate taxa from the Darwin Tree of Life we have been seeing that the repetitive portion of the mitogenomes is not very conserved between some taxa. In these cases, a more stringent -p ends up excluding real mito sequences. Nevertheless, if you are working with more conserved taxa - such as mammals and other vertebrates - use higher -p (such as 80 or 90) for better results.
+
+
+    ]]>    </help>
+    <expand macro="citations" />
+</tool>
