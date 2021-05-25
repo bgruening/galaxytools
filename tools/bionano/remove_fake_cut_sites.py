@@ -1,8 +1,8 @@
 import re
-from Bio.Alphabet.IUPAC import ambiguous_dna
+import sys
+
 from Bio import SeqIO
 from Bio.Seq import Seq
-import sys
 
 
 def main():
