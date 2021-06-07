@@ -183,13 +183,12 @@ def __main__():
                 args.cytosine_report,
             )
 
-    #coverage file
+    # coverage file
     if args.coverage_file:
-            shutil.move(
-                glob(os.path.join(output_dir, "*datbismark.cov.gz"))[0],
-                args.coverage_file,
-            )
-
+        shutil.move(
+            glob(os.path.join(output_dir, "*datbismark.cov.gz"))[0],
+            args.coverage_file,
+        )
 
     # splitting report
     if args.splitting_report:
