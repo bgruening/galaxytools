@@ -11,7 +11,6 @@ import sys
 import tempfile
 import zipfile
 from glob import glob
-import gzip
 
 
 def stop_err(logger, msg):
