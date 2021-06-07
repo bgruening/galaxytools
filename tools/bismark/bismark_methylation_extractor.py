@@ -11,6 +11,7 @@ import sys
 import tempfile
 import zipfile
 from glob import glob
+import gzip
 
 
 def stop_err(logger, msg):
@@ -69,6 +70,8 @@ def __main__():
     parser.add_argument("--splitting_report", dest="splitting_report")
     parser.add_argument("--mbias_report", dest="mbias_report")
     parser.add_argument("--cytosine_report", dest="cytosine_report")
+    parser.add_argument("--coverage_file", dest="coverage_file")
+
     parser.add_argument("--genome_file", dest="genome_file")
     parser.add_argument("--cx_context", action="store_true")
 
@@ -133,7 +136,6 @@ def __main__():
                     "--bedGraph",
                     "--CX_context",
                     "--cytosine_report",
-                    "--CX_context",
                     "--genome_folder",
                     tmp_genome_dir,
                 ]
@@ -175,11 +177,21 @@ def __main__():
                 glob(os.path.join(output_dir, "*CX_report.txt"))[0],
                 args.cytosine_report,
             )
+
         else:
             shutil.move(
                 glob(os.path.join(output_dir, "*CpG_report.txt"))[0],
                 args.cytosine_report,
             )
+
+    #coverage file
+    if args.coverage_file:
+            shutil.move(
+                glob(os.path.join(output_dir, "*datbismark.cov.gz"))[0],
+                args.coverage_file,
+            )
+
+
     # splitting report
     if args.splitting_report:
         logger.debug("Collecting splitting report.")
