@@ -1,5 +1,5 @@
 <tool id="hifiasm" name="Hifiasm" version="@VERSION@+galaxy0">
-    <description>de novo assembler</description>
+    <description>haplotype-resolved de novo assembler for PacBio Hifi reads</description>
     <macros>
         <token name="@VERSION@">0.15.3</token>
         <token name="@FORMATS@">fasta,fasta.gz,fastq,fastq.gz</token>
@@ -37,20 +37,15 @@
             #end for
             #set $hap1_filenames = ' '.join($hap1_inputs)
             #set $hap2_filenames = ' '.join($hap2_inputs)
-            yak count -k31 -b37 -t\${GALAXY_SLOTS:-1} -o hap1.yak $hap1_filenames &&
-            yak count -k31 -b37 -t\${GALAXY_SLOTS:-1} -o hap2.yak $hap2_filenames &&
+            yak count -k$mode.yak_kmer_length -b$filter_bits -t\${GALAXY_SLOTS:-1} -o hap1.yak $hap1_filenames &&
+            yak count -k$mode.yak_kmer_length -b$filter_bits -t\${GALAXY_SLOTS:-1} -o hap2.yak $hap2_filenames &&
         #end if
         hifiasm
-        -i $input_filenames
         -t \${GALAXY_SLOTS:-1}
         -o output
         -f $filter_bits
-        #if str($mode.mode_selector) == 'trio':
-            -1 hap1.yak -2 hap2.yak
-        #end if
         #if str($advanced_options.advanced_selector) == 'set':
-            -z $advanced_options.adapter_length
-            -k $advanced_options.kmer_length
+            -k $advanced_options.hifiasm_kmer_length
             -w $advanced_options.window_size
             -D $advanced_options.drop_kmers
             -N $advanced_options.max_overlaps
@@ -58,6 +53,7 @@
         #end if
         #if str($assembly_options.assembly_selector) == 'set':
             -a $assembly_options.cleaning_rounds
+            -z $assembly_options.adapter_length
             -m $assembly_options.pop_contigs
             -p $assembly_options.pop_unitigs
             -n $assembly_options.remove_tips
@@ -81,13 +77,8 @@
         #end if
 
         #if str($hic_partition.hic_partition_selector) == 'set':
-            #if $hic_partition.h1:
-                --h1 #','.join("'%s'" % $file for $file in $hic_partition.h1)#
-            #end if
-            #if $hic_partition.h2:
-                --h2 #','.join("'%s'" % $file for $file in $hic_partition.h2)#
-            #end if
-
+            --h1 '${ ' '.join(["%s" % $x for $x in $hic_partition.h1]) }'
+            --h2 '${ ' '.join(["%s" % $x for $x in $hic_partition.h2]) }'
             #if $hic_partition.seed:
                 --seed $hic_partition.seed
             #end if
@@ -104,6 +95,7 @@
 
         ## Changed the default outputs of hifiasm. Hifiasm outputs a primary assembly and two balanced haplotypes in default. Incorporated the option '--primary' to output primary assembly and alternate assembly.
         --primary
+        $input_filenames
 
         ]]>
     </command>
@@ -122,9 +114,11 @@
                 <param name="hap2_reads" type="data" format="fastq,fastq.gz" multiple="true" label="Haplotype 2 reads" />
                 <param name="max_kmers" argument="-c" type="integer" value="2" label="Lower bound of the binned k-mer's frequency" />
                 <param name="min_kmers" argument="-d" type="integer" value="5" label="Upper bound of the binned k-mer's frequency" />
+                <param name="yak_kmer_length" type="integer" min="0" max="64" value="31" label="Yak counter k-mer length" />
             </when>
         </conditional>
         <param name="filter_bits" argument="-f" type="integer" min="0" value="37" label="Bits for bloom filter" help="A value of 0 disables the bloom filter" />
+       
         <conditional name="advanced_options">
             <param name="advanced_selector" type="select" label="Advanced options">
                 <option value="blank">Leave default</option>
@@ -132,14 +126,15 @@
             </param>
             <when value="blank" />
             <when value="set">
-                <param name="adapter_length" argument="-z" type="integer" min="0" value="0" label="Length of adapters to be removed" />
-                <param name="kmer_length" argument="-k" type="integer" min="0" max="64" value="51" label="K-mer length" />
+                <param name="hifiasm_kmer_length" argument="-k" type="integer" min="0" max="64" value="51" label="HiFiasm k-mer length" />
                 <param name="window_size" argument="-w" type="integer" min="0" value="51" label="Minimizer window size" />
                 <param name="drop_kmers" argument="-D" type="float" value="5.0" label="Drop k-mers" help="K-mers that occur more than this value multiplied by the coverage will be discarded" />
                 <param name="max_overlaps" argument="-N" type="integer" value="100" label="Maximum overlaps to consider" help="The software selects the larger of this value and the k-mer count multiplied by coverage" />
                 <param name="correction_rounds" argument="-r" type="integer" value="3" label="Correction rounds" />
+                <param argument="--min-hist-cnt" type="integer" min="0" value="" optional="true" label="Minimum count threshold" help="When analyzing the k-mer spectrum, ignore counts below this value" />
             </when>
         </conditional>
+       
         <conditional name="assembly_options">
             <param name="assembly_selector" type="select" label="Assembly options">
                 <option value="blank">Leave default</option>
@@ -148,14 +143,17 @@
             <when value="blank" />
             <when value="set">
                 <param name="cleaning_rounds" argument="-a" type="integer" value="4" label="Cleaning rounds" />
+                <param name="adapter_length" argument="-z" type="integer" min="0" value="0" label="Length of adapters to be removed" />
                 <param name="pop_contigs" argument="-m" type="integer" value="10000000" label="Minimum contig bubble size" help="Pop contig graph bubbles smaller than this value" />
                 <param name="pop_unitigs" argument="-p" type="integer" value="100000" label="Minimum unitig bubble size" help="Pop unitig graph bubbles smaller than this value" />
                 <param name="remove_tips" argument="-n" type="integer" value="3" label="Tip unitigs" help="Keep only tip unitigs with a number of reads greater than or equal to this value" />
-                <param name="max_overlap" argument="-x" type="float" min="0" max="1" value="0.8" label="Maximum overlap drop ratio" />
-                <param name="min_overlap" argument="-y" type="float" min="0" max="1" value="0.2" label="Minimum overlap drop ratio" />
+                <param name="max_overlap" argument="-x" type="float" min="0" max="1" value="0.8" label="Maximum overlap drop ratio" help="This option is used with -r. Given a node N in the assembly graph, let max(N) be the length of the largest overlap of N. Hifiasm iteratively drops overlaps of N if their length/max(N) are below a threshold controlled by -x. Hifiasm applies -r rounds of short overlap removal with an increasing threshold between -x and -y"/>
+                <param name="min_overlap" argument="-y" type="float" min="0" max="1" value="0.2" label="Minimum overlap drop ratio" help="This option is used with -r. Given a node N in the assembly graph, let max(N) be the length of the largest overlap of N. Hifiasm iteratively drops overlaps of N if their length/max(N) are over a threshold controlled by -y. Hifiasm applies -r rounds of short overlap removal with an increasing threshold between -x and -y"/>
                 <param name="disable_post_join" argument="-u" type="boolean" truevalue="-u" falsevalue="" label="Skip post join contigs step" help="May improve N50" />
+                <param name="ignore_error_corrected" argument="-i" type="boolean" truevalue="-i" falsevalue="" value="False" label="Ignore error corrected reads and overlaps" help="Ignore  error corrected reads and overlaps saved in prefix.*.bin files.  Apart from assembly graphs, hifiasm also outputs three binary files  that  save  alloverlap information during assembly step.  With these files, hifiasm can avoid the time-consuming all-to-all overlap calculation step, and  do  the  assembly directly  and  quickly.  This might be helpful when users want to get an optimized assembly by multiple rounds of experiments with different parameters." />
             </when>
         </conditional>
+       
         <conditional name="purge_options">
             <param name="purge_selector" type="select" label="Options for purging duplicates">
                 <option value="blank">Leave default</option>
@@ -172,6 +170,7 @@
                 <param name="similarity_threshold" argument="-s" type="float" min="0" max="1" value="0.75" label="Similarity threshold for duplicate haplotigs" />
                 <param name="minimum_overlap" argument="-O" type="integer" value="1" label="Minimum overlapped reads for duplicate haplotigs" />
                 <param argument="--purge-cov" type="integer" optional="true" label="Coverage upper bound" help="If not set, this will be determined automatically" />
+                <param argument="--n-hap" type="integer" min="0" value="" optional="True" label="Assumtion of haplotype number" help="A haplotype is defined as the combination of alleles for different polymorphisms that occur on the same chromosome." />
             </when>
         </conditional>
 
@@ -187,7 +186,7 @@
                 <param argument="--seed" type="integer" min="1" value="" optional="true" label="RNG seed" />
                 <param argument="--n-weight" type="integer" min="1" value="" optional="true" label="Rounds of reweighting Hi-C links" />
                 <param argument="--n-perturb" type="integer" min="1" value="" optional="true" label="Rounds of perturbation" />
-                <param argument="--f-perturb" type="float" min="0" max="1" value="" optional="true" label="fraction to flip for perturbation" />
+                <param argument="--f-perturb" type="float" min="0" max="1" value="" optional="true" label="Fraction to flip for perturbation" />
             </when>
         </conditional>
 
@@ -196,7 +195,7 @@
         <data name="raw_unitigs" format="gfa1" from_work_dir="output.r_utg.gfa" label="${tool.name} on ${on_string}, haplotype-resolved raw unitig graph">
             <filter>mode['mode_selector'] == 'standard'</filter>
         </data>
-        <data name="raw_unitigs" format="gfa1" from_work_dir="output.dip.r_utg.gfa" label="${tool.name} on ${on_string}, haplotype-resolved raw unitig graph">
+        <data name="raw_unitigs_trio" format="gfa1" from_work_dir="output.dip.r_utg.gfa" label="${tool.name} on ${on_string}, haplotype-resolved raw unitig graph">
             <filter>mode['mode_selector'] == 'trio'</filter>
         </data>
         <data name="processed_unitigs" format="gfa1" from_work_dir="output.p_utg.gfa" label="${tool.name} on ${on_string}, processed unitig graph">
@@ -208,11 +207,21 @@
         <data name="alternate_contig_graph" format="gfa1" from_work_dir="output.a_ctg.gfa" label="${tool.name} on ${on_string}, alternate assembly contig graph">
             <filter>mode['mode_selector'] == 'standard'</filter>
         </data>
-        <data name="hap1_contigs" format="gfa1" from_work_dir="output.hap1.p_ctg.gfa" label="${tool.name} ${mode.hap1_reads.name}, contig graph">
+        <data name="hap1_contigs" format="gfa1" from_work_dir="output.hap1.p_ctg.gfa" label="${tool.name} on ${on_string}, hap1.p_ctg contig graph">
             <filter>mode['mode_selector'] == 'trio'</filter>
         </data>
-        <data name="hap2_contigs" format="gfa1" from_work_dir="output.hap2.p_ctg.gfa" label="${tool.name} ${mode.hap2_reads.name}, contig graph">
+        <data name="hap2_contigs" format="gfa1" from_work_dir="output.hap2.p_ctg.gfa" label="${tool.name} on ${on_string}, hap2.p_ctg contig graph">
             <filter>mode['mode_selector'] == 'trio'</filter>
+        </data>
+        <!-- Hi-C partition outputs -->
+        <data name="hic_contig_graph" format="gfa1" from_work_dir="output.hic.p_ctg.gfa" label="${tool.name} ${on_string}, HI-C contig graph">
+            <filter>hic_partition['hic_partition_selector'] == 'set'</filter>
+        </data>
+        <data name="hic_balanced_contig_hap1_graph" format="gfa1" from_work_dir="output.bp.hap1.p_ctg.gfa" label="${tool.name} ${on_string}, HI-C hap1 balanced contig graph hap1">
+            <filter>hic_partition['hic_partition_selector'] == 'set'</filter>
+        </data>
+        <data name="hic_balanced_contig_hap2_graph" format="gfa1" from_work_dir="output.bp.hap2.p_ctg.gfa" label="${tool.name} ${on_string}, HI-C hap2 balanced contig graph hap2">
+            <filter>hic_partition['hic_partition_selector'] == 'set'</filter>
         </data>
     </outputs>
     <tests>
@@ -233,6 +242,52 @@
             <output name="processed_unitigs" file="hifiasm-out2-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out2-primary.gfa" ftype="gfa1" />
             <output name="alternate_contig_graph" file="hifiasm-out2-alternate.gfa" ftype="gfa1" />
+        </test>
+        <!--
+        <test>
+            <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
+            <param name="filter_bits" value="0" />
+            <param name="mode_selector" value="standard" />
+            <conditional name="hic_partition">
+                <param name="hic_partition_selector" value="set"/>
+                <param name="h1" value="r1_1.fq"/>
+                <param name="h2" value="r2_1.fq"/>
+            </conditional>
+            <output name="raw_unitigs" file="hifiasm-out3-raw.gfa" ftype="gfa1" />
+            <output name="processed_unitigs" file="hifiasm-out3-processed.gfa" ftype="gfa1" />
+            <output name="primary_contig_graph" file="hifiasm-out3-primary.gfa" ftype="gfa1" />
+            <output name="alternate_contig_graph" ftype="gfa1">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+        </test>
+        -->
+        <test>
+            <param name="filter_bits" value="0"/>
+            <conditional name="mode">
+                <param name="mode_selector" value="trio"/>
+                <param name="reads" value="child.fasta.gz"/>
+                <param name="hap1_reads" value="paternal.fasta.gz"/>
+                <param name="hap2_reads" value="maternal.fasta.gz"/>
+                <param name="max_kmers" value="2"/>
+                <param name="min_kmers" value="5"/>
+            </conditional>
+            <output name="raw_unitigs_trio" ftype="gfa1">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+            <output name="hap1_contigs">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+            <output name="hap2_contigs">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
@@ -278,13 +333,19 @@ Hifiasm is a fast haplotype-resolved de novo assembler for PacBio Hifi reads. It
 - *Coverage upper bound* If not set, this will be determined automatically
 - *Experimental high-heterozygosity mode*   enable this mode for high heterozygosity sample NB: May be unstable
 
+#### Hi-C-partition options
+
+- *RNG seed* 
+- *Rounds of reweighting Hi-C links* : increasing this may improves phasing results but takes longer time.
+- *Rounds of perturbation* : increasing this may improves phasing results but takes longer time.
+- *Fraction to flip for perturbation* : increasing this may improves phasing results but takes longer time.
 
 ### Outputs
 
 Non Trio assembly
 - Haplotype-resolved raw unitig graph in GFA format. This graph keeps all haplotype information, including somatic mutations and recurrent sequencing errors.
 - Haplotype-resolved processed unitig graph without small bubbles : Small bubbles might be caused by somatic mutations or noise in data, which are not the real haplotype information.
-- Primary assembly contig graph :  This graph collapses different haplotypes.
+- Primary assembly contig graph : This graph collapses different haplotypes.
 - Alternate assembly contig graph : This graph consists of all assemblies that are discarded in primary contig graph.
 
 
