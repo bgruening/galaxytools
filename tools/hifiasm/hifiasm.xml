@@ -1,7 +1,7 @@
 <tool id="hifiasm" name="Hifiasm" version="@VERSION@+galaxy0">
     <description>haplotype-resolved de novo assembler for PacBio Hifi reads</description>
     <macros>
-        <token name="@VERSION@">0.15.3</token>
+        <token name="@VERSION@">0.15.4</token>
         <token name="@FORMATS@">fasta,fasta.gz,fastq,fastq.gz</token>
         <xml name="reads">
             <param name="reads" type="data" format="@FORMATS@" multiple="true" label="Input reads" />
@@ -98,12 +98,15 @@
             #if $hic_partition.f_perturb:
                 --f-perturb $hic_partition.f_perturb
             #end if
+            --l-msjoin $hic_partition.l_msjoin
         #end if
 
         ## Changed the default outputs of hifiasm. Hifiasm outputs a primary assembly and two balanced haplotypes in default. Incorporated the option '--primary' to output primary assembly and alternate assembly.
         --primary
         $input_filenames
-
+        #if $log_out:
+            2> output.log
+        #end if
         ]]>
     </command>
     <inputs>
@@ -125,7 +128,6 @@
             </when>
         </conditional>
         <param name="filter_bits" argument="-f" type="integer" min="0" value="37" label="Bits for bloom filter" help="A value of 0 disables the bloom filter" />
-       
         <conditional name="advanced_options">
             <param name="advanced_selector" type="select" label="Advanced options">
                 <option value="blank">Leave default</option>
@@ -194,9 +196,10 @@
                 <param argument="--n-weight" type="integer" min="1" value="" optional="true" label="Rounds of reweighting Hi-C links" />
                 <param argument="--n-perturb" type="integer" min="1" value="" optional="true" label="Rounds of perturbation" />
                 <param argument="--f-perturb" type="float" min="0" max="1" value="" optional="true" label="Fraction to flip for perturbation" />
-            </when>
+                <param argument="--l-msjoin" type="integer" min="0" value="500000" label="Detect misjoined unitigs of greater than or equal to specified size" help="A value of 0 disables this filter"/>
+            </when> 
         </conditional>
-
+        <param name="log_out" type="boolean" label="Output log file?" truevalue="yes" falsevalue="no"/> 
     </inputs>
     <outputs>
         <data name="raw_unitigs" format="gfa1" from_work_dir="output.r_utg.gfa" label="${tool.name} on ${on_string}, haplotype-resolved raw unitig graph">
@@ -230,6 +233,9 @@
         <data name="hic_balanced_contig_hap2_graph" format="gfa1" from_work_dir="output.bp.hap2.p_ctg.gfa" label="${tool.name} ${on_string}, HI-C hap2 balanced contig graph hap2">
             <filter>hic_partition['hic_partition_selector'] == 'set'</filter>
         </data>
+        <data name="log_file" format="txt" from_work_dir="output.log" label="${tool.name} ${on_string}, log file">
+            <filter>log_out</filter>
+        </data>
     </outputs>
     <tests>
         <test>
@@ -258,9 +264,29 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- Test logfile out-->
+        <test>
+            <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
+            <param name="filter_bits" value="0" />
+            <param name="mode_selector" value="standard" />
+            <param name="log_out" value="yes"/>
+            <output name="raw_unitigs" file="hifiasm-out1-raw.gfa" ftype="gfa1" />
+            <output name="processed_unitigs" file="hifiasm-out1-processed.gfa" ftype="gfa1" />
+            <output name="primary_contig_graph" file="hifiasm-out1-primary.gfa" ftype="gfa1" />
+            <output name="alternate_contig_graph" ftype="gfa1">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+            <output name="log_file" ftype="txt">
+                <assert_contents>
+                    <has_line line="[M::main] CMD: hifiasm -t 1 -o output -f 0 --primary input_0.fasta.gz"/>
+                </assert_contents>
+            </output>
+        </test>
 
         <!-- Test Hi-C
-        <test>
+        <test> 
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
             <param name="mode_selector" value="standard" />
