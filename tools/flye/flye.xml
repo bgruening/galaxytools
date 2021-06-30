@@ -1,84 +1,106 @@
-<tool id="flye" name="Flye assembly" version="2.8.2+galaxy0">
-    <description>of long and error-prone reads</description>
+<tool id="flye" name="Flye" version="@TOOL_VERSION@+galaxy@SUFFIX_VERSION@" profile="20.01">
+    <description>de novo assembler for single molecule sequencing reads</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements" />
+    <expand macro="edam_ontology"/>
     <version_command>flye --version</version_command>
-    <command detect_errors="exit_code">
-    <![CDATA[
-
-    #for $counter, $input in enumerate($inputs):
-
-        #if $input.is_of_type('fastqsanger', 'fastq'):
-            #set $ext = 'fastq'
-        #elif $input.is_of_type('fastqsanger.gz', 'fastq.gz'):
-            #set $ext = 'fastq.gz'
-        #elif $input.is_of_type('fasta.gz'):
-            #set $ext = 'fasta.gz'
-        #elif $input.is_of_type('fasta'):
-            #set $ext = 'fasta'
+    <command detect_errors="exit_code"><![CDATA[
+        #for $counter, $input in enumerate($inputs):
+            #if $input.is_of_type('fastqsanger', 'fastq'):
+                #set $ext = 'fastq'
+            #elif $input.is_of_type('fastqsanger.gz', 'fastq.gz'):
+                #set $ext = 'fastq.gz'
+            #elif $input.is_of_type('fasta.gz'):
+                #set $ext = 'fasta.gz'
+            #elif $input.is_of_type('fasta'):
+                #set $ext = 'fasta'
+            #end if
+            ln -s '$input' ./input_${counter}.${ext} &&
+        #end for
+        flye
+        $mode
+        #for $counter, $input in enumerate($inputs):
+            ./input_${counter}.$ext
+        #end for
+        -o out_dir
+        -t \${GALAXY_SLOTS:-4}
+        -i $iterations
+        #if $hifi_error:
+            --hifi-error $hifi_error
         #end if
-        ln -s '$input' ./input_${counter}.${ext} &&
-    #end for
-
-    flye
-    $mode
-    #for $counter, $input in enumerate($inputs):
-        ./input_${counter}.$ext
-    #end for
-
-    -o out_dir
-    -t \${GALAXY_SLOTS:-4}
-    -i $i
-    #if $m:
-        -m '$m'
-    #end if
-    #if str($asm.asm_select) == "true":
-        --asm-coverage '$asm.asm'
-        -g '$asm.g'
-    #end if
-    ${plasmids}
-    ${meta}
-    ${no_trestle}
-    2>&1
+        #if $min_overlap:
+            -m $min_overlap
+        #end if
+        #if $asm.asm_select:
+            --asm-coverage $asm.asm_coverage
+            -g '${asm.genome_size}'
+        #end if
+        $plasmids
+        $meta
+        $trestle
     ]]></command>
     <inputs>
         <param name="inputs" type="data" format="fasta,fasta.gz,fastq,fastq.gz,fastqsanger.gz,fastqsanger" multiple="true" label="Input reads" />
         <param name="mode" type="select" label="Mode">
             <option value="--nano-raw">Nanopore raw</option>
             <option value="--nano-corr">Nanopore corrected</option>
+            <option value="--pacbio-hifi">PacBio HiFi</option>
             <option value="--pacbio-raw">PacBio raw</option>
             <option value="--pacbio-corr">PacBio corrected</option>
-            <option value="--subassemblies">high-quality contig-like input</option>
+            <option value="--subassemblies">High-quality contig-like input</option>
         </param>
-        <param argument="-i" type="integer" value="1" label="number of polishing iterations" />
-        <param argument="-m" type="integer" optional="true" label="minimum overlap between reads (default: auto)" />
-
+        <param argument="--iterations" type="integer" value="0" label="Number of polishing iterations" 
+            help="Polishing is performed as the final assembly stage. By default, Flye runs one polishing iteration. Additional iterations 
+                might correct a small number of extra errors (due to improvements on how reads may align to the corrected assembly). If the 
+                parameter is set to 0, the polishing is not performed."/>
+        <param argument="--min-overlap" type="integer" optional="true" label="Minimum overlap between reads" 
+            help="This sets a minimum overlap length for two reads to be considered overlapping. By default it is chosen 
+                automatically based on the read length distribution (reads N90) and does not require manual setting. Typical 
+                value is 3k-5k (and down to 1k for datasets with shorter read length). Intuitively, we want to set this 
+                parameter as high as possible, so the repeat graph is less tangled. However, higher values might lead to assembly gaps.
+                In some rare cases it makes sense to manually increase minimum overlap for assemblies of big genomes with long reads and high coverage." />
+        <param argument="--hifi-error" type="float" min="0" max="1" optional="true" label="Expected HiFi reads error rate" help="Default: 0.01"/>
+        <param argument="--plasmids" type="boolean" truevalue="--plasmids" falsevalue="" checked="False" label="Rescue short unassembled plasmids" />
+        <param argument="--keep-haplotypes" type="boolean" truevalue="--keep-haplotypes" falsevalue="" checked="False" label="Do not collapse alternative haplotypes"
+            help="By default, Flye collapses graph structures caused by alternative haplotypes (bubbles, superbubbles, roundabouts) to produce longer 
+                consensus contigs. This option retains the alternative paths on the graph, producing less contigouos, but more detailed assembly."/>
+        <param argument="--trestle" type="boolean" truevalue="--trestle" falsevalue="" 
+            checked="False" label="Enable Trestle" 
+            help="Trestle is an extra module that resolves simple repeats of multipicity 2 that were not bridged by reads. Depending on the datasets, it might 
+                resolve a few extra repeats, which is helpful for small (bacterial genomes). Use --trestle option to enable the module. On large genomes, 
+                the contiguity improvements are usually minimal, but the computation might take a lot of time" />
+        <param argument="--meta" type="boolean" truevalue="--meta" falsevalue="" checked="False" label="Perform metagenomic assembly" 
+            help="It is designed for highly non-uniform coverage and is sensitive to underrepresented sequence at low coverage (as low as 2x).
+                In some examples of simple metagenomes, we observed that the normal mode assembled more contigious bacterial 
+                consensus sequence, while the metagenome mode was slightly more fragmented, but revealed strain mixtures"/>
         <conditional name="asm">
-            <param name="asm_select" type="select" label="description" help="">
+            <param name="asm_select" type="select" label="Reduced contig assembly coverage">
                 <option value="true">Enable reduced coverage for initial disjointing assembly</option>
                 <option value="false" selected="true">Disable reduced coverage for initial disjointing assembly</option>
             </param>
             <when value="true">
-                <param name="asm" argument="--asm-coverage" type="integer" optional="true" label="reduced coverage for initial disjointing assembly" />
-                <param argument="-g" type="text" label="estimated genome size (for example, 5m or 2.6g)">
+                <param argument="--asm-coverage" type="integer" min="0" value="30"
+                    label="Reduced coverage for initial disjointing assembly" 
+                    help="Typically, assemblies of large genomes at high coverage require a hundreds of RAM. For high coverage assemblies, 
+                        you can reduce memory usage by using only a subset of longest reads for initial contig extension stage (usually, the memory bottleneck). 
+                        The parameter --asm-coverage specifies the target coverage of the longest reads. For a typical assembly, 30x is enough to produce good 
+                        initial contigs. Regardless of this parameter, all reads will be used at the later pipeline stages."/>
+                <param argument="--genome-size" type="text" optional="true" label="Estimated genome size"
+                    help="For example, 5m or 2.6g. No longer required as input. However, it must be used in conjunction with --asm-coverage option.">
                     <validator type="regex" message="Genome size must be a float  or integer, optionally followed by the a unit prefix (kmg)">^([0-9]*[.])?[0-9]+[kmg]?$</validator>
                 </param>
             </when>
             <when value="false" />
         </conditional>
-
-        <param argument="--plasmids" type="boolean" truevalue="--plasmids" falsevalue="" checked="False" label="rescue short unassembled plasmids" />
-        <param argument="--meta" type="boolean" truevalue="--meta" falsevalue="" checked="False" label="perform metagenomic assembly" />
-        <param name="no_trestle" argument="--no-trestle" type="boolean" truevalue="--no-trestle" falsevalue="" checked="False" label="skip trestle stage" />
     </inputs>
     <outputs>
-        <data name="consensus" format="fasta" from_work_dir="out_dir/assembly.fasta" label="${tool.name} on ${on_string} (consensus)"/>
-        <data name="assembly_graph" format="graph_dot" from_work_dir="out_dir/assembly_graph.gv" label="${tool.name} on ${on_string} (assembly_graph)"/>
-        <data name="assembly_gfa" format="txt" from_work_dir="out_dir/assembly_graph.gfa" label="${tool.name} on ${on_string} (Graphical Fragment Assembly)"/>
-        <data name="assembly_info" format="tabular" from_work_dir="out_dir/assembly_info.txt" label="${tool.name} on ${on_string} (assembly_info)"/>
-        <data name="flye_log" format="txt" from_work_dir="out_dir/flye.log" label="${tool.name} on ${on_string} (log)"/>
+        <data name="consensus" format="fasta" from_work_dir="out_dir/assembly.fasta" label="${tool.name} on ${on_string}: consensus"/>
+        <data name="assembly_graph" format="graph_dot" from_work_dir="out_dir/assembly_graph.gv" label="${tool.name} on ${on_string}: assembly_graph"/>
+        <data name="assembly_gfa" format="txt" from_work_dir="out_dir/assembly_graph.gfa" label="${tool.name} on ${on_string}: graphical fragment assembly"/>
+        <data name="assembly_info" format="tabular" from_work_dir="out_dir/assembly_info.txt" label="${tool.name} on ${on_string}: assembly info"/>
+        <data name="flye_log" format="txt" from_work_dir="out_dir/flye.log" label="${tool.name} on ${on_string}: log"/>
     </outputs>
     <tests>
         <test>
@@ -100,11 +122,11 @@
         <test>
             <param name="inputs" ftype="fasta" value="nanopore.fasta"/>
             <param name="mode" value="--nano-corr"/>
-            <param name="i" value="2"/>
+            <param name="iterations" value="2"/>
             <conditional name="asm">
                 <param name="asm_select" value="true" />
                 <param name="asm" value="40"/>
-                <param name="g" value="10000"/>
+                <param name="genome_size" value="10000"/>
             </conditional>
             <output name="assembly_info" file="result3_assembly_info.txt" ftype="tabular" compare="sim_size"/>
             <output name="assembly_graph" file="result3_assembly_graph.dot" ftype="graph_dot" compare="sim_size"/>
@@ -114,7 +136,7 @@
         <test>
             <param name="inputs" ftype="fasta" value="nanopore.fasta"/>
             <param name="mode" value="--pacbio-raw"/>
-            <param name="i" value="1"/>
+            <param name="iterations" value="1"/>
             <param name="meta" value="true"/>
             <param name="plasmids" value="true"/>
             <param name="no-trestle" value="true"/>
@@ -125,6 +147,11 @@
         </test>
     </tests>
     <help><![CDATA[
+
+.. class:: infomark
+
+**Purpose**
+
 
 Input reads could be in FASTA or FASTQ format, uncompressed
 or compressed with gz. Currenlty, raw and corrected reads
