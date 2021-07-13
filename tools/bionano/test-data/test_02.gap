@@ -1,0 +1,1 @@
+#NGSId1	NGSId2	SuperScaffoldId	XmapGapLength	AdjustedGapLength	NGSLength1	NGSLength2

@@ -6,7 +6,7 @@ from ij import IJ
 # provide support for argparse.
 error_log = sys.argv[-5]
 input_file = sys.argv[-4]
-black_background = sys.argv[-3] == 'yes'
+black_background = sys.argv[-3] == "yes"
 tmp_output_path = sys.argv[-2]
 output_datatype = sys.argv[-1]
 
@@ -18,9 +18,9 @@ input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
 
 # Set binary options.
-options = ['edm=Overwrite', 'iterations=1', 'count=1']
-if (black_background):
-    options.append('black')
+options = ["edm=Overwrite", "iterations=1", "count=1"]
+if black_background:
+    options.append("black")
 options = " ".join(options)
 IJ.run(input_image_plus_copy, "Options...", options)
 

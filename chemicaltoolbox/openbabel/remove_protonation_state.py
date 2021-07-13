@@ -7,14 +7,15 @@
 import argparse
 
 from openbabel import openbabel, pybel
+
 openbabel.obErrorLog.StopLogging()
 
 
 def parse_command_line():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--iformat', default='sdf', help='input file format')
-    parser.add_argument('-i', '--input', required=True, help='input file name')
-    parser.add_argument('-o', '--output', required=True, help='output file name')
+    parser.add_argument("--iformat", default="sdf", help="input file format")
+    parser.add_argument("-i", "--input", required=True, help="input file name")
+    parser.add_argument("-o", "--output", required=True, help="output file name")
     return parser.parse_args()
 
 
@@ -22,15 +23,15 @@ def remove_protonation(args):
     outfile = pybel.Outputfile(args.iformat, args.output, overwrite=True)
     for mol in pybel.readfile(args.iformat, args.input):
         [atom.OBAtom.SetFormalCharge(0) for atom in mol.atoms]
-        if 'inchi' in mol.data:
-            del mol.data['inchi']  # remove inchi cache so modified mol is saved
+        if "inchi" in mol.data:
+            del mol.data["inchi"]  # remove inchi cache so modified mol is saved
         outfile.write(mol)
     outfile.close()
 
 
 def __main__():
     """
-        Remove any protonation state from each atom in each molecule.
+    Remove any protonation state from each atom in each molecule.
     """
     args = parse_command_line()
     remove_protonation(args)

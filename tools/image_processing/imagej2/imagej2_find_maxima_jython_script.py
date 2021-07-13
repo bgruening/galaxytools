@@ -8,11 +8,11 @@ from ij.process import ImageProcessor
 # provide support for argparse.
 error_log = sys.argv[-10]
 input_file = sys.argv[-9]
-scale_when_converting = sys.argv[-8] == 'yes'
-weighted_rgb_conversions = sys.argv[-7] == 'yes'
+scale_when_converting = sys.argv[-8] == "yes"
+weighted_rgb_conversions = sys.argv[-7] == "yes"
 noise_tolerance = int(sys.argv[-6])
 output_type = sys.argv[-5]
-exclude_edge_maxima = sys.argv[-4] == 'yes'
+exclude_edge_maxima = sys.argv[-4] == "yes"
 light_background = sys.argv[-3]
 tmp_output_path = sys.argv[-2]
 output_datatype = sys.argv[-1]
@@ -36,19 +36,19 @@ if bit_depth == 24:
         options.append("weighted")
 # Perform conversion - must happen even if no options are set.
 IJ.run(input_image_plus_copy, "Conversions...", "%s" % " ".join(options))
-if output_type in ['List', 'Count']:
+if output_type in ["List", "Count"]:
     # W're  generating a tabular file for the output.
     # Set the Find Maxima options.
-    options = ['noise=%d' % noise_tolerance]
-    if output_type.find('_') > 0:
-        output_type_str = 'output=[%s]' % output_type.replace('_', ' ')
+    options = ["noise=%d" % noise_tolerance]
+    if output_type.find("_") > 0:
+        output_type_str = "output=[%s]" % output_type.replace("_", " ")
     else:
-        output_type_str = 'output=%s' % output_type
+        output_type_str = "output=%s" % output_type
     options.append(output_type_str)
     if exclude_edge_maxima:
-        options.append('exclude')
+        options.append("exclude")
     if light_background:
-        options.append('light')
+        options.append("light")
     # Run the command.
     IJ.run(input_image_plus_copy, "Find Maxima...", "%s" % " ".join(options))
     results_table = analyzer.getResultsTable()
@@ -60,30 +60,32 @@ else:
     # may be improperly placed if local maxima are suppressed
     # by the tolerance.
     mf = MaximumFinder()
-    if output_type == 'Single_Points':
+    if output_type == "Single_Points":
         output_type_param = mf.SINGLE_POINTS
-    elif output_type == 'Maxima_Within_Tolerance':
+    elif output_type == "Maxima_Within_Tolerance":
         output_type_param = mf.IN_TOLERANCE
-    elif output_type == 'Segmented_Particles':
+    elif output_type == "Segmented_Particles":
         output_type_param = mf.SEGMENTED
-    elif output_type == 'List':
+    elif output_type == "List":
         output_type_param = mf.LIST
-    elif output_type == 'Count':
+    elif output_type == "Count":
         output_type_param = mf.COUNT
     # Get a new byteProcessor with a normal (uninverted) LUT where
     # the marked points are set to 255 (Background 0). Pixels outside
     # of the roi of the input image_processor_copy are not set. No
     # output image is created for output types POINT_SELECTION, LIST
     # and COUNT.  In these cases findMaxima returns null.
-    byte_processor = mf.findMaxima(image_processor_copy,
-                                   noise_tolerance,
-                                   ImageProcessor.NO_THRESHOLD,
-                                   output_type_param,
-                                   exclude_edge_maxima,
-                                   False)
+    byte_processor = mf.findMaxima(
+        image_processor_copy,
+        noise_tolerance,
+        ImageProcessor.NO_THRESHOLD,
+        output_type_param,
+        exclude_edge_maxima,
+        False,
+    )
     # Invert the image or ROI.
     byte_processor.invert()
-    if output_type == 'Segmented_Particles' and not light_background:
+    if output_type == "Segmented_Particles" and not light_background:
         # Invert the values in this image's LUT (indexed color model).
         byte_processor.invertLut()
     image_plus = ImagePlus("output", byte_processor)
