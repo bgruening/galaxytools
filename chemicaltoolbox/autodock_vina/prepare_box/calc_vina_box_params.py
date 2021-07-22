@@ -7,11 +7,11 @@ from rdkit.Chem import rdShapeHelpers
 
 def get_mol_from_file(fname, ftype):
     if ftype in ["mol", "sdf"]:
-        mol = Chem.MolFromMolFile(options.ligand_path)
+        mol = Chem.MolFromMolFile(options.ligand_path, strictParsing=False, sanitize=False)
     elif ftype == "pdb":
-        mol = Chem.MolFromPDBFile(options.ligand_path)
+        mol = Chem.MolFromPDBFile(options.ligand_path, sanitize=False)
     elif ftype == "mol2":
-        mol = Chem.MolFromMol2File(options.ligand_path)
+        mol = Chem.MolFromMol2File(options.ligand_path, sanitize=False)
     else:
         raise IOError
     if not mol:
