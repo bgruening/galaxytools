@@ -2,22 +2,17 @@
 """
 
 import argparse
-import time
 import numpy as np
 import h5py
+import tensorflow as tf
 
 
 def read_loaded_file(p_loaded_file):
-
-    with open(p_loaded_file, "r") as fl:
-        py_code = fl.read()
-        re_py_code = exec(py_code)
-        print(re_py_code)
+    re_py_code = exec(open(p_loaded_file).read())
     return re_py_code
         
 
 if __name__ == "__main__":
-    start_time = time.time()
 
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-ldf", "--loaded_file", required=True, help="")
@@ -29,12 +24,10 @@ if __name__ == "__main__":
     output_file = args["output"]
 
     output = read_loaded_file(loaded_file)
+    print(output)
     re_output = np.zeros((4, 4))
     print(re_output)
 
     hf_file = h5py.File(output_file, "w")
     hf_file.create_dataset("zeros", data=re_output)
     hf_file.close()
-
-    end_time = time.time()
-    #print("Program finished in %s seconds" % str(end_time - start_time))
