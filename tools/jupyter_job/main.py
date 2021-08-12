@@ -8,8 +8,9 @@ import tensorflow as tf
 
 
 def read_loaded_file(p_loaded_file):
-    re_py_code = exec(open(p_loaded_file).read())
-    return re_py_code
+    dynamic_vars = dict()
+    exec(open(p_loaded_file).read(), dynamic_vars)
+    return dynamic_vars 
         
 
 if __name__ == "__main__":
@@ -23,11 +24,12 @@ if __name__ == "__main__":
     loaded_file = args["loaded_file"]
     output_file = args["output"]
 
-    output = read_loaded_file(loaded_file)
-    print(output)
-    re_output = np.zeros((4, 4))
-    print(re_output)
-
-    hf_file = h5py.File(output_file, "w")
-    hf_file.create_dataset("zeros", data=re_output)
-    hf_file.close()
+    dynamic_vars = read_loaded_file(loaded_file)
+    if dynamic_vars is not None:
+        weights = dynamic_vars["weights"]
+        hf_file = h5py.File(output_file, "w")
+        for i in range(len(weights)):
+            d_name = "layer_{}".format(str(i))
+            hf_file.create_dataset(d_name, data=weights[i])
+        hf_file.close()
+    
