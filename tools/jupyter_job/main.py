@@ -9,6 +9,7 @@ import tensorflow as tf
 
 def read_loaded_file(p_loaded_file):
     dynamic_vars = dict()
+    ## TODO check safety of the inserted script
     exec(open(p_loaded_file).read(), dynamic_vars)
     return dynamic_vars 
         
