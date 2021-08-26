@@ -1,6 +1,6 @@
 options(
   show.error.messages = F,
-  error = function () {
+  error = function() {
     cat(geterrmessage(), file = stderr())
     q("no", 1, F)
   }
@@ -25,9 +25,9 @@ option_list <- list(
   make_option(c("-d", "--downstream"), type = "integer", help = "TSS downstream region"),
   make_option(c("-F", "--flankgeneinfo"), type = "logical", help = "Add flanking gene info"),
   make_option(c("-D", "--flankgenedist"), type = "integer", help = "Flanking gene distance"),
-  make_option(c("-j", "--ignoreUpstream"), type = "logical", help = "Ignore upstream"),
+  make_option(c("-j", "--ignore_upstream"), type = "logical", help = "Ignore upstream"),
   make_option(
-    c("-k", "--ignoreDownstream"),
+    c("-k", "--ignore_downstream"),
     type = "logical",
     help = "Ignore downstream"
   ),
@@ -51,16 +51,16 @@ if (!is.null(args$flankgeneinfo)) {
   flankgeneinfo <- FALSE
 }
 
-if (!is.null(args$ignoreUpstream)) {
-  ignoreUpstream <- TRUE
+if (!is.null(args$ignore_upstream)) {
+  ignore_upstream <- TRUE
 } else {
-  ignoreUpstream <- FALSE
+  ignore_upstream <- FALSE
 }
 
-if (!is.null(args$ignoreDownstream)) {
-  ignoreDownstream <- TRUE
+if (!is.null(args$ignore_downstream)) {
+  ignore_downstream <- TRUE
 } else {
-  ignoreDownstream <- FALSE
+  ignore_downstream <- FALSE
 }
 
 if (!is.null(args$header)) {
@@ -75,20 +75,20 @@ peaks <- readPeakFile(peaks, header = header)
 txdb <- makeTxDbFromGFF(gtf, format = "gtf")
 
 # Annotate peaks
-peakAnno <-  annotatePeak(
+peak_anno <-  annotatePeak(
   peaks,
   TxDb = txdb,
   tssRegion = c(-up, down),
   addFlankGeneInfo = flankgeneinfo,
   flankDistance = args$flankgenedist,
-  ignoreUpstream = ignoreUpstream,
-  ignoreDownstream = ignoreDownstream
+  ignoreUpstream = ignore_upstream,
+  ignoreDownstream = ignore_downstream
 )
 
 # Add gene name
 features <- import(gtf, format = "gtf")
 ann <- unique(mcols(features)[, c("gene_id", "gene_name")])
-res <- as.data.frame(peakAnno)
+res <- as.data.frame(peak_anno)
 res <- merge(res, ann, by.x = "geneId", by.y = "gene_id")
 names(res)[names(res) == "gene_name"] <- "geneName"
 
@@ -121,13 +121,13 @@ write.table(
 
 if (!is.null(args$plots)) {
   pdf("out.pdf", width = 14)
-  plotAnnoPie(peakAnno)
-  p1 <- plotAnnoBar(peakAnno)
+  plotAnnoPie(peak_anno)
+  p1 <- plotAnnoBar(peak_anno)
   print(p1)
-  vennpie(peakAnno)
-  upsetplot(peakAnno)
+  vennpie(peak_anno)
+  upsetplot(peak_anno)
   p2 <-
-    plotDistToTSS(peakAnno, title = "Distribution of transcription factor-binding loci\nrelative to TSS")
+    plotDistToTSS(peak_anno, title = "Distribution of transcription factor-binding loci\nrelative to TSS")
   print(p2)
   dev.off()
   rm(p1, p2)
