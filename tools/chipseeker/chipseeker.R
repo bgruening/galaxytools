@@ -8,6 +8,7 @@ suppressPackageStartupMessages({
     library(GenomicFeatures)
     library(rtracklayer)
     library(optparse)
+    library(ggupset)
 })
 
 option_list <- list(
