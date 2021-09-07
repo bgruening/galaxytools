@@ -1,0 +1,184 @@
+<tool id="dpocket" name="dpocket" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
+    <description>to calculate descriptors for protein pockets</description>
+    <macros>
+        <import>macros.xml</import>
+        <token name="@GALAXY_VERSION@">0</token>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="exit_code"><![CDATA[
+        ## create config file
+        #for i in $input:
+            ln -s $i $i.name.replace(' ', '_') &&
+            echo $i.name.replace(' ', '_') >> pdbs.txt &&
+        #end for
+        paste pdbs.txt $ligs > dp_conf.txt &&
+
+        ## run dpocket
+        dpocket
+            -f dp_conf.txt
+
+            ## pocket definition params common with fpocket
+            #if $inp.pocket_type == 'channel':
+                --min_alpha_size 2.8 --max_alpha_size 5.5 --min_spheres_per_pocket 30
+            #elif $inp.pocket_type == 'external':
+                --min_alpha_size 3.5 --max_alpha_size 10 --min_spheres_per_pocket 30
+            #elif $inp.pocket_type == 'custom':
+                --min_alpha_size $inp.min
+                --max_alpha_size $inp.max
+                --min_spheres_per_pocket $inp.i
+                --clustering_distance $inp.D
+                --clustering_method $inp.C
+                ##--clustering_measure $inp.e
+            #end if
+
+            ## specific params for explicit pocket definition
+            #if $explicit_output.output == "true":
+                $explicit_output.interface_definition
+                -d $explicit_output.dist
+            #end if
+
+            &&
+            ## reformat output files to match Galaxy tabular
+            sed -e "s/\s\+/\t/g" dpout_fpocketp.txt > $fpocketp &&
+            sed -e "s/\s\+/\t/g" dpout_fpocketnp.txt > $fpocketnp
+            #if $explicit_output.output:
+                &&
+                sed -e "s/\s\+/\t/g" dpout_explicitp.txt > $explicitp
+            #end if
+
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="pdb" multiple="true" label="Input file" help="Protein structure file(s) (PDB) to search."/>
+        <param name="ligs" type="data" format="txt" label="Ligand codes" help="List of ligand codes (as provided in the PDB files), one per line. The number of codes must match the number of input PDB files."/>
+        <expand macro="inputs" />
+        <!-- <param name="outputs" type="select" display="checkboxes" multiple="true" label="Output files">
+            <option value="fpocketp" selected="true">Pockets which match the ligand position</option>
+            <option value="fpocketnp">Pockets which do NOT match the ligand position</option>
+            <option value="explicitp">Define pocket explicitly as all vertices/atoms within a given distance from the ligand, regardless of what fpocket found. </option>
+        </param> -->
+        <conditional name="explicit_output">
+            <param name="output" type="select" label="Calculate explicit pocket?" help="Define pocket explicitly as all vertices/atoms within a given distance from the ligand, regardless of what fpocket found.">
+                <option value="true" selected="true">Yes</option>
+                <option value="false">No</option>
+            </param>
+            <when value="false" />
+            <when value="true">
+                <param name="interface_definition" type="select" label="Definition of the explicit pocket" help="Protein-ligand explicit interface definition">
+                    <option value="-e" selected="true">All atoms contacted by alpha spheres within a distance threshold from any ligand atom</option>
+                    <option value="-E">All atoms within a distance threshold from any ligand atom</option>
+                </param>
+                <param name="dist" type="float" value="4.0" min="0" label="Distance threshold for explicit pocket definition (angstroms)" />
+            </when>
+
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data name="fpocketp" format="tabular" label="Pockets matching the submitted ligands"/>
+        <data name="fpocketnp" format="tabular" label="Pockets NOT matching the submitted ligands"/>
+        <data name="explicitp" format="tabular" label="Pockets defined explicitly based on the submitted ligands">
+            <filter>explicit_output['output'] == "true"</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <test expect_num_outputs="3">
+            <param name="input" ftype="pdb" value="2brc.pdb"/>
+            <param name="ligs" ftype="txt" value="ligs.txt"/>
+            <param name='pocket_type' value='custom' />
+            <param name="min" value="4.0"/>
+            <param name="max" value="7.0"/>
+            <param name="i" value="20" />
+            <param name="D" value="2.0"/>
+            <param name="C" value="s" />
+            <param name="interface_definition" value="-E" />
+            <param name="dist" value="5" />
+            <param name='explicit_output' value='true' />
+            <output name="fpocketp" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="57" />
+                    <has_n_lines n="2" />
+                    <has_text_matching expression="2brc.pdb\s+CT5\s+31.15\s+1\s+1.07\s+0.77\s+1.00\s+1\s+1.54"/>
+                    <has_text_matching expression="6.50\s+0.96\s+0.44\s+14.39\s+23.64\s+12.20\s+42.27\s+15.29\s+2\s+1\s+0\s+2"/>
+                </assert_contents>
+            </output>
+            <output name="fpocketnp" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="57" />
+                    <has_n_lines n="2" />
+                    <has_text_matching expression="2brc.pdb\s+CT5\s+0.00\s+0\s+17.62\s+0.00\s+0.00\s+0\s+-1.25"/>
+                    <has_text_matching expression="4.36\s+0.69\s+0.00\s+4.37\s+31.43\s+42.10\s+33.81\s+17.20\s+5\s+0\s+1\s+1"/>
+                </assert_contents>
+            </output>
+            <output name="explicitp" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="57" />
+                    <has_n_lines n="2" />
+                    <has_text_matching expression="2brc.pdb\s+CT5\s+100.00\s+1\s+0.00\s+1.00\s+1.00\s+1\s+2.00"/>
+                    <has_text_matching expression="11.97\s+0.00\s+0.00\s+107.35\s+56.94\s+61.01\s+57.97\s+34.40\s+3\s+2\s+0\s+2"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="3">
+            <param name="input" ftype="pdb" value="2brc.pdb,1L83.pdb"/>
+            <param name="ligs" ftype="txt" value="ligs2.txt"/>
+            <param name='pocket_type' value='small_mol' />
+            <param name='explicit_output' value='false' />
+            <output name="fpocketp" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="57" />
+                    <has_n_lines n="3" />
+                    <has_text_matching expression="2brc.pdb\s+CT5\s+38.60\s+1\s+0.54\s+0.46\s+0.80\s+0\s+0.67"/>
+                    <has_text_matching expression="1L83.pdb\s+BNZ\s+100.00\s+1\s+0.83\s+1.00\s+0.85\s+1\s+1.81"/>
+                </assert_contents>
+            </output>
+            <output name="fpocketnp" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="57" />
+                    <has_n_lines n="19" />
+                    <has_text_matching expression="2brc.pdb\s+CT5\s+0.00\s+0\s+17.15\s+0.00\s+0.00\s+0\s+-1.25"/>
+                    <has_text_matching expression="29.17\s+4.03\s+0.65\s+11.05\s+0.65\s+0.14\s+13.17\s+29.13\s+19.24"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+Calculate descriptors (i.e. featurize) 'pockets' in a protein structure, using the
+dpocket module of the fpocket software.
+
+To use, upload one or more protein structures in PDB format and select the type of pocket to 
+detect. 'Custom options' can also be selected - this exposes all internal fpocket 
+parameters. Using this option requires some knowledge of the fpocket prediction 
+algorithm. Please consult the cited publications for more details.
+
+In addition, a list of ligand identifiers should be provided as a text file, one per line and
+one for each of the protein structures.
+
+
+-----
+
+.. class:: infomark
+
+**Input**
+
+- One or more protein structures in PDB format. If using multiple structures, submitting them as
+a dataset collection is recommended to ensure ordering is preserved.
+- Text file with ligand identifiers, matching the ligand code in the PDB files. One identifier should be listed per line and one per PDB file. 
+
+-----
+
+.. class:: infomark
+
+**Output**
+
+- Tabular file with descriptors of pockets matching the positions of the input ligands.
+- Tabular file with descriptors of pockets which do NOT match the positions of the input ligands.
+- (Optional) Tabular file with descriptors of pockets which are explicitly defined by the positions of the input ligands.
+
+Each tabular file contains 57 columns (55 descriptors, plus protein and ligand names), a header line, and
+one row per pocket found.
+
+]]></help>
+    <expand macro="citations" />
+</tool>
