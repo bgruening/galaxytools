@@ -5,7 +5,9 @@ import argparse
 import numpy as np
 import yaml
 import h5py
-import zipfile
+#import cPickle as cPickle
+import pickle
+import joblib
 import tensorflow as tf
 
 
@@ -30,10 +32,8 @@ if __name__ == "__main__":
     dynamic_vars = read_loaded_file(loaded_file)
 
     if dynamic_vars is not None:
-        #with zipfile.ZipFile(output_file, 'w') as dynamic_zip:
-        #    dynamic_zip.write(dynamic_vars)
-        stream = file(output_file, 'w')
-        yaml.dump(dynamic_vars, stream)
+        with open(output_file, 'wb') as o_file:
+            joblib.dump(dynamic_vars, o_file)
 
     '''if dynamic_vars is not None:
         weights = dynamic_vars["weights"]
