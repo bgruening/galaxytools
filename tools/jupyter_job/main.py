@@ -3,16 +3,18 @@
 
 import argparse
 import numpy as np
+import yaml
 import h5py
+import zipfile
 import tensorflow as tf
 
 
 def read_loaded_file(p_loaded_file):
     dynamic_vars = dict()
-    ## TODO check safety of the inserted script
-    exec(open(p_loaded_file).read(), dynamic_vars)
-    return dynamic_vars 
-        
+    input_file = yaml.safe_load(p_loaded_file)
+    exec(open(input_file).read(), dynamic_vars)
+    return dynamic_vars
+
 
 if __name__ == "__main__":
 
@@ -26,11 +28,18 @@ if __name__ == "__main__":
     output_file = args["output"]
 
     dynamic_vars = read_loaded_file(loaded_file)
+
     if dynamic_vars is not None:
+        #with zipfile.ZipFile(output_file, 'w') as dynamic_zip:
+        #    dynamic_zip.write(dynamic_vars)
+        stream = file(output_file, 'w')
+        yaml.dump(dynamic_vars, stream)
+
+    '''if dynamic_vars is not None:
         weights = dynamic_vars["weights"]
         hf_file = h5py.File(output_file, "w")
         for i in range(len(weights)):
             d_name = "layer_{}".format(str(i))
             hf_file.create_dataset(d_name, data=weights[i])
-        hf_file.close()
+        hf_file.close()'''
     
