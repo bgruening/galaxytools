@@ -1,21 +1,18 @@
 """
 """
-
+import os
+import subprocess
 import argparse
-import numpy as np
-import yaml
-import h5py
-#import cPickle as cPickle
-import pickle
-import joblib
 import tensorflow as tf
+import tf2onnx
+import yaml
 
 
 def read_loaded_file(p_loaded_file):
-    dynamic_vars = dict()
+    global_vars = dict()
     input_file = yaml.safe_load(p_loaded_file)
-    exec(open(input_file).read(), dynamic_vars)
-    return dynamic_vars
+    exec(open(input_file).read(), global_vars)
+    return global_vars
 
 
 if __name__ == "__main__":
@@ -29,17 +26,21 @@ if __name__ == "__main__":
     loaded_file = args["loaded_file"]
     output_file = args["output"]
 
-    dynamic_vars = read_loaded_file(loaded_file)
+    # dict of global variables 
+    global_vars = read_loaded_file(loaded_file)
 
-    if dynamic_vars is not None:
-        with open(output_file, 'wb') as o_file:
-            joblib.dump(dynamic_vars, o_file)
-
-    '''if dynamic_vars is not None:
-        weights = dynamic_vars["weights"]
-        hf_file = h5py.File(output_file, "w")
-        for i in range(len(weights)):
-            d_name = "layer_{}".format(str(i))
-            hf_file.create_dataset(d_name, data=weights[i])
-        hf_file.close()'''
-    
+    # save model
+    if global_vars is not None:
+        trained_model = global_vars["model"]
+        model_type = str(type(trained_model))
+        if "tensorflow" in model_type or "keras" in model_type:
+            curr_path = os.path.abspath(os.getcwd())
+            tf_new_path = "{}/{}".format(curr_path, "model")
+            if not os.path.exists(tf_new_path):
+                os.makedirs(tf_new_path)
+            # save model as tf model
+            tf.saved_model.save(trained_model, tf_new_path)
+            # OPSET level defines a level of tensorflow operations supported by ONNX
+            python_shell_script = "python -m tf2onnx.convert --saved-model " + tf_new_path + " --output " + output_file + " --opset 7 "
+            # convert tf/keras model to ONNX and save it to output file
+            subprocess.run(python_shell_script, shell=True, check=True)
