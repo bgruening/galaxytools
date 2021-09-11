@@ -3,13 +3,13 @@ suppressWarnings(suppressPackageStartupMessages(library(MuSiC)))
 
 ## Assay Data
 ## F rows of features and S columns of samples
-exprs_file <- '$exprs_file'   ## tabular file
+exprs_file <- "$exprs_file"   ## tabular file
 exprs <- as.matrix(read.table(exprs_file, header = T, sep = "\t",
                   row.names = 1, as.is = T))
 
 ## Phenotype Data
 ## S rows of samples, and V columns of covariates (e.g. sex, age, etc.)
-pdata_file <- '$pdata_file'
+pdata_file <- "$pdata_file"
 pdata <- read.table(pdata_file, row.names = 1, header = T, sep = "\t")
 
 stop(all(rownames(pdata) != colnames(exprs)),
