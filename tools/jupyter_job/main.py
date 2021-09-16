@@ -1,5 +1,8 @@
 """
+Train and save machine learning models
 """
+
+
 import os
 import subprocess
 import argparse
@@ -10,8 +13,21 @@ from skl2onnx.common.data_types import FloatTensorType
 import yaml
 
 
-sklearn_ensemble_model = "sklearn.ensemble"
-tf_model = "tensorflow"
+SKLEARN_MODELS = [
+    "sklearn.ensemble",
+    "sklearn.tree",
+    "sklearn.linear_model",
+    "sklearn.svm",
+    "sklearn.neighbors",
+    "sklearn.preprocessing",
+    "sklearn.cluster"
+]
+
+'''TF_MODELS = [
+    "tensorflow.python.keras.engine.training.Model",
+    "tensorflow.python.keras.engine.sequential.Sequential"
+    "tensorflow.python.keras.layers"
+]'''
 
 
 def read_loaded_file(p_loaded_file):
@@ -47,9 +63,9 @@ def check_vars(var_dict):
         for key in var_dict:
             obj = var_dict[key]
             obj_class = str(obj.__class__)
-            if tf_model in obj_class:
+            if "get_weights" in dir(obj):
                 save_tf_model(obj, output_file)
-            elif sklearn_ensemble_model in obj_class: 
+            elif len([item for item in SKLEARN_MODELS if item in obj_class]) > 0:
                 save_sklearn_model(obj, output_file)
 
 
