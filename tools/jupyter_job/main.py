@@ -1,5 +1,5 @@
 """
-Train and save machine learning models
+Train and save machine learning models as ONNX file
 """
 
 
@@ -23,19 +23,21 @@ SKLEARN_MODELS = [
     "sklearn.cluster"
 ]
 
-'''TF_MODELS = [
+TF_MODELS = [
     "tensorflow.python.keras.engine.training.Model",
-    "tensorflow.python.keras.engine.sequential.Sequential"
+    "tensorflow.python.keras.engine.sequential.Sequential",
     "tensorflow.python.keras.layers"
-]'''
+]
 
 
 def read_loaded_file(p_loaded_file):
     global_vars = dict()
     locals_vars = dict()
     input_file = yaml.safe_load(p_loaded_file)
-    exec(open(input_file).read(), global_vars, locals_vars)
-    return global_vars, locals_vars
+    with open(input_file, "r") as f:
+        exec(f.read(), global_vars, locals_vars)
+        check_vars(locals_vars)
+        check_vars(global_vars)
 
 
 def save_sklearn_model(obj, output_file):
@@ -63,8 +65,10 @@ def check_vars(var_dict):
         for key in var_dict:
             obj = var_dict[key]
             obj_class = str(obj.__class__)
-            if "get_weights" in dir(obj):
+            # save tf model
+            if len([item for item in TF_MODELS if item in obj_class]) > 0:
                 save_tf_model(obj, output_file)
+            # save scikit-learn model
             elif len([item for item in SKLEARN_MODELS if item in obj_class]) > 0:
                 save_sklearn_model(obj, output_file)
 
@@ -79,7 +83,4 @@ if __name__ == "__main__":
     args = vars(arg_parser.parse_args())
     loaded_file = args["loaded_file"]
     output_file = args["output"]
-    # dict of global variables 
-    global_vars, locals_vars = read_loaded_file(loaded_file)
-    check_vars(locals_vars)
-    check_vars(global_vars)
+    read_loaded_file(loaded_file)
