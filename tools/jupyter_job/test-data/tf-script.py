@@ -3,15 +3,15 @@ import numpy as np
 
 (mnist_images, mnist_labels), _ = tf.keras.datasets.mnist.load_data()
 mnist_images, mnist_labels = mnist_images[:128], mnist_labels[:128]
-dataset = tf.data.Dataset.from_tensor_slices((tf.cast(mnist_images[...,tf.newaxis]/255, tf.float32), tf.cast(mnist_labels,tf.int64)))
+dataset = tf.data.Dataset.from_tensor_slices((tf.cast(mnist_images[..., tf.newaxis] / 255, tf.float32), tf.cast(mnist_labels, tf.int64)))
 dataset = dataset.shuffle(1000).batch(32)
 
 tot_loss = []
 epochs = 1
 
 mnist_model = tf.keras.Sequential([
-    tf.keras.layers.Conv2D(16,[3,3], activation='relu'),
-    tf.keras.layers.Conv2D(16,[3,3], activation='relu'),
+    tf.keras.layers.Conv2D(16, [3, 3], activation='relu'),
+    tf.keras.layers.Conv2D(16, [3, 3], activation='relu'),
     tf.keras.layers.GlobalAveragePooling2D(),
     tf.keras.layers.Dense(10)
 ])

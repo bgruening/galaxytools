@@ -2,14 +2,13 @@
 Train and save machine learning models as ONNX file
 """
 
-
+import argparse
 import os
 import subprocess
-import argparse
+
+import tensorflow as tf
 import h5py
 import yaml
-import tensorflow as tf
-import tf2onnx
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
