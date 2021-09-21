@@ -1,14 +1,15 @@
-<tool id="hifiasm" name="Hifiasm" version="@VERSION@+galaxy0">
+<tool id="hifiasm" name="Hifiasm" version="@TOOL_VERSION@+galaxy@SUFFIX_VERSION@">
     <description>haplotype-resolved de novo assembler for PacBio Hifi reads</description>
     <macros>
-        <token name="@VERSION@">0.15.4</token>
+        <token name="@TOOL_VERSION@">0.16.1</token>
+        <token name="@SUFFIX_VERSION@">0</token>
         <token name="@FORMATS@">fasta,fasta.gz,fastq,fastq.gz</token>
         <xml name="reads">
             <param name="reads" type="data" format="@FORMATS@" multiple="true" label="Input reads" />
         </xml>
     </macros>
     <requirements>
-        <requirement type="package" version="@VERSION@">hifiasm</requirement>
+        <requirement type="package" version="@TOOL_VERSION@">hifiasm</requirement>
         <requirement type="package" version="0.1">yak</requirement>
     </requirements>
     <version_command>hifiasm --version</version_command>
@@ -53,6 +54,11 @@
             #if $advanced_options.min_hist_cnt:
                 --min-hist-cnt $advanced_options.min_hist_cnt
             #end if
+            --max-kocc $advanced_options.max_kocc
+            #if $advanced_options.hg_size
+                --hg-size $advanced_options.hg_size
+            #end if
+
         #end if
         #if str($assembly_options.assembly_selector) == 'set':
             -a $assembly_options.cleaning_rounds
@@ -64,6 +70,9 @@
             -y $assembly_options.min_overlap
             $assembly_options.disable_post_join
             $assembly_options.ignore_error_corrected
+            #if $assembly_options.hom_cov
+                --hom-cov $assembly_options.hom_cov
+            #end if
         #end if
         #if str($mode.mode_selector) == 'trio':
             -1 hap1.yak
@@ -75,8 +84,8 @@
             -l $purge_options.purge_level
             -s $purge_options.similarity_threshold
             -O $purge_options.minimum_overlap
-            #if $purge_options.purge_cov:
-                --purge-cov $purge_options.purge_cov
+            #if $purge_options.purge_max:
+                --purge-max $purge_options.purge_max
             #end if
             #if $purge_options.n_hap:
                 --n-hap $purge_options.n_hap
@@ -135,12 +144,14 @@
             </param>
             <when value="blank" />
             <when value="set">
-                <param name="hifiasm_kmer_length" argument="-k" type="integer" min="0" max="64" value="51" label="HiFiasm k-mer length" />
+                <param name="hifiasm_kmer_length" argument="-k" type="integer" min="0" max="64" value="51" label="Hifiasm k-mer length" />
                 <param name="window_size" argument="-w" type="integer" min="0" value="51" label="Minimizer window size" />
                 <param name="drop_kmers" argument="-D" type="float" value="5.0" label="Drop k-mers" help="K-mers that occur more than this value multiplied by the coverage will be discarded" />
                 <param name="max_overlaps" argument="-N" type="integer" value="100" label="Maximum overlaps to consider" help="The software selects the larger of this value and the k-mer count multiplied by coverage" />
                 <param name="correction_rounds" argument="-r" type="integer" value="3" label="Correction rounds" />
                 <param argument="--min-hist-cnt" type="integer" min="0" value="" optional="true" label="Minimum count threshold" help="When analyzing the k-mer spectrum, ignore counts below this value" />
+                <param argument="--max-kocc" type="integer" min="0" value="20000" label="Maximum k-mer ocurrence" help="Employ k-mers occurring less than INT times to rescue repetitive overlaps" />
+                <param argument="--hg-size" type="integer" min="0" value="" optional="true" label="Estimated haploid genome size" help="Estimated haploid genome size used for inferring read coverage. If not provided, this parameter will be infered by hifism" />
             </when>
         </conditional>
        
@@ -160,6 +171,7 @@
                 <param name="min_overlap" argument="-y" type="float" min="0" max="1" value="0.2" label="Minimum overlap drop ratio" help="This option is used with -r. Given a node N in the assembly graph, let max(N) be the length of the largest overlap of N. Hifiasm iteratively drops overlaps of N if their length/max(N) are over a threshold controlled by -y. Hifiasm applies -r rounds of short overlap removal with an increasing threshold between -x and -y"/>
                 <param name="disable_post_join" argument="-u" type="boolean" truevalue="-u" falsevalue="" label="Skip post join contigs step" help="May improve N50" />
                 <param name="ignore_error_corrected" argument="-i" type="boolean" truevalue="-i" falsevalue="" value="False" label="Ignore error corrected reads and overlaps" help="Ignore  error corrected reads and overlaps saved in prefix.*.bin files.  Apart from assembly graphs, hifiasm also outputs three binary files  that  save  alloverlap information during assembly step.  With these files, hifiasm can avoid the time-consuming all-to-all overlap calculation step, and  do  the  assembly directly  and  quickly.  This might be helpful when users want to get an optimized assembly by multiple rounds of experiments with different parameters." />
+                <param argument="--hom-cov" type="integer" optional="True" value="" label="Homozygous read coverage" />
             </when>
         </conditional>
        
@@ -178,8 +190,8 @@
                 </param>
                 <param name="similarity_threshold" argument="-s" type="float" min="0" max="1" value="0.75" label="Similarity threshold for duplicate haplotigs" />
                 <param name="minimum_overlap" argument="-O" type="integer" value="1" label="Minimum overlapped reads for duplicate haplotigs" />
-                <param argument="--purge-cov" type="integer" optional="true" label="Coverage upper bound" help="If not set, this will be determined automatically" />
-                <param argument="--n-hap" type="integer" min="0" value="" optional="True" label="Assumtion of haplotype number" help="A haplotype is defined as the combination of alleles for different polymorphisms that occur on the same chromosome." />
+                <param argument="--purge-max" type="integer" optional="true" label="Coverage upper bound" help="If not set, this will be determined automatically" />
+                <param argument="--n-hap" type="integer" min="0" value="" optional="true" label="Assumtion of haplotype number" help="A haplotype is defined as the combination of alleles for different polymorphisms that occur on the same chromosome." />
             </when>
         </conditional>
 
@@ -381,6 +393,60 @@
             <output name="processed_unitigs" file="hifiasm-out5-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out5-primary.gfa" ftype="gfa1" />
             <output name="alternate_contig_graph"  ftype="gfa1">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test max_kooc option -->
+        <test>
+            <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
+            <param name="filter_bits" value="0" />
+            <param name="mode_selector" value="standard" />
+            <conditional name="advanced_options">
+                <param name="advanced_selector" value="set"/>
+                <param name="max_kooc" value="21000"/>
+            </conditional>
+            <output name="raw_unitigs" file="hifiasm-out6-raw.gfa" ftype="gfa1" />
+            <output name="processed_unitigs" file="hifiasm-out6-processed.gfa" ftype="gfa1" />
+            <output name="primary_contig_graph" file="hifiasm-out6-primary.gfa" ftype="gfa1" />
+            <output name="alternate_contig_graph"  ftype="gfa1">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test hg-size option -->
+        <test>
+            <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
+            <param name="filter_bits" value="0" />
+            <param name="mode_selector" value="standard" />
+            <conditional name="advanced_options">
+                <param name="advanced_selector" value="set"/>
+                <param name="hg_size" value="100000"/>
+            </conditional>
+            <output name="raw_unitigs" file="hifiasm-out7-raw.gfa" ftype="gfa1" />
+            <output name="processed_unitigs" file="hifiasm-out7-processed.gfa" ftype="gfa1" />
+            <output name="primary_contig_graph" file="hifiasm-out7-primary.gfa" ftype="gfa1" />
+            <output name="alternate_contig_graph"  ftype="gfa1">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test ignore-error-corrected option -->
+        <test>
+            <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
+            <param name="filter_bits" value="0" />
+            <param name="mode_selector" value="standard" />
+            <conditional name="assembly_options">
+                <param name="assembly_selector" value="set"/>
+                <param name="hom-cov" value="1000"/>
+            </conditional>
+            <output name="raw_unitigs" file="hifiasm-out8-raw.gfa" ftype="gfa1" />
+            <output name="processed_unitigs" file="hifiasm-out8-processed.gfa" ftype="gfa1" />
+            <output name="primary_contig_graph" file="hifiasm-out8-primary.gfa" ftype="gfa1" />
+            <output name="alternate_contig_graph" ftype="gfa1">
                 <assert_contents>
                     <has_size value="0"/>
                 </assert_contents>
