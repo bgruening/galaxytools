@@ -6,11 +6,12 @@ Train and save machine learning models as ONNX file
 import os
 import subprocess
 import argparse
+import h5py
+import yaml
 import tensorflow as tf
 import tf2onnx
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
-import yaml
 
 
 SKLEARN_MODELS = [
@@ -29,15 +30,19 @@ TF_MODELS = [
     "tensorflow.python.keras.layers"
 ]
 
+ARRAYS = [
+    "numpy.ndarray",
+    "list"
+]
 
-def read_loaded_file(p_loaded_file):
+
+def read_loaded_file(p_loaded_file, m_file, a_file):
     global_vars = dict()
     locals_vars = dict()
     input_file = yaml.safe_load(p_loaded_file)
-    with open(input_file, "r") as f:
-        exec(f.read(), global_vars, locals_vars)
-        check_vars(locals_vars)
-        check_vars(global_vars)
+    exec(open(input_file, "r").read(), global_vars, locals_vars)
+    merged_dict = {**locals_vars, **global_vars}
+    check_vars(merged_dict, m_file, a_file)
 
 
 def save_sklearn_model(obj, output_file):
@@ -60,27 +65,46 @@ def save_tf_model(obj, output_file):
     subprocess.run(python_shell_script, shell=True, check=True)
 
 
-def check_vars(var_dict):
+def save_array(payload, a_file):
+    hf_file = h5py.File(a_file, "w")
+    for key in payload:
+        try:
+            hf_file.create_dataset(key, data=payload[key])
+        except Exception as e:
+            print(e)
+            continue
+    hf_file.close()
+
+
+def check_vars(var_dict, m_file, a_file):
     if var_dict is not None:
+        arr_payload = dict()
         for key in var_dict:
             obj = var_dict[key]
             obj_class = str(obj.__class__)
             # save tf model
             if len([item for item in TF_MODELS if item in obj_class]) > 0:
-                save_tf_model(obj, output_file)
+                save_tf_model(obj, m_file)
             # save scikit-learn model
             elif len([item for item in SKLEARN_MODELS if item in obj_class]) > 0:
-                save_sklearn_model(obj, output_file)
+                save_sklearn_model(obj, m_file)
+            # save arrays and lists
+            elif len([item for item in ARRAYS if item in obj_class]) > 0:
+                if key not in arr_payload:
+                    arr_payload[key] = obj
+        save_array(arr_payload, a_file)
 
 
 if __name__ == "__main__":
 
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-ldf", "--loaded_file", required=True, help="")
-    arg_parser.add_argument("-op", "--output", required=True, help="")
+    arg_parser.add_argument("-om", "--output_model", required=True, help="")
+    arg_parser.add_argument("-oa", "--output_array", required=True, help="")
 
     # get argument values
     args = vars(arg_parser.parse_args())
     loaded_file = args["loaded_file"]
-    output_file = args["output"]
-    read_loaded_file(loaded_file)
+    model_output_file = args["output_model"]
+    array_output_file = args["output_array"]
+    read_loaded_file(loaded_file, model_output_file, array_output_file)
