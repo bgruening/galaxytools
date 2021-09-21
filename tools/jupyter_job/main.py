@@ -6,11 +6,11 @@ import argparse
 import os
 import subprocess
 
-import tensorflow as tf
 import h5py
+import tensorflow as tf
 import yaml
-from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
+from skl2onnx import convert_sklearn
 
 
 SKLEARN_MODELS = [

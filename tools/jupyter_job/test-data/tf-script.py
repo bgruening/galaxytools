@@ -1,5 +1,6 @@
-import tensorflow as tf
 import numpy as np
+import tensorflow as tf
+
 
 (mnist_images, mnist_labels), _ = tf.keras.datasets.mnist.load_data()
 mnist_images, mnist_labels = mnist_images[:128], mnist_labels[:128]
