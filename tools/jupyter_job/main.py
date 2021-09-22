@@ -37,10 +37,12 @@ ARRAYS = [
 
 def read_loaded_file(p_loaded_file, m_file, a_file):
     global_vars = dict()
-    locals_vars = dict()
+    local_vars = dict()
     input_file = yaml.safe_load(p_loaded_file)
-    exec(open(input_file, "r").read(), global_vars, locals_vars)
-    merged_dict = {**locals_vars, **global_vars}
+    code_string = open(input_file, "r").read()
+    compiled_code = compile(code_string, input_file, 'exec')
+    exec(compiled_code, global_vars, local_vars)
+    merged_dict = {**local_vars, **global_vars}
     check_vars(merged_dict, m_file, a_file)
 
 
