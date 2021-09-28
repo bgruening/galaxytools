@@ -4,7 +4,6 @@ import argparse
 import re
 
 from Bio import SeqIO
-from Bio.Alphabet import generic_dna
 from Bio.Seq import Seq
 from Bio.SeqUtils import nt_search
 
@@ -26,7 +25,7 @@ def find_pattern(seqs, pattern, outfile_path, strand):
     Outputs sequence ID, start and end postion of the pattern.
     """
     pattern = pattern.upper()
-    rev_compl = Seq(pattern, generic_dna).complement()
+    rev_compl = Seq(pattern).complement()
     search_func = simple_pattern_search
     if set(pattern).difference(set("ATCG")):
         search_func = complex_pattern_search
