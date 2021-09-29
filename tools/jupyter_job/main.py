@@ -34,6 +34,10 @@ ARRAYS = [
     "list"
 ]
 
+DATAFRAME = [
+    "pandas.core.frame.DataFrame"
+]
+
 
 def read_loaded_file(p_loaded_file, m_file, a_file):
     global_vars = dict()
@@ -75,9 +79,15 @@ def save_array(payload, a_file):
     hf_file.close()
 
 
+def save_dataframe(payload, a_file):
+    for key in payload:
+        payload[key].to_hdf(a_file, key=key)
+
+
 def check_vars(var_dict, m_file, a_file):
     if var_dict is not None:
         arr_payload = dict()
+        dataframe_payload = dict()
         for key in var_dict:
             obj = var_dict[key]
             obj_class = str(obj.__class__)
@@ -91,7 +101,11 @@ def check_vars(var_dict, m_file, a_file):
             elif len([item for item in ARRAYS if item in obj_class]) > 0:
                 if key not in arr_payload:
                     arr_payload[key] = obj
+            elif len([item for item in DATAFRAME if item in obj_class]) > 0:
+                if key not in dataframe_payload:
+                    dataframe_payload[key] = obj
         save_array(arr_payload, a_file)
+        save_dataframe(dataframe_payload, a_file)
 
 
 if __name__ == "__main__":
