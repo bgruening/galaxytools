@@ -1,18 +1,14 @@
-"""
-Train and save machine learning models as ONNX file
-"""
-
 import argparse
 import os
 import subprocess
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import h5py
-import tensorflow as tf
 import yaml
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 SKLEARN_MODELS = [
     "sklearn.ensemble",
@@ -60,6 +56,7 @@ def save_sklearn_model(obj, output_file):
 
 
 def save_tf_model(obj, output_file):
+    import tensorflow as tf
     curr_path = os.path.abspath(os.getcwd())
     tf_new_path = "{}/{}".format(curr_path, "model")
     if not os.path.exists(tf_new_path):
