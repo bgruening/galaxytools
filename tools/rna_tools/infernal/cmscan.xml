@@ -1,10 +1,11 @@
-<tool id="infernal_cmscan" name="cmscan" version="@VERSION@.0">
+<tool id="infernal_cmscan" name="cmscan" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
     <description> Search sequences against collections of covariance models</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements"/>
     <expand macro="stdio"/>
+    <expand macro="xrefs"/>
     <command>
 <![CDATA[
     ## a temp file is needed, because the standard tabular output from infernal is not usefull in Galaxy
@@ -73,8 +74,19 @@
         #end if
         ## sequence file
         '$seqdb'
-        &&
-        sed 's/ \+ /\t/g' '\$temp_tabular_output' > '$outfile'
+        ######### Parse the output file in order to fix a problem reported in https://help.galaxyproject.org/t/messy-infernal-cmscan-output/5984
+        ## remove the header
+        && tail -n +3 '\$temp_tabular_output' > headless_file
+        ## extract the last column, since the description includes a variable number of spaces (so, is not considered as a column by awk)
+        && awk '{$1=$2=$3=$4=$5=$6=$7=$8=$9=$10=$11=$12=$13=$14=$15=$16=$17=""; print $0}' headless_file > description_column
+        ## fix the tabulation the rest content (except the description column)
+        && awk 'OFS="\t" {print $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17 > ("tabulated_columns")}' headless_file
+        ## add the description column to the tabulated data
+        && paste -d"\t" tabulated_columns description_column > joined_file
+        ## include a correct header
+        && echo -e '#target\tname\taccession\tquery name\taccession\tmdl\tmdl from\tmdl to\tseq from\tseq to\tstrand\ttrunc\tpass\tgc\tbias\tscore\tE-value\tinc\tdescription of target' > header
+        ## export the result
+        && cat header joined_file > '$outfile'
 
 ]]>
     </command>
@@ -226,12 +238,10 @@
                 label="Only search the top (Watson) strand of target sequences" help="in the sequence database"/>
 
         </section>
-
-
-
     </inputs>
     <outputs>
         <data format="tabular" name="outfile" label="cmscan on ${on_string}"/>
+
     </outputs>
     <tests>
         <test>
@@ -241,8 +251,9 @@
             </conditional>
             <param name="aux_files" value="minifam.tar" ftype="tar"/>
             <param name="seqdb" value="metag-example.fa"/>
-            <output name="outfile">
+            <output name="outfile" file="test_cmscan.tabular" ftype="tabular" lines_diff="8">
                 <assert_contents>
+                    <has_n_lines n="15"/>
                     <has_text text="AAGA01015927.1"/>
                 </assert_contents>
             </output>
