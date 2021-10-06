@@ -4,8 +4,9 @@ Train and save machine learning models as ONNX file
 
 import argparse
 import os
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import subprocess
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import h5py
 import tensorflow as tf
 import yaml
