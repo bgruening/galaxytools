@@ -1,6 +1,7 @@
 import argparse
 import os
 import subprocess
+from zipfile import ZipFile
 
 import h5py
 import yaml
@@ -45,13 +46,20 @@ SCALAR_TYPES = [
 ]
 
 
-def read_loaded_file(p_loaded_file, m_file, a_file):
+def read_loaded_file(p_loaded_file, m_file, a_file, w_dir, z_file):
     global_vars = dict()
     input_file = yaml.safe_load(p_loaded_file)
     code_string = open(input_file, "r").read()
     compiled_code = compile(code_string, input_file, 'exec')
     exec(compiled_code, global_vars)
     check_vars(global_vars, m_file, a_file)
+    zip_files(w_dir, z_file)
+
+
+def zip_files(w_dir, z_file):
+    with ZipFile(z_file, 'w') as zip_file:
+        for f_path in os.listdir(w_dir):
+            zip_file.write(f_path)
 
 
 def save_sklearn_model(obj, output_file):
@@ -122,6 +130,8 @@ if __name__ == "__main__":
 
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-ldf", "--loaded_file", required=True, help="")
+    arg_parser.add_argument("-wd", "--working_dir", required=True, help="")
+    arg_parser.add_argument("-oz", "--output_zip", required=True, help="")
     arg_parser.add_argument("-om", "--output_model", required=True, help="")
     arg_parser.add_argument("-oa", "--output_array", required=True, help="")
 
@@ -130,4 +140,6 @@ if __name__ == "__main__":
     loaded_file = args["loaded_file"]
     model_output_file = args["output_model"]
     array_output_file = args["output_array"]
-    read_loaded_file(loaded_file, model_output_file, array_output_file)
+    zip_output_file = args["output_zip"]
+    working_dir = args["working_dir"]
+    read_loaded_file(loaded_file, model_output_file, array_output_file, working_dir, zip_output_file)
