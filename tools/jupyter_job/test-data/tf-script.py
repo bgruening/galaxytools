@@ -1,7 +1,6 @@
 import numpy as np
 import tensorflow as tf
 
-
 (mnist_images, mnist_labels), _ = tf.keras.datasets.mnist.load_data()
 mnist_images, mnist_labels = mnist_images[:128], mnist_labels[:128]
 dataset = tf.data.Dataset.from_tensor_slices((tf.cast(mnist_images[..., tf.newaxis] / 255, tf.float32), tf.cast(mnist_labels, tf.int64)))
@@ -30,5 +29,3 @@ for epoch in range(epochs):
         grads = tape.gradient(loss_value, mnist_model.trainable_variables)
         optimizer.apply_gradients(zip(grads, mnist_model.trainable_variables))
     tot_loss.append(np.mean(loss_history))
-
-tot_loss
