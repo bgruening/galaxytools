@@ -1,12 +1,12 @@
 import argparse
 import json
 import os
-import requests
 import subprocess
 import warnings
 from zipfile import ZipFile
 
 import h5py
+import requests
 import yaml
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
