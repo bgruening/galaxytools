@@ -1,6 +1,9 @@
 import argparse
+import json
 import os
+import requests
 import subprocess
+import warnings
 from zipfile import ZipFile
 
 import h5py
@@ -9,6 +12,7 @@ from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
 
 
+warnings.filterwarnings("ignore")
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 SKLEARN_MODELS = [
@@ -46,11 +50,33 @@ SCALAR_TYPES = [
 ]
 
 
-def read_loaded_file(p_loaded_file, m_file, a_file, w_dir, z_file):
+def find_replace_paths(script_file, updated_data_dict):
+    for item in updated_data_dict:
+        g_path = updated_data_dict[item]
+        script_file = script_file.replace(item, g_path)
+    return script_file
+
+
+def download_files_update_paths(d_paths, w_dir):
+    paths_dict = json.loads(open(d_paths, "r").read())
+    # read model from remote
+    new_paths_dict = dict()
+    for d_p in paths_dict:
+        remote_file = requests.get(paths_dict[d_p])
+        new_path = w_dir + "/" + os.path.basename(d_p)
+        # save model to a local directory
+        with open(new_path, 'wb') as model_file:
+            model_file.write(remote_file.content)
+            new_paths_dict[d_p] = new_path
+    return new_paths_dict
+
+
+def read_loaded_file(new_paths_dict, p_loaded_file, m_file, a_file, w_dir, z_file):
     global_vars = dict()
     input_file = yaml.safe_load(p_loaded_file)
     code_string = open(input_file, "r").read()
-    compiled_code = compile(code_string, input_file, 'exec')
+    re_code_string = find_replace_paths(code_string, new_paths_dict)
+    compiled_code = compile(re_code_string, input_file, 'exec')
     exec(compiled_code, global_vars)
     check_vars(global_vars, m_file, a_file)
     zip_files(w_dir, z_file)
@@ -129,6 +155,7 @@ def check_vars(var_dict, m_file, a_file):
 if __name__ == "__main__":
 
     arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument("-dp", "--data_paths_file", required=True, help="")
     arg_parser.add_argument("-ldf", "--loaded_file", required=True, help="")
     arg_parser.add_argument("-wd", "--working_dir", required=True, help="")
     arg_parser.add_argument("-oz", "--output_zip", required=True, help="")
@@ -137,9 +164,11 @@ if __name__ == "__main__":
 
     # get argument values
     args = vars(arg_parser.parse_args())
+    data_paths_file = args["data_paths_file"]
     loaded_file = args["loaded_file"]
     model_output_file = args["output_model"]
     array_output_file = args["output_array"]
     zip_output_file = args["output_zip"]
     working_dir = args["working_dir"]
-    read_loaded_file(loaded_file, model_output_file, array_output_file, working_dir, zip_output_file)
+    new_paths_dict = download_files_update_paths(data_paths_file, working_dir)
+    read_loaded_file(new_paths_dict, loaded_file, model_output_file, array_output_file, working_dir, zip_output_file)
