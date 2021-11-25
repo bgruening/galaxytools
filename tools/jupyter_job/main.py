@@ -26,7 +26,9 @@ SKLEARN_MODELS = [
 TF_MODELS = [
     "tensorflow.python.keras.engine.training.Model",
     "tensorflow.python.keras.engine.sequential.Sequential",
+    "tensorflow.python.keras.engine.functional.Functional",
     "tensorflow.python.keras.layers",
+    "keras.engine.functional.Functional",
     "keras.engine.sequential.Sequential",
     "keras.engine.training.Model",
     "keras.layers"
@@ -99,7 +101,7 @@ def save_tf_model(obj, output_file):
     # save model as tf model
     tf.saved_model.save(obj, tf_new_path)
     # OPSET level defines a level of tensorflow operations supported by ONNX
-    python_shell_script = "python -m tf2onnx.convert --saved-model " + tf_new_path + " --output " + output_file + " --opset 9 "
+    python_shell_script = "python -m tf2onnx.convert --saved-model " + tf_new_path + " --output " + output_file + " --opset 15 "
     # convert tf/keras model to ONNX and save it to output file
     subprocess.run(python_shell_script, shell=True, check=True)
 
