@@ -1,0 +1,246 @@
+<tool id="tgsgapcloser" name="TGS-GapCloser" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="20.01">
+    <description>fills the N-gap of error-prone long reads</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="xrefs"/>
+    <version_command>tgsgapcloser --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        PILON=\$(which pilon)
+        PILON_JAR=\$(readlink -f \$PILON).jar
+        && tgsgapcloser    
+        --scaff $scaff 
+        --reads $reads
+        --output output
+        #if $error_conditional.error_options == 'pilon'
+            --pilon \$PILON_JAR
+            --ngs $error_conditional.ngs
+            --samtools `which samtools`
+            --java `which java`
+            --pilon_mem \${GALAXY_MEMORY_MB:-4096}M
+        #elif $error_conditional.error_options == 'racon'
+            --racon `which racon`
+        #else
+            --ne
+        #end if
+        --tgstype $tgstype_conditional.tgstype
+        --min_idy $tgstype_conditional.min_idy
+        --min_match $tgstype_conditional.min_match
+        --chunk $chunk
+        $g_check
+        --thread  \${GALAXY_SLOTS:-16}
+    ]]></command>
+    <inputs>
+        <param argument="--scaff" type="data" format="fasta" multiple="true" label="Scaffold file" />
+        <param argument="--reads" type="data" format="fasta" multiple="true" label="Input reads" />
+        <conditional name="error_conditional">
+            <param name="error_options" type="select" label="Error correction">
+                <option value="ne">Do not error correct</option>
+                <option value="racon">Racon</option>
+                <option value="pilon">Pilon</option>
+            </param>
+            <when value="ne"/>
+            <when value="racon">
+                <param argument="--r_round" type="integer" min="0" max="10" value="1" label="Number of Racon error-correction rounds" 
+                    help="Although multiple rounds of racon can increase the quality of an assembly there are indications that it also 
+                        fragments the assembly and may decrease quality by removing structural variants and SNPs. Published assembly workflows 
+                        differ in the number of rounds but rarely apply more than 4 rounds of racon" />
+            </when>
+            <when value="pilon">
+                <param argument="--ngs" type="data" format="fastq,fastq.gz" label="Illumina reads" 
+                    help="Pilon can utilize Illumina short reads mapped to the draft assembly to 
+                        improve the local accuracy of the sequence by correcting sequence errors, 
+                        fixing misassemblies, and filling gaps"/>
+                <param argument="--p_round" type="integer" min="0" max="10" value="3" label="Number of Pilon error-correction rounds" />
+            </when>
+        </conditional>
+        <conditional name="tgstype_conditional">
+            <param argument="--tgstype" type="select" label="Type of third generation reads">
+                <option value="ont" selected="true">Oxford Nanopore Technologies (ONT)</option>
+                <option value="pb">PacBio (pb)</option>
+            </param>
+            <when value="ont">
+                <param argument="--min_idy" type="float" min="0" max="1" value="0.3" label="Minimum identity for filtering candidate sequences"/>
+                <param argument="--min_match" type="integer" min="0" max="1000" value="300" label="Minimum matched length for filtering candidate sequences"/>
+            </when>
+            <when value="pb">
+                <param argument="--min_idy" type="float" min="0" max="1" value="0.2" label="Minimum identity for filtering candidate sequences"/>
+                <param argument="--min_match" type="integer" min="0" max="1000" value="200" label="Minimum matched length for filtering candidate sequences"/>
+            </when>
+        </conditional>
+        <param argument="--chunk" type="integer" min="0" max="20" value="3" label="Chunks for error correction" help="Split candidates into # of chunks to separately correct errors" />
+        <param argument="--g_check" type="boolean" truevalue="--g_check" falsevalue="" label="Gap-size diff check"/>
+        <param name="output_options" type="select" multiple="true" optional="true" display="checkboxes" label="Output files">
+            <option value="log_file">General log file</option>
+            <option value="gapfill_log">Gapfill log file</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="log" format="txt" from_work_dir="output.fill.log" label="${tool.name} on ${on_string}: log">
+            <filter>output_options and 'log_file' in output_options</filter>
+        </data>
+        <data name="final_assembly" format="fasta" from_work_dir="output.scaff_seqs" label="${tool.name} on ${on_string}: final assembly"/>
+
+        <data name="fill_details" format="txt" from_work_dir="output.gap_fill_detail" label="${tool.name} on ${on_string}: gap fill details">
+            <filter>output_options and 'gapfill_log' in output_options</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!--Test 01: no correction-->
+        <test expect_num_outputs="3">
+            <param name="scaff" value="scaffold.fasta" ftype="fasta"/>
+            <param name="reads" value="ont_reads.fasta" ftype="fasta"/>
+            <conditional name="error_conditional">
+                <param name="error_options" value="ne"/>
+            </conditional>
+            <conditional name="tgstype_conditional">
+                <param name="tgstype" value="ont"/>
+                <param name="min_idy" value="0.3"/>
+                <param name="min_match" value="300"/>
+            </conditional>
+            <param name="chunk" value="3"/>
+            <param name="g_check" value="false"/>
+            <param name="output_options" value="log_file,gapfill_log"/>
+            <output name="final_assembly" file="test_01_final_assembly.fasta" ftype="fasta"/>
+            <output name="log" ftype="txt">
+                <assert_contents>
+                    <has_text text="TGSGapCloser start now"/>
+                    <has_text text="the one read provide filler choose count freq for a gap"/>
+                </assert_contents>
+            </output>
+            <output name="fill_details" file="test_01_gapfill.log" ftype="txt"/>
+        </test>
+        <!--Test 02: correction with racon-->
+        <test expect_num_outputs="1">
+            <param name="scaff" value="scaffold.fasta" ftype="fasta"/>
+            <param name="reads" value="ont_reads.fasta" ftype="fasta"/>
+            <conditional name="error_conditional">
+                <param name="error_options" value="racon"/>
+                <param name="r_round" value="2"/>
+            </conditional>
+            <conditional name="tgstype_conditional">
+                <param name="tgstype" value="ont"/>
+                <param name="min_idy" value="0.3"/>
+                <param name="min_match" value="300"/>
+            </conditional>
+            <param name="chunk" value="3"/>
+            <param name="g_check" value="false"/>
+            <output name="final_assembly" file="test_02_final_assembly.fasta" ftype="fasta"/>
+        </test>
+        <!--Test 03: correction pilon-->
+        <test expect_num_outputs="1">
+            <param name="scaff" value="scaffold.fasta" ftype="fasta"/>
+            <param name="reads" value="ont_reads.fasta" ftype="fasta"/>
+            <conditional name="error_conditional">
+                <param name="error_options" value="pilon"/>
+                <param name="ngs" value="ngs_reads.fastq" ftype="fastq"/>
+                <param name="r_round" value="1"/>
+            </conditional>
+            <conditional name="tgstype_conditional">
+                <param name="tgstype" value="ont"/>
+                <param name="min_idy" value="0"/>
+                <param name="min_match" value="0"/>
+            </conditional>
+            <param name="chunk" value="1"/>
+            <param name="g_check" value="true"/>
+            <output name="final_assembly" file="test_03_final_assembly.fasta" ftype="fasta"/>
+        </test>
+        <!--Test 04: correction with racon and pacbio-->
+        <test expect_num_outputs="1">
+            <param name="scaff" value="scaffold.fasta" ftype="fasta"/>
+            <param name="reads" value="ont_reads.fasta" ftype="fasta"/>
+            <conditional name="error_conditional">
+                <param name="error_options" value="racon"/>
+                <param name="r_round" value="2"/>
+            </conditional>
+            <conditional name="tgstype_conditional">
+                <param name="tgstype" value="pacbio"/>
+                <param name="min_idy" value="0.2"/>
+                <param name="min_match" value="200"/>
+            </conditional>
+            <param name="chunk" value="2"/>
+            <param name="g_check" value="false"/>
+            <output name="final_assembly" file="test_04_final_assembly.fasta" ftype="fasta"/>
+        </test>
+        <!--Test 05: fastq.gz files-->
+        <test expect_num_outputs="1">
+            <param name="scaff" value="scaffold.fasta" ftype="fasta"/>
+            <param name="reads" value="ont_reads.fasta" ftype="fasta"/>
+            <conditional name="error_conditional">
+                <param name="error_options" value="pilon"/>
+                <param name="ngs" value="ngs_reads.fastq.gz" ftype="fastq.gz"/>
+                <param name="r_round" value="1"/>
+            </conditional>
+            <conditional name="tgstype_conditional">
+                <param name="tgstype" value="ont"/>
+                <param name="min_idy" value="0"/>
+                <param name="min_match" value="0"/>
+            </conditional>
+            <param name="chunk" value="1"/>
+            <param name="g_check" value="false"/>
+            <output name="final_assembly" file="test_05_final_assembly.fasta" ftype="fasta"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**Purpose**
+
+TGS-GapCloser is a gap-closing software tool that uses error-prone long reads generated by third-generation-sequence techniques (Pacbio,
+Oxford Nanopore, etc.) or preassembled contigs to fill N-gap in the genome assembly. This tool can close gaps in large genome assemblies
+using raw long reads quickly and cost-effectively. The final assemblies generated by TGS-GapCloser have improved contiguity and 
+completeness while maintaining high accuracy.
+
+----
+
+.. class:: infomark
+
+**Quick usage**
+
+Input reads can only be in FASTA format. Both raw reads and pre-error-corrected reads are acceptable as input. If only raw long reads are 
+provided, it polishes raw TGS reads by calling Racon.If additional NGS short reads are available, it polishes raw TGS reads by calling Pilon.
+
+----
+
+.. class:: infomark
+
+**Gap fill details**
+
+
+Format of a detailed information of gap fill report:
+
+- Each scaffold name is followed by its data lines.
+- A data line consists of 3 or 5 columns and describes the source of each segment in the final sequence:
+- Column 1 is the segment's first bp position in the final sequence.
+- Column 2 is the segment's last bp position in the final sequence.
+- Column 3 is the segment's type , 'S' , 'N' or 'F'.
+- 'S' means this segment is a segment of the input sequence and this line includes other two more columns:
+- Column 4 is the segment's first bp position in the input sequence.
+- Column 5 is the segment's last bp position in the input sequence.
+- 'N' means this segment is a N area.
+- 'F' means this segment is a filled sequence from TGS reads.
+
+----
+
+.. class:: infomark
+
+**Algorithm and implementation of TGS-GapCloser**
+
+This is a brief description of the TGS-GapCloser algorithm. Please refer to the manuscript for more detailed information.
+
+TGS-GapCloser is coded in the C++ programing language (requires GCC 4.4+). It uses minimap2 to obtain alignments, and Pilon (requires Java runtime 1.7+)
+or Racon (requires GCC 4.8+) to correct candidate fragments. The algorithm automatically identifies gaps and tries to find the best matched long-read 
+fragments to close gaps or merge adjacent scaftigs. To accelerate the gap closure without losing efficiency and accuracy, TGS-GapCloser only selects a 
+limited number of fragmented long reads as candidates for subsequent error correction and competition.
+
+TGS-GapCloser can accept as input any type of TGS long reads or other pre-assembled contigs to fill gaps in a draft assembly in the 4 steps :
+	(i) Identification of gap regions in the draft assembly; 
+	(ii) Acquisition of candidates from the alignments of long reads against gaps; 
+	(iii) Base-level error correction of alternative sub-long reads; and 
+	(iv) Gap closure using the error-corrected candidates with the highest score for each gap or linkage of the neighboring scaftigs with overlaps.
+
+  ]]></help>
+    <expand macro="citations" />
+</tool>
