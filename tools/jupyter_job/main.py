@@ -1,12 +1,10 @@
 import argparse
-import json
 import os
 import subprocess
 import warnings
 from zipfile import ZipFile
 
 import h5py
-import requests
 import yaml
 from skl2onnx import convert_sklearn
 from skl2onnx.common.data_types import FloatTensorType
@@ -57,17 +55,14 @@ def find_replace_paths(script_file, updated_data_dict):
     return script_file
 
 
-def download_files_update_paths(d_paths, w_dir):
-    paths_dict = json.loads(open(d_paths, "r").read())
-    # read model from remote
+def update_ml_files_paths(old_file_paths, new_file_paths):
+    if old_file_paths == "" or old_file_paths is None or new_file_paths == "" or new_file_paths is None:
+        return dict()
+    o_files = old_file_paths.split(",")
+    n_files = new_file_paths.split(",")
     new_paths_dict = dict()
-    for d_p in paths_dict:
-        remote_file = requests.get(paths_dict[d_p])
-        new_path = w_dir + "/" + os.path.basename(d_p)
-        # save model to a local directory
-        with open(new_path, 'wb') as model_file:
-            model_file.write(remote_file.content)
-            new_paths_dict[d_p] = new_path
+    for i, o_f in enumerate(o_files):
+        new_paths_dict[o_f] = n_files[i]
     return new_paths_dict
 
 
@@ -155,20 +150,21 @@ def check_vars(var_dict, m_file, a_file):
 if __name__ == "__main__":
 
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("-dp", "--data_paths_file", required=True, help="")
+    arg_parser.add_argument("-mlp", "--ml_paths", required=True, help="")
     arg_parser.add_argument("-ldf", "--loaded_file", required=True, help="")
     arg_parser.add_argument("-wd", "--working_dir", required=True, help="")
     arg_parser.add_argument("-oz", "--output_zip", required=True, help="")
     arg_parser.add_argument("-om", "--output_model", required=True, help="")
     arg_parser.add_argument("-oa", "--output_array", required=True, help="")
-
+    arg_parser.add_argument("-mlf", "--ml_h5_files", required=True, help="")
     # get argument values
     args = vars(arg_parser.parse_args())
-    data_paths_file = args["data_paths_file"]
+    ml_paths = args["ml_paths"]
     loaded_file = args["loaded_file"]
     model_output_file = args["output_model"]
     array_output_file = args["output_array"]
     zip_output_file = args["output_zip"]
     working_dir = args["working_dir"]
-    new_paths_dict = download_files_update_paths(data_paths_file, working_dir)
+    ml_h5_files = args["ml_h5_files"]
+    new_paths_dict = update_ml_files_paths(ml_paths, ml_h5_files)
     read_loaded_file(new_paths_dict, loaded_file, model_output_file, array_output_file, working_dir, zip_output_file)
