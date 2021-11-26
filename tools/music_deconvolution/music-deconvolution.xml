@@ -1,11 +1,11 @@
 <tool id="music_deconvolution" name="MuSiC" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@"
-      profile="20.05" license="GPL-3.0-or-later" >
+      profile="21.09" license="GPL-3.0-or-later" >
     <description>estimate cell type proportions in bulk RNA-seq data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements" />
-    <command detect_errors="exit_code"><![CDATA[
+    <command detect_errors="exit_code" ><![CDATA[
 mkdir report_data &&
 Rscript --vanilla '$__tool_directory__/scripts/${do.method}.R' '$conf'
 ]]></command>
@@ -29,16 +29,17 @@ scrna_eset = readRDS('$scrna_eset')
 #if str($do.method) == "estimateprops":
 
 phenotype_factors = null_str_vec('$do.phenotype_factors')
+phenotype_factors_always_exclude = null_str_vec('$do.phenotype_factors_always_exclude')
 celltypes_label = null_str_vec('$do.celltypes_label')
 samples_label = null_str_vec('$do.samples_label')
 celltypes = null_str_vec('$do.celltypes')
-methods = null_str_vec('$do.methods')
-phenotype_gene = null_str_vec('$do.phenotype_gene')
-sample_groups = null_str_vec('$do.sample_groups')
+methods = c("MuSiC", "NNLS")
+phenotype_target = null_str_vec('$do.phenotype_target')
+phenotype_target_threshold = as.numeric('$do.phenotype_target_threshold')
 sample_disease_group = null_str_vec('$do.sample_disease_group')
 sample_disease_group_scale = as.integer('$do.sample_disease_group_scale')
-healthy_phenotype = null_str_vec('$do.healthy_phenotype')
 compare_title = null_str_vec('$do.compare_title')
+
 outfile_pdf='$out_pdf'
 
 #elif str($do.method) == "dendrogram":
@@ -91,20 +92,24 @@ outfile_tab='$out_tab'
                     <expand macro="validator_text" />
                 </param>
                 <expand macro="celltypes_macro" />
-                <param name="methods" multiple="true" type="select" display="checkboxes" label="Cell Proportion Method" >
-                    <option value="MuSiC" selected="true" />
-                    <option value="NNLS" selected="true" />
-                </param>
                 <param name="phenotype_factors" type="text"
-                       label="List of phenotypes factors" help="If blank, then use all phenotypes." >
+                       label="Phenotype factors"
+                       help="List of phenotypes factors to be used in the linear regression. Please make sure that each factor has more than one unique value. Names correspond to column names in the bulk RNA dataset phenotype table. If blank, then treat all bulk phenotype columns as factors." >
                     <expand macro="validator_index_identifiers" />
                 </param>
-                <param name="phenotype_gene" type="text" label="Causative Gene"
-                       help="MUST exist in the phenotype factors above." >
+                <param name="phenotype_factors_always_exclude" type="text"
+                       label="Excluded phenotype factors"
+                       help="List of phenotype factors to always exclude in the analysis"
+                       value="sampleID,SubjectName" >
+                    <expand macro="validator_index_identifiers" />
+                </param>
+                <param name="phenotype_target" type="text" label="Phenotype Target"
+                       help="MUST exist in the bulk RNA datasets phenotype factors, as above." >
                     <expand macro="validator_text" />
                 </param>
-                <param name="sample_groups" type="text" label="List of Sample Groups" >
-                    <expand macro="validator_index_identifiers" />
+                <param name="phenotype_target_threshold" type="float" label="Phenotype Target Threshold"
+                       value="-99"
+                       help="The (%) threshold at which the phenotype target manifests. Leave at -99 to select all." >
                 </param>
                 <param name="sample_disease_group" type="text" label="Sample Disease Group"
                        help="MUST exist in the sample_groups above." >
@@ -113,9 +118,6 @@ outfile_tab='$out_tab'
                 <param name="sample_disease_group_scale" type="integer"
                        label="Sample Disease Group (Scale)" value="5"
                        help="Used to accentutate certain features in the plots. Increase this number to reduce the effect." />
-                <param name="healthy_phenotype" type="text" label="Healthy Phenotype" >
-                    <expand macro="validator_text" />
-                </param>
                 <param name="compare_title" type="text" label="Plot Title" >
                     <expand macro="validator_text" />
                 </param>
@@ -126,7 +128,7 @@ outfile_tab='$out_tab'
                     <expand macro="validator_text" />
                 </param>
                 <param name="clustertype_label" type="text" value="clusterType"
-                       label="Cell Types Label from scRNA dataset" >
+                       label="Cluster Types Label from scRNA dataset" >
                     <expand macro="validator_text" />
                 </param>
                 <param name="samples_label" type="text" value="sampleID"
@@ -134,13 +136,14 @@ outfile_tab='$out_tab'
                     <expand macro="validator_text" />
                 </param>
                 <expand macro="celltypes_macro" />
-                <repeat name="cluster_groups" title="Cluster Groups" min="2" >
+                <repeat name="cluster_groups" title="Cluster Groups" min="0"
+                        help="Insert cell cluster groups based on a previous clustering." >
                     <param name="cluster_id" label="Cluster ID" type="text" value=""
                            help="e.g. C1 or Cluster1, etc." />
                     <expand macro="celltypes_macro" />
                     <param name="marker_name" label="Marker Gene Group Name" type="text"
                            optional="true" value=""
-                           help="Name of the list of geme markers used to describe the marker list supplied below." >
+                           help="Name of the list of gene markers used to describe the marker list supplied below." >
                         <expand macro="validator_text" />
                     </param>
                     <param name="marker_list" label="List of Gene Markers" type="data" format="txt,tabular"
@@ -153,17 +156,35 @@ outfile_tab='$out_tab'
     <outputs>
         <data name="out_pdf" format="pdf" label="${tool.name} on ${on_string}: PDF Plots" />
         <data name="out_tab" format="tabular" label="${tool.name} on ${on_string}: Cell Proportions by Sample" >
-            <filter>do["method"] == "dendrogram"</filter>
+            <filter>do["method"] == "dendrogram" and len(do["cluster_groups"]) > 0</filter>
         </data>
-        <collection name="summaries" type="list" label="${tool.name} on ${on_string}: Method Summaries">
+        <collection name="props" type="list" label="${tool.name} on ${on_string}: Proportion Matrices" >
             <filter>do["method"] == "estimateprops"</filter>
-            <discover_datasets pattern="summ_(?P&lt;designation&gt;.+)\.txt" format="txt"
-                               directory="report_data" />
+            <discover_datasets pattern="prop_(?P&lt;designation&gt;.+)\.tabular" format="tabular" directory="report_data" />
+        </collection>
+        <collection name="summaries" type="list" label="${tool.name} on ${on_string}: Summaries and Logs">
+            <filter>do["method"] == "estimateprops"</filter>
+            <discover_datasets pattern="summ_(?P&lt;designation&gt;.+)\.txt" format="txt" directory="report_data" />
+            <discover_datasets pattern="varprop_(?P&lt;designation&gt;.+)\.tabular" format="tabular" directory="report_data" />
+            <discover_datasets pattern="rsquared_(?P&lt;designation&gt;.+)\.tabular" format="tabular" directory="report_data" />
+            <discover_datasets pattern="weightgene_(?P&lt;designation&gt;.+)\.tabular" format="tabular" directory="report_data" />
         </collection>
     </outputs>
     <tests>
+        <test expect_num_outputs="1" >
+            <!-- Dendrogram test 1 -->
+            <param name="bulk_eset" value="Mousebulkeset.rds" />
+            <param name="scrna_eset" value="Mousesubeset.degenesonly2.half.rds" />
+            <conditional name="do" >
+                <param name="method" value="dendrogram" />
+                <param name="celltypes_label" value="cellType" />
+                <param name="samples_label" value="sampleID" />
+                <param name="celltypes" value="Endo,Podo,PT,LOH,DCT,CD-PC,CD-IC,Fib,Macro,Neutro,B lymph,T lymph,NK" />
+            </conditional>
+            <output name="out_pdf" value="dendro_1.pdf" compare="sim_size" />
+        </test>
         <test expect_num_outputs="2" >
-            <!-- Dendrogram test -->
+            <!-- Dendrogram test 2 -->
             <param name="bulk_eset" value="Mousebulkeset.rds" />
             <param name="scrna_eset" value="Mousesubeset.degenesonly2.half.rds" />
             <conditional name="do" >
@@ -195,12 +216,12 @@ outfile_tab='$out_tab'
             <output name="out_pdf" value="dendro.pdf" compare="sim_size" />
             <output name="out_tab">
                 <assert_contents>
-                    <has_text_matching expression="^\s+Est\.prop\.weighted\.cluster\.Neutro\s+Est\.prop\.weighted\.cluster\.Podo\s+Est\.prop\.weighted\.cluster\.Endo" />
+                    <has_text_matching expression="^\s+Neutro\s+Podo\s+Endo" />
                     <has_text text="APOL1.GNA78M"/>
                 </assert_contents>
             </output>
         </test>
-        <test expect_num_outputs="2" >
+        <test expect_num_outputs="3" >
             <!-- Estimate Proportions test -->
             <param name="bulk_eset" value="GSE50244bulkeset.subset.rds" />
             <param name="scrna_eset" value="EMTABesethealthy.subset.rds" />
@@ -209,25 +230,23 @@ outfile_tab='$out_tab'
                 <param name="celltypes_label" value="cellType" />
                 <param name="samples_label" value="sampleID" />
                 <param name="celltypes" value="alpha,beta,delta,gamma,acinar,ductal" />
-                <param name="methods" value="MuSiC,NNLS" />
                 <param name="phenotype_factors" value="age,bmi,hba1c,gender" />
-                <param name="phenotype_gene" value="hba1c" />
-                <param name="sample_groups" value="Normal,T2D" />
+                <param name="phenotype_target" value="hba1c" />
+                <param name="phenotype_target_threshold" value="6.5" />
                 <param name="sample_disease_group" value="T2D" />
                 <param name="sample_disease_group_scale" value="5" />
-                <param name="healthy_phenotype" value="Normal" />
                 <param name="compare_title" value="HbA1c vs Beta Cell Type Proportion" />
             </conditional>
             <output name="out_pdf" value="default_output.pdf" compare="sim_size" />
-            <output_collection name="summaries" count="2">
-                <element name="MuSiC" ftype="txt">
+            <output_collection name="summaries" count="5">
+                <element name="Log of MuSiC fitting" ftype="txt">
                     <assert_contents>
-                        <has_text text="Residual standard error: 0.1662 on 72 degrees of freedom"/>
+                        <has_text text="Residual standard error: 0.1704 on 72 degrees of freedom"/>
                     </assert_contents>
                 </element>
-                <element name="NNLS" ftype="txt">
+                <element name="Log of NNLS fitting" ftype="txt">
                     <assert_contents>
-                        <has_text text="Residual standard error: 0.06561 on 72 degrees of freedom"/>
+                        <has_text text="Residual standard error: 0.0645 on 72 degrees of freedom"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -238,7 +257,8 @@ MuSiC utilizes cell-type specific gene expression from single-cell RNA sequencin
 
 Solid tissues often contain closely related cell types which leads to collinearity. To deal with collinearity, MuSiC employs a tree-guided procedure that recursively zooms in on closely related cell types. Briefly, we first group similar cell types into the same cluster and estimate cluster proportions, then recursively repeat this procedure within each cluster.
 
-.. image:: https://xuranw.github.io/MuSiC/articles/images/FigureMethod.jpg
+.. image:: $PATH_TO_IMAGES/FigureMethod.jpg
+
     ]]></help>
     <citations>
         <citation type="doi">https://doi.org/10.1038/s41467-018-08023-x</citation>
