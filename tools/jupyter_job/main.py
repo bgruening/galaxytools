@@ -68,14 +68,14 @@ def update_ml_files_paths(old_file_paths, new_file_paths):
     return new_paths_dict
 
 
-def read_loaded_file(new_paths_dict, p_loaded_file, m_file, a_file, w_dir, z_file):
+def read_loaded_file(new_paths_dict, p_loaded_file, a_file, w_dir, z_file):
     global_vars = dict()
     input_file = yaml.safe_load(p_loaded_file)
     code_string = open(input_file, "r").read()
     re_code_string = find_replace_paths(code_string, new_paths_dict)
     compiled_code = compile(re_code_string, input_file, 'exec')
     exec(compiled_code, global_vars)
-    check_vars(global_vars, m_file, a_file)
+    check_vars(w_dir, global_vars, a_file)
     zip_files(w_dir, z_file)
 
 
@@ -85,23 +85,34 @@ def zip_files(w_dir, z_file):
             zip_file.write(f_path)
 
 
-def save_sklearn_model(obj, output_file):
+def create_model_path(curr_path, key):
+    onnx_path = curr_path + "/model_outputs"
+    if not os.path.exists(onnx_path):
+        os.makedirs(onnx_path)
+    onnx_model_path = curr_path + "/model_outputs/" + "onnx_model_{}.onnx".format(key)
+    return onnx_model_path
+
+
+def save_sklearn_model(w_dir, key, obj):
     initial_type = [('float_input', FloatTensorType([None, 4]))]
     onx = convert_sklearn(obj, initial_types=initial_type)
-    with open(output_file, "wb") as f:
+    sk_model_path = create_model_path(w_dir, key)
+    with open(sk_model_path, "wb") as f:
         f.write(onx.SerializeToString())
 
 
-def save_tf_model(obj, output_file):
+def save_tf_model(w_dir, key, obj):
     import tensorflow as tf
-    curr_path = os.path.abspath(os.getcwd())
-    tf_new_path = "{}/{}".format(curr_path, "model")
-    if not os.path.exists(tf_new_path):
-        os.makedirs(tf_new_path)
+    tf_file_key = "tf_model_{}".format(key)
+    tf_model_path = "{}/{}".format(w_dir, tf_file_key)
+    if not os.path.exists(tf_model_path):
+        os.makedirs(tf_model_path)
     # save model as tf model
-    tf.saved_model.save(obj, tf_new_path)
+    tf.saved_model.save(obj, tf_model_path)
+    # save model as ONNX
+    tf_onnx_model_p = create_model_path(w_dir, key)
     # OPSET level defines a level of tensorflow operations supported by ONNX
-    python_shell_script = "python -m tf2onnx.convert --saved-model " + tf_new_path + " --output " + output_file + " --opset 15 "
+    python_shell_script = "python -m tf2onnx.convert --saved-model " + tf_model_path + " --output " + tf_onnx_model_p + " --opset 15 "
     # convert tf/keras model to ONNX and save it to output file
     subprocess.run(python_shell_script, shell=True, check=True)
 
@@ -122,7 +133,7 @@ def save_dataframe(payload, a_file):
         payload[key].to_hdf(a_file, key=key)
 
 
-def check_vars(var_dict, m_file, a_file):
+def check_vars(w_dir, var_dict, a_file):
     if var_dict is not None:
         primitive_payload = dict()
         dataframe_payload = dict()
@@ -131,10 +142,10 @@ def check_vars(var_dict, m_file, a_file):
             obj_class = str(obj.__class__)
             # save tf model
             if len([item for item in TF_MODELS if item in obj_class]) > 0:
-                save_tf_model(obj, m_file)
+                save_tf_model(w_dir, key, obj)
             # save scikit-learn model
             elif len([item for item in SKLEARN_MODELS if item in obj_class]) > 0:
-                save_sklearn_model(obj, m_file)
+                save_sklearn_model(w_dir, key, obj)
             # save arrays and lists
             elif len([item for item in ARRAYS if item in obj_class]) > 0:
                 if key not in primitive_payload:
@@ -156,17 +167,15 @@ if __name__ == "__main__":
     arg_parser.add_argument("-ldf", "--loaded_file", required=True, help="")
     arg_parser.add_argument("-wd", "--working_dir", required=True, help="")
     arg_parser.add_argument("-oz", "--output_zip", required=True, help="")
-    arg_parser.add_argument("-om", "--output_model", required=True, help="")
     arg_parser.add_argument("-oa", "--output_array", required=True, help="")
     arg_parser.add_argument("-mlf", "--ml_h5_files", required=True, help="")
     # get argument values
     args = vars(arg_parser.parse_args())
     ml_paths = args["ml_paths"]
     loaded_file = args["loaded_file"]
-    model_output_file = args["output_model"]
     array_output_file = args["output_array"]
     zip_output_file = args["output_zip"]
     working_dir = args["working_dir"]
     ml_h5_files = args["ml_h5_files"]
     new_paths_dict = update_ml_files_paths(ml_paths, ml_h5_files)
-    read_loaded_file(new_paths_dict, loaded_file, model_output_file, array_output_file, working_dir, zip_output_file)
+    read_loaded_file(new_paths_dict, loaded_file, array_output_file, working_dir, zip_output_file)
