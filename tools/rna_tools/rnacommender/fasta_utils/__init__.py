@@ -14,10 +14,10 @@ def import_fasta(fasta_file):
     f = open(fasta_file)
     fasta = f.read().strip()
     f.close()
-    for a in fasta.split('>'):
-        k = a.split('\n')[0]
-        v = ''.join(a.split('\n')[1:])
-        if k != '':
+    for a in fasta.split(">"):
+        k = a.split("\n")[0]
+        v = "".join(a.split("\n")[1:])
+        if k != "":
             dic[k] = v
     return dic
 
@@ -36,9 +36,9 @@ def seq_names(fasta_file):
     f = open(fasta_file)
     fasta = f.read()
     f.close()
-    for a in fasta.split('>'):
-        names.append(a.split('\n')[0])
-    return [a for a in names if a != '']
+    for a in fasta.split(">"):
+        names.append(a.split("\n")[0])
+    return [a for a in names if a != ""]
 
 
 def stockholm2fasta(stockholm):

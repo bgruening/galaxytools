@@ -26,7 +26,11 @@ image_processor_copy = input_image_plus_copy.getProcessor()
 # Convert image to binary if necessary.
 if not image_processor_copy.isBinary():
     # Convert the image to binary grayscale.
-    IJ.run(input_image_plus_copy, "Make Binary", "iterations=1 count=1 edm=Overwrite do=Nothing")
+    IJ.run(
+        input_image_plus_copy,
+        "Make Binary",
+        "iterations=1 count=1 edm=Overwrite do=Nothing",
+    )
 # Set the options.
 if black_background:
     method_str = "%s dark" % method

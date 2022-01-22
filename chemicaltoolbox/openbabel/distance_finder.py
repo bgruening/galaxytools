@@ -19,9 +19,8 @@ from openbabel import pybel
 
 
 def log(*args, **kwargs):
-    """Log output to STDERR
-    """
-    print(*args, file=sys.stderr, ** kwargs)
+    """Log output to STDERR"""
+    print(*args, file=sys.stderr, **kwargs)
 
 
 def execute(ligands_sdf, points_file, outfile):
@@ -35,7 +34,7 @@ def execute(ligands_sdf, points_file, outfile):
     points = []
 
     # read the points
-    with open(points_file, 'r') as f:
+    with open(points_file, "r") as f:
         for line in f.readlines():
             line.strip()
             if line:
@@ -45,7 +44,7 @@ def execute(ligands_sdf, points_file, outfile):
                     log("Read points", p)
                     continue
             log("Failed to read line:", line)
-    log('Found', len(points), 'atom points')
+    log("Found", len(points), "atom points")
 
     sdf_writer = pybel.Outputfile("sdf", outfile, overwrite=True)
 
@@ -53,7 +52,7 @@ def execute(ligands_sdf, points_file, outfile):
     for mol in pybel.readfile("sdf", ligands_sdf):
         count += 1
         if count % 50000 == 0:
-            log('Processed', count)
+            log("Processed", count)
 
         try:
             # print("Processing mol", mol.title)
@@ -70,32 +69,42 @@ def execute(ligands_sdf, points_file, outfile):
                 distances = []
                 for i in coords:
                     # calculates distance based on cartesian coordinates
-                    distance = math.sqrt((point[0] - i[0])**2 + (point[1] - i[1])**2 + (point[2] - i[2])**2)
+                    distance = math.sqrt(
+                        (point[0] - i[0]) ** 2
+                        + (point[1] - i[1]) ** 2
+                        + (point[2] - i[2]) ** 2
+                    )
                     distances.append(distance)
                     # log("distance:", distance)
                 min_distance = min(distances)
                 # log('Min:', min_distance)
                 # log(count, p, min_distance)
 
-                mol.data['distance' + str(p)] = min_distance
+                mol.data["distance" + str(p)] = min_distance
 
             sdf_writer.write(mol)
 
         except Exception as e:
-            log('Failed to handle molecule: ' + str(e))
+            log("Failed to handle molecule: " + str(e))
             continue
 
     sdf_writer.close()
-    log('Wrote', count, 'molecules')
+    log("Wrote", count, "molecules")
 
 
 def main():
     global work_dir
 
-    parser = argparse.ArgumentParser(description='XChem distances - measure distances to particular points')
-    parser.add_argument('-i', '--input', help="SDF containing the 3D molecules to score)")
-    parser.add_argument('-p', '--points', help="PDB format file with atoms")
-    parser.add_argument('-o', '--outfile', default='output.sdf', help="File name for results")
+    parser = argparse.ArgumentParser(
+        description="XChem distances - measure distances to particular points"
+    )
+    parser.add_argument(
+        "-i", "--input", help="SDF containing the 3D molecules to score)"
+    )
+    parser.add_argument("-p", "--points", help="PDB format file with atoms")
+    parser.add_argument(
+        "-o", "--outfile", default="output.sdf", help="File name for results"
+    )
 
     args = parser.parse_args()
     log("XChem distances args: ", args)

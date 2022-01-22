@@ -18,12 +18,14 @@ Usage:
     glimmer_to_proteins.py <glimmer output> <ref fasta> <output file> <convert to protein ... False|True>
 """
 
-import sys
-import os
 import operator
+import os
+import sys
+from functools import reduce
 
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
+
 
 def main(glimmer_file, ref_file, out_file, to_protein):
     with open(ref_file) as in_handle:
@@ -32,10 +34,14 @@ def main(glimmer_file, ref_file, out_file, to_protein):
     base, ext = os.path.splitext(glimmer_file)
 
     with open(out_file, "w") as out_handle:
-        SeqIO.write(protein_recs(glimmer_file, ref_rec, to_protein), out_handle, "fasta")
+        SeqIO.write(
+            protein_recs(glimmer_file, ref_rec, to_protein), out_handle, "fasta"
+        )
+
 
 def protein_recs(glimmer_file, ref_rec, to_protein):
-    """Generate protein records
+    """
+    Generate protein records
     """
     with open(glimmer_file) as in_handle:
         for gene_num, exons, strand in glimmer_predictions(in_handle):
@@ -43,15 +49,17 @@ def protein_recs(glimmer_file, ref_rec, to_protein):
             for start, end in exons:
                 seq_exons.append(ref_rec.seq[start:end])
             gene_seq = reduce(operator.add, seq_exons)
-            if strand == '-':
+            if strand == "-":
                 gene_seq = gene_seq.reverse_complement()
             if to_protein:
                 yield SeqRecord(gene_seq.translate(), gene_num, "", "")
             else:
                 yield SeqRecord(gene_seq, gene_num, "", "")
 
+
 def glimmer_predictions(in_handle):
-    """Parse Glimmer output, generating a exons and strand for each prediction.
+    """
+    Parse Glimmer output, generating a exons and strand for each prediction.
     """
     # read the header
     while 1:
@@ -73,7 +81,7 @@ def glimmer_predictions(in_handle):
         else:
             this_gene_num = parts[0]
             this_strand = parts[2]
-            this_start = int(parts[4]) - 1 # 1 based
+            this_start = int(parts[4]) - 1  # 1 based
             this_end = int(parts[5])
             if cur_gene_num is None:
                 cur_gene_num = this_gene_num
@@ -85,8 +93,9 @@ def glimmer_predictions(in_handle):
     if len(cur_exons) > 0:
         yield cur_gene_num, cur_exons, cur_strand
 
+
 if __name__ == "__main__":
     if len(sys.argv) != 5:
-        print __doc__
+        print(__doc__)
         sys.exit()
     main(*sys.argv[1:])

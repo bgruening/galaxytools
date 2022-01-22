@@ -10,15 +10,16 @@ SuCOS is the work of Susan Leung.
 GitHub: https://github.com/susanhleung/SuCOS
 Publication: https://doi.org/10.26434/chemrxiv.8100203.v1
 """
+import argparse
 
-import sucos, utils
-import argparse, gzip
-from rdkit import Chem
 import numpy as np
 import pandas as pd
-from scipy.cluster.hierarchy import linkage, fcluster
+import sucos
+import utils
+from rdkit import Chem
+from scipy.cluster.hierarchy import fcluster, linkage
 
-### start main execution #########################################
+# start main execution #########################################
 
 
 def calc_distance_matrix(mols):
@@ -44,12 +45,16 @@ def calc_distance_matrix(mols):
             if tuple1[0] == tuple2[0]:
                 tmp.append(0.0)
             else:
-                #utils.log("Calculating SuCOS between", mol1, mol2)
-                sucos_score, fm_score, tani_score = sucos.get_SucosScore(tuple1[0], tuple2[0],
-                    tani=True, ref_features=tuple1[1], query_features=tuple2[1])
+                # utils.log("Calculating SuCOS between", mol1, mol2)
+                sucos_score, fm_score, tani_score = sucos.get_SucosScore(
+                    tuple1[0],
+                    tuple2[0],
+                    tani=True,
+                    ref_features=tuple1[1],
+                    query_features=tuple2[1],
+                )
                 tmp.append(1.0 - sucos_score)
         matrix.append(tmp)
-
 
     return matrix
 
@@ -64,23 +69,24 @@ def cluster(matrix, threshold=0.8):
 
     indexes = [x for x in range(0, len(matrix))]
     cols = [x for x in range(0, len(matrix[0]))]
-    #utils.log("indexes", indexes)
-    #utils.log("cols", cols)
+    # utils.log("indexes", indexes)
+    # utils.log("cols", cols)
     df = pd.DataFrame(matrix, columns=cols, index=indexes)
     utils.log("DataFrame:", df.shape)
-    #utils.log(df)
+    # utils.log(df)
     indices = np.triu_indices(df.shape[0], k=1)
-    #utils.log("Indices:", indices)
+    # utils.log("Indices:", indices)
     t = np.array(df)[indices]
-    Z = linkage(t, 'average')
+    Z = linkage(t, "average")
     lig_clusters = []
-    cluster_arr = fcluster(Z, t=threshold, criterion='distance')
+    cluster_arr = fcluster(Z, t=threshold, criterion="distance")
     for i in range(np.amax(cluster_arr)):
-        clus = df.columns[np.argwhere(cluster_arr==i+1)]
+        clus = df.columns[np.argwhere(cluster_arr == i + 1)]
         lig_clusters.append([x[0] for x in clus.tolist()])
 
     utils.log("Clusters", lig_clusters)
     return lig_clusters
+
 
 def write_clusters_to_sdfs(mols, clusters, basename, gzip=False):
     """
@@ -99,7 +105,9 @@ def write_clusters_to_sdfs(mols, clusters, basename, gzip=False):
         filename = basename + str(i) + ".sdf"
         if gzip:
             filename += ".gz"
-        utils.log("Writing ", len(cluster), "molecules in cluster", i, "to file", filename)
+        utils.log(
+            "Writing ", len(cluster), "molecules in cluster", i, "to file", filename
+        )
         output_file = utils.open_file_for_writing(filename)
         writer = Chem.SDWriter(output_file)
         for index in cluster:
@@ -110,14 +118,26 @@ def write_clusters_to_sdfs(mols, clusters, basename, gzip=False):
         output_file.close()
 
 
-
 def main():
-    parser = argparse.ArgumentParser(description='Clustering with SuCOS and RDKit')
-    parser.add_argument('-i', '--input', help='Input file in SDF format. Can be gzipped (*.gz).')
-    parser.add_argument('-o', '--output', default="cluster", help="Base name for output files in SDF format. " +
-                                               "e.g. if value is 'output' then files like output1.sdf, output2.sdf will be created")
-    parser.add_argument('--gzip', action='store_true', help='Gzip the outputs generating files like output1.sdf.gz, output2.sdf.gz')
-    parser.add_argument('-t', '--threshold', type=float, default=0.8, help='Clustering threshold')
+    parser = argparse.ArgumentParser(description="Clustering with SuCOS and RDKit")
+    parser.add_argument(
+        "-i", "--input", help="Input file in SDF format. Can be gzipped (*.gz)."
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default="cluster",
+        help="Base name for output files in SDF format. "
+        + "e.g. if value is 'output' then files like output1.sdf, output2.sdf will be created",
+    )
+    parser.add_argument(
+        "--gzip",
+        action="store_true",
+        help="Gzip the outputs generating files like output1.sdf.gz, output2.sdf.gz",
+    )
+    parser.add_argument(
+        "-t", "--threshold", type=float, default=0.8, help="Clustering threshold"
+    )
 
     args = parser.parse_args()
     utils.log("SuCOS Cluster Args: ", args)

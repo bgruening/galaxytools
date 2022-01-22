@@ -1,13 +1,14 @@
 <tool id="docking" name="VINA Docking" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
+    <description>tool to perform protein-ligand docking with Autodock Vina</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.1.2</token>
+        <token name="@TOOL_VERSION@">1.2.3</token>
         <token name="@GALAXY_VERSION@">0</token>
     </macros>
-    <description>tool to perform protein-ligand docking with Autodock Vina</description>
     <requirements>
-        <requirement type="package" version="@TOOL_VERSION@">autodock-vina</requirement>
+        <requirement type="package" version="@TOOL_VERSION@">vina</requirement>
+        <requirement type="package" version="3.9">python</requirement>
         <requirement type="package" version="3.1.1">openbabel</requirement>
-        <requirement type="package" version="20200722">parallel</requirement>
+        <requirement type="package" version="20211022">parallel</requirement>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
         #if $ligands.is_of_type("sdf")
@@ -18,11 +19,14 @@
         mkdir output &&
         ls ligand*.pdbqt | parallel --will-cite -j \${GALAXY_SLOTS:-1} $'OUTNAME={.}_docked && vina
             --receptor \'$receptor\'
+            #if $flex:
+                --flex \'$flex\'
+            #end if
             --ligand {}
             --out ./\${OUTNAME}.pdbqt
-            --log ./\${OUTNAME}.log
             --cpu 1
-        #if $config_params.config_params == 'vals':
+            --verbosity 2
+        #if $config_params.config_params == "vals":
                 --center_x $config_params.center_x
                 --center_y $config_params.center_y
                 --center_z $config_params.center_z
@@ -32,23 +36,41 @@
                 #if $config_params.exh != "":
                     --exhaustiveness $config_params.exh
                 #end if
-                #if $config_params.seed.seed == 'true':
+                #if $config_params.seed.seed == "true":
                     --seed $config_params.seed.seed_value
                 #end if
-        #else if $config_params.config_params == 'file':
+        #else if $config_params.config_params == "file":
              --config $config_params.box
              #if $config_params.exh != "":
                  --exhaustiveness $config_params.exh
              #end if
         #end if
-        && python \'$__tool_directory__/convert_pdbqt_to_sdf.py\' ./\${OUTNAME}.pdbqt output/\${OUTNAME}.sdf'
-        
+        #if $settings.scoring:
+            --scoring \'$settings.scoring\'
+        #end if
+        #if $settings.num_modes:
+            --num_modes \'$settings.num_modes\'
+        #end if
+        #if $settings.min_rmsd:
+            --min_rmsd \'$settings.min_rmsd\'
+        #end if
+        #if $settings.energy_range:
+            --energy_range \'$settings.energy_range\'
+        #end if
+        #if $output == "sdf":
+            && python \'$__tool_directory__/convert_pdbqt_to_sdf.py\' ./\${OUTNAME}.pdbqt output/\${OUTNAME}.sdf
+        #end if
+        '
+        #if $output == "pdbqt":
+            && mv *docked.pdbqt output/
+        #end if
     ]]></command>
     <inputs>
-        <param type="data" name="receptor" format="pdbqt" label="Receptor" help="Select a receptor (PDBQT format). This can be prepared using the receptor preparation tool." />
+        <param type="data" name="receptor" format="pdbqt" label="Receptor" help="Select a receptor (PDBQT format). This can be prepared using the receptor preparation tool. If the 'Flexible side chains' option is chosen, it should contain only the rigid part of the receptor." />
         <param type="data" name="ligands" format="sdf,pdbqt"  label="Ligands" help="Select ligands (SDF format with multiple ligands or PDBQT format with single ligand)." />
+        <param type="data" name="flex" format="pdbqt" optional="true" label="Flexible side chains" help="Part of the receptor which should be treated flexibly (PDBQT format)." />
         <param name="ph_value" type="float" value="7.4" min="0" max="14" label="Specify pH value for ligand protonation"
-            help="Only used in case the input is a SD file."/>
+            help="Only used if the input is a SD file."/>
         <conditional name="config_params">
             <param name="config_params" type="select" label="Specify parameters">
                 <option value="file">Upload a config file to specify parameters</option>
@@ -77,21 +99,41 @@
                        help="Exhaustiveness of global search (optional - if not specified a default of 8 is used, if specified will override any value specified in the config file)"/>
             </when>
         </conditional>
+
+        <section name="settings" title="Optional settings" expanded="true" help="All these settings can also be specified in the config file. Specifying them additionally here overrides the config file.">
+            <param type="select" name="scoring" label="Scoring function" optional="true" help="Function to use for scoring the poses." value="vina">
+                <option value="vina">vina</option>
+                <option value="ad4">ad4</option>
+                <option value="vinardo">vinardo</option>
+            </param>
+            <param type="integer" name="num_modes" optional="true" label="Number of poses" help="Maximum number of binding poses to generate (default 9)" />
+            <param type="float" name="min_rmsd" optional="true" label="Minimum RMSD between output poses (default 1)" />
+            <param type="float" name="energy_range" optional="true" label="Energy range" help="Maximum energy difference between the best binding mode and the worst one displayed (kcal/mol) (default 3)"/>
+        </section>
+        <param type="select" name="output" label="Output format" help="Format for the docking poses.">
+            <option value="sdf" selected="true">SDF</option>
+            <option value="pdbqt">PDBQT</option>
+        </param>
     </inputs>
     <outputs>
         <collection name="sdf_outputs" type="list" label="Docked ligands for ${on_string}" >
             <discover_datasets pattern="__name_and_ext__" directory="output" visible="false" />
+            <filter>output == "sdf"</filter>
+        </collection>
+        <collection name="pdbqt_outputs" type="list" label="Docked structures for ${on_string}" >
+            <discover_datasets pattern="__name_and_ext__" directory="output" visible="false" />
+            <filter>output == "pdbqt"</filter>
         </collection>
     </outputs>
     <tests>
-
         <test>
             <param name="receptor" value="protein.pdbqt"/>
             <param name="ligands" value="input_ligands.sdf"/>
             <param name="box" value="box.txt"/>
             <output_collection name="sdf_outputs" type="list" count="5">
-                <element name="ligand1_docked" file="ligand1_docked.sdf" lines_diff="20"/>
-                <element name="ligand2_docked" file="ligand2_docked.sdf" lines_diff="20"/>
+                <!-- linesdiff because there is a time stamp for each of the 9 poses -->
+                <element name="ligand1_docked" file="ligand1_docked.sdf" lines_diff="18"/>
+                <element name="ligand2_docked" file="ligand2_docked.sdf" lines_diff="18"/>
                 <!-- we check only the first 2 -->
             </output_collection>
         </test>
@@ -101,7 +143,21 @@
             <param name="ligands" value="input_ligand.pdbqt"/>
             <param name="box" value="box.txt"/>
             <output_collection name="sdf_outputs" type="list" count="1">
-                <element name="ligand1_docked" file="ligand_docked.sdf" lines_diff="1084"/>
+                <element name="ligand1_docked" file="ligand_docked.sdf" lines_diff="18"/>
+            </output_collection>
+        </test>
+
+        <!-- test with optional params -->
+        <test>
+            <param name="receptor" value="protein.pdbqt"/>
+            <param name="ligands" value="input_ligand.pdbqt"/>
+            <param name="box" value="box.txt"/>
+            <param name="scoring" value="vinardo"/>
+            <param name="energy_range" value="5"/>
+            <param name="num_modes" value="20"/>
+            <param name="min_rmsd" value="0.5"/>
+            <output_collection name="sdf_outputs" type="list" count="1">
+                <element name="ligand1_docked" file="ligand_docked_opt.sdf" lines_diff="40"/>
             </output_collection>
         </test>
 
@@ -121,10 +177,32 @@
             <param name="seed_value" value="8" />
             <param name="exh" value="10" />
             <output_collection name="sdf_outputs" type="list" count="1">
-                <element name="ligand1_docked" file="ligand_params.sdf" lines_diff="1084"/>
+                <element name="ligand1_docked" file="ligand_params.sdf" lines_diff="18"/>
             </output_collection>
         </test>
 
+        <!-- flexible docking -->
+        <test>
+            <param name="receptor" value="protein_rigid.pdbqt"/>
+            <param name="flex" value="protein_flex.pdbqt"/>
+            <param name="ligands" value="input_ligands.sdf"/>
+            <param name="config_params" value="vals"/>
+            <param name="center_x" value="15.2" />
+            <param name="center_y" value="53.9" />
+            <param name="center_z" value="16.9" />
+            <param name="size_x" value="20"  />
+            <param name="size_y" value="20" />
+            <param name="size_z" value="20" />
+            <param name="seed" value="true" />
+            <param name="seed_value" value="8" />
+            <param name="exh" value="10" />
+            <param name="output" value="pdbqt"/>
+            <output_collection name="pdbqt_outputs" type="list" count="5">
+                <element name="ligand1_docked" file="ligand1_docked_flex.pdbqt"/>
+                <element name="ligand2_docked" file="ligand2_docked_flex.pdbqt"/>
+                <!-- we check only the first 2 -->
+            </output_collection>
+        </test>
     </tests>
     <help><![CDATA[
 
@@ -245,5 +323,6 @@ The binding affinity scores are contained within the SDF file.::
     ]]></help>
     <citations>
         <citation type="doi">10.1002/jcc.21334</citation>
+        <citation type="doi">10.1021/acs.jcim.1c00203</citation>
     </citations>
 </tool>
