@@ -10,7 +10,7 @@ read_list <- function(lfile) {
     if (lfile == "None") {
         return(NULL)
     }
-    return(read.table(file = lfile, header = FALSE, check.names=FALSE,
+    return(read.table(file = lfile, header = FALSE, check.names = FALSE,
                       stringsAsFactors = FALSE)$V1)
 }
 

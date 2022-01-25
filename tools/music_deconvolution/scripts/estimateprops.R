@@ -17,11 +17,11 @@ est_prop <- music_prop(
 estimated_music_props <- est_prop$Est.prop.weighted
 estimated_nnls_props <- est_prop$Est.prop.allgene
 
-scale_yaxes <- function(gplot, value){
+scale_yaxes <- function(gplot, value) {
     if (is.na(value)){
         gplot
     } else {
-        gplot + scale_y_continuous(lim=c(0,value))
+        gplot + scale_y_continuous(lim = c(0, value))
     }
 }
 
@@ -64,7 +64,7 @@ m_prop$CellType <- factor(m_prop$CellType, levels = celltypes) # nolint
 m_prop$Method <- factor(rep(methods, each = nrow(estimated_music_props_flat)), # nolint
                         levels = methods)
 
-if (use_disease_factor){
+if (use_disease_factor) {
 
     if (phenotype_target_threshold == -99) {
         phenotype_target_threshold <- -Inf
@@ -106,7 +106,7 @@ m_prop_ana <- data.frame(pData(bulk_eset)[rep(1:nrow(estimated_music_props), 2),
                                         levels = methods))
 colnames(m_prop_ana)[1:length(phenotype_factors)] <- phenotype_factors #nolint
 
-if (use_disease_factor){
+if (use_disease_factor) {
     m_prop_ana <- subset(m_prop_ana, !is.na(m_prop_ana[phenotype_target]))
     m_prop_ana$Disease <- factor(sample_groups[(  # nolint
         m_prop_ana[phenotype_target] > phenotype_target_threshold) + 1],
@@ -141,13 +141,13 @@ plot_hmap <- Prop_heat_Est(list(
           axis.text.y = element_text(size = 6))
 
 pdf(file = outfile_pdf, width = 8, height = 8)
-if (length(celltypes) <= 8){
-    plot_grid(jitter_fig , plot_box, labels = "auto", ncol = 1, nrow = 2)
+if (length(celltypes) <= 8) {
+    plot_grid(jitter_fig, plot_box, labels = "auto", ncol = 1, nrow = 2)
 } else {
     print(jitter_fig)
     plot_box
 }
-if (use_disease_factor){
+if (use_disease_factor) {
     plot_grid(jitter_new, jitt_compare, labels = "auto", ncol = 1, nrow = 2)
 }
 plot_hmap
