@@ -18,7 +18,7 @@ estimated_music_props <- est_prop$Est.prop.weighted
 estimated_nnls_props <- est_prop$Est.prop.allgene
 
 scale_yaxes <- function(gplot, value) {
-    if (is.na(value)){
+    if (is.na(value)) {
         gplot
     } else {
         gplot + scale_y_continuous(lim = c(0, value))
