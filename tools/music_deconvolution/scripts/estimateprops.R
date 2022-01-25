@@ -17,13 +17,21 @@ est_prop <- music_prop(
 estimated_music_props <- est_prop$Est.prop.weighted
 estimated_nnls_props <- est_prop$Est.prop.allgene
 
+scale_yaxes <- function(gplot, value){
+    if (is.na(value)){
+        gplot
+    } else {
+        gplot + scale_y_continuous(lim=c(0,value))
+    }
+}
+
 ## Show different in estimation methods
 ## Jitter plot of estimated cell type proportions
-jitter_fig <- Jitter_Est(
+jitter_fig <- scale_yaxes(Jitter_Est(
     list(data.matrix(estimated_music_props),
          data.matrix(estimated_nnls_props)),
     method.name = methods, title = "Jitter plot of Est Proportions",
-    size = 2, alpha = 0.7) + theme_minimal()
+    size = 2, alpha = 0.7) + theme_minimal(), maxyscale)
 
 
 ## Make a Plot
@@ -42,11 +50,6 @@ if (is.null(celltypes)) {
     message(celltypes)
 }
 
-if (phenotype_target_threshold == -99) {
-    phenotype_target_threshold <- -Inf
-    message("phenotype target threshold set to -Inf")
-}
-
 if (is.null(phenotype_factors)) {
     phenotype_factors <- colnames(pData(bulk_eset))
 }
@@ -60,27 +63,37 @@ message(phenotype_factors)
 m_prop$CellType <- factor(m_prop$CellType, levels = celltypes) # nolint
 m_prop$Method <- factor(rep(methods, each = nrow(estimated_music_props_flat)), # nolint
                         levels = methods)
-m_prop$Disease_factor <- rep(bulk_eset[[phenotype_target]], 2 * length(celltypes)) # nolint
-m_prop <- m_prop[!is.na(m_prop$Disease_factor), ]
-## Generate a TRUE/FALSE table of Normal == 1 and Disease == 2
-sample_groups <- c("Normal", sample_disease_group)
-m_prop$Disease <- factor(sample_groups[(m_prop$Disease_factor > phenotype_target_threshold) + 1], # nolint
-                         levels = sample_groups)
 
-## Binary to scale: e.g. TRUE / 5 = 0.2
-m_prop$D <- (m_prop$Disease ==   # nolint
-             sample_disease_group) / sample_disease_group_scale
-## NA's are not included in the comparison below
-m_prop <- rbind(subset(m_prop, Disease != sample_disease_group),
-               subset(m_prop, Disease == sample_disease_group))
+if (use_disease_factor){
 
-jitter_new <- ggplot(m_prop, aes(Method, Prop)) +
-    geom_point(aes(fill = Method, color = Disease, stroke = D, shape = Disease),
-               size = 2, alpha = 0.7,
-               position = position_jitter(width = 0.25, height = 0)) +
-    facet_wrap(~ CellType, scales = "free") +
-    scale_colour_manual(values = c("white", "gray20")) +
-    scale_shape_manual(values = c(21, 24)) + theme_minimal()
+    if (phenotype_target_threshold == -99) {
+        phenotype_target_threshold <- -Inf
+        message("phenotype target threshold set to -Inf")
+    }
+
+    m_prop$Disease_factor <- rep(bulk_eset[[phenotype_target]], 2 * length(celltypes)) # nolint
+    m_prop <- m_prop[!is.na(m_prop$Disease_factor), ]
+    ## Generate a TRUE/FALSE table of Normal == 1 and Disease == 2
+    sample_groups <- c("Normal", sample_disease_group)
+    m_prop$Disease <- factor(sample_groups[(m_prop$Disease_factor > phenotype_target_threshold) + 1], # nolint
+                             levels = sample_groups)
+
+    ## Binary to scale: e.g. TRUE / 5 = 0.2
+    m_prop$D <- (m_prop$Disease ==   # nolint
+                 sample_disease_group) / sample_disease_group_scale
+    ## NA's are not included in the comparison below
+    m_prop <- rbind(subset(m_prop, Disease != sample_disease_group),
+                    subset(m_prop, Disease == sample_disease_group))
+
+    jitter_new <- scale_yaxes(ggplot(m_prop, aes(Method, Prop)) +
+        geom_point(aes(fill = Method, color = Disease, stroke = D, shape = Disease),
+                   size = 2, alpha = 0.7,
+                   position = position_jitter(width = 0.25, height = 0)) +
+        facet_wrap(~ CellType, scales = "free") +
+        scale_colour_manual(values = c("white", "gray20")) +
+        scale_shape_manual(values = c(21, 24)) + theme_minimal(), maxyscale)
+
+}
 
 ## Plot to compare method effectiveness
 ## Create dataframe for beta cell proportions and Disease_factor levels
@@ -92,29 +105,32 @@ m_prop_ana <- data.frame(pData(bulk_eset)[rep(1:nrow(estimated_music_props), 2),
                                             each = nrow(estimated_music_props)),
                                         levels = methods))
 colnames(m_prop_ana)[1:length(phenotype_factors)] <- phenotype_factors #nolint
-m_prop_ana <- subset(m_prop_ana, !is.na(m_prop_ana[phenotype_target]))
-m_prop_ana$Disease <- factor(sample_groups[(  # nolint
-    m_prop_ana[phenotype_target] > phenotype_target_threshold) + 1],
-    sample_groups)
-m_prop_ana$D <- (m_prop_ana$Disease ==        # nolint
-                 sample_disease_group) / sample_disease_group_scale
 
-jitt_compare <- ggplot(m_prop_ana, aes_string(phenotype_target, "ct.prop")) +
-    geom_smooth(method = "lm",  se = FALSE, col = "black", lwd = 0.25) +
-    geom_point(aes(fill = Method, color = Disease, stroke = D, shape = Disease),
-               size = 2, alpha = 0.7) +  facet_wrap(~ Method) +
-    ggtitle(compare_title) + theme_minimal() +
-    scale_colour_manual(values = c("white", "gray20")) +
-    scale_shape_manual(values = c(21, 24))
+if (use_disease_factor){
+    m_prop_ana <- subset(m_prop_ana, !is.na(m_prop_ana[phenotype_target]))
+    m_prop_ana$Disease <- factor(sample_groups[(  # nolint
+        m_prop_ana[phenotype_target] > phenotype_target_threshold) + 1],
+        sample_groups)
+    m_prop_ana$D <- (m_prop_ana$Disease ==        # nolint
+                     sample_disease_group) / sample_disease_group_scale
+
+    jitt_compare <- scale_yaxes(ggplot(m_prop_ana, aes_string(phenotype_target, "ct.prop")) +
+        geom_smooth(method = "lm",  se = FALSE, col = "black", lwd = 0.25) +
+        geom_point(aes(fill = Method, color = Disease, stroke = D, shape = Disease),
+                   size = 2, alpha = 0.7) +  facet_wrap(~ Method) +
+        ggtitle(compare_title) + theme_minimal() +
+        scale_colour_manual(values = c("white", "gray20")) +
+        scale_shape_manual(values = c(21, 24)), maxyscale)
+}
 
 ## BoxPlot
-plot_box <- Boxplot_Est(list(
+plot_box <- scale_yaxes(Boxplot_Est(list(
     data.matrix(estimated_music_props),
     data.matrix(estimated_nnls_props)),
     method.name = c("MuSiC", "NNLS")) +
     theme(axis.text.x = element_text(angle = -90),
           axis.text.y = element_text(size = 8)) +
-    ggtitle(element_blank()) + theme_minimal()
+    ggtitle(element_blank()) + theme_minimal(), maxyscale)
 
 ## Heatmap
 plot_hmap <- Prop_heat_Est(list(
@@ -125,8 +141,15 @@ plot_hmap <- Prop_heat_Est(list(
           axis.text.y = element_text(size = 6))
 
 pdf(file = outfile_pdf, width = 8, height = 8)
-plot_grid(jitter_fig, plot_box, labels = "auto", ncol = 1, nrow = 2)
-plot_grid(jitter_new, jitt_compare, labels = "auto", ncol = 1, nrow = 2)
+if (length(celltypes) <= 8){
+    plot_grid(jitter_fig , plot_box, labels = "auto", ncol = 1, nrow = 2)
+} else {
+    print(jitter_fig)
+    plot_box
+}
+if (use_disease_factor){
+    plot_grid(jitter_new, jitt_compare, labels = "auto", ncol = 1, nrow = 2)
+}
 plot_hmap
 message(dev.off())
 
