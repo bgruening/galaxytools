@@ -57,7 +57,7 @@ if (is.null(phenotype_factors)) {
 phenotype_factors <- phenotype_factors[
     !(phenotype_factors %in% phenotype_factors_always_exclude)]
 message("Phenotype Factors to use:")
-message(paste0(phenotype_factors, collapse=", " ))
+message(paste0(phenotype_factors, collapse = ", "))
 
 m_prop$CellType <- factor(m_prop$CellType, levels = celltypes) # nolint
 m_prop$Method <- factor(rep(methods, each = nrow(estimated_music_props_flat)), # nolint
@@ -113,7 +113,7 @@ if (use_disease_factor) {
     colnames(m_prop_ana)[1:length(phenotype_factors)] <- phenotype_factors #nolint
     ## - drop NA for target phenotype (e.g. hba1c)
     m_prop_ana <- subset(m_prop_ana, !is.na(m_prop_ana[phenotype_target]))
-    m_prop_ana$Disease <- factor(
+    m_prop_ana$Disease <- factor(   # nolint
         ## - Here we set Normal/Disease assignments across the two MuSiC and NNLS methods
         sample_groups[(
             m_prop_ana[phenotype_target] > phenotype_target_threshold) + 1
