@@ -196,33 +196,32 @@ write.table(est_prop$Var.prop,
             quote = F, sep = "\t", col.names = NA)
 
 
-## Summary table
-for (meth in methods) {
-    ##lm_beta_meth = lm(ct.prop ~ age + bmi + hba1c + gender, data =
-    if (use_disease_factor) {
+if (use_disease_factor) {
+    ## Summary table of linear regressions of disease factors
+    for (meth in methods) {
+        ##lm_beta_meth = lm(ct.prop ~ age + bmi + hba1c + gender, data =
         sub_data <- subset(m_prop_ana, Method == meth)
-    } else {
-        sub_data <- subset(m_prop, Method == meth)
+
+        ## We can only do regression where there are more than 1 factors
+        ## so we must find and exclude the ones which are not
+        gt1_facts <- sapply(phenotype_factors, function(facname) {
+            return(length(unique(sort(sub_data[[facname]]))) == 1)
+        })
+        form_factors <- phenotype_factors
+        exclude_facts <- names(gt1_facts)[gt1_facts]
+        if (length(exclude_facts) > 0) {
+            message("Factors with only one level will be excluded:")
+            message(exclude_facts)
+            form_factors <- phenotype_factors[
+                !(phenotype_factors %in% exclude_facts)]
+        }
+        lm_beta_meth <- lm(as.formula(
+            paste("ct.prop", paste(form_factors, collapse = " + "),
+                  sep = " ~ ")), data = sub_data)
+        message(paste0("Summary: ", meth))
+        capture.output(summary(lm_beta_meth),
+                       file = paste0("report_data/summ_Log of ",
+                                     meth,
+                                     " fitting.txt"))
     }
-    ## We can only do regression where there are more than 1 factors
-    ## so we must find and exclude the ones which are not
-    gt1_facts <- sapply(phenotype_factors, function(facname) {
-        return(length(unique(sort(sub_data[[facname]]))) == 1)
-    })
-    form_factors <- phenotype_factors
-    exclude_facts <- names(gt1_facts)[gt1_facts]
-    if (length(exclude_facts) > 0) {
-        message("Factors with only one level will be excluded:")
-        message(exclude_facts)
-        form_factors <- phenotype_factors[
-            !(phenotype_factors %in% exclude_facts)]
-    }
-    lm_beta_meth <- lm(as.formula(
-        paste("ct.prop", paste(form_factors, collapse = " + "),
-              sep = " ~ ")), data = sub_data)
-    message(paste0("Summary: ", meth))
-    capture.output(summary(lm_beta_meth),
-                   file = paste0("report_data/summ_Log of ",
-                                 meth,
-                                 " fitting.txt"))
 }
