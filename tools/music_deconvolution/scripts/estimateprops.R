@@ -57,8 +57,7 @@ if (is.null(phenotype_factors)) {
 phenotype_factors <- phenotype_factors[
     !(phenotype_factors %in% phenotype_factors_always_exclude)]
 message("Phenotype Factors to use:")
-message(phenotype_factors)
-
+message(paste0(phenotype_factors, collapse=", " ))
 
 m_prop$CellType <- factor(m_prop$CellType, levels = celltypes) # nolint
 m_prop$Method <- factor(rep(methods, each = nrow(estimated_music_props_flat)), # nolint
@@ -95,22 +94,32 @@ if (use_disease_factor) {
 
 }
 
-## Plot to compare method effectiveness
-## Create dataframe for beta cell proportions and Disease_factor levels
-m_prop_ana <- data.frame(pData(bulk_eset)[rep(1:nrow(estimated_music_props), 2), #nolint
-                                          phenotype_factors],
-                        ct.prop = c(estimated_music_props[, 2],
-                                    estimated_nnls_props[, 2]),
-                        Method = factor(rep(methods,
-                                            each = nrow(estimated_music_props)),
-                                        levels = methods))
-colnames(m_prop_ana)[1:length(phenotype_factors)] <- phenotype_factors #nolint
-
 if (use_disease_factor) {
+
+    ## Plot to compare method effectiveness
+    ## Create dataframe for beta cell proportions and Disease_factor levels
+    ## - Ugly code. Essentially, doubles the cell type proportions for each
+    ##   set of MuSiC and NNLS methods
+    m_prop_ana <- data.frame(pData(bulk_eset)[rep(1:nrow(estimated_music_props), 2), #nolint
+                                              phenotype_factors],
+                             ## get proportions of target cell type
+                             ct.prop = c(estimated_music_props[, phenotype_scrna_target],
+                                         estimated_nnls_props[, phenotype_scrna_target]),
+                             ##
+                             Method = factor(rep(methods,
+                                                 each = nrow(estimated_music_props)),
+                                             levels = methods))
+    ## - fix headers
+    colnames(m_prop_ana)[1:length(phenotype_factors)] <- phenotype_factors #nolint
+    ## - drop NA for target phenotype (e.g. hba1c)
     m_prop_ana <- subset(m_prop_ana, !is.na(m_prop_ana[phenotype_target]))
-    m_prop_ana$Disease <- factor(sample_groups[(  # nolint
-        m_prop_ana[phenotype_target] > phenotype_target_threshold) + 1],
+    m_prop_ana$Disease <- factor(
+        ## - Here we set Normal/Disease assignments across the two MuSiC and NNLS methods
+        sample_groups[(
+            m_prop_ana[phenotype_target] > phenotype_target_threshold) + 1
+            ],
         sample_groups)
+    ## - Then we scale this binary assignment to a plotable factor
     m_prop_ana$D <- (m_prop_ana$Disease ==        # nolint
                      sample_disease_group) / sample_disease_group_scale
 
@@ -118,7 +127,12 @@ if (use_disease_factor) {
         geom_smooth(method = "lm",  se = FALSE, col = "black", lwd = 0.25) +
         geom_point(aes(fill = Method, color = Disease, stroke = D, shape = Disease),
                    size = 2, alpha = 0.7) +  facet_wrap(~ Method) +
-        ggtitle(compare_title) + theme_minimal() +
+        ggtitle(paste0(toupper(phenotype_target), " vs. ",
+                       toupper(phenotype_scrna_target), " Cell Type Proportion")) +
+        theme_minimal() +
+        ylab(paste0("Proportion of ",
+                    phenotype_scrna_target, " cells")) +
+        xlab(paste0("Level of bulk factor (", phenotype_target, ")")) +
         scale_colour_manual(values = c("white", "gray20")) +
         scale_shape_manual(values = c(21, 24)), maxyscale)
 }
@@ -185,7 +199,11 @@ write.table(est_prop$Var.prop,
 ## Summary table
 for (meth in methods) {
     ##lm_beta_meth = lm(ct.prop ~ age + bmi + hba1c + gender, data =
-    sub_data <- subset(m_prop_ana, Method == meth)
+    if (use_disease_factor) {
+        sub_data <- subset(m_prop_ana, Method == meth)
+    } else {
+        sub_data <- subset(m_prop, Method == meth)
+    }
     ## We can only do regression where there are more than 1 factors
     ## so we must find and exclude the ones which are not
     gt1_facts <- sapply(phenotype_factors, function(facname) {
