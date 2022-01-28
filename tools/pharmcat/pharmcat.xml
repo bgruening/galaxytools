@@ -1,0 +1,218 @@
+<tool id="pharmcat" name="pharmCAT" version="@WRAPPER_VERSION@+@VERSION_SUFFIX@" profile="20.01">
+    <description>
+        Pharmacogenomics Clinical Annotation Tool
+    </description>
+    <macros>
+        <token name="@WRAPPER_VERSION@">1.3.1</token>
+        <token name="@VERSION_SUFFIX@">galaxy0</token>
+    </macros>
+    <requirements>
+        <container type="docker">pgkb/pharmcat:1.3.1</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+    ## NAMECALLER FUNCTION
+        #if $function_select.function == 'name':
+            ln -s '$function_select.input' ./input.vcf &&
+            java -cp /pharmcat/pharmcat.jar
+            org.pharmgkb.pharmcat.haplotype.NamedAlleleMatcher
+            -vcf input.vcf
+            -json output.json
+            -html output.html
+
+    ## PHENOTYPE CALLER FUNCTION
+        #else if $function_select.function == 'pheno':
+            #if $function_select.method.pheno_function == 'vcf':
+                ln -s '$function_select.method.input' ./input.vcf &&
+                java -cp /pharmcat/pharmcat.jar
+                org.pharmgkb.pharmcat.phenotype.Phenotyper
+                -vcf input.vcf
+            #else:
+                ln -s '$function_select.method.input' ./input.json &&
+                java -cp /pharmcat/pharmcat.jar
+                org.pharmgkb.pharmcat.phenotype.Phenotyper
+                -c input.json
+            #end if
+            #if $function_select.outside_call:
+                -o $function_select.outside_call
+            #end if
+            -f output.json
+
+    ## REPORTER FUNCTION
+        #else if $function_select.function == 'report':
+            ln -s '$function_select.input' ./input.json &&
+            java -cp /pharmcat/pharmcat.jar
+            org.pharmgkb.pharmcat.reporter.Reporter
+            -p input.json
+            #if $function_select.title:
+                -t '$function_select.title'
+            #end if
+            -j output.json
+            -o output.html
+    
+    ## ALL FUNCTIONS
+        #else:
+            ln -s '$function_select.input' ./input.vcf &&
+            java -jar /pharmcat/pharmcat.jar
+            -vcf input.vcf
+            -o output
+            -f pharmCAT_report_Galaxy
+            #if $function_select.outside_call:
+                -a $function_select.outside_call
+            #end if
+            $function_select.json
+            $function_select.phenojson
+         #end if
+    ]]></command>
+    <inputs>
+        <conditional name="function_select">
+            <param name="function" type="select" label="Which function of PharmCAT should be run?">
+                <option value="all">Full PharmCAT pipeline</option>
+                <option value="name">Only named allele matcher</option>
+                <option value="pheno">Only phenotyper</option>
+                <option value="report">Only reporter</option>
+            </param>
+            <when value="all">
+                <param name="input" argument="-vcf" type="data" format="vcf" label="Input vcf file" help="Must be formatted in modified official VCF format as detailed here: https://github.com/PharmGKB/PharmCAT/wiki/VCF-Requirements"/>
+                <param name="outside_call" argument="-a" type="data" format="tsv,tabular" label="Gene call TSV file from an outside tool" optional="true"/>
+                <param name="json" argument="-j" type="boolean" truevalue="-j" falsevalue="" label="Output reporter JSON report"/>
+                <param name="phenojson" argument="-pj" type="boolean" truevalue="-pj" falsevalue="" label="Output phenotyper JSON report"/>
+                <!-- <param name="definitions" argument="-na" type="data" format="list" label="Alternative allele definitions" help="a directory containing allele definitions to use instead of the default packaged allele definitions"/> -->
+            </when>
+            <when value="name">
+                <param name="input" argument="-vcf" type="data" format="vcf" label="Input vcf file" help="Must be formatted in modified official VCF format as detailed here: https://github.com/PharmGKB/PharmCAT/wiki/VCF-Requirements"/>
+                <!-- <param name="definitions" argument="-d" type="data" format="list" label="Alternative allele definitions" help="a directory containing allele definitions to use instead of the default packaged allele definitions"/> -->
+            </when>
+            <when value="pheno">
+                <conditional name="method">
+                    <param name="pheno_function" type="select" label="Which function of PharmCAT should be run?">
+                        <option value="vcf">Run directly from vcf samples</option>
+                        <option value="named">Run from the output of the NamedAlleleMatcher</option>
+                    </param>
+                    <when value="vcf">
+                        <param name="input" argument="-vcf" type="data" format="vcf" label="Input vcf file" help="Must be formatted in modified official VCF format as detailed here: https://github.com/PharmGKB/PharmCAT/wiki/VCF-Requirements"/>
+                    </when>
+                    <when value="named">
+                        <param name="input" argument="-c" type="data" format="json" label="Input json file" help="JSON output of the NamedAlleleCaller pharmcat function"/>
+                    </when>
+                </conditional>
+                <param name="outside_call" argument="-o" type="data" format="tabular,tsv" label="Optional TSV of outside caller information" optional="true"/>
+            </when>
+            <when value="report">
+                <param name="input" argument="-p" type="data" format="json" label="JSON call data output from Phenotyper pharmCAT function"/>
+                <param name="title" argument="-t" type="text" label="text to add to the report title" optional="true"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="all_out" from_work_dir="output/pharmCAT_report_Galaxy.report.html" format="html" label="Full pharmCAT report on ${on_string}">
+            <filter>function_select['function'] == "all"</filter>
+        </data>
+        <data name="all_pheno" from_work_dir="output/pharmCAT_report_Galaxy.phenotyper.json" format="json" label="pharmCAT Phenotyper report on ${on_string}">
+            <filter>function_select['function'] == "all" and function_select["phenojson"]</filter>
+        </data>
+        <data name="all_out_json" from_work_dir="output/pharmCAT_report_Galaxy.report.json" format="json" label="pharmCAT Reporter JSON on ${on_string}">
+            <filter>function_select['function'] == "all" and function_select["json"]</filter>
+        </data>
+        <data name="namer_html" from_work_dir="output.html" format="html" label="pharmCAT NamedAlleleMatcher html report on ${on_string}">
+            <filter>function_select['function'] == "name"</filter>
+        </data>
+        <data name="namer_json" from_work_dir="output.json" format="json" label="pharmCAT NamedAlleleMatcher json report on ${on_string}">
+            <filter>function_select['function'] == "name"</filter>
+        </data>
+        <data name="pheno_json" from_work_dir="output.json" format="json" label="pharmCAT Phenotyper report on ${on_string}">
+            <filter>function_select['function'] == "pheno"</filter>
+        </data>
+        <data name="report_html" from_work_dir="output.html" format="html" label="pharmCAT Reporter html report on ${on_string}">
+            <filter>function_select['function'] == "report"</filter>
+        </data>
+        <data name="report_json" from_work_dir="output.json" format="json" label="pharmCAT Reporter json report on ${on_string}">
+            <filter>function_select['function'] == "report"</filter>
+        </data>
+    </outputs>
+    <tests>
+    <!-- ALL FUNCTION -->
+        <test expect_num_outputs="3">
+            <conditional name="function_select">
+                <param name="input" ftype="vcf" value="test.vcf"/>
+                <param name="outside_call" ftype="tabular" value="test.tsv"/>
+                <param name="json" value="-j"/>
+                <param name="phenojson" value="-pj"/>
+            </conditional>
+            <output name="all_out">
+                <assert_contents>
+                    <has_text text="rs9923231 reference"/>
+                    <has_text text="Very high risk of developing hearing loss if administered an aminoglycoside antibiotic."/>
+                    <has_text text="CPIC Allele Function, Phenotype and Recommendation"/>
+                </assert_contents>
+            </output>
+            <output name="all_pheno" file="test_1.pheno.json" lines_diff="1"/>
+            <output name="all_out_json">
+                <assert_contents>
+                    <has_text text="Therapeutic range of 200 to 1000 ng/mL has been proposed (PMID 29493375)."/>
+                    <has_text text="Activity Score for CYP2D6"/>
+                    <has_text text="Implementation Consortium (CPIC) Guideline for CYP2D6 Genotype and Use of Ondansetron and Tropisetron"/>
+                </assert_contents>
+            </output>
+        </test>
+    <!-- NAMECALLER -->
+        <test expect_num_outputs="2">
+            <conditional name="function_select">
+                <param name="function" value="name"/>
+                <param name="input" ftype="vcf" value="test.vcf"/>
+            </conditional>
+            <output name="namer_html" file="test_2.html" lines_diff="2"/>
+            <output name="namer_json" file="test_2.json" lines_diff="2"/>
+        </test>
+    <!-- PHENOTYPER FROM VCF WITH OUTSIDE CALLER-->
+        <test expect_num_outputs="1">
+            <conditional name="function_select">
+                <param name="function" value="pheno"/>
+                <conditional name="method">
+                    <param name="pheno_function" value="vcf"/>
+                    <param name="input" ftype="vcf" value="test.vcf"/>
+                </conditional>
+                <param name="outside_call" value="test.tsv"/>
+            </conditional>
+            <output name="pheno_json" file="test_3.json" lines_diff="1"/>
+        </test>
+    <!-- PHENOTYPER FROM NAMECALLER AND NO OUTSIDE CALLER-->
+        <test expect_num_outputs="1">
+            <conditional name="function_select">
+                <param name="function" value="pheno"/>
+                <conditional name="method">
+                    <param name="pheno_function" value="named"/>
+                    <param name="input" value="test_2.json"/>
+                </conditional>
+            </conditional>
+            <output name="pheno_json" file="test_4.json" lines_diff="1"/>
+        </test>
+    <!-- REPORTER -->
+        <test expect_num_outputs="2">
+            <conditional name="function_select">
+                <param name="function" value="report"/>
+                    <param name="input" value="test_3.json"/>
+                    <param name="text" value="test text"/>
+            </conditional>
+            <output name="report_json">
+                <assert_contents>
+                    <has_text text="Implication for CYP2C19"/>
+                    <has_text text="Lower dose-adjusted trough concentrations of tacrolimus and decreased chance of achieving target tacrolimus concentrations."/>
+                    <has_text text="c.1840C\u003eT"/>
+                </assert_contents>
+            </output>
+            <output name="report_html">
+                <assert_contents>
+                    <has_text text="Two ivacaftor non-responsive alleles"/>
+                    <has_text text="rs12979860 reference (C)/rs12979860 reference (C)"/>
+                    <has_text text="MT-RNR1: 1555A"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+        PharmCAT is a tool to extract all CPIC guideline gene variants from a genetic dataset (represented as a VCF file), interpret the variant alleles, and generate a report.
+    ]]></help>
+    <citations>
+        <citation type="doi" >10.1002/cpt.928</citation>
+    </citations>
+</tool>
