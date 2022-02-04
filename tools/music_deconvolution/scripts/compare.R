@@ -1,0 +1,194 @@
+suppressWarnings(suppressPackageStartupMessages(library(xbioc)))
+suppressWarnings(suppressPackageStartupMessages(library(MuSiC)))
+suppressWarnings(suppressPackageStartupMessages(library(reshape2)))
+suppressWarnings(suppressPackageStartupMessages(library(cowplot)))
+## We use this script to estimate the effectiveness of proportion methods
+
+## Load Conf
+args <- commandArgs(trailingOnly = TRUE)
+source(args[1])
+
+scale_yaxes <- function(gplot, value) {
+    if (is.na(value)) {
+        gplot
+    } else {
+        gplot + scale_y_continuous(lim = c(0, value))
+    }
+}
+
+method_key <- list("MuSiC" = "est_music",
+                   "NNLS" = "est_nnls")[[est_method]]
+
+
+## Due to limiting sizes, we need to load and unload
+## possibly very large datasets.
+processPair <- function(sc_data, bulk_data,
+                        ctypes_label, samples_label, ctypes){
+    ## - Generate
+    est_prop <- music_prop(
+        bulk.eset = bulk_data, sc.eset = sc_data,
+        clusters = ctypes_label,
+        samples = samples_label, select.ct = ctypes, verbose = T)
+    ## -
+    estimated_music_props <- est_prop$Est.prop.weighted
+    estimated_nnls_props <- est_prop$Est.prop.allgene
+    ## -
+    ##estimated_music_props_flat <- melt(estimated_music_props)
+    ##estimated_nnls_props_flat <- melt(estimated_nnls_props)
+    ## -
+    return(list(est_music = estimated_music_props,
+                est_nnls = estimated_nnls_props))
+}
+
+musicOnAll <- function (files){
+    results <- list()
+    for (sc_name in names(files)){
+        cat(paste0("sc-group:", sc_name, "\n"))
+        scgroup = files[[sc_name]]
+        ## - sc Data
+        sc_est = readRDS(scgroup$dataset)
+        ## - params
+        celltypes_label = scgroup$label_cell
+        samples_label = scgroup$label_sample
+        celltypes = scgroup$celltype
+
+        results[[sc_name]] = list()
+        for (bulk_name in names(scgroup$bulk)){
+            cat(paste0(" - bulk-group:", bulk_name, "\n"))
+            bulkgroup <- scgroup$bulk[[bulk_name]]
+            ## - bulk Data
+            bulk_est <- readRDS(bulkgroup$dataset)
+            ## - bulk params
+            pheno_facts <- bulkgroup$pheno_facts
+            pheno_excl <- bulkgroup$pheno_excl
+            ##
+            res <- processPair(sc_est, bulk_est,
+                               celltypes_label, samples_label,
+                               celltypes)
+            results[[sc_name]][[bulk_name]] <- res
+            rm(bulk_est) ## unload
+        }
+        rm(sc_est) ## unload
+    }
+    return(results)
+}
+
+plotAllIndividualHeatmaps <- function(results){
+    pdf(out_heatmulti_pdf, width=8, height=8)
+    for (sc_name in names(results)){
+        for (bk_name in names(results[[sc_name]])){
+            res <- results[[sc_name]][[bk_name]]
+            plot_hmap <- Prop_heat_Est(
+                data.matrix(res[[method_key]]),
+                method.name = est_method) +
+                ggtitle(paste0("[", est_method, "Cell type ",
+                               "proportions in ",
+                               bk_name, " (Bulk) based on ",
+                               sc_name, " (scRNA)")) +
+                xlab("Cell Types (scRNA)") +
+                ylab("Samples (Bulk)") +
+                theme(axis.text.x = element_text(angle = -90),
+                      axis.text.y = element_text(size = 6))
+            print(plot_hmap)
+        }
+    }
+    dev.off()
+}
+
+plotGroupedHeatmaps <- function(results){
+    pdf(out_heatmulti_pdf, width=8, height=8)
+    for (sc_name in names(results)){
+        named_list <- sapply(
+            names(results[[sc_name]]),
+            function (n){
+                ## We transpose the data here, because
+                ## the plotting function omits by default
+                ## the Y-axis which are the samples.
+                ##   Since the celltypes are the common factor
+                ## these should be the Y-axis instead.
+                t(data.matrix(results[[sc_name]][[n]][[method_key]]))
+            }, simplify=F, USE.NAMES=T)
+        named_methods <- names(results[[sc_name]])
+        ##
+        plot_hmap <- Prop_heat_Est(
+            named_list,
+            method.name = named_methods) +
+            ggtitle(paste0("[", est_method, "] Cell type ",
+                           "proportions of ",
+                           "Bulk Datasets based on ",
+                           sc_name, " (scRNA)")) +
+            xlab("Samples (Bulk)") +
+            ylab("Cell Types (scRNA)") +
+            theme(axis.text.x = element_text(angle = -90),
+                  axis.text.y = element_text(size = 6))
+        print(plot_hmap)
+    }
+    dev.off()
+}
+
+## Desired plots
+## 1. Pie chart:
+##    - Per Bulk dataset (using just normalised proportions)
+##    - Per Bulk dataset (multiplying proportions by nreads)
+
+unlistNames <- function(results, method, prepend_bkname=FALSE){
+    unique(sort(
+        unlist(lapply(names(results), function (scname) {
+            lapply(names(results[[scname]]), function (bkname) {
+                res <- get(method)(tmp[[scname]][[bkname]][[method_key]])
+                if (prepend_bkname){
+                    ## We do not assume unique bulk sample names
+                    ## across different samples.
+                    res <- paste0(bkname, "::", res)
+                }
+                return(res)
+            })
+        }))
+    ))
+}
+
+## convertProportionsToCounts <- function(prop_matrix, 
+
+
+summarizedMatrix <- function(results){
+    ## We assume that cell types MUST be unique, but that sample
+    ## names do not need to be. For this reason, we must prepend
+    ## the bulk dataset name to the individual sample names.
+    all_celltypes <- unlistNames(results, "colnames")
+    all_samples <- unlistNames(results, "rownames", prepend_bkname=TRUE)
+
+    ## Iterate through all possible samples and populate a table.
+    ddff <- data.frame()
+    for (cell in all_celltypes){
+        for (sample in all_samples){
+            group_sname = unlist(strsplit(sample, split="::"))
+            bulk = group_sname[1]
+            id_sample = group_sname[2]
+            for (scgroup in names(results)){
+                if (bulk %in% names(results[[scgroup]])){
+                    mat <- results[[scgroup]][[bulk]][[method_key]]
+                    ddff[cell, sample] <- mat[id_sample,cell]
+                }
+            }
+        }
+    }
+    return(ddff)
+}
+
+
+summarizeHeatmaps <- function(results){
+    pdf(out_heatsumm_pdf, width=8, height=8)
+
+    dev.off()
+}
+
+
+kaum <- musicOnAll(files)
+if (heat_grouped_p) {
+    plotGroupedHeatmaps(kaum)
+} else {
+    plotAllIndividualHeatmaps(kaum)
+}
+saveRDS(kaum, "/tmp/rest.rds")
+saveRDS(files, "/tmp/files.rds")
+    
