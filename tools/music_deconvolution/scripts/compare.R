@@ -36,8 +36,10 @@ processPair <- function(sc_data, bulk_data,
     ##estimated_music_props_flat <- melt(estimated_music_props)
     ##estimated_nnls_props_flat <- melt(estimated_nnls_props)
     ## -
+    ##saveRDS(bulk_data, "/
     return(list(est_music = estimated_music_props,
-                est_nnls = estimated_nnls_props))
+                est_nnls = estimated_nnls_props,
+                bulk_sample_totals = colSums(exprs(bulk_data))))
 }
 
 musicOnAll <- function (files){
@@ -135,7 +137,7 @@ unlistNames <- function(results, method, prepend_bkname=FALSE){
     unique(sort(
         unlist(lapply(names(results), function (scname) {
             lapply(names(results[[scname]]), function (bkname) {
-                res <- get(method)(tmp[[scname]][[bkname]][[method_key]])
+                res <- get(method)(results[[scname]][[bkname]][[method_key]])
                 if (prepend_bkname){
                     ## We do not assume unique bulk sample names
                     ## across different samples.
@@ -149,7 +151,6 @@ unlistNames <- function(results, method, prepend_bkname=FALSE){
 
 ## convertProportionsToCounts <- function(prop_matrix, 
 
-
 summarizedMatrix <- function(results){
     ## We assume that cell types MUST be unique, but that sample
     ## names do not need to be. For this reason, we must prepend
@@ -159,20 +160,44 @@ summarizedMatrix <- function(results){
 
     ## Iterate through all possible samples and populate a table.
     ddff <- data.frame()
+    ddff_scale <- data.frame()
     for (cell in all_celltypes){
         for (sample in all_samples){
-            group_sname = unlist(strsplit(sample, split="::"))
-            bulk = group_sname[1]
-            id_sample = group_sname[2]
+            group_sname <- unlist(strsplit(sample, split="::"))
+            bulk <- group_sname[1]
+            id_sample <- group_sname[2]
             for (scgroup in names(results)){
                 if (bulk %in% names(results[[scgroup]])){
-                    mat <- results[[scgroup]][[bulk]][[method_key]]
-                    ddff[cell, sample] <- mat[id_sample,cell]
+                    mat_prop <- results[[scgroup]][[bulk]][[method_key]]
+                    vec_counts <- results[[scgroup]][[bulk]]$bulk_sample_totals
+                    ddff[cell, sample] <- mat_prop[id_sample,cell]
+                    ddff_scale[cell, sample] <- mat_prop[id_sample,cell] * vec_counts[[id_sample]]
                 }
             }
         }
     }
-    return(ddff)
+    return(list(prop=ddff, scaled=ddff_scale))
+}
+
+groupByDataset <- function(summat){
+    bulk_names = unlist(
+        lapply(names(files),
+               function(x) names(files[[x]]$bulk)))
+    mat_names = colnames(summat$prop)
+    bd <- data.frame()
+    bd_scale <- data.frame()
+    for (bname in bulk_names){
+        subs <- mat_names[startsWith(mat_names, paste0(bname, "::"))]
+        print(subs)
+
+        ## - 
+        bdata_prop = rowSums(summat$prop[,subs])
+        bdata_scaled = rowSums(summat$scaled[,subs])
+
+        bd <- cbind(bd, bdata_prop)
+        bd_scale <- cbind(bd_scale, bdata_scaled)
+    }
+    return(list(prop=bd, scaled=bd_scale))
 }
 
 
@@ -183,12 +208,15 @@ summarizeHeatmaps <- function(results){
 }
 
 
-kaum <- musicOnAll(files)
+results <- musicOnAll(files)
 if (heat_grouped_p) {
     plotGroupedHeatmaps(kaum)
 } else {
     plotAllIndividualHeatmaps(kaum)
 }
+summ_mat = summarizedMatrix(results)
+
+
 saveRDS(kaum, "/tmp/rest.rds")
 saveRDS(files, "/tmp/files.rds")
     
