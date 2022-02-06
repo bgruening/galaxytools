@@ -184,20 +184,20 @@ groupByDataset <- function(summat){
         lapply(names(files),
                function(x) names(files[[x]]$bulk)))
     mat_names = colnames(summat$prop)
-    bd <- data.frame()
-    bd_scale <- data.frame()
+    bd <- list()
+    bd_scale <- list()
+    bd_spread <- list()
     for (bname in bulk_names){
         subs <- mat_names[startsWith(mat_names, paste0(bname, "::"))]
-        print(subs)
-
-        ## - 
-        bdata_prop = rowSums(summat$prop[,subs])
-        bdata_scaled = rowSums(summat$scaled[,subs])
-
-        bd <- cbind(bd, bdata_prop)
-        bd_scale <- cbind(bd_scale, bdata_scaled)
+        ##print(bname)
+        ## -
+        bd[[bname]] = rowSums(summat$prop[,subs])
+        bd_scale[[bname]] = rowSums(summat$scaled[,subs])
+        bd_spread[[bname]] = t(apply(summat$prop[,subs], 1, summary))
     }
-    return(list(prop=bd, scaled=bd_scale))
+    return(list(prop=as.data.frame(bd),
+                scaled=as.data.frame(bd_scale),
+                spread=bd_spread))
 }
 
 
