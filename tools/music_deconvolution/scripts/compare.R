@@ -149,7 +149,7 @@ unlistNames <- function(results, method, prepend_bkname=FALSE){
     ))
 }
 
-## convertProportionsToCounts <- function(prop_matrix, 
+## convertProportionsToCounts <- function(prop_matrix,
 
 summarizedMatrix <- function(results){
     ## We assume that cell types MUST be unique, but that sample
@@ -186,37 +186,81 @@ groupByDataset <- function(summat){
     mat_names = colnames(summat$prop)
     bd <- list()
     bd_scale <- list()
-    bd_spread <- list()
+    bd_spread_scale <- list()
+    bd_spread_prop <- list()
     for (bname in bulk_names){
         subs <- mat_names[startsWith(mat_names, paste0(bname, "::"))]
         ##print(bname)
         ## -
         bd[[bname]] = rowSums(summat$prop[,subs])
         bd_scale[[bname]] = rowSums(summat$scaled[,subs])
-        bd_spread[[bname]] = t(apply(summat$prop[,subs], 1, summary))
+        bd_spread_scale[[bname]] = summat$scaled[,subs]
+        bd_spread_prop[[bname]] = summat$prop[,subs]
     }
     return(list(prop=as.data.frame(bd),
                 scaled=as.data.frame(bd_scale),
-                spread=bd_spread))
+                spread=list(scale=bd_spread_scale,
+                            prop=bd_spread_prop)))
 }
 
+makeHeatmapByGroup_single <- function(dataset, title, USE.LOG=TRUE){
+    ## Convert from matrix to long format
+    dataset["CT"] = rownames(dataset)
+    melted = melt(dataset, value.name="VALS", variable.name="Bulk")
 
-summarizeHeatmaps <- function(results){
+    if (USE.LOG){
+        title = paste0("[Log10+1] ", title)
+        melted$VALS = log10(melted$VALS + 1)
+    }
+    
+    return(ggplot(melted) +
+           geom_tile(aes(y=CT, x=Bulk,
+                         fill=VALS), colour="white") +
+           scale_fill_gradient2(low="steelblue", high="red", mid="white", name=element_blank()) + 
+           theme(axis.text.x = element_text(angle=-90)) +
+           ggtitle(title) +
+           ylab("Cell types across all scRNA Datasets") +
+           xlab("All Bulk Datasets"))
+}
+
+summarizeHeatmapsByGroup <- function(grudat){
+    pheat_scale <- makeHeatmapByGroup_single(
+        grudat$scaled,
+        "Cell Types Proportions (Scaled to Number of Reads)")
+    pheat_prop <- makeHeatmapByGroup_single(
+        grudat$prop,
+        "Cell Types Proportions (Normalised by Sample)")
+    
     pdf(out_heatsumm_pdf, width=8, height=8)
-
+    print(pheat_scale)
+    print(pheat_prop)
     dev.off()
 }
 
 
+re = melt(lapply(grudat2$spread$scale, function(mat){mat["ct"]=rownames(mat); return(mat)}))
+## Cell type by sample
+## Sample by Cell type
+ggplot(re.prop) + geom_boxplot(aes(y=ct, x=value, color=L1))
+ggplot(re.prop) + geom_boxplot(aes(y=L1, x=value, color=ct))
+
 results <- musicOnAll(files)
 if (heat_grouped_p) {
-    plotGroupedHeatmaps(kaum)
+    plotGroupedHeatmaps(results)
 } else {
-    plotAllIndividualHeatmaps(kaum)
+    plotAllIndividualHeatmaps(results)
 }
-summ_mat = summarizedMatrix(results)
+summat = summarizedMatrix(results)
+grudat = groupByDataset(summat)
+summarizeHeatmapsByGroup(grudat)
 
 
-saveRDS(kaum, "/tmp/rest.rds")
-saveRDS(files, "/tmp/files.rds")
-    
+
+## saveRDS(files, "/tmp/files.rds")
+## saveRDS(results, "/tmp/results.rds")
+## saveRDS(summat, "/tmp/summat.rds")
+## saveRDS(grudat, "/tmp/grudat.rds")
+## files = readRDS("/tmp/files.rds")
+## results = readRDS("/tmp/results.rds")
+## summat = readRDS("/tmp/summat.rds")
+## grudat = readRDS("/tmp/grudat.rds")
