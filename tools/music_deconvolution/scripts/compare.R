@@ -19,11 +19,31 @@ scale_yaxes <- function(gplot, value) {
 method_key <- list("MuSiC" = "est_music",
                    "NNLS" = "est_nnls")[[est_method]]
 
+setFactorData <- function(bulk_data, factor_name = NULL){
+    if (is.null(factor_name)){
+        factor_name = "None" ## change to something plottable
+    }
+    pdat <- pData(bulk_data)
+    sam_fact <- NULL
+    if (factor_name %in% colnames(pdat)){
+        sam_fact = cbind(rownames(pdat),
+                         as.character(pdat[[factor_name]]))
+        cat(paste0("     - factor: ", factor_name, " found in phenotypes\n"))
+    } else {
+        ## We assign this as the factor for the entire dataset
+        sam_fact = cbind(rownames(pdat),
+                         factor_name)
+        cat(paste0("     - factor: assigning \"", factor_name, "\" to whole dataset\n"))
+    }
+    colnames(sam_fact) = c("Samples", "Factors")
+    return(as.data.frame(sam_fact))
+}
 
 ## Due to limiting sizes, we need to load and unload
 ## possibly very large datasets.
 processPair <- function(sc_data, bulk_data,
-                        ctypes_label, samples_label, ctypes){
+                        ctypes_label, samples_label, ctypes,
+                        factor_group){
     ## - Generate
     est_prop <- music_prop(
         bulk.eset = bulk_data, sc.eset = sc_data,
@@ -33,13 +53,12 @@ processPair <- function(sc_data, bulk_data,
     estimated_music_props <- est_prop$Est.prop.weighted
     estimated_nnls_props <- est_prop$Est.prop.allgene
     ## -
-    ##estimated_music_props_flat <- melt(estimated_music_props)
-    ##estimated_nnls_props_flat <- melt(estimated_nnls_props)
+    fact_data <- setFactorData(bulk_data, factor_group)
     ## -
-    ##saveRDS(bulk_data, "/
     return(list(est_music = estimated_music_props,
                 est_nnls = estimated_nnls_props,
-                bulk_sample_totals = colSums(exprs(bulk_data))))
+                bulk_sample_totals = colSums(exprs(bulk_data)),
+                plot_groups = fact_data))
 }
 
 musicOnAll <- function (files){
@@ -64,10 +83,11 @@ musicOnAll <- function (files){
             pheno_facts <- bulkgroup$pheno_facts
             pheno_excl <- bulkgroup$pheno_excl
             ##
-            res <- processPair(sc_est, bulk_est,
-                               celltypes_label, samples_label,
-                               celltypes)
-            results[[sc_name]][[bulk_name]] <- res
+            results[[sc_name]][[bulk_name]] <- processPair(
+                sc_est, bulk_est,
+                celltypes_label, samples_label,
+                celltypes, bulkgroup$factor_group)
+            ##
             rm(bulk_est) ## unload
         }
         rm(sc_est) ## unload
@@ -139,8 +159,8 @@ unlistNames <- function(results, method, prepend_bkname=FALSE){
             lapply(names(results[[scname]]), function (bkname) {
                 res <- get(method)(results[[scname]][[bkname]][[method_key]])
                 if (prepend_bkname){
-                    ## We do not assume unique bulk sample names
-                    ## across different samples.
+                    ## We *do not* assume unique bulk sample names
+                    ## across different bulk datasets.
                     res <- paste0(bkname, "::", res)
                 }
                 return(res)
@@ -170,6 +190,8 @@ summarizedMatrix <- function(results){
                 if (bulk %in% names(results[[scgroup]])){
                     mat_prop <- results[[scgroup]][[bulk]][[method_key]]
                     vec_counts <- results[[scgroup]][[bulk]]$bulk_sample_totals
+                    ## - We use sample instead of id_sample because we need to extract
+                    ##   bulk sets from the complete matrix later. It's messy, yes.
                     ddff[cell, sample] <- mat_prop[id_sample,cell]
                     ddff_scale[cell, sample] <- mat_prop[id_sample,cell] * vec_counts[[id_sample]]
                 }
@@ -212,11 +234,11 @@ makeHeatmapByGroup_single <- function(dataset, title, USE.LOG=TRUE){
         title = paste0("[Log10+1] ", title)
         melted$VALS = log10(melted$VALS + 1)
     }
-    
+
     return(ggplot(melted) +
            geom_tile(aes(y=CT, x=Bulk,
                          fill=VALS), colour="white") +
-           scale_fill_gradient2(low="steelblue", high="red", mid="white", name=element_blank()) + 
+           scale_fill_gradient2(low="steelblue", high="red", mid="white", name=element_blank()) +
            theme(axis.text.x = element_text(angle=-90)) +
            ggtitle(title) +
            ylab("Cell types across all scRNA Datasets") +
@@ -230,19 +252,41 @@ summarizeHeatmapsByGroup <- function(grudat){
     pheat_prop <- makeHeatmapByGroup_single(
         grudat$prop,
         "Cell Types Proportions (Normalised by Sample)")
-    
-    pdf(out_heatsumm_pdf, width=8, height=8)
-    print(pheat_scale)
-    print(pheat_prop)
-    dev.off()
+    ## -
+    return(list(scale=pheat_scale, prop=pheat_prop))
 }
 
+flattenFactorList <- function(results){
+    ## Get a 2d DF of all factors across all bulk samples.
+    res <- c()
+    for (scgroup in names(results)){
+        for (bulkgroup in names(results[[scgroup]])){
+            dat = results[[scgroup]][[bulkgroup]]$plot_groups
+            dat$Samples = paste0(bulkgroup, "::", dat$Samples)
+            res <- rbind(res, dat)
+        }
+    }
+    return(res)
+}
 
-re = melt(lapply(grudat2$spread$scale, function(mat){mat["ct"]=rownames(mat); return(mat)}))
-## Cell type by sample
-## Sample by Cell type
-ggplot(re.prop) + geom_boxplot(aes(y=ct, x=value, color=L1))
-ggplot(re.prop) + geom_boxplot(aes(y=L1, x=value, color=ct))
+boxPlots <- function(grudat, plot_groups){
+    matr <- grudat$spread$prop
+    ren <- melt(lapply(matr, function(mat){mat["ct"]=rownames(mat); return(mat)}))
+    ## - Grab factors and merge into list
+    ren_new <- merge(ren, plot_groups, by.x="variable", by.y="Samples")
+
+    common <- ggplot(ren_new, aes(x=value)) + theme(axis.text.x = element_blank())
+
+    return(list(
+        ## Cell type by sample
+        p1 = common + geom_boxplot(aes(y=ct, color=L1)) + ylab("Cell Type"),
+        ## Sample by Cell type
+        p2 = common + geom_boxplot(aes(y=L1, color=ct))  + ylab("Bulk Dataset"),
+        ## Cell type by plot group
+        p3 = common + geom_boxplot(aes(y=ct, color=Factors)) + ylab("Cell Type"),
+        ## Samples by plot group
+        p4 = common + geom_boxplot(aes(y=L1, color=Factors)) + ylab("Bulk Dataset")))
+}
 
 results <- musicOnAll(files)
 if (heat_grouped_p) {
@@ -252,10 +296,15 @@ if (heat_grouped_p) {
 }
 summat = summarizedMatrix(results)
 grudat = groupByDataset(summat)
-summarizeHeatmapsByGroup(grudat)
+heat_maps = summarizeHeatmapsByGroup(grudat)
+box_plots = boxPlots(grudat, flattenFactorList(results))
 
+pdf(out_heatsumm_pdf, width=16, height=16)
+plot_grid(heat_maps$scale, heat_maps$prop)
+plot_grid(plotlist=box_plots, nrow=2) + xlab("Cell Type Proportion in Dataset")
+dev.off()
 
-
+## -- DEBUG --
 ## saveRDS(files, "/tmp/files.rds")
 ## saveRDS(results, "/tmp/results.rds")
 ## saveRDS(summat, "/tmp/summat.rds")
