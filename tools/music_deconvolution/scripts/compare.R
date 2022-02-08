@@ -8,6 +8,10 @@ suppressWarnings(suppressPackageStartupMessages(library(cowplot)))
 args <- commandArgs(trailingOnly = TRUE)
 source(args[1])
 
+method_key <- list("MuSiC" = "est_music",
+                   "NNLS" = "est_nnls")[[est_method]]
+
+
 scale_yaxes <- function(gplot, value) {
     if (is.na(value)) {
         gplot
@@ -114,6 +118,22 @@ plotAllIndividualHeatmaps <- function(results){
     }
     dev.off()
 }
+
+mergeFactorsSpread <- function(grudat_spread, factor_groups){
+    ## Generated
+    mergeIt <- function(matr, plot_groups, valname){
+        ren <- melt(lapply(matr, function(mat){mat["ct"]=rownames(mat); return(mat)}))
+        ## - Grab factors and merge into list
+        ren_new <- merge(ren, plot_groups, by.x="variable", by.y="Samples")
+        colnames(ren_new) <- c("Sample", "Cell", valname, "Bulk", "Factors")
+        return(ren_new)
+    }
+    tab <- merge(mergeIt(grudat$spread$prop, factor_groups, "value.prop"),
+                 mergeIt(grudat$spread$scale, factor_groups, "value.scale"),
+                 by=c("Sample", "Cell", "Bulk", "Factors"))
+    return(tab)
+}
+
 
 plotGroupedHeatmaps <- function(results){
     pdf(out_heatmulti_pdf, width=8, height=8)
@@ -267,13 +287,8 @@ flattenFactorList <- function(results){
     return(res)
 }
 
-boxPlots <- function(grudat, plot_groups){
-    matr <- grudat$spread$prop
-    ren <- melt(lapply(matr, function(mat){mat["ct"]=rownames(mat); return(mat)}))
-    ## - Grab factors and merge into list
-    ren_new <- merge(ren, plot_groups, by.x="variable", by.y="Samples")
-    colnames(ren_new) <- c("Sample", "Cell", "value", "Bulk", "Factors")
-    common <- ggplot(ren_new, aes(x=value)) + xlab("Cell Type Proportion")
+boxPlots <- function(grudat){
+    common <- ggplot(grudat, aes(x=value)) + xlab("Cell Type Proportion")
 
     plots = list(
         ## Cell type by sample
@@ -284,12 +299,13 @@ boxPlots <- function(grudat, plot_groups){
         p3 = ggplot + theme_void(),
         p4 = ggplot() + theme_void())
 
-    if (length(unique(ren_new[["Factors"]])) > 1){
+    if (length(unique(grudat[["Factors"]])) > 1){
         plots$p3 = common + geom_boxplot(aes(y=Cell, color=Factors)) + ylab("Cell Type")
         plots$p4 = common + geom_boxplot(aes(y=Bulk, color=Factors)) + ylab("Bulk Dataset")
     }
     return(plots)
 }
+
 
 results <- musicOnAll(files)
 if (heat_grouped_p) {
@@ -299,8 +315,12 @@ if (heat_grouped_p) {
 }
 summat = summarizedMatrix(results)
 grudat = groupByDataset(summat)
+grudat_spread_melt = mergeFactorsSpread(grudat$spread, flattenFactorList(results))
+
 heat_maps = summarizeHeatmapsByGroup(grudat)
-box_plots = boxPlots(grudat, flattenFactorList(results))
+
+## The output filters ONLY apply to boxplots, since these take 
+box_plots = boxPlots(grudat_spread_melt$prop)
 
 pdf(out_heatsumm_pdf, width=14, height=14)
 plot_grid(heat_maps$scale, heat_maps$prop)
@@ -311,8 +331,9 @@ dev.off()
 ## saveRDS(files, "/tmp/files.rds")
 ## saveRDS(results, "/tmp/results.rds")
 ## saveRDS(summat, "/tmp/summat.rds")
-## saveRDS(grudat, "/tmp/grudat.rds")
-## files = readRDS("/tmp/files.rds")
+saveRDS(grudat, "/tmp/grudat.rds")
+saveRDS(grudat_mod, "/tmp/grudatmod.rds")
+files = readRDS("/tmp/files.rds")
 ## results = readRDS("/tmp/results.rds")
 ## summat = readRDS("/tmp/summat.rds")
 ## grudat = readRDS("/tmp/grudat.rds")
