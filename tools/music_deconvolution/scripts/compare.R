@@ -16,8 +16,6 @@ scale_yaxes <- function(gplot, value) {
     }
 }
 
-method_key <- list("MuSiC" = "est_music",
-                   "NNLS" = "est_nnls")[[est_method]]
 
 setFactorData <- function(bulk_data, factor_name = NULL){
     if (is.null(factor_name)){
@@ -225,7 +223,7 @@ groupByDataset <- function(summat){
                             prop=bd_spread_prop)))
 }
 
-makeHeatmapByGroup_single <- function(dataset, title, USE.LOG=TRUE){
+summarizeHeatmapsByGroup_single <- function(dataset, title, USE.LOG=TRUE){
     ## Convert from matrix to long format
     dataset["CT"] = rownames(dataset)
     melted = melt(dataset, value.name="VALS", variable.name="Bulk")
@@ -236,8 +234,8 @@ makeHeatmapByGroup_single <- function(dataset, title, USE.LOG=TRUE){
     }
 
     return(ggplot(melted) +
-           geom_tile(aes(y=CT, x=Bulk,
-                         fill=VALS), colour="white") +
+           geom_tile(aes(y=Cell, x=Bulk, fill=value),
+                     colour="white") +
            scale_fill_gradient2(low="steelblue", high="red", mid="white", name=element_blank()) +
            theme(axis.text.x = element_text(angle=-90)) +
            ggtitle(title) +
@@ -246,10 +244,10 @@ makeHeatmapByGroup_single <- function(dataset, title, USE.LOG=TRUE){
 }
 
 summarizeHeatmapsByGroup <- function(grudat){
-    pheat_scale <- makeHeatmapByGroup_single(
+    pheat_scale <- summarizeHeatmapsByGroup_single(
         grudat$scaled,
         "Cell Types Proportions (Scaled to Number of Reads)")
-    pheat_prop <- makeHeatmapByGroup_single(
+    pheat_prop <- summarizeHeatmapsByGroup_single(
         grudat$prop,
         "Cell Types Proportions (Normalised by Sample)")
     ## -
