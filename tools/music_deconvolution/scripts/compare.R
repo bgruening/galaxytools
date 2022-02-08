@@ -274,18 +274,23 @@ boxPlots <- function(grudat, plot_groups){
     ren <- melt(lapply(matr, function(mat){mat["ct"]=rownames(mat); return(mat)}))
     ## - Grab factors and merge into list
     ren_new <- merge(ren, plot_groups, by.x="variable", by.y="Samples")
+    colnames(ren_new) <- c("Sample", "Cell", "value", "Bulk", "Factors")
+    common <- ggplot(ren_new, aes(x=value)) + xlab("Cell Type Proportion")
 
-    common <- ggplot(ren_new, aes(x=value)) + theme(axis.text.x = element_blank())
-
-    return(list(
+    plots = list(
         ## Cell type by sample
-        p1 = common + geom_boxplot(aes(y=ct, color=L1)) + ylab("Cell Type"),
+        p1 = common + geom_boxplot(aes(y=Cell, color=Bulk)) + ylab("Cell Type"),
         ## Sample by Cell type
-        p2 = common + geom_boxplot(aes(y=L1, color=ct))  + ylab("Bulk Dataset"),
-        ## Cell type by plot group
-        p3 = common + geom_boxplot(aes(y=ct, color=Factors)) + ylab("Cell Type"),
-        ## Samples by plot group
-        p4 = common + geom_boxplot(aes(y=L1, color=Factors)) + ylab("Bulk Dataset")))
+        p2 = common + geom_boxplot(aes(y=Bulk, color=Cell))  + ylab("Bulk Dataset"),
+        ## -- Factor plots are optional
+        p3 = ggplot + theme_void(),
+        p4 = ggplot() + theme_void())
+
+    if (length(unique(ren_new[["Factors"]])) > 1){
+        plots$p3 = common + geom_boxplot(aes(y=Cell, color=Factors)) + ylab("Cell Type")
+        plots$p4 = common + geom_boxplot(aes(y=Bulk, color=Factors)) + ylab("Bulk Dataset")
+    }
+    return(plots)
 }
 
 results <- musicOnAll(files)
@@ -299,9 +304,9 @@ grudat = groupByDataset(summat)
 heat_maps = summarizeHeatmapsByGroup(grudat)
 box_plots = boxPlots(grudat, flattenFactorList(results))
 
-pdf(out_heatsumm_pdf, width=16, height=16)
+pdf(out_heatsumm_pdf, width=14, height=14)
 plot_grid(heat_maps$scale, heat_maps$prop)
-plot_grid(plotlist=box_plots, nrow=2) + xlab("Cell Type Proportion in Dataset")
+plot_grid(plotlist=box_plots, nrow=2)
 dev.off()
 
 ## -- DEBUG --
