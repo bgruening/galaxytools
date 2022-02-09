@@ -21,31 +21,33 @@ scale_yaxes <- function(gplot, value) {
 }
 
 
-setFactorData <- function(bulk_data, factor_name = NULL){
-    if (is.null(factor_name)){
-        factor_name = "None" ## change to something plottable
+set_factor_data <- function(bulk_data, factor_name = NULL) {
+    if (is.null(factor_name)) {
+        factor_name <- "None" ## change to something plottable
     }
     pdat <- pData(bulk_data)
     sam_fact <- NULL
-    if (factor_name %in% colnames(pdat)){
-        sam_fact = cbind(rownames(pdat),
-                         as.character(pdat[[factor_name]]))
-        cat(paste0("     - factor: ", factor_name, " found in phenotypes\n"))
+    if (factor_name %in% colnames(pdat)) {
+        sam_fact <- cbind(rownames(pdat),
+                          as.character(pdat[[factor_name]]))
+        cat(paste0("   - factor: ", factor_name,
+                   " found in phenotypes\n"))
     } else {
         ## We assign this as the factor for the entire dataset
-        sam_fact = cbind(rownames(pdat),
-                         factor_name)
-        cat(paste0("     - factor: assigning \"", factor_name, "\" to whole dataset\n"))
+        sam_fact <- cbind(rownames(pdat),
+                          factor_name)
+        cat(paste0("   - factor: assigning \"", factor_name,
+                   "\" to whole dataset\n"))
     }
-    colnames(sam_fact) = c("Samples", "Factors")
+    colnames(sam_fact) <- c("Samples", "Factors")
     return(as.data.frame(sam_fact))
 }
 
 ## Due to limiting sizes, we need to load and unload
 ## possibly very large datasets.
-processPair <- function(sc_data, bulk_data,
+process_pair <- function(sc_data, bulk_data,
                         ctypes_label, samples_label, ctypes,
-                        factor_group){
+                        factor_group) {
     ## - Generate
     est_prop <- music_prop(
         bulk.eset = bulk_data, sc.eset = sc_data,
@@ -55,7 +57,7 @@ processPair <- function(sc_data, bulk_data,
     estimated_music_props <- est_prop$Est.prop.weighted
     estimated_nnls_props <- est_prop$Est.prop.allgene
     ## -
-    fact_data <- setFactorData(bulk_data, factor_group)
+    fact_data <- set_factor_data(bulk_data, factor_group)
     ## -
     return(list(est_music = estimated_music_props,
                 est_nnls = estimated_nnls_props,
@@ -63,20 +65,20 @@ processPair <- function(sc_data, bulk_data,
                 plot_groups = fact_data))
 }
 
-musicOnAll <- function (files){
+music_on_all <- function(files) {
     results <- list()
-    for (sc_name in names(files)){
+    for (sc_name in names(files)) {
         cat(paste0("sc-group:", sc_name, "\n"))
-        scgroup = files[[sc_name]]
+        scgroup <- files[[sc_name]]
         ## - sc Data
-        sc_est = readRDS(scgroup$dataset)
+        sc_est <- readRDS(scgroup$dataset)
         ## - params
-        celltypes_label = scgroup$label_cell
-        samples_label = scgroup$label_sample
-        celltypes = scgroup$celltype
+        celltypes_label <- scgroup$label_cell
+        samples_label <- scgroup$label_sample
+        celltypes <- scgroup$celltype
 
-        results[[sc_name]] = list()
-        for (bulk_name in names(scgroup$bulk)){
+        results[[sc_name]] <- list()
+        for (bulk_name in names(scgroup$bulk)) {
             cat(paste0(" - bulk-group:", bulk_name, "\n"))
             bulkgroup <- scgroup$bulk[[bulk_name]]
             ## - bulk Data
@@ -85,7 +87,7 @@ musicOnAll <- function (files){
             pheno_facts <- bulkgroup$pheno_facts
             pheno_excl <- bulkgroup$pheno_excl
             ##
-            results[[sc_name]][[bulk_name]] <- processPair(
+            results[[sc_name]][[bulk_name]] <- process_pair(
                 sc_est, bulk_est,
                 celltypes_label, samples_label,
                 celltypes, bulkgroup$factor_group)
@@ -97,14 +99,13 @@ musicOnAll <- function (files){
     return(results)
 }
 
-plotAllIndividualHeatmaps <- function(results){
-    pdf(out_heatmulti_pdf, width=8, height=8)
-    for (sc_name in names(results)){
-        for (bk_name in names(results[[sc_name]])){
+plot_all_individual_heatmaps <- function(results) {
+    pdf(out_heatmulti_pdf, width = 8, height = 8)
+    for (sc_name in names(results)) {
+        for (bk_name in names(results[[sc_name]])) {
             res <- results[[sc_name]][[bk_name]]
             plot_hmap <- Prop_heat_Est(
-                data.matrix(res[[method_key]]),
-                method.name = est_method) +
+                data.matrix(res[[method_key]]), method.name = est_method) +
                 ggtitle(paste0("[", est_method, "Cell type ",
                                "proportions in ",
                                bk_name, " (Bulk) based on ",
@@ -119,35 +120,36 @@ plotAllIndividualHeatmaps <- function(results){
     dev.off()
 }
 
-mergeFactorsSpread <- function(grudat_spread, factor_groups){
+merge_factors_spread <- function(grudat_spread, factor_groups) {
     ## Generated
-    mergeIt <- function(matr, plot_groups, valname){
-        ren <- melt(lapply(matr, function(mat){mat["ct"]=rownames(mat); return(mat)}))
+    merge_it <- function(matr, plot_groups, valname) {
+        ren <- melt(lapply(matr, function(mat) {
+            mat["ct"] <- rownames(mat); return(mat)}))
         ## - Grab factors and merge into list
-        ren_new <- merge(ren, plot_groups, by.x="variable", by.y="Samples")
+        ren_new <- merge(ren, plot_groups, by.x = "variable", by.y = "Samples")
         colnames(ren_new) <- c("Sample", "Cell", valname, "Bulk", "Factors")
         return(ren_new)
     }
-    tab <- merge(mergeIt(grudat$spread$prop, factor_groups, "value.prop"),
-                 mergeIt(grudat$spread$scale, factor_groups, "value.scale"),
-                 by=c("Sample", "Cell", "Bulk", "Factors"))
+    tab <- merge(merge_it(grudat$spread$prop, factor_groups, "value.prop"),
+                 merge_it(grudat$spread$scale, factor_groups, "value.scale"),
+                 by = c("Sample", "Cell", "Bulk", "Factors"))
     return(tab)
 }
 
 
-plotGroupedHeatmaps <- function(results){
-    pdf(out_heatmulti_pdf, width=8, height=8)
-    for (sc_name in names(results)){
+plot_grouped_heatmaps <- function(results) {
+    pdf(out_heatmulti_pdf, width = 8, height = 8)
+    for (sc_name in names(results)) {
         named_list <- sapply(
             names(results[[sc_name]]),
-            function (n){
+            function(n) {
                 ## We transpose the data here, because
                 ## the plotting function omits by default
                 ## the Y-axis which are the samples.
-                ##   Since the celltypes are the common factor
+                ##  Since the celltypes are the common factor
                 ## these should be the Y-axis instead.
                 t(data.matrix(results[[sc_name]][[n]][[method_key]]))
-            }, simplify=F, USE.NAMES=T)
+            }, simplify = F, USE.NAMES = T)
         named_methods <- names(results[[sc_name]])
         ##
         plot_hmap <- Prop_heat_Est(
@@ -168,15 +170,15 @@ plotGroupedHeatmaps <- function(results){
 
 ## Desired plots
 ## 1. Pie chart:
-##    - Per Bulk dataset (using just normalised proportions)
-##    - Per Bulk dataset (multiplying proportions by nreads)
+##  - Per Bulk dataset (using just normalised proportions)
+##  - Per Bulk dataset (multiplying proportions by nreads)
 
-unlistNames <- function(results, method, prepend_bkname=FALSE){
+unlist_names <- function(results, method, prepend_bkname=FALSE) {
     unique(sort(
-        unlist(lapply(names(results), function (scname) {
-            lapply(names(results[[scname]]), function (bkname) {
+        unlist(lapply(names(results), function(scname) {
+            lapply(names(results[[scname]]), function(bkname) {
                 res <- get(method)(results[[scname]][[bkname]][[method_key]])
-                if (prepend_bkname){
+                if (prepend_bkname) {
                     ## We *do not* assume unique bulk sample names
                     ## across different bulk datasets.
                     res <- paste0(bkname, "::", res)
@@ -189,205 +191,219 @@ unlistNames <- function(results, method, prepend_bkname=FALSE){
 
 ## convertProportionsToCounts <- function(prop_matrix,
 
-summarizedMatrix <- function(results){
+summarized_matrix <- function(results) {
     ## We assume that cell types MUST be unique, but that sample
     ## names do not need to be. For this reason, we must prepend
     ## the bulk dataset name to the individual sample names.
-    all_celltypes <- unlistNames(results, "colnames")
-    all_samples <- unlistNames(results, "rownames", prepend_bkname=TRUE)
+    all_celltypes <- unlist_names(results, "colnames")
+    all_samples <- unlist_names(results, "rownames", prepend_bkname = TRUE)
 
     ## Iterate through all possible samples and populate a table.
     ddff <- data.frame()
     ddff_scale <- data.frame()
-    for (cell in all_celltypes){
-        for (sample in all_samples){
-            group_sname <- unlist(strsplit(sample, split="::"))
+    for (cell in all_celltypes) {
+        for (sample in all_samples) {
+            group_sname <- unlist(strsplit(sample, split = "::"))
             bulk <- group_sname[1]
             id_sample <- group_sname[2]
-            for (scgroup in names(results)){
-                if (bulk %in% names(results[[scgroup]])){
+            for (scgroup in names(results)) {
+                if (bulk %in% names(results[[scgroup]])) {
                     mat_prop <- results[[scgroup]][[bulk]][[method_key]]
                     vec_counts <- results[[scgroup]][[bulk]]$bulk_sample_totals
-                    ## - We use sample instead of id_sample because we need to extract
-                    ##   bulk sets from the complete matrix later. It's messy, yes.
-                    ddff[cell, sample] <- mat_prop[id_sample,cell]
-                    ddff_scale[cell, sample] <- mat_prop[id_sample,cell] * vec_counts[[id_sample]]
+                    ## - We use sample instead of id_sample because we need to
+                    ##   extract bulk sets from the complete matrix later. It's
+                    ##   messy, yes.
+                    ddff[cell, sample] <- mat_prop[id_sample, cell]
+                    ddff_scale[cell, sample] <- mat_prop[id_sample, cell] * vec_counts[[id_sample]] #nolint
                 }
             }
         }
     }
-    return(list(prop=ddff, scaled=ddff_scale))
+    return(list(prop = ddff, scaled = ddff_scale))
 }
 
-flattenFactorList <- function(results){
+flatten_factor_list <- function(results) {
     ## Get a 2d DF of all factors across all bulk samples.
     res <- c()
-    for (scgroup in names(results)){
-        for (bulkgroup in names(results[[scgroup]])){
-            dat = results[[scgroup]][[bulkgroup]]$plot_groups
-            dat$Samples = paste0(bulkgroup, "::", dat$Samples)
+    for (scgroup in names(results)) {
+        for (bulkgroup in names(results[[scgroup]])) {
+            dat <- results[[scgroup]][[bulkgroup]]$plot_groups
+            dat$Samples <- paste0(bulkgroup, "::", dat$Samples) #nolint
             res <- rbind(res, dat)
         }
     }
     return(res)
 }
 
-groupByDataset <- function(summat){
-    bulk_names = unlist(
-        lapply(names(files),
-               function(x) names(files[[x]]$bulk)))
-    mat_names = colnames(summat$prop)
+group_by_dataset <- function(summat) {
+    bulk_names <- unlist(
+        lapply(names(files), function(x) names(files[[x]]$bulk)))
+    mat_names <- colnames(summat$prop)
     bd <- list()
     bd_scale <- list()
     bd_spread_scale <- list()
     bd_spread_prop <- list()
-    for (bname in bulk_names){
+    for (bname in bulk_names) {
         subs <- mat_names[startsWith(mat_names, paste0(bname, "::"))]
-        ##print(bname)
         ## -
-        bd[[bname]] = rowSums(summat$prop[,subs])
-        bd_scale[[bname]] = rowSums(summat$scaled[,subs])
-        bd_spread_scale[[bname]] = summat$scaled[,subs]
-        bd_spread_prop[[bname]] = summat$prop[,subs]
+        bd[[bname]] <- rowSums(summat$prop[, subs])
+        bd_scale[[bname]] <- rowSums(summat$scaled[, subs])
+        bd_spread_scale[[bname]] <- summat$scaled[, subs]
+        bd_spread_prop[[bname]] <- summat$prop[, subs]
     }
-    return(list(prop=as.data.frame(bd),
-                scaled=as.data.frame(bd_scale),
-                spread=list(scale=bd_spread_scale,
-                            prop=bd_spread_prop)))
+    return(list(prop = as.data.frame(bd),
+                scaled = as.data.frame(bd_scale),
+                spread = list(scale = bd_spread_scale,
+                              prop = bd_spread_prop)))
 }
 
-summarizeHeatmaps <- function(grudat_spread_melt, do.factors){
-    # -
-    doSingle <- function(grudat_melted, yaxis, xaxis, fillval, title,
-                         ylabs=element_blank(), xlabs=element_blank(), USE.LOG=TRUE){
+summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
+                                        # -
+    do_single <- function(grudat_melted, yaxis, xaxis, fillval, title,
+                          ylabs = element_blank(), xlabs = element_blank(),
+                          use_log = TRUE) {
         ## Convert from matrix to long format
-        melted = grudat_melted  ## copy?
-        if (USE.LOG){
-            melted[[fillval]] = log10(melted[[fillval]] + 1)
+        melted <- grudat_melted ## copy?
+        if (use_log) {
+            melted[[fillval]] <- log10(melted[[fillval]] + 1)
         }
         return(ggplot(melted) +
-               geom_tile(aes_string(y=yaxis, x=xaxis, fill=fillval), colour="white") +
-               scale_fill_gradient2(low="steelblue", high="red", mid="white", name=element_blank()) +
-               theme(axis.text.x = element_text(angle=-50, hjust=0)) +
-               ggtitle(label=title) + xlab(xlabs) + ylab(ylabs))
+               geom_tile(aes_string(y = yaxis, x = xaxis, fill = fillval),
+                         colour = "white") +
+               scale_fill_gradient2(low = "steelblue", high = "red",
+                                    mid = "white", name = element_blank()) +
+               theme(axis.text.x = element_text(angle = -50, hjust = 0)) +
+               ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
     }
 
-    doGridPlot <- function(title, xvar, plot="both", ncol=2){
-        do.logged = (plot %in% c("log", "both"))
-        do.normal = (plot %in% c("normal", "both"))
-        plist = list()
-        if (do.logged){
-            plist[["1"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.scale", "Reads (log10+1)")
-            plist[["2"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.prop", "Sample (log10+1)")
+    do_gridplot <- function(title, xvar, plot="both", ncol=2) {
+        do_logged <- (plot %in% c("log", "both"))
+        do_normal <- (plot %in% c("normal", "both"))
+        plist <- list()
+        if (do_logged) {
+            plist[["1"]] <- do_single(grudat_spread_melt, "Cell", xvar,
+                                      "value.scale", "Reads (log10+1)")
+            plist[["2"]] <- do_single(grudat_spread_melt, "Cell", xvar,
+                                      "value.prop", "Sample (log10+1)")
         }
-        if (do.normal){
-            plist[["A"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.scale", "Reads", USE.LOG=F)
-            plist[["B"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.prop", "Sample", USE.LOG=F)
+        if (do_normal) {
+            plist[["A"]] <- do_single(grudat_spread_melt, "Cell", xvar,
+                                      "value.scale", "Reads", use_log = F)
+            plist[["B"]] <- do_single(grudat_spread_melt, "Cell", xvar,
+                                      "value.prop", "Sample", use_log = F)
         }
-        return(plot_grid(ggdraw() + draw_label(title, fontface="bold"),
-                         plot_grid(plotlist=plist, ncol=ncol),
-                         ncol=1, rel_heights=c(0.05,0.95)))
+        return(plot_grid(ggdraw() + draw_label(title, fontface = "bold"),
+                         plot_grid(plotlist = plist, ncol = ncol),
+                         ncol = 1, rel_heights = c(0.05, 0.95)))
 
     }
-    p1 <- doGridPlot("Cell Types against Bulk Datasets", "Bulk", "both")
-    p2a <- doGridPlot("Cell Types against Samples", "Sample", "normal", 1)
-    p2b <- doGridPlot("Cell Types against Samples (log10+1)", "Sample", "log", 1)
+    p1 <- do_gridplot("Cell Types vs Bulk Datasets", "Bulk", "both")
+    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal", 1)
+    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log", 1)
     p3 <- ggplot + theme_void()
-    if (do.factors){
-        p3 <- doGridPlot("Cell Types against Factors", "Factors", "both")
+    if (do_factors) {
+        p3 <- do_gridplot("Cell Types against Factors", "Factors", "both")
     }
-    return(list(bulk=p1, samples=list(log=p2b, normal=p2a), factors=p3))
+    return(list(bulk = p1,
+                samples = list(log = p2b, normal = p2a),
+                factors = p3))
 }
 
-summarizeBoxPlots <- function(grudat_spread, do.factors){
-    common1 <- ggplot(grudat_spread, aes(x=value.prop)) + ggtitle("Sample") +
+summarize_boxplots <- function(grudat_spread, do_factors) {
+    common1 <- ggplot(grudat_spread, aes(x = value.prop)) + ggtitle("Sample") +
         xlab(element_blank()) + ylab(element_blank())
-    common2 <- ggplot(grudat_spread, aes(x=value.scale)) + ggtitle("Reads") +
+    common2 <- ggplot(grudat_spread, aes(x = value.scale)) + ggtitle("Reads") +
         xlab(element_blank()) + ylab(element_blank())
 
-    A=B=list()
+    A <- B <- list() #nolint
     ## Cell type by sample
-    A$p1 = common2 + geom_boxplot(aes(y=Cell, color=Bulk))
-    A$p2 = common1 + geom_boxplot(aes(y=Cell, color=Bulk))
+    A$p1 <- common2 + geom_boxplot(aes(y = Cell, color = Bulk))
+    A$p2 <- common1 + geom_boxplot(aes(y = Cell, color = Bulk))
     ## Sample by Cell type
-    B$p1 = common1 + geom_boxplot(aes(y=Bulk, color=Cell))  + ylab("Bulk Dataset")
-    B$p2 = common2 + geom_boxplot(aes(y=Bulk, color=Cell))  + ylab("Bulk Dataset")
+    B$p1 <- common1 + geom_boxplot(aes(y = Bulk, color = Cell)) +
+        ylab("Bulk Dataset")
+    B$p2 <- common2 + geom_boxplot(aes(y = Bulk, color = Cell)) +
+        ylab("Bulk Dataset")
     ## -- Factor plots are optional
-    A$p3 = B$p3 = A$p4 = B$p4 = ggplot() + theme_void()
+    A$p3 <- B$p3 <- A$p4 <- B$p4 <- ggplot() + theme_void()
 
-    if (do.factors){
-        A$p3 = common1 + geom_boxplot(aes(y=Cell, color=Factors))
-        A$p4 = common2 + geom_boxplot(aes(y=Cell, color=Factors))
-        B$p3 = common2 + geom_boxplot(aes(y=Bulk, color=Factors)) + ylab("Bulk Dataset")
-        B$p4 = common1 + geom_boxplot(aes(y=Bulk, color=Factors)) + ylab("Bulk Dataset")
+    if (do_factors) {
+        A$p3 <- common1 + geom_boxplot(aes(y = Cell, color = Factors))
+        A$p4 <- common2 + geom_boxplot(aes(y = Cell, color = Factors))
+        B$p3 <- common2 + geom_boxplot(aes(y = Bulk, color = Factors)) +
+            ylab("Bulk Dataset")
+        B$p4 <- common1 + geom_boxplot(aes(y = Bulk, color = Factors)) +
+            ylab("Bulk Dataset")
     }
 
-    titleA = "Cell Types against Bulk"
-    titleB = "Bulk Datasets against Cells"
-    if (do.factors){
-        titleA = paste0(titleA, " and Factors")
-        titleb = paste0(titleB, " and Factors")
+    title_a <- "Cell Types against Bulk"
+    title_b <- "Bulk Datasets against Cells"
+    if (do_factors) {
+        title_a <- paste0(title_a, " and Factors")
+        title_b <- paste0(title_b, " and Factors")
     }
 
-    A_all = plot_grid(ggdraw() + draw_label(titleA, fontface="bold"),
-                      plot_grid(plotlist=A, ncol=2),
-                      ncol=1, rel_heights=c(0.05,0.95))
-    B_all = plot_grid(ggdraw() + draw_label(titleB, fontface="bold"),
-                      plot_grid(plotlist=B, ncol=2),
-                      ncol=1, rel_heights=c(0.05,0.95))
-    return(list(cell=A_all, bulk=B_all))
+    a_all <- plot_grid(ggdraw() + draw_label(title_a, fontface = "bold"),
+                       plot_grid(plotlist = A, ncol = 2),
+                       ncol = 1, rel_heights = c(0.05, 0.95))
+    b_all <- plot_grid(ggdraw() + draw_label(title_b, fontface = "bold"),
+                       plot_grid(plotlist = B, ncol = 2),
+                       ncol = 1, rel_heights = c(0.05, 0.95))
+    return(list(cell = a_all, bulk = b_all))
 }
 
-filterOutput <- function(grudat_spread_melt, out_filt){
-    printRed <- function(comment, red_list){
-        cat(paste(comment, paste(red_list, collapse=", "), "\n"))
+filter_output <- function(grudat_spread_melt, out_filt) {
+    print_red <- function(comment, red_list) {
+        cat(paste(comment, paste(red_list, collapse = ", "), "\n"))
     }
-
     grudat_filt <- grudat_spread_melt
-    printRed("Total Cell types:", unique(grudat_filt$Cell))
-    if (!is.null(out_filt$cells)){
-        grudat_filt <- grudat_filt[grudat_filt$Cell %in% out_filt$cells,]
-        printRed(" - selecting:", out_filt$cells)
+    print_red("Total Cell types:", unique(grudat_filt$Cell))
+    if (!is.null(out_filt$cells)) {
+        grudat_filt <- grudat_filt[grudat_filt$Cell %in% out_filt$cells, ]
+        print_red(" - selecting:", out_filt$cells)
     }
-    printRed("Total Factors:", unique(grudat_spread_melt$Factors))
-    if (!is.null(out_filt$facts)){
-        grudat_filt <- grudat_filt[grudat_filt$Factors %in% out_filt$facts,]
-        printRed(" - selecting:", out_filt$facts)
+    print_red("Total Factors:", unique(grudat_spread_melt$Factors))
+    if (!is.null(out_filt$facts)) {
+        grudat_filt <- grudat_filt[grudat_filt$Factors %in% out_filt$facts, ]
+        print_red(" - selecting:", out_filt$facts)
     }
     return(grudat_filt)
 }
 
 
-results <- musicOnAll(files)
+results <- music_on_all(files)
 
 if (heat_grouped_p) {
-    plotGroupedHeatmaps(results)
+    plot_grouped_heatmaps(results)
 } else {
-    plotAllIndividualHeatmaps(results)
+    plot_all_individual_heatmaps(results)
 }
 
-summat = summarizedMatrix(results)
-grudat = groupByDataset(summat)
-grudat_spread_melt = mergeFactorsSpread(grudat$spread, flattenFactorList(results))
+summat <- summarized_matrix(results)
+grudat <- group_by_dataset(summat)
+grudat_spread_melt <- merge_factors_spread(grudat$spread,
+                                         flatten_factor_list(results))
 
 
 
 ## The output filters ONLY apply to boxplots, since these take
-do.factors = (length(unique(grudat_spread_melt[["Factors"]])) > 1)
+do_factors <- (length(unique(grudat_spread_melt[["Factors"]])) > 1)
 
-grudat_spread_melt_filt <- filterOutput(grudat_spread_melt, out_filt)
+grudat_spread_melt_filt <- filter_output(grudat_spread_melt, out_filt)
 
-heat_maps = summarizeHeatmaps(grudat_spread_melt_filt, do.factors)
-box_plots = summarizeBoxPlots(grudat_spread_melt_filt, do.factors)
+heat_maps <- summarize_heatmaps(grudat_spread_melt_filt, do_factors)
+box_plots <- summarize_boxplots(grudat_spread_melt_filt, do_factors)
 
-pdf(out_heatsumm_pdf, width=14, height=14)
+pdf(out_heatsumm_pdf, width = 14, height = 14)
 print(heat_maps)
 print(box_plots)
 dev.off()
 
 ## Generate output tables
-stats_prop = lapply(grudat$spread$prop , function(x) {t(apply(x, 1, summary))})
-stats_scale = lapply(grudat$spread$scale , function(x) {t(apply(x, 1, summary))})
+stats_prop <- lapply(grudat$spread$prop, function(x) {
+    t(apply(x, 1, summary))})
+stats_scale <- lapply(grudat$spread$scale, function(x) {
+    t(apply(x, 1, summary))})
 
 writable2 <- function(obj, prefix, title) {
     write.table(obj,
@@ -396,7 +412,7 @@ writable2 <- function(obj, prefix, title) {
                 quote = F, sep = "\t", col.names = NA)
 }
 ## Make the value table printable
-grudat_spread_melt$value.scale <- as.integer(grudat_spread_melt$value.scale)
+grudat_spread_melt$value.scale <- as.integer(grudat_spread_melt$value.scale) # nolint
 colnames(grudat_spread_melt) <- c("Sample", "Cell", "Bulk", "Factors",
                                   "CT Prop in Sample", "Number of Reads")
 
@@ -406,8 +422,7 @@ writable2({
     aa <- as.matrix(summat$scaled); mode(aa) <- "integer"; aa
 }, "values", "Matrix of Cell Type Read Counts")
 
-for (bname in names(stats_prop)){
+for (bname in names(stats_prop)) {
     writable2(stats_prop[[bname]], "stats", paste0(bname, ": Sample Props"))
     writable2(stats_scale[[bname]], "stats", paste0(bname, ": Read Props"))
 }
-
