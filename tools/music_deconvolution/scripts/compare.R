@@ -328,7 +328,7 @@ summarizeBoxPlots <- function(grudat_spread, do.factors){
         titleA = paste0(titleA, " and Factors")
         titleb = paste0(titleB, " and Factors")
     }
-    
+
     A_all = plot_grid(ggdraw() + draw_label(titleA, fontface="bold"),
                       plot_grid(plotlist=A, ncol=2),
                       ncol=1, rel_heights=c(0.05,0.95))
@@ -338,13 +338,34 @@ summarizeBoxPlots <- function(grudat_spread, do.factors){
     return(list(cell=A_all, bulk=B_all))
 }
 
+filterOutput <- function(grudat_spread_melt, out_filt){
+    printRed <- function(comment, red_list){
+        cat(paste(comment, paste(red_list, collapse=", "), "\n"))
+    }
+
+    grudat_filt <- grudat_spread_melt
+    printRed("Total Cell types:", unique(grudat_filt$Cell))
+    if (!is.null(out_filt$cells)){
+        grudat_filt <- grudat_filt[grudat_filt$Cell %in% out_filt$cells,]
+        printRed(" - selecting:", out_filt$cells)
+    }
+    printRed("Total Factors:", unique(grudat_spread_melt$Factors))
+    if (!is.null(out_filt$facts)){
+        grudat_filt <- grudat_filt[grudat_filt$Factors %in% out_filt$facts,]
+        printRed(" - selecting:", out_filt$facts)
+    }
+    return(grudat_filt)
+}
+
 
 results <- musicOnAll(files)
+
 if (heat_grouped_p) {
     plotGroupedHeatmaps(results)
 } else {
     plotAllIndividualHeatmaps(results)
 }
+
 summat = summarizedMatrix(results)
 grudat = groupByDataset(summat)
 grudat_spread_melt = mergeFactorsSpread(grudat$spread, flattenFactorList(results))
@@ -354,8 +375,10 @@ grudat_spread_melt = mergeFactorsSpread(grudat$spread, flattenFactorList(results
 ## The output filters ONLY apply to boxplots, since these take
 do.factors = (length(unique(grudat_spread_melt[["Factors"]])) > 1)
 
-heat_maps = summarizeHeatmaps(grudat_spread_melt, do.factors)
-box_plots = summarizeBoxPlots(grudat_spread_melt, do.factors)
+grudat_spread_melt_filt <- filterOutput(grudat_spread_melt, out_filt)
+
+heat_maps = summarizeHeatmaps(grudat_spread_melt_filt, do.factors)
+box_plots = summarizeBoxPlots(grudat_spread_melt_filt, do.factors)
 
 pdf(out_heatsumm_pdf, width=14, height=14)
 print(heat_maps)
