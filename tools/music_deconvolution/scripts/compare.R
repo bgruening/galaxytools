@@ -219,6 +219,19 @@ summarizedMatrix <- function(results){
     return(list(prop=ddff, scaled=ddff_scale))
 }
 
+flattenFactorList <- function(results){
+    ## Get a 2d DF of all factors across all bulk samples.
+    res <- c()
+    for (scgroup in names(results)){
+        for (bulkgroup in names(results[[scgroup]])){
+            dat = results[[scgroup]][[bulkgroup]]$plot_groups
+            dat$Samples = paste0(bulkgroup, "::", dat$Samples)
+            res <- rbind(res, dat)
+        }
+    }
+    return(res)
+}
+
 groupByDataset <- function(summat){
     bulk_names = unlist(
         lapply(names(files),
@@ -243,67 +256,86 @@ groupByDataset <- function(summat){
                             prop=bd_spread_prop)))
 }
 
-summarizeHeatmapsByGroup_single <- function(dataset, title, USE.LOG=TRUE){
-    ## Convert from matrix to long format
-    dataset["CT"] = rownames(dataset)
-    melted = melt(dataset, value.name="VALS", variable.name="Bulk")
-
-    if (USE.LOG){
-        title = paste0("[Log10+1] ", title)
-        melted$VALS = log10(melted$VALS + 1)
-    }
-
-    return(ggplot(melted) +
-           geom_tile(aes(y=Cell, x=Bulk, fill=value),
-                     colour="white") +
-           scale_fill_gradient2(low="steelblue", high="red", mid="white", name=element_blank()) +
-           theme(axis.text.x = element_text(angle=-90)) +
-           ggtitle(title) +
-           ylab("Cell types across all scRNA Datasets") +
-           xlab("All Bulk Datasets"))
-}
-
-summarizeHeatmapsByGroup <- function(grudat){
-    pheat_scale <- summarizeHeatmapsByGroup_single(
-        grudat$scaled,
-        "Cell Types Proportions (Scaled to Number of Reads)")
-    pheat_prop <- summarizeHeatmapsByGroup_single(
-        grudat$prop,
-        "Cell Types Proportions (Normalised by Sample)")
-    ## -
-    return(list(scale=pheat_scale, prop=pheat_prop))
-}
-
-flattenFactorList <- function(results){
-    ## Get a 2d DF of all factors across all bulk samples.
-    res <- c()
-    for (scgroup in names(results)){
-        for (bulkgroup in names(results[[scgroup]])){
-            dat = results[[scgroup]][[bulkgroup]]$plot_groups
-            dat$Samples = paste0(bulkgroup, "::", dat$Samples)
-            res <- rbind(res, dat)
+summarizeHeatmaps <- function(grudat_spread_melt, do.factors){
+    # -
+    doSingle <- function(grudat_melted, yaxis, xaxis, fillval, title,
+                         ylabs=element_blank(), xlabs=element_blank(), USE.LOG=TRUE){
+        ## Convert from matrix to long format
+        melted = grudat_melted  ## copy?
+        if (USE.LOG){
+            melted[[fillval]] = log10(melted[[fillval]] + 1)
         }
+        return(ggplot(melted) +
+               geom_tile(aes_string(y=yaxis, x=xaxis, fill=fillval), colour="white") +
+               scale_fill_gradient2(low="steelblue", high="red", mid="white", name=element_blank()) +
+               theme(axis.text.x = element_text(angle=-50, hjust=0)) +
+               ggtitle(label=title) + xlab(xlabs) + ylab(ylabs))
     }
-    return(res)
+
+    doGridPlot <- function(title, xvar, plot="both", ncol=2){
+        do.logged = (plot %in% c("log", "both"))
+        do.normal = (plot %in% c("normal", "both"))
+        plist = list()
+        if (do.logged){
+            plist[["1"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.scale", "Reads (log10+1)")
+            plist[["2"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.prop", "Sample (log10+1)")
+        }
+        if (do.normal){
+            plist[["A"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.scale", "Reads", USE.LOG=F)
+            plist[["B"]] = doSingle(grudat_spread_melt, "Cell", xvar, "value.prop", "Sample", USE.LOG=F)
+        }
+        return(plot_grid(ggdraw() + draw_label(title, fontface="bold"),
+                         plot_grid(plotlist=plist, ncol=ncol),
+                         ncol=1, rel_heights=c(0.05,0.95)))
+
+    }
+    p1 <- doGridPlot("Cell Types against Bulk Datasets", "Bulk", "both")
+    p2a <- doGridPlot("Cell Types against Samples", "Sample", "normal", 1)
+    p2b <- doGridPlot("Cell Types against Samples (log10+1)", "Sample", "log", 1)
+    p3 <- ggplot + theme_void()
+    if (do.factors){
+        p3 <- doGridPlot("Cell Types against Factors", "Factors", "both")
+    }
+    return(list(bulk=p1, samples=list(log=p2b, normal=p2a), factors=p3))
 }
 
-boxPlots <- function(grudat){
-    common <- ggplot(grudat, aes(x=value)) + xlab("Cell Type Proportion")
+summarizeBoxPlots <- function(grudat_spread, do.factors){
+    common1 <- ggplot(grudat_spread, aes(x=value.prop)) + ggtitle("Sample") +
+        xlab(element_blank()) + ylab(element_blank())
+    common2 <- ggplot(grudat_spread, aes(x=value.scale)) + ggtitle("Reads") +
+        xlab(element_blank()) + ylab(element_blank())
 
-    plots = list(
-        ## Cell type by sample
-        p1 = common + geom_boxplot(aes(y=Cell, color=Bulk)) + ylab("Cell Type"),
-        ## Sample by Cell type
-        p2 = common + geom_boxplot(aes(y=Bulk, color=Cell))  + ylab("Bulk Dataset"),
-        ## -- Factor plots are optional
-        p3 = ggplot + theme_void(),
-        p4 = ggplot() + theme_void())
+    A=B=list()
+    ## Cell type by sample
+    A$p1 = common2 + geom_boxplot(aes(y=Cell, color=Bulk))
+    A$p2 = common1 + geom_boxplot(aes(y=Cell, color=Bulk))
+    ## Sample by Cell type
+    B$p1 = common1 + geom_boxplot(aes(y=Bulk, color=Cell))  + ylab("Bulk Dataset")
+    B$p2 = common2 + geom_boxplot(aes(y=Bulk, color=Cell))  + ylab("Bulk Dataset")
+    ## -- Factor plots are optional
+    A$p3 = B$p3 = A$p4 = B$p4 = ggplot() + theme_void()
 
-    if (length(unique(grudat[["Factors"]])) > 1){
-        plots$p3 = common + geom_boxplot(aes(y=Cell, color=Factors)) + ylab("Cell Type")
-        plots$p4 = common + geom_boxplot(aes(y=Bulk, color=Factors)) + ylab("Bulk Dataset")
+    if (do.factors){
+        A$p3 = common1 + geom_boxplot(aes(y=Cell, color=Factors))
+        A$p4 = common2 + geom_boxplot(aes(y=Cell, color=Factors))
+        B$p3 = common2 + geom_boxplot(aes(y=Bulk, color=Factors)) + ylab("Bulk Dataset")
+        B$p4 = common1 + geom_boxplot(aes(y=Bulk, color=Factors)) + ylab("Bulk Dataset")
     }
-    return(plots)
+
+    titleA = "Cell Types against Bulk"
+    titleB = "Bulk Datasets against Cells"
+    if (do.factors){
+        titleA = paste0(titleA, " and Factors")
+        titleb = paste0(titleB, " and Factors")
+    }
+    
+    A_all = plot_grid(ggdraw() + draw_label(titleA, fontface="bold"),
+                      plot_grid(plotlist=A, ncol=2),
+                      ncol=1, rel_heights=c(0.05,0.95))
+    B_all = plot_grid(ggdraw() + draw_label(titleB, fontface="bold"),
+                      plot_grid(plotlist=B, ncol=2),
+                      ncol=1, rel_heights=c(0.05,0.95))
+    return(list(cell=A_all, bulk=B_all))
 }
 
 
@@ -317,23 +349,26 @@ summat = summarizedMatrix(results)
 grudat = groupByDataset(summat)
 grudat_spread_melt = mergeFactorsSpread(grudat$spread, flattenFactorList(results))
 
-heat_maps = summarizeHeatmapsByGroup(grudat)
+##save.image(file="/tmp/sesh.RData")
 
-## The output filters ONLY apply to boxplots, since these take 
-box_plots = boxPlots(grudat_spread_melt$prop)
+## The output filters ONLY apply to boxplots, since these take
+do.factors = (length(unique(grudat_spread_melt[["Factors"]])) > 1)
+
+heat_maps = summarizeHeatmaps(grudat_spread_melt, do.factors)
+box_plots = summarizeBoxPlots(grudat_spread_melt, do.factors)
 
 pdf(out_heatsumm_pdf, width=14, height=14)
-plot_grid(heat_maps$scale, heat_maps$prop)
-plot_grid(plotlist=box_plots, nrow=2)
+print(heat_maps)
+print(box_plots)
 dev.off()
 
 ## -- DEBUG --
 ## saveRDS(files, "/tmp/files.rds")
 ## saveRDS(results, "/tmp/results.rds")
 ## saveRDS(summat, "/tmp/summat.rds")
-saveRDS(grudat, "/tmp/grudat.rds")
-saveRDS(grudat_mod, "/tmp/grudatmod.rds")
-files = readRDS("/tmp/files.rds")
+##saveRDS(grudat, "/tmp/grudat.rds")
+##saveRDS(grudat_mod, "/tmp/grudatmod.rds")
+##files = readRDS("/tmp/files.rds")
 ## results = readRDS("/tmp/results.rds")
 ## summat = readRDS("/tmp/summat.rds")
 ## grudat = readRDS("/tmp/grudat.rds")
