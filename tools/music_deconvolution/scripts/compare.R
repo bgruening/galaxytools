@@ -370,7 +370,7 @@ summat = summarizedMatrix(results)
 grudat = groupByDataset(summat)
 grudat_spread_melt = mergeFactorsSpread(grudat$spread, flattenFactorList(results))
 
-##save.image(file="/tmp/sesh.RData")
+
 
 ## The output filters ONLY apply to boxplots, since these take
 do.factors = (length(unique(grudat_spread_melt[["Factors"]])) > 1)
@@ -385,13 +385,29 @@ print(heat_maps)
 print(box_plots)
 dev.off()
 
-## -- DEBUG --
-## saveRDS(files, "/tmp/files.rds")
-## saveRDS(results, "/tmp/results.rds")
-## saveRDS(summat, "/tmp/summat.rds")
-##saveRDS(grudat, "/tmp/grudat.rds")
-##saveRDS(grudat_mod, "/tmp/grudatmod.rds")
-##files = readRDS("/tmp/files.rds")
-## results = readRDS("/tmp/results.rds")
-## summat = readRDS("/tmp/summat.rds")
-## grudat = readRDS("/tmp/grudat.rds")
+## Generate output tables
+stats_prop = lapply(grudat$spread$prop , function(x) {t(apply(x, 1, summary))})
+stats_scale = lapply(grudat$spread$scale , function(x) {t(apply(x, 1, summary))})
+
+writable2 <- function(obj, prefix, title) {
+    write.table(obj,
+                file = paste0("report_data/", prefix, "_",
+                              title, ".tabular"),
+                quote = F, sep = "\t", col.names = NA)
+}
+## Make the value table printable
+grudat_spread_melt$value.scale <- as.integer(grudat_spread_melt$value.scale)
+colnames(grudat_spread_melt) <- c("Sample", "Cell", "Bulk", "Factors",
+                                  "CT Prop in Sample", "Number of Reads")
+
+writable2(grudat_spread_melt, "values", "Data Table")
+writable2(summat$prop, "values", "Matrix of Cell Type Sample Proportions")
+writable2({
+    aa <- as.matrix(summat$scaled); mode(aa) <- "integer"; aa
+}, "values", "Matrix of Cell Type Read Counts")
+
+for (bname in names(stats_prop)){
+    writable2(stats_prop[[bname]], "stats", paste0(bname, ": Sample Props"))
+    writable2(stats_scale[[bname]], "stats", paste0(bname, ": Read Props"))
+}
+
