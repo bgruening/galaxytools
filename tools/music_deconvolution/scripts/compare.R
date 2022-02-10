@@ -277,34 +277,38 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
                          colour = "white") +
                scale_fill_gradient2(low = "steelblue", high = "red",
                                     mid = "white", name = element_blank()) +
-               theme(axis.text.x = element_text(angle = -50, hjust = 0)) +
+               theme(axis.text.x = element_text(angle = -90, hjust = 0, size=size )) +
                ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
     }
 
-    do_gridplot <- function(title, xvar, plot="both", ncol=2) {
+    do_gridplot <- function(title, xvar, plot="both", ncol=2, size=11) {
         do_logged <- (plot %in% c("log", "both"))
         do_normal <- (plot %in% c("normal", "both"))
         plist <- list()
         if (do_logged) {
             plist[["1"]] <- do_single(grudat_spread_melt, "Cell", xvar,
-                                      "value.scale", "Reads (log10+1)")
+                                      "value.scale", "Reads (log10+1)",
+                                      size=size)
             plist[["2"]] <- do_single(grudat_spread_melt, "Cell", xvar,
-                                      "value.prop", "Sample (log10+1)")
+                                      "value.prop", "Sample (log10+1)",
+                                      size=size)
         }
         if (do_normal) {
             plist[["A"]] <- do_single(grudat_spread_melt, "Cell", xvar,
-                                      "value.scale", "Reads", use_log = F)
+                                      "value.scale", "Reads", use_log = F,
+                                      size=size)
             plist[["B"]] <- do_single(grudat_spread_melt, "Cell", xvar,
-                                      "value.prop", "Sample", use_log = F)
+                                      "value.prop", "Sample", use_log = F,
+                                      size=size)
         }
         return(plot_grid(ggdraw() + draw_label(title, fontface = "bold"),
                          plot_grid(plotlist = plist, ncol = ncol),
                          ncol = 1, rel_heights = c(0.05, 0.95)))
 
     }
-    p1 <- do_gridplot("Cell Types vs Bulk Datasets", "Bulk", "both")
-    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal", 1)
-    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log", 1)
+    p1 <- do_gridplot("Cell Types vs Bulk Datasets", "Bulk", "both", )
+    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal", 1, size=8)
+    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log", 1, size=8)
     p3 <- ggplot + theme_void()
     if (do_factors) {
         p3 <- do_gridplot("Cell Types against Factors", "Factors", "both")
@@ -383,6 +387,8 @@ if (heat_grouped_p) {
 } else {
     plot_all_individual_heatmaps(results)
 }
+
+save.image("/tmp/sesh.rds")
 
 summat <- summarized_matrix(results)
 grudat <- group_by_dataset(summat)
