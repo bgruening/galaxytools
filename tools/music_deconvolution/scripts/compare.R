@@ -46,8 +46,8 @@ set_factor_data <- function(bulk_data, factor_name = NULL) {
 ## Due to limiting sizes, we need to load and unload
 ## possibly very large datasets.
 process_pair <- function(sc_data, bulk_data,
-                        ctypes_label, samples_label, ctypes,
-                        factor_group) {
+                         ctypes_label, samples_label, ctypes,
+                         factor_group) {
     ## - Generate
     est_prop <- music_prop(
         bulk.eset = bulk_data, sc.eset = sc_data,
@@ -263,10 +263,10 @@ group_by_dataset <- function(summat) {
 }
 
 summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
-                                        # -
+    ## -
     do_single <- function(grudat_melted, yaxis, xaxis, fillval, title,
                           ylabs = element_blank(), xlabs = element_blank(),
-                          use_log = TRUE) {
+                          use_log = TRUE, size=11) {
         ## Convert from matrix to long format
         melted <- grudat_melted ## copy?
         if (use_log) {
@@ -387,7 +387,7 @@ if (heat_grouped_p) {
 summat <- summarized_matrix(results)
 grudat <- group_by_dataset(summat)
 grudat_spread_melt <- merge_factors_spread(grudat$spread,
-                                         flatten_factor_list(results))
+                                           flatten_factor_list(results))
 
 
 
