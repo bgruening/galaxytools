@@ -1,0 +1,208 @@
+<tool id="music_compare" name="MuSiC Compare" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@"
+      profile="21.09" license="GPL-3.0-or-later" >
+    <description>estimate and compare cell type proportions in multiple sets of bulk RNA-seq data</description>
+    <macros>
+        <import>macros.xml</import>
+        <macro name="test_input">
+            <repeat name="scrna_groups">
+                <param name="name" value="One" />
+                <param name="scrna_eset" value="Mousesubeset.degenesonly2.half.rds" />
+                <repeat name="bulk_groups" >
+                    <param name="name" value="Two" />
+                    <param name="bulk_eset" value="Mousebulkeset.rds" />
+                    <param name="factor_group" value="Control" />
+                </repeat>
+                <repeat name="bulk_groups" >
+                    <param name="name" value="Three" />
+                    <param name="bulk_eset" value="Mousebulkeset.rds" />
+                    <param name="factor_group" value="Pheno1" />
+                </repeat>
+            </repeat>
+            <repeat name="scrna_groups">
+                <param name="name" value="A" />
+                <param name="scrna_eset" value="Mousesubeset.degenesonly2.half.rds" />
+                <repeat name="bulk_groups" >
+                    <param name="name" value="B" />
+                    <param name="bulk_eset" value="Mousebulkeset.rds" />
+                    <param name="factor_group" value="Control" />
+                </repeat>
+            </repeat>
+        </macro>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="exit_code" ><![CDATA[
+mkdir report_data &&
+Rscript --vanilla '$__tool_directory__/scripts/compare.R' '$conf'
+]]></command>
+    <configfiles>
+        <configfile name="conf" >
+null_str_vec = function(gstr){
+   tokens = unlist(as.vector(strsplit(gstr, split=",")))
+   if (length(tokens) == 0){
+      return(NULL)
+   }
+   if (length(tokens) == 1){
+      return(tokens[[1]])
+   }
+   return(tokens)
+}
+
+files = list(
+#for $s, $scgroup in enumerate($scrna_groups):
+    '$scgroup.name' = list(
+        dataset = '$scgroup.scrna_eset',
+        label_cell = null_str_vec('$scgroup.adv.celltypes_label'),
+        label_sample = null_str_vec('$scgroup.adv.samples_label'),
+        celltype = null_str_vec('$scgroup.adv.celltypes'),
+        bulk = list(
+    #for $b, $bulkgroup in enumerate($scgroup.bulk_groups):
+            '$bulkgroup.name' = list(
+                dataset = null_str_vec('$bulkgroup.bulk_eset'),
+                factor_group = null_str_vec('$bulkgroup.factor_group'),
+                pheno_facts = null_str_vec('$bulkgroup.adv.phenotype_factors'),
+                pheno_excl = null_str_vec('$bulkgroup.adv.phenotype_factors_always_exclude')
+        #if $b &lt; len($scgroup.bulk_groups) - 1:
+            ),
+        #else
+            )
+        #end if
+    #end for
+    #if $s &lt; len($scrna_groups) - 1:
+        )
+    ),
+    #else
+        )
+    )
+    #end if
+#end for
+)
+
+heat_grouped_p = as.logical('$heat_grouped_p')
+out_filt = list(cells = null_str_vec('$filter.out_list_cells'),
+                facts = null_str_vec('$filter.out_list_facts'))
+est_method = null_str_vec('$est_method')
+
+out_heatmulti_pdf = '$out_heatmulti_pdf'
+out_heatsumm_pdf = '$out_heatsumm_pdf'
+        </configfile>
+    </configfiles>
+    <inputs>
+        <!-- Define single cell groups for sets of bulk datasets -->
+        <repeat name="scrna_groups" title="New scRNA Group" min="1"
+                help="Cell type proportion comparisons are performed between bulk datasets
+                      in each scRNA group. A second summary is performed comparing all cell
+                      type proportions across all groups." >
+            <!-- Single Cell Options -->
+            <param name="name" label="Name of scRNA Dataset" type="text" value="" />
+            <param name="scrna_eset" label="scRNA Dataset" type="data" format="@RDATATYPE@" />
+            <section name="adv" title="Advanced scRNA Parameters" >
+                <param name="celltypes_label" type="text" value="cellType"
+                       label="Cell Types Label from scRNA dataset" >
+                    <expand macro="validator_text" />
+                </param>
+                <param name="samples_label" type="text" value="sampleID"
+                       label="Samples Identifier from scRNA dataset" >
+                    <expand macro="validator_text" />
+                </param>
+                <expand macro="celltypes_macro" />
+            </section>
+            <repeat name="bulk_groups" title="Bulk Datasets in scRNA Group" min="1"
+                    help="Choose bulk RNA datasets" >
+                <!-- Bulk Options -->
+                <param name="name" label="Name of Bulk Dataset" type="text" value="" />
+                <param name="bulk_eset" label="Bulk RNA Dataset" type="data" format="@RDATATYPE@" />
+                <param name="factor_group" type="text" label="Factor Name" optional="false"
+                       help="Name of column in phenotype data containing factor values. If column does not exist, it is a new factor that is applied to all samples in the dataset. Plots will be coloured by these factors." />
+                <section name="adv" title="Advanced Bulk Parameters" >
+                    <param name="phenotype_factors" type="text"
+                           label="Phenotype factors"
+                           help="List of phenotypes factors to be used in the linear regression. Please make sure that each factor has more than one unique value. Names correspond to column names in the bulk RNA dataset phenotype table. If blank, then treat all bulk phenotype columns as factors." >
+                        <expand macro="validator_index_identifiers" />
+                    </param>
+                    <param name="phenotype_factors_always_exclude" type="text"
+                           label="Excluded phenotype factors"
+                           help="List of phenotype factors to always exclude in the analysis"
+                           value="sampleID,SubjectName" >
+                        <expand macro="validator_index_identifiers" />
+                    </param>
+                </section>
+            </repeat>
+        </repeat>
+        <param name="est_method" type="select" label="Method to use" help="One to compare across all" >
+            <option value="MuSiC" selected="true" >MuSiC</option>
+            <option value="NNLS" selected="true" >NNLS</option>
+        </param>
+        <param name="heat_grouped_p" type="boolean" label="Individual heatmaps grouped by scRNA dataset?" checked="true" />
+        <section name="filter" title="Filter Summary Plots" >
+            <param name="out_list_cells" type="text" label="Show only these cell types (blank for all)"
+                   help="Comma-delimited list. Cell types given in the above scRNA datasets are still used for deconvolution (bulk reads are still assigned to discrete cell types), but we merely select the ones we want to show." />
+            <param name="out_list_facts" type="text" label="Show only these factors (blank for all)"
+                   help="Comma-delimited list. Factors must exist in those inferred from the above bulk datasets." />
+        </section>
+    </inputs>
+    <outputs>
+        <data name="out_heatmulti_pdf" format="pdf" label="${tool.name} on ${on_string}: Individual Heatmaps (${est_method})" />
+        <data name="out_heatsumm_pdf" format="pdf" label="${tool.name} on ${on_string}: Summarized Plots (${est_method})" />
+        <collection name="dtables" type="list" label="${tool.name} on ${on_string}: Tables (${est_method})" >
+            <discover_datasets pattern="values_(?P&lt;designation&gt;.+)\.tabular" format="tabular" directory="report_data" />
+        </collection>
+        <collection name="stats" type="list" label="${tool.name} on ${on_string}: Stats (${est_method})" >
+            <discover_datasets pattern="stats_(?P&lt;designation&gt;.+)\.tabular" format="tabular" directory="report_data" />
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4" >
+            <!-- NNLS Test with severe output filtering -->
+            <expand macro="test_input" />
+            <param name="est_method" value="NNLS" />
+            <param name="heat_grouped_p" value="true" />
+            <section name="filter" >
+                <param name="out_list_cells" value="PT,Podo,Fib,Endo" />
+                <param name="out_list_facts" value="APOL1,Pheno1" />
+            </section>
+            <output name="out_heatsumm_pdf" value="out_filt1.pdf" compare="sim_size" />
+        </test>
+        <test expect_num_outputs="4" >
+            <!-- NNLS Test with only factor filtering -->
+            <expand macro="test_input" />
+            <param name="est_method" value="NNLS" />
+            <param name="heat_grouped_p" value="true" />
+            <section name="filter" >
+                <param name="out_list_facts" value="APOL1,Pheno1" />
+            </section>
+            <output name="out_heatmulti_pdf" value="out_heat2.pdf" compare="sim_size" />
+        </test>
+        <test expect_num_outputs="4" >
+            <!-- MuSiC Test with no filtering -->
+            <expand macro="test_input" />
+            <param name="est_method" value="MuSiC" />
+            <param name="heat_grouped_p" value="true" />
+            <output_collection name="dtables" count="3">
+                <element name="Data Table" ftype="tabular" >
+                    <assert_contents>
+                        <has_text_matching expression="B\:\:APOL1\.G1NF42\s+PT\s+B\s+APOL1\s+0.56\d+\s+19035\d+" />
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="stats" count="6">
+                <element name="Three: Read Props" ftype="tabular" >
+                    <assert_contents>
+                        <has_text_matching expression="T lymph(\s+0)+" />
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help><![CDATA[
+MuSiC Compare produces boxplots and heatmaps of cell type proportions within bulk RNA datasets, learned from single-cell RNA datasets.
+
+To discover the proportion of single-cell cell types within a bulk RNA dataset, create a scRNA group for each scRNA dataset, and the bulk datasets that you wish to discover the types in.
+
+Phenotype factors can also be specified, either for the entire dataset or for specific samples within a dataset given by a phenotype data column identifier.
+
+The resulting plots will combine all the bulk datasets and their learned cell type proportions into several summarizing plots.
+    ]]></help>
+    <citations>
+        <citation type="doi">https://doi.org/10.1038/s41467-018-08023-x</citation>
+    </citations>
+</tool>

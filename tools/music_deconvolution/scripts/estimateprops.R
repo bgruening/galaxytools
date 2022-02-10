@@ -14,8 +14,12 @@ est_prop <- music_prop(
     clusters = celltypes_label,
     samples = samples_label, select.ct = celltypes, verbose = T)
 
+
 estimated_music_props <- est_prop$Est.prop.weighted
 estimated_nnls_props <- est_prop$Est.prop.allgene
+##
+estimated_music_props_flat <- melt(estimated_music_props)
+estimated_nnls_props_flat <- melt(estimated_nnls_props)
 
 scale_yaxes <- function(gplot, value) {
     if (is.na(value)) {
@@ -25,23 +29,36 @@ scale_yaxes <- function(gplot, value) {
     }
 }
 
+sieve_data <- function(func, music_data, nnls_data) {
+    if (func == "list") {
+        res <- list(if ("MuSiC" %in% methods) music_data else NULL,
+                    if ("NNLS" %in% methods) nnls_data else NULL)
+        res[lengths(res) > 0] ## filter out NULL elements
+    } else if (func == "rbind") {
+        rbind(if ("MuSiC" %in% methods) music_data else NULL,
+              if ("NNLS" %in% methods) nnls_data else NULL)
+    } else if (func == "c") {
+        c(if ("MuSiC" %in% methods) music_data else NULL,
+          if ("NNLS" %in% methods) nnls_data else NULL)
+    }
+}
+
+
 ## Show different in estimation methods
 ## Jitter plot of estimated cell type proportions
 jitter_fig <- scale_yaxes(Jitter_Est(
-    list(data.matrix(estimated_music_props),
-         data.matrix(estimated_nnls_props)),
+    sieve_data("list",
+               data.matrix(estimated_music_props),
+               data.matrix(estimated_nnls_props)),
     method.name = methods, title = "Jitter plot of Est Proportions",
     size = 2, alpha = 0.7) + theme_minimal(), maxyscale)
-
 
 ## Make a Plot
 ## A more sophisticated jitter plot is provided as below. We separated
 ## the T2D subjects and normal subjects by their disease factor levels.
-estimated_music_props_flat <- melt(estimated_music_props)
-estimated_nnls_props_flat <- melt(estimated_nnls_props)
-
-m_prop <- rbind(estimated_music_props_flat,
-                estimated_nnls_props_flat)
+m_prop <- sieve_data("rbind",
+                     estimated_music_props_flat,
+                     estimated_nnls_props_flat)
 colnames(m_prop) <- c("Sub", "CellType", "Prop")
 
 if (is.null(celltypes)) {
@@ -69,7 +86,7 @@ if (use_disease_factor) {
         phenotype_target_threshold <- -Inf
         message("phenotype target threshold set to -Inf")
     }
-
+    ## the "2" here is to do with the sample groups, not number of methods
     m_prop$Disease_factor <- rep(bulk_eset[[phenotype_target]], 2 * length(celltypes)) # nolint
     m_prop <- m_prop[!is.na(m_prop$Disease_factor), ]
     ## Generate a TRUE/FALSE table of Normal == 1 and Disease == 2
@@ -84,8 +101,10 @@ if (use_disease_factor) {
     m_prop <- rbind(subset(m_prop, Disease != sample_disease_group),
                     subset(m_prop, Disease == sample_disease_group))
 
-    jitter_new <- scale_yaxes(ggplot(m_prop, aes(Method, Prop)) +
-        geom_point(aes(fill = Method, color = Disease, stroke = D, shape = Disease),
+    jitter_new <- scale_yaxes(
+        ggplot(m_prop, aes(Method, Prop)) +
+        geom_point(aes(fill = Method, color = Disease,
+                       stroke = D, shape = Disease),
                    size = 2, alpha = 0.7,
                    position = position_jitter(width = 0.25, height = 0)) +
         facet_wrap(~ CellType, scales = "free") +
@@ -100,21 +119,23 @@ if (use_disease_factor) {
     ## Create dataframe for beta cell proportions and Disease_factor levels
     ## - Ugly code. Essentially, doubles the cell type proportions for each
     ##   set of MuSiC and NNLS methods
-    m_prop_ana <- data.frame(pData(bulk_eset)[rep(1:nrow(estimated_music_props), 2), #nolint
-                                              phenotype_factors],
-                             ## get proportions of target cell type
-                             ct.prop = c(estimated_music_props[, phenotype_scrna_target],
-                                         estimated_nnls_props[, phenotype_scrna_target]),
-                             ##
-                             Method = factor(rep(methods,
-                                                 each = nrow(estimated_music_props)),
-                                             levels = methods))
+    m_prop_ana <- data.frame(
+        pData(bulk_eset)[rep(1:nrow(estimated_music_props), length(methods)), #nolint
+                         phenotype_factors],
+        ## get proportions of target cell type
+        ct.prop = sieve_data("c",
+                             estimated_music_props[, phenotype_scrna_target],
+                             estimated_nnls_props[, phenotype_scrna_target]),
+        ##
+        Method = factor(rep(methods,
+                            each = nrow(estimated_music_props)),
+                        levels = methods))
     ## - fix headers
     colnames(m_prop_ana)[1:length(phenotype_factors)] <- phenotype_factors #nolint
     ## - drop NA for target phenotype (e.g. hba1c)
     m_prop_ana <- subset(m_prop_ana, !is.na(m_prop_ana[phenotype_target]))
     m_prop_ana$Disease <- factor(   # nolint
-        ## - Here we set Normal/Disease assignments across the two MuSiC and NNLS methods
+        ## - Here we set Normal/Disease assignments across the methods
         sample_groups[(
             m_prop_ana[phenotype_target] > phenotype_target_threshold) + 1
             ],
@@ -123,12 +144,15 @@ if (use_disease_factor) {
     m_prop_ana$D <- (m_prop_ana$Disease ==        # nolint
                      sample_disease_group) / sample_disease_group_scale
 
-    jitt_compare <- scale_yaxes(ggplot(m_prop_ana, aes_string(phenotype_target, "ct.prop")) +
+    jitt_compare <- scale_yaxes(
+        ggplot(m_prop_ana, aes_string(phenotype_target, "ct.prop")) +
         geom_smooth(method = "lm",  se = FALSE, col = "black", lwd = 0.25) +
-        geom_point(aes(fill = Method, color = Disease, stroke = D, shape = Disease),
+        geom_point(aes(fill = Method, color = Disease,
+                       stroke = D, shape = Disease),
                    size = 2, alpha = 0.7) +  facet_wrap(~ Method) +
         ggtitle(paste0(toupper(phenotype_target), " vs. ",
-                       toupper(phenotype_scrna_target), " Cell Type Proportion")) +
+                       toupper(phenotype_scrna_target),
+                       " Cell Type Proportion")) +
         theme_minimal() +
         ylab(paste0("Proportion of ",
                     phenotype_scrna_target, " cells")) +
@@ -138,19 +162,22 @@ if (use_disease_factor) {
 }
 
 ## BoxPlot
-plot_box <- scale_yaxes(Boxplot_Est(list(
-    data.matrix(estimated_music_props),
-    data.matrix(estimated_nnls_props)),
-    method.name = c("MuSiC", "NNLS")) +
+plot_box <- scale_yaxes(Boxplot_Est(
+    sieve_data("list",
+               data.matrix(estimated_music_props),
+               data.matrix(estimated_nnls_props)),
+    method.name = methods) +
     theme(axis.text.x = element_text(angle = -90),
           axis.text.y = element_text(size = 8)) +
     ggtitle(element_blank()) + theme_minimal(), maxyscale)
 
 ## Heatmap
-plot_hmap <- Prop_heat_Est(list(
-    data.matrix(estimated_music_props),
-    data.matrix(estimated_nnls_props)),
-    method.name = c("MuSiC", "NNLS")) +
+plot_hmap <- Prop_heat_Est(
+    sieve_data(
+        "list",
+        data.matrix(estimated_music_props),
+        data.matrix(estimated_nnls_props)),
+    method.name = methods) +
     theme(axis.text.x = element_text(angle = -90),
           axis.text.y = element_text(size = 6))
 
@@ -167,33 +194,29 @@ if (use_disease_factor) {
 plot_hmap
 message(dev.off())
 
-## Output Proportions
+writable <- function(obj, prefix, title) {
+    write.table(obj,
+                file = paste0("report_data/", prefix, "_",
+                              title, ".tabular"),
+                quote = F, sep = "\t", col.names = NA)
+}
 
-write.table(est_prop$Est.prop.weighted,
-            file = paste0("report_data/prop_",
-                          "Music Estimated Proportions of Cell Types",
-                          ".tabular"),
-            quote = F, sep = "\t", col.names = NA)
-write.table(est_prop$Est.prop.allgene,
-            file = paste0("report_data/prop_",
-                          "NNLS Estimated Proportions of Cell Types",
-                          ".tabular"),
-            quote = F, sep = "\t", col.names = NA)
-write.table(est_prop$Weight.gene,
-            file = paste0("report_data/weightgene_",
-                          "Music Estimated Proportions of Cell Types (by Gene)",
-                          ".tabular"),
-            quote = F, sep = "\t", col.names = NA)
-write.table(est_prop$r.squared.full,
-            file = paste0("report_data/rsquared_",
-                          "Music R-sqr Estimated Proportions of Each Subject",
-                          ".tabular"),
-            quote = F, sep = "\t", col.names = NA)
-write.table(est_prop$Var.prop,
-            file = paste0("report_data/varprop_",
-                          "Matrix of Variance of MuSiC Estimates",
-                          ".tabular"),
-            quote = F, sep = "\t", col.names = NA)
+## Output Proportions
+if ("NNLS" %in% methods) {
+    writable(est_prop$Est.prop.allgene, "prop",
+             "NNLS Estimated Proportions of Cell Types")
+}
+
+if ("MuSiC" %in% methods) {
+    writable(est_prop$Est.prop.weighted, "prop",
+             "Music Estimated Proportions of Cell Types")
+    writable(est_prop$Weight.gene, "weightgene",
+             "Music Estimated Proportions of Cell Types (by Gene)")
+    writable(est_prop$r.squared.full, "rsquared",
+             "Music R-sqr Estimated Proportions of Each Subject")
+    writable(est_prop$Var.prop, "varprop",
+             "Matrix of Variance of MuSiC Estimates")
+}
 
 
 if (use_disease_factor) {
