@@ -189,9 +189,7 @@ unlist_names <- function(results, method, prepend_bkname=FALSE) {
     ))
 }
 
-## convertProportionsToCounts <- function(prop_matrix,
-
-summarized_matrix <- function(results) {
+summarized_matrix <- function(results) {  # nolint
     ## We assume that cell types MUST be unique, but that sample
     ## names do not need to be. For this reason, we must prepend
     ## the bulk dataset name to the individual sample names.
@@ -213,7 +211,7 @@ summarized_matrix <- function(results) {
                     ## - We use sample instead of id_sample because we need to
                     ##   extract bulk sets from the complete matrix later. It's
                     ##   messy, yes.
-                    if (cell %in% colnames(mat_prop)){
+                    if (cell %in% colnames(mat_prop)) {
                         ddff[cell, sample] <- mat_prop[id_sample, cell]
                         ddff_scale[cell, sample] <- mat_prop[id_sample, cell] * vec_counts[[id_sample]] #nolint
                     } else {
@@ -266,7 +264,7 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
     ## -
     do_single <- function(grudat_melted, yaxis, xaxis, fillval, title,
                           ylabs = element_blank(), xlabs = element_blank(),
-                          use_log = TRUE, size=11) {
+                          use_log = TRUE, size = 11) {
         ## Convert from matrix to long format
         melted <- grudat_melted ## copy?
         if (use_log) {
@@ -277,29 +275,30 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
                          colour = "white") +
                scale_fill_gradient2(low = "steelblue", high = "red",
                                     mid = "white", name = element_blank()) +
-               theme(axis.text.x = element_text(angle = -90, hjust = 0, size=size )) +
+               theme(axis.text.x = element_text(angle = -90, hjust = 0,
+                                                size = size)) +
                ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
     }
 
-    do_gridplot <- function(title, xvar, plot="both", ncol=2, size=11) {
+    do_gridplot <- function(title, xvar, plot="both", ncol=2, size = 11) {
         do_logged <- (plot %in% c("log", "both"))
         do_normal <- (plot %in% c("normal", "both"))
         plist <- list()
         if (do_logged) {
             plist[["1"]] <- do_single(grudat_spread_melt, "Cell", xvar,
                                       "value.scale", "Reads (log10+1)",
-                                      size=size)
+                                      size = size)
             plist[["2"]] <- do_single(grudat_spread_melt, "Cell", xvar,
                                       "value.prop", "Sample (log10+1)",
-                                      size=size)
+                                      size = size)
         }
         if (do_normal) {
             plist[["A"]] <- do_single(grudat_spread_melt, "Cell", xvar,
                                       "value.scale", "Reads", use_log = F,
-                                      size=size)
+                                      size = size)
             plist[["B"]] <- do_single(grudat_spread_melt, "Cell", xvar,
                                       "value.prop", "Sample", use_log = F,
-                                      size=size)
+                                      size = size)
         }
         return(plot_grid(ggdraw() + draw_label(title, fontface = "bold"),
                          plot_grid(plotlist = plist, ncol = ncol),
@@ -307,8 +306,10 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
 
     }
     p1 <- do_gridplot("Cell Types vs Bulk Datasets", "Bulk", "both", )
-    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal", 1, size=8)
-    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log", 1, size=8)
+    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal", 1,
+                       size = 8)
+    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log", 1,
+                       size = 8)
     p3 <- ggplot + theme_void()
     if (do_factors) {
         p3 <- do_gridplot("Cell Types against Factors", "Factors", "both")
