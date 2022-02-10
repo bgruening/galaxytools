@@ -213,8 +213,13 @@ summarized_matrix <- function(results) {
                     ## - We use sample instead of id_sample because we need to
                     ##   extract bulk sets from the complete matrix later. It's
                     ##   messy, yes.
-                    ddff[cell, sample] <- mat_prop[id_sample, cell]
-                    ddff_scale[cell, sample] <- mat_prop[id_sample, cell] * vec_counts[[id_sample]] #nolint
+                    if (cell %in% colnames(mat_prop)){
+                        ddff[cell, sample] <- mat_prop[id_sample, cell]
+                        ddff_scale[cell, sample] <- mat_prop[id_sample, cell] * vec_counts[[id_sample]] #nolint
+                    } else {
+                        ddff[cell, sample] <- 0
+                        ddff_scale[cell, sample] <- 0
+                    }
                 }
             }
         }
