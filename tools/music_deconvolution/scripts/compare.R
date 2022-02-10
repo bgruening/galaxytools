@@ -330,9 +330,9 @@ summarize_boxplots <- function(grudat_spread, do_factors) {
     A$p1 <- common2 + geom_boxplot(aes(y = Cell, color = Bulk))
     A$p2 <- common1 + geom_boxplot(aes(y = Cell, color = Bulk))
     ## Sample by Cell type
-    B$p1 <- common1 + geom_boxplot(aes(y = Bulk, color = Cell)) +
+    B$p1 <- common2 + geom_boxplot(aes(y = Bulk, color = Cell)) +
         ylab("Bulk Dataset")
-    B$p2 <- common2 + geom_boxplot(aes(y = Bulk, color = Cell)) +
+    B$p2 <- common1 + geom_boxplot(aes(y = Bulk, color = Cell)) +
         ylab("Bulk Dataset")
     ## -- Factor plots are optional
     A$p3 <- B$p3 <- A$p4 <- B$p4 <- ggplot() + theme_void()
@@ -340,9 +340,9 @@ summarize_boxplots <- function(grudat_spread, do_factors) {
     if (do_factors) {
         A$p3 <- common1 + geom_boxplot(aes(y = Cell, color = Factors))
         A$p4 <- common2 + geom_boxplot(aes(y = Cell, color = Factors))
-        B$p3 <- common2 + geom_boxplot(aes(y = Bulk, color = Factors)) +
+        B$p3 <- common1 + geom_boxplot(aes(y = Bulk, color = Factors)) +
             ylab("Bulk Dataset")
-        B$p4 <- common1 + geom_boxplot(aes(y = Bulk, color = Factors)) +
+        B$p4 <- common2 + geom_boxplot(aes(y = Bulk, color = Factors)) +
             ylab("Bulk Dataset")
     }
 
