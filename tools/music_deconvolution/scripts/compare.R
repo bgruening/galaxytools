@@ -224,68 +224,68 @@ group_by_dataset <- function(summat) {
                               prop = bd_spread_prop)))
 }
 
-do_cluster <- function(grudat_spread_melt, xaxis, yaxis, value.name,
+do_cluster <- function(grudat_spread_melt, xaxis, yaxis, value_name,
                        xlabs="", ylabs="", titled="",
-                       orderCol=T, orderRow=T, size=11){
+                       order_col=T, order_row=T, size=11) {
 
     data_m <- grudat_spread_melt
-    dataMatrix <- {
-        tmp <- dcast(data_m, formula(paste0(yaxis, " ~ ", xaxis)), value.var=value.name)
+    data_matrix <- {
+        tmp <- dcast(data_m, formula(paste0(yaxis, " ~ ", xaxis)), value.var = value_name)
         rownames(tmp) <- tmp[[yaxis]]
         tmp[[yaxis]] <- NULL
         tmp
     }
-    distMethod = "euclidean"
-    clustMethod = "complete"
+    dist_method <- "euclidean"
+    clust_method <- "complete"
 
-    if (orderRow) {
-        dd.row <- as.dendrogram(hclust(dist(dataMatrix, method = distMethod), method = clustMethod))
-        row.ord <- order.dendrogram(dd.row)
-        ordered_row_names <- row.names(dataMatrix[row.ord, ])
+    if (order_row) {
+        dd_row <- as.dendrogram(hclust(dist(data_matrix, method = dist_method), method = clust_method))
+        row_ord <- order.dendrogram(dd_row)
+        ordered_row_names <- row.names(data_matrix[row_ord, ])
         data_m[[yaxis]] <- factor(data_m[[yaxis]], levels = ordered_row_names)
     }
 
-    if (orderCol) {
-        dd.col <- as.dendrogram(hclust(dist(t(dataMatrix), method = distMethod),
-                                       method = clustMethod))
-        col.ord <- order.dendrogram(dd.col)
-        ordered_col_names <- colnames(dataMatrix[, col.ord])
+    if (order_col) {
+        dd_col <- as.dendrogram(hclust(dist(t(data_matrix), method = dist_method),
+                                       method = clust_method))
+        col_ord <- order.dendrogram(dd_col)
+        ordered_col_names <- colnames(data_matrix[, col_ord])
         data_m[[xaxis]] <- factor(data_m[[xaxis]], levels = ordered_col_names)
     }
 
-    heat_plot <- ggplot(data_m, aes_string(x = xaxis, y = yaxis, fill = value.name)) +
+    heat_plot <- ggplot(data_m, aes_string(x = xaxis, y = yaxis, fill = value_name)) +
         geom_tile(colour = "white") +
         scale_fill_gradient2(low = "steelblue", high = "red", mid = "white",
                              name = element_blank()) +
-        scale_y_discrete(position="right") +
+        scale_y_discrete(position = "right") +
         theme(axis.text.x = element_text(angle = -90, hjust = 0,
                                          size = size)) +
         ggtitle(label = titled) + xlab(xlabs) + ylab(ylabs)
 
     ## Graphics
-    dendroLineSize <- 0.5
-    dendroColUnit <- 0.2
-    dendroRowUnit <- 0.1
+    dendro_linesize <- 0.5
+    dendro_colunit <- 0.2
+    dendro_rowunit <- 0.1
     final_plot <- heat_plot
 
-    if (orderRow) {
-        dendro_data_row <- ggdendro::dendro_data(dd.row, type = "rectangle")
+    if (order_row) {
+        dendro_data_row <- ggdendro::dendro_data(dd_row, type = "rectangle")
         dendro_row <- cowplot::axis_canvas(heat_plot, axis = "y", coord_flip = TRUE) +
             ggplot2::geom_segment(data = ggdendro::segment(dendro_data_row),
                                   ggplot2::aes(y = -y, x = x, xend = xend, yend = -yend),
-                                  size = dendroLineSize) + ggplot2::coord_flip()
+                                  size = dendro_linesize) + ggplot2::coord_flip()
         final_plot <- cowplot::insert_yaxis_grob(
-                                   final_plot, dendro_row, grid::unit(dendroColUnit, "null"),
+                                   final_plot, dendro_row, grid::unit(dendro_colunit, "null"),
                                    position = "left")
     }
-    if (orderCol) {
-        dendro_data_col <- ggdendro::dendro_data(dd.col, type = "rectangle")
+    if (order_col) {
+        dendro_data_col <- ggdendro::dendro_data(dd_col, type = "rectangle")
         dendro_col <- cowplot::axis_canvas(heat_plot, axis = "x") +
             ggplot2::geom_segment(data = ggdendro::segment(dendro_data_col),
                                   ggplot2::aes(x = x, y = y, xend = xend, yend = yend),
-                                  size = dendroLineSize)
+                                  size = dendro_linesize)
         final_plot <- cowplot::insert_xaxis_grob(
-                                   final_plot, dendro_col, grid::unit(dendroRowUnit, "null"),
+                                   final_plot, dendro_col, grid::unit(dendro_rowunit, "null"),
                                    position = "top")
     }
     return(cowplot::ggdraw(final_plot))
@@ -301,13 +301,15 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors, cluster="None") {
         if (use_log) {
             melted[[fillval]] <- log10(melted[[fillval]] + 1)
         }
-        if (cluster=="None"){
+        if (cluster == "None") {
             return(ggplot(melted) +
                    geom_tile(aes_string(y = yaxis, x = xaxis, fill = fillval),
                              colour = "white") +
-                   scale_fill_gradient2(low = "steelblue", high = "red", mid = "white",
-                                        name = element_blank()) +
-                   theme(axis.text.x = element_text(angle = -90, hjust = 0, size = size)) +
+                   scale_fill_gradient2(
+                       low = "steelblue", high = "red", mid = "white",
+                       name = element_blank()) +
+                   theme(axis.text.x = element_text(
+                             angle = -90, hjust = 0, size = size)) +
                    ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
         } else {
             return(do_cluster(grudat_spread_melt, xaxis, yaxis, fillval,
@@ -343,8 +345,10 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors, cluster="None") {
     }
 
     p1 <- do_gridplot("Cell Types vs Bulk Datasets", "Bulk", "both")
-    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal", ncol = 1, size = 8)
-    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log", ncol = 1, size = 8)
+    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal",
+                       ncol = 1, size = 8)
+    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log",
+                       ncol = 1, size = 8)
     p3 <- ggplot + theme_void()
     if (do_factors) {
         p3 <- do_gridplot("Cell Types vs Factors", "Factors", "both")
@@ -434,8 +438,9 @@ plot_all_individual_heatmaps(results)
 
 ## The output filters ONLY apply to boxplots, since these take
 do_factors <- (length(unique(grudat_spread_melt[["Factors"]])) > 1)
-heat_maps <- summarize_heatmaps(grudat_spread_melt_filt, do_factors, dendro_setting)
 box_plots <- summarize_boxplots(grudat_spread_melt_filt, do_factors)
+heat_maps <- summarize_heatmaps(grudat_spread_melt_filt, do_factors,
+                                dendro_setting)
 
 pdf(out_heatsumm_pdf, width = 14, height = 14)
 print(heat_maps)
