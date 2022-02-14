@@ -11,6 +11,7 @@ source(args[1])
 method_key <- list("MuSiC" = "est_music",
                    "NNLS" = "est_nnls")[[est_method]]
 
+delim <- "::" ## separator bulk datasets and their samples
 
 scale_yaxes <- function(gplot, value) {
     if (is.na(value)) {
@@ -144,7 +145,7 @@ unlist_names <- function(results, method, prepend_bkname=FALSE) {
                 if (prepend_bkname) {
                     ## We *do not* assume unique bulk sample names
                     ## across different bulk datasets.
-                    res <- paste0(bkname, "::", res)
+                    res <- paste0(bkname, delim, res)
                 }
                 return(res)
             })
@@ -164,7 +165,7 @@ summarized_matrix <- function(results) {  # nolint
     ddff_scale <- data.frame()
     for (cell in all_celltypes) {
         for (sample in all_samples) {
-            group_sname <- unlist(strsplit(sample, split = "::"))
+            group_sname <- unlist(strsplit(sample, split = delim))
             bulk <- group_sname[1]
             id_sample <- group_sname[2]
             for (scgroup in names(results)) {
@@ -194,7 +195,7 @@ flatten_factor_list <- function(results) {
     for (scgroup in names(results)) {
         for (bulkgroup in names(results[[scgroup]])) {
             dat <- results[[scgroup]][[bulkgroup]]$plot_groups
-            dat$Samples <- paste0(bulkgroup, "::", dat$Samples) #nolint
+            dat$Samples <- paste0(bulkgroup, delim, dat$Samples) #nolint
             res <- rbind(res, dat)
         }
     }
@@ -210,7 +211,7 @@ group_by_dataset <- function(summat) {
     bd_spread_scale <- list()
     bd_spread_prop <- list()
     for (bname in bulk_names) {
-        subs <- mat_names[startsWith(mat_names, paste0(bname, "::"))]
+        subs <- mat_names[startsWith(mat_names, paste0(bname, delim))]
         ## -
         bd[[bname]] <- rowSums(summat$prop[, subs])
         bd_scale[[bname]] <- rowSums(summat$scaled[, subs])
