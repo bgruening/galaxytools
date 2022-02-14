@@ -315,8 +315,8 @@ summarize_boxplots <- function(grudat_spread, do_factors) {
             ylab("Bulk Dataset")
     }
 
-    title_a <- "Cell Types against Bulk"
-    title_b <- "Bulk Datasets against Cells"
+    title_a <- "Cell Types vs Bulk Datasets"
+    title_b <- "Bulk Datasets vs Cell Types"
     if (do_factors) {
         title_a <- paste0(title_a, " and Factors")
         title_b <- paste0(title_b, " and Factors")
@@ -349,6 +349,13 @@ filter_output <- function(grudat_spread_melt, out_filt) {
     return(grudat_filt)
 }
 
+writable2 <- function(obj, prefix, title) {
+    write.table(obj,
+                file = paste0("report_data/", prefix, "_",
+                              title, ".tabular"),
+                quote = F, sep = "\t", col.names = NA)
+}
+
 
 results <- music_on_all(files)
 summat <- summarized_matrix(results)
@@ -356,8 +363,6 @@ grudat <- group_by_dataset(summat)
 grudat_spread_melt <- merge_factors_spread(grudat$spread,
                                            flatten_factor_list(results))
 grudat_spread_melt_filt <- filter_output(grudat_spread_melt, out_filt)
-
-save.image("/tmp/sesh.rds")
 
 plot_all_individual_heatmaps(results)
 
@@ -377,12 +382,6 @@ stats_prop <- lapply(grudat$spread$prop, function(x) {
 stats_scale <- lapply(grudat$spread$scale, function(x) {
     t(apply(x, 1, summary))})
 
-writable2 <- function(obj, prefix, title) {
-    write.table(obj,
-                file = paste0("report_data/", prefix, "_",
-                              title, ".tabular"),
-                quote = F, sep = "\t", col.names = NA)
-}
 ## Make the value table printable
 grudat_spread_melt$value.scale <- as.integer(grudat_spread_melt$value.scale) # nolint
 colnames(grudat_spread_melt) <- c("Sample", "Cell", "Bulk", "Factors",
