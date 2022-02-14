@@ -233,14 +233,19 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
         if (use_log) {
             melted[[fillval]] <- log10(melted[[fillval]] + 1)
         }
-        return(ggplot(melted) +
-               geom_tile(aes_string(y = yaxis, x = xaxis, fill = fillval),
-                         colour = "white") +
-               scale_fill_gradient2(low = "steelblue", high = "red",
-                                    mid = "white", name = element_blank()) +
-               theme(axis.text.x = element_text(angle = -90, hjust = 0,
-                                                size = size)) +
-               ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
+        if (cluster=="None"){
+            return(ggplot(melted) +
+                   geom_tile(aes_string(y = yaxis, x = xaxis, fill = fillval),
+                             colour = "white") +
+                   scale_fill_gradient2(low = "steelblue", high = "red", mid = "white",
+                                        name = element_blank()) +
+                   theme(axis.text.x = element_text(angle = -90, hjust = 0, size = size)) +
+                   ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
+        } else {
+            return(do_cluster(grudat_spread_melt, xaxis, yaxis, fillval,
+                              xlabs, ylabs, title,
+                              orderCol=T, orderRow=T))
+        }
     }
 
     do_gridplot <- function(title, xvar, plot="both", ncol=2, size = 11) {
