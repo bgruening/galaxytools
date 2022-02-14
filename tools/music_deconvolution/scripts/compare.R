@@ -349,14 +349,14 @@ summat <- summarized_matrix(results)
 grudat <- group_by_dataset(summat)
 grudat_spread_melt <- merge_factors_spread(grudat$spread,
                                            flatten_factor_list(results))
+grudat_spread_melt_filt <- filter_output(grudat_spread_melt, out_filt)
 
+save.image("/tmp/sesh.rds")
 
+plot_all_individual_heatmaps(results)
 
 ## The output filters ONLY apply to boxplots, since these take
 do_factors <- (length(unique(grudat_spread_melt[["Factors"]])) > 1)
-
-grudat_spread_melt_filt <- filter_output(grudat_spread_melt, out_filt)
-
 heat_maps <- summarize_heatmaps(grudat_spread_melt_filt, do_factors)
 box_plots <- summarize_boxplots(grudat_spread_melt_filt, do_factors)
 
