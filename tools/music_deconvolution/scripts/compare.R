@@ -136,43 +136,6 @@ merge_factors_spread <- function(grudat_spread, factor_groups) {
     return(tab)
 }
 
-
-plot_grouped_heatmaps <- function(results) {
-    pdf(out_heatmulti_pdf, width = 8, height = 8)
-    for (sc_name in names(results)) {
-        named_list <- sapply(
-            names(results[[sc_name]]),
-            function(n) {
-                ## We transpose the data here, because
-                ## the plotting function omits by default
-                ## the Y-axis which are the samples.
-                ##  Since the celltypes are the common factor
-                ## these should be the Y-axis instead.
-                t(data.matrix(results[[sc_name]][[n]][[method_key]]))
-            }, simplify = F, USE.NAMES = T)
-        named_methods <- names(results[[sc_name]])
-        ##
-        plot_hmap <- Prop_heat_Est(
-            named_list,
-            method.name = named_methods) +
-            ggtitle(paste0("[", est_method, "] Cell type ",
-                           "proportions of ",
-                           "Bulk Datasets based on ",
-                           sc_name, " (scRNA)")) +
-            xlab("Samples (Bulk)") +
-            ylab("Cell Types (scRNA)") +
-            theme(axis.text.x = element_text(angle = -90),
-                  axis.text.y = element_text(size = 6))
-        print(plot_hmap)
-    }
-    dev.off()
-}
-
-## Desired plots
-## 1. Pie chart:
-##  - Per Bulk dataset (using just normalised proportions)
-##  - Per Bulk dataset (multiplying proportions by nreads)
-
 unlist_names <- function(results, method, prepend_bkname=FALSE) {
     unique(sort(
         unlist(lapply(names(results), function(scname) {
@@ -382,15 +345,6 @@ filter_output <- function(grudat_spread_melt, out_filt) {
 
 
 results <- music_on_all(files)
-
-if (heat_grouped_p) {
-    plot_grouped_heatmaps(results)
-} else {
-    plot_all_individual_heatmaps(results)
-}
-
-save.image("/tmp/sesh.rds")
-
 summat <- summarized_matrix(results)
 grudat <- group_by_dataset(summat)
 grudat_spread_melt <- merge_factors_spread(grudat$spread,
