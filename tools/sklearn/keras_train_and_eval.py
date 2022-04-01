@@ -8,6 +8,7 @@ from itertools import chain
 import joblib
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from galaxy_ml.externals.selene_sdk.utils import compute_score
 from galaxy_ml.keras_galaxy_models import _predict_generator
 from galaxy_ml.model_validations import train_test_split
@@ -237,12 +238,15 @@ def main(
 
     with open(inputs, "r") as param_handler:
         params = json.load(param_handler)
-
+    print(params)
     #  load estimator
     with open(infile_estimator, "rb") as estimator_handler:
         estimator = load_model(estimator_handler)
 
     estimator = clean_params(estimator)
+
+    # compute resource
+    compute_resource = params["compute_resource"]["type_compute_resource"]
 
     # swap hyperparameter
     swapping = params["experiment_schemes"]["hyperparams_swapping"]
@@ -447,13 +451,12 @@ def main(
         ) = train_test_split_none(X_train, y_train, groups_train, **val_split_options)
 
     # train and eval
-    if hasattr(estimator, "validation_data"):
-        if exp_scheme == "train_val_test":
-            estimator.fit(X_train, y_train, validation_data=(X_val, y_val))
-        else:
-            estimator.fit(X_train, y_train, validation_data=(X_test, y_test))
+    l_gpu = tf.config.list_physical_devices('GPU')
+    if compute_resource == "tf_gpu" and len(l_gpu) > 0:
+        with tf.device('/device:gpu:0'):
+            estimator = train_test_eval(estimator, exp_scheme, X_train, y_train, X_val, y_val, X_test, y_test)
     else:
-        estimator.fit(X_train, y_train)
+        estimator = train_test_eval(estimator, exp_scheme, X_train, y_train, X_val, y_val, X_test, y_test)
 
     if hasattr(estimator, "evaluate"):
         steps = estimator.prediction_steps
@@ -514,6 +517,17 @@ def main(
 
         with open(outfile_object, "wb") as output_handler:
             pickle.dump(estimator, output_handler, pickle.HIGHEST_PROTOCOL)
+
+
+def train_test_eval(estimator, exp_scheme, X_train, y_train, X_val, y_val, X_test, y_test):
+  if hasattr(estimator, "validation_data"):
+        if exp_scheme == "train_val_test":
+            estimator.fit(X_train, y_train, validation_data=(X_val, y_val))
+        else:
+            estimator.fit(X_train, y_train, validation_data=(X_test, y_test))
+    else:
+        estimator.fit(X_train, y_train)
+  return estimator
 
 
 if __name__ == "__main__":
