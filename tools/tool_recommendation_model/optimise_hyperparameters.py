@@ -3,14 +3,14 @@ Find the optimal combination of hyperparameters
 """
 
 import numpy as np
+import tensorflow as tf
 import utils
 from hyperopt import fmin, hp, STATUS_OK, tpe, Trials
-from keras.callbacks import EarlyStopping
-from keras.layers import Dense, Dropout, GRU
-from keras.layers.core import SpatialDropout1D
-from keras.layers.embeddings import Embedding
-from keras.models import Sequential
-from keras.optimizers import RMSprop
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, GRU, Dropout, Embedding, SpatialDropout1D
+from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.callbacks import EarlyStopping
 
 
 class HyperparameterOptimisation:
@@ -109,7 +109,7 @@ class HyperparameterOptimisation:
                 loss=utils.weighted_loss(class_weights), optimizer=optimizer_rms
             )
             print(model.summary())
-            model_fit = model.fit_generator(
+            model_fit = model.fit(
                 utils.balanced_sample_generator(
                     train_data,
                     train_labels,

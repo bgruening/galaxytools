@@ -33,11 +33,11 @@ class ExtractWorkflowConnections:
         unique_paths = dict()
         standard_connections = dict()
         with open(raw_file_path, "rt") as workflow_connections_file:
-            workflow_connections = csv.reader(workflow_connections_file, delimiter="\t")
+            workflow_connections = csv.reader(workflow_connections_file, delimiter=',')
             for index, row in enumerate(workflow_connections):
                 wf_id = str(row[0])
-                in_tool = row[3]
-                out_tool = row[6]
+                in_tool = row[3].strip()
+                out_tool = row[6].strip()
                 if wf_id not in workflows:
                     workflows[wf_id] = list()
                 if out_tool and in_tool and out_tool != in_tool:

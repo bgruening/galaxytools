@@ -3,7 +3,8 @@ import random
 
 import h5py
 import numpy as np
-from keras import backend as K
+import tensorflow as tf
+from tensorflow.keras import backend
 from numpy.random import choice
 
 
@@ -57,8 +58,9 @@ def weighted_loss(class_weights):
 
     def weighted_binary_crossentropy(y_true, y_pred):
         # add another dimension to compute dot product
-        expanded_weights = K.expand_dims(weight_values, axis=-1)
-        return K.dot(K.binary_crossentropy(y_true, y_pred), expanded_weights)
+        expanded_weights = tf.expand_dims(weight_values, axis=-1)
+        bce = backend.binary_crossentropy(y_true, y_pred)
+        return backend.dot(bce, expanded_weights)
 
     return weighted_binary_crossentropy
 

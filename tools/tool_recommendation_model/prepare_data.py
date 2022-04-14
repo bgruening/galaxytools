@@ -64,6 +64,7 @@ class PrepareData:
         dictionary = dict()
         for word, _ in count:
             dictionary[word] = len(dictionary) + 1
+            word = word.strip()
         dictionary, reverse_dictionary = self.assemble_dictionary(
             dictionary, old_data_dictionary
         )
