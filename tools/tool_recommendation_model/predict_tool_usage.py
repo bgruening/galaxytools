@@ -30,8 +30,9 @@ class ToolPopularity:
         all_dates = list()
         all_tool_list = list(dictionary.keys())
         with open(tool_usage_file, "rt") as usage_file:
-            tool_usage = csv.reader(usage_file, delimiter=',')
+            tool_usage = csv.reader(usage_file, delimiter='\t')
             for index, row in enumerate(tool_usage):
+                row = [item.strip() for item in row]
                 if (str(row[1]).strip() > cutoff_date) is True:
                     tool_id = utils.format_tool_id(row[0])
                     if tool_id in all_tool_list:
