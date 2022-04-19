@@ -1,11 +1,10 @@
 import json
-import random
-
 import h5py
 import numpy as np
+import random
 import tensorflow as tf
-from tensorflow.keras import backend
 from numpy.random import choice
+from tensorflow.keras import backend
 
 
 def read_file(file_path):
