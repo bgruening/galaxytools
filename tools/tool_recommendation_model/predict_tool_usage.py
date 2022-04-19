@@ -69,7 +69,6 @@ class ToolPopularity:
         s_typ = "neg_mean_absolute_error"
         n_jobs = 4
         s_error = 1
-        iid = True
         tr_score = False
         try:
             pipe = Pipeline(steps=[("regressor", SVR(gamma="scale"))])

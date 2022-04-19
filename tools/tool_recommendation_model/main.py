@@ -11,10 +11,7 @@ import keras.callbacks as callbacks
 import numpy as np
 import optimise_hyperparameters
 import prepare_data
-# machine learning library
-import tensorflow as tf
 import utils
-from tensorflow.keras import backend as K
 
 
 class PredictTool:
