@@ -1,7 +1,8 @@
 import json
+import random
+
 import h5py
 import numpy as np
-import random
 import tensorflow as tf
 from numpy.random import choice
 from tensorflow.keras import backend

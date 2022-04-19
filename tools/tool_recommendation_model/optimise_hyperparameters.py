@@ -5,10 +5,10 @@ Find the optimal combination of hyperparameters
 import numpy as np
 import utils
 from hyperopt import fmin, hp, STATUS_OK, tpe, Trials
-from tensorflow.keras.layers import Dense, Dropout, Embedding, GRU, SpatialDropout1D
 from tensorflow.keras.callbacks import EarlyStopping
-from tensorflow.keras.optimizers import RMSprop
+from tensorflow.keras.layers import Dense, Dropout, Embedding, GRU, SpatialDropout1D
 from tensorflow.keras.models import Sequential
+from tensorflow.keras.optimizers import RMSprop
 
 
 class HyperparameterOptimisation:
