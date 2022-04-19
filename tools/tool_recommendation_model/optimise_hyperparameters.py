@@ -3,13 +3,12 @@ Find the optimal combination of hyperparameters
 """
 
 import numpy as np
+import utils
 from hyperopt import fmin, hp, STATUS_OK, tpe, Trials
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Dense, GRU, Dropout, Embedding, SpatialDropout1D
 from tensorflow.keras.optimizers import RMSprop
 from tensorflow.keras.callbacks import EarlyStopping
-
-import utils
 
 
 class HyperparameterOptimisation:
