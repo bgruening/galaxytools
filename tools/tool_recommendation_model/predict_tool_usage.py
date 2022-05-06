@@ -32,7 +32,8 @@ class ToolPopularity:
         with open(tool_usage_file, "rt") as usage_file:
             tool_usage = csv.reader(usage_file, delimiter="\t")
             for index, row in enumerate(tool_usage):
-                if (str(row[1]) > cutoff_date) is True:
+                row = [item.strip() for item in row]
+                if (str(row[1]).strip() > cutoff_date) is True:
                     tool_id = utils.format_tool_id(row[0])
                     if tool_id in all_tool_list:
                         all_dates.append(row[1])
@@ -68,7 +69,6 @@ class ToolPopularity:
         s_typ = "neg_mean_absolute_error"
         n_jobs = 4
         s_error = 1
-        iid = True
         tr_score = False
         try:
             pipe = Pipeline(steps=[("regressor", SVR(gamma="scale"))])
@@ -79,7 +79,6 @@ class ToolPopularity:
             search = GridSearchCV(
                 pipe,
                 param_grid,
-                iid=iid,
                 cv=cv,
                 scoring=s_typ,
                 n_jobs=n_jobs,
@@ -94,7 +93,8 @@ class ToolPopularity:
             if prediction < epsilon:
                 prediction = [epsilon]
             return prediction[0]
-        except Exception:
+        except Exception as e:
+            print(e)
             return epsilon
 
     def get_pupularity_prediction(self, tools_usage):

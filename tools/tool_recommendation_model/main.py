@@ -11,23 +11,12 @@ import keras.callbacks as callbacks
 import numpy as np
 import optimise_hyperparameters
 import prepare_data
-# machine learning library
-import tensorflow as tf
 import utils
-from keras import backend as K
 
 
 class PredictTool:
     def __init__(self, num_cpus):
         """ Init method. """
-        # set the number of cpus
-        cpu_config = tf.ConfigProto(
-            device_count={"CPU": num_cpus},
-            intra_op_parallelism_threads=num_cpus,
-            inter_op_parallelism_threads=num_cpus,
-            allow_soft_placement=True,
-        )
-        K.set_session(tf.Session(config=cpu_config))
 
     def find_train_best_network(
         self,

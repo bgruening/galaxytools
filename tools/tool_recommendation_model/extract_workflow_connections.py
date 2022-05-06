@@ -36,8 +36,8 @@ class ExtractWorkflowConnections:
             workflow_connections = csv.reader(workflow_connections_file, delimiter="\t")
             for index, row in enumerate(workflow_connections):
                 wf_id = str(row[0])
-                in_tool = row[3]
-                out_tool = row[6]
+                in_tool = row[3].strip()
+                out_tool = row[6].strip()
                 if wf_id not in workflows:
                     workflows[wf_id] = list()
                 if out_tool and in_tool and out_tool != in_tool:
