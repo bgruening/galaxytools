@@ -42,17 +42,17 @@ pip install planemo
 
 To run the tests for a specific tool (e.g., pca) in a specific folder (e.g. sklearn)
 ```
-planemo test --docker tools/sklearn/pca.xml
+planemo test --biocontainers tools/sklearn/pca.xml
 ```
 
 To run the tests for all tools in a specific folder (e.g. sklearn)
 ```
-planemo test --docker tools/sklearn
+planemo test --biocontainers tools/sklearn
 ```
 
 To run the tests for all tools in all folders 
 ```
-planemo test --docker tools
+planemo test --biocontainers tools
 ```
 
 3 steps to get your tool into Galaxy - A real-world example
