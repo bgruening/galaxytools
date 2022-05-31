@@ -1,9 +1,10 @@
-<?xml version='1.0' encoding='utf-8'?>
-<tool id="antismash" name="Antismash" version="5.1.2" profile="17.01">
+<tool id="antismash" name="Antismash" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="20.01">
     <description>allows the genome-wide identification, annotation and analysis of secondary metabolite biosynthesis gene clusters</description>
-    <requirements>
-        <requirement type="package" version="5.1.2">antismash</requirement>
-    </requirements>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro='requirements'/>
+    <expand macro="bio_tools"/>
     <version_command>antismash --version</version_command>
     <command detect_errors="aggressive">
 <![CDATA[
@@ -18,6 +19,10 @@
         #end if
 
         ln -s '$infile' input_tempfile.$file_extension &&
+        #if $genefinding_gff3
+            ln -s $genefinding_gff3 annotation.gff3 &&
+        #end if
+
 
         ## create html folder
         mkdir -p '$htmloutputfolder' &&
@@ -25,7 +30,9 @@
         antismash
             --cpus "\${GALAXY_SLOTS:-12}"
             --taxon '${cond_taxon.taxon}'
-
+            #if $genefinding_gff3
+                --genefinding-gff3 annotation.gff3
+            #end if
             --genefinding-tool $cond_taxon.genefinding_tool
 
             ${cb_general}
@@ -35,79 +42,112 @@
             --tta-threshold ${tta_threshold}
             ${asf}
 
-            ${extra_cluster}
             ${clusterhmmer}
             ${fullhmmer}
             #if $cond_taxon.taxon == 'fungi':
                 $cond_taxon.cassis
+            #else   
+                $cond_taxon.tigrfam
             #end if
+
+            ${cc_mibig}
+            ${rre}
+            --logfile $log
+
+            ## Advanced options
+            --minlength $advanced_options.minlength
+            --hmmdetection-strictness $advanced_options.hmmdetection_strictness
+            --cb-nclusters $advanced_options.cb_nclusters
+            --cb-min-homology-scale $advanced_options.cb_min_homology_scale
+            --rre-cutoff $advanced_options.rre_cutoff
+            --rre-minlength $advanced_options.rre_minlength
 
             input_tempfile.$file_extension &&
 
         ## copy all content to html folder
         cp input_tempfile/index.html '${html}' 2> /dev/null &&
         cp -r input_tempfile/* '${htmloutputfolder}'
-
 ]]>
     </command>
     <inputs>
         <param name="infile" type="data" format="genbank,fasta,embl" label="Sequence file in GenBank,EMBL or FASTA format"/>
+        <param argument="--genefinding-gff3" type="data" format="gff3" optional="true" label="GFF3 file" help="Specify GFF3 file to extract features from" />
 
         <conditional name="cond_taxon">
-            <param argument="--taxon" type="select" label="Origin of DNA">
+            <param argument="--taxon" type="select" label="Taxonomic classification of input sequence" help="Source of DNA">
                 <option value="bacteria" selected="True">Bacteria</option>
                 <option value="fungi">Fungi</option>
             </param>
             <when value="bacteria">
-                <param argument="--genefinding-tool" type="select" label="Specify algorithm used for gene finding"
-                    help="The 'error' option will raise an error if genefinding is attempted. The 'none' option will not run genefinding">
+                <expand macro="genefinding">
                     <option value="prodigal" selected="True">Prodigal</option>
                     <option value="prodigal-m">Prodigal Metagenomic/Anonymous</option>
-                    <option value="glimmerhmm">GlimmerHMM</option>
-                    <option value="none">None</option>
-                    <option value="error">Error</option>
-                </param>
+                </expand>
+                <param argument="--tigrfam" type="boolean" truevalue="--tigrfam" falsevalue="" checked="false" 
+                    label="Annotate with TIGRFam" help="Annotate clusters using TIGRFam profiles. TIGRFAMs is a 
+                    collection of manually curated protein families focusing primarily on prokaryotic sequences" />
             </when>
             <when value="fungi">
-                <param argument="--genefinding-tool" type="select" label="Specify algorithm used for gene finding"
-                    help="The 'error' option will raise an error if genefinding is attempted. The 'none' option will not run genefinding">
-                    <option value="glimmerhmm">GlimmerHMM</option>
-                    <option value="none">None</option>
-                    <option value="error">Error</option>
-                </param>
-                <param argument="--cassis" type="boolean" truevalue="--cassis" falsevalue="" checked="False"
-                       label="Motif based prediction of SM gene cluster regions" />
+                <expand macro="genefinding"/>
+                <param argument="--cassis" type="boolean" truevalue="--cassis" falsevalue="" checked="false"
+                       label="Motif based prediction of SM gene cluster regions" help="Improved prediction of gene cluster borders for fungal BGCs (CASSIS)"/>
             </when>
         </conditional>
+        <param argument="--fullhmmer" type="boolean" truevalue="--fullhmmer" falsevalue="" checked="false"
+            label="Full genome PFAM anotation"  help="Each gene product encoded in the detected BGCs is analyzed against the PFAM database. 
+                Hits are annotated in the final Genbank/EMBL files. Also, selecting this option normally increases the runtime"/>
+        
+        <param argument="--clusterhmmer" type="boolean" truevalue="--clusterhmmer" falsevalue="" checked="false"
+            label="PFAM anotation for only clusters" help="Run a cluster-limited HMMer analysis" />
 
-
-        <param argument="--cb-general" type="boolean" truevalue="--cb-general" falsevalue="" checked="False"
-               label="BLAST identified clusters against known clusters"
-               help="Compare identified clusters against a database of antiSMASH-predicted clusters." />
-        <param argument="--cb-subclusters" type="boolean" truevalue="--cb-subclusters" falsevalue="" checked="True"
-               label="Subcluster BLAST analysis"
-               help="Compare identified clusters against known subclusters responsible for synthesising precursors." />
-        <param argument="--cb-knownclusters" type="boolean" truevalue="--cb-knownclusters" falsevalue="" checked="True"
-               label="KnowCluster BLAST analysis"
-               help="Compare identified clusters against known gene clusters from the MIBiG database."/>
-        <param argument="--smcog-trees" type="boolean" checked="True" truevalue="--smcog-trees" falsevalue=""
-               label="Analysis of secondary metabolism gene families (smCOGs)"
-               help="Look for sec. met. clusters of orthologous groups."/>
         <param argument="--asf" type="boolean" truevalue="--asf" falsevalue="" checked="True"
-               label="Run active site finder analysus" />
-        <param argument="-pfam2go" type="boolean" truevalue="-pfam2go" falsevalue="" checked="True"
-               label="Run Pfam to Gene Ontology mapping module" />
-        <param argument="--tta-threshold" type="float" value="0.65" label="Lowest GC content to annotate TTA codons at" />
+            label="Run active site finder analysis" help="Active sites of several highly conserved biosynthetic enzymes are detected and variations of the active sites are reported"/>
 
-        <param argument="--clusterhmmer" type="boolean" truevalue="--clusterhmmer" falsevalue="" checked="False"
-               label="Run a cluster-limited HMMer analysis" />
-        <param argument="--fullhmmer" type="boolean" truevalue="--fullhmmer" falsevalue="" checked="False"
-               label="Run a whole-genome HMMer analysis" />
+        <param argument="--cc-mibig" type="boolean" truevalue="--cc-mibig" falsevalue="" checked="false" label="Comparison against MIBiG database" help="Run a comparison against the MIBiG database" />
 
-        <param name="extra_cluster" type="select" label="Clusters">
-            <option value="--cf-create-clusters" selected="True">Find extra clusters</option>
-            <option value="--cf-borders-only">Only annotate borders of existing clusters</option>
-        </param>
+        <param argument="--cb-general" type="boolean" truevalue="--cb-general" falsevalue="" checked="false"
+            label="BLAST identified clusters against known clusters"
+            help="Compare identified clusters against a database of antiSMASH-predicted clusters." />
+
+        <param argument="--cb-knownclusters" type="boolean" truevalue="--cb-knownclusters" falsevalue="" checked="true"
+            label="KnowCluster BLAST analysis"
+            help="Compare identified clusters against known gene clusters from the MIBiG database. MIBiG is a hand curated data collection of biosynthetic 
+                gene clusters, which have been experimentally characterized"/>
+
+        <param argument="--cb-subclusters" type="boolean" truevalue="--cb-subclusters" falsevalue="" checked="true"
+            label="Subcluster BLAST analysis"
+            help="The identified clusters are searched against a database containing operons involved in the biosynthesis of common secondary metabolite building 
+                blocks (e.g. the biosynthesis of non-proteinogenic amino acids)" />
+
+        <param argument="--pfam2go" type="boolean" truevalue="--pfam2go" falsevalue="" checked="true"
+            label="Run Pfam to Gene Ontology mapping module" />
+
+        <param argument="--rre" type="boolean" truevalue="--rre" falsevalue="" checked="true" label="RREFinder precision mode" help="Run RREFinder precision mode on all RiPP gene clusters. Many ribosomally 
+            synthesized and posttranslationally modified peptide classes (RiPPs) are reliant on a domain called the RiPP recognition element (RRE). The RRE binds specifically to a precursor peptide and directs 
+            the posttranslational modification enzymes to their substrates" />
+
+        <param argument="--smcog-trees" type="boolean" checked="True" truevalue="--smcog-trees" falsevalue=""
+            label="Analysis of secondary metabolism gene families (smCOGs)"
+            help="It attempts to allocate each gene in the detected gene clusters to a secondary metabolism-specific gene family using profile hidden Markov models specific for 
+                the conserved sequence region characteristic of this family. In other words, each gene of the cluster is compared to a database of clusters of orthologous groups 
+                of proteins involved in secondary metabolism"/>
+
+        <param argument="--tta-threshold" type="float" value="0.65" label="Lowest GC content to annotate TTA codons at" 
+            help="High-GC containing bacterial sequences contain the rare Leu-codon “TTA” as a mean for post-transcriptional regulation by limiting/controlling the amount of TTA-tNRA in the cell. 
+                This type of regulation is commonly found in secondary metabolite BGCs. This feature will annotate such TTA codons in the identified BGCs. Default: 0.65"/>
+        <section name="advanced_options" title="Advanced options">
+            <param argument="--minlength" type="integer" min="0" value="1000" label="Min length" help="Only process sequences larger than this value. Default: 1000" />
+            <param argument="--hmmdetection-strictness" type="select" label="HMM detection strictness" help="Defines which level of strictness to use for HMM-based cluster detection. Default: relaxed">
+                <option value="strict">Strict</option>
+                <option value="relaxed" selected="true">Relaxed</option>
+                <option value="loose">Loose</option>
+            </param>
+            <param argument="--cb-nclusters" type="integer" min="0" max="50" value="10" label="Number of clusters from ClusterBlast to display" help="Default: 10" />
+            <param argument="--cb-min-homology-scale" type="float" min="0" max="1" value="0" label="ClusterBlast minimum scaling factor" help="A minimum scaling factor 
+                for the query BGC in ClusterBlast results. Default: 0" />
+            <param argument="--rre-cutoff" type="float" min="0" max="100" value="25" label="RRE cutoff" help="Bitscore cutoff for RRE pHMM detection. Default: 25.0" />
+            <param argument="--rre-minlength" type="integer" min="0" max="100" value="50" label="RRE minlength" help="Minimum amino acid length of RRE domains. Default: 50" />
+        </section>
 
         <param name="outputs" type="select" multiple="true" label="Outputs">
             <option value="html" selected="True">HTML file</option>
@@ -115,48 +155,87 @@
             <option value="embl">EMBL files</option>
             <option value="gb">GenBank files</option>
             <option value="genecluster_tabular">Gene clusters</option>
+            <option value="log">Log file</option>
         </param>
 
     </inputs>
     <outputs>
-        <collection type="list" name="genecluster_tabular" label="${tool.name} on ${on_string} (Gene Cluster)">
+        <collection type="list" name="genecluster_tabular" label="${tool.name} on ${on_string}: Gene Cluster">
             <discover_datasets pattern="(?P&lt;designation&gt;.*)\.txt" directory="input_tempfile" ext="txt" visible="false" />
             <filter>'genecluster_tabular' in outputs</filter>
         </collection>
-        <collection name="genbank" type="list" label="${tool.name} on ${on_string} (GenBank)">
+        <collection name="genbank" type="list" label="${tool.name} on ${on_string}: GenBank">
             <discover_datasets pattern="(?P&lt;designation&gt;.*)\.gbk" directory="input_tempfile" ext="genbank" visible="false" />
-            <filter>'gb' in outputs</filter>
+            <filter>'gb' in outputs or fullhmmer</filter>
         </collection>
-        <collection name="embl" type="list" label="${tool.name} on ${on_string} (EMBL)">
+        <collection name="embl" type="list" label="${tool.name} on ${on_string}: EMBL">
             <discover_datasets pattern="(?P&lt;designation&gt;.*)\.gbk" directory="input_tempfile" ext="embl" visible="false" />
             <filter>'embl' in outputs</filter>
         </collection>
-        <collection name="archive" type="list" label="${tool.name} on ${on_string} (all files compressed)">
+        <collection name="archive" type="list" label="${tool.name} on ${on_string}: all files compressed">
             <discover_datasets pattern="(?P&lt;designation&gt;.*)\.zip" directory="input_tempfile" ext="zip" visible="false" />
             <filter>'all' in outputs</filter>
         </collection>
-        <data format="html" name="html" label="${tool.name} on ${on_string} (html report)" />
+        <data format="html" name="html" label="${tool.name} on ${on_string}: HTML report" />
+        <data format="txt" name="log" label="${tool.name} on ${on_string}: log file">
+            <filter>'log' in outputs</filter>
+        </data>
     </outputs>
     <tests>
-        <test>
+        <test expect_num_outputs="1">
             <param name="infile" value="sequence.fasta"/>
             <output name="html" file="index.html"/>
         </test>
-        <test>
+        <test expect_num_outputs="2">
             <param name="infile" value="sequence.gb"/>
             <param name="outputs" value="html,gb"/>
             <param name="taxon" value="fungi"/>
-            <param name="clusterhmmer" value="True"/>
-            <param name="fullhmmer" value="True"/>
-            <param name="extra_cluster" value="--cf-create-clusters"/>
-            <param name="cassis" value="True"/>
-            <param name="cb_general" value="True"/>
+            <param name="clusterhmmer" value="true"/>
+            <param name="fullhmmer" value="true"/>
+            <param name="cassis" value="true"/>
+            <param name="cb_general" value="true"/>
             <output_collection name="genbank" type="list">
-                <element name="ARBH01000003.1.cluster001" file="ARBH01000003.1.cluster001" ftype="genbank" />
-                <element name="ARBH01000003.1.final" file="ARBH01000003.1.final" ftype="genbank"/>
+                <element name="input_tempfile" file="test_02.genbank" ftype="genbank" lines_diff="2"/>
             </output_collection>
-            <output name="html" file="index.2.html"/>
+            <output name="html" file="index.2.html" ftype="html">
+                <assert_contents>
+                    <has_text text="No results found on input"/>
+                </assert_contents>
+            </output>
         </test>
+
+    <test expect_num_outputs="3">
+        <param name="infile" value="sequence_long.fasta"/>
+        <param name="genefinding_gff3" value="annotation.gff3"/>
+        <param name="fullhmmer" value="true"/>
+        <param name="cc_mibig" value="true"/>
+        <param name="pfam2go" value="true"/>
+        <param name="rre" value="true"/>
+        <param name="outputs" value="html,gb,log"/>
+        <section name="advanced_options">
+            <param name="minlength" value="1000"/>
+            <param name="hmmdetection_strictness" value="strict"/>
+            <param name="cb_nclusters" value="10"/>
+            <param name="cb_min_homology_scale" value="0.1"/>
+            <param name="rre_cutoff" value="10"/>
+            <param name="rre_minlength" value="50"/>
+        </section>
+        <output_collection name="genbank" type="list">
+            <element name="input_tempfile" file="test_03.genbank" ftype="genbank" lines_diff="2"/>
+        </output_collection>
+        <output name="html" file="index.3.html" ftype="html">
+            <assert_contents>
+                <has_text text="No results found on input"/>
+            </assert_contents>
+        </output>
+        <output name="log">
+            <assert_contents>
+                <has_text text="antiSMASH status: SUCCESS"/>
+                <has_text text="HMM detection using strictness: strict"/>
+            </assert_contents>
+        </output>
+    </test>
+ 
     </tests>
     <help>
 <![CDATA[
@@ -195,7 +274,5 @@ The EMBL/GenBank file can be viewed in a genome browser such as Artemis.
 
 ]]>
     </help>
-    <citations>
-        <citation type="doi">10.1093/nar/gkv437</citation>
-    </citations>
+    <expand macro="citations" />
 </tool>
