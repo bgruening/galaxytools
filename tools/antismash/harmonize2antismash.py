@@ -39,7 +39,7 @@ with open(sys.argv[1], "r") as handle:
                     "start": fstart,
                     "end": fend,
                     "label": label,
-                    "details": {"score": score},
+                    "details": {"score": str(score)},
                 }
             ],
         }
