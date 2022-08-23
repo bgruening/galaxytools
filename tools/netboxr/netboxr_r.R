@@ -7,55 +7,29 @@ options(show.error.messages = FALSE,
 loc <- Sys.setlocale("LC_MESSAGES", "en_US.UTF-8")
 # Import required libraries and data
 suppressPackageStartupMessages({
-  library(optparse)
   library(netboxr)
   library(igraph)
   library(RColorBrewer)
 })
 
 data(netbox2010)
-option_list <- list(
-  make_option("--geneList", type = "character", help = "Tab-delimited list of genes of interest"),
-  make_option("--cutoff", type = "double", help = "p-value cutoff value"),
-  make_option("--community", type = "character", help = "community detection method"),
-  #make_option("--resolutionParam", type = "integer", help = "community size"),
-  #make_option("--networkType", type = "character", help = "edge weights"),
-  #make_option("--weightsInput", type = "", help = "edge weights"),
-  make_option("--globalModel", type = "logical", help = "Used to assess the global connectivity
-              (number of nodes and edges) of the largest module in the identified network
-              compared with the same number but randomly selected gene list"),
-  make_option("--globalIterations", type = "integer", help = "Global model iterations"),
-  make_option("--globalNumber", type = "integer", help = "Global model number of genes"),
-  make_option("--localModel", type = "logical", help = "Used to assess the network modularity in
-              the identified network compared with random re-wired network"),
-  make_option("--localIterations", type = "integer", help = "Local model iterations"),
-
-  make_option("--networkPlot", type = "logical", help = "Plot of edge-annotated netboxr graph"),
-  make_option("--plotWidth", type = "integer", help = "Plot width"),
-  make_option("--outputSIF", type = "logical", help = "NetBox algorithm output in SIF format"),
-  make_option("--neighborList", type = "logical", help = "Contains information of all neighbor nodes"),
-  make_option("--modmem", type = "logical", help = "Identified pathway module numbers"),
-  make_option("--nt", type = "logical", help = "Indicates whether node is linker or candidate")
-)
-parser <- OptionParser(usage = "%prog [options] file", option_list =
-                         option_list)
-args <- parse_args(parser)
+args <- commandArgs(TRUE)
 # Vars
-gene_list <- scan(args$geneList, what = character(), sep = "\n")
-cutoff <- args$cutoff
-community <- args$community
-global_model <- args$globalModel
-global_iterations <- args$globalIterations
-global_number <- args$globalNumber
-local_model <- args$localModel
-local_iterations <- args$localIterations
+gene_list <- scan(args[2], what = character(), sep = "\n")
+cutoff <- args[4]
+community <- args[6]
+global_model <- args[8]
+global_iterations <- args[10]
+global_number <- args[12]
+local_model <- args[14]
+local_iterations <- args[16]
 
-network_plot <- args$networkPlot
-plot_width <- args$plotWidth
-output_sif <- args$outputSIF
-neighbor_list <- args$neighborList
-modmem <- args$modmem
-nt <- args$nt
+network_plot <- args[18]
+plot_width <- args[20]
+output_sif <- args[22]
+neighbor_list <- args[24]
+modmem <- args[26]
+nt <- args[28]
 
 sink("metadata.txt")
 sink(stdout(), type = "message")
