@@ -47,7 +47,7 @@ test_compare_out/windows_mapped_to_ids.txt
 def setup_argument_parser():
     """Setup argparse parser."""
     help_description = """
-    Based on genomic annotations GFF file (--gff), create sliding window 
+    Based on genomic annotations GFF file (--gff), create sliding window
     annotations with htseq-clip.
 
     """
@@ -65,39 +65,39 @@ def setup_argument_parser():
                    dest="in_gff",
                    type=str,
                    metavar='str',
-                   required = True,
-                   help = "Annotation file GFF (so far tested with hg38 GENCODE format). Also accepts gff.gz as well")
+                   required=True,
+                   help="Annotation file GFF (so far tested with hg38 GENCODE format). Also accepts gff.gz as well")
     p.add_argument("--out",
                    dest="out_folder",
                    type=str,
                    metavar='str',
-                   required = True,
-                   help = "Results output folder")
+                   required=True,
+                   help="Results output folder")
     # htseq-clip annotation.
     p.add_argument("--hca-unsorted",
                    dest="hca_unsorted",
-                   default = False,
-                   action = "store_true",
-                   help = "htseq-clip annotation --unsorted parameter. Use this flag if the GFF file is unsorted (default: False)")
+                   default=False,
+                   action="store_true",
+                   help="htseq-clip annotation --unsorted parameter. Use this flag if the GFF file is unsorted (default: False)")
     # htseq-clip createSlidingWindows.
     p.add_argument("--hcw-w",
                    dest="hcw_w",
-                   type = int,
+                   type=int,
                    metavar='int',
-                   default = 50,
-                   help = "htseq-clip createSlidingWindows -w parameter. Sliding window size. If unsure, try 75-100 (default: 50)")
+                   default=50,
+                   help="htseq-clip createSlidingWindows -w parameter. Sliding window size. If unsure, try 75-100 (default: 50)")
     p.add_argument("--hcw-s",
                    dest="hcw_s",
-                   type = int,
+                   type=int,
                    metavar='int',
-                   default = 20,
-                   help = "htseq-clip createSlidingWindows -s parameter. Step size for sliding window (default: 20)")
+                   default=20,
+                   help="htseq-clip createSlidingWindows -s parameter. Step size for sliding window (default: 20)")
     # More.
     p.add_argument("--no-zipper",
                    dest="no_zipper",
-                   default = False,
-                   action = "store_true",
-                   help = "Do not gzip output files (default: False)")
+                   default=False,
+                   action="store_true",
+                   help="Do not gzip output files (default: False)")
     return p
 
 
@@ -107,8 +107,8 @@ if __name__ == '__main__':
 
     parser = setup_argument_parser()
     args = parser.parse_args()
-    
-    assert os.path.exists(args.in_gff), "--gff file \"%s\" not found" %(args.in_gff)
+
+    assert os.path.exists(args.in_gff), "--gff file \"%s\" not found" % (args.in_gff)
 
     # Output folder.
     if not os.path.exists(args.out_folder):
@@ -137,12 +137,11 @@ if __name__ == '__main__':
     if args.hca_unsorted:
         check_cmd += " --unsorted"
     output = subprocess.getoutput(check_cmd)
- 
+
     print(check_cmd)
     print(output)
 
-    assert os.path.exists(annot_bed), "htseq-clip annotation -o file \"%s\" not found" %(annot_bed)
-
+    assert os.path.exists(annot_bed), "htseq-clip annotation -o file \"%s\" not found" % (annot_bed)
 
     """
     2) Create sliding windows.
@@ -167,18 +166,18 @@ if __name__ == '__main__':
         win_bed = args.out_folder + "/windows.bed"
 
     print("Create sliding windows BED ... ")
-    win_params = " -w %i -s %i " %(args.hcw_w, args.hcw_s)
+    win_params = " -w %i -s %i " % (args.hcw_w, args.hcw_s)
     check_cmd = "htseq-clip createSlidingWindows -i " + annot_bed + win_params + " -o " + win_bed
     output = subprocess.getoutput(check_cmd)
- 
+
     print(check_cmd)
     print(output)
 
-    assert os.path.exists(annot_bed), "htseq-clip createSlidingWindows -o file \"%s\" not found" %(win_bed)
+    assert os.path.exists(annot_bed), "htseq-clip createSlidingWindows -o file \"%s\" not found" % (win_bed)
 
     """
     3) Create mapping file for DEWSeq.
-    mapToId: extract "name" column from the annotation file and map the entries 
+    mapToId: extract "name" column from the annotation file and map the entries
     to unique id and print out in tab separated format.
     htseq-clip mapToId -a windows.bed.gz -o windows.txt.gz
 
@@ -202,14 +201,14 @@ if __name__ == '__main__':
         mapped2ids_txt = args.out_folder + "/windows_mapped_to_ids.txt"
 
     print("Create DEWSeq input annotation file ... ")
-    win_params = " -w %i -s %i " %(args.hcw_w, args.hcw_s)
+    win_params = " -w %i -s %i " % (args.hcw_w, args.hcw_s)
     check_cmd = "htseq-clip mapToId -a " + win_bed + " -o " + mapped2ids_txt
     output = subprocess.getoutput(check_cmd)
- 
+
     print(check_cmd)
     print(output)
 
-    assert os.path.exists(mapped2ids_txt), "htseq-clip mapToId -o file \"%s\" not found" %(mapped2ids_txt)
+    assert os.path.exists(mapped2ids_txt), "htseq-clip mapToId -o file \"%s\" not found" % (mapped2ids_txt)
 
     """
     Report.
@@ -219,7 +218,7 @@ if __name__ == '__main__':
     print("")
     print("OUTPUT FILES")
     print("============")
-    print("Annotation BED:\n%s" %(annot_bed))
-    print("Windows BED:\n%s" %(win_bed))
-    print("Windows mapped to IDs TXT (DEWseq annotation file):\n%s" %(mapped2ids_txt))
+    print("Annotation BED:\n%s" % (annot_bed))
+    print("Windows BED:\n%s" % (win_bed))
+    print("Windows mapped to IDs TXT (DEWseq annotation file):\n%s" % (mapped2ids_txt))
     print("")
