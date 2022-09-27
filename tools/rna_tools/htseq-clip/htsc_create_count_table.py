@@ -129,8 +129,8 @@ def setup_argument_parser():
                    dest="hce_c",
                    type=int,
                    metavar='int',
-                   default=4,
-                   help="htseq-clip extract -c parameter. Number of cores (default: 4)")
+                   default=1,
+                   help="htseq-clip extract -c parameter. Number of cores (default: 1)")
     p.add_argument("--hce-m",
                    dest="hce_m",
                    type=int,
