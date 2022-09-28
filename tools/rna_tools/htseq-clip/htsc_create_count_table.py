@@ -130,7 +130,7 @@ def setup_argument_parser():
                    type=int,
                    metavar='int',
                    default=1,
-                   help="htseq-clip extract -c parameter. Number of cores (default: 1)")
+                   help="htseq-clip extract -c parameter. Number of threads/cores to use (default: 1)")
     p.add_argument("--hce-m",
                    dest="hce_m",
                    type=int,
@@ -188,6 +188,32 @@ def setup_argument_parser():
                    action="store_true",
                    help="Keep intermediate files (filtered BAM, BED, CSV) (default: False)")
     return p
+
+
+################################################################################
+
+def file_make_symbolic_link(file, file_link,
+                            force_overwrite=True):
+    """
+    Create a symbolic file link file_link (ln -s) of file.
+
+    force_overwrite:
+        Overwrites existing file link.
+
+    """
+    assert os.path.exists(file), "file does not exist"
+    # Get absolute path needed for symlink to work.
+    file_abs_path = os.path.abspath(file)
+
+    check_cmd = "ln -s "
+    if force_overwrite:
+        check_cmd += "-f "
+    check_cmd = check_cmd + file_abs_path + " " + file_link
+    output = subprocess.getoutput(check_cmd)
+    error = False
+    if output:
+        error = True
+    assert error is False, "ln has problems with your input:\n%s\n%s" % (check_cmd, output)
 
 
 ################################################################################
@@ -284,7 +310,8 @@ if __name__ == '__main__':
             bam_remove_overlap_region_reads(args.filter_bed, bam_file, out_bam, params=params)
             intermediate_files.append(out_bam)
         else:
-            out_bam = bam_file
+            # out_bam = bam_file
+            file_make_symbolic_link(bam_file, out_bam)
             # shutil.move(bam_file, out_bam)
 
         pysam.index(out_bam)
@@ -302,7 +329,8 @@ if __name__ == '__main__':
             bam_remove_overlap_region_reads(args.filter_bed, bam_file, out_bam, params=params)
             intermediate_files.append(out_bam)
         else:
-            out_bam = bam_file
+            # out_bam = bam_file
+            file_make_symbolic_link(bam_file, out_bam)
             # shutil.move(bam_file, out_bam)
 
         pysam.index(out_bam)
