@@ -8,11 +8,6 @@ import os
 import sys
 import time
 
-
-# comment this if running on GPU
-# import tensorflow as tf
-# tf.config.set_visible_devices([], 'GPU')
-
 sys.path.append(os.getcwd())
 
 from scripts import extract_workflow_connections
