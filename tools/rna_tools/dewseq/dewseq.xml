@@ -1,0 +1,174 @@
+<tool id="dewseq" name="DEWSeq" version="0.1.0+galaxy0" python_template_version="3.5" profile="21.05">
+
+    <description>- A sliding window based peak caller for eCLIP/iCLIP data</description>
+    <requirements>
+        <requirement type="package" version="1.8.0">bioconductor-dewseq</requirement>
+        <requirement type="package" version="2.16">r-rmarkdown</requirement>
+        <requirement type="package" version="2.22.0">bioconductor-biocstyle</requirement>
+        <requirement type="package" version="1.3.2">r-tidyverse</requirement>
+        <requirement type="package" version="0.9.1">r-ggrepel</requirement>
+        <requirement type="package" version="1.22.0">bioconductor-ihw</requirement>
+    </requirements>
+
+    <command detect_errors="exit_code"><![CDATA[
+        python '$__tool_directory__/dewseq_wrapper.py'
+            --out ./
+            --annot $annot_file
+            --matrix $matrix_file
+            --info  $info_file
+            --ds-ms $ds_ms
+            --ds-mc $ds_mc
+            --ds-pvc $ds_pvc
+            --ds-lfcc $ds_lfcc
+            $ds_use_oc
+            $ds_disable_ihw
+            $ds_disable_df
+            $ds_use_lrt
+            --ds-id $ds_id
+            --ds-markdown '$__tool_directory__/analyseStudy.Rmd'
+
+    ]]></command>
+
+    <inputs>
+        <param name="annot_file" type="data" format="tabular"
+            label="Windows annotation file"
+            help="Windows annotation table file (output of htseq-clip 'Create sliding windows' Galaxy wrapper)"/>
+        <param name="matrix_file" type="data" format="tabular"
+            label="Count table file"
+            help="CLIP-seq samples count table file (output of htseq-clip 'Create count table' Galaxy wrapper)"/>
+        <param name="info_file" type="data" format="tabular"
+            label="Sample information table file"
+            help="CLIP-seq sample information table file (output of htseq-clip 'Create count table' Galaxy wrapper)"/>
+        <param name="ds_ms" type="integer" value="2"
+            label="DEWSeq min_sample parameter"
+            help="Keep only windows where at least min_sample samples have a crosslink site count > min_count (including control samples) (default: 2)"/>
+        <param name="ds_mc" type="integer" value="2"
+            label="DEWSeq min_count parameter"
+            help="Minimum crosslink site count per window per sample (default: 2)"/>
+        <param name="ds_pvc" type="float" value="0.1"
+            label="DEWSeq p_value_cutoff parameter"
+            help="Adjusted p-value threshold for a window to be reported as significant window (default: 0.1)"/>
+        <param name="ds_lfcc" type="float" value="1.0"
+            label="DEWSeq lfc_cutoff parameter"
+            help="Log2 fold change threshold for a window to be reported as significant window (default: 1.0)"/>
+        <param name="ds_use_oc" label="Use overlapping windows p-value correction?" type="boolean"
+            truevalue="--ds-oc" falsevalue="" checked="False"
+            help="Choose yes to adjust p-values for overlapping windows, using Bonferroni family-wise error rate correction on overlapping sliding windows"/>
+        <param name="ds_disable_ihw" label="Disable IHW?" type="boolean"
+            truevalue="--ds--disable-ihw" falsevalue="" checked="False"
+            help="Choose yes to disable independent hypothesis weighting (IHW) for multiple testing correction. By default, IHW is used for multiple tesing correction instead of the default method Benjamini Hochberg (BH). The authors recommend using IHW instead of BH for FDR correction"/>
+        <param name="ds_disable_df" label="Disable DEWSeq's decide_fit?" type="boolean"
+            truevalue="--ds--disable-df" falsevalue="" checked="False"
+            help="Choose yes if DEWSeq should not decide on the type of dispersion estimation fit to be used. By default, DEWSeq decides on the dispersion estimation fit type (local or parametric). If this option is enabled, parametric fit will be used instead. By default, DEWSeq fits data using both parametric and local fit types and chooses the best fit of the two (see documentation for details). Typically, this should give better results, but keep in mind that this will also increase the total run time"/>
+        <param name="ds_use_lrt" label="Use LRT instead of Wald test?" type="boolean"
+            truevalue="--ds-use-lrt" falsevalue="" checked="False"
+            help="Choose yes to use likelihood ratio test (LRT) instead of Wald test (see documentation for details). By default, DEWSeq uses Wald test. The authors note that LRT is more accurate than Wald test, but one should keep in mind that LRT is a stringent test in comparison to Wald. So if the RNA-binding protein of interest is a very active binder, it can make sense to enable LRT, otherwise it should be used with caution as one may end up with little or no significant windows at all"/>
+        <param name="ds_id" type="text" value="RBP"
+            label="DEWSeq dataset ID"
+            help="DEWSeq dataset ID for output HTML report (default: RBP)"/>
+
+        <section name="output_options" title="Output options">
+            <param name="sig_reg_bed_out" label="Output significant regions BED file?" type="boolean"
+                checked="False"
+                help="Output significant regions BED file. Regions can be made up of single significant windows or merged adjacent significant windows (column 7: mean adjusted p-value of region, column 8: mean log2 fold change of region)"/>
+            <param name="sig_win_reg_bed_out" label="Output significant windows + regions BED file?" type="boolean"
+                checked="False"
+                help="Output significant windows + regions BED file. This outputs both significant regions and if the region is made up of several windows the single significant windows as well (corresponds to output_bed_file in the DEWSeq R markdown script)"/>
+            <param name="report_html_out" label="Output HTML report file?" type="boolean"
+                checked="False"
+                help="Output HTML report file (corresponds to output_file in the DEWSeq R markdown script)"/>
+        </section>
+
+    </inputs>
+    <outputs>
+        <data format="csv" name="win_csv_file" label="${tool.name} on ${on_string}: All windows CSV file" from_work_dir="windows.csv"/>
+        <data format="csv" name="sig_reg_csv_file" label="${tool.name} on ${on_string}: Significant regions CSV file" from_work_dir="significant_regions.csv"/>
+        <data name="sig_reg_bed_file" format="bed" from_work_dir="significant_regions.bed" label="${tool.name} on ${on_string}: Significant regions BED file">
+            <filter>(output_options['sig_reg_bed_out'] is True)</filter>
+        </data>
+        <data name="sig_win_reg_bed_file" format="bed" from_work_dir="significant_windows_and_regions.bed" label="${tool.name} on ${on_string}: Significant regions + windows BED file">
+            <filter>(output_options['sig_win_reg_bed_out'] is True)</filter>
+        </data>
+        <data name="html_report_file" format="html" from_work_dir="report.html" label="${tool.name} on ${on_string}: HTML report file">
+            <filter>(output_options['report_html_out'] is True)</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <test>
+            <param name="annot_file" value="windows.exp.txt" ftype="tabular"/>
+            <param name="matrix_file" value="Rbp_count_matrix.exp.txt" ftype="tabular"/>
+            <param name="info_file" value="sample_info.exp.txt" ftype="tabular"/>
+            <param name="ds_pvc" value="0.5"/>
+            <param name="sig_reg_bed_out" value="True"/>
+            <param name="sig_win_reg_bed_out" value="True"/>
+            <param name="report_html_out" value="True"/>
+            <output name="win_csv_file" file="windows.csv"/>
+            <output name="sig_reg_csv_file" file="significant_regions.csv"/>
+            <output name="sig_reg_bed_file" file="significant_regions.bed"/>
+            <output name="sig_win_reg_bed_file" file="significant_windows_and_regions.bed"/>
+            <output name="html_report_file" file="report.html" compare="sim_size"/>
+        </test>
+
+        <test>
+            <param name="annot_file" value="windows.exp.txt" ftype="tabular"/>
+            <param name="matrix_file" value="Rbp_count_matrix.exp.txt" ftype="tabular"/>
+            <param name="info_file" value="sample_info.exp.txt" ftype="tabular"/>
+            <param name="ds_pvc" value="0.5"/>
+            <param name="ds_use_lrt" value="True"/>
+            <output name="win_csv_file" file="windows.test2.csv"/>
+            <output name="sig_reg_csv_file" file="significant_regions.test2.csv"/>
+        </test>
+
+    </tests>
+    <help><![CDATA[
+
+**Overview**
+
+DEWSeq_ is a peak caller for CLIP-seq data, i.e., to identify the RNA binding sites of RNA-binding proteins from CLIP-seq data. It uses a sliding window approach together with DESeq2 for the analysis of differentially enriched binding regions in CLIP-seq (typically eCLIP or iCLIP) sequencing data. 
+The CLIP-seq data (starting from the mapped reads BAM files) needs to be preprocessed by htseq-clip_ (available on Galaxy as well), which provides the input files for DEWSeq.
+
+
+**Output files**
+
+By default, the wrapper outputs two CSV table files (all windows CSV, significant regions CSV). In addition, BED files including significant regions and windows can be output, as well as an HTML report file (see Output options for details).
+
+
+*All windows CSV file*:
+
+This file corresponds to the output_windows_file in the DEWSeq R markdown script (see documentation link below for details), and includes all input windows and the corresponding p-values and log2 fold changes.
+
+*Significant regions CSV file*:
+
+This file corresponds to the output_regions_file in the DEWSeq R markdown script (see documentation link below for details), and reports all significant regions, which can also consist of several windows, if two or more adjacent windows are significant.
+The window IDs that belong to each region can be found the "unique_ids" column. "regionStartId" is the most upstream window ID in the region. 
+Mean, maximum, and minimum adjusted p-values and log2 fold changes for each region are also given. An emtpy file is returned if no significant regions were found.
+
+
+
+**Documentation and Repository**
+
+This Galaxy wrapper of DEWSeq_ is based on the R markdown file found here (including a description of parameters):
+
+https://github.com/EMBL-Hentze-group/DEWSeq_analysis_helpers/tree/master/Parametrized_Rmd
+
+
+.. _DEWSeq: https://bioconductor.org/packages/release/bioc/html/DEWSeq.html
+.. _htseq-clip: https://github.com/EMBL-Hentze-group/htseq-clip
+
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+            @incollection{sahadevan2022pipeline,
+                doi={0.1007/978-1-0716-1851-6_10},
+                url={https://doi.org/10.1007/978-1-0716-1851-6_10},
+                title={A Pipeline for Analyzing eCLIP and iCLIP Data with Htseq-clip and DEWSeq},
+                author={Sahadevan, Sudeep and Sekaran, Thileepan and Schwarzl, Thomas},
+                booktitle={Post-Transcriptional Gene Regulation},
+                pages={189--205},
+                year={2022},
+                publisher={Springer}
+              }
+        </citation>
+    </citations>
+</tool>
