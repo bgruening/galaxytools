@@ -12,11 +12,9 @@ from sklearn.svm import SVR
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 
-from scripts import utils
+import utils
 
 warnings.filterwarnings("ignore")
-
-main_path = os.getcwd()
 
 
 class ToolPopularity:

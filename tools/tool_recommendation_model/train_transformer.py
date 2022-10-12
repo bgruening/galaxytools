@@ -8,8 +8,8 @@ from tensorflow.keras.models import Model
 import utils
 import transformer_network
 
-base_path = "log/"
-model_path = base_path + "saved_model/"
+#base_path = "log/"
+#model_path = base_path + "saved_model/"
 
 
 def create_model(vocab_size, config):
@@ -61,7 +61,8 @@ def create_enc_transformer(train_data, train_labels, test_data, test_labels, f_d
     n_train_steps = config["n_train_iter"]
     te_batch_size = config["te_batch_size"]
     tr_batch_size = config["tr_batch_size"]
-    is_transformer = config["is_transformer"]
+    trained_model_name = config["trained_model_path"]
+    trained_model_path = ""
 
     sel_tools = list()
     for batch in range(n_train_steps):
@@ -82,7 +83,7 @@ def create_enc_transformer(train_data, train_labels, test_data, test_labels, f_d
         print("Step {}/{}, training binary loss: {}, categorical_loss: {}, training accuracy: {}".format(batch+1, n_train_steps, tr_loss.numpy(), tr_cat_loss.numpy(), tr_acc.numpy()))
         if (batch+1) % te_log_step == 0:
             print("Predicting on test data...")
-            te_loss, te_acc, test_cat_loss, te_prec, low_te_prec = utils.validate_model(test_data, test_labels, te_batch_size, model, f_dict, r_dict, u_te_y_labels_dict, trained_on_labels, te_lowest_t_ids, is_transformer)
+            te_loss, te_acc, test_cat_loss, te_prec, low_te_prec = utils.validate_model(test_data, test_labels, te_batch_size, model, f_dict, r_dict, u_te_y_labels_dict, trained_on_labels, te_lowest_t_ids)
             epo_te_batch_loss.append(te_loss)
             epo_te_batch_acc.append(te_acc)
             epo_te_batch_categorical_loss.append(test_cat_loss)
@@ -91,27 +92,12 @@ def create_enc_transformer(train_data, train_labels, test_data, test_labels, f_d
         print()
         if (batch+1) % tr_log_step == 0:
             print("Saving model at training step {}/{}".format(batch + 1, n_train_steps))
-            tf_path = model_path + "{}/".format(batch+1)
+            '''tf_path = model_path + "{}/".format(batch+1)
             tf_model_save = model_path + "{}/tf_model/".format(batch+1)
             tf_model_save_h5 = model_path + "{}/tf_model_h5/".format(batch+1)
             if not os.path.isdir(tf_path):
                 os.mkdir(tf_path)
                 os.mkdir(tf_model_save)
-                os.mkdir(tf_model_save_h5)
-            tf.saved_model.save(model, tf_model_save)
-            utils.save_model_file(tf_model_save_h5, model, r_dict, c_wts, c_tools, pub_conn)
-    new_dict = dict()
-    for k in u_tr_y_labels_dict:
-        new_dict[str(k)] = ",".join([str(item) for item in u_tr_y_labels_dict[k]])
-
-    utils.write_file(base_path + "data/epo_tr_batch_loss.txt", ",".join([str(item) for item in epo_tr_batch_loss]))
-    utils.write_file(base_path + "data/epo_tr_batch_acc.txt", ",".join([str(item) for item in epo_tr_batch_acc]))
-    utils.write_file(base_path + "data/epo_te_batch_loss.txt", ",".join([str(item) for item in epo_te_batch_loss]))
-    utils.write_file(base_path + "data/epo_te_batch_acc.txt", ",".join([str(item) for item in epo_te_batch_acc]))
-    utils.write_file(base_path + "data/epo_tr_batch_categorical_loss.txt", ",".join([str(item) for item in epo_tr_batch_categorical_loss]))
-    utils.write_file(base_path + "data/epo_te_batch_categorical_loss.txt", ",".join([str(item) for item in epo_te_batch_categorical_loss]))
-    utils.write_file(base_path + "data/epo_te_precision.txt", ",".join([str(item) for item in epo_te_precision]))
-    utils.write_file(base_path + "data/all_sel_tool_ids.txt", ",".join([str(item) for item in all_sel_tool_ids]))
-    utils.write_file(base_path + "data/epo_low_te_precision.txt", ",".join([str(item) for item in epo_low_te_precision]))
-    utils.write_file(base_path + "data/u_tr_y_labels_dict.txt", new_dict)
-    utils.write_file(base_path + "data/te_lowest_t_ids.txt", ",".join([str(item) for item in te_lowest_t_ids]))
+                os.mkdir(tf_model_save_h5)'''
+            #tf.saved_model.save(model, trained_model_path)
+            utils.save_model_file(model, r_dict, c_wts, c_tools, pub_conn, trained_model_name)

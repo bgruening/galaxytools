@@ -6,8 +6,6 @@ import random
 
 import utils
 
-from scripts.utils import format_tool_id
-
 
 class ExtractWorkflowConnections:
 
@@ -47,8 +45,8 @@ class ExtractWorkflowConnections:
                     workflows[wf_id].append((out_tool, in_tool))
                     qc = self.__collect_standard_connections(row)
                     if qc:
-                        i_t = format_tool_id(in_tool)
-                        o_t = format_tool_id(out_tool)
+                        i_t = utils.format_tool_id(in_tool)
+                        o_t = utils.format_tool_id(out_tool)
                         if i_t not in standard_connections:
                             standard_connections[i_t] = list()
                         if o_t not in standard_connections[i_t]:
@@ -76,7 +74,7 @@ class ExtractWorkflowConnections:
         # remove slashes from the tool ids
         wf_paths_no_slash = list()
         for path in workflow_paths:
-            path_no_slash = [format_tool_id(tool_id) for tool_id in path]
+            path_no_slash = [utils.format_tool_id(tool_id) for tool_id in path]
             wf_paths_no_slash.append(path_no_slash)
 
         # collect duplicate paths

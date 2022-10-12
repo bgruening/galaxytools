@@ -67,11 +67,10 @@ def format_tool_id(tool_link):
     return tool_id
 
 
-def save_model_file(model_path, model, r_dict, c_wts, c_tools, s_conn, f_name="model.h5"):
-    if not os.path.isdir(model_path):
-        os.mkdir(model_path)
-
-    model_file = model_path + f_name
+def save_model_file(model, r_dict, c_wts, c_tools, s_conn, f_name="model.hdf5"):
+    '''if not os.path.isdir(model_path):
+        os.mkdir(model_path)'''
+    model_file = f_name
     model.save_weights(model_file)
     hf_file = h5py.File(model_file, 'r+')
 
@@ -225,14 +224,11 @@ def compute_acc(y_true, y_pred):
     return binary_acc(y_true, y_pred)
 
 
-def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_dict, tr_labels, lowest_t_ids, is_transformer):
+def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_dict, tr_labels, lowest_t_ids):
     print("Total test data size: ", te_x.shape, te_y.shape)
     te_x_batch, y_train_batch, _ = sample_balanced_te_y(te_x, te_y, ulabels_te_dict, te_batch_size)
     print("Batch test data size: ", te_x_batch.shape, y_train_batch.shape)
-    if is_transformer == "true":
-        te_pred_batch, _ = model(te_x_batch, training=False)
-    else:
-        te_pred_batch = model(te_x_batch, training=False)
+    te_pred_batch, _ = model(te_x_batch, training=False)
     test_acc = tf.reduce_mean(compute_acc(y_train_batch, te_pred_batch))
     test_err, test_categorical_loss = compute_loss(y_train_batch, te_pred_batch)
     te_pre_precision = list()
@@ -257,19 +253,14 @@ def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_
             print("Predicted labels: {}, Precision: {}".format(pred_label_pos_tools, pred_precision))
             print("-----------------")
             print()
-
         if idx == te_batch_size - 1:
             break
 
     print("Test lowest ids", len(lowest_t_ids))
     low_te_data = te_x[lowest_t_ids]
     low_te_labels = te_y[lowest_t_ids]
-    if is_transformer == "true":
-        low_te_pred_batch, _ = model(low_te_data, training=False)
-    else:
-        low_te_pred_batch = model(low_te_data, training=False)
+    low_te_pred_batch, _ = model(low_te_data, training=False)
     low_test_err, low_test_categorical_loss = compute_loss(low_te_labels, low_te_pred_batch)
-
     low_te_precision = list()
     for idx in range(low_te_pred_batch.shape[0]):
         low_label_pos = np.where(low_te_labels[idx] > 0)[0]
@@ -282,7 +273,6 @@ def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_
         except Exception as e:
             low_label_pos_tools = [r_dict[item] for item in low_label_pos if item not in [0, "0"]]
             low_pred_label_pos_tools = [r_dict[item] for item in low_topk_pred if item not in [0, "0"]]
-
         low_intersection = list(set(low_label_pos_tools).intersection(set(low_pred_label_pos_tools)))
         if len(low_label_pos) > 0:
             low_pred_precision = float(len(low_intersection)) / len(low_label_pos)
@@ -292,12 +282,10 @@ def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_
             print("Low: Predicted labels: {}, Precision: {}".format(low_pred_label_pos_tools, low_pred_precision))
             print("-----------------")
             print()
-
     print("Test binary errte_batch_sizeor: {}, test categorical loss: {}, test categorical accuracy: {}".format(test_err.numpy(), test_categorical_loss.numpy(), test_acc.numpy()))
     print("Test prediction precision: {}".format(np.mean(te_pre_precision)))
     print("Low test binary error: {}".format(low_test_err.numpy()))
     print("Low test prediction precision: {}".format(np.mean(low_te_precision)))
-
     print("Test finished")
     return test_err.numpy(), test_acc.numpy(), test_categorical_loss.numpy(), np.mean(te_pre_precision), np.mean(low_te_precision)
 
