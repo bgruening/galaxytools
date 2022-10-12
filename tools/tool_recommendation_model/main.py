@@ -22,10 +22,10 @@ if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-wf", "--workflow_file", required=True, help="workflows tabular file")
     arg_parser.add_argument("-tu", "--tool_usage_file", required=True, help="tool usage file")
-    arg_parser.add_argument("-om", "--output_model_path", required=True, help="trained model file")
     # data parameters
     arg_parser.add_argument("-cd", "--cutoff_date", required=True, help="earliest date for taking tool usage")
     arg_parser.add_argument("-pl", "--maximum_path_length", required=True, help="maximum length of tool path")
+    arg_parser.add_argument("-om", "--output_model", required=True, help="trained model path")
     # neural network parameters
     arg_parser.add_argument("-ti", "--n_train_iter", required=True, help="Number of training iterations run to create model")
     arg_parser.add_argument("-nhd", "--n_heads", required=True, help="Number of head in transformer's multi-head attention")
@@ -45,7 +45,6 @@ if __name__ == "__main__":
     workflows_path = args["workflow_file"]
     cutoff_date = args["cutoff_date"]
     maximum_path_length = int(args["maximum_path_length"])
-    trained_model_path = args["output_model_path"]
 
     n_train_iter = int(args["n_train_iter"])
     te_share = float(args["te_share"])
@@ -59,8 +58,7 @@ if __name__ == "__main__":
     learning_rate = float(args["learning_rate"])
     te_logging_step = int(args["te_logging_step"])
     tr_logging_step = int(args["tr_logging_step"])
-    #use_data = args["use_data"]
-    #is_transformer = args["is_transformer"]
+    trained_model_path = args["output_model"]
 
     config = {
         'cutoff_date': cutoff_date,
@@ -76,10 +74,8 @@ if __name__ == "__main__":
         'tr_logging_step': tr_logging_step,
         'tr_batch_size': tr_batch_size,
         'te_batch_size': te_batch_size,
-        #'is_transformer': is_transformer,
         'trained_model_path': trained_model_path
     }
-
     print("Preprocessing workflows...")
     # Extract and process workflows
     connections = extract_workflow_connections.ExtractWorkflowConnections()
@@ -93,5 +89,4 @@ if __name__ == "__main__":
     print(train_data.shape, train_labels.shape, test_data.shape, test_labels.shape)
     train_transformer.create_enc_transformer(train_data, train_labels, test_data, test_labels, f_dict, r_dict, c_wts, c_tools, pub_conn, tr_tool_freq, config)
     end_time = time.time()
-    print()
     print("Program finished in %s seconds" % str(end_time - start_time))

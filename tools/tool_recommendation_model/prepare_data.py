@@ -291,10 +291,6 @@ class PrepareData:
         # pad training and test data with trailing zeros
         train_data, train_labels, test_data, test_labels = self.pad_paths_one_tool_target(multilabels_paths, compatible_tools, d_size, rev_dict, dictionary)
 
-        print(train_data[0:5])
-        print()
-        print(train_labels[0:5])
-
         print("Train data: ", train_data.shape)
         print("Test data: ", test_data.shape)
 

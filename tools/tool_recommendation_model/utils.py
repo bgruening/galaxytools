@@ -4,6 +4,7 @@ import json
 import h5py
 import random
 import pandas as pd
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 
 
@@ -67,20 +68,15 @@ def format_tool_id(tool_link):
     return tool_id
 
 
-def save_model_file(model, r_dict, c_wts, c_tools, s_conn, f_name="model.hdf5"):
-    '''if not os.path.isdir(model_path):
-        os.mkdir(model_path)'''
-    model_file = f_name
-    model.save_weights(model_file)
+def save_model_file(model, r_dict, c_wts, c_tools, s_conn, model_file):
+    model.save_weights(model_file, save_format="h5")
     hf_file = h5py.File(model_file, 'r+')
-
     model_values = {
         "reverse_dict": r_dict,
         "class_weights": c_wts,
         "compatible_tools": c_tools,
         "standard_connections": s_conn
     }
-
     for k in model_values:
         hf_file.create_dataset(k, data=json.dumps(model_values[k]))
     hf_file.close()
@@ -214,7 +210,6 @@ def compute_loss(y_true, y_pred, class_weights=None):
     y_true = tf.cast(y_true, dtype=tf.float32)
     loss = binary_ce(y_true, y_pred)
     categorical_loss = categorical_ce(y_true, y_pred)
-
     if class_weights is None:
         return tf.reduce_mean(loss), categorical_loss
     return tf.tensordot(loss, class_weights, axes=1), categorical_loss
@@ -248,13 +243,6 @@ def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_
         if len(topk_pred) > 0:
             pred_precision = float(len(intersection)) / len(topk_pred)
             te_pre_precision.append(pred_precision)
-            print("True labels: {}".format(label_pos_tools))
-            print()
-            print("Predicted labels: {}, Precision: {}".format(pred_label_pos_tools, pred_precision))
-            print("-----------------")
-            print()
-        if idx == te_batch_size - 1:
-            break
 
     print("Test lowest ids", len(lowest_t_ids))
     low_te_data = te_x[lowest_t_ids]
@@ -277,12 +265,7 @@ def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_
         if len(low_label_pos) > 0:
             low_pred_precision = float(len(low_intersection)) / len(low_label_pos)
             low_te_precision.append(low_pred_precision)
-            print("Low: True labels: {}".format(low_label_pos_tools))
-            print()
-            print("Low: Predicted labels: {}, Precision: {}".format(low_pred_label_pos_tools, low_pred_precision))
-            print("-----------------")
-            print()
-    print("Test binary errte_batch_sizeor: {}, test categorical loss: {}, test categorical accuracy: {}".format(test_err.numpy(), test_categorical_loss.numpy(), test_acc.numpy()))
+    print("Test binary error: {}, test categorical loss: {}, test categorical accuracy: {}".format(test_err.numpy(), test_categorical_loss.numpy(), test_acc.numpy()))
     print("Test prediction precision: {}".format(np.mean(te_pre_precision)))
     print("Low test binary error: {}".format(low_test_err.numpy()))
     print("Low test prediction precision: {}".format(np.mean(low_te_precision)))
