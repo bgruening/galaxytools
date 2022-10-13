@@ -9,7 +9,6 @@ import extract_workflow_connections
 import prepare_data
 import train_transformer
 
-
 if __name__ == "__main__":
     start_time = time.time()
 

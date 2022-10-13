@@ -2,13 +2,13 @@
 Predict tool usage to weigh the predicted tools
 """
 
-import numpy as np
 import collections
 import warnings
 
-from sklearn.svm import SVR
+import numpy as np
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
+from sklearn.svm import SVR
 
 import utils
 

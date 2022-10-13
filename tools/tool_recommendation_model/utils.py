@@ -1,12 +1,11 @@
-import os
-import numpy as np
 import json
-import h5py
+import os
 import random
+
+import h5py
+import numpy as np
 import pandas as pd
-
 import tensorflow as tf
-
 
 binary_ce = tf.keras.losses.BinaryCrossentropy()
 binary_acc = tf.keras.metrics.BinaryAccuracy()

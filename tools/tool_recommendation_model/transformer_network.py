@@ -1,6 +1,6 @@
 import tensorflow as tf
-from tensorflow.keras.layers import MultiHeadAttention, LayerNormalization, Dropout, Layer
-from tensorflow.keras.layers import Dense, Embedding
+from tensorflow.keras.layers import (Dense, Dropout, Embedding, Layer,
+                                     LayerNormalization, MultiHeadAttention)
 from tensorflow.keras.models import Sequential
 
 
