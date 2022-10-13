@@ -5,12 +5,12 @@ into the test and training sets
 """
 
 import collections
+import numpy as np
 import random
 
-import numpy as np
-from sklearn.model_selection import train_test_split
-
 import predict_tool_usage
+
+from sklearn.model_selection import train_test_split
 
 
 class PrepareData:

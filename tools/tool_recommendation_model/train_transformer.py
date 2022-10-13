@@ -1,10 +1,11 @@
 import tensorflow as tf
-from tensorflow.keras.layers import (Dense, Dropout, GlobalAveragePooling1D,
-                                     Input)
-from tensorflow.keras.models import Model
 
 import transformer_network
 import utils
+
+from tensorflow.keras.layers import (Dense, Dropout, GlobalAveragePooling1D,
+                                     Input)
+from tensorflow.keras.models import Model
 
 
 def create_model(vocab_size, config):
