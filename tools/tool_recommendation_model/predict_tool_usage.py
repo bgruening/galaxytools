@@ -3,16 +3,12 @@ Predict tool usage to weigh the predicted tools
 """
 
 import collections
-import warnings
 
 import numpy as np
+import utils
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
 from sklearn.svm import SVR
-
-import utils
-
-warnings.filterwarnings("ignore")
 
 
 class ToolPopularity:
