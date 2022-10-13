@@ -77,8 +77,20 @@ def save_model_file(model, r_dict, c_wts, c_tools, s_conn, model_file):
         "compatible_tools": c_tools,
         "standard_connections": s_conn
     }
+    '''print()
+    print(r_dict)
+    print()
+    print(c_wts)
+    print()
+    print(c_tools)
+    print()
+    print(s_conn)
+    print()'''
     for k in model_values:
         hf_file.create_dataset(k, data=json.dumps(model_values[k]))
+    m_keys = print(list(hf_file.keys()))
+    print(",".join(list(hf_file.keys())))
+
     hf_file.close()
 
 
@@ -237,6 +249,7 @@ def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_
             label_pos_tools = [r_dict[str(item)] for item in label_pos if item not in [0, "0"]]
             pred_label_pos_tools = [r_dict[str(item)] for item in topk_pred if item not in [0, "0"]]
         except Exception as e:
+            print("Exception: {}".format(e))
             label_pos_tools = [r_dict[item] for item in label_pos if item not in [0, "0"]]
             pred_label_pos_tools = [r_dict[item] for item in topk_pred if item not in [0, "0"]]
         intersection = list(set(label_pos_tools).intersection(set(pred_label_pos_tools)))
@@ -259,6 +272,7 @@ def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_
             low_label_pos_tools = [r_dict[str(item)] for item in low_label_pos if item not in [0, "0"]]
             low_pred_label_pos_tools = [r_dict[str(item)] for item in low_topk_pred if item not in [0, "0"]]
         except Exception as e:
+            print("Exception: {}".format(e))
             low_label_pos_tools = [r_dict[item] for item in low_label_pos if item not in [0, "0"]]
             low_pred_label_pos_tools = [r_dict[item] for item in low_topk_pred if item not in [0, "0"]]
         low_intersection = list(set(low_label_pos_tools).intersection(set(low_pred_label_pos_tools)))
