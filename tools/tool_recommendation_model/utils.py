@@ -77,20 +77,8 @@ def save_model_file(model, r_dict, c_wts, c_tools, s_conn, model_file):
         "compatible_tools": c_tools,
         "standard_connections": s_conn
     }
-    '''print()
-    print(r_dict)
-    print()
-    print(c_wts)
-    print()
-    print(c_tools)
-    print()
-    print(s_conn)
-    print()'''
     for k in model_values:
         hf_file.create_dataset(k, data=json.dumps(model_values[k]))
-    m_keys = print(list(hf_file.keys()))
-    print(",".join(list(hf_file.keys())))
-
     hf_file.close()
 
 
@@ -232,59 +220,14 @@ def compute_acc(y_true, y_pred):
 
 
 def validate_model(te_x, te_y, te_batch_size, model, f_dict, r_dict, ulabels_te_dict, tr_labels, lowest_t_ids):
-    print("Total test data size: ", te_x.shape, te_y.shape)
     te_x_batch, y_train_batch, _ = sample_balanced_te_y(te_x, te_y, ulabels_te_dict, te_batch_size)
+    print("Total test data size: ", te_x.shape, te_y.shape)
     print("Batch test data size: ", te_x_batch.shape, y_train_batch.shape)
     te_pred_batch, _ = model(te_x_batch, training=False)
-    test_acc = tf.reduce_mean(compute_acc(y_train_batch, te_pred_batch))
-    test_err, test_categorical_loss = compute_loss(y_train_batch, te_pred_batch)
-    te_pre_precision = list()
-    for idx in range(te_pred_batch.shape[0]):
-        label_pos = np.where(y_train_batch[idx] > 0)[0]
-        # verify only on those tools are present in labels in training
-        label_pos = list(set(tr_labels).intersection(set(label_pos)))
-        topk_pred = tf.math.top_k(te_pred_batch[idx], k=len(label_pos), sorted=True)
-        topk_pred = topk_pred.indices.numpy()
-        try:
-            label_pos_tools = [r_dict[str(item)] for item in label_pos if item not in [0, "0"]]
-            pred_label_pos_tools = [r_dict[str(item)] for item in topk_pred if item not in [0, "0"]]
-        except Exception as e:
-            print("Exception: {}".format(e))
-            label_pos_tools = [r_dict[item] for item in label_pos if item not in [0, "0"]]
-            pred_label_pos_tools = [r_dict[item] for item in topk_pred if item not in [0, "0"]]
-        intersection = list(set(label_pos_tools).intersection(set(pred_label_pos_tools)))
-        if len(topk_pred) > 0:
-            pred_precision = float(len(intersection)) / len(topk_pred)
-            te_pre_precision.append(pred_precision)
-
-    print("Test lowest ids", len(lowest_t_ids))
-    low_te_data = te_x[lowest_t_ids]
-    low_te_labels = te_y[lowest_t_ids]
-    low_te_pred_batch, _ = model(low_te_data, training=False)
-    low_test_err, low_test_categorical_loss = compute_loss(low_te_labels, low_te_pred_batch)
-    low_te_precision = list()
-    for idx in range(low_te_pred_batch.shape[0]):
-        low_label_pos = np.where(low_te_labels[idx] > 0)[0]
-        low_label_pos = list(set(tr_labels).intersection(set(low_label_pos)))
-        low_topk_pred = tf.math.top_k(low_te_pred_batch[idx], k=len(low_label_pos), sorted=True)
-        low_topk_pred = low_topk_pred.indices.numpy()
-        try:
-            low_label_pos_tools = [r_dict[str(item)] for item in low_label_pos if item not in [0, "0"]]
-            low_pred_label_pos_tools = [r_dict[str(item)] for item in low_topk_pred if item not in [0, "0"]]
-        except Exception as e:
-            print("Exception: {}".format(e))
-            low_label_pos_tools = [r_dict[item] for item in low_label_pos if item not in [0, "0"]]
-            low_pred_label_pos_tools = [r_dict[item] for item in low_topk_pred if item not in [0, "0"]]
-        low_intersection = list(set(low_label_pos_tools).intersection(set(low_pred_label_pos_tools)))
-        if len(low_label_pos) > 0:
-            low_pred_precision = float(len(low_intersection)) / len(low_label_pos)
-            low_te_precision.append(low_pred_precision)
-    print("Test binary error: {}, test categorical loss: {}, test categorical accuracy: {}".format(test_err.numpy(), test_categorical_loss.numpy(), test_acc.numpy()))
-    print("Test prediction precision: {}".format(np.mean(te_pre_precision)))
-    print("Low test binary error: {}".format(low_test_err.numpy()))
-    print("Low test prediction precision: {}".format(np.mean(low_te_precision)))
+    test_err, _ = compute_loss(y_train_batch, te_pred_batch)
+    print("Test loss:")
+    print(test_err.numpy())
     print("Test finished")
-    return test_err.numpy(), test_acc.numpy(), test_categorical_loss.numpy(), np.mean(te_pre_precision), np.mean(low_te_precision)
 
 
 def get_lowest_tools(l_tool_freq, fraction=0.25):
