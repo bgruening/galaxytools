@@ -1,5 +1,4 @@
 import tensorflow as tf
-
 import transformer_network
 import utils
 from tensorflow.keras.layers import (Dense, Dropout, GlobalAveragePooling1D,

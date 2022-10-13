@@ -5,10 +5,10 @@ into the test and training sets
 """
 
 import collections
+import random
 
 import numpy as np
 import predict_tool_usage
-import random
 from sklearn.model_selection import train_test_split
 
 
