@@ -2,11 +2,9 @@
 Predict tool usage to weigh the predicted tools
 """
 
-import os
 import numpy as np
-import warnings
-import csv
 import collections
+import warnings
 
 from sklearn.svm import SVR
 from sklearn.model_selection import GridSearchCV
@@ -31,20 +29,21 @@ class ToolPopularity:
         all_tool_list = list(dictionary.keys())
         for index, row in tool_usage_df.iterrows():
             row = row.tolist()
-            if (str(row[1]).strip() > cutoff_date) is True:
+            row = [str(item).strip() for item in row]
+            if (row[1] > cutoff_date) is True:
                 tool_id = utils.format_tool_id(row[0])
                 if tool_id in all_tool_list:
                     all_dates.append(row[1])
                     if tool_id not in tool_usage_dict:
                         tool_usage_dict[tool_id] = dict()
-                        tool_usage_dict[tool_id][row[1]] = int(row[2])
+                        tool_usage_dict[tool_id][row[1]] = int(float(row[2]))
                     else:
                         curr_date = row[1]
                         # merge the usage of different version of tools into one
                         if curr_date in tool_usage_dict[tool_id]:
-                            tool_usage_dict[tool_id][curr_date] += int(row[2])
+                            tool_usage_dict[tool_id][curr_date] += int(float(row[2]))
                         else:
-                            tool_usage_dict[tool_id][curr_date] = int(row[2])
+                            tool_usage_dict[tool_id][curr_date] = int(float(row[2]))
         # get unique dates
         unique_dates = list(set(all_dates))
         for tool in tool_usage_dict:
@@ -67,7 +66,6 @@ class ToolPopularity:
         s_typ = 'neg_mean_absolute_error'
         n_jobs = 4
         s_error = 1
-        iid = True
         tr_score = False
         try:
             pipe = Pipeline(steps=[('regressor', SVR(gamma='scale'))])

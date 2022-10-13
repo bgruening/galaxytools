@@ -1,7 +1,3 @@
-import os
-import numpy as np
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 import tensorflow as tf
 from tensorflow.keras.layers import Dense, Dropout, GlobalAveragePooling1D, Input
 from tensorflow.keras.models import Model
@@ -32,7 +28,6 @@ def create_model(vocab_size, config):
 def create_enc_transformer(train_data, train_labels, test_data, test_labels, f_dict, r_dict, c_wts, c_tools, pub_conn, tr_t_freq, config):
     print("Train transformer...")
     vocab_size = len(f_dict) + 1
-    maxlen = config["maximum_path_length"]
 
     enc_optimizer = tf.keras.optimizers.Adam(learning_rate=config["learning_rate"])
 
@@ -45,13 +40,7 @@ def create_enc_transformer(train_data, train_labels, test_data, test_labels, f_d
 
     epo_tr_batch_loss = list()
     epo_tr_batch_acc = list()
-    epo_tr_batch_categorical_loss = list()
-    epo_te_batch_loss = list()
-    epo_te_batch_acc = list()
-    epo_te_batch_categorical_loss = list()
     all_sel_tool_ids = list()
-    epo_te_precision = list()
-    epo_low_te_precision = list()
 
     te_lowest_t_ids = utils.get_low_freq_te_samples(test_data, test_labels, tr_t_freq)
     tr_log_step = config["tr_logging_step"]
@@ -72,13 +61,12 @@ def create_enc_transformer(train_data, train_labels, test_data, test_labels, f_d
         enc_optimizer.apply_gradients(zip(model_gradients, trainable_vars))
         epo_tr_batch_loss.append(tr_loss.numpy())
         epo_tr_batch_acc.append(tr_acc.numpy())
-        epo_tr_batch_categorical_loss.append(tr_cat_loss.numpy())
-        if (batch+1) % tr_log_step == 0:
+        if (batch + 1) % tr_log_step == 0:
             print("Total train data size: ", train_data.shape, train_labels.shape)
             print("Batch train data size: ", x_train.shape, y_train.shape)
-            print("At Step {}/{} training loss:".format(str(batch+1), str(n_train_steps)))
+            print("At Step {}/{} training loss:".format(str(batch + 1), str(n_train_steps)))
             print(tr_loss.numpy())
-        if (batch+1) % te_log_step == 0:
+        if (batch + 1) % te_log_step == 0:
             print("Predicting on test data...")
             utils.validate_model(test_data, test_labels, te_batch_size, model, f_dict, r_dict, u_te_y_labels_dict, trained_on_labels, te_lowest_t_ids)
     print("Saving model after training for {} steps".format(n_train_steps))

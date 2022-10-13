@@ -2,18 +2,12 @@
 Predict next tools in the Galaxy workflows
 using deep learning learning (Transformers)
 """
-
 import argparse
-import os
-import sys
 import time
-
-sys.path.append(os.getcwd())
 
 import extract_workflow_connections
 import prepare_data
 import train_transformer
-import utils
 
 
 if __name__ == "__main__":

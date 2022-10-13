@@ -4,7 +4,6 @@ machine learning algorithm. The paths are divided
 into the test and training sets
 """
 
-import os
 import collections
 import numpy as np
 import random
@@ -12,7 +11,6 @@ import random
 from sklearn.model_selection import train_test_split
 
 import predict_tool_usage
-import utils
 
 
 class PrepareData:
@@ -122,7 +120,7 @@ class PrepareData:
             ctr = 0
             for ctr in range(len(input_tools) - 1):
                 # uncomment this for one token target idea
-                tool_seq = input_tools[0: ctr+2]
+                tool_seq = input_tools[0: ctr + 2]
                 i_tools = ",".join(tool_seq[0:-1])
                 last_i_tool = i_tools.split(",")[-1]
                 if last_i_tool not in compatible_tools:
@@ -279,8 +277,6 @@ class PrepareData:
         print("Decomposing paths...")
         all_unique_paths = self.decompose_paths(raw_paths, dictionary)
         random.shuffle(all_unique_paths)
-
-        all_paths = ",".join(all_unique_paths)
 
         print("Creating dictionaries...")
         multilabels_paths, compatible_tools, d_size = self.prepare_input_target_paths(dictionary, rev_dict, all_unique_paths)

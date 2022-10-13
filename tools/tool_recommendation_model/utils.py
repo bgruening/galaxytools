@@ -4,7 +4,7 @@ import json
 import h5py
 import random
 import pandas as pd
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 import tensorflow as tf
 
 
@@ -239,5 +239,5 @@ def get_lowest_tools(l_tool_freq, fraction=0.25):
 
 def remove_pipe(file_path):
     dataframe = pd.read_csv(file_path, sep="|", header=None)
-    dataframe = dataframe[1:len(dataframe.index)-1]
+    dataframe = dataframe[1:len(dataframe.index) - 1]
     return dataframe[1:]
