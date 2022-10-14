@@ -15,14 +15,14 @@ def extract_clade_abundance(metaphlan2_fp):
             taxo = split_line[0]
             abundance = split_line[1]
 
-            genus = taxo[(taxo.find("g__") + 3) :]
+            genus = taxo[(taxo.find("g__") + 3):]
             if genus.find("|") != -1:
                 genus = genus[: (genus.find("|"))]
             clade_abund.setdefault(genus, {"abundance": 0, "species": {}})
             if taxo.find("t__") != -1:
                 continue
             elif taxo.find("s__") != -1:
-                species = taxo[(taxo.find("s__") + 3) :]
+                species = taxo[(taxo.find("s__") + 3):]
                 clade_abund[genus]["species"].setdefault(species, abundance)
             else:
                 clade_abund[genus]["abundance"] = abundance
