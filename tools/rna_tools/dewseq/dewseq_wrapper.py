@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 import subprocess
 
 
@@ -155,6 +156,32 @@ def count_file_rows(in_file,
 
 ################################################################################
 
+def check_two_dic_same_keys(d1, d2):
+    """
+    Check if two dictionaries have same keys.
+    
+    >>> d1 = {'k1': 1, 'k2': 2}
+    >>> d2 = {'k1': 3, 'k2': 4}
+    >>> check_two_dic_same_keys(d1, d2)
+    True
+    >>> d2 = {'k1': 3, 'k3': 4}
+    >>> check_two_dic_same_keys(d1, d2)
+    False
+
+    """
+    assert d1, "given dictionary d1 empty"
+    assert d2, "given dictionary d2 empty"
+    for k in d1:
+        if k not in d2:
+            return False
+    for k in d2:
+        if k not in d1:
+            return False
+    return True
+
+
+################################################################################
+
 if __name__ == '__main__':
 
     parser = setup_argument_parser()
@@ -170,6 +197,38 @@ if __name__ == '__main__':
     matrix_in = os.path.abspath(args.in_matrix)
     info_in = os.path.abspath(args.in_info)
     md_in = os.path.abspath(args.ds_markdown)
+
+    # Sum Sanity Checks.
+    matrix_ids = {}
+
+    with open(matrix_in) as f:
+        for line in f:
+            cols = line.strip().split("\t")
+            for c in cols[1:]:
+                matrix_ids[c] = 1
+            break
+    f.closed
+
+    assert matrix_ids, "no dataset columns found in count table file"
+
+    info_ids = {}
+
+    with open(info_in) as f:
+        for line in f:
+            if re.search("^Sample name", line):
+                continue
+            cols = line.strip().split("\t")
+            if cols[0] == "Sample name":
+                continue
+            else:
+                info_ids[cols[0]] = 1
+    f.closed
+
+    assert info_ids, "no dataset columns found in info table file"
+    assert len(matrix_ids) == len(info_ids), "differing numbers of dataset IDs in count table and info table file"
+    assert check_two_dic_same_keys(matrix_ids, info_ids), "dataset IDs in count table and info table file not identical"
+    assert args.ds_ms <= len(matrix_ids), "set DEWSeq min_sample > number of data samples in count / info table files (%i > %i)" %(args.ds_ms, len(matrix_ids))
+    print("Dataset IDs are valid ... ")
 
     # Output folder.
     if not os.path.exists(args.out_folder):
@@ -239,6 +298,7 @@ if __name__ == '__main__':
     output = subprocess.getoutput(md_cmd)
     print(output)
 
+    assert os.path.exists(html_out) and os.path.exists(win_csv_out), "DEWSeq terminated / did no produce any output files. This could be due to too strict filter settings (e.g., min_sample, min_count ... ). Please try again with more relaxed settings"
     assert os.path.exists(html_out), "output file \"%s\" not found" % (html_out)
     assert os.path.exists(win_csv_out), "output file \"%s\" not found" % (win_csv_out)
 
