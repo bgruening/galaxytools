@@ -159,7 +159,7 @@ def count_file_rows(in_file,
 def check_two_dic_same_keys(d1, d2):
     """
     Check if two dictionaries have same keys.
-    
+
     >>> d1 = {'k1': 1, 'k2': 2}
     >>> d2 = {'k1': 3, 'k2': 4}
     >>> check_two_dic_same_keys(d1, d2)
@@ -227,7 +227,7 @@ if __name__ == '__main__':
     assert info_ids, "no dataset columns found in info table file"
     assert len(matrix_ids) == len(info_ids), "differing numbers of dataset IDs in count table and info table file"
     assert check_two_dic_same_keys(matrix_ids, info_ids), "dataset IDs in count table and info table file not identical"
-    assert args.ds_ms <= len(matrix_ids), "set DEWSeq min_sample > number of data samples in count / info table files (%i > %i)" %(args.ds_ms, len(matrix_ids))
+    assert args.ds_ms <= len(matrix_ids), "set DEWSeq min_sample > number of data samples in count / info table files (%i > %i)" % (args.ds_ms, len(matrix_ids))
     print("Dataset IDs are valid ... ")
 
     # Output folder.
