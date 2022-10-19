@@ -1,0 +1,87 @@
+<tool id="minipolish" name="minipolish" version="@TOOL_VERSION@+galaxy@SUFFIX_VERSION@" profile="20.01">
+    <description>polishing miniasm assemblies</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="biotools"/>
+    <version_command>gfastats --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $reads.ext.startswith("fasta")
+            #set ext="fasta"
+        #else
+            #set ext="fastq"
+        #end if
+        #if $reads.ext.endswith(".gz")
+            #set ext=ext+".gz"
+        #end if
+        ln -s '$reads' reads.$ext && 
+        minipolish
+        -t \${GALAXY_SLOTS:-4}
+        --rounds $rounds
+        $pacbio
+        $skip_initial
+        reads.$ext
+        '${assembly}' > $polished_gfa
+    ]]></command>
+    <inputs>
+        <param name="reads" type="data" format="fasta,fastq,fastq.gz,fastqsanger.gz" label="Long reads for polishing"/>
+        <param name="assembly" type="data" format="gfa1" label="Miniasm assembly to be polished"/>
+        <param argument="--rounds" type="integer" min="0" value="2" label="Rounds" help="Number of full Racon polishing rounds. Default: 2" />
+        <param argument="--pacbio" type="boolean" truevalue="--pacbio" falsevalue="" checked="false" label="PacBio reads" help="Use this flag for PacBio reads to make Minipolish use the map-pb 
+            Minimap2 preset. Default: assumes Nanopore reads and uses the map-ont preset" />
+        <param argument="--skip_initial" type="boolean" truevalue="--skip_initial" falsevalue="" checked="false" label="Skip the initial polishing round" help="Appropriate if the input GFA does 
+            not have 'a' lines. Default: do the initial polishing round" />
+    </inputs>
+    <outputs>
+        <data name="polished_gfa" format="gfa1" label="${tool.name} on ${on_string}: polished GFA"/>
+    </outputs>
+    <tests>
+        <!-- Test default parameters -->
+        <test expect_num_outputs="1">
+            <param name="reads" value="reads.fastq"/>
+            <param name="assembly" value="miniasm.gfa"/>
+            <param name="rounds" value="2"/>
+            <output name="polished_gfa" file="test_01.gfa" ftype="gfa1"/>
+
+        </test>
+        <!-- Test optional parameters -->
+        <test expect_num_outputs="1">
+            <param name="reads" value="reads.fastq.gz"/>
+            <param name="assembly" value="miniasm.gfa"/>
+            <param name="rounds" value="3"/>
+            <param name="pacbio" value="true"/>
+            <param name="skip_initial" value="true"/>
+            <output name="polished_gfa" file="test_02.gfa" ftype="gfa1"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**Purpose**
+
+Miniasm is a great long-read assembly tool: straight-forward, effective and very fast. However, it does not include a polishing step, so its assemblies have a high error rate – they are essentially made of stitched-together pieces of long reads.
+
+Racon is a great polishing tool that can be used to clean up assembly errors. It's also very fast and well suited for long-read data. However, it operates on FASTA files, not the GFA graphs that miniasm makes.
+
+That's where Minipolish comes in. With a single command, it will use Racon to polish up a miniasm assembly, while keeping the assembly in graph form.
+
+It also takes care of some of the other nuances of polishing a miniasm assembly:
+
+- Adding read depth information to contigs
+- Fixing sequence truncation that can occur in Racon
+- Adding circularising links to circular contigs if not already present (so they display better in Bandage)
+- 'Rotating' circular contigs between polishing rounds to ensure clean circularisation
+
+.. class:: infomark
+
+**CIGARs**
+
+It is important to note here something that Minipolish does not do: change/fix the CIGAR strings indicating contig overlap. While circular contigs will be connected with an overlap-free link (i.e. a CIGAR of 0M), links between linear contigs will have overlap.
+
+So take CIGAR overlaps between polished contigs with a grain of salt. They will still indicate the approximate amount of overlap, not the exact amount.
+
+  ]]></help>
+    <expand macro="citations" />
+</tool>
