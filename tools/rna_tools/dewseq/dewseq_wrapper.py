@@ -298,6 +298,21 @@ if __name__ == '__main__':
     output = subprocess.getoutput(md_cmd)
     print(output)
 
+    print("")
+    print("Checking for output files ... ")
+    if os.path.exists(html_out):
+        print("FOUND HTML report file \"%s\" ... " % (html_out))
+    else:
+        print("MISSING HTML report file \"%s\" ... " % (html_out))
+    if os.path.exists(win_csv_out):
+        print("FOUND windows CSV file \"%s\" ... " % (win_csv_out))
+    else:
+        print("MISSING windows CSV file \"%s\" ... " % (win_csv_out))
+    if os.path.exists(sig_reg_csv_out):
+        print("FOUND significant regions CSV file \"%s\" ... " % (sig_reg_csv_out))
+    else:
+        print("MISSING significant regions CSV file \"%s\" ... " % (sig_reg_csv_out))
+
     assert os.path.exists(html_out) and os.path.exists(win_csv_out), "DEWSeq terminated / did no produce any output files. This could be due to too strict filter settings (e.g., min_sample, min_count ... ). Please try again with more relaxed settings"
     assert os.path.exists(html_out), "output file \"%s\" not found" % (html_out)
     assert os.path.exists(win_csv_out), "output file \"%s\" not found" % (win_csv_out)
