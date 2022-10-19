@@ -3,6 +3,7 @@
 import argparse
 import os
 import re
+import shutil
 import subprocess
 
 
@@ -128,7 +129,12 @@ def setup_argument_parser():
                    type=str,
                    default="analyseStudy.Rmd",
                    metavar='str',
-                   help="Provide path to DEWSeq markdown file. By default assumed to be in working directory")
+                   help="Provide path to DEWSeq R markdown file. By default assumed to be in working directory")
+    p.add_argument("--copy-md",
+                   dest="copy_markdown",
+                   default=False,
+                   action="store_true",
+                   help="Copy DEWSeq R markdown file to output directory and execute [sic!] it there (default: False)")
     return p
 
 
@@ -236,6 +242,14 @@ if __name__ == '__main__':
 
     # Output files.
     abs_path_out = os.path.abspath(args.out_folder)
+
+    # Copy markdown file to results folder.
+    if args.copy_markdown:
+        md_source = md_in
+        md_in = abs_path_out + "/analyseStudy.Rmd"
+        if not os.path.exists(md_in):
+            print("Copying markdown file to output folder ... ")
+            shutil.copyfile(md_source, md_in)
 
     html_out = abs_path_out + "/report.html"
     win_csv_out = abs_path_out + "/windows.csv"
