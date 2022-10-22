@@ -1,4 +1,4 @@
-<tool id="hicup_hicup" name="Hicup Pipeline" version="@VERSION@.0">
+<tool id="hicup_hicup" name="Hicup Pipeline" version="@VERSION@+galaxy0">
     <description>controls the other programs in the HiCUP pipeline.</description>
     <macros>
         <import>hicup_macros.xml</import>
@@ -6,25 +6,9 @@
     <expand macro="requirements_hicup" />
 
     <command detect_errors="exit_code"><![CDATA[
+        ##Dealing with inputs
+        @PAIRED-END_INPUT@
 
-        ##Dealing with fastq and fastq.gz
-        #if $input_first_sequence.is_of_type("fastq.gz", "fastqsanger.gz"):
-            ln -s $input_first_sequence dataset1.gz &&
-            #set input1='dataset1.gz'
-        #else
-            ln -s $input_first_sequence dataset1 &&
-            #set input1='dataset1'
-        #end if
-      
-        
-        #if $input_second_sequence.is_of_type("fastq.gz", "fastqsanger.gz"):
-            ln -s $input_second_sequence dataset2.gz &&
-            #set input2='dataset2.gz'
-        #else
-            ln -s $input_second_sequence dataset2 &&
-            #set input2='dataset2'
-        #end if
-        
         BOWTIE_PATH_BASH="\$(which bowtie2)" &&
         #set index_path = ''
         #if str($reference_genome.source) == "history":
@@ -38,9 +22,7 @@
         #if $advanced_options.re2:
             --re2 '$advanced_options.re2'
         #end if
-        #for $file in $input_files_digest:
-            $file
-        #end for
+            '$index_path'.fa
         && mv *Digest_* digest_file.txt
         && hicup
         --zip
@@ -57,14 +39,11 @@
         #if $advanced_options.shortest:
             --shortest '$advanced_options.shortest'
         #end if
-
-        $input1 $input2
-        
-        && ls -al
+        '$read1'
+        '$read2'
     ]]></command>
     <inputs>
-        <expand macro="input_files" />
-        <param name="input_files_digest" type="data" multiple="true" format="fasta" label="Input DNA sequence files that should be digested"/>
+        <expand macro="input_paired"/>
         <param argument="--genome" type="text" label="Genome name"
                help="Name of the genome to be digested."/>
         <expand macro="re1" />
@@ -77,25 +56,26 @@
     </inputs>
     <outputs>
         <!-- Regular output of hicup -->
-        <data name="hicup_results" format="html" from_work_dir="*.html" label="HiCUP results"/>
-        <data name="hicup_report" format="txt" from_work_dir="HiCUP_summary_report*.txt" label="HiCUP report" />
-        <data name="dataset_hicup" format="qname_sorted.bam" from_work_dir="*.hicup.*bam" label="HiCUP data result"/>
+        <data name="hicup_results" format="html" from_work_dir="*.html" label="HiCUP report (html)"/>
+        <data name="hicup_report" format="tabular" from_work_dir="HiCUP_summary_report*.txt" label="HiCUP report (txt)" />
+        <data name="dataset_hicup" format="qname_sorted.bam" from_work_dir="*.hicup.*bam" label="HiCUP result (BAM)"/>
+        <data name="digester_file" format="tabular" from_work_dir="digest_file.txt" label="Digester file"/>
 
         <collection name="intermediate_results" label="HiCUP intermediate results" type="list">
             <!-- Output of the truncater step -->
-            <data name="hicup_truncater_summary" format="txt" label="hicup_truncater_summary.txt" from_work_dir="hicup_truncater_summary*.txt" />
+            <data name="hicup_truncater_summary" format="tabular" label="hicup_truncater_summary.txt" from_work_dir="hicup_truncater_summary*.txt" />
             <data name="dataset1_trunc" format="fastq.gz" label="Hicup Dataset1 Truncation" from_work_dir="dataset1*.trunc.fastq.gz" />
             <data name="dataset2_trunc" format="fastq.gz" label="Hicup Dataset2 Truncation" from_work_dir="dataset2*.trunc.fastq.gz" />
             <data name="dataset1_truncater_barchart" format="svg" label="Hicup Dataset1 Truncation Barchart.svg" from_work_dir="dataset1*.truncation_barchart.svg" />
             <data name="dataset2_truncater_barchart" format="svg" label="Hicup Dataset2 Truncation Barchart.svg" from_work_dir="dataset2*.truncation_barchart.svg" />
             <!-- Output of the mapper step -->
-            <data name="hicup_mapper_summary" format="txt" from_work_dir="hicup_mapper_summary*" label="hicup_mapper_summary.txt"/>
+            <data name="hicup_mapper_summary" format="tabular" from_work_dir="hicup_mapper_summary*" label="hicup_mapper_summary.txt"/>
             <data name="result_pair" format="qname_sorted.bam" from_work_dir="*pair.bam" label="pair.bam"/>
             <data name="dataset1_mapper_barchart" format="svg" from_work_dir="dataset1*.mapper_barchart.svg" label="Mapper Dataset1 Barchart.svg" />
             <data name="dataset2_mapper_barchart" format="svg" from_work_dir="dataset2*.mapper_barchart.svg" label="Mapper Dataset2 Barchart.svg" />
             <!-- Output of the filter step -->
             <data name="dataset_filt" format="qname_sorted.bam" from_work_dir="*.filt.bam" label="filt.bam" />
-            <data name="hicup_filter_summary" format="txt" from_work_dir="hicup_filter_summary*.txt" label="hicup_filter_summary.txt" />
+            <data name="hicup_filter_summary" format="tabular" from_work_dir="hicup_filter_summary*.txt" label="hicup_filter_summary.txt" />
             <data name="contiguous_filter" format="qname_sorted.bam" from_work_dir="hicup_filter_ditag_rejects*/*contiguous.filter.bam" label="contiguous.filter.bam" />
             <data name="re_ligation_filter" format="qname_sorted.bam" from_work_dir="hicup_filter_ditag_rejects*/*re_ligation.filter.bam" label="re_ligation.filter.bam" />
             <data name="same_dangling_ends_filter" format="qname_sorted.bam" from_work_dir="hicup_filter_ditag_rejects*/*same_dangling_ends.filter.bam" label="same_dangling_ends.filter.bam" />
@@ -108,16 +88,18 @@
             <!-- Output of the deduplicator step -->
             <data name="cis_trans_piechart" format="svg" from_work_dir="*deduplicator_cis_trans_piechart.svg" label="Hicup Deduplicator Cis Trans Piechart.svg"/>
             <data name="uniques_barchart" format="svg" from_work_dir="*deduplicator_uniques_barchart.svg" label="Hicup Deduplicator Uniques Barchart.svg" />
-            <data name="hicup_deduplicator_summary" format="txt" from_work_dir="hicup_deduplicator_summary*.txt" label="Hicup Deduplicator Summary" />
+            <data name="hicup_deduplicator_summary" format="tabular" from_work_dir="hicup_deduplicator_summary*.txt" label="Hicup Deduplicator Summary" />
         </collection>
     </outputs>
     <tests>
          <test>
             <!-- inputs -->
-            <param name="input_first_sequence" value="dataset1.fastq" ftype="fastq"/>
-            <param name="input_second_sequence" value="dataset2.fastq" ftype="fastq"/>
+            <conditional name="library">
+                <param name="type" value="paired"/>
+                <param name="input_1" value="dataset1.fastq" ftype="fastq"/>
+                <param name="input_2" value="dataset2.fastq" ftype="fastq"/>
+            </conditional>
             <param name="re1" value="A^AGCTT"/>
-            <param name="input_files_digest" value="chr21And22FromHg38.fasta"/>
             <param name="genome" value="chr21And22FromHg38"/>
             <conditional name="reference_genome">
                 <param name="source" value="history" />
@@ -125,48 +107,67 @@
             </conditional>
 
             <!-- outputs -->
-            <output name="hicup_results" file="HiCUP_summary_report.html" ftype="html" lines_diff="10000"/>
-            <output name="dataset_hicup" file="dataset1_2.hicup.bam" lines_diff="10" ftype="qname_sorted.bam" />
-            <output name="hicup_report" file="HiCUP_summary_report.txt" lines_diff="2"/>
+            <output name="hicup_results" file="HiCUP_summary_report.html" ftype="html" compare="sim_size"/>
+            <output name="dataset_hicup" file="dataset1_2.hicup.bam" compare="sim_size" ftype="qname_sorted.bam" />
+            <output name="hicup_report" file="HiCUP_summary_report.txt" lines_diff="0"/>
+            <output name="digester_file" file="digester_file.txt" lines_diff="0"/>
 
             <output_collection name="intermediate_results">
                 <!-- truncater step-->
-                <element name="hicup_truncater_summary" file="hicup_truncater_summary.txt" lines_diff="8"/>
-                <element name="dataset1_trunc" file="dataset1.trunc.fastq.gz" compare="sim_size"/>
-                <element name="dataset2_trunc" file="dataset2.trunc.fastq.gz" compare="sim_size"/>
-                <element name="dataset1_truncater_barchart" file="dataset1.truncation_barchart.svg" ftype="svg" lines_diff="1000" />
-                <element name="dataset2_truncater_barchart" file="dataset2.truncation_barchart.svg" ftype="svg" lines_diff="1000" />
+                <element name="hicup_truncater_summary">
+                    <assert_contents>
+                        <has_text_matching expression="\s+99742\s+7230\s+7.25\s+92512\s+92.75\s+22.45"/>
+                        <has_text_matching expression="\s+99742\s+7114\s+7.13\s+92628\s+92.87\s+22.63"/>
+                    </assert_contents>
+                </element>
+                <element name="dataset1_trunc" file="dataset1.trunc.fastq.gz" decompress="true"/>
+                <element name="dataset2_trunc" file="dataset2.trunc.fastq.gz" decompress="true"/>
+                <element name="dataset1_truncater_barchart" file="dataset1.truncation_barchart.svg" ftype="svg" compare="sim_size" />
+                <element name="dataset2_truncater_barchart" file="dataset2.truncation_barchart.svg" ftype="svg" compare="sim_size" />
 
                 <!-- mapper step -->
-                <element name="hicup_mapper_summary" file="hicup_mapper_summary.txt" lines_diff="4"/>
-                <element name="result_pair" file="dataset1_2.pair.bam" lines_diff="8" ftype="qname_sorted.bam"/>
-                <element name="dataset1_mapper_barchart" file="dataset1.mapper_barchart.svg" ftype="svg" lines_diff="1000"/>
-                <element name="dataset2_mapper_barchart" file="dataset2.mapper_barchart.svg" ftype="svg" lines_diff="1000"/>
+                <element name="hicup_mapper_summary">
+                    <assert_contents>
+                        <has_text_matching expression="\s+99742\s+2658\s+2.7\s+3885\s+3.9\s+12437\s+12.5\s+80762\s+81.0\s+1143\s+1.1"/>
+                        <has_text_matching expression="\s+99742\s+2476\s+2.5\s+3725\s+3.7\s+12679\s+12.7\s+80862\s+81.1\s+1143\s+1.1"/>
+                    </assert_contents>
+                </element>
+                <element name="result_pair" file="dataset1_2.pair.bam" lines_diff="5" ftype="qname_sorted.bam"/>
+                <element name="dataset1_mapper_barchart" file="dataset1.mapper_barchart.svg" ftype="svg" compare="sim_size" />
+                <element name="dataset2_mapper_barchart" file="dataset2.mapper_barchart.svg" ftype="svg" compare="sim_size" />
 
                 <!-- filter step-->
-                <element name="hicup_filter_summary" file="hicup_filter_summary.txt" lines_diff="12"/>
-                <element name="dataset_filt" file="dataset1_2.filt.bam" lines_diff="8" ftype="qname_sorted.bam" />
-                <element name="contiguous_filter" file="dataset1_2_contiguous.filter.bam" lines_diff="8" ftype="qname_sorted.bam" />
-                <element name="re_ligation_filter" file="dataset1_2_re_ligation.filter.bam" lines_diff="8" ftype="qname_sorted.bam" />
-                <element name="same_dangling_ends_filter" file="dataset1_2_same_dangling_ends.filter.bam" lines_diff="8" ftype="qname_sorted.bam" />
-                <element name="invalid_filter" file="dataset1_2_invalid.filter.bam"  lines_diff="8" ftype="qname_sorted.bam" />
-                <element name="same_circularised_filter" file="dataset1_2_same_circularised.filter.bam" lines_diff="8" ftype="qname_sorted.bam" />
-                <element name="same_internal_filter" file="dataset1_2_same_internal.filter.bam" lines_diff="8" ftype="qname_sorted.bam" />
-                <element name="filter_piechart" file="dataset1_2.pair.bam.filter_piechart.svg" ftype="svg" lines_diff="1000" />
-                <element name="ditag_size_distribution" file="dataset1_2.ditag_size_distribution.svg" ftype="svg" lines_diff="1000" />
+                <element name="hicup_filter_summary">
+                    <assert_contents>
+                        <has_text_matching expression="\s+1143\s+544\s+44\s+440\s+60\s+599\s+21\s+73\s+466\s+39\s+0\s+0"/>
+                    </assert_contents>
+                </element>
+                <element name="dataset_filt" file="dataset1_2.filt.bam" lines_diff="14" ftype="qname_sorted.bam" />
+                <element name="contiguous_filter" file="dataset1_2_contiguous.filter.bam" lines_diff="14" ftype="qname_sorted.bam" />
+                <element name="re_ligation_filter" file="dataset1_2_re_ligation.filter.bam" lines_diff="14" ftype="qname_sorted.bam" />
+                <element name="same_dangling_ends_filter" file="dataset1_2_same_dangling_ends.filter.bam" lines_diff="14" ftype="qname_sorted.bam" />
+                <element name="invalid_filter" file="dataset1_2_invalid.filter.bam"  lines_diff="14" ftype="qname_sorted.bam" />
+                <element name="same_circularised_filter" file="dataset1_2_same_circularised.filter.bam" lines_diff="14" ftype="qname_sorted.bam" />
+                <element name="same_internal_filter" file="dataset1_2_same_internal.filter.bam" lines_diff="14" ftype="qname_sorted.bam" />
+                <element name="filter_piechart" file="dataset1_2.pair.bam.filter_piechart.svg" ftype="svg" compare="sim_size" />
+                <element name="ditag_size_distribution" file="dataset1_2.ditag_size_distribution.svg" ftype="svg" compare="sim_size" />
 
                 <!-- deduplicator step-->
-                <element name="cis_trans_piechart" file="dataset1_2.filt.bam.deduplicator_cis_trans_piechart.svg" ftype="svg" lines_diff="1000"/>
-                <element name="uniques_barchart" file="dataset1_2.filt.bam.deduplicator_uniques_barchart.svg" ftype="svg" lines_diff="1000"/>
-                <element name="hicup_deduplicator_summary" file="hicup_deduplicator_summary.txt" lines_diff="2"/>
+                <element name="cis_trans_piechart" file="dataset1_2.filt.bam.deduplicator_cis_trans_piechart.svg" ftype="svg" compare="sim_size" />
+                <element name="uniques_barchart" file="dataset1_2.filt.bam.deduplicator_uniques_barchart.svg" ftype="svg" compare="sim_size" />
+                <element name="hicup_deduplicator_summary" >
+                    <assert_contents>
+                        <has_text_matching expression="\s+544\s+544\s+44\s+440\s+60"/>
+                    </assert_contents>
+                </element>
             </output_collection>
         </test>
     </tests>
     <help><![CDATA[
 
-    For help please consult the documentation of HiCUP: http://www.bioinformatics.babraham.ac.uk/projects/hicup/overview/
+    For help please consult the documentation of HiCUP: https://www.bioinformatics.babraham.ac.uk/projects/hicup/read_the_docs/html/index.html
 
-    To get more information about the pipeline visit: http://www.bioinformatics.babraham.ac.uk/projects/hicup/scripts_description/#HiCUP
+    To get more information about the pipeline visit: https://www.bioinformatics.babraham.ac.uk/projects/hicup/read_the_docs/html/index.html#hicup-pipeline-control-script
     ]]></help>
     <expand macro="citation_hicup" />
 </tool>
