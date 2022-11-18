@@ -19,7 +19,7 @@ from requests.packages.urllib3.util.retry import Retry
 
 
 DEFAULT_TIMEOUT = 5  # seconds
-URL = 'https://www.uniprot.org/'
+URL = 'https://legacy.uniprot.org/'
 
 retry_strategy = Retry(
     total=5,
