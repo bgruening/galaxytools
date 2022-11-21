@@ -4,8 +4,9 @@
 
 """
 import argparse
-from scipy import stats
+
 import numpy as np
+from scipy import stats
 
 
 def columns_to_values(args, line):
