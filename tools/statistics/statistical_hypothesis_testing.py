@@ -7,6 +7,7 @@ import argparse
 from scipy import stats
 import numpy as np
 
+
 def columns_to_values(args, line):
     # here you go over every list
     samples = []
@@ -217,7 +218,9 @@ def main():
             for index in sample_two_cols:
                 sample_two.append(cols[int(index) - 1])
         if test_id.strip() == "describe":
-            size, min_max, mean, uv, bs, bk = stats.describe(list(map(float, sample_one)))
+            size, min_max, mean, uv, bs, bk = stats.describe(
+                list(map(float, sample_one))
+            )
             cols.append(size)
             cols.append(min_max)
             cols.append(mean)
@@ -242,7 +245,7 @@ def main():
             ra = stats.variation(list(map(float, sample_one)))
             cols.append(ra)
         elif test_id.strip() == "itemfreq":
-            freq = np.unique(list(map(float, sample_one)),return_counts=True)
+            freq = np.unique(list(map(float, sample_one)), return_counts=True)
             for i in freq:
                 elements = ",".join(list(map(str, i)))
                 cols.append(elements)
@@ -265,7 +268,9 @@ def main():
             s = stats.nanstd(list(map(float, sample_one)), bias=args.bias)
             cols.append(s)
         elif test_id.strip() == "anderson":
-            A2, critical, sig = stats.anderson(list(map(float, sample_one)), dist=args.dist)
+            A2, critical, sig = stats.anderson(
+                list(map(float, sample_one)), dist=args.dist
+            )
             cols.append(A2)
             for i in critical:
                 cols.append(i)
@@ -344,7 +349,9 @@ def main():
             cols.append(p_value)
         elif test_id.strip() == "chi2_contingency":
             chi2, p, dof, ex = stats.chi2_contingency(
-                list(map(float, sample_one)), correction=args.correction, lambda_=args.lambda_
+                list(map(float, sample_one)),
+                correction=args.correction,
+                lambda_=args.lambda_,
             )
             cols.append(chi2)
             cols.append(p)
@@ -363,7 +370,9 @@ def main():
                 min = stats.tmin(list(map(float, sample_one)))
             else:
                 min = stats.tmin(
-                    list(map(float, sample_one)), lowerlimit=mf, inclusive=args.inclusive
+                    list(map(float, sample_one)),
+                    lowerlimit=mf,
+                    inclusive=args.inclusive,
                 )
             cols.append(min)
         elif test_id.strip() == "tmax":
@@ -371,7 +380,9 @@ def main():
                 max = stats.tmax(list(map(float, sample_one)))
             else:
                 max = stats.tmax(
-                    list(map(float, sample_one)), upperlimit=nf, inclusive=args.inclusive
+                    list(map(float, sample_one)),
+                    upperlimit=nf,
+                    inclusive=args.inclusive,
                 )
             cols.append(max)
         elif test_id.strip() == "tvar":
@@ -451,7 +462,9 @@ def main():
             if nf == 0 and mf == 0:
                 o = stats.threshold(list(map(float, sample_one)), newval=args.new)
             else:
-                o = stats.threshold(list(map(float, sample_one)), mf, nf, newval=args.new)
+                o = stats.threshold(
+                    list(map(float, sample_one)), mf, nf, newval=args.new
+                )
             for i in o:
                 cols.append(i)
         elif test_id.strip() == "trimboth":
@@ -504,15 +517,21 @@ def main():
             cols.append(ma)
         elif test_id.strip() == "boxcox":
             if imbda == 0:
-                box, ma, ci = stats.boxcox(list(map(float, sample_one)), alpha=args.alpha)
+                box, ma, ci = stats.boxcox(
+                    list(map(float, sample_one)), alpha=args.alpha
+                )
                 cols.append(box)
                 cols.append(ma)
                 cols.append(ci)
             else:
-                box = stats.boxcox(list(map(float, sample_one)), imbda, alpha=args.alpha)
+                box = stats.boxcox(
+                    list(map(float, sample_one)), imbda, alpha=args.alpha
+                )
                 cols.append(box)
         elif test_id.strip() == "histogram2":
-            h2 = stats.histogram2(list(map(float, sample_one)), list(map(float, sample_two)))
+            h2 = stats.histogram2(
+                list(map(float, sample_one)), list(map(float, sample_two))
+            )
             for i in h2:
                 cols.append(i)
         elif test_id.strip() == "ranksums":
@@ -528,7 +547,9 @@ def main():
             for i in prob:
                 cols.append(i)
         elif test_id.strip() == "ansari":
-            AB, p_value = stats.ansari(list(map(float, sample_one)), list(map(float, sample_two)))
+            AB, p_value = stats.ansari(
+                list(map(float, sample_one)), list(map(float, sample_two))
+            )
             cols.append(AB)
             cols.append(p_value)
         elif test_id.strip() == "linregress":
@@ -553,7 +574,9 @@ def main():
             cols.append(r)
             cols.append(p_value)
         elif test_id.strip() == "ks_2samp":
-            d, p_value = stats.ks_2samp(list(map(float, sample_one)), list(map(float, sample_two)))
+            d, p_value = stats.ks_2samp(
+                list(map(float, sample_one)), list(map(float, sample_two))
+            )
             cols.append(d)
             cols.append(p_value)
         elif test_id.strip() == "mannwhitneyu":
@@ -566,31 +589,38 @@ def main():
             cols.append(p_value)
         elif test_id.strip() == "zmap":
             z = stats.zmap(
-                list(map(float, sample_one)), list(map(float, sample_two)), ddof=args.ddof
+                list(map(float, sample_one)),
+                list(map(float, sample_two)),
+                ddof=args.ddof,
             )
             for i in z:
                 cols.append(i)
         elif test_id.strip() == "ttest_ind":
             mw_stats_u, p_value = stats.ttest_ind(
-                list(map(float, sample_one)), list(map(float, sample_two)), equal_var=args.equal_var
+                list(map(float, sample_one)),
+                list(map(float, sample_two)),
+                equal_var=args.equal_var,
             )
             cols.append(mw_stats_u)
             cols.append(p_value)
         elif test_id.strip() == "ttest_rel":
             t, prob = stats.ttest_rel(
-                list(map(float, sample_one)), list(map(float, sample_two)), axis=args.axis
+                list(map(float, sample_one)),
+                list(map(float, sample_two)),
+                axis=args.axis,
             )
             cols.append(t)
             cols.append(prob)
         elif test_id.strip() == "mood":
             z, p_value = stats.mood(
-                list(map(float, sample_one)), list(map(float, sample_two)), axis=args.axis
+                list(map(float, sample_one)),
+                list(map(float, sample_two)),
+                axis=args.axis,
             )
             cols.append(z)
             cols.append(p_value)
         elif test_id.strip() == "shapiro":
-            W, p_value = stats.shapiro(
-                list(map(float, sample_one)))
+            W, p_value = stats.shapiro(list(map(float, sample_one)))
             cols.append(W)
             cols.append(p_value)
         elif test_id.strip() == "kendalltau":
@@ -603,7 +633,9 @@ def main():
             cols.append(p_value)
         elif test_id.strip() == "entropy":
             s = stats.entropy(
-                list(map(float, sample_one)), list(map(float, sample_two)), base=args.base
+                list(map(float, sample_one)),
+                list(map(float, sample_two)),
+                base=args.base,
             )
             cols.append(s)
         elif test_id.strip() == "spearmanr":
@@ -634,10 +666,14 @@ def main():
         elif test_id.strip() == "chisquare":
             if sample2 == 1:
                 rho, p_value = stats.chisquare(
-                    list(map(float, sample_one)), list(map(float, sample_two)), ddof=args.ddof
+                    list(map(float, sample_one)),
+                    list(map(float, sample_two)),
+                    ddof=args.ddof,
                 )
             else:
-                rho, p_value = stats.chisquare(list(map(float, sample_one)), ddof=args.ddof)
+                rho, p_value = stats.chisquare(
+                    list(map(float, sample_one)), ddof=args.ddof
+                )
             cols.append(rho)
             cols.append(p_value)
         elif test_id.strip() == "power_divergence":
@@ -657,7 +693,9 @@ def main():
         elif test_id.strip() == "theilslopes":
             if sample2 == 1:
                 mpe, met, lo, up = stats.theilslopes(
-                    list(map(float, sample_one)), list(map(float, sample_two)), alpha=args.alpha
+                    list(map(float, sample_one)),
+                    list(map(float, sample_two)),
+                    alpha=args.alpha,
                 )
             else:
                 mpe, met, lo, up = stats.theilslopes(
