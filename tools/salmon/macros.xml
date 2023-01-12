@@ -1,16 +1,17 @@
 <macros>
-    <token name="@VERSION@">1.5.1</token>
-    <token name="@GALAXY_VERSION@">galaxy0</token>
+    <token name="@TOOL_VERSION@">1.9.0</token>
+    <token name="@VERSION_SUFFIX@">2</token>
     <token name="@IDX_VERSION@">q7</token>
     <token name="@PROFILE_VERSION@">20.01</token>
     <xml name="requirements">
         <requirements>
-            <requirement type="package" version="@VERSION@">salmon</requirement>
+            <requirement type="package" version="@TOOL_VERSION@">salmon</requirement>
             <requirement type="package" version="1.3">seqtk</requirement>
-            <requirement type="package" version="1.12">samtools</requirement>
+            <requirement type="package" version="1.16.1">samtools</requirement>
             <requirement type="package" version="0.2.0">vpolo</requirement>
-            <requirement type="package" version="1.3.0">pandas</requirement>
-            <requirement type="package" version="1.7.0">scipy</requirement>
+            <requirement type="package" version="1.5.2">pandas</requirement>
+            <requirement type="package" version="3.0.0">graphviz</requirement>
+            <requirement type="package" version="1.9.3">scipy</requirement>
         </requirements>
     </xml>
     <xml name="orient">
@@ -72,10 +73,14 @@
             </when>  <!-- build-in -->
             <when value="history">
                 <section name="s_index" title="Salmon index" expanded="true">
-                    <param name="fasta" type="data" format="fasta" label="Transcripts fasta file"/>
+                    <param name="fasta" type="data" format="fasta" label="Transcripts FASTA file"/>
+                    <param name="genome" type="data" format="fasta" optional="true" label="Reference genome" 
+                        help="The reference genome is required for generating a decoy-away index. The decoy sequences are regions of the target genome 
+                            that are sequence similar to annotated transcripts. These are the regions of the genome most likely to cause mismapping." />
                     <param name="kmer" type="integer" value="31" label="Kmer length"/>
                     <param name="phash" type="boolean" label="Perfect Hash" truevalue="--perfectHash" falsevalue="" checked="false"
-                        help="Build the index using a perfect hash rather than a dense hash.  This will require less memory (especially during quantification), but will take longer to construct"/>
+                        help="Build the index using a perfect hash rather than a dense hash.  This will require less memory (especially during quantification), 
+                            but will take longer to construct"/>
                 </section>
             </when>
         </conditional>
@@ -155,10 +160,18 @@
         <param name="dovetail" label="Allow Dovetail" type="boolean" truevalue="--allowDovetail" falsevalue="" checked="False" help="Allow dovetail mappings"/>
         <param name="recoverOrphans" label="Recover Orphans" type="boolean" truevalue="--recoverOrphans" falsevalue="" checked="False"
         help="Attempt to recover the mates of orphaned reads. This uses edlib for orphan recovery, and so introduces some computational overhead, but it can improve sensitivity."/>
-        <param name="writeMappings" type="boolean" truevalue="--writeMappings=./output/samout.sam" falsevalue="" checked="False"
-        label="Write Mappings to Bam File"
-        help="If this option is provided, then the quasi-mapping results will be written out in SAM-compatible format.  By default, output will be directed to stdout, but an alternative file name can be provided instead"/>
-        <param name="consistentHits" type="boolean" truevalue="--consistentHits" falsevalue="" checked="False"
+        <conditional name="bam_options">
+            <param argument="--writeMappings" type="select" label="Write Mappings to BAM File" help="If this option is provided, then the quasi-mapping results will be written out in SAM-compatible format.  By default, output will be directed to stdout, but an alternative file name can be provided instead">
+                <option value="--writeMappings=./output/samout.sam">Enabled</option>
+                <option value="" selected="true">Disabled</option>
+            </param>
+            <when value="--writeMappings=./output/samout.sam">
+                <param argument="--writeQualities" type="boolean" truevalue="--writeQualities" falsevalue="" checked="false" label="Write qualities" help="If this flag is 
+                provided, then the output SAM file will contain quality strings as well as read sequences." />
+            </when>
+            <when value=""/>
+        </conditional>
+       <param name="consistentHits" type="boolean" truevalue="--consistentHits" falsevalue="" checked="False"
         label="Consistent Hits"
         help="Force hits gathered during quasi-mapping to be 'consistent' (i.e. co-linear and approximately the right distance apart)."/>
         <param name="quasiCoverage" type="integer" optional="True" label="Quasi Coverage"
@@ -315,10 +328,21 @@
         mkdir ./index &&
         mkdir ./output &&
         #if $quant_type.refTranscriptSource.TranscriptSource != "indexed":
+            #if $quant_type.refTranscriptSource.s_index.genome
+                cat '${quant_type.refTranscriptSource.s_index.genome}' | grep "^>" | cut -d " " -f 1 > 'decoys.txt' &&
+                sed -i.bak -e 's/>//g' 'decoys.txt' &&
+                cat '${quant_type.refTranscriptSource.s_index.fasta}' '${quant_type.refTranscriptSource.s_index.genome}' > 'input_index.fasta' &&
+            #else
+                ln -s '${quant_type.refTranscriptSource.s_index.fasta}' 'input_index.fasta' &&
+            #end if
             salmon index -i ./index
                 --kmerLen '${quant_type.refTranscriptSource.s_index.kmer}'
                 --gencode
-                --transcripts '${quant_type.refTranscriptSource.s_index.fasta}'
+                --threads "\${GALAXY_SLOTS:-4}"
+                --transcripts 'input_index.fasta'
+                #if $quant_type.refTranscriptSource.s_index.genome
+                    --decoy 'decoys.txt'
+                #end if
             &&
             #set $index_path = './index'
         #else
@@ -453,7 +477,10 @@
             #end if
             ${quant_type.dovetail}
             ${quant_type.recoverOrphans}
-            ${quant_type.writeMappings}
+            ${quant_type.bam_options.writeMappings}
+            #if $quant_type.bam_options.writeMappings:
+                ${quant_type.bam_options.writeQualities}
+            #end if
             ${quant_type.consistentHits}
             #if $quant_type.quasiCoverage:
                 --quasiCoverage '${quant_type.quasiCoverage}'
