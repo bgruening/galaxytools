@@ -7,11 +7,9 @@
     <command detect_errors="exit_code"><![CDATA[
         #if $mode_conditional.selector == 'create'
             mkdir -p './Blobdir' &&
-            #if $mode_conditional.id_conditional.selector == 'enabled'
-                mkdir -p './taxdump' &&
-                ln -s '${mode_conditional.id_conditional.taxdump}' 'taxdump.tar' &&
-                tar -xf 'taxdump.tar' -C './taxdump' &&
-            #end if
+            mkdir -p './taxdump' &&
+            ln -s '${mode_conditional.taxdump}' 'taxdump.tar' &&
+            tar -xf 'taxdump.tar' -C './taxdump' &&
             ln -s '${mode_conditional.fasta}' 'assembly.fasta' &&
             #if $mode_conditional.meta
                 ln -s '${mode_conditional.meta}' 'assembly.yaml' &&
@@ -21,10 +19,8 @@
             #if $mode_conditional.meta
                 --meta 'assembly.yaml'
             #end if
-            #if $mode_conditional.id_conditional.selector == 'enabled'
-                --taxid $mode_conditional.id_conditional.taxid
-                --taxdump './taxdump'
-            #end if
+            --taxid $mode_conditional.taxid
+            --taxdump './taxdump'
             './Blobdir'
             && cp -r './taxdump' './Blobdir/'
             && tar -zcf './Blobdir.tgz' './Blobdir'
@@ -35,17 +31,43 @@
             #if $mode_conditional.busco
                 ln -s '${mode_conditional.busco}' './busco_results.tab' && 
             #end if
-            #if $mode_conditional.hits
-                ln -s '$mode_conditional.hits' './blast_results.tab' &&
+            #if $mode_conditional.blast_input.selector == 'enabled'
+                ln -s '$mode_conditional.blast_input.hits' './blast_results.tab' &&
             #end if
+            #if $mode_conditional.cov
+                ln -s '$mode_conditional.cov' './input.bam' &&
+                ln -s '$mode_conditional.cov.metadata.bam_index' './input.bam.bai' &&
+            #end if
+            #if $mode_conditional.bed
+                    mkdir -p './bed_files' &&
+                    #import re
+                    #for $i, $input in enumerate($mode_conditional.bed):
+                        #set $safename = re.sub('[^\w\-_]', '_', $input.element_identifier) + "." + str($i)
+                        ln -sf '${input}' './bed_files/${safename}.bed' &&
+                    #end for
+            #end if
+            ls -lah ./bed_files &&
             blobtools add
                 --threads \${GALAXY_SLOTS:-8}
                 --taxdump './Blobdir/taxdump'
                 #if $mode_conditional.busco
-                --busco './busco_results.tab'
+                    --busco './busco_results.tab'
                 #end if
-                #if $mode_conditional.hits
+                #if $mode_conditional.blast_input.selector == 'enabled'
                     --hits './blast_results.tab'
+                    #if $mode_conditional.blast_input.hits_cols
+                        --hits-cols '${$mode_conditional.blast_input.hits_cols}'
+                    #end if
+                    --taxrule $mode_conditional.blast_input.taxrule
+                    --evalue $mode_conditional.blast_input.evalue
+                    --hit-count $mode_conditional.blast_input.hit_count
+                    --bitscore $mode_conditional.blast_input.bitscore
+                #end if
+                #if $mode_conditional.bed
+                    --beddir './bed_files'
+                #end if
+                #if $mode_conditional.cov
+                    --cov './input.bam'
                 #end if
                 './Blobdir'
             && tar -zcf ./Blobdir.tgz ./Blobdir
@@ -169,53 +191,53 @@
             <when value="create">
                 <param argument="--fasta" type="data" format="fasta" label="Genome assembly file" help="FASTA sequence file" />
                 <param argument="--meta" type="data" format="yaml" label="Metadata file" optional="true" help="Optional metadata dataset"/>
-                <conditional name="id_conditional">
-                    <param name="selector" type="select" label="Taxon ID" help="Add ranks to metadata for a taxid">
-                        <option value="disabled">Disabled</option>
-                        <option value="enabled">Enabled</option>
-                    </param>
-                    <when value="disabled"/>
-                    <when value="enabled">
-                        <param argument="--taxid" type="integer" value="" label="NCBI taxonomy ID" help="Add ranks to metadata for a taxid"/>
-                        <param argument="--taxdump" type="data" format="tar,tgz,gz" label="NCBI taxdump directory" help="It should be compressed in tar.gz format"/>
-                    </when>
-                </conditional>
+                <param argument="--taxid" type="integer" value="" label="NCBI taxonomy ID" help="Add ranks to metadata for a taxid"/>
+                <param argument="--taxdump" type="data" format="tar,tgz,gz" label="NCBI taxdump directory" help="It should be compressed in tar.gz format"/>
             </when>
             <when value="add">
                 <param name="blobdir" type="data" format="tgz" label="Blobdir.tgz file" help="This file should be generated by Blobtool create" />
-                <param argument="--busco" type="data" format="tsv,tabular,txt" label="BUSCO full table file"/>
+                <param argument="--busco" type="data" format="tsv,tabular,txt" optional="true" label="BUSCO full table file"/>
                 <conditional name="blast_input">
-                    <param name="" type="select" label="Provide BLAST/Diamond hits dataset">
+                    <param name="selector" type="select" label="BLAST/Diamond hits">
                         <option value="enabled">Enabled</option>
-                        <option value="disabled">Disabled</option>
+                        <option value="disabled" selected="true">Disabled</option>
                     </param>
                     <when value="enabled">
-                        <param argument="--hits" type="data" format="tsv,tabular" optional="true" label="BLAST/Diamond hits" help="Tabular BLAST/Diamond output file"/>
-                        <param argument="--hits-cols" type="text" label="Specify the BLAST file column order" optional="true" help="--hits-cols 1=qseqid,2=staxids,3=bitscore,5=sseqid,10=qstart,11=qend,14=evalue"/>
-                        <param argument="--taxrule" type="text" label="Rule to use when assigning BLAST hits to taxa" value="bestsumorder" optional="true" help="Available options: bestsum, bestsumorder, bestdistsum, bestdistsumorder, blastp"/>               
-                        <param argument="--evalue" type="float" value="1" label="Filter based on an evalue cutoff" optional="true" help="Any hits with an evalue weaker than the value specified will be excluded. (--evalue 1e-50)"/>
-                        <param argument="--bitscore" type="float" label="Filter based on a bitscore cutoff" optional="true" help="Any hits with an bitscore lower the value specified will be excluded."/>
-                        <param argument="--hit-count" type="integer" label="Hits to a given taxon" optional="true" help="By default the 10 highest scoring hits to a given taxon will be used when applying the --taxrule"/>
+                        <param argument="--hits" type="data" format="tsv,tabular" optional="true" label="BLAST/Diamond hits dataset" help="Tabular BLAST/Diamond output file"/>
+                        <param argument="--taxrule" type="select" label="BLAST hits to taxa rule" help="Rule to use when assigning BLAST hits to taxa">
+                            <option value="bestsum">Bestsum</option>
+                            <option value="bestsumorder">Bestsumorder</option>
+                            <option value="bestdistsum">Bestdistsum</option>
+                            <option value="bestdistsumorder">Bestdistsumorder</option>
+                            <option value="blastp">Blastp</option>
+                        </param>              
+                        <param argument="--evalue" type="float" min="0" value="1" label="E-value cutoff"
+                            help="The smaller the E-value, the better the match. Any hits with an evalue weaker than the value specified will be excluded"/>
+                        <param argument="--bitscore" type="float" min="0" value="1" label="Bitscore cutoff" 
+                            help="The higher the bit-score, the better the sequence similarity. Any hits with an bitscore lower the value specified will be excluded"/>
+                        <param argument="--hit-count" type="integer" min="1" value="10" label="Hits to a given taxon" optional="true" 
+                            help="By default the 10 highest scoring hits to a given taxon will be used when applying the --taxrule"/>
+                        <param argument="--hits-cols" type="text" value="1=qseqid,2=staxids,3=bitscore,5=sseqid,10=qstart,11=qend,14=evalue" optional="true" 
+                            label="BLAST/Diamond file column order" help="More information in the help section">
+                            <sanitizer invalid_char="">
+                                <valid initial="string.letters,string.digits">
+                                    <add value="=" />
+                                    <add value="," />
+                                </valid>
+                            </sanitizer>
+                            <validator type="regex">[0-9a-z=,]+</validator>
+                        </param>
                     </when>
                     <when value="disabled"/>
                 </conditional>
-                <param argument="--bed" type="data" format="bed" multiple="true" optional="true" label="BED format file/s"/>
-                <param argument="--blobdb" type="data" format="json" optional="true" label="Blobtools v1 database" help="This file should have been generated with the previous Blobtools tool version"/>
+                <param argument="--bed" type="data" format="bed" multiple="true" optional="true" label="BED file of coverages per scaffold"/>
                 <param argument="--cov" type="data" format="bam,sam,cram" optional="true" label="BAM/SAM/CRAM read alignment file"/>
                 <param argument="--fasta" type="data" format="fasta" optional="true" label="FASTA sequence" help="FASTA sequence file" />
                 <param argument="--trnascan" type="data" format="tsv" optional="true" label="tRNAscan2-SE" help="tRNAscan-SE is employed for identifying and annotating tRNA genes in genomes"/>
-                
                 <section name="advanced_options" title="Advanced options">
+                    <param argument="--blobdb" type="data" format="json" optional="true" label="Blobtools v1 database" help="This file should have been generated with the previous Blobtools tool version"/>
                     <param argument="--synonyms" type="data" format="tsv" optional="true" label="Identifier and sinonyms" help="TSV file containing current identifiers and synonyms"/>
                     <param name="updateplot" argument="--update-plot" type="boolean" value="false" optional="true" label="Update Plot" help="Flag to use new taxrule as default category."/>
-                    <param argument="--hits-cols" type="text" value="" label="BLAST file column order" help="Comma separated list of *column number*=*field name*">
-                        <sanitizer invalid_char="">
-                            <valid initial="string.letters,string.digits">
-                                <add value="_" />
-                            </valid>
-                        </sanitizer>
-                        <validator type="regex">[0-9a-zA-Z_]+</validator>
-                    </param>
                     <param name="pileupargs" argument="--pileup-args" type="text" optional="true" label="Samtools Pileup" help="Key/value pairs to pass to samtools pileup."/> 
                     <param argument="--replace" type="boolean" default_value="false" label="Allow existing fields to be overwritten" optional="true" help="Allow existing fields to be overwritten, set the --replace flag"/>
                     <param argument="--text" type="data" format="txt" label="Specify text file" help="it is possible to specify =FIELDNAME after the filename to load all specified columns into a single array 
@@ -289,7 +311,7 @@
             <param name="taxid" value=""/>
             <param name="taxdump" value="taxdump.tar.gz"/>
             <!--output name="identifiers" file="identifiers.json"/-->
-            <output name="blobdir" file="length.json, gc.json, identifiers.json, meta.json, ncount.json"/>
+            <output name="blobdir_create" file="length.json, gc.json, identifiers.json, meta.json, ncount.json"/>
         </test>
     </tests>
     <help><![CDATA[
