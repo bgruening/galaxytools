@@ -2,7 +2,7 @@
     <description>haplotype-resolved de novo assembler for PacBio Hifi reads</description>
     <macros>
         <token name="@TOOL_VERSION@">0.18.5</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
         <token name="@FORMATS@">fasta,fasta.gz,fastq,fastq.gz</token>
         <xml name="reads">
             <param name="reads" type="data" format="@FORMATS@" multiple="true" label="Input reads" />
@@ -21,6 +21,7 @@
         #set $hap2_inputs = list()
         #set $hic1_inputs = list()
         #set $hic2_inputs = list()
+        #set $ultralong_inputs = list()
         #for idx, read in enumerate($mode.reads):
             #set $inputfile = 'input_%d.%s' % ($idx, $read.dataset.extension)
             ln -s '$read' $inputfile &&
@@ -38,6 +39,14 @@
                 #set $inputfile = './HiCR/input_%d.%s' % ($idx, $read.dataset.extension)
                 ln -s '$read' $inputfile &&
                 $hic2_inputs.append($inputfile)
+            #end for
+        #end if
+        #if str($ont_integration.ont_integration_selector) == 'set'
+            mkdir ultralong &&
+            #for idx, read in enumerate($ont_integration.ul):
+                #set $inputfile = './ultralong/input_%d.%s' % ($idx, $read.dataset.extension)
+                ln -s '$read' $inputfile &&
+                $ultralong_inputs.append($inputfile)
             #end for
         #end if
         #if str($mode.mode_selector) == 'trio':
@@ -125,6 +134,16 @@
             --l-msjoin $hic_partition.l_msjoin
         #end if
 
+        #if str($ont_integration.ont_integration_selector) == 'set':
+            --ul '${ ' '.join(["%s" % $x for $x in $ultralong_inputs]) }'
+            #if $ont_integration.ul_rate:
+                --ul-rate $ont_integration.ul_rate
+            #end if
+            #if $ont_integration.ul_tip:
+                --ul-tip $ont_integration.ul_tip
+            #end if
+        #end if
+
         ## Changed the default outputs of hifiasm. Hifiasm outputs a primary assembly and two balanced haplotypes in default. Incorporated the option '--primary' to output primary assembly and alternate assembly.
         --primary
         $input_filenames
@@ -205,6 +224,18 @@
                 <param argument="--n-perturb" type="integer" min="1" value="" optional="true" label="Rounds of perturbation. Increasing this may improves phasing results but takes longer time" />
                 <param argument="--f-perturb" type="float" min="0" max="1" value="" optional="true" label="Fraction to flip for perturbation. Increasing this may improves phasing results but takes longer time" />
                 <param argument="--l-msjoin" type="integer" min="0" value="500000" label="Detect misjoined unitigs of greater than or equal to specified size" help="A value of 0 disables this filter"/>
+            </when>
+        </conditional>
+        <conditional name="ont_integration">
+            <param name="ont_integration_selector" type="select" label="Options for ONT integration">
+                <option value="blank">Leave default</option>
+                <option value="set">Specify</option>
+            </param>
+            <when value="blank" />
+            <when value="set">
+                <param argument="--ul" type="data" format="fastq,fastq.gz" multiple="true" label="Ultra-long (>10kb) reads" />
+                <param argument="--ul-rate" type="float" value="0.2" optional="true" label="error rate of ultra-long reads (default 0.2)" />
+                <param argument="--ul-tip" type="integer" value="6" optional="true" label="remove tip unitigs composed of less than (INT) reads for the UL assembly (default 6)" />
             </when>
         </conditional>
         <conditional name="advanced_options">
@@ -298,6 +329,7 @@
         </collection>
     </outputs>
     <tests>
+        <!-- TEST 1 -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -306,6 +338,7 @@
             <output name="processed_unitigs" file="hifiasm-out1-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out1-primary.gfa" ftype="gfa1" />
         </test>
+        <!-- TEST 2 -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in2-0.fa.gz,hifiasm-in2-1.fa.gz,hifiasm-in2-2.fa.gz,hifiasm-in2-3.fa.gz,hifiasm-in2-4.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -314,7 +347,7 @@
             <output name="processed_unitigs" file="hifiasm-out2-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out2-primary.gfa" ftype="gfa1" />
         </test>
-        <!-- Test logfile out-->
+        <!-- TEST 3: Test logfile out-->
         <test expect_num_outputs="6">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -329,7 +362,7 @@
                 </assert_contents>
             </output>
         </test>
-        <!--Test Hi-C reads-->
+        <!--TEST 4: Test Hi-C reads-->
         <test expect_num_outputs="6"> 
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -364,7 +397,7 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- Test trio mode -->
+        <!-- TEST 5: Test trio mode -->
         <test expect_num_outputs="5">
             <param name="filter_bits" value="0"/>
             <conditional name="mode">
@@ -381,7 +414,7 @@
                 <has_text text="--primary" />
             </assert_command>
         </test>
-        <!-- Test ignore-error-corrected option -->
+        <!-- TEST 6: Test ignore-error-corrected option -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -394,7 +427,7 @@
             <output name="processed_unitigs" file="hifiasm-out3-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out3-primary.gfa" ftype="gfa1" />
         </test>
-        <!-- Test expected haplotype number -->
+        <!-- TEST 7: Test expected haplotype number -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -407,7 +440,7 @@
             <output name="processed_unitigs" file="hifiasm-out4-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out4-primary.gfa" ftype="gfa1" />
         </test>
-        <!-- Test min_hist_cnt option -->
+        <!-- TEST 8: Test min_hist_cnt option -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -420,7 +453,7 @@
             <output name="processed_unitigs" file="hifiasm-out5-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out5-primary.gfa" ftype="gfa1" />
         </test>
-        <!-- Test max_kooc option -->
+        <!-- TEST 9: Test max_kooc option -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -433,7 +466,7 @@
             <output name="processed_unitigs" file="hifiasm-out6-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out6-primary.gfa" ftype="gfa1" />
         </test>
-        <!-- Test hg-size option -->
+        <!-- TEST 10: Test hg-size option -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -446,7 +479,7 @@
             <output name="processed_unitigs" file="hifiasm-out7-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out7-primary.gfa" ftype="gfa1" />
         </test>
-        <!-- Test ignore-error-corrected option -->
+        <!-- TEST 11: Test ignore-error-corrected option -->
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="filter_bits" value="0" />
@@ -458,6 +491,18 @@
             <output name="raw_unitigs" file="hifiasm-out8-raw.gfa" ftype="gfa1" />
             <output name="processed_unitigs" file="hifiasm-out8-processed.gfa" ftype="gfa1" />
             <output name="primary_contig_graph" file="hifiasm-out8-primary.gfa" ftype="gfa1" />
+        </test>
+        <!-- TEST 12: test nanopore input -->
+        <test expect_num_outputs="5">
+            <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
+            <param name="mode_selector" value="standard" />
+            <conditional name="ont_integration">
+                <param name="ont_integration_selector" value="set" />
+                <param name="ul" value="nanopore.fasta.gz" />
+                <param name="ul_tip" value="1" />
+            </conditional>
+            <output name="primary_contig_graph" file="hifiasm-out-hifiul.bp.p_ctg.gfa" ftype="gfa1" />
+            <output name="raw_unitigs" file="hifiasm-out-hifiul.bp.r_utg.gfa" ftype="gfa1" />
         </test>
     </tests>
     <help><![CDATA[
