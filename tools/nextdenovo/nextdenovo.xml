@@ -1,0 +1,223 @@
+<tool id="nextdenovo" name="NextDenovo" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
+    <description>string graph-based de novo assembler for long reads</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="biotools"/>
+    <expand macro="requirements" />
+    <version_command>nextDenovo --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir -p './read_files' &&
+        #set $reads = list()
+        #for $index,$sample in enumerate($input_reads)
+            #set $ext = $sample.ext
+            ln -s $sample './read_files/sample_${index}.${ext}' &&
+        #end for
+        ls './read_files' -1 | sed -e 's|^|read_files/|' > './input.fofn' &&
+        cat $configfile | sed -e "s/cores/\${GALAXY_SLOTS:-4}/g" | sed -e "s|memory|\$((\${GALAXY_MEMORY_MB:-8192}/1024))|g" > './configfile' &&
+        
+        nextDenovo './configfile'
+    ]]></command>
+    <configfiles>
+        <configfile name="configfile"><![CDATA[
+            [General]
+            job_type = local
+            job_prefix = nextDenovo
+            task = $task
+            rewrite = yes
+            deltmp = yes
+            parallel_jobs = cores
+            input_type = $input_type
+            read_type = $read_type
+            input_fofn = input.fofn
+
+            [correct_option]
+            read_cutoff = $read_cutoff
+            #if $genome_seed.selector == 'genome'
+                genome_size = $genome_seed.genome_size # estimated genome size
+                seed_depth = $genome_seed.seed_depth
+            #else
+                seed_cutoff = $genome_seed.seed_cutoff
+            #end if
+            blocksize = $blocksize
+            sort_options = -m memoryg -t cores -k $ovl_parameters.max_depth_overlap -l $ovl_parameters.max_over_hang_length
+            minimap2_options_raw = -t cores --minlen $minimap_parameters.minlen --minmatch $minimap_parameters.minmatch --minide $minimap_parameters.minide --kn $minimap_parameters.kn --wn $minimap_parameters.wn --cn $minimap_parameters.cn --maxhan1 $minimap_parameters.maxhan1 --maxhan2 $minimap_parameters.maxhan2
+            pa_correction = cores
+            correction_options = -p cores
+
+            [assemble_option]
+            minimap2_options_cns = -t cores
+            nextgraph_options = -a $np.a $np.c $np.G $np.G $np.k $np.A -E $np.E -q $np.q -i $np.i -I $np.I -R $np.R -S $np.S -r $np.r -M $np.M -T $np.T -N $np.N -u $np.u -w $np.w -D $np.D -P $np.P -m $np.m -n $np.n -B $np.B -C $np.C -z $np.z -l $np.l -L $np.L -t $np.t -F $np.F
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="input_reads" type="data" format="fasta,fasta.gz,fastq,fastq.gz,fastqsanger,fastqsanger.gz" multiple="true" label="Sequence reads"/>
+        <param name="task" type="select" label="Task" help="Task need to run, correct = only do the correction step, assemble = only do the assembly step (only work if input_type = corrected or 
+            read_type = hifi), all = correct + assemble.">
+            <option value="all">All</option>
+            <option value="correct">Correct</option>
+            <option value="assemble">Assemble</option>
+        </param>
+        <param name="input_type" type="select" label="Input type" help="You can use raw or corrected reads.">
+            <option value="raw">Raw</option>
+            <option value="corrected">Corrected</option>
+        </param>
+        <param name="read_type" type="select" label="Read type" help="Currenly, the available options are PacBio continuous long read (CLR), PacBio highly accurate long reads (HiFi) and Nanopore 1D reads (ONT)">
+            <option value="clr">CLR</option>
+            <option value="hifi">HiFi</option>
+            <option value="ont">ONT</option>
+        </param>
+        <param name="read_cutoff" type="integer" min="0" value="1000" optional="true" label="Read cutoff" help="filter reads with length smaller than read_cutoff"/>
+        <conditional name="genome_seed">
+            <param name="selector" type="select" label="Provide estimated genome size or seed cutoff" help="It is requried to perform some simple statistics (such as length distribution, total amount of data and sequencing depth) on the input data">
+                <option value="genome">Estimated genome size</option>
+                <option value="seed">Seed cutoff</option>
+            </param>
+            <when value="genome">
+                <param name="genome_size" type="text" value="" optional="true" label="Estimated genome size" help="Estimated genome size, suffix K/M/G recognized, used to 
+                calculate seed_cutoff/seed_cutfiles/blocksize and average depth, it can be omitted when manually setting seed_cutoff. Spaces are not allowed.">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.letters,string.digits">
+                            <add value="."/>
+                        </valid>
+                    </sanitizer>
+                    <validator type="regex">[0-9KMGkmg.]+</validator>
+                </param>
+                <param name="seed_depth" type="integer" min="0" value="45" label="Seed depth" help="Expected seed depth, used to calculate seed_cutoff, co-use with 
+                    genome_size, you can try to set it 30-45 to get a better assembly result." />
+            </when>
+            <when value="seed">
+                <param name="seed_cutoff" type="integer" min="0" value="0" optional="true" label="Seed cutoff" help="Minimum seed length. Set it to 0 for calculating it automatically." />
+            </when>
+        </conditional>
+        <param name="blocksize" type="text" value="10g" label="Block size" help="Block size for parallel running, split non-seed reads into small files, the maximum size of 
+            each file is blocksize.">
+            <sanitizer invalid_char="">
+                <valid initial="string.letters,string.digits"/>
+            </sanitizer>
+            <validator type="regex">[0-9KMGkmg]+</validator>
+        </param>
+        <section name="ovl_parameters" title="OVL sort parameters" expanded="true">
+            <param name="max_depth_overlap" type="integer" min="0" value="40" label="Max depth of each overlap" help="This value should be equal or smaller than 
+                the average sequencing depth." />
+            <param name="max_over_hang_length" type="integer" min="0" value="300" label="Max over hang length to filter"/>
+        </section>
+        <section name="minimap_parameters" title="Minimap2 parameters" expanded="true">
+            <param name="minlen" type="integer" min="0" value="500" label="Minimum overlap length"/>
+            <param name="minmatch" type="integer" min="0" value="100" label="Minimum match length"/>
+            <param name="minide" type="float" min="0" value="0.05" max="1" label="Minimum identity"/>
+            <param name="kn" type="integer" min="0" value="17" max="28" label="K-mer size"/>
+            <param name="wn" type="integer" min="0" value="10" label="Minimizer window size"/>
+            <param name="cn" type="integer" min="0" value="20" label="Re-align for every n reads"/>
+            <param name="maxhan1" type="integer" min="0" value="5000" label="Maximum over hang length for re-align"/>
+            <param name="maxhan2" type="integer" min="0" value="500" label="Maximum over hang length for filtering contained reads"/>
+        </section>
+        <section name="correction_options" title="Correction options" expanded="true">
+            <param name="split" type="boolean" truevalue="--split" falsevalue="" checked="false" label="Split" help="Split the corrected seed with un-corrected regions" />
+            <param name="fast" type="boolean" truevalue="-fast" falsevalue="" checked="false" label="Fast" help="0.5-1 times faster mode with a little lower accuracy." />
+        </section>
+        <section name="np" title="NextGraph parameters">
+            <param argument="-c" type="boolean" truevalue="-c" falsevalue="" checked="false" label="Disable pre-filter chimeric reads."/>
+            <param argument="-G" type="boolean" truevalue="-G" falsevalue="" checked="false" label="Retain potential chimeric edges."/>
+            <param argument="-k" type="boolean" truevalue="-k" falsevalue="" checked="false" label="Delete complex bubble paths."/>
+            <param argument="-A" type="boolean" truevalue="-A" falsevalue="" checked="false" label="Output alternative contigs" 
+                help="For highly heterozygous genomes, it will increase assembly size."/>
+            <param argument="-a" type="select" label="Output format">
+                <option value="1">FASTA</option>
+                <option value="3">GFA</option>
+            </param>
+            <param argument="-E" type="integer" min="0" value="1000" label="Minimum contig length"/>
+            <param argument="-q" type="integer" min="0" value="0" label="Minimum short branch length" help="By default it is disabled (value = 0)." />
+            <param argument="-i" type="float" min="0" max="1" value="0.1" label="Minimum identity of alignmnents"/>
+            <param argument="-I" type="float" min="0" max="1" value="0.7" label="Minimum test-to-best identity ratio"/>
+            <param argument="-R" type="float" min="0" max="1" value="0" label="Maximum test-to-best identity ratio"/>
+            <param argument="-S" type="float" min="0" max="1" value="0.4" label="Minimum test-to-best aligned length ratio"/>
+            <param argument="-r" type="float" min="0" max="1" value="0.5" label="Maximum test-to-best score ratio of a low quality edge"/>
+            <param argument="-M" type="float" min="0" max="1" value="0.9" label="Minimum test-to-best aligned matches ratio"/>
+            <param argument="-T" type="float" min="0" max="1" value="0.6" label="Minimum test-to-best depth ratio of an edge"/>
+            <param argument="-N" type="integer" min="1" max="2" value="2" label="Minimum valid nodes of a read"/>
+            <param argument="-u" type="integer" min="1" max="2" value="2" label="Minimum contained number to filter"/>
+            <param argument="-w" type="integer" min="1" value="3" label="Minimum depth of an edge"/>
+            <param argument="-D" type="integer" min="0" value="2" label="Depth of BFS to identify chimeric nodes"/>
+            <param argument="-P" type="integer" min="0" value="2" label="Maximum depth multiple of a node for BFS"/>
+            <param argument="-m" type="float" min="0" value="1.5" label="Minimum depth multiple of a repeat node"/>
+            <param argument="-n" type="float" min="0" value="2000" label="Maximum depth multiple of a node"/>
+            <param argument="-B" type="integer" min="0" value="500" label="Maximum length of a bubble"/>
+            <param argument="-C" type="integer" min="0" value="20" label="Maximum length of a compound path"/>
+            <param argument="-z" type="integer" min="0" value="8" label="Maximum length of a z branch"/>
+            <param argument="-l" type="integer" min="0" value="15" label="Maximum length of a short branch"/>
+            <param argument="-L" type="integer" min="0" value="5" label="Maximal length of a short loop"/>
+            <param argument="-t" type="integer" min="0" value="500" label="Maximal over hang length of dovetails"/>
+            <param argument="-F" type="integer" min="0" value="1000" label="Fuzz length for trans-reduction"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="stats" format="txt" from_work_dir="03.ctg_graph/nd.asm.fasta.stat" label="${tool.name} on ${on_string}: stats">
+            <filter>task != 'correct'</filter>
+        </data>
+        <data name="asmp" format="txt" from_work_dir="03.ctg_graph/nd.asm.p.fasta" label="${tool.name} on ${on_string}: nd.asm.p.fasta">
+            <filter>task != 'correct'</filter>
+        </data>
+        <data name="asm" format="txt" from_work_dir="03.ctg_graph/nd.asm.fasta.stat" label="${tool.name} on ${on_string}: nd.asm.p.fasta">
+            <filter>task != 'correct'</filter>
+        </data>
+        <data name="asm" format="txt" from_work_dir="02.cns_align/01.seed_cns.sh.work/seed_cns3" label="${tool.name} on ${on_string}: corrected">
+            <filter>task != 'assemble'</filter>
+        </data>
+        <data name="config" format="txt" from_work_dir="configfile" label="${tool.name} on ${on_string}: configuration file"/>
+    </outputs>
+    <tests>
+        <!-- Default parameters: correct mode -->
+        <test expect_num_outputs="2">
+            <param name="input_reads" value="nanopore.fasta.gz"/>
+            <param name="task" value="correct"/>
+            <param name="input_type" value="raw"/>
+            <param name="read_type" value="ont"/>
+            <conditional name="genome_seed">
+                <param name="selector" value="genome"/>
+                <param name="genome_size" value="2k"/>
+                <param name="seed_depth" value="45"/>
+            </conditional>
+            <output name="config">
+                <assert_contents>
+                    <has_text text="genome_size = 2k"/>
+                    <has_n_lines n="26"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true">
+            <param name="input_reads" value="nanopore.fasta.gz"/>
+            <param name="task" value="all"/>
+            <param name="input_type" value="raw"/>
+            <param name="read_type" value="nanopore"/>
+            <conditional name="genome_seed">
+                <param name="selector" value="genome"/>
+                <param name="genome_size" value="2k"/>
+                <param name="seed_depth" value="45"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The read/seed length is too short, and the assembly result is unexpected and please check the assembly quality carefully." />
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <param name="input_reads" value="nanopore.fasta.gz"/>
+            <param name="task" value="assemble"/>
+            <param name="input_type" value="raw"/>
+            <param name="read_type" value="nanopore"/>
+            <conditional name="genome_seed">
+                <param name="selector" value="genome"/>
+                <param name="genome_size" value="2k"/>
+                <param name="seed_depth" value="45"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The read/seed length is too short, and the assembly result is unexpected and please check the assembly quality carefully." />
+            </assert_stderr>
+        </test>
+    </tests>
+    <help><![CDATA[
+        NextDenovo is a string graph-based de novo assembler for long reads (CLR, HiFi and ONT). It uses 
+        a "correct-then-assemble" strategy similar to canu (no correction step for PacBio HiFi reads), but 
+        requires significantly less computing resources and storages.
+    ]]></help>
+    <expand macro="citations" />
+</tool>
