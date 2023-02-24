@@ -2,7 +2,7 @@
     <description>haplotype-resolved de novo assembler for PacBio Hifi reads</description>
     <macros>
         <token name="@TOOL_VERSION@">0.18.8</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
         <token name="@FORMATS@">fasta,fasta.gz,fastq,fastq.gz</token>
         <xml name="reads">
             <param name="reads" type="data" format="@FORMATS@" multiple="true" label="Input reads" />
@@ -150,7 +150,12 @@
         #if $log_out:
             2> output.log
         #end if
-	    && mkdir noseq_files && mv *.noseq.gfa noseq_files
+	    
+        && mkdir noseq_files && mv *.noseq.gfa noseq_files
+
+        #if $bins_out:
+            && mkdir bin_files && mv *.bin bin_files
+        #end if
         ]]>
     </command>
     <inputs>
@@ -268,7 +273,8 @@
                 </param>
             </when>
         </conditional>
-        <param name="log_out" type="boolean" label="Output log file?" truevalue="yes" falsevalue="no"/> 
+        <param name="log_out" type="boolean" label="Output log file?" truevalue="yes" falsevalue="no" /> 
+        <param name="bins_out" type="boolean" label="Output .bin files (used for development and debugging)?" truevalue="yes" falsevalue="no" /> 
     </inputs>
     <outputs>
         <!--Standard mode-->
@@ -320,12 +326,16 @@
         <data name="hap2_contigs_hic" format="gfa1" from_work_dir="output.hic.bench.p_utg.gfa" label="${tool.name} on ${on_string}: processsed unitig graph">
             <filter>mode['mode_selector'] == 'trio' and hic_partition['hic_partition_selector'] == 'set'</filter>
         </data>
-        <!--Log output-->
+        <!--Log, noseq, and bin output-->
         <data name="log_file" format="txt" from_work_dir="output.log" label="${tool.name} ${on_string}: log file">
             <filter>log_out</filter>
         </data>
         <collection name="noseq_files" type="list" label="${tool.name} on ${on_string}: noseq files">
             <discover_datasets pattern="__name_and_ext__" format="gfa1" directory="noseq_files" />
+        </collection>
+        <collection name="bin_files" type="list" label="${tool.name} on ${on_string}: bin files">
+            <filter>bins_out</filter>
+            <discover_datasets pattern="__name_and_ext__" format="gfa1" directory="bin_files" />
         </collection>
     </outputs>
     <tests>
@@ -496,7 +506,7 @@
         <test expect_num_outputs="5">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="mode_selector" value="standard" />
-	        <param name="filter_bits" value="0" />
+	    <param name="filter_bits" value="0" />
             <conditional name="ont_integration">
                 <param name="ont_integration_selector" value="set" />
                 <param name="ul" value="nanopore.fasta.gz" />
@@ -509,7 +519,7 @@
         <test expect_num_outputs="6">
             <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
             <param name="mode_selector" value="standard" />
-	        <param name="filter_bits" value="0" />
+	    <param name="filter_bits" value="0" />
             <param name="log_out" value="yes" />
             <conditional name="ont_integration">
                 <param name="ont_integration_selector" value="set" />
@@ -522,6 +532,14 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- TEST 14: test bin files -->
+        <test expect_num_outputs="6">
+            <param name="reads" value="hifiasm-in1.fa.gz" ftype="fasta.gz" />
+            <param name="filter_bits" value="0" />
+            <param name="mode_selector" value="standard" />
+            <param name="bins_out" value="yes" />
+            <output_collection name="bin_files" type="list" count="3" />
+        </test>
     </tests>
     <help><![CDATA[
 .. class:: infomark
@@ -529,7 +547,7 @@
 **HiFiASM - a fast de novo assembler**
 
 
-Hifiasm is a fast haplotype-resolved de novo assembler for PacBio Hifi reads. It can assemble a human genome in several hours and works with the California redwood genome, one of the most complex genomes sequenced so far. Hifiasm can produce primary/alternate assemblies of quality competitive with the best assemblers. It also introduces a new graph binning algorithm and achieves the best haplotype-resolved assembly given trio data.
+Hifiasm is a fast haplotype-resolved *de novo* assembler for PacBio Hifi reads. It can assemble a human genome in several hours and works with the California redwood genome, one of the most complex genomes sequenced so far. Hifiasm can produce primary/alternate assemblies of quality competitive with the best assemblers. It also introduces a new graph binning algorithm and achieves the best haplotype-resolved assembly given trio data.
 
 ----
 
@@ -537,8 +555,8 @@ Hifiasm is a fast haplotype-resolved de novo assembler for PacBio Hifi reads. It
 
 **Assembly mode**
 
-- *Standard*
-- *Trio* When parental short reads are available, hifiasm can generate a pair of haplotype-resolved assemblies with trio binning.
+- *Standard*: Standard assembly can be run in pseudohaplotype mode, or with Hi-C phasing using Hi-C reads from the same individual.
+- *Trio*: When parental short reads are available, hifiasm can generate a pair of haplotype-resolved assemblies with trio binning.
 
 ----
 
@@ -546,12 +564,13 @@ Hifiasm is a fast haplotype-resolved de novo assembler for PacBio Hifi reads. It
 
 **Outputs**
 
-Non Trio assembly:
+Non-Trio assembly:
 
-- Haplotype-resolved raw unitig graph in GFA format. This graph keeps all haplotype information, including somatic mutations and recurrent sequencing errors.
-- Haplotype-resolved processed unitig graph without small bubbles : Small bubbles might be caused by somatic mutations or noise in data, which are not the real haplotype information.
-- Primary assembly contig graph : This graph collapses different haplotypes.
-- Alternate assembly contig graph : This graph consists of all assemblies that are discarded in primary contig graph.
+- Haplotype-resolved raw unitig graph: This graph keeps all haplotype information, including somatic mutations and recurrent sequencing errors.
+- Haplotype-resolved processed unitig graph without small bubbles: This graph 'pops' small bubbles in the raw unitig graph; small bubbles might be caused by somatic mutations or noise in data, which are not the real haplotype information.
+- Primary assembly contig graph: This graph includes a complete assembly with long stretches of phased blocks, though there may be some haplotype collapse. 
+- Alternate assembly contig graph: This graph consists of all contigs that are discarded from the primary contig graph.
+- [hap1]/[hap2] contig graph: Each graph consists of phased contigs (output only with Hi-C phasing enabled). 
 
 
 Trio assembly:
