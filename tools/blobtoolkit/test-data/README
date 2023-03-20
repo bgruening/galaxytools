@@ -1,0 +1,1 @@
+The PfamScan.tar.gz tarball in this directory contains a version of pfam_scan.pl that is compatible with HMMER3.0, HMMER3.1b1 and HMMER3.1b2.
