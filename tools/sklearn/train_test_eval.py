@@ -14,7 +14,6 @@ from galaxy_ml.utils import (get_module, get_scoring, clean_params,
                              read_columns, SafeEval, try_get_attr)
 from scipy.io import mmread
 from sklearn import pipeline
-from sklearn.metrics import check_scoring
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score
 from sklearn.utils import indexable, _safe_indexing
@@ -349,7 +348,6 @@ def main(
             # If secondary_scoring is specified, convert the list into comman separated string
             scoring["secondary_scoring"] = ",".join(scoring["secondary_scoring"])
     scorer = get_scoring(scoring)
-    #scorer, _ = check_scoring(estimator, scoring=scorer)
 
     # handle test (first) split
     test_split_options = params["experiment_schemes"]["test_split"]["split_algos"]
@@ -413,7 +411,7 @@ def main(
             X_test, y_test=y_test, scorer=scorer, is_multimetric=True
         )
     else:
-        scores = _score(estimator, X_test, y_test, scorer) #is_multimetric=True
+        scores = _score(estimator, X_test, y_test, scorer)
     # handle output
     for name, score in scores.items():
         scores[name] = [score]
