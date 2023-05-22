@@ -3,7 +3,8 @@ import json
 import pickle
 
 import pandas as pd
-from galaxy_ml.utils import load_model, read_columns
+from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
+from galaxy_ml.utils import read_columns
 from scipy.io import mmread
 from sklearn.pipeline import Pipeline
 
@@ -148,9 +149,9 @@ def main(inputs, infile_estimator, infile1, infile2, out_object, out_weights=Non
         params = json.load(param_handler)
 
     # load model
-    with open(infile_estimator, "rb") as est_handler:
-        estimator = load_model(est_handler)
-    estimator = clean_params(estimator, n_jobs=N_JOBS)
+    estimator = load_model_from_h5(infile_estimator)
+
+    estimator = clean_params(estimator)
 
     X_train, y_train = _get_X_y(params, infile1, infile2)
 
@@ -170,8 +171,7 @@ def main(inputs, infile_estimator, infile1, infile2, out_object, out_weights=Non
         if getattr(main_est, "data_generator_", None):
             del main_est.data_generator_
 
-    with open(out_object, "wb") as output_handler:
-        pickle.dump(estimator, output_handler, pickle.HIGHEST_PROTOCOL)
+    dump_model_to_h5(estimator, out_object)
 
 
 if __name__ == "__main__":
