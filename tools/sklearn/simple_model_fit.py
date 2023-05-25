@@ -1,6 +1,5 @@
 import argparse
 import json
-import pickle
 
 import pandas as pd
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
