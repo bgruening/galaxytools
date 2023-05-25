@@ -6,13 +6,10 @@ from galaxy_ml.model_persist import load_model_from_h5
 from galaxy_ml.utils import (
     clean_params, get_module, read_columns, try_get_attr)
 
-import numpy as np
-
-import pandas as pd
-
 from scipy.io import mmread
 
-from sklearn.pipeline import Pipeline
+import numpy as np
+import pandas as pd
 
 
 N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))

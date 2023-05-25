@@ -28,7 +28,6 @@ from sklearn import (cluster, decomposition, feature_selection,
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score, cross_validate
-from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import LabelEncoder
 
 from skopt import BayesSearchCV

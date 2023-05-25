@@ -11,7 +11,6 @@ from scipy.io import mmread
 
 from sklearn.metrics._scorer import _check_multimetric_scoring
 from sklearn.model_selection._validation import _score
-from sklearn.pipeline import Pipeline
 
 
 def _get_X_y(params, infile1, infile2):
