@@ -13,9 +13,9 @@ import mlxtend.classifier
 import mlxtend.regressor
 
 
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
-N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
+N_JOBS = int(__import__("os").environ.get("GALAXY_SLOTS", 1))
 
 
 def main(inputs_path, output_obj, base_paths=None, meta_path=None):
@@ -34,72 +34,70 @@ def main(inputs_path, output_obj, base_paths=None, meta_path=None):
     meta_path : str
         File path
     """
-    with open(inputs_path, 'r') as param_handler:
+    with open(inputs_path, "r") as param_handler:
         params = json.load(param_handler)
 
-    estimator_type = params['algo_selection']['estimator_type']
+    estimator_type = params["algo_selection"]["estimator_type"]
     # get base estimators
     base_estimators = []
-    for idx, base_file in enumerate(base_paths.split(',')):
-        if base_file and base_file != 'None':
+    for idx, base_file in enumerate(base_paths.split(",")):
+        if base_file and base_file != "None":
             model = load_model_from_h5(base_file)
         else:
-            estimator_json = (params['base_est_builder'][idx]
-                              ['estimator_selector'])
+            estimator_json = params["base_est_builder"][idx]["estimator_selector"]
             model = get_estimator(estimator_json)
 
-        if estimator_type.startswith('sklearn'):
+        if estimator_type.startswith("sklearn"):
             named = model.__class__.__name__.lower()
-            named = 'base_%d_%s' % (idx, named)
+            named = "base_%d_%s" % (idx, named)
             base_estimators.append((named, model))
         else:
             base_estimators.append(model)
 
     # get meta estimator, if applicable
-    if estimator_type.startswith('mlxtend'):
+    if estimator_type.startswith("mlxtend"):
         if meta_path:
             meta_estimator = load_model_from_h5(meta_path)
         else:
-            estimator_json = (params['algo_selection']
-                              ['meta_estimator']['estimator_selector'])
+            estimator_json = params["algo_selection"]["meta_estimator"][
+                "estimator_selector"
+            ]
             meta_estimator = get_estimator(estimator_json)
 
-    options = params['algo_selection']['options']
+    options = params["algo_selection"]["options"]
 
-    cv_selector = options.pop('cv_selector', None)
+    cv_selector = options.pop("cv_selector", None)
     if cv_selector:
-        if Version(galaxy_ml_version) < Version('0.8.3'):
-            cv_selector.pop('n_stratification_bins', None)
+        if Version(galaxy_ml_version) < Version("0.8.3"):
+            cv_selector.pop("n_stratification_bins", None)
         splitter, groups = get_cv(cv_selector)
-        options['cv'] = splitter
+        options["cv"] = splitter
         # set n_jobs
-        options['n_jobs'] = N_JOBS
+        options["n_jobs"] = N_JOBS
 
-    weights = options.pop('weights', None)
+    weights = options.pop("weights", None)
     if weights:
         weights = ast.literal_eval(weights)
         if weights:
-            options['weights'] = weights
+            options["weights"] = weights
 
-    mod_and_name = estimator_type.split('_')
+    mod_and_name = estimator_type.split("_")
     mod = sys.modules[mod_and_name[0]]
     klass = getattr(mod, mod_and_name[1])
 
-    if estimator_type.startswith('sklearn'):
-        options['n_jobs'] = N_JOBS
+    if estimator_type.startswith("sklearn"):
+        options["n_jobs"] = N_JOBS
         ensemble_estimator = klass(base_estimators, **options)
 
     elif mod == mlxtend.classifier:
         ensemble_estimator = klass(
-            classifiers=base_estimators,
-            meta_classifier=meta_estimator,
-            **options)
+            classifiers=base_estimators, meta_classifier=meta_estimator, **options
+        )
 
     else:
         ensemble_estimator = klass(
-            regressors=base_estimators,
-            meta_regressor=meta_estimator,
-            **options)
+            regressors=base_estimators, meta_regressor=meta_estimator, **options
+        )
 
     print(ensemble_estimator)
     for base_est in base_estimators:
@@ -108,7 +106,7 @@ def main(inputs_path, output_obj, base_paths=None, meta_path=None):
     dump_model_to_h5(ensemble_estimator, output_obj)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-b", "--bases", dest="bases")
     aparser.add_argument("-m", "--meta", dest="meta")
@@ -116,5 +114,4 @@ if __name__ == '__main__':
     aparser.add_argument("-o", "--outfile", dest="outfile")
     args = aparser.parse_args()
 
-    main(args.inputs, args.outfile, base_paths=args.bases,
-         meta_path=args.meta)
+    main(args.inputs, args.outfile, base_paths=args.bases, meta_path=args.meta)
