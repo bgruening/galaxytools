@@ -1,7 +1,7 @@
-<tool id="bg_sortmerna" name="Filter with SortMeRNA" version="@VERSION@.6">
+<tool id="sortmerna_4" name="Filter with SortMeRNA" version="@VERSION@.0">
     <description>of ribosomal RNAs in metatranscriptomic data</description>
     <macros>
-        <token name="@VERSION@">2.1b</token>
+        <token name="@VERSION@">4.3.4</token>
         <xml name="db_prep">
             <param name="seed_length" type="integer" min="0" max="100" value="18" label="Seed length for database indexing" help="(-L)"/>
             <param name="max_pos" type="integer" min="0" max="100000" value="10000" label="Maximum number of positions to store for each k-mer for database indexing" help="With 0, all positions are stored (--max_pos)"/>
@@ -54,7 +54,7 @@
     </stdio>
     <version_command>
 <![CDATA[
-sortmerna --version 2>&1|grep 'SortMeRNA version'
+    ${__tool_directory__}/sortmerna -version 2>&1 | grep 'SortMeRNA version'
 ]]>
     </version_command>
     <command>
@@ -63,9 +63,13 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
     #set $sep=''
     #if str( $databases_type.databases_selector ) == 'history'
         #for $db in $databases_type.database_name
+            #*   TODO - outdated -------------------
             #set $ref += $sep + str($db) + ',' + $os.path.splitext($os.path.basename(str($db)))[0]
             #set $sep = ':'
+            ----------------------------------------*#
+            #set $ref += ' -ref ' + str($db)
         #end for
+    #*  TODO - outdated ------------------------------------------------------------
     #else if str( $databases_type.databases_selector ) == 'cached_to_index'
         #for $db in $databases_type.input_databases.fields.path.split(",")
             #set $ref += $sep + $db + ',' + $os.path.splitext($db)[0] + '-reindexed'
@@ -77,7 +81,9 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
             #set $sep = ':'
         #end for
     #end if
+    ------------------------------------------------------------------------------*#
 
+    #*  TODO - outdated --------------------------------------
     #if str( $databases_type.databases_selector ) != 'cached'
         indexdb_rna 
             --ref '$ref'
@@ -85,14 +91,7 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
             --max_pos '$databases_type.max_pos'
         &&
     #end if
-
-    #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
-        merge-paired-reads.sh
-            '$sequencing_type.forward_reads'
-            '$sequencing_type.reverse_reads'
-            merged-reads
-        &&
-    #end if
+    -------------------------------------------------------*#
 
     sortmerna 
         --ref '$ref'
@@ -172,29 +171,6 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
 ]]>
     </command>
     <inputs>
-        <conditional name="sequencing_type">
-            <param name="sequencing_type_selector" type="select" label="Sequencing type">
-                <option value="not_paired">Reads are not paired</option>
-                <option value="paired">Reads are paired</option>
-            </param>
-            <when value="not_paired">
-                <param argument="--reads" type="data" format="fasta,fastq" label="Querying sequences"/>
-            </when>
-            <when value="paired">
-                <param name="forward_reads" type="data" format="fasta,fastq" label="Forward reads"/>
-                <param name="reverse_reads" type="data" format="fasta,fastq" label="Reverse reads"/>
-                <param name="paired_type" type="select" display="radio" label="If one of the paired-end reads aligns and the other one does not">
-                    <option value="">Leave the reads split between aligned and rejected files</option>
-                    <option value="--paired_in">Output both reads to aligned file (--paired_in)</option>
-                    <option value="--paired_out">Output both reads to rejected file (--paired_out)</option>
-                </param>
-            </when>
-        </conditional>
-        <param name="strand_search" type="select" label="Which strands to search">
-            <option value="">Search both strands</option>
-            <option value="-F">Search only the forward strand (-F)</option>
-            <option value="-R">Search only the reverse-complementary strand (-R)</option>
-        </param>
         <conditional name="databases_type">
             <param name="databases_selector" type="select" label="Databases to query"
                 help="Public rRNA databases provided with SortMeRNA have been indexed. On the contrary, personal databases must be indexed each time SortMeRNA is launched. Please be patient, this may take some time depending on the size of the given database.">
@@ -220,6 +196,53 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                 <expand macro="db_prep"/>
             </when>
         </conditional>
+        <conditional name="input_type">
+            <param name="input_type_selector" type="select" label="Input type">
+                <option value="not_paired">Reads are not paired</option><!-- single file -->
+                <option value="paired_one_file">Reads are paired (interleaved) in a single file</option>
+                <option value="paired_two_files">Reads are paired with Forward and Reverse strands in separate files</option>
+            </param>
+            <when value="not_paired">
+                <param argument="--reads" type="data" format="fasta,fastq" label="Querying sequences"/>
+            </when>
+            <when value="paired_one_file">
+                <param argument="--reads" type="data" format="fasta,fastq" label="Interleaved querying sequences"/>
+                <conditional name="output_options">
+                    <param name="strand_separation_type" type="select" optional="true" label="Output paired strands into separate files">
+                        <option value="--out2">--out2: Output FWD and REV strands into separate files i.e. 'aligned_fwd' and 'aligned_rev'</option>
+                        <option value="--sout">--sout: Output paired aligned, and singleton aligned reads into separate files i.e. 'aligned_paired' and 'aligned_singleton'</option>
+                        <option value="--out2 --sout">Use both --out2 and --sout</option>
+                    </param>
+                    <when value="--out2">
+                        <param name="paired_output_type" type="select" display="radio" optional="true" label="If one of the paired-end reads aligns and the other one does not">
+                            <option value="">Leave the reads split between aligned and rejected files</option>
+                            <option value="--paired_in">Output both reads to aligned file (--paired_in)</option>
+                            <option value="--paired_out">Output both reads to rejected file (--paired_out)</option>
+                        </param>
+                    </when>
+                    <when value="--stout"/>
+                    <when value="--out2 --stout"/>
+                </conditional>
+            </when>
+            <when value="paired_two_files">
+                <param name="forward_reads" type="data" format="fasta,fastq" label="Forward reads"/>
+                <param name="reverse_reads" type="data" format="fasta,fastq" label="Reverse reads"/>
+                <param name="strand_separation_type" type="select" display="checkboxes" optional="true" label="Output paired strands into separate files">
+                    <option value="--out2">Output FWD and REV strands into separate files (--out2)</option>
+                    <option value="--sout">Output FWD/REV paired, and FWD/REV singleton aligned strands into separate files (--sout)</option>
+                </param>
+                <param name="paired_output_type" type="select" display="radio" optional="true" label="If one of the paired-end reads aligns and the other one does not">
+                    <option value="">Leave the reads split between aligned and rejected files</option>
+                    <option value="--paired_in">Output both reads to aligned file (--paired_in)</option>
+                    <option value="--paired_out">Output both reads to rejected file (--paired_out)</option>
+                </param>
+            </when>
+        </conditional>
+        <param name="strand_search" type="select" label="Which strands to search">
+            <option value="">Search both strands</option>
+            <option value="-F">Search only the forward strand (-F)</option>
+            <option value="-R">Search only the reverse-complementary strand (-R)</option>
+        </param>
         <!-- Outputs -->
         <conditional name="aligned_fastx">
             <param name="aligned_fastx_selector" type="select" label="Include aligned reads in FASTA/FASTQ format?">
