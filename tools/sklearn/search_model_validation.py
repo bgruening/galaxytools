@@ -24,13 +24,19 @@ from galaxy_ml.utils import (
     try_get_attr
 )
 from scipy.io import mmread
-from sklearn import (cluster, decomposition, feature_selection,
-                     kernel_approximation, model_selection, preprocessing)
-from skopt import BayesSearchCV
+from sklearn import (
+    cluster,
+    decomposition,
+    feature_selection,
+    kernel_approximation,
+    model_selection,
+    preprocessing,
+)
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score, cross_validate
 from sklearn.preprocessing import LabelEncoder
+from skopt import BayesSearchCV
 
 N_JOBS = int(os.environ.get("GALAXY_SLOTS", 1))
 # handle  disk cache
