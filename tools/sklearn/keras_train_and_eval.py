@@ -7,15 +7,22 @@ from itertools import chain
 import joblib
 import numpy as np
 import pandas as pd
-from galaxy_ml.keras_galaxy_models import (KerasGBatchClassifier,
-                                           _predict_generator)
+from galaxy_ml.keras_galaxy_models import (
+    _predict_generator,
+    KerasGBatchClassifier,
+)
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
 from galaxy_ml.model_validations import train_test_split
-from galaxy_ml.utils import (SafeEval, clean_params, gen_compute_scores,
-                             get_main_estimator, get_module, get_scoring,
-                             read_columns)
+from galaxy_ml.utils import (
+    clean_params,
+    gen_compute_scores,
+    get_main_estimator,
+    get_module,
+    get_scoring,
+    read_columns,
+    SafeEval
+)
 from scipy.io import mmread
-
 from sklearn.metrics._scorer import _check_multimetric_scoring
 from sklearn.model_selection._validation import _score
 from sklearn.utils import _safe_indexing, indexable
