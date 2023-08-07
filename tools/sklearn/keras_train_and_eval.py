@@ -105,7 +105,7 @@ def train_test_split_none(*arrays, **kwargs):
         rval = train_test_split(*new_arrays, **kwargs)
 
     for pos in nones:
-        rval[pos * 2 : 2] = [None, None]
+        rval[pos * 2: 2] = [None, None]
 
     return rval
 
