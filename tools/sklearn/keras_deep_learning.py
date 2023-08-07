@@ -3,14 +3,11 @@ import json
 import warnings
 from ast import literal_eval
 
+import six
 from galaxy_ml.model_persist import dump_model_to_h5
 from galaxy_ml.utils import SafeEval, try_get_attr
-
-import six
-
 from tensorflow import keras
 from tensorflow.keras.models import Model, Sequential
-
 
 safe_eval = SafeEval()
 

@@ -2,14 +2,12 @@ import argparse
 import json
 import warnings
 
-from galaxy_ml.model_persist import load_model_from_h5
-from galaxy_ml.utils import clean_params, get_module, read_columns, try_get_attr
-
-from scipy.io import mmread
-
 import numpy as np
 import pandas as pd
-
+from galaxy_ml.model_persist import load_model_from_h5
+from galaxy_ml.utils import (clean_params, get_module, read_columns,
+                             try_get_attr)
+from scipy.io import mmread
 
 N_JOBS = int(__import__("os").environ.get("GALAXY_SLOTS", 1))
 

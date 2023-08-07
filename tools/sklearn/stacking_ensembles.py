@@ -5,13 +5,11 @@ import sys
 import warnings
 from distutils.version import LooseVersion as Version
 
+import mlxtend.classifier
+import mlxtend.regressor
 from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
 from galaxy_ml.utils import get_cv, get_estimator
-
-import mlxtend.classifier
-import mlxtend.regressor
-
 
 warnings.filterwarnings("ignore")
 

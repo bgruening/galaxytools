@@ -3,11 +3,10 @@ import json
 import warnings
 from distutils.version import LooseVersion as Version
 
+import pandas as pd
 from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.model_validations import train_test_split
 from galaxy_ml.utils import get_cv, read_columns
-
-import pandas as pd
 
 
 def _get_single_cv_split(params, array, infile_labels=None, infile_groups=None):
