@@ -8,7 +8,7 @@ from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
 from sklearn.preprocessing import LabelEncoder
 
 
-def main(inputs, infile, outfile, encoder_outfile = None, model = None):
+def main(inputs, infile, outfile, encoder_outfile=None, model=None):
     """
     Parameter
     ---------
@@ -20,14 +20,12 @@ def main(inputs, infile, outfile, encoder_outfile = None, model = None):
 
     outfile : str
         File path to output vector
-    
     encoder_outfile : str
         File path to encoder hdf5 output
 
     model : str
         File path to prefitted model
     """
-
     warnings.simplefilter("ignore")
 
     with open(inputs, "r") as param_handler:
@@ -51,6 +49,7 @@ def main(inputs, infile, outfile, encoder_outfile = None, model = None):
     if encoder_outfile:
         dump_model_to_h5(le, encoder_outfile)
 
+
 if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
@@ -60,4 +59,5 @@ if __name__ == "__main__":
     aparser.add_argument("--model", dest="model")
     args = aparser.parse_args()
 
-    main(args.inputs, args.infile, args.outfile, args.encoder_outfile, args.model)
+    main(args.inputs, args.infile, args.outfile,
+         args.encoder_outfile, args.model)
