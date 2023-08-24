@@ -18,124 +18,114 @@
             level="fatal"
             description="ERROR" />
     </stdio>
-    <version_command><![CDATA[sortmerna --version 2>&1|grep 'SortMeRNA version']]></version_command>
-    <command><![CDATA[
-        #set $ref = ''
-        #set $sep=''
-        #if str( $databases_type.databases_selector ) == 'cached_to_index'
-            #for $db in $databases_type.input_databases.fields.path.split(",")
-                #set $ref += $sep + $db + ',' + $os.path.splitext($db)[0] + '-reindexed'
-                #set $sep = ':'
-            #end for
-        #else if str( $databases_type.databases_selector ) == 'cached'
-            #for $db in $databases_type.input_databases.fields.path.split(",")
-                #set $ref += $sep + $db + ',' + $os.path.splitext($db)[0]
-                #set $sep = ':'
-            #end for
-        #end if
+    <version_command>
+<![CDATA[
+sortmerna --version 2>&1|grep 'SortMeRNA version'
+]]>
+    </version_command>
+    <command>
+<![CDATA[
 
+    @PREPROCESSING@
+
+    #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
+        merge-paired-reads.sh
+            '$sequencing_type.forward_reads'
+            '$sequencing_type.reverse_reads'
+            merged-reads &&
+        
+    #end if
+
+    sortmerna
+        #for $i, $reference in enumerate($ref)
+            --ref '$reference'
+        #end for
+        #if str( $databases_type.databases_selector ) != 'cached'
+            -L '$databases_type.seed_length'
+            --max_pos '$databases_type.max_pos'
+        #end if
+        --aligned 'aligned'
         #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
-            merge-paired-reads.sh
-                '$sequencing_type.forward_reads'
-                '$sequencing_type.reverse_reads'
-                merged-reads
-            &&
+            --reads 'merged-reads'
+            $sequencing_type.paired_type
+        #else
+            --reads '$sequencing_type.reads'
         #end if
-
-        sortmerna
-            #for $db in $databases_type.database_name
-                --ref '$db'
-            #end for
-            #if str( $databases_type.databases_selector ) != 'cached'
-                --index 2
-                -L '$databases_type.seed_length'
-                --max_pos '$databases_type.max_pos'
-                -m \${GALAXY_MEMORY_MB:-8192}
-                --interval $databases_type.interval
+        $strand_search
+        $log
+        $aligned_fastx.aligned_fastx_selector
+        #if $aligned_fastx.aligned_fastx_selector == '--fastx'
+            #if $aligned_fastx.other
+                --other 'unaligned'
             #end if
-            --aligned 'aligned'
-            #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
-                --reads 'merged-reads'
-                $sequencing_type.paired_type
+        #end if
+        #if $report.report_type == 'best'
+            @ALIGNMENTS@
+            #if $report.otu.otu_map == 'True'
+                --otu_map
+                --id '$report.otu.id'
+                --coverage '$report.otu.coverage'
+                $report.otu.de_novo_otu
+            #end if
+            #if $report.report_best.report_best_type == '1'
+                --best 1
+                --min_lis '$report.report_best.report_best_min_lis'
             #else
-                --reads '$sequencing_type.reads'
+                --best '$report.report_best.report_best_value'
+                --min_lis '$report.report_best.report_best_min_lis'
             #end if
-            $strand_search
-            $log
-            $aligned_fastx.aligned_fastx_selector
-            #if $aligned_fastx.aligned_fastx_selector == '--fastx'
-                #if $aligned_fastx.other
-                    --other 'unaligned'
-                #end if
+        #elif $report.report_type == 'num_alignments'
+            @ALIGNMENTS@
+            #if $report.report_num_alignments.report_num_alignments_type == 'other_value'
+                --num_alignments '$report.report_num_alignments.report_num_alignments_value'
+            #else
+                --num_alignments '$report.report_num_alignments.report_num_alignments_type'
             #end if
-            #if $report.report_type == 'best'
-                @ALIGNMENTS@
-                #if $report.otu.otu_map == 'True'
-                    --otu_map
-                    --id '$report.otu.id'
-                    --coverage '$report.otu.coverage'
-                    $report.otu.de_novo_otu
-                #end if
-                #if $report.report_best.report_best_type == '1'
-                    --best 1
-                    --min_lis '$report.report_best.report_best_min_lis'
-                #else
-                    --best '$report.report_best.report_best_value'
-                    --min_lis '$report.report_best.report_best_min_lis'
-                #end if
-            #elif $report.report_type == 'num_alignments'
-                @ALIGNMENTS@
-                #if $report.report_num_alignments.report_num_alignments_type == 'other_value'
-                    --num_alignments '$report.report_num_alignments.report_num_alignments_value'
-                #else
-                    --num_alignments '$report.report_num_alignments.report_num_alignments_type'
-                #end if
-            #end if
-            -e '$e_value'
-            --match '$match'
-            --mismatch '$mismatch'
-            --gap_open '$gap_open'
-            --gap_ext '$gap_ext'
-            -N '$ambiguous_letter'
-            --threads \${GALAXY_SLOTS:-4}
-        && ls -lah
-        #if $report.report_type != 'None'
-            &&
-            samtools view -@ "\${GALAXY_SLOTS:-4}" -u aligned.sam | samtools sort -@ "\${GALAXY_SLOTS:-4}" -T tmp -O bam -o '$output_bam'
         #end if
+        -e '$e_value'
+        --match '$match'
+        --mismatch '$mismatch'
+        --gap_open '$gap_open'
+        --gap_ext '$gap_ext'
+        --threads \${GALAXY_SLOTS:-1}
+    #if $report.report_type != 'None'
+        &&
+        samtools view -@ "\${GALAXY_SLOTS:-4}" -u aligned.sam | samtools sort -@ "\${GALAXY_SLOTS:-4}" -T tmp -O bam -o '$output_bam'
+    #end if
 
-        #if $aligned_fastx.aligned_fastx_selector == '--fastx' and str($sequencing_type.sequencing_type_selector) == 'paired'
-            #if str($sequencing_type.paired_type) != ''
+    #if $aligned_fastx.aligned_fastx_selector == '--fastx' and str($sequencing_type.sequencing_type_selector) == 'paired'
+        #if str($sequencing_type.paired_type) != ''
+            &&
+            unmerge-paired-reads.sh
+                aligned.fast*
+                '$aligned_forward'
+                '$aligned_reverse'
+            #if $aligned_fastx.other
                 &&
                 unmerge-paired-reads.sh
-                    aligned.fast*
-                    '$aligned_forward'
-                    '$aligned_reverse'
-                #if $aligned_fastx.other
-                    &&
-                    unmerge-paired-reads.sh
-                        unaligned.fast*
-                        '$unaligned_forward'
-                        '$unaligned_reverse'
-                #end if
-            #else
+                    unaligned.fast*
+                    '$unaligned_forward'
+                    '$unaligned_reverse'
+            #end if
+        #else
+            &&
+            mv aligned.fast* '$aligned_paired'
+            #if $aligned_fastx.other
                 &&
-                mv aligned.fast* '$aligned_paired'
-                #if $aligned_fastx.other
-                    &&
-                    mv unaligned.fast* '$unaligned_paired'
-                #end if
+                mv unaligned.fast* '$unaligned_paired'
             #end if
         #end if
-    ]]></command>
+    #end if
+]]>
+    </command>
     <inputs>
         <conditional name="sequencing_type">
             <param name="sequencing_type_selector" type="select" label="Sequencing type">
-                <option value="not_paired">Reads are not paired</option>
-                <option value="paired">Reads are paired</option>
+                <option value="not_paired">Single-end reads</option>
+                <option value="paired">Paired-end reads</option>
             </param>
             <when value="not_paired">
-                <param argument="--reads" type="data" format="fasta,fastq, fastq.gz, fasta.gz" label="Querying sequences"/>
+                <param argument="--reads" type="data" format="fasta,fastq" label="Querying sequences"/>
             </when>
             <when value="paired">
                 <param name="forward_reads" type="data" format="fasta,fastq" label="Forward reads"/>
@@ -160,20 +150,20 @@
                 <option value="history">Databases from your history</option>
             </param>
             <when value="cached">
-                <param argument="--ref" name="input_databases" label="rRNA databases" type="select" display="checkboxes" multiple="true">
+                <param name="input_databases" label="rRNA databases" type="select" display="checkboxes" multiple="true">
                     <options from_data_table="rRNA_databases" />
                     <validator type="no_options" message="Select at least one database"/>
                 </param>
             </when>
             <when value="cached_to_index">
-                <param argument="--ref" name="input_databases" label="rRNA databases" type="select" display="checkboxes" multiple="true">
+                <param name="input_databases" label="rRNA databases" type="select" display="checkboxes" multiple="true">
                     <options from_data_table="rRNA_databases" />
                     <validator type="no_options" message="Select at least one database"/>
                 </param>
                 <expand macro="db_prep"/>
             </when>
             <when value="history">
-                <param argument="--ref" name="database_name" type="data" format="fasta" multiple="true" label="rRNA databases" help="Your databases will be indexed first, which may take up to several minutes."/>
+                <param name="database_name" type="data" format="fasta" multiple="true" label="rRNA databases" help="Your databases will be indexed first, which may take up to several minutes."/>
                 <expand macro="db_prep"/>
             </when>
         </conditional>
@@ -246,7 +236,7 @@
         <param argument="--mismatch" type="integer" min="-10" max="0" value="-3" label="SW penalty for a mismatch"/>
         <param name="gap_open" type="integer" min="0" max="10" value="5" label="SW penalty for introducing a gap" help="(--gap_open)"/>
         <param name="gap_ext" type="integer" min="0" max="10" value="2" label="SW penalty for extending a gap" help="(--gap_ext)"/>
-        <param name="ambiguous_letter" type="integer" min="-10" max="0" value="-3" label="SW penalty for ambiguous letters (N's)" help="(-N)"/>
+        <param argument="-N" type="boolean" truevalue="True" falsevalue="False" checked="false" label="SW penalty for ambiguous letters (N's)" help="Scored as --mismatch" />
     </inputs>
     <outputs>
         <data name="output_fastx" format_source="reads" from_work_dir="aligned.fq" label="${tool.name} on ${on_string}: Aligned reads">
@@ -261,7 +251,7 @@
         <data name="aligned_reverse" format_source="reverse_reads" label="${tool.name} on ${on_string}: Aligned reverse reads">
             <filter>aligned_fastx['aligned_fastx_selector'] != '' and sequencing_type['sequencing_type_selector'] == 'paired' and sequencing_type['paired_type'] != ''</filter>
         </data>
-        <data name="output_other" format_source="reads" from_work_dir="unaligned*" label="${tool.name} on ${on_string}: Unaligned reads">
+        <data name="output_other" format_source="reads" from_work_dir="unaligned.*" label="${tool.name} on ${on_string}: Unaligned reads">
             <filter>aligned_fastx['aligned_fastx_selector'] != '' and aligned_fastx['other'] == True and sequencing_type['sequencing_type_selector'] != 'paired'</filter>
         </data>
         <data name="unaligned_paired" format_source="forward_reads" label="${tool.name} on ${on_string}: Unaligned reads">
@@ -273,7 +263,7 @@
         <data name="unaligned_reverse" format_source="reverse_reads" label="${tool.name} on ${on_string}: Unaligned reverse reads">
             <filter>aligned_fastx['aligned_fastx_selector'] != '' and aligned_fastx['other'] == True and sequencing_type['sequencing_type_selector'] == 'paired' and sequencing_type['paired_type'] != ''</filter>
         </data>
-        <data name="output_bam" format="bam" label="${tool.name} on ${on_string}: Alignments">
+        <data name="output_bam" format="bam" from_work_dir="output.bam" label="${tool.name} on ${on_string}: Alignments">
             <filter>report['report_type'] != 'None'</filter>
         </data>
         <data name="output_blast" format="tabular" from_work_dir="aligned.blast" label="${tool.name} on ${on_string}: BLAST report">
@@ -296,12 +286,12 @@
         <test>
             <conditional name="sequencing_type">
                 <param name="sequencing_type_selector" value="not_paired" />
-                <param name="reads" value="read_small.fastq" />
+                <param name="reads" value="read_small.fastq.gz" />
             </conditional>
             <param name="strand_search" value="" />
             <conditional name="databases_type">
                 <param name="databases_selector" value="history" />
-                <param name="database_name" value="ref_small.fasta" />
+                <param name="database_name" value="ref_small.fasta.gz" />
             </conditional>
             <conditional name="aligned_fastx">
                 <param name="aligned_fastx_selector" value="--fastx" />
@@ -325,7 +315,7 @@
             <param name="mismatch" value="-3" />
             <param name="gap_open" value="5"/>
             <param name="gap_ext" value="2"/>
-            <param name="ambiguous_letter" value="-3"/>
+            <param name="N" value="True"/>
             <output name="output_fastx" file="test1_aligned.fastq" />
             <output name="output_other" file="test1_other.fastq" />
             <output name="output_bam" file="test1_bam.bam" compare="sim_size" delta="200" />
@@ -334,12 +324,12 @@
         <test>
             <conditional name="sequencing_type">
                 <param name="sequencing_type_selector" value="not_paired" />
-                <param name="reads" value="read_small.fasta" />
+                <param name="reads" value="read_small.fastq.gz" />
             </conditional>
             <param name="strand_search" value="" />
             <conditional name="databases_type">
                 <param name="databases_selector" value="history" />
-                <param name="database_name" value="ref_small.fasta" />
+                <param name="database_name" value="ref_small.fasta.gz" />
             </conditional>
             <conditional name="aligned_fastx">
                 <param name="aligned_fastx_selector" value="--fastx" />
@@ -354,7 +344,7 @@
             <param name="mismatch" value="-3" />
             <param name="gap_open" value="5"/>
             <param name="gap_ext" value="2"/>
-            <param name="ambiguous_letter" value="-3"/>
+            <param name="N" value="True"/>
             <output name="output_fastx" file="test2_aligned.fasta" />
             <output name="output_log" file="test2_log.txt"  compare="sim_size" />
         </test>
@@ -393,7 +383,7 @@
             <param name="mismatch" value="-3" />
             <param name="gap_open" value="5"/>
             <param name="gap_ext" value="2"/>
-            <param name="ambiguous_letter" value="-3"/>
+            <param name="N" value="True"/>
             <output name="aligned_forward" file="test3_aligned_forward.fastq" />
             <output name="aligned_reverse" file="test3_aligned_reverse.fastq" />
             <output name="unaligned_forward" file="test3_unaligned_forward.fastq" />
@@ -435,7 +425,7 @@
             <param name="mismatch" value="-3" />
             <param name="gap_open" value="5"/>
             <param name="gap_ext" value="2"/>
-            <param name="ambiguous_letter" value="-3"/>
+            <param name="N" value="True"/>
             <output name="output_bam" file="test4_bam.bam" compare="sim_size" delta="200" />
             <output name="output_biom" file="test4_biom.txt"/>
             <output name="output_de_novo" file="test4_de_novo.fasta"/>
@@ -475,7 +465,7 @@
             <param name="mismatch" value="-3" />
             <param name="gap_open" value="5"/>
             <param name="gap_ext" value="2"/>
-            <param name="ambiguous_letter" value="-3"/>
+            <param name="N" value="True"/>
             <output name="aligned_paired" file="test5_aligned.fasta" />
             <output name="unaligned_paired" file="test5_unaligned.fasta" />
         </test>
@@ -514,7 +504,7 @@
             <param name="mismatch" value="-3" />
             <param name="gap_open" value="5"/>
             <param name="gap_ext" value="2"/>
-            <param name="ambiguous_letter" value="-3"/>
+            <param name="N" value="True"/>
             <output name="aligned_forward" file="test6_aligned_forward.fasta" />
             <output name="aligned_reverse" file="test6_aligned_reverse.fasta" />
             <output name="unaligned_forward" file="test6_unaligned_forward.fasta" />
