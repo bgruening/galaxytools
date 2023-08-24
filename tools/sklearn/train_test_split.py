@@ -1,8 +1,10 @@
 import argparse
 import json
 import warnings
+from distutils.version import LooseVersion as Version
 
 import pandas as pd
+from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.model_validations import train_test_split
 from galaxy_ml.utils import get_cv, read_columns
 
@@ -69,7 +71,10 @@ def _get_single_cv_split(params, array, infile_labels=None, infile_groups=None):
         y = df.iloc[:, col_index].values
 
     # construct the cv splitter object
-    splitter, groups = get_cv(params["mode_selection"]["cv_selector"])
+    cv_selector = params["mode_selection"]["cv_selector"]
+    if Version(galaxy_ml_version) < Version("0.8.3"):
+        cv_selector.pop("n_stratification_bins", None)
+    splitter, groups = get_cv(cv_selector)
 
     total_n_splits = splitter.get_n_splits(array.values, y=y, groups=groups)
     if nth_split > total_n_splits:
