@@ -30,25 +30,32 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
     
     mkdir -p './aligned' &&
     mkdir -p './kvdb_folder' &&
-    mkdir -p './idx_folder' &&
     mkdir -p './readb_folder' &&
+    #if $databases_type.databases_selector != 'cached'
+        mkdir -p './idx_folder' &&
+    #end if
 
     sortmerna
-        #for $i, $reference in enumerate($ref)
+        #for $reference in $ref
             --ref '$reference'
         #end for
-        #if str( $databases_type.databases_selector ) != 'cached'
+        #if $databases_type.databases_selector != 'cached'
             -L '$databases_type.seed_length'
             --max_pos '$databases_type.max_pos'
         #end if
         --aligned 'aligned'
-        #if str( $sequencing_type.sequencing_type_selector ) == 'paired'
+        #if $sequencing_type.sequencing_type_selector == 'paired'
             --reads '$sequencing_type.forward_reads'
             --reads '$sequencing_type.reverse_reads'
             $sequencing_type.paired_type
-        #elif str( $sequencing_type.sequencing_type_selector ) == 'interleaved'
+        #elif $sequencing_type.sequencing_type_selector == 'interleaved'
             --reads '$sequencing_type.reads'
             --paired
+            $sequencing_type.paired_type
+        #else if $sequencing_type.sequencing_type_selector == 'paired_collection'
+            --reads '${$sequencing_type.reads.forward}'
+            --reads '${$sequencing_type.reads.reverse}'
+            $sequencing_type.paired_type
         #else
             --reads '$sequencing_type.reads'
         #end if
@@ -90,6 +97,7 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
     #if $report.report_type != 'None'
         && samtools view -@ "\${GALAXY_SLOTS:-4}" -u aligned.sam | samtools sort -@ "\${GALAXY_SLOTS:-4}" -T tmp -O bam -o '$output_bam'
     #end if
+    && ls -lah
 ]]>
     </command>
     <inputs>
@@ -98,7 +106,7 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                 <option value="not_paired">Single-end reads</option>
                 <option value="paired">Paired-end reads</option>
                 <option value="interleaved">Interleaved paired-end reads</option>
-
+                <option value="paired_collection">Paired collection</option>
             </param>
             <when value="not_paired">
                 <expand macro="reads_macro"/>
@@ -112,6 +120,10 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                 <expand macro="reads_macro"/>
                 <expand macro="paired_type_macro"/>
             </when>
+            <when value="paired_collection">
+                <param name="reads" format="fasta,fastq,fasta.gz,fastq.gz" type="data_collection" collection_type="paired" label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
+                <expand macro="paired_type_macro"/>
+            </when>
         </conditional>
         <param name="strand_search" type="select" label="Which strands to search">
             <option value="">Search both strands</option>
@@ -120,8 +132,7 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
         </param>
         <conditional name="databases_type">
             <param name="databases_selector" type="select" label="Databases to query"
-                help="Public rRNA databases provided with SortMeRNA have been indexed. On the contrary, personal databases must be indexed each time 
-                    SortMeRNA is launched. Please be patient, this may take some time depending on the size of the given database.">
+                help="Public rRNA databases provided with SortMeRNA have been indexed. On the contrary, personal databases must be indexed each time SortMeRNA is launched. Please be patient, this may take some time depending on the size of the given database.">
                 <option value="cached" selected="true">Public pre-indexed ribosomal databases</option>
                 <option value="cached_to_index">Public ribosomal databases to index with non default parameters</option>
                 <option value="history">Databases from your history</option>
@@ -257,6 +268,7 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
         <data name="output_de_novo" format_source="reads" from_work_dir="aligned_denovo*" label="${tool.name} on ${on_string}: De novo reads matching database">
             <filter>report['report_type'] != 'None' and report['otu']['otu_map'] == 'True' and report['otu']['de_novo_otu'] == True</filter>
         </data>
+        
     </outputs>
     <tests>
         <test expect_num_outputs="4">
@@ -558,6 +570,27 @@ sortmerna --version 2>&1|grep 'SortMeRNA version'
                 <param name="aligned_fastx_selector" value="" />
             </conditional>
             <output name="output_bam" file="test9_bam.bam" compare="sim_size" delta="200" />
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="sequencing_type">
+                <param name="sequencing_type_selector" value="paired_collection" />
+                <param name="reads">
+                    <collection type="paired">
+                        <element name="forward" value="forward_reads.fastq" />
+                        <element name="reverse" value="reverse_reads.fastq" />
+                    </collection>
+                </param>
+            </conditional>
+            <conditional name="databases_type">
+                <param name="databases_selector" value="history" />
+                <param name="database_name" value="ref_small.fasta" />
+            </conditional>
+            <conditional name="aligned_fastx">
+                <param name="aligned_fastx_selector" value="" />
+            </conditional>
+            <output_collection name="output_bam" type="list" count="1">
+                <element name="_reads"  value="test10_bam.bam" compare="sim_size" delta="200" />
+            </output_collection>
         </test>
     </tests>
     <help>
