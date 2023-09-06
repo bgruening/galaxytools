@@ -5,17 +5,143 @@
     </macros>
     <expand macro='requirements' />
     <command detect_errors='exit_code'><![CDATA[
+        #if $ref_db_source.db_source == "history":
+            ln -s $ref_db_source.reference_database './database.dmnd' &&
+        #else:
+            ln -s ${ref_db_source.index.fields.db_path} './database.dmnd' &&
+        #end if
+
+        mkdir -p './taxdump' &&
+        ln -s '${NCBI_taxdump}' 'taxdump.tar' &&
+        tar -xf 'taxdump.tar' -C './taxdump' &&
+
+        genERA
+            -n \${GALAXY_SLOTS:-4}
+            -q '${FASTA_input}'
+            -t $NCBI_taxonomy
+            -b './database.dmnd'
+            -d './taxdump'
+            #if $evolutionary_distances
+                -s '${evolutionary_distances}'
+            #end if
+            -x \${TMPDIR:-.}
+            -l $advanced_options.taxonomic_threshold
+            -e $advanced_options.diamond_threshold
+            -m $advanced_options.matches_threshold
+            -y $advanced_options.diamond_sensitivity
 
     ]]>    </command>
     <inputs>
+        <param argument="-q" name="FASTA_input" type="data" format="fasta" label="Protein sequences" help="File with query protein sequences in FASTA format 
+            to perform pairwise sequence alignments using DIAMOND" />
+        <param argument="-t" name="NCBI_taxonomy" type="text" label="NCBI Taxonomy ID" help="NCBI Taxonomy ID of query species">
+            <sanitizer invalid_char="">
+                <valid initial="string.digits"/>
+            </sanitizer>
+            <validator type="regex">[0-9]+</validator>
+        </param>
+        <conditional name="ref_db_source">
+            <param name="db_source" argument="-b" type="select" label="DIAMOND reference database" help="Built-ins were indexed using default options">
+                <option value="indexed">Use a built-in index</option>
+                <option value="history">Use one from the history</option>
+            </param>
+            <when value="indexed">
+                <param name="index" type="select" label="Select a reference database" help="If your database of interest is not listed, contact your Galaxy admin">
+                    <options from_data_table="diamond_database">
+                        <filter type="sort_by" column="2"/>
+                        <validator type="no_options" message="No indexes are available for the selected input dataset"/>
+                    </options>
+                </param>
+            </when>
+            <when value="history">
+                <param name="reference_database" argument="--db" type="data" format="dmnd" label="Select the reference database" />
+            </when>
+        </conditional>
+        <param argument="-d" name="NCBI_taxdump" type="data" format="tar,gz,tgz" label="NCBI taxdump directory" help="The NCBI taxdump file is a database 
+            file provided by the National Center for Biotechnology Information (NCBI) that contains the names and phylogenetic lineages of organisms with 
+            molecular data in the NCBI databases"/>
+        <param argument="-s" name="evolutionary_distances" type="data" format="tabular" optional="true" label="Table with pairwise evolutionary distances" help="Table with pairwise 
+            evolutionary distances (substitutions/site) between several species in the database and the query species (necessary to calculate homology 
+            detection failure probabilities with abSENSE). NOTE: the query species SHOULD be included in this table" />
+        <section name="advanced_options" title="Advanced options">
+            <param argument="-l" name="taxonomic_threshold" type="integer" min="0" value="30" label="Taxonomic representativeness threshold" help=" Taxonomic 
+                representativeness threshold below which a gene will be flagged as putative genome contamination or the product of a horizontal gene transfer 
+                event. The threshold is established as 30% by default, but it can be freely modified by the user" />
+            <param argument="-e" name="diamond_threshold" type="float" min="0" max="1" value="0.00001" label="DIAMOND E-value threshold" help="The e-value 
+                parameter of Diamond does not only control the output, it also affects the algorithm. It is used by some internal heuristics for ranking 
+                hits before final alignments are computed so you can't expect to get exactly the same results" />
+            <param argument="-m" name="matches_threshold" type="integer" min="0" max="100" value="10" label="Matches percentage threshold" help="Minimum 
+                percentage of matches between your query sequences and any species within a taxonomic level to consider it useful for the gene age 
+                assignment (i.e., filtering taxonomic levels lacking complete genomes in the database)" />
+            <param argument="-y" name="diamond_sensitivity" type="select" label="DIAMOND sensitivity" help="By default, GenEra runs DIAMOND in sensitive 
+                mode to retrieve the highest ammount of homologs in a reasonable amount of time. ">
+                <option value="fast">Fast</option>
+                <option value="mid-sensitive">Mid Sensitive</option>
+                <option value="sensitive" selected="true">Sensitive</option>
+                <option value="more-sensitive">More Sensitive</option>
+                <option value="very-sensitive">Very Sensitive</option>
+                <option value="ultra-sensitive">Ultra Sensitive</option>
+            </param>
+        </section>
     </inputs>
     <outputs>
+        <data name="gene_ages" format="tabular" from_work_dir="*_gene_ages.tsv" label="${tool.name} on ${on_string}: gene ages" />
+        <data name="gene_ages_summary" format="tabular" from_work_dir="*_gene_age_summary.tsv"  label="${tool.name} on ${on_string}: gene ages summary" />
+        <data name="founder_events" format="tabular" from_work_dir="*_founder_events.tsv" label="${tool.name} on ${on_string}: founder events" />
+        <data name="founder_events_summary" format="tabular" label="${tool.name} on ${on_string}: founder events summary" />
+        <data name="HDF_gene_ages" format="tabular" from_work_dir="*_HDF_gene_ages.tsv" label="${tool.name} on ${on_string}: HDF gene ages">
+            <filter>evolutionary_distances</filter>
+        </data>
+        <data name="HDF_gene_ages_summary" format="tabular" from_work_dir="*_HDF_gene_ages_summary.tsv" label="${tool.name} on ${on_string}: HDF gene ages summary">
+            <filter>evolutionary_distances</filter>
+        </data>
+        <data name="HDF_founder_events" format="tabular" from_work_dir="*_HDF_founder_events.tsv" label="${tool.name} on ${on_string}: HDF founder events">
+            <filter>evolutionary_distances</filter>
+        </data>
+        <data name="HDF_founder_events_summary" format="tabular" from_work_dir="*_HDF_founder_events_summary.tsv" label="${tool.name} on ${on_string}: HDF founder events summary">
+            <filter>evolutionary_distances</filter>
+        </data>
     </outputs>
     <tests>
+        <test expect_num_outputs="4">
+            <param name="FASTA_input" value=""/>
+            <param name="NCBI_taxonomy" value=""/>
+            <param name="NCBI_taxdump" value=""/>
+            <param name="evolutionary_distances" value=""/>
+            <section name="advanced_options">
+                <param name="taxonomic_threshold" value="30"/>
+                <param name="diamond_threshold" value="0.00001"/>
+                <param name="matches_threshold" value="10"/>
+                <param name="diamond_sensitivity" value="fast"/>
+            </section>
+            <conditional name="ref_db_source">
+                <param name="db_source" value="indexed"/>
+                <param name="index" value=""/>
+            </conditional>
+            <output name="gene_ages" file="test01_gene_ages.tab" ftype="tabular"/>
+            <output name="gene_ages_summary" file="test01_gene_ages_summary.tab" ftype="tabular"/>
+            <output name="founder_events" file="test01_founder_events.tab" ftype="tabular"/>
+            <output name="founder_events_summary" file="test01_founder_events_summary.tab" ftype="tabular"/>
+        </test>
     </tests>
     <help><![CDATA[
 
-Hello, world!
+.. class:: infomark
+
+**Purpose**
+
+GenEra estimates gene-family founder events (i.e., the age of the last common ancestor of protein-coding gene families) through the reimplementation of genomic phylostratigraphy.
+
+- GenEra takes advantage of DIAMOND speed and sensitivity to search for homolog genes throughout the entire NR database, and combines these results with the NCBI Taxonomy to assign an origination date for each gene and gene family in a query species.
+- GenEra can also incorporate protein data from external sources to enrich the analysis, it can search for proteins within nucleotide data (i.e., genome/transcriptome assemblies) using MMseqs2 to improve the classification of orphan genes, and it calculates a taxonomic representativeness score to assess the reliability of assigning a gene to a specific age.
+- Additionally, GenEra can calculate homology detection failure probabilities using abSENSE to help distinguish fast-evolving genes from high-confidence gene-family founder events.
+
+----
+
+.. class:: infomark
+
+**Output files**
+
 
 ]]>    </help>
     <expand macro="citations"/>
