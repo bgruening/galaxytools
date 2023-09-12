@@ -5,6 +5,7 @@ import warnings
 import numpy as np
 import pandas as pd
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
+
 from sklearn.preprocessing import LabelEncoder
 
 
@@ -20,7 +21,7 @@ def main(inputs, infile, outfile, encoder_outfile=None, model=None):
 
     outfile : str
         File path to output vector
-    
+
     encoder_outfile : str
         File path to encoder hdf5 output
 
@@ -61,5 +62,5 @@ if __name__ == "__main__":
     aparser.add_argument("--model", dest="model")
     args = aparser.parse_args()
 
-    main(args.inputs, args.infile, args.outfile, 
+    main(args.inputs, args.infile, args.outfile,
          args.encoder_outfile, args.model)
