@@ -5,7 +5,6 @@ import warnings
 import numpy as np
 import pandas as pd
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
-
 from sklearn.preprocessing import LabelEncoder
 
 
