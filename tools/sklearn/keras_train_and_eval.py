@@ -188,7 +188,7 @@ def main(
     infile1,
     infile2,
     outfile_result,
-    outfile_history,
+    outfile_history=None,
     outfile_object=None,
     outfile_y_true=None,
     outfile_y_preds=None,
@@ -216,7 +216,7 @@ def main(
     outfile_result : str
         File path to save the results, either cv_results or test result.
 
-    outfile_history : str
+    outfile_history : str, optional
         File path to save the training history.
 
     outfile_object : str, optional
@@ -455,11 +455,15 @@ def main(
             history = estimator.fit(X_train, y_train, validation_data=(X_test, y_test))
     else:
         history = estimator.fit(X_train, y_train)
-    hist_df = pd.DataFrame(history.history)
-    hist_df["epoch"] = np.arange(1, estimator_params["epochs"]+1)
-    epo_col = hist_df.pop('epoch')
-    hist_df.insert(0, 'epoch', epo_col)
-    hist_df.to_csv(path_or_buf=outfile_history, sep="\t", header=True, index=False)
+    if "callbacks" in estimator_params:
+        for cb in estimator_params["callbacks"]:
+             if cb["callback_selection"]["callback_type"] == "CSVLogger":
+                 hist_df = pd.DataFrame(history.history)
+                 hist_df["epoch"] = np.arange(1, estimator_params["epochs"]+1)
+                 epo_col = hist_df.pop('epoch')
+                 hist_df.insert(0, 'epoch', epo_col)
+                 hist_df.to_csv(path_or_buf=outfile_history, sep="\t", header=True, index=False)
+                 break
     if isinstance(estimator, KerasGBatchClassifier):
         scores = {}
         steps = estimator.prediction_steps
