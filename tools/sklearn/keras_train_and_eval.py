@@ -553,7 +553,7 @@ if __name__ == "__main__":
         args.infile1,
         args.infile2,
         args.outfile_result,
-        args.outfile_history,
+        outfile_history=args.outfile_history,
         outfile_object=args.outfile_object,
         outfile_y_true=args.outfile_y_true,
         outfile_y_preds=args.outfile_y_preds,
