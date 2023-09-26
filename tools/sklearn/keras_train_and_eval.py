@@ -457,13 +457,13 @@ def main(
         history = estimator.fit(X_train, y_train)
     if "callbacks" in estimator_params:
         for cb in estimator_params["callbacks"]:
-             if cb["callback_selection"]["callback_type"] == "CSVLogger":
-                 hist_df = pd.DataFrame(history.history)
-                 hist_df["epoch"] = np.arange(1, estimator_params["epochs"]+1)
-                 epo_col = hist_df.pop('epoch')
-                 hist_df.insert(0, 'epoch', epo_col)
-                 hist_df.to_csv(path_or_buf=outfile_history, sep="\t", header=True, index=False)
-                 break
+            if cb["callback_selection"]["callback_type"] == "CSVLogger":
+                hist_df = pd.DataFrame(history.history)
+                hist_df["epoch"] = np.arange(1, estimator_params["epochs"] + 1)
+                epo_col = hist_df.pop('epoch')
+                hist_df.insert(0, 'epoch', epo_col)
+                hist_df.to_csv(path_or_buf=outfile_history, sep="\t", header=True, index=False)
+                break
     if isinstance(estimator, KerasGBatchClassifier):
         scores = {}
         steps = estimator.prediction_steps
