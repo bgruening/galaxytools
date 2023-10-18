@@ -5,8 +5,8 @@ import argparse
 import json
 import os
 import shutil
-import tarfile
 import subprocess
+import tarfile
 
 import requests
 
