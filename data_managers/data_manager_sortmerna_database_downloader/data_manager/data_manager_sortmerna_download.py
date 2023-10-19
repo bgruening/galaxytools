@@ -5,9 +5,10 @@ import argparse
 import json
 import os
 import shutil
-import tarfile
-import requests
 import subprocess
+import tarfile
+
+import requests
 
 
 # Utility functions for interacting with Galaxy JSON
@@ -140,13 +141,15 @@ def move_index_files(archive_content_path, target_dir, data_tables, version):
         command = "indexdb_rna --ref %s,%s" % (
             fasta_filepath,
             indexed_filepath)
-        process = subprocess.call(command, shell=True )
+        returncode = subprocess.call(command, shell=True)
+        if returncode:
+            exit(f"`{command}` exited with exit code {returncode}")
         # Add entry in the data table
         add_data_table_entry(
             data_tables,
             "rRNA_databases",
             dict(
-                value="%s-%s" %(version, db_name),
+                value="%s-%s" % (version, db_name),
                 name=db_name,
                 path=filedir))
 
