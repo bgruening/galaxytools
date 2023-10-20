@@ -2,7 +2,7 @@
     <description>haplotype-resolved de novo assembler for PacBio Hifi reads</description>
     <macros>
         <token name="@TOOL_VERSION@">0.19.7</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
         <token name="@FORMATS@">fasta,fasta.gz,fastq,fastq.gz</token>
         <xml name="reads">
             <param name="reads" type="data" format="@FORMATS@" multiple="true" label="Input reads" />
@@ -50,20 +50,26 @@
             #end for
         #end if
         #if str($mode.mode_selector) == 'trio':
-            #for idx, read in enumerate($mode.hap1_reads):
-                #set $inputfile = 'hap1_input_%d.%s' % ($idx, $read.dataset.extension)
-                ln -s '$read' $inputfile &&
-                $hap1_inputs.append($inputfile)
-            #end for
-            #for idx, read in enumerate($mode.hap2_reads):
-                #set $inputfile = 'hap2_input_%d.%s' % ($idx, $read.dataset.extension)
-                ln -s '$read' $inputfile &&
-                $hap2_inputs.append($inputfile)
-            #end for
-            #set $hap1_filenames = ' '.join($hap1_inputs)
-            #set $hap2_filenames = ' '.join($hap2_inputs)
-            yak count -k$mode.yak_kmer_length -b$filter_bits -t\${GALAXY_SLOTS:-1} -o hap1.yak $hap1_filenames &&
-            yak count -k$mode.yak_kmer_length -b$filter_bits -t\${GALAXY_SLOTS:-1} -o hap2.yak $hap2_filenames &&
+            #if str($mode.trioinput.trio_input_selector) == 'reads':
+                #for idx, read in enumerate($mode.trioinput.hap1_reads):
+                    #set $inputfile = 'hap1_input_%d.%s' % ($idx, $read.dataset.extension)
+                    ln -s '$read' $inputfile &&
+                    $hap1_inputs.append($inputfile)
+                #end for
+                #for idx, read in enumerate($mode.trioinput.hap2_reads):
+                    #set $inputfile = 'hap2_input_%d.%s' % ($idx, $read.dataset.extension)
+                    ln -s '$read' $inputfile &&
+                    $hap2_inputs.append($inputfile)
+                #end for
+                #set $hap1_filenames = ' '.join($hap1_inputs)
+                #set $hap2_filenames = ' '.join($hap2_inputs)
+                yak count -k$mode.yak_kmer_length -b$filter_bits -t\${GALAXY_SLOTS:-1} -o hap1.yak $hap1_filenames &&
+                yak count -k$mode.yak_kmer_length -b$filter_bits -t\${GALAXY_SLOTS:-1} -o hap2.yak $hap2_filenames &&
+            #end if
+            #if str($mode.trioinput.trio_input_selector) == 'lists':
+                #set $hap1_filenames = $mode.trioinput.hap1_list
+                #set $hap2_filenames = $mode.trioinput.hap2_list
+            #end if
         #end if
         hifiasm
         -t \${GALAXY_SLOTS:-1}
@@ -99,10 +105,17 @@
             #end if
         #end if
         #if str($mode.mode_selector) == 'trio':
-            -1 hap1.yak
-            -2 hap2.yak
+            #if str($mode.trioinput.trio_input_selector) == 'reads':
+                -1 hap1.yak
+                -2 hap2.yak
+            #end if
+            #if str($mode.trioinput.trio_input_selector) == 'lists':
+                -3 $hap1_filenames
+                -4 $hap2_filenames
+            #end if
             -c $mode.max_kmers
             -d $mode.min_kmers
+            $mode.trio_dual
         #end if
         #if str($purge_options.purge_selector) == 'set':
             -l $purge_options.purge_level
@@ -175,11 +188,24 @@
             </when>
             <when value="trio">
                 <expand macro="reads" />
-                <param name="hap1_reads" type="data" format="fastq,fastq.gz" multiple="true" label="Haplotype 1 reads" />
-                <param name="hap2_reads" type="data" format="fastq,fastq.gz" multiple="true" label="Haplotype 2 reads" />
+                <conditional name="trioinput">
+                    <param name="trio_input_selector" type="select" label="What parental information are you using?">
+                        <option value="reads">Parental reads (FASTQ files, gzipped or otherwise)</option>
+                        <option value="lists">Lists of reads assigned by parent (text files)</option>
+                    </param>
+                    <when value="reads">
+                        <param name="hap1_reads" type="data" format="fastq,fastq.gz" multiple="true" label="Haplotype 1 reads" />
+                        <param name="hap2_reads" type="data" format="fastq,fastq.gz" multiple="true" label="Haplotype 2 reads" />
+                    </when>
+                    <when value="lists">
+                        <param name="hap1_list" type="data" format="txt,tabular" label="Haplotype 1 read list" />
+                        <param name="hap2_list" type="data" format="txt,tabular" label="Haplotype 2 read list" />
+                    </when>
+                </conditional>
                 <param name="max_kmers" argument="-c" type="integer" value="2" label="Lower bound of the binned k-mer's frequency" />
                 <param name="min_kmers" argument="-d" type="integer" value="5" label="Upper bound of the binned k-mer's frequency" />
                 <param name="yak_kmer_length" type="integer" min="0" max="64" value="31" label="Yak counter k-mer length" />
+                <param name="trio_dual" argument="--trio-dual" type="boolean" truevalue="--trio-dual" falsevalue="" label="Utilize homology information to correct trio-phasing errors" />
             </when>
         </conditional>
         <param name="filter_bits" argument="-f" type="integer" min="0" value="37" label="Bits for bloom filter" help="A value of 0 disables the bloom filter" />       
@@ -428,9 +454,12 @@
             <param name="filter_bits" value="0"/>
             <conditional name="mode">
                 <param name="mode_selector" value="trio"/>
-                <param name="reads" value="child.fasta.gz"/>
-                <param name="hap1_reads" value="paternal.fasta.gz"/>
-                <param name="hap2_reads" value="maternal.fasta.gz"/>
+                <param name="trio_input_selector" value="reads"/>
+                <conditional name="trioinput">
+                    <param name="reads" value="child.fasta.gz"/>
+                    <param name="hap1_reads" value="paternal.fasta.gz"/>
+                    <param name="hap2_reads" value="maternal.fasta.gz"/>
+                </conditional>
                 <param name="max_kmers" value="2"/>
                 <param name="min_kmers" value="5"/>
             </conditional>
@@ -555,6 +584,27 @@
             <param name="mode_selector" value="standard" />
             <param name="bins_out" value="yes" />
             <output_collection name="bin_files" type="list" count="3" />
+        </test>
+        <!-- TEST 15: Test trio LIST mode -->
+        <test expect_num_outputs="6">
+            <param name="filter_bits" value="0"/>
+            <param name="log_out" value="yes"/>
+            <conditional name="mode">
+                <param name="mode_selector" value="trio"/>
+                <param name="reads" value="child.fasta.gz"/>
+                <conditional name="trioinput">
+                    <param name="trio_input_selector" value="lists"/>
+                    <param name="hap1_list" value="maternal.headers.txt"/>
+                    <param name="hap2_list" value="paternal.headers.txt"/>
+                </conditional>
+                <param name="max_kmers" value="2"/>
+                <param name="min_kmers" value="5"/>
+            </conditional>
+            <output name="log_file" ftype="txt">
+                <assert_contents>
+                    <has_text text="flagged 100 reads, out of 100 lines in file"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
