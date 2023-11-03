@@ -407,10 +407,10 @@ def main(
     # the primary scoring is 'default'. Replace 'default' with
     # the default scoring for classification/regression (accuracy/r2)
     if scorer is None:
-      if isinstance(estimator, KerasGClassifier):
-        scorer = ['accuracy']
-      if isinstance(estimator, KerasGRegressor):
-        scorer = ['r2']
+        if isinstance(estimator, KerasGClassifier):
+            scorer = ['accuracy']
+        if isinstance(estimator, KerasGRegressor):
+            scorer = ['r2']
 
     scorer = _check_multimetric_scoring(estimator, scoring=scorer)
 
@@ -510,9 +510,14 @@ def main(
             predictions = estimator.predict(X_test)
 
         # Un-do OHE of the validation labels
-        rounded_test_labels = np.argmax(y_test, axis=1)
-        y_true = rounded_test_labels
-        sk_scores = _score(estimator, X_test, rounded_test_labels, scorer)
+        if len(y_test.shape) == 2:
+            rounded_test_labels = np.argmax(y_test, axis=1)
+            y_true = rounded_test_labels
+            sk_scores = _score(estimator, X_test, rounded_test_labels, scorer)
+        else:
+            y_true = y_test
+            sk_scores = _score(estimator, X_test, y_true, scorer)
+
         scores.update(sk_scores)
 
     # handle output
