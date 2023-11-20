@@ -17,8 +17,23 @@
   <command>
     <![CDATA[
 
-  #set $sequence_count = int($inputSequences.metadata.sequences)
+  bash inputs.sh &&
 
+      ## sequence_counter
+  #set sequence_count = 0
+  #if $concatenate.concatenate_options == "single"   
+    #for $data in $concatenate.datasets:
+      #set sequence_count += int($data.inputs.metadata.sequences)
+    #end for 
+  #elif $concatenate.concatenate_options == "row"
+    #for $data in $concatenate.datasets:
+      #for $input in $data.inputs:
+        #set sequence_count += int($input.metadata.sequences)
+      #end for  
+    #end for
+  #end if
+
+  ## FASTA36 
   #if $cond_flavour.flavourType == "custom" 
     #if $cond_flavour.guidetree.guidetree_generation == "original"  
       #if $cond_flavour.guidetree.dist_flavour.distance_method == "--fastapair"
@@ -31,10 +46,13 @@
     #end if
   #end if
 
-    ##groupsize warning
+    ## groupsize warning
   #if $cond_flavour.flavourType == "custom"
     #if $cond_flavour.guidetree.guidetree_generation == "parttree"
-      #if $cond_flavour.guidetree.parttree_selection.groupsize > $sequence_count
+      echo $cond_flavour.guidetree.parttree_selection.groupsize &&
+      #if $cond_flavour.guidetree.parttree_selection.groupsize == "None"
+        int($cond_flavour.guidetree.parttree_selection.groupsize) = $sequence_count 
+      #elif $cond_flavour.guidetree.parttree_selection.groupsize > $sequence_count
         echo WARNING = Choosen groupsize number larger than number of input sequences. MAFFT will take number of input sequences instead. &&
       #end if
     #end if
@@ -80,7 +98,7 @@
       #end if
     #end if
   #end if
-
+  
     ## progressive alignement calculation    
   --maxiterate $progressive_alignment_calculation.maxiterate
   $progressive_alignment_calculation.fft
@@ -113,60 +131,93 @@
   --op $op
   $reorder
   $outputFormat
-  '$inputSequences' > '$outputAlignment'
+  #if $concatenate.concatenate_options == "single" or $concatenate.concatenate_options == "row"
+    input.fa > '$outputAlignment'
+  #end if
+
   #if $treeout
-    && mv '${inputSequences}.tree' '$outputTree'
+    mv '${inputSequences}.tree' '$outputTree'
   #end if
 
     ]]>
   </command>
+  <configfiles>
+    <configfile filename="inputs.sh"><![CDATA[ 
+  #if $concatenate.concatenate_options == "single" 
+    #for $data in $concatenate.datasets:
+cat $data.inputs >> input.fa 
+    #end for 
+  #elif $concatenate.concatenate_options == "row"
+    #for $data in $concatenate.datasets:
+      #for $input in $data.inputs:
+cat $input >> input.fa 
+      #end for
+    #end for
+  #end if
+      ]]></configfile>
+  </configfiles>
   <inputs>
-    <param name="inputSequences" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format."/>
+    <conditional name="concatenate">
+      <param name="concatenate_options" type="select" label="Concatenate?"> 
+        <option value="single">Single or multiple MAFFT</option>
+        <option value="row">Simple concatenation of multiple datasets in a row resulting in one alignment</option>
+      </param>
+      <when value="single">
+        <repeat name="datasets" title="Dataset" default="1" min="1">
+          <param name="inputs" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format. Add Dataset for concatenation of every additional dataset with each file of the first upload panel"/>
+        </repeat>
+      </when>
+      <when value="row">
+        <repeat name="datasets" title="Dataset" default="1" min="1">
+          <param name="inputs" multiple="true" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format."/>
+        </repeat>
+      </when>      
+    </conditional>
     <conditional name="datatype_selection">
       <param name="datatype" type="select" label="Data type" help="Autodetection will use default settings for matrix selection, for Nucleic acid PAM 200 and for amino acid BLOSUM 62.">
         <option value="">Autodetection</option>
         <option value="--nuc">Nucleic acids</option>
         <option value="--amino">Amino acids</option>
       </param>
-        <when value=""/>
-        <when value="--nuc">
-          <conditional name="matrix_condition">
-            <param name="matrix" type="select" label="Matrix-Selection" help="Choose matrix for nucleotide sequence, default setting = PAM 200">
-              <option value="PAM">PAM</option>
-              <option value="custom">Costum</option>
+      <when value=""/>
+      <when value="--nuc">
+        <conditional name="matrix_condition">
+          <param name="matrix" type="select" label="Matrix-Selection" help="Choose matrix for nucleotide sequence, default setting = PAM 200">
+            <option value="PAM">PAM</option>
+            <option value="custom">Costum</option>
+          </param>
+          <when value="PAM">
+            <param argument="--jtt" type="integer" value="200" min="1" max="350" label="Coefficient of the JTT PAM matrix" />
+            <param argument="--tm" type="boolean" truevalue="--tm" falsevalue="--jtt" checked="false" label="Select, if the JTT Pam matrix is needed to aligne a transmembrane protein"/>
+          </when>
+          <when value="custom">
+            <param argument="--fmodel" type="data" format="txt" label="User-defined AA scoring matrix with incorporated information of AA/nuc composition." />
+          </when>
+        </conditional>
+      </when>
+      <when value="--amino">
+        <conditional name="matrix_condition">
+          <param name="matrix" type="select" label="Matrix-Selection" help="Default setting: BLOSUM 62">
+            <option value="BLOSUM" selected="true">BLOSUM</option>
+            <option value="PAM">PAM</option>
+            <option value="custom">Custom</option>
+          </param>
+          <when value="BLOSUM">
+            <param argument="--bl" type="select" display="radio" label="Coefficient of the BLOSUM matrix">
+              <option value="30">30</option>
+              <option value="45">45</option>
+              <option value="62" selected="true">62</option>
+              <option value="80">80</option>
             </param>
-            <when value="PAM">
-              <param argument="--jtt" type="integer" value="200" min="1" max="350" label="Coefficient of the JTT PAM matrix" />
-              <param argument="--tm" type="boolean" truevalue="--tm" falsevalue="--jtt" checked="false" label="Select, if the JTT Pam matrix is needed to aligne a transmembrane protein"/>
-            </when>
-            <when value="custom">
-              <param argument="--fmodel" type="data" format="txt" label="User-defined AA scoring matrix with incorporated information of AA/nuc composition." />
-            </when>
-          </conditional>
-        </when>
-        <when value="--amino">
-          <conditional name="matrix_condition">
-            <param name="matrix" type="select" label="Matrix-Selection" help="Default setting: BLOSUM 62">
-              <option value="BLOSUM" selected="true">BLOSUM</option>
-              <option value="PAM">PAM</option>
-              <option value="custom">Custom</option>
-            </param>
-            <when value="BLOSUM">
-              <param argument="--bl" type="select" display="radio" label="Coefficient of the BLOSUM matrix">
-                <option value="30">30</option>
-                <option value="45">45</option>
-                <option value="62" selected="true">62</option>
-                <option value="80">80</option>
-              </param>
-            </when>
-            <when value="PAM">
-              <param argument="--jtt" type="integer" value="200" min="1" max="350" label="Coefficient of the JTT PAM matrix" />
-              <param argument="--tm" type="boolean" truevalue="--tm" falsevalue="--jtt" checked="false" label="Select, if the JTT Pam matrix is needed to aligne a transmembrane protein."/>
-            </when>
-            <when value="custom">
-              <param argument="--aamatrix" type="data" format="txt" label="User-defined AA scoring matrix" help="The format of matrixfile is the same to that of BLAST. Ignored when nucleotide sequences are input."/>
-              <param argument="--fmodel" type="boolean" truevalue="--fmodel" falsevalue="--aamatrix" checked="False" label="Incorporate the AA/nuc composition information into the scoring matrix?" />
-            </when>
+          </when>
+          <when value="PAM">
+            <param argument="--jtt" type="integer" value="200" min="1" max="350" label="Coefficient of the JTT PAM matrix" />
+            <param argument="--tm" type="boolean" truevalue="--tm" falsevalue="--jtt" checked="false" label="Select, if the JTT Pam matrix is needed to aligne a transmembrane protein."/>
+          </when>
+          <when value="custom">
+            <param argument="--aamatrix" type="data" format="txt" label="User-defined AA scoring matrix" help="The format of matrixfile is the same to that of BLAST. Ignored when nucleotide sequences are input."/>
+            <param argument="--fmodel" type="boolean" truevalue="--fmodel" falsevalue="--aamatrix" checked="False" label="Incorporate the AA/nuc composition information into the scoring matrix?" />
+          </when>
         </conditional>
       </when>
     </conditional>
@@ -377,7 +428,7 @@
 - *FFT-NS-1* (very fast; recommended for >2000 sequences; progressive method with a rough guide tree):
 
     - mafft --retree 1 --maxiterate 0 input [> output]
-   
+
       ]]>
     </help>
   <expand macro="citations" />
