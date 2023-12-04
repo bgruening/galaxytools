@@ -1,0 +1,265 @@
+<tool id="htseq_clip" name="htseq-clip" version="0.1.0+galaxy0" python_template_version="3.5" profile="21.05">
+
+    <description>- A toolset for the analysis of eCLIP/iCLIP datasets</description>
+    <requirements>
+        <requirement type="package" version="2.14.0b0">htseq-clip</requirement>
+        <requirement type="package" version="2.30.0">bedtools</requirement>
+    </requirements>
+
+    <command detect_errors="exit_code"><![CDATA[
+
+
+        #if $action_type.action_type_selector == 'create_sliding_windows':
+            python '$__tool_directory__/htsc_create_sliding_windows.py'
+                --gff '$action_type.gff_file'
+                --out ./
+                $action_type.gff_unsorted
+                --hcw-w $action_type.hcw_options.hcw_w
+                --hcw-s $action_type.hcw_options.hcw_s
+                --no-zipper
+        #elif $action_type.action_type_selector == 'create_count_table':
+            python '$__tool_directory__/htsc_create_count_table.py'
+                --win-bed '$action_type.win_bed_file'
+                --exp-bams 
+                #for $i in $action_type.exp_bams:
+                    $i.exp_bam 
+                #end for
+                --ctr-bams 
+                #for $i in $action_type.ctr_bams:
+                    $i.ctr_bam 
+                #end for
+                --data-id '$action_type.data_id'
+                --out ./
+                --hce-e $action_type.hce_options.hce_e
+                --hce-s '${action_type.hce_options.hce_s}'
+                --hce-g $action_type.hce_options.hce_g
+                --hce-q $action_type.hce_options.hce_q
+                $action_type.hce_options.hce_primary
+                --hce-c \${GALAXY_SLOTS:-1}
+                --hce-m $action_type.hce_options.hce_m
+                --hce-x $action_type.hce_options.hce_x
+                --hce-l $action_type.hce_options.hce_l
+                #if $action_type.hce_options.hce_f:
+                    --hce-f '$action_type.hce_options.hce_f'
+                #end if
+                #if $action_type.hce_options.filter_bed:
+                    --filter-bed '$action_type.hce_options.filter_bed'
+                    --filter-mode $action_type.hce_options.filter_mode
+                #end if
+                $action_type.hcc_options.hcc_unstranded
+                --no-zipper
+        #end if
+
+    ]]></command>
+
+    <inputs>
+        <conditional name="action_type">
+        
+            <param name="action_type_selector" type="select" label="Select an action">
+                <option value="create_sliding_windows" selected="true">Create sliding windows</option>
+                <option value="create_count_table">Create count table </option>
+            </param>
+
+            <when value="create_sliding_windows">
+
+                <param name="gff_file" type="data" format="gff3"
+                       label="GFF annotation file"
+                       help="Provide a genomic annotation file in GFF3 format"/>
+                <param name="gff_unsorted" label="Is the GFF file unsorted?" type="boolean"
+                       truevalue="--hca-unsorted" falsevalue="" checked="False"
+                       help="Check if GFF file is unsorted (default: GFF file is assumed to be sorted)"/>
+
+                <section name="hcw_options" title="Sliding window settings">
+                    <param name="hcw_w" type="integer" value="50"
+                           label="Sliding window size"
+                           help="Set the sliding window size in nucleotides. If unsure, try 75-100 (default: 50)"/>
+                    <param name="hcw_s" type="integer" value="20"
+                           label="Sliding window step size"
+                           help="Set the sliding window step size (default: 20)"/>
+                </section>
+
+                <section name="win_out_options" title="Output options">
+                    <param name="annot_bed_out" label="Output annotation BED file" type="boolean"
+                               checked="False"
+                               help="Output annotation BED file used for creating sliding windows"/>
+                </section>
+
+            </when>
+
+            <when value="create_count_table">
+                <repeat name="exp_bams" min="1" title="CLIP-seq experiment BAM inputs">
+                    <param name="exp_bam" type="data" format="bam" label="BAM files belonging to the CLIP-seq experiment" help="Select BAM file belonging to the CLIP-seq experiment. NOTE that order determines replicate numbering in output tables"/>
+                </repeat>
+                <repeat name="ctr_bams" min="1" title="CLIP-seq control BAM inputs">
+                    <param name="ctr_bam" type="data" format="bam" label="BAM files belonging to the CLIP-seq control" help="Select BAM file belonging to the CLIP-seq control. NOTE that order determines replicate numbering in output tables"/>
+                </repeat>
+                <param name="win_bed_file" type="data" format="bed"
+                       label="Sliding windows BED file"
+                       help="Provide a genomic regions BED file for calculating crosslink site overlap counts. Typically this is the sliding windows BED file created with htseq-clip's 'Create sliding windows' procedure"/>
+                <param name="data_id" type="text" value="Rbp"
+                       label="Dataset ID"
+                       help="Provide a dataset ID (e.g., RNA-binding protein name) used in the generated data table (default: Rbp)"/>
+                <section name="hce_options" title="Crosslink site extraction settings">
+                    <param name="hce_e" type="integer" value="1" min="1" max="2"
+                           label="Read mate to extract crosslink sites from"
+                           help="Select the read mate (1, 2) to extract crosslink sites from. For single-end CLIP-seq data, select 1 (default: 1)"/>
+                    <param name="hce_s" type="select" label="Specify crosslink site position on read"
+                        help="Specify crosslink site position in the read, i.e., the genomic position to be extrated (default: middle position)">
+                        <option value="m" selected="true">Middle position of read</option>
+                        <option value="s">First position of read</option>
+                        <option value="e">Last position of read</option>
+                        <option value="i">Insertion site</option>
+                        <option value="d">Deletion site</option>
+                    </param>
+                    <param name="hce_g" type="integer" value="0"
+                           label="Crosslink site offset"
+                           help="Number of nucleotides to offset for crosslink sites. Can be positive (upstream direction) or negative (downstream direction) (default: 0)"/>
+                    <param name="hce_q" type="integer" value="10"
+                           label="Minimum alignment quality"
+                           help="Minimum alignment quality for filtering input BAM files. BAM entries greater than set quality will be filtered out (default: 10)"/>
+                    <param name="hce_primary" label="Use only primary positions of multimapping reads?" type="boolean"
+                        truevalue="--hce-primary" falsevalue="" checked="False"
+                        help="Check if only primary positions of multimapping reads should be kept"/>
+                    <param name="hce_m" type="integer" value="0"
+                           label="Minimum read length"
+                           help="Minimum read length for filtering input BAM files (default: 0)"/>
+                    <param name="hce_x" type="integer" value="500"
+                           label="Maximum read length"
+                           help="Maximum read length for filtering input BAM files (default: 500)"/>
+                    <param name="hce_l" type="integer" value="10000"
+                           label="Maximum read interval length"
+                           help="Maximum read interval length for filtering input BAM files (default: 10000)"/>
+                    <param name="hce_f" type="data" format="txt" optional="True"
+                        label="Specify chromosomes to extract crosslink sites from"
+                        help="Extract crosslink sites only from chromosomes given in this file (format: one chromsome ID per file)"/>
+                    <param name="filter_bed" type="data" format="bed" optional="True"
+                        label="BED file for filtering out BAM entries"
+                        help="Provide BED file to filter BAM entries based on their overlap with genomic regions inside the provided BED file"/>
+                    <param name="filter_mode" type="select" label="Filtering mode for BED filtering"
+                        help="Specify mode of filtering out BAM entries, with respect to the genomic regions inside the provided BED file)">
+                        <option value="1" selected="true">Keep BAM entries not overlapping with BED regions</option>
+                        <option value="2">Keep only BAM entries overlapping with BED regions</option>
+                    </param>
+                </section>
+
+                <section name="hcc_options" title="Overlap count settings">
+                    <param name="hcc_unstranded" label="Should crosslink site counting be non-strand-specific?" type="boolean"
+                        truevalue="--hcc-unstranded" falsevalue="" checked="False"
+                        help="Check if crosslink site position should be counted for overlapping features on both strands"/>
+                </section>
+            </when>
+
+
+        </conditional>
+
+
+    </inputs>
+
+    <outputs>
+
+        <data name="annotation_bed_file" format="bed" from_work_dir="annotation.bed" label="${tool.name} on ${on_string}: Annotation BED file">
+            <filter>action_type["action_type_selector"] == "create_sliding_windows" and action_type["win_out_options"]["annot_bed_out"]</filter>
+        </data>
+        <data name="windows_bed_file" format="bed" from_work_dir="windows.bed" label="${tool.name} on ${on_string}: Sliding windows BED file">
+            <filter>action_type["action_type_selector"] == "create_sliding_windows"</filter>
+        </data>
+        <data name="windows_txt_file" format="tabular" from_work_dir="windows_mapped_to_ids.txt" label="${tool.name} on ${on_string}: Windows annotation table file (DEWSeq input)">
+            <filter>action_type["action_type_selector"] == "create_sliding_windows"</filter>
+        </data>
+        <data name="sample_info_file" format="tabular" from_work_dir="sample_info.txt" label="${tool.name} on ${on_string}: Sample information table file (DEWSeq input)">
+            <filter>action_type["action_type_selector"] == "create_count_table"</filter>
+        </data>
+        <data name="count_matrix_file" format="tabular" from_work_dir="count_matrix.txt" label="${tool.name} on ${on_string}: Count table file (DEWSeq input)">
+            <filter>action_type["action_type_selector"] == "create_count_table"</filter>
+        </data>
+    </outputs>
+    <tests>
+
+        <test>
+            <param name="action_type_selector" value="create_sliding_windows"/>
+            <param name="gff_file" value="paper_tus.Synechocystis_pSYSM.gff3" ftype="gff3"/>
+            <param name="hcw_w" value="50"/>
+            <param name="hcw_s" value="20"/>
+            <param name="annot_bed_out" value="True"/>
+            <output name="annotation_bed_file" file="annotation.exp.bed"/>
+            <output name="windows_bed_file" file="windows.exp.bed"/>
+            <output name="windows_txt_file" file="windows.exp.txt"/>
+        </test>
+
+        <test>
+            <param name="action_type_selector" value="create_count_table"/>
+            <param name="win_bed_file" value="windows.exp.bed" ftype="bed"/>           
+            <param name="data_id" value="Rbp"/>
+            <repeat name="exp_bams">
+                <param name="exp_bam" value="Rbp_exp_rep1.Synechocystis_pSYSM.bam"/>
+            </repeat>
+            <repeat name="exp_bams">
+                <param name="exp_bam" value="Rbp_exp_rep2.Synechocystis_pSYSM.bam"/>
+            </repeat>
+            <repeat name="ctr_bams">
+                <param name="ctr_bam" value="Rbp_ctrl_rep1.Synechocystis_pSYSM.bam"/>
+            </repeat>
+            <output name="sample_info_file" file="sample_info.exp.txt"/>
+            <output name="count_matrix_file" file="Rbp_count_matrix.exp.txt" sort="true"/>
+        </test>
+
+    </tests>
+    <help><![CDATA[
+
+**Overview**
+
+htseq-clip is a toolset for the analysis of eCLIP/iCLIP datasets. It can be used to generate files necessary for data analysis using the companion R/Bioconductor package DEWSeq_ (available on Galaxy as well).
+
+The Galaxy wrapper of htseq-clip provides the following two functionalities: 
+
+1) Create sliding windows
+2) Create count table
+
+
+**Create sliding windows**
+
+In this mode, htseq-clip takes a genomic annotation file (GFF3 format, tested with GENCODE_ GFF3 files), flattens it (i.e., overlapping regions get merged), 
+and based on the flattened annotation BED file creates a sliding windows BED file. The window size and step size can be specified. 
+E.g., a window size of 50 and a step size of 20 means that a window of 50 nt is extracted at every 20 nt step along each of the regions in the annotation BED file.
+In the end, a table file is output, containing the windows and additional annotation information. This table file serves as one of the input files for DEWSeq. 
+In addition, the windows BED file is output, which is needed as input for the "Create count table" mode.
+
+
+**Create count table**
+
+In this mode, htseq-clip takes the windows BED file created in "Create count table" mode, as well as the CLIP-seq BAM files (experiment BAMs and control BAMs). 
+Various options are available for filtering the BAM files and modifying the counting procedure. htseq-clip then counts the number of overlapping BAM entries 
+for each BAM file and each window in the input BED file. In the end, a count table file is output, as well as a sample information table file, which both 
+serve as input files for DEWSeq.
+
+
+**Documentation and Repository**
+
+htseq-clip's online documentation can be found at:
+
+https://htseq-clip.readthedocs.io
+
+Its GitHub page is available at:
+
+https://github.com/EMBL-Hentze-group/htseq-clip
+
+
+.. _DEWSeq: https://bioconductor.org/packages/release/bioc/html/DEWSeq.html
+.. _GENCODE: http://gencodegenes.org
+
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+            @incollection{sahadevan2022pipeline,
+                doi={0.1007/978-1-0716-1851-6_10},
+                url={https://doi.org/10.1007/978-1-0716-1851-6_10},
+                title={A Pipeline for Analyzing eCLIP and iCLIP Data with Htseq-clip and DEWSeq},
+                author={Sahadevan, Sudeep and Sekaran, Thileepan and Schwarzl, Thomas},
+                booktitle={Post-Transcriptional Gene Regulation},
+                pages={189--205},
+                year={2022},
+                publisher={Springer}
+              }
+        </citation>
+    </citations>
+</tool>

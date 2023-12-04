@@ -11,6 +11,7 @@ source(args[1])
 method_key <- list("MuSiC" = "est_music",
                    "NNLS" = "est_nnls")[[est_method]]
 
+delim <- "::" ## separator bulk datasets and their samples
 
 scale_yaxes <- function(gplot, value) {
     if (is.na(value)) {
@@ -136,43 +137,6 @@ merge_factors_spread <- function(grudat_spread, factor_groups) {
     return(tab)
 }
 
-
-plot_grouped_heatmaps <- function(results) {
-    pdf(out_heatmulti_pdf, width = 8, height = 8)
-    for (sc_name in names(results)) {
-        named_list <- sapply(
-            names(results[[sc_name]]),
-            function(n) {
-                ## We transpose the data here, because
-                ## the plotting function omits by default
-                ## the Y-axis which are the samples.
-                ##  Since the celltypes are the common factor
-                ## these should be the Y-axis instead.
-                t(data.matrix(results[[sc_name]][[n]][[method_key]]))
-            }, simplify = F, USE.NAMES = T)
-        named_methods <- names(results[[sc_name]])
-        ##
-        plot_hmap <- Prop_heat_Est(
-            named_list,
-            method.name = named_methods) +
-            ggtitle(paste0("[", est_method, "] Cell type ",
-                           "proportions of ",
-                           "Bulk Datasets based on ",
-                           sc_name, " (scRNA)")) +
-            xlab("Samples (Bulk)") +
-            ylab("Cell Types (scRNA)") +
-            theme(axis.text.x = element_text(angle = -90),
-                  axis.text.y = element_text(size = 6))
-        print(plot_hmap)
-    }
-    dev.off()
-}
-
-## Desired plots
-## 1. Pie chart:
-##  - Per Bulk dataset (using just normalised proportions)
-##  - Per Bulk dataset (multiplying proportions by nreads)
-
 unlist_names <- function(results, method, prepend_bkname=FALSE) {
     unique(sort(
         unlist(lapply(names(results), function(scname) {
@@ -181,7 +145,7 @@ unlist_names <- function(results, method, prepend_bkname=FALSE) {
                 if (prepend_bkname) {
                     ## We *do not* assume unique bulk sample names
                     ## across different bulk datasets.
-                    res <- paste0(bkname, "::", res)
+                    res <- paste0(bkname, delim, res)
                 }
                 return(res)
             })
@@ -201,7 +165,7 @@ summarized_matrix <- function(results) {  # nolint
     ddff_scale <- data.frame()
     for (cell in all_celltypes) {
         for (sample in all_samples) {
-            group_sname <- unlist(strsplit(sample, split = "::"))
+            group_sname <- unlist(strsplit(sample, split = delim))
             bulk <- group_sname[1]
             id_sample <- group_sname[2]
             for (scgroup in names(results)) {
@@ -231,7 +195,7 @@ flatten_factor_list <- function(results) {
     for (scgroup in names(results)) {
         for (bulkgroup in names(results[[scgroup]])) {
             dat <- results[[scgroup]][[bulkgroup]]$plot_groups
-            dat$Samples <- paste0(bulkgroup, "::", dat$Samples) #nolint
+            dat$Samples <- paste0(bulkgroup, delim, dat$Samples) #nolint
             res <- rbind(res, dat)
         }
     }
@@ -247,7 +211,7 @@ group_by_dataset <- function(summat) {
     bd_spread_scale <- list()
     bd_spread_prop <- list()
     for (bname in bulk_names) {
-        subs <- mat_names[startsWith(mat_names, paste0(bname, "::"))]
+        subs <- mat_names[startsWith(mat_names, paste0(bname, delim))]
         ## -
         bd[[bname]] <- rowSums(summat$prop[, subs])
         bd_scale[[bname]] <- rowSums(summat$scaled[, subs])
@@ -260,8 +224,75 @@ group_by_dataset <- function(summat) {
                               prop = bd_spread_prop)))
 }
 
-summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
-    ## -
+do_cluster <- function(grudat_spread_melt, xaxis, yaxis, value_name,
+                       xlabs="", ylabs="", titled="",
+                       order_col=T, order_row=T, size=11) {
+
+    data_m <- grudat_spread_melt
+    data_matrix <- {
+        tmp <- dcast(data_m, formula(paste0(yaxis, " ~ ", xaxis)), value.var = value_name)
+        rownames(tmp) <- tmp[[yaxis]]
+        tmp[[yaxis]] <- NULL
+        tmp
+    }
+    dist_method <- "euclidean"
+    clust_method <- "complete"
+
+    if (order_row) {
+        dd_row <- as.dendrogram(hclust(dist(data_matrix, method = dist_method), method = clust_method))
+        row_ord <- order.dendrogram(dd_row)
+        ordered_row_names <- row.names(data_matrix[row_ord, ])
+        data_m[[yaxis]] <- factor(data_m[[yaxis]], levels = ordered_row_names)
+    }
+
+    if (order_col) {
+        dd_col <- as.dendrogram(hclust(dist(t(data_matrix), method = dist_method),
+                                       method = clust_method))
+        col_ord <- order.dendrogram(dd_col)
+        ordered_col_names <- colnames(data_matrix[, col_ord])
+        data_m[[xaxis]] <- factor(data_m[[xaxis]], levels = ordered_col_names)
+    }
+
+    heat_plot <- ggplot(data_m, aes_string(x = xaxis, y = yaxis, fill = value_name)) +
+        geom_tile(colour = "white") +
+        scale_fill_gradient2(low = "steelblue", high = "red", mid = "white",
+                             name = element_blank()) +
+        scale_y_discrete(position = "right") +
+        theme(axis.text.x = element_text(angle = -90, hjust = 0,
+                                         size = size)) +
+        ggtitle(label = titled) + xlab(xlabs) + ylab(ylabs)
+
+    ## Graphics
+    dendro_linesize <- 0.5
+    dendro_colunit <- 0.2
+    dendro_rowunit <- 0.1
+    final_plot <- heat_plot
+
+    if (order_row) {
+        dendro_data_row <- ggdendro::dendro_data(dd_row, type = "rectangle")
+        dendro_row <- cowplot::axis_canvas(heat_plot, axis = "y", coord_flip = TRUE) +
+            ggplot2::geom_segment(data = ggdendro::segment(dendro_data_row),
+                                  ggplot2::aes(y = -y, x = x, xend = xend, yend = -yend),
+                                  size = dendro_linesize) + ggplot2::coord_flip()
+        final_plot <- cowplot::insert_yaxis_grob(
+                                   final_plot, dendro_row, grid::unit(dendro_colunit, "null"),
+                                   position = "left")
+    }
+    if (order_col) {
+        dendro_data_col <- ggdendro::dendro_data(dd_col, type = "rectangle")
+        dendro_col <- cowplot::axis_canvas(heat_plot, axis = "x") +
+            ggplot2::geom_segment(data = ggdendro::segment(dendro_data_col),
+                                  ggplot2::aes(x = x, y = y, xend = xend, yend = yend),
+                                  size = dendro_linesize)
+        final_plot <- cowplot::insert_xaxis_grob(
+                                   final_plot, dendro_col, grid::unit(dendro_rowunit, "null"),
+                                   position = "top")
+    }
+    return(cowplot::ggdraw(final_plot))
+}
+
+summarize_heatmaps <- function(grudat_spread_melt, do_factors, cluster="None") {
+    ## - Cluster is either "Rows", "Cols", "Both", or "None"
     do_single <- function(grudat_melted, yaxis, xaxis, fillval, title,
                           ylabs = element_blank(), xlabs = element_blank(),
                           use_log = TRUE, size = 11) {
@@ -270,14 +301,22 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
         if (use_log) {
             melted[[fillval]] <- log10(melted[[fillval]] + 1)
         }
-        return(ggplot(melted) +
-               geom_tile(aes_string(y = yaxis, x = xaxis, fill = fillval),
-                         colour = "white") +
-               scale_fill_gradient2(low = "steelblue", high = "red",
-                                    mid = "white", name = element_blank()) +
-               theme(axis.text.x = element_text(angle = -90, hjust = 0,
-                                                size = size)) +
-               ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
+        if (cluster == "None") {
+            return(ggplot(melted) +
+                   geom_tile(aes_string(y = yaxis, x = xaxis, fill = fillval),
+                             colour = "white") +
+                   scale_fill_gradient2(
+                       low = "steelblue", high = "red", mid = "white",
+                       name = element_blank()) +
+                   theme(axis.text.x = element_text(
+                             angle = -90, hjust = 0, size = size)) +
+                   ggtitle(label = title) + xlab(xlabs) + ylab(ylabs))
+        } else {
+            return(do_cluster(grudat_spread_melt, xaxis, yaxis, fillval,
+                              xlabs, ylabs, title,
+                              (cluster %in% c("Cols", "Both")),
+                              (cluster %in% c("Rows", "Both"))))
+        }
     }
 
     do_gridplot <- function(title, xvar, plot="both", ncol=2, size = 11) {
@@ -303,16 +342,16 @@ summarize_heatmaps <- function(grudat_spread_melt, do_factors) {
         return(plot_grid(ggdraw() + draw_label(title, fontface = "bold"),
                          plot_grid(plotlist = plist, ncol = ncol),
                          ncol = 1, rel_heights = c(0.05, 0.95)))
-
     }
-    p1 <- do_gridplot("Cell Types vs Bulk Datasets", "Bulk", "both", )
-    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal", 1,
-                       size = 8)
-    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log", 1,
-                       size = 8)
+
+    p1 <- do_gridplot("Cell Types vs Bulk Datasets", "Bulk", "both")
+    p2a <- do_gridplot("Cell Types vs Samples", "Sample", "normal",
+                       ncol = 1, size = 8)
+    p2b <- do_gridplot("Cell Types vs Samples (log10+1)", "Sample", "log",
+                       ncol = 1, size = 8)
     p3 <- ggplot + theme_void()
     if (do_factors) {
-        p3 <- do_gridplot("Cell Types against Factors", "Factors", "both")
+        p3 <- do_gridplot("Cell Types vs Factors", "Factors", "both")
     }
     return(list(bulk = p1,
                 samples = list(log = p2b, normal = p2a),
@@ -346,8 +385,8 @@ summarize_boxplots <- function(grudat_spread, do_factors) {
             ylab("Bulk Dataset")
     }
 
-    title_a <- "Cell Types against Bulk"
-    title_b <- "Bulk Datasets against Cells"
+    title_a <- "Cell Types vs Bulk Datasets"
+    title_b <- "Bulk Datasets vs Cell Types"
     if (do_factors) {
         title_a <- paste0(title_a, " and Factors")
         title_b <- paste0(title_b, " and Factors")
@@ -380,31 +419,28 @@ filter_output <- function(grudat_spread_melt, out_filt) {
     return(grudat_filt)
 }
 
-
-results <- music_on_all(files)
-
-if (heat_grouped_p) {
-    plot_grouped_heatmaps(results)
-} else {
-    plot_all_individual_heatmaps(results)
+writable2 <- function(obj, prefix, title) {
+    write.table(obj,
+                file = paste0("report_data/", prefix, "_",
+                              title, ".tabular"),
+                quote = F, sep = "\t", col.names = NA)
 }
 
-save.image("/tmp/sesh.rds")
 
+results <- music_on_all(files)
 summat <- summarized_matrix(results)
 grudat <- group_by_dataset(summat)
 grudat_spread_melt <- merge_factors_spread(grudat$spread,
                                            flatten_factor_list(results))
+grudat_spread_melt_filt <- filter_output(grudat_spread_melt, out_filt)
 
-
+plot_all_individual_heatmaps(results)
 
 ## The output filters ONLY apply to boxplots, since these take
 do_factors <- (length(unique(grudat_spread_melt[["Factors"]])) > 1)
-
-grudat_spread_melt_filt <- filter_output(grudat_spread_melt, out_filt)
-
-heat_maps <- summarize_heatmaps(grudat_spread_melt_filt, do_factors)
 box_plots <- summarize_boxplots(grudat_spread_melt_filt, do_factors)
+heat_maps <- summarize_heatmaps(grudat_spread_melt_filt, do_factors,
+                                dendro_setting)
 
 pdf(out_heatsumm_pdf, width = 14, height = 14)
 print(heat_maps)
@@ -417,12 +453,6 @@ stats_prop <- lapply(grudat$spread$prop, function(x) {
 stats_scale <- lapply(grudat$spread$scale, function(x) {
     t(apply(x, 1, summary))})
 
-writable2 <- function(obj, prefix, title) {
-    write.table(obj,
-                file = paste0("report_data/", prefix, "_",
-                              title, ".tabular"),
-                quote = F, sep = "\t", col.names = NA)
-}
 ## Make the value table printable
 grudat_spread_melt$value.scale <- as.integer(grudat_spread_melt$value.scale) # nolint
 colnames(grudat_spread_melt) <- c("Sample", "Cell", "Bulk", "Factors",

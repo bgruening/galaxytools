@@ -21,24 +21,24 @@ def main(inputs, infile, outfile):
         File path to output vector
 
     """
-    warnings.simplefilter('ignore')
+    warnings.simplefilter("ignore")
 
-    with open(inputs, 'r') as param_handler:
+    with open(inputs, "r") as param_handler:
         params = json.load(param_handler)
 
-    input_header = params['header0']
-    header = 'infer' if input_header else None
+    input_header = params["header0"]
+    header = "infer" if input_header else None
 
-    input_vector = pd.read_csv(infile, sep='\t', header=header)
+    input_vector = pd.read_csv(infile, sep="\t", header=header)
 
     le = LabelEncoder()
 
     output_vector = le.fit_transform(input_vector)
 
-    np.savetxt(outfile, output_vector, fmt="%d", delimiter='\t')
+    np.savetxt(outfile, output_vector, fmt="%d", delimiter="\t")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
     aparser.add_argument("-y", "--infile", dest="infile")

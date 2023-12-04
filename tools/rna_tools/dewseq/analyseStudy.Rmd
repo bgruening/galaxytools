@@ -1,0 +1,486 @@
+---
+title: "DEWSeq Analysis"
+author: "Thomas Schwarzl and Sudeep Sahadevan"
+date: "07/10/2020"
+output:
+  BiocStyle::html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 5
+params:
+  protein: ""
+  sampleinfo_file: ""
+  countmatrix_file: ""
+  annotation_file: ""
+  output_windows_file: ""
+  output_regions_file: ""
+  output_bed_file: ""
+  output_rdata: ""
+  min_count: 2
+  min_sample: 2
+  LRT: FALSE
+  p_value_cutoff: 0.05
+  lfc_cutoff: 1
+  overlap_correction: FALSE
+  IHW: TRUE
+  decide_fit: TRUE
+---
+```{r setup,  include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r assignData,  echo=FALSE,  eval=TRUE}
+protein <- params$protein
+sampleinfo_file <- params$sampleinfo_file
+countmatrix_file <- params$countmatrix_file
+annotation_file <- params$annotation_file
+output_windows_file <- params$output_windows_file
+output_regions_file <- params$output_regions_file
+output_bed_file <- params$output_bed_file
+output_rdata <- params$output_rdata
+min_count <- params$min_count
+min_sample <- params$min_sample
+p_value_cutoff <- params$p_value_cutoff
+lfc_cutoff <- params$lfc_cutoff
+```
+
+Sanity check input parameter values
+
+```{r sanityCheck,  echo=FALSE,  eval=TRUE}
+# round of min_count and min_sample values first
+message("Any decimals given as values for min_count and min_sample parameters will be rounded off to the nearest integer.")
+min_count <- round(min_count)
+min_sample <- round(min_sample)
+# receive and sanity check p_value_cutoff
+if (p_value_cutoff <= 0 || p_value_cutoff >= 1) {
+  warning("p_value_cutoff must satisfy: 0<=p_value_cutoff<=1. Resetting to default value: 0.05")
+  p_value_cutoff <- 0.05
+}
+# sanity check log2Foldchange cutoff
+if (lfc_cutoff < 0) {
+  warning("lfc_cutoff must be a value >=0. Resetting to default value: 1.00")
+  lfc_cutoff <- 1.0
+}
+# sanity check LRT vs Wald
+if (is(params$LRT,  "logical")) {
+  lrt <- params$LRT
+}else {
+  warning("LRT must be TRUE or FALSE,   setting this parameter to default: FALSE")
+  lrt <- FALSE
+}
+# sanity check overlap correction parameter
+if (is(params$overlap_correction,  "logical")) {
+  overlap_correction <- params$overlap_correction
+}else {
+  warning("overlap_correction must be TRUE or FALSE,  setting this parameter to default: TRUE")
+  overlap_correction <- TRUE
+}
+# sanity check IHW vs BH correction parameter
+if (is(params$IHW, "logical")) {
+  ihw_filt <- params$IHW
+}else {
+  warning("IHW must be TRUE or FALSE,  setting this parameter to default: TRUE")
+  ihw_filt <- TRUE
+}
+# sanity check automated fit vs parametric fit paramter
+if (is(params$decide_fit, "logical")) {
+  decide_fit <- params$decide_fit
+}else {
+  warning("decide_fit must be TRUE or FALSE,  setting this parameter to default: TRUE")
+  decide_fit <- TRUE
+}
+```
+
+# eCLIP analysis of `r protein` 
+
+
+## Setup
+
+This is the analysis of __`r protein`__ with    
+sampleinfo file: ``r sampleinfo_file``   
+countmatrix file: ``r countmatrix_file`` and     
+annotation file: ``r annotation_file`` 
+
+with the following threshold:
+
+minimum read count per window per sample: ``r min_count``
+number of samples with minimum read count per window: ``r min_sample``
+
+using the following parameters:   
+p-value cut-off: ``r p_value_cutoff``  
+Log2FoldChange cut-off: ``r lfc_cutoff``
+use automated method for dispersion estmation: ``r decide_fit``    
+use LRT test : ``r lrt``  
+use overlap correction: ``r overlap_correction``   
+use IHW for FDR correction: ``r ihw_filt``   
+
+
+``` {r check if files exists,  echo=FALSE}
+file_exists <- function(x) {
+  if (!file.exists(x))
+    stop(paste0("'",  x,  "' - file does not exist."))
+}
+
+file_exists(countmatrix_file)
+file_exists(annotation_file)
+file_exists(sampleinfo_file)
+```
+
+First,  we load the libraries.
+
+```{r load DEWSeq}
+required_packages <- c("DEWSeq", "data.table", "IHW", "R.utils", "tidyverse", "ggrepel")
+installed_packages <- installed.packages()[, 1]
+missing_packages <- setdiff(required_packages, installed_packages)
+if (length(missing_packages) != 0) {
+  stop("Found missing dependencies! Please install the following package(s): ", paste(missing_packages, collapse = ", "))
+}
+suppressPackageStartupMessages({
+  require(DEWSeq)
+  require(tidyverse)
+  require(data.table)
+  require(IHW)
+  require(R.utils)
+  require(ggrepel)
+})
+```
+
+## Read in data
+
+Here we read in the window counts
+
+```{r read window counts}
+window_counts <- fread(countmatrix_file,  sep = "\t", stringsAsFactors = FALSE) %>% as.data.frame()
+rownames(window_counts) <- window_counts[, 1]
+window_counts <- window_counts[, -1]
+```
+
+and the sample info file
+
+```{r read sample info}
+sample_info <- read.table(sampleinfo_file, sep = "\t", stringsAsFactors = FALSE)
+if (ncol(sample_info) < 2) {
+  stop("sampleinfo_file ", sampleinfo_file, " MUST have atleast two columns: first column should be the sample names used in ", countmatrix_file,
+       " and second column must be the experiment type: IP or SMI")
+}else if (ncol(sample_info) > 2) {
+  message("Found ", ncol(sample_info), " columns in ", sampleinfo_file, " using the first column as sample name and second column as experiment name")
+  sample_info <- sample_info[, c(1, 2)]
+}
+colnames(sample_info) <- c("samples", "type")
+rownames(sample_info) <- sample_info[, 1]
+```
+
+Now we make sure that the sampleinfo file contains the column "type" with values "SMI" and "IP" only. 
+
+```{r sampleSanity}
+# make sure that sample_info rows and window_counts columns are in same order
+common_samples <- sort(intersect(colnames(window_counts), rownames(sample_info)))
+if (length(common_samples) != ncol(window_counts)) {
+  stop("The number of samples in ", countmatrix_file, " and ", sampleinfo_file, " do not MATCH!")
+}
+sample_info <- sample_info[common_samples,  ]
+window_counts <- window_counts[, common_samples]
+# Now make sure that sample_info$type contains only "IP" and "SMI"
+type_check <- setdiff(unique(sample_info$type), c("IP", "SMI"))
+if (length(type_check) != 0) {
+  stop("The second column in ", sampleinfo_file, " should contain analysis types:'IP' or 'SMI' only. Found unknown value(s): ",
+       paste(type_check, collapse = ",  "))
+}
+```
+
+We make sure that only IP and SMI are in the right factor level order
+
+```{r sampleFactor}
+sample_info <- sample_info %>% mutate(type = factor(type,  levels = c("SMI",  "IP")))
+```
+
+
+
+We create the DEWSeq object
+
+```{r dewseqInit}
+ddw <- DESeqDataSetFromSlidingWindows(countData  = window_counts,
+                                      colData    = sample_info,
+                                      annotObj   = annotation_file,
+                                      tidy       = FALSE,
+                                      design     = ~type)
+```
+
+
+## Prefiltering
+
+```{r prefiltering1}
+# remove all empty windows
+keep <- rowSums(counts(ddw)) >= 1
+ddw <- ddw[keep, ]
+```
+
+
+## Estimating size factors
+
+
+```{r size factors}
+ddw <- estimateSizeFactors(ddw)
+sizeFactors(ddw)
+```
+
+### estimate size factors for only protein_coding genes
+
+```{r protein_coding_size_factors}
+ddw_mrnas <- ddw[rowData(ddw)[, "gene_type"] == "protein_coding",  ]
+ddw_mrnas <- estimateSizeFactors(ddw_mrnas)
+```
+
+### estimate size factors without significant windows
+
+```{r size_factors_no_sig_windows}
+ddw_tmp <- ddw
+ddw_tmp <- estimateDispersions(ddw_tmp,  fitType = "local",  quiet = TRUE)
+if (lrt) {
+  ddw_tmp <- nbinomLRT(ddw_tmp, full = ~type, reduced = ~1)
+}else {
+  ddw_tmp <- nbinomWaldTest(ddw_tmp)
+}
+
+tmp_significant_windows <-
+                results(ddw_tmp,
+                    contrast = c("type",  "IP",  "SMI"),
+                    tidy = TRUE,
+                    filterFun = ihw) %>%
+                dplyr::filter(padj < p_value_cutoff) %>%
+                .[["row"]]
+rm(ddw_tmp)
+```
+
+estimate the size factors without the significant windows.
+
+```{r final_size_factors}
+ddw_mrnas <- ddw_mrnas[!rownames(ddw_mrnas) %in% tmp_significant_windows,  ]
+ddw_mrnas <- estimateSizeFactors(ddw_mrnas)
+```
+
+before thresholding:
+```{r threshold1}
+dim(ddw)
+```
+
+Now threshold the windows read count table.
+```{r threshold2}
+keep_exp <-  which(rowSums(counts(ddw) > min_count) >= min_sample)
+ddw <- ddw[keep_exp, ]
+```
+
+after thresholding:
+```{r threshold3}
+dim(ddw)
+```
+assign size factors
+
+```{r final_assign}
+sizeFactors(ddw) <- sizeFactors(ddw_mrnas)
+rm(list = c("tmp_significant_windows",  "ddw_mrnas"))
+sizeFactors(ddw)
+```
+
+
+## Differential window analysis
+
+### Dispersion estimates
+
+```{r source,  echo = FALSE,  eval = FALSE}
+# source: https://support.bioconductor.org/p/81094/
+```
+We fit parametric and local fit,  and decide the best fit following this [Bioconductor post](https://support.bioconductor.org/p/81094/)
+
+```{r parametric_dispersion}
+parametric_ddw  <- estimateDispersions(ddw,  fitType = "parametric")
+if (decide_fit) {
+  local_ddw  <- estimateDispersions(ddw,  fitType = "local")
+}
+
+```
+
+This is the dispersion estimate for parametric fit
+```{r plot parametric fit,  fig.wide=TRUE}
+plotDispEsts(parametric_ddw,  main = "Parametric fit")
+```
+
+This is the dispersion estimate for local fit,  given automated decision fitting is enabled:
+```{r plot local fit,  fig.wide = TRUE}
+if (decide_fit) {
+  plotDispEsts(local_ddw,  main = "Local fit")
+}
+
+```
+
+This will get the residuals for either fit,  only for automated decision fitting
+```{r residual fit}
+parametric_resid <- na.omit(with(mcols(parametric_ddw), abs(log(dispGeneEst) - log(dispFit))))
+if (decide_fit) {
+  local_resid <- na.omit(with(mcols(local_ddw), abs(log(dispGeneEst) - log(dispFit))))
+  resid_df <- data.frame(residuals = c(parametric_resid, local_resid),
+                         fitType = c(rep("parametric", length(parametric_resid)),
+                                   rep("local", length(local_resid))))
+  summary(resid_df)
+}
+
+```
+
+and we plot histograms of the fits
+
+```{r plot residual histograms,  fig.wide = TRUE}
+if (decide_fit) {
+  ggplot(resid_df, aes(x = residuals, fill = fitType)) +
+    scale_fill_manual(values = c("darkred", "darkblue")) + geom_histogram(alpha = 0.5, position = "identity", bins = 100) +
+    theme_bw()
+}
+
+```
+
+Now,  we will decide for the better fit based on median
+
+```{r choose_fit}
+summary(parametric_resid)
+if (decide_fit) {
+  summary(local_resid)
+  if (median(local_resid) <= median(parametric_resid)) {
+    cat("chosen fitType: local")
+    ddw <- local_ddw
+  }else {
+    cat("chosen fitType: parametric")
+    ddw <- parametric_ddw
+  }
+  rm(local_ddw, parametric_ddw, resid_df, parametric_resid, local_resid)
+}else {
+  ddw <- parametric_ddw
+  rm(parametric_ddw)
+}
+
+```
+
+
+
+### Wald test or LRT
+
+```{r wald_or_LRT}
+if (lrt) {
+  ddw <- nbinomLRT(ddw, full = ~type,  reduced = ~1)
+}else {
+  ddw <- nbinomWaldTest(ddw)
+}
+
+```
+
+
+### Significance testing
+
+```{r sig_windows}
+result_windows <- resultsDEWSeq(ddw,
+                              contrast = c("type",  "IP",  "SMI"),
+                              tidy = TRUE) %>% as_tibble
+
+result_windows
+```
+
+
+### Multiple hypothesis correction with IHW
+
+You might be interested to correct for multiple hypothesis testing with IHW.
+
+Decide on overlap correction based on the parameter `overlap_correction`
+
+```{r ihw}
+if (overlap_correction && ihw_filt) {
+  result_windows[, "p_adj_IHW"] <- adj_pvalues(ihw(pSlidingWindows ~ baseMean,
+                     data = result_windows,
+                     alpha = p_value_cutoff,
+                     nfolds = 10))
+  padj_col <- "p_adj_IHW"
+}else if (!overlap_correction && ihw_filt) {
+  result_windows[, "p_adj_IHW"] <- adj_pvalues(ihw(pvalue ~ baseMean,
+                     data = result_windows,
+                     alpha = p_value_cutoff,
+                     nfolds = 10))
+  padj_col <- "p_adj_IHW"
+}else if (overlap_correction && !ihw_filt) {
+  padj_col <- "pSlidingWindows.adj"
+}else {
+  result_windows[, "p_adj"] <- p.adjust(result_windows$pvalue, method = "BH")
+  padj_col <- "p_adj"
+}
+
+```
+
+Determine significant windows
+
+```{r filter_sig_windows}
+result_windows <- result_windows %>%
+                      mutate(significant = result_windows[, padj_col] < p_value_cutoff)
+sig_windows <- sum(result_windows$significant)
+```
+
+
+`r sig_windows` windows are significant
+
+
+### Combining windows
+
+```{r,  reg1,  message=FALSE,  eval=TRUE, include=FALSE}
+if (sig_windows > 0) {
+ result_regions <- extractRegions(windowRes  = result_windows,  padjCol    = padj_col,  padjThresh = p_value_cutoff,  log2FoldChangeThresh = lfc_cutoff) %>% as_tibble
+}else {
+ message("Cannot find significant windows in this dataset. Try lowering the p-value and log2FoldChange thresholds!")
+}
+```
+
+```{r extractRegion, eval=FALSE}
+if (sig_windows > 0) {
+ result_regions <- extractRegions(windowRes  = result_windows,  padjCol    = padj_col,  padjThresh = p_value_cutoff,  log2FoldChangeThresh = lfc_cutoff) %>% as_tibble
+}
+```
+
+                     
+### Writing Bed file
+
+```{r writing bed file}
+if (sig_windows > 1) {
+ toBED(windowRes = result_windows,  regionRes = result_regions, padjThresh = p_value_cutoff, padjCol   = padj_col,  fileName  = output_bed_file)
+}else {
+ message("This analysis does not have enough <=1 significant windows to create BED file for visualization")
+}
+```
+
+
+## Save Session
+```{r save_data}
+# save enriched windows,  gzip results file if the file suffix is .gz
+if (grepl("\\.gz$", output_windows_file, ignore.case = TRUE)) {
+  gz_out <- gzfile(output_windows_file, "w")
+  write.table(result_windows, file = gz_out, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  close(gz_out)
+}else {
+  write.table(result_windows, file = output_windows_file, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+}
+# save enriched regions
+if (sig_windows > 0) {
+  if (grepl("\\.gz$", output_regions_file, ignore.case = TRUE)) {
+    gz_out <- gzfile(output_regions_file, "w")
+    write.table(result_regions, file = gz_out, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+    close(gz_out)
+  }else {
+    write.table(result_regions, file = output_regions_file, sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE)
+  }
+}
+# save session
+# Warning! session images can be heavy!
+if (nchar(output_rdata) > 5) {
+  save.image(file = output_rdata)
+}
+```
+
+## Session Info
+
+```{r session info}
+sessionInfo()
+```
