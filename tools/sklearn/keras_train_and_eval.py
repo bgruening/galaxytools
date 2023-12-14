@@ -10,6 +10,8 @@ import pandas as pd
 from galaxy_ml.keras_galaxy_models import (
     _predict_generator,
     KerasGBatchClassifier,
+    KerasGClassifier,
+    KerasGRegressor
 )
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
 from galaxy_ml.model_validations import train_test_split
@@ -188,6 +190,7 @@ def main(
     infile1,
     infile2,
     outfile_result,
+    outfile_history=None,
     outfile_object=None,
     outfile_y_true=None,
     outfile_y_preds=None,
@@ -214,6 +217,9 @@ def main(
 
     outfile_result : str
         File path to save the results, either cv_results or test result.
+
+    outfile_history : str, optional
+        File path to save the training history.
 
     outfile_object : str, optional
         File path to save searchCV object.
@@ -253,9 +259,7 @@ def main(
     swapping = params["experiment_schemes"]["hyperparams_swapping"]
     swap_params = _eval_swap_params(swapping)
     estimator.set_params(**swap_params)
-
     estimator_params = estimator.get_params()
-
     # store read dataframe object
     loaded_df = {}
 
@@ -398,8 +402,16 @@ def main(
     # handle scorer, convert to scorer dict
     scoring = params["experiment_schemes"]["metrics"]["scoring"]
     scorer = get_scoring(scoring)
-    if not isinstance(scorer, (dict, list)):
-        scorer = [scoring["primary_scoring"]]
+
+    # We get 'None' back from the call to 'get_scoring()' if
+    # the primary scoring is 'default'. Replace 'default' with
+    # the default scoring for classification/regression (accuracy/r2)
+    if scorer is None:
+        if isinstance(estimator, KerasGClassifier):
+            scorer = ['accuracy']
+        if isinstance(estimator, KerasGRegressor):
+            scorer = ['r2']
+
     scorer = _check_multimetric_scoring(estimator, scoring=scorer)
 
     # handle test (first) split
@@ -448,12 +460,20 @@ def main(
     # train and eval
     if hasattr(estimator, "config") and hasattr(estimator, "model_type"):
         if exp_scheme == "train_val_test":
-            estimator.fit(X_train, y_train, validation_data=(X_val, y_val))
+            history = estimator.fit(X_train, y_train, validation_data=(X_val, y_val))
         else:
-            estimator.fit(X_train, y_train, validation_data=(X_test, y_test))
+            history = estimator.fit(X_train, y_train, validation_data=(X_test, y_test))
     else:
-        estimator.fit(X_train, y_train)
-
+        history = estimator.fit(X_train, y_train)
+    if "callbacks" in estimator_params:
+        for cb in estimator_params["callbacks"]:
+            if cb["callback_selection"]["callback_type"] == "CSVLogger":
+                hist_df = pd.DataFrame(history.history)
+                hist_df["epoch"] = np.arange(1, estimator_params["epochs"] + 1)
+                epo_col = hist_df.pop('epoch')
+                hist_df.insert(0, 'epoch', epo_col)
+                hist_df.to_csv(path_or_buf=outfile_history, sep="\t", header=True, index=False)
+                break
     if isinstance(estimator, KerasGBatchClassifier):
         scores = {}
         steps = estimator.prediction_steps
@@ -489,8 +509,15 @@ def main(
         else:
             predictions = estimator.predict(X_test)
 
-        y_true = y_test
-        sk_scores = _score(estimator, X_test, y_test, scorer)
+        # Un-do OHE of the validation labels
+        if len(y_test.shape) == 2:
+            rounded_test_labels = np.argmax(y_test, axis=1)
+            y_true = rounded_test_labels
+            sk_scores = _score(estimator, X_test, rounded_test_labels, scorer)
+        else:
+            y_true = y_test
+            sk_scores = _score(estimator, X_test, y_true, scorer)
+
         scores.update(sk_scores)
 
     # handle output
@@ -526,6 +553,7 @@ if __name__ == "__main__":
     aparser.add_argument("-X", "--infile1", dest="infile1")
     aparser.add_argument("-y", "--infile2", dest="infile2")
     aparser.add_argument("-O", "--outfile_result", dest="outfile_result")
+    aparser.add_argument("-hi", "--outfile_history", dest="outfile_history")
     aparser.add_argument("-o", "--outfile_object", dest="outfile_object")
     aparser.add_argument("-l", "--outfile_y_true", dest="outfile_y_true")
     aparser.add_argument("-p", "--outfile_y_preds", dest="outfile_y_preds")
@@ -542,6 +570,7 @@ if __name__ == "__main__":
         args.infile1,
         args.infile2,
         args.outfile_result,
+        outfile_history=args.outfile_history,
         outfile_object=args.outfile_object,
         outfile_y_true=args.outfile_y_true,
         outfile_y_preds=args.outfile_y_preds,
