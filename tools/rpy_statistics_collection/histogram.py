@@ -1,110 +1,130 @@
 #!/usr/bin/env python
-#Greg Von Kuster
+# Greg Von Kuster
 
 import sys
-#from rpy import *
+
+# from rpy import *
 import rpy2.robjects as robjects
 from rpy2.robjects.packages import importr
+
 r = robjects.r
-grdevices = importr('grDevices')
+grdevices = importr("grDevices")
 
 
-assert sys.version_info[:2] >= ( 2, 4 )
+assert sys.version_info[:2] >= (2, 4)
+
 
 def stop_err(msg):
     sys.stderr.write(msg)
     sys.exit()
 
+
 def main():
 
     # Handle input params
     in_fname = sys.argv[1]
-    out_fname = sys.argv[2] 
+    out_fname = sys.argv[2]
     try:
-        column = int( sys.argv[3] ) - 1
-    except:
-        stop_err( "Column not specified, your query does not contain a column of numerical data." )
+        column = int(sys.argv[3]) - 1
+    except Exception:
+        stop_err(
+            "Column not specified, your query does not contain a column of numerical data."
+        )
     title = sys.argv[4]
     xlab = sys.argv[5]
-    breaks = int( sys.argv[6] )
+    breaks = int(sys.argv[6])
     if breaks == 0:
         breaks = "Sturges"
     if sys.argv[7] == "true":
         density = True
-    else: density = False
-    if len( sys.argv ) >= 9 and sys.argv[8] == "true":
+    else:
+        density = False
+    if len(sys.argv) >= 9 and sys.argv[8] == "true":
         frequency = True
-    else: frequency = False
+    else:
+        frequency = False
 
     matrix = []
     skipped_lines = 0
     first_invalid_line = 0
-    invalid_value = ''
+    invalid_value = ""
     i = 0
-    for i, line in enumerate( file( in_fname ) ):
+    for i, line in enumerate(file(in_fname)):  # noqa F821
         valid = True
-        line = line.rstrip('\r\n')
+        line = line.rstrip("\r\n")
         # Skip comments
-        if line and not line.startswith( '#' ): 
+        if line and not line.startswith("#"):
             # Extract values and convert to floats
             row = []
             try:
-                fields = line.split( "\t" )
+                fields = line.split("\t")
                 val = fields[column]
                 if val.lower() == "na":
-                    row.append( float( "nan" ) )
-            except:
+                    row.append(float("nan"))
+            except Exception:
                 valid = False
                 skipped_lines += 1
                 if not first_invalid_line:
-                    first_invalid_line = i+1
+                    first_invalid_line = i + 1
             else:
                 try:
-                    row.append( float( val ) )
+                    row.append(float(val))
                 except ValueError:
                     valid = False
                     skipped_lines += 1
                     if not first_invalid_line:
-                        first_invalid_line = i+1
+                        first_invalid_line = i + 1
                         invalid_value = fields[column]
         else:
             valid = False
             skipped_lines += 1
             if not first_invalid_line:
-                first_invalid_line = i+1
+                first_invalid_line = i + 1
 
         if valid:
             matrix += row
 
     if skipped_lines < i:
         try:
-            #a = r.array( matrix )
+            # a = r.array( matrix )
             fv = robjects.FloatVector(matrix)
-            a = r['matrix'](fv, ncol=1,byrow=True)
-            #r.pdf( out_fname, 8, 8 )
-            r.pdf( out_fname, 8, 8 )
-            histogram = r.hist( a, probability=not frequency, main=title, xlab=xlab, breaks=breaks )
+            a = r["matrix"](fv, ncol=1, byrow=True)
+            # r.pdf( out_fname, 8, 8 )
+            r.pdf(out_fname, 8, 8)
+            histogram = r.hist(
+                a, probability=not frequency, main=title, xlab=xlab, breaks=breaks
+            )
             if density:
-                density = r.density( a )
+                density = r.density(a)
                 if frequency:
-                    scale_factor = len( matrix ) * ( histogram['mids'][1] - histogram['mids'][0] ) #uniform bandwidth taken from first 2 midpoints
-                    density[ 'y' ] = map( lambda x: x * scale_factor, density[ 'y' ] )
-                r.lines( density )
-            #r.dev_off()
-            grdevices.dev_off()   
-        except Exception, exc:
-            stop_err( "%s" %str( exc ) )
+                    scale_factor = len(matrix) * (
+                        histogram["mids"][1] - histogram["mids"][0]
+                    )  # uniform bandwidth taken from first 2 midpoints
+                    density["y"] = map(lambda x: x * scale_factor, density["y"])
+                r.lines(density)
+            # r.dev_off()
+            grdevices.dev_off()
+        except Exception as exc:
+            stop_err("%s" % str(exc))
     else:
         if i == 0:
             stop_err("Input dataset is empty.")
         else:
-            stop_err( "All values in column %s are non-numeric." %sys.argv[3] )
+            stop_err("All values in column %s are non-numeric." % sys.argv[3])
 
-    print "Histogram of column %s. " %sys.argv[3]
+    print("Histogram of column %s. " % sys.argv[3])
     if skipped_lines > 0:
-        print "Skipped %d invalid lines starting with line #%d, '%s'." % ( skipped_lines, first_invalid_line, invalid_value )
+        print(
+            "Skipped %d invalid lines starting with line #%d, '%s'."
+            % (
+                skipped_lines,
+                first_invalid_line,
+                invalid_value,
+            )
+        )
 
-    #r.quit( save="no" )
-    
+    # r.quit( save="no" )
+
+
 if __name__ == "__main__":
     main()

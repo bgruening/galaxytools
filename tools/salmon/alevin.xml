@@ -1,5 +1,5 @@
-<tool id="alevin" name="Alevin" version="@VERSION@+galaxy2">
-    <description>Quantification and analysis of 3’ tagged-end single-cell sequencing data</description>
+<tool id="alevin" name="Alevin" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE_VERSION@">
+    <description>Quantification and analysis of 3-prime tagged-end single-cell sequencing data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
@@ -46,18 +46,25 @@
         && ln -s '${tgmap}' ./alevinmap.tsv
         && salmon alevin -l
         #if $pairstraight.readselect == 'paired':
-            ${pairstraight.orientation}${pairstraight.strandedness}
+            #if $pairstraight.libtype.strandedness == 'A'
+                A
+            #else
+                ${pairstraight.libtype.orientation}${pairstraight.libtype.strandedness}
+            #end if
             -i $index_path
             -1 ./mate1.fastq
             -2 ./mate2.fastq
         #else:
-            '${pairstraight.strandedness}'
+            '${pairstraight.libtype.strandedness}'
             -i $index_path
             -r zcat ./unmate.fastq
         #end if
         -o ./output
         -p "\${GALAXY_SLOTS:-4}"
-        ${protocol}
+        ${protocol_cond.protocol}
+        #if $protocol_cond.protocol == '--indropV2'
+            --w1 '${protocol_cond.w1}'
+        #end if
         --tgMap ./alevinmap.tsv
         #if $whitelist:
             --whitelist '${optional.whitelist}'
@@ -81,39 +88,40 @@
             --keepCBFraction '${optional.keepCBFraction}'
         #end if
         ${optional.noDedup}
-        ${optional.dumpBfh}
-        ${optional.dumpFeatures}
-        ${optional.dumpUmiGraph}
-        ${optional.dumpMtx}
-        #if $optional.lowRegionMinNumBarcodes:
-            --lowregionMinNumBarcodes '${optional.lowRegionMinNumBarcodes}'
+        #if 'dumpBfh' in $output_files:
+            --dumpBfh
         #end if
+        #if 'dumpFeatures' in $output_files:
+            --dumpFeatures
+        #end if
+        #if 'dumpUmiGraph' in $output_files:
+            --dumpUmiGraph
+        #end if
+        ${optional.dumpMtx}
         #if $optional.maxNumBarcodes:
             --maxNumBarcodes '${optional.maxNumBarcodes}'
         #end if
         #if $optional.freqThreshold:
             --freqThreshold '${optional.freqThreshold}'
         #end if
-
+        ## && gunzip output/alevin/quants_tier_mat.gz -> the output is binary file
         #if $optional.dumpMtx != "--dumpMtx":
             && python '$__tool_directory__/vpolo_convert.py' -m
         #else:
             && gunzip output/alevin/quants_mat.mtx.gz
         #end if
-        #if $optional.dumpUmiGraph:
+        #if 'dumpUmiGraph' in $output_files:
             && python '$__tool_directory__/vpolo_convert.py' -u
             && sh '$__tool_directory__/umiout.sh'
         #end if
-
-        && gunzip output/alevin/quants_tier_mat.gz
-        #if $optional.numCellBootstraps:
-            && gunzip output/alevin/quants_mean_mat.gz
-            && gunzip output/alevin/quants_var_mat.gz
+        ## those gzip file include binary datasets
+        ## #if $optional.numCellBootstraps:
+        ##    && gunzip output/alevin/quants_mean_mat.gz
+        ##    && gunzip output/alevin/quants_var_mat.gz
+        ## #end if
+        #if 'auxiliar_info' in $output_files
+            && tar -zcvf aux_info.tar.gz output/aux_info
         #end if
-
-        && gunzip output/aux_info/fld.gz
-        && gunzip output/aux_info/observed_bias.gz
-        && gunzip output/aux_info/observed_bias_3p.gz
         ]]>
     </command>
     <inputs>
@@ -124,98 +132,145 @@
                 <option value="unmated">Single-end</option>
             </param>
             <when value="paired">
-                <param name="file1" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" help="CB+UMI raw sequence file(s)"/>
-                <param name="file2" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" help="Read-sequence file(s)"/>
-                <expand macro="orient"/>
-                <expand macro="stranded"/>
+                <param name="file1" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" label="Mate pair 1" help="CB+UMI raw sequence file(s)"/>
+                <param name="file2" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" label="Mate pair 2" help="Read-sequence file(s)"/>
+                <expand macro="stranded_pe"/>
             </when>
             <when value="unmated">
                 <param name="unmatedreads" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" label="Unmated reads files"/>
-                <expand macro="stranded"/>
+                <expand macro="stranded_se"/>
             </when>
         </conditional>
-        <param name="protocol" type="select">
-            <option value="--dropseq">DropSeq Single Cell protocol</option>
-            <option value="--chromium">10x chromium v2 Single Cell protocol</option>
-            <option value="--chromiumV3">10x chromium v3 Single Cell protocol</option>
-            <option value="--gemcode">Gemcode v1 Single Cell protocol</option>
-            <option value="--celseq">CEL-Seq Single Cell protocol</option>
-            <option value="--celseq2">CEL-Seq2 Single Cell protocol</option>
-        </param>
+        <conditional name="protocol_cond">
+            <param name="protocol" type="select" label="Type of single-cell protocol" help="In cases where single-cell protocol supports variable length cellbarcodes, alevin adds nucleotide padding to make the lengths uniform. Furthermore, the padding scheme ensures that there are no collisions added in the process.">
+                <option value="--dropseq">DropSeq Single Cell protocol</option>
+                <option value="--chromium">10x chromium v2 Single Cell protocol</option>
+                <option value="--chromiumV3">10x chromium v3 Single Cell protocol</option>
+                <option value="--gemcode">Gemcode v1 Single Cell protocol</option>
+                <option value="--celseq">CEL-Seq Single Cell protocol</option>
+                <option value="--celseq2">CEL-Seq2 Single Cell protocol</option>
+                <option value="--sciseq3">Sci-RNA-seq3 protocol</option>
+                <option value="--indropV2">InDrop v2 protocol</option>
+                <option value="--splitSeqV1">SplitSeqV1 protocol</option>
+                <option value="--splitSeqV2">SplitSeqV2 protocol</option>
+            </param>
+            <when value="--dropseq"/>
+            <when value="--chromium"/>
+            <when value="--chromiumV3"/>
+            <when value="--gemcode"/>
+            <when value="--celseq"/>
+            <when value="--celseq2"/>
+            <when value="--sciseq3"/>
+            <when value="--indropV2">
+                <param argument="--w1" type="text" value="" label="w1 adapters">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.letters"/>
+                    </sanitizer>
+                    <validator type="regex">[ATGC]+</validator>
+                </param>
+            </when>
+            <when value="--splitSeqV1"/>
+            <when value="--splitSeqV2"/>
+        </conditional>
         <param name="tgmap" type="data" format="tsv,tabular" label="Transcript to gene map file" help="Tsv with no header, containing two columns mapping each transcript present in the reference to the corresponding gene (the first column is a transcript and the second is the corresponding gene)."/>
-        <param name="allout" type="boolean" label="Retrieve all output files" truevalue="Yes" falsevalue="No" checked="false" help="If not selected, all log, info.txt, and json files output by Alevin will not be retrieved"/>
-        <section name="optional" title="Optional commands" expanded="false">
-            <param name="whitelist" type="data" format="tsv,tabular" optional="true" label="Whitelist file" help="Explicitly specify whitelist CP for cell detection and CB sequence correction. If not specified, putative CBs generated."/>
-            <param name="noDedup" type="boolean" truevalue="--noDedup" falsevalue="" checked="false" help="Causes pipeline to only perform CB correction, then maps the read-sequences to the transcriptome generating the interim data-structure of CB-EqClass-UMI-count. Used in parallel with --dumpBarcodeEq or --dumpBfh for the purposes of obtaining raw information or debugging."/>
-            <param name="mrna" type="data" format="tsv" optional="true" help="Single column tsv of mitochondrial genes which are to be used as a feature for CB whitelising naive Bayes classification."/>
-            <param name="rrna" type="data" format="tsv" optional="true" help="Single column tsv of ribosomal genes which are to be used as a feature for CB whitelising naive Bayes classification."/>
-            <param name="dumpBfh" type="boolean" truevalue="--dumpBfh" falsevalue="" checked="false" help="Dumps the full CB-EqClass-UMI-count data-structure for the purposed of allowing raw data analysis and debugging."/>
-            <param name="dumpFeatures" type="boolean" truevalue="--dumpFeatures" falsevalue="" checked="false" help="Dumps all features used by the CB classification and their counts at each cell level. Generally, this is used for the purposes of debugging."/>
-            <param name="dumpUmiGraph" type="boolean" truevalue="--dumpUmiGraph" falsevalue="" checked="false" help="Dump the per-cell level umi graph"/>
-            <param name="dumpMtx" type="boolean" truevalue="--dumpMtx" falsevalue="" checked="false" help="Converts the default binary format of alevin for gene-count matrix into a human readable mtx (matrix market exchange) sparse format."/>
-            <param name="forceCells" type="integer" optional="true" help="Explicitly specify the number of cells."/>
-            <param name="expectCells" type="integer" optional="true" help="define a close upper bound on expected number of cells."/>
-            <param name="numCellBootstraps" type="integer" optional="true" help="Performs certain number of bootstrap and generate the mean and variance of the count matrix"/>
-            <param name="minScoreFraction" type="float" optional="true" help="This value controls the minimum allowed score for a mapping to be considered valid. It matters only when --validateMappings has been passed to Salmon. The maximum possible score for a fragment is ms = read_len * ma (or ms = (left_read_len + right_read_len) * ma for paired-end reads).
+        <param name="output_files" type="select" multiple="true" display="checkboxes" label="Extra output files">
+            <option value="salmon_log">Salmon Quant log file</option>
+            <option value="fragment_length">Observed fragment length distribution</option>
+            <option value="auxiliar_info">Auxiliar info files</option>
+            <option value="dumpUmiGraph">Per cell level parsimonious Umi graph (--dumpUmiGraph)</option>
+            <option value="dumpFeatures">Features used by the CB classification and their counts at each cell level (--dumpFeatures)</option>
+            <option value="dumpBfh">Full CB-EC-UMI-count data-structure (--dumpBfh)</option>
+            <option value="commands">Commands info file</option>
+        </param>
+        <section name="optional" title="Advanced options" expanded="false">
+            <param argument="--whitelist" type="data" format="tsv,tabular" optional="true" label="Whitelist file" help="Explicitly specify whitelist CP for cell detection and CB sequence correction. If not specified, putative CBs generated."/>
+            <param argument="--noDedup" type="boolean" truevalue="--noDedup" falsevalue="" checked="false" label="Skip deduplication step" help="Causes pipeline to only perform CB correction, then maps the read-sequences to the transcriptome generating the interim data-structure of CB-EqClass-UMI-count. Used in parallel with --dumpBarcodeEq or --dumpBfh for the purposes of obtaining raw information or debugging."/>
+            <param argument="--mrna" type="data" format="tsv" optional="true" label="Mito-RNA genes file" help="Single column tsv of mitochondrial genes which are to be used as a feature for CB whitelising naive Bayes classification."/>
+            <param argument="--rrna" type="data" format="tsv" optional="true" label="Ribosomal RNA file" help="Single column tsv of ribosomal genes which are to be used as a feature for CB whitelising naive Bayes classification."/>
+            <param argument="--dumpMtx" type="boolean" truevalue="--dumpMtx" falsevalue="" checked="false" label=" Dump cell v transcripts count matrix in MTX format" help="Converts the default binary format of alevin for gene-count matrix into a human readable mtx (matrix market exchange) sparse format."/>
+            <param argument="--forceCells" type="integer" min="0" optional="true" label="Number of cells" help="Explicitly specify the number of cells."/>
+            <param argument="--expectCells" type="integer" min="0" optional="true" label="Upper bound on expected number of cells" help="define a close upper bound on expected number of cells."/>
+            <param argument="--numCellBootstraps" type="integer" min="0" value="0" optional="true" label="Generate mean and variance for cell x gene matrix by boostrap" help="Performs certain number of bootstrap and generate the mean and variance of the count matrix"/>
+            <param argument="--minScoreFraction" type="float" optional="true" label="Minimum allowed score for a mapping" help="This value controls the minimum allowed score for a mapping to be considered valid. It matters only when --validateMappings has been passed to Salmon. The maximum possible score for a fragment is ms = read_len * ma (or ms = (left_read_len + right_read_len) * ma for paired-end reads).
                 The argument to --minScoreFraction determines what fraction of the maximum score s a mapping must achieve to be potentially retained. For a minimum score fraction of f, only mappings with a score less than (f * s) will be kept. Mappings with lower scores will be considered as low-quality, and will be discarded."/>
-            <param name="keepCBFraction" type="float" optional="true" help="Fraction of cellular barcodes to keep (Between 0 and 1)."/>
-            <param name="lowRegionMinNumBarcodes" type="integer" optional="true" help="Minimum number of cell barcodes to use fo learning low confidence region (defaults to 200)"/>
-            <param name="maxNumBarcodes" type="integer" optional="true" help="Maximum allowable limit to process the cell barcodes. Defaults to 100000"/>
-            <param name="freqThreshold" type="integer" optional="true" help="Minimum frequency for a barcode to be considered. Defaults to 10"/>
+            <param argument="--keepCBFraction" type="float" min="0" max="1" optional="true" label="Fraction of cellular barcodes to keep" help="Use 1 to quantify all"/>
+            <param argument="--maxNumBarcodes" type="integer" min="0" value="100000" label="Maximum allowable limit to process the cell barcodes" help="Default: 100000"/>
+            <param argument="--freqThreshold" type="integer" min="0" value="10" optional="true" label="Minimum frequency for a barcode to be considered" help="Default: 10"/>
         </section>
     </inputs>
     <outputs>
-        <data name="quants_mat.tsv" label="quants_mat.tsv" format="txt" from_work_dir="quants_mat.tsv">
+        <data name="quants_mat_tsv" label="${tool.name} on ${on_string}: per-cell gene-count matrix (tabular)" format="txt" from_work_dir="quants_mat.tsv">
             <filter>optional["dumpMtx"] is not True</filter>
         </data>
-        <data name="quants_mat.mtx" label="quants_mat.mtx" format="mtx" from_work_dir="output/alevin/quants_mat.mtx">
+        <data name="quants_mat_mtx" label="${tool.name} on ${on_string}: per-cell gene-count matrix (MTX)" format="mtx" from_work_dir="output/alevin/quants_mat.mtx">
             <filter>optional["dumpMtx"]</filter>
         </data>
-        <data name="raw_cb_frequency.txt" label="raw_cb_frequency.txt" format="txt" from_work_dir="output/alevin/raw_cb_frequency.txt">
-            <filter>optional["dumpFeatures"]</filter>
+        <data name="quants_mat_gz" label="${tool.name} on ${on_string}: per-cell level gene-count matrix (binary)" format="gz" from_work_dir="output/alevin/quants_mat.gz"/>
+        <data name="quants_mat_cols_txt" label="${tool.name} on ${on_string}: column headers (gene-ids)" format="txt" from_work_dir="output/alevin/quants_mat_cols.txt"/>
+        <data name="quants_mat_rows_txt" label="${tool.name} on ${on_string}: row index (CB-ids)" format="txt" from_work_dir="output/alevin/quants_mat_rows.txt"/>
+        <data name="quants_tier_mat" label="${tool.name} on ${on_string}: tier categorization" format="gz" from_work_dir="output/alevin/quants_tier_mat.gz"/>
+        <data name="featureDump_txt" label="${tool.name} on ${on_string}: cell-level information (featureDump)" format="txt" from_work_dir="output/alevin/featureDump.txt"/>
+        <data name="raw_cb_frequency_txt" label="${tool.name} on ${on_string}: raw CB classification frequencies" format="txt" from_work_dir="output/alevin/raw_cb_frequency.txt">
+            <filter>output_files and 'dumpFeatures' in output_files</filter>
         </data>
-        <data name="quants_mat_cols.txt" label="quants_mat_cols.txt" format="txt" from_work_dir="output/alevin/quants_mat_cols.txt"/>
-        <data name="quants_mat_rows.txt" label="quants_mat_rows.txt" format="txt" from_work_dir="output/alevin/quants_mat_rows.txt"/>
-        <data name="quants_tier_mat" label="quants_tier_mat" format="mtx" from_work_dir="output/alevin/quants_tier_mat"/>
-        <data name="alevin.log" label="alevin.log" format="txt" from_work_dir="output/alevin/alevin.log">
-            <filter>allout</filter>
+        <data name="whitelist_txt" label="${tool.name} on ${on_string}: whitelist" format="txt" from_work_dir="output/alevin/whitelist.txt"/>
+
+        <data name="auxiliar_files" label="${tool.name} on ${on_string}: auxiliar info files" format="tgz" from_work_dir="aux_info.tar.gz">
+            <filter>output_files and 'auxiliar_info' in output_files</filter>
         </data>
-        <data name="featureDump.txt" label="featureDump.txt" format="txt" from_work_dir="output/alevin/featureDump.txt"/>
-        <data name="whitelist.txt" label="whitelist.txt" format="txt" from_work_dir="output/alevin/whitelist.txt"/>
-        <data name="bfh.txt" label="bfh.txt" format="txt" from_work_dir="output/alevin/bfh.txt">
-            <filter>optional["dumpBfh"]</filter>
+        <data name="salmon_quant_log" format="txt" label="${tool.name} on ${on_string}: Salmon log file" from_work_dir="output/logs/salmon_quant.log">
+            <filter>output_files and 'salmon_log' in output_files</filter>
         </data>
-        <data name="quants_mean_mat" label="quants_mean_mat" format="mtx" from_work_dir="output/alevin/quants_mean_mat">
+        <data name="cmd_info" label="${tool.name} on ${on_string}: command info (JSON)" format="json" from_work_dir="output/cmd_info.json">
+            <filter>output_files and 'commands' in output_files</filter>
+        </data>
+        <data name="flenDist_txt" format="txt" label="${tool.name} on ${on_string}: observed fragment length distribution" from_work_dir="output/libParams/flenDist.txt">
+            <filter>output_files and 'fragment_length' in output_files</filter>
+        </data>
+        <data name="bfh_txt" label="${tool.name} on ${on_string}: full CB-EC-UMI-count data-structure" format="txt" from_work_dir="output/alevin/bfh.txt">
+            <filter>output_files and 'dumpBfh' in output_files</filter>
+        </data>
+        <data name="quants_mean_mat" label="${tool.name} on ${on_string}: count matrix mean file" format="gz" from_work_dir="output/alevin/quants_mean_mat.gz">
             <filter>optional["numCellBootstraps"]</filter>
         </data>
-        <data name="quants_var_mat" label="quants_var_mat" format="mtx" from_work_dir="output/alevin/quants_var_mat">
+        <data name="quants_var_mat" label="${tool.name} on ${on_string}: count matrix variance file" format="gz" from_work_dir="output/alevin/quants_var_mat.gz">
             <filter>optional["numCellBootstraps"]</filter>
         </data>
-        <data name="quants_boot_rows.txt" label="quants_boot_rows.txt" format="txt" from_work_dir="output/alevin/quants_boot_rows.txt">
+        <data name="quants_boot_rows_txt" label="${tool.name} on ${on_string}: bootstraps rows" format="txt" from_work_dir="output/alevin/quants_boot_rows.txt">
             <filter>optional["numCellBootstraps"]</filter>
         </data>
-        <data name="alevinmeta_info.json" format="json" label="meta_info.json" from_work_dir="output/aux_info/alevin_meta_info.json">
-            <filter>allout</filter>
-        </data>
-        <data name="ambig_info.tsv" format="tsv" label="ambig_info.tsv" from_work_dir="output/aux_info/ambig_info.tsv">
-            <filter>allout</filter>
-        </data>
-        <data name="meta_info.json" format="json" label="meta_info.json" from_work_dir="output/aux_info/meta_info.json">
-            <filter>allout</filter>
-        </data>
-        <data name="expected_bias" format="txt" label="expected_bias" from_work_dir="output/aux_info/fld"/>
-        <data name="observed_bias" format="txt" label="observed_bias" from_work_dir="output/aux_info/observed_bias"/>
-        <data name="observed_bias_3p" format="txt" label="observed_bias_3p" from_work_dir="output/aux_info/observed_bias_3p"/>
-        <data name="flenDist.txt" format="txt" label="flenDist.txt" from_work_dir="output/libParams/flenDist.txt"/>
-        <data name="salmon_quant.log" format="txt" label="salmon_quant.log" from_work_dir="output/logs/salmon_quant.log">
-            <filter>allout</filter>
-        </data>
-        <collection name="umigraphs" type="list" label="Umi graph PDFs">
-            <filter>optional["dumpUmiGraph"]</filter>
-            <discover_datasets pattern="__name_and_ext__" ext="pdf" directory="fixed"/>
+        <collection name="umigraphs" type="list" label="${tool.name} on ${on_string}: UMI graph PDFs">
+            <filter>output_files and 'dumpUmiGraph' in output_files</filter>
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.pdf" format="pdf" directory="fixed"/>
         </collection>
     </outputs>
     <tests>
+        <test expect_num_outputs="8">
+            <conditional name="refTranscriptSource">
+                <param name="TranscriptSource" value="history"/>
+                <section name="s_index">
+                    <param name="fasta" value="minitranscript.fa"/>
+                </section>
+            </conditional>
+            <conditional name="pairstraight">
+                <param name="readselect" value="paired"/>
+                <param name="file1" value="fastqs/moreminifastq1.fastq.gz"/>
+                <param name="file2" value="fastqs/moreminifastq2.fastq.gz"/>
+                <param name="orientation" value="I"/>
+                <param name="strandedness" value="SR"/>
+            </conditional>
+            <conditional name="protocol_cond">
+                <param name="protocol" value="--chromium"/>
+            </conditional>
+            <param name="tgmap" value="minitxp.tsv"/>
+            <param name="output_files" value="dumpFeatures"/>
+            <section name="optional">
+                <param name="keepCBFraction" value="1"/>
+                <param name="freqThreshold" value="5"/>
+                <param name="dumpMtx" value="true"/>
+            </section>
+            <output name="quants_mat_mtx" file="alevin_mat_01.mtx" ftype="mtx" sort="true"/>
+        </test>
         <test expect_num_outputs="11">
             <conditional name="refTranscriptSource">
                 <param name="TranscriptSource" value="history"/>
@@ -230,15 +285,45 @@
                 <param name="orientation" value="I"/>
                 <param name="strandedness" value="SR"/>
             </conditional>
-            <param name="protocol" value="--chromium"/>
+            <conditional name="protocol_cond">
+                <param name="protocol" value="--chromium"/>
+            </conditional>
             <param name="tgmap" value="minitxp.tsv"/>
+            <param name="output_files" value="dumpFeatures"/>
             <section name="optional">
                 <param name="keepCBFraction" value="1"/>
-                <param name="dumpFeatures" value="Yes"/>
+                <param name="numCellBootstraps" value="2"/>
                 <param name="freqThreshold" value="5"/>
-                <param name="dumpMtx" value="Yes"/>
+                <param name="dumpMtx" value="true"/>
             </section>
-            <output name="quants_mat.mtx" file="alevin_mat.mtx" ftype="mtx"/>
+            <output name="quants_mat_mtx" file="alevin_mat_02.mtx" ftype="mtx" sort="true"/>
+        </test>
+        <test expect_num_outputs="8">
+            <conditional name="refTranscriptSource">
+                <param name="TranscriptSource" value="history"/>
+                <section name="s_index">
+                    <param name="fasta" value="minitranscript.fa"/>
+                </section>
+            </conditional>
+            <conditional name="pairstraight">
+                <param name="readselect" value="paired"/>
+                <param name="file1" value="fastqs/moreminifastq1.fastq.gz"/>
+                <param name="file2" value="fastqs/moreminifastq2.fastq.gz"/>
+                <param name="orientation" value="I"/>
+                <param name="strandedness" value="SR"/>
+            </conditional>
+            <conditional name="protocol_cond">
+                <param name="protocol" value="-\-indropV2"/>
+                <param name="w1" value="ATCAT"/>
+            </conditional>
+            <param name="tgmap" value="minitxp.tsv"/>
+            <param name="output_files" value="dumpFeatures"/>
+            <section name="optional">
+                <param name="keepCBFraction" value="1"/>
+                <param name="freqThreshold" value="5"/>
+                <param name="dumpMtx" value="true"/>
+            </section>
+            <output name="quants_mat_mtx" file="alevin_mat_indropV2.mtx" ftype="mtx" sort="true"/>
         </test>
         <test expect_num_outputs="14">
             <conditional name="refTranscriptSource">
@@ -254,16 +339,35 @@
                 <param name="orientation" value="I"/>
                 <param name="strandedness" value="SR"/>
             </conditional>
-            <param name="protocol" value="--chromium"/>
+            <conditional name="protocol_cond">
+                <param name="protocol" value="--chromium"/>
+            </conditional>
             <param name="tgmap" value="minitxp.tsv"/>
+            <param name="output_files" value="dumpFeatures,salmon_log,fragment_length,auxiliar_info,dumpUmiGraph,dumpBfh,commands"/>
             <section name="optional">
-                <param name="keepCBFraction" value="1"/>
-                <param name="dumpFeatures" value="Yes"/>
-                <param name="numCellBootstraps" value="2"/>
-                <param name="freqThreshold" value="5"/>
-                <param name="dumpMtx" value="Yes"/>
+                <param name="dumpMtx" value="true"/>
             </section>
-            <output name="quants_mat.mtx" file="alevin_mat.mtx" ftype="mtx"/>
+            <output name="quants_mat_mtx" file="alevin_mat.mtx" ftype="mtx" sort="true"/>
+            <output name="salmon_quant_log" ftype="txt">
+                <assert_contents>
+                    <has_text text="Index contained 322 targets"/>
+                    <has_text text="Counted 14 total reads in the equivalence classes"/>
+                </assert_contents>
+            </output>
+            <output name="flenDist_txt" file="length_distribution.txt" ftype="txt"/>
+            <output name="auxiliar_files" ftype="tgz">
+                <assert_contents>
+                    <has_size value="1898" delta="100"/>
+                </assert_contents>
+            </output>
+            <output_collection name="umigraphs" type="list" count="14">
+                <element name="AGTGGGATCTTAACCT">
+                    <assert_contents>
+                        <has_size value="4017" delta="1000"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="bfh_txt" file="full_data_structure.txt" ftype="txt"/>
         </test>
     </tests>
     <help><![CDATA[

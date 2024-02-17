@@ -1,10 +1,10 @@
-<tool id="sklearn_model_validation" name="Model Validation" version="@VERSION@">
+<tool id="sklearn_model_validation" name="Model Validation" version="@VERSION@" profile="@PROFILE@">
     <description>includes cross_validate, cross_val_predict, learning_curve, and more</description>
     <macros>
         <import>main_macros.xml</import>
     </macros>
-    <expand macro="python_requirements"/>
-    <expand macro="macro_stdio"/>
+    <expand macro="python_requirements" />
+    <expand macro="macro_stdio" />
     <version_command>echo "@VERSION@"</version_command>
     <command>
         <![CDATA[
@@ -22,7 +22,6 @@ import json
 import numpy as np
 import os
 import pandas as pd
-import pickle
 import pprint
 import skrebate
 import sys
@@ -35,19 +34,18 @@ from sklearn import (
     model_selection, naive_bayes, neighbors, pipeline, preprocessing,
     svm, linear_model, tree, discriminant_analysis)
 from sklearn.model_selection import _validation
+from sklearn.preprocessing import LabelEncoder
 
-from galaxy_ml.utils import (SafeEval, get_cv, get_scoring, load_model,
-                   read_columns, get_module)
-from galaxy_ml.model_validations import _fit_and_score
+from distutils.version import LooseVersion as Version
+from galaxy_ml import __version__ as galaxy_ml_version
+from galaxy_ml.model_persist import load_model_from_h5
+from galaxy_ml.utils import (SafeEval, get_cv, get_scoring,
+                             read_columns, get_module,
+                             clean_params, get_main_estimator)
 
-
-setattr(_validation, '_fit_and_score', _fit_and_score)
 
 N_JOBS = int(os.environ.get('GALAXY_SLOTS', 1))
 CACHE_DIR = os.path.join(os.getcwd(), 'cached')
-del os
-ALLOWED_CALLBACKS = ('EarlyStopping', 'TerminateOnNaN', 'ReduceLROnPlateau',
-                     'CSVLogger', 'None')
 
 warnings.filterwarnings('ignore')
 
@@ -58,8 +56,15 @@ with open(input_json_path, 'r') as param_handler:
     params = json.load(param_handler)
 
 ## load estimator
-with open('$infile_estimator', 'rb') as estimator_handler:
-    estimator = load_model(estimator_handler)
+estimator = load_model_from_h5('$infile_estimator')
+estimator = clean_params(estimator)
+
+if estimator.__class__.__name__ == 'KerasGBatchClassifier':
+    _fit_and_score = try_get_attr('galaxy_ml.model_validations',
+                                  '_fit_and_score')
+
+    setattr(_search, '_fit_and_score', _fit_and_score)
+    setattr(_validation, '_fit_and_score', _fit_and_score)
 
 estimator_params = estimator.get_params()
 
@@ -71,29 +76,9 @@ if estimator.__class__.__name__ == 'IRAPSClassifier':
 else:
     # For iraps buried in pipeline
     for p, v in estimator_params.items():
-        if p.endswith('memory'):
-            # for case of `__irapsclassifier__memory`
-            if len(p) > 8 and p[:-8].endswith('irapsclassifier'):
-                # cache iraps_core fits could increase search
-                # speed significantly
-                new_params = {p: memory}
-                estimator.set_params(**new_params)
-            # security reason, we don't want memory being
-            # modified unexpectedly
-            elif v:
-                new_params = {p, None}
-                estimator.set_params(**new_params)
-        # For now, 1 CPU is suggested for iprasclassifier
-        elif p.endswith('n_jobs'):
-            new_params = {p: 1}
+        if p.endswith('__irapsclassifier__memory'):
+            new_params = {p: memory}
             estimator.set_params(**new_params)
-        # for security reason, types of callback are limited
-        elif p.endswith('callbacks'):
-            for cb in v:
-                cb_type = cb['callback_selection']['callback_type']
-                if cb_type not in ALLOWED_CALLBACKS:
-                    raise ValueError(
-                        "Prohibited callback type: %s!" % cb_type)
 
 ## store read dataframe object
 loaded_df = {}
@@ -162,18 +147,22 @@ else:
     infile2 = pd.read_csv(infile2, sep='\t', header=header, parse_dates=True)
     loaded_df[df_key] = infile2
 y = read_columns(
-        infile2,
-        c = c,
-        c_option = column_option,
-        sep='\t',
-        header=header,
-        parse_dates=True)
+    infile2,
+    c = c,
+    c_option = column_option,
+    sep='\t',
+    header=header,
+    parse_dates=True)
 if len(y.shape) == 2 and y.shape[1] == 1:
     y = y.ravel()
 #if $input_options.selected_input == 'refseq_and_interval'
 estimator.set_params(
     data_batch_generator__features=y.ravel().tolist())
 y = None
+label_encoder = LabelEncoder()
+if get_main_estimator(estimator).__class__.__name__ == "XGBClassifier":
+    y = label_encoder.fit_transform(y)
+    print(label_encoder.classes_)
 #end if
 
 ## handle options
@@ -202,7 +191,10 @@ options['cv_selector']['groups_selector'] = groups
 ## del loaded_df
 del loaded_df
 
-splitter, groups = get_cv( options.pop('cv_selector') )
+cv_selector = options.pop('cv_selector')
+if Version(galaxy_ml_version) < Version('0.8.3'):
+    cv_selector.pop('n_stratification_bins', None)
+splitter, groups = get_cv( cv_selector )
 options['cv'] = splitter
 options['groups'] = groups
 options['n_jobs'] = N_JOBS
@@ -267,7 +259,7 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
         </configfile>
     </configfiles>
     <inputs>
-        <param name="infile_estimator" type="data" format="zip" label="Choose the dataset containing model/pipeline object"/>
+        <param name="infile_estimator" type="data" format="h5mlm" label="Choose the dataset containing model/pipeline object" />
         <conditional name="model_validation_functions">
             <param name="selected_function" type="select" label="Select a model validation function">
                 <option value="cross_validate">cross_validate - Evaluate metric(s) by cross-validation and also record fit/score times</option>
@@ -278,20 +270,20 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
             </param>
             <when value="cross_validate">
                 <section name="options" title="Other Options" expanded="false">
-                    <expand macro="scoring_selection"/>
-                    <expand macro="model_validation_common_options"/>
-                    <param argument="return_train_score" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Whether to include train scores."/>
-                    <!--param argument="return_estimator" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Whether to return the estimators fitted on each split."/> -->
-                    <!--param argument="error_score" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Raise fit error:" help="If false, the metric score is assigned to NaN if an error occurs in estimator fitting and FitFailedWarning is raised."/> -->
+                    <expand macro="scoring_selection" />
+                    <expand macro="model_validation_common_options" />
+                    <param argument="return_train_score" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Whether to include train scores." />
+                    <!--param argument="return_estimator" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Whether to return the estimators fitted on each split." /> -->
+                    <!--param argument="error_score" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Raise fit error:" help="If false, the metric score is assigned to NaN if an error occurs in estimator fitting and FitFailedWarning is raised." /> -->
                     <!--fit_params-->
-                    <expand macro="pre_dispatch"/>
+                    <expand macro="pre_dispatch" />
                 </section>
             </when>
             <when value="cross_val_predict">
                 <section name="options" title="Other Options" expanded="false">
                     <expand macro="model_validation_common_options" />
                     <!--fit_params-->
-                    <expand macro="pre_dispatch" value="2*n_jobs’" help="Controls the number of jobs that get dispatched during parallel execution"/>
+                    <expand macro="pre_dispatch" value="2*n_jobs’" help="Controls the number of jobs that get dispatched during parallel execution" />
                     <param argument="method" type="select" label="Invokes the passed method name of the passed estimator">
                         <option value="predict" selected="true">predict</option>
                         <option value="predict_proba">predict_proba</option>
@@ -300,107 +292,116 @@ rval.to_csv(path_or_buf='$outfile', sep='\t', header=True, index=False)
             </when>
             <when value="learning_curve">
                 <section name="options" title="Other Options" expanded="false">
-                    <expand macro="scoring_selection"/>
-                    <expand macro="model_validation_common_options"/>
+                    <expand macro="scoring_selection" />
+                    <expand macro="model_validation_common_options" />
                     <param argument="train_sizes" type="text" value="(0.1, 1.0, 5)" label="train_sizes"
                             help="Relative or absolute numbers of training examples that will be used to generate the learning curve. Supports 1) tuple, to be evaled by np.linspace, e.g. (0.1, 1.0, 5); 2) array-like, e.g. [0.1  , 0.325, 0.55 , 0.775, 1.]">
                         <sanitizer>
                             <valid initial="default">
-                                <add value="["/>
-                                <add value="]"/>
+                                <add value="[" />
+                                <add value="]" />
                             </valid>
                         </sanitizer>
                     </param>
-                    <param argument="exploit_incremental_learning" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Whether to apply incremental learning to speed up fitting of the estimator if supported"/>
-                    <expand macro="pre_dispatch"/>
-                    <expand macro="shuffle" checked="false" label="shuffle" help="Whether to shuffle training data before taking prefixes"/>
-                    <expand macro="random_state" help_text="If int, the seed used by the random number generator. Used when `shuffle` is True"/>
+                    <param argument="exploit_incremental_learning" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="false" help="Whether to apply incremental learning to speed up fitting of the estimator if supported" />
+                    <expand macro="pre_dispatch" />
+                    <expand macro="shuffle" checked="false" label="shuffle" help="Whether to shuffle training data before taking prefixes" />
+                    <expand macro="random_state" help_text="If int, the seed used by the random number generator. Used when `shuffle` is True" />
                 </section>
             </when>
             <when value="permutation_test_score">
                 <section name="options" title="Other Options" expanded="false">
-                    <expand macro="scoring_selection"/>
-                    <expand macro="model_validation_common_options"/>
-                    <param name="n_permutations" type="integer" value="100" optional="true" label="n_permutations" help="Number of times to permute y"/>
-                    <expand macro="random_state"/>
+                    <expand macro="scoring_selection" />
+                    <expand macro="model_validation_common_options" />
+                    <param name="n_permutations" type="integer" value="100" optional="true" label="n_permutations" help="Number of times to permute y" />
+                    <expand macro="random_state" />
                 </section>
             </when>
-            <when value="validation_curve"/>
+            <when value="validation_curve" />
         </conditional>
-        <expand macro="sl_mixed_input_plus_sequence"/>
+        <expand macro="sl_mixed_input_plus_sequence" />
     </inputs>
     <outputs>
-        <data format="tabular" name="outfile"/>
+        <data format="tabular" name="outfile" />
     </outputs>
     <tests>
         <test>
-            <param name="infile_estimator" value="pipeline02"/>
-            <param name="selected_function" value="cross_validate"/>
-            <param name="return_train_score" value="True"/>
-            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
-            <param name="col1" value="1,2,3,4,5"/>
-            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
-            <param name="col2" value="6"/>
+            <param name="infile_estimator" value="pipeline02" />
+            <param name="selected_function" value="cross_validate" />
+            <param name="return_train_score" value="True" />
+            <param name="infile1" value="regression_train.tabular" ftype="tabular" />
+            <param name="col1" value="1,2,3,4,5" />
+            <param name="infile2" value="regression_train.tabular" ftype="tabular" />
+            <param name="col2" value="6" />
             <output name="outfile">
                 <assert_contents>
-                    <has_n_columns n="6"/>
-                    <has_text text="0.9999961390418067"/>
-                    <has_text text="0.9944541531269271"/>
-                    <has_text text="0.9999193322454393"/>
+                    <has_n_columns n="6" />
+                    <has_text text="0.9998136508657879" />
+                    <has_text text="0.9999980090366614" />
+                    <has_text text="0.9999977541353663" />
                 </assert_contents>
             </output>
         </test>
         <test>
-            <param name="infile_estimator" value="pipeline02"/>
-            <param name="selected_function" value="cross_val_predict"/>
-            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
-            <param name="col1" value="1,2,3,4,5"/>
-            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
-            <param name="col2" value="6"/>
-            <output name="outfile" file="mv_result02.tabular" lines_diff="14"/>
+            <param name="infile_estimator" value="pipeline02" />
+            <param name="selected_function" value="cross_val_predict" />
+            <param name="infile1" value="regression_train.tabular" ftype="tabular" />
+            <param name="col1" value="1,2,3,4,5" />
+            <param name="infile2" value="regression_train.tabular" ftype="tabular" />
+            <param name="col2" value="6" />
+            <output name="outfile">
+                <assert_contents>
+                    <has_n_columns n="1" />
+                    <has_text text="1.5781414" />
+                    <has_text text="-1.19994559787" />
+                    <has_text text="-0.7187446" />
+                    <has_text text="0.324693926" />
+                    <has_text text="1.25823227" />
+                </assert_contents>
+            </output>
         </test>
         <test>
-            <param name="infile_estimator" value="pipeline05"/>
-            <param name="selected_function" value="learning_curve"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
+            <param name="infile_estimator" value="pipeline05" />
+            <param name="selected_function" value="learning_curve" />
+            <param name="infile1" value="regression_X.tabular" ftype="tabular" />
             <param name="header1" value="true" />
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17" />
+            <param name="infile2" value="regression_y.tabular" ftype="tabular" />
             <param name="header2" value="true" />
-            <param name="col2" value="1"/>
-            <output name="outfile" file="mv_result03.tabular"/>
+            <param name="col2" value="1" />
+            <output name="outfile" file="mv_result03.tabular" />
         </test>
         <test>
-            <param name="infile_estimator" value="pipeline05"/>
-            <param name="selected_function" value="permutation_test_score"/>
-            <param name="infile1" value="regression_train.tabular" ftype="tabular"/>
-            <param name="col1" value="1,2,3,4,5"/>
-            <param name="infile2" value="regression_train.tabular" ftype="tabular"/>
-            <param name="col2" value="6"/>
+            <param name="infile_estimator" value="pipeline05" />
+            <param name="selected_function" value="permutation_test_score" />
+            <param name="infile1" value="regression_train.tabular" ftype="tabular" />
+            <param name="col1" value="1,2,3,4,5" />
+            <param name="infile2" value="regression_train.tabular" ftype="tabular" />
+            <param name="col2" value="6" />
             <output name="outfile">
                 <assert_contents>
-                    <has_n_columns n="3"/>
-                    <has_text text="0.25697059258228816"/>
+                    <has_n_columns n="3" />
+                    <has_text text="-2.7453395018288753" />
                 </assert_contents>
             </output>
         </test>
         <test>
-            <param name="infile_estimator" value="pipeline05"/>
-            <param name="selected_function" value="cross_val_predict"/>
+            <param name="infile_estimator" value="pipeline05" />
+            <param name="selected_function" value="cross_val_predict" />
             <section name="groups_selector">
-                <param name="infile_groups" value="regression_y.tabular" ftype="tabular"/>
-                <param name="header_g" value="true"/>
-                <param name="selected_column_selector_option_g" value="by_index_number"/>
-                <param name="col_g" value="1"/>
+                <param name="infile_groups" value="regression_y.tabular" ftype="tabular" />
+                <param name="header_g" value="true" />
+                <param name="selected_column_selector_option_g" value="by_index_number" />
+                <param name="col_g" value="1" />
             </section>
-            <param name="selected_cv" value="GroupKFold"/>
-            <param name="infile1" value="regression_X.tabular" ftype="tabular"/>
-            <param name="header1" value="true"/>
-            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17"/>
-            <param name="infile2" value="regression_y.tabular" ftype="tabular"/>
-            <param name="header2" value="true"/>
-            <param name="col2" value="1"/>
-            <output name="outfile" file="mv_result05.tabular"/>
+            <param name="selected_cv" value="GroupKFold" />
+            <param name="infile1" value="regression_X.tabular" ftype="tabular" />
+            <param name="header1" value="true" />
+            <param name="col1" value="1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17" />
+            <param name="infile2" value="regression_y.tabular" ftype="tabular" />
+            <param name="header2" value="true" />
+            <param name="col2" value="1" />
+            <output name="outfile" file="mv_result05.tabular" />
         </test>
     </tests>
     <help>
@@ -414,7 +415,7 @@ For information about model validation functions and their parameter settings pl
         ]]>
     </help>
     <expand macro="sklearn_citation">
-        <expand macro="skrebate_citation"/>
-        <expand macro="xgboost_citation"/>
+        <expand macro="skrebate_citation" />
+        <expand macro="xgboost_citation" />
     </expand>
 </tool>

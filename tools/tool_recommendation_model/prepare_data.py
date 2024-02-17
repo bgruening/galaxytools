@@ -4,14 +4,12 @@ machine learning algorithm. The paths are divided
 into the test and training sets
 """
 
-import os
 import collections
-import numpy as np
 import random
 
+import numpy as np
 import predict_tool_usage
-
-main_path = os.getcwd()
+from sklearn.model_selection import train_test_split
 
 
 class PrepareData:
@@ -31,7 +29,7 @@ class PrepareData:
         for item in raw_paths:
             split_items = item.split(",")
             for token in split_items:
-                if token is not "":
+                if token != "":
                     tokens.append(token)
         tokens = list(set(tokens))
         tokens = np.array(tokens)
@@ -58,7 +56,9 @@ class PrepareData:
         """
         count = collections.Counter(words).most_common()
         dictionary = dict()
-        for word, _ in count:
+        for index, (word, _) in enumerate(count):
+            word = word.lstrip()
+            word = word.rstrip()
             dictionary[word] = len(dictionary) + 1
         dictionary, reverse_dictionary = self.assemble_dictionary(dictionary, old_data_dictionary)
         return dictionary, reverse_dictionary
@@ -67,94 +67,99 @@ class PrepareData:
         """
         Decompose the paths to variable length sub-paths keeping the first tool fixed
         """
+        max_len = 0
         sub_paths_pos = list()
         for index, item in enumerate(paths):
             tools = item.split(",")
             len_tools = len(tools)
-            if len_tools <= self.max_tool_sequence_len:
-                for window in range(1, len_tools):
-                    sequence = tools[0: window + 1]
-                    tools_pos = [str(dictionary[str(tool_item)]) for tool_item in sequence]
-                    if len(tools_pos) > 1:
-                        sub_paths_pos.append(",".join(tools_pos))
+            if len_tools > max_len:
+                max_len = len_tools
+            if len_tools < self.max_tool_sequence_len:
+                sequence = tools[0: len_tools]
+                tools_pos = [str(dictionary[str(tool_item)]) for tool_item in sequence]
+                if len(tools_pos) > 1:
+                    sub_paths_pos.append(",".join(tools_pos))
         sub_paths_pos = list(set(sub_paths_pos))
+        print("Max length of tools: ", max_len)
         return sub_paths_pos
 
-    def prepare_paths_labels_dictionary(self, dictionary, reverse_dictionary, paths, compatible_next_tools):
-        """
-        Create a dictionary of sequences with their labels for training and test paths
-        """
-        paths_labels = dict()
-        random.shuffle(paths)
-        for item in paths:
-            if item and item not in "":
-                tools = item.split(",")
-                label = tools[-1]
-                train_tools = tools[:len(tools) - 1]
-                last_but_one_name = reverse_dictionary[int(train_tools[-1])]
-                try:
-                    compatible_tools = compatible_next_tools[last_but_one_name].split(",")
-                except Exception:
-                    continue
-                if len(compatible_tools) > 0:
-                    compatible_tools_ids = [str(dictionary[x]) for x in compatible_tools]
-                    compatible_tools_ids.append(label)
-                    composite_labels = ",".join(compatible_tools_ids)
-                train_tools = ",".join(train_tools)
-                if train_tools in paths_labels:
-                    paths_labels[train_tools] += "," + composite_labels
-                else:
-                    paths_labels[train_tools] = composite_labels
-        for item in paths_labels:
-            paths_labels[item] = ",".join(list(set(paths_labels[item].split(","))))
-        return paths_labels
+    def prepare_input_one_target_paths(self, dictionary, reverse_dictionary, paths):
+        input_target_paths = dict()
+        compatible_tools = dict()
+        d_size = 0
+        for i, item in enumerate(paths):
+            input_tools = item.split(",")
+            tool_seq = input_tools
+            i_tools = ",".join(tool_seq[0:-1])
+            last_i_tool = i_tools.split(",")[-1]
+            if last_i_tool not in compatible_tools:
+                compatible_tools[last_i_tool] = list()
+            t_tools = tool_seq[-1]
+            if t_tools not in compatible_tools[last_i_tool]:
+                compatible_tools[last_i_tool].append(t_tools)
+            if i_tools not in input_target_paths:
+                input_target_paths[i_tools] = list()
+            if t_tools not in input_target_paths[i_tools]:
+                input_target_paths[i_tools].append(t_tools)
+            if i_tools not in input_target_paths:
+                input_target_paths[i_tools] = list()
+            if t_tools not in input_target_paths[i_tools]:
+                input_target_paths[i_tools].append(t_tools)
+        for item in input_target_paths:
+            d_size += len(input_target_paths[item])
+        print("Dataset size:", d_size)
+        return input_target_paths, compatible_tools, d_size
 
-    def pad_test_paths(self, paths_dictionary, num_classes):
-        """
-        Add padding to the tools sequences and create multi-hot encoded labels
-        """
-        size_data = len(paths_dictionary)
-        data_mat = np.zeros([size_data, self.max_tool_sequence_len])
-        label_mat = np.zeros([size_data, num_classes + 1])
-        train_counter = 0
-        for train_seq, train_label in list(paths_dictionary.items()):
-            positions = train_seq.split(",")
-            start_pos = self.max_tool_sequence_len - len(positions)
-            for id_pos, pos in enumerate(positions):
-                data_mat[train_counter][start_pos + id_pos] = int(pos)
-            for label_item in train_label.split(","):
-                label_mat[train_counter][int(label_item)] = 1.0
-            train_counter += 1
-        return data_mat, label_mat
+    def prepare_input_target_paths(self, dictionary, reverse_dictionary, paths):
+        input_target_paths = dict()
+        compatible_tools = dict()
+        d_size = 0
+        for i, item in enumerate(paths):
+            input_tools = item.split(",")
+            ctr = 0
+            for ctr in range(len(input_tools) - 1):
+                # uncomment this for one token target idea
+                tool_seq = input_tools[0: ctr + 2]
+                i_tools = ",".join(tool_seq[0:-1])
+                last_i_tool = i_tools.split(",")[-1]
+                if last_i_tool not in compatible_tools:
+                    compatible_tools[last_i_tool] = list()
+                t_tools = tool_seq[-1]
+                if t_tools not in compatible_tools[last_i_tool]:
+                    compatible_tools[last_i_tool].append(t_tools)
+                if i_tools not in input_target_paths:
+                    input_target_paths[i_tools] = list()
+                if t_tools not in input_target_paths[i_tools]:
+                    input_target_paths[i_tools].append(t_tools)
+                if i_tools not in input_target_paths:
+                    input_target_paths[i_tools] = list()
+                if t_tools not in input_target_paths[i_tools]:
+                    input_target_paths[i_tools].append(t_tools)
+        for item in input_target_paths:
+            d_size += len(input_target_paths[item])
+        print("Dataset size:", d_size)
+        return input_target_paths, compatible_tools, d_size
 
-    def pad_paths(self, paths_dictionary, num_classes, standard_connections, reverse_dictionary):
-        """
-        Add padding to the tools sequences and create multi-hot encoded labels
-        """
-        size_data = len(paths_dictionary)
-        data_mat = np.zeros([size_data, self.max_tool_sequence_len])
-        label_mat = np.zeros([size_data, 2 * (num_classes + 1)])
-        pos_flag = 1.0
+    def pad_paths_one_tool_target(self, multi_paths, compatible_tools, d_size, rev_dict, dictionary):
+        d_size = len(multi_paths)
+        input_mat = np.zeros([d_size, self.max_tool_sequence_len])
+        target_mat = np.zeros([d_size, len(dictionary) + 1])
         train_counter = 0
-        for train_seq, train_label in list(paths_dictionary.items()):
-            pub_connections = list()
-            positions = train_seq.split(",")
-            last_tool_id = positions[-1]
-            last_tool_name = reverse_dictionary[int(last_tool_id)]
-            start_pos = self.max_tool_sequence_len - len(positions)
-            for id_pos, pos in enumerate(positions):
-                data_mat[train_counter][start_pos + id_pos] = int(pos)
-            if last_tool_name in standard_connections:
-                pub_connections = standard_connections[last_tool_name]
-            for label_item in train_label.split(","):
-                label_pos = int(label_item)
-                label_row = label_mat[train_counter]
-                if reverse_dictionary[label_pos] in pub_connections:
-                    label_row[label_pos] = pos_flag
-                else:
-                    label_row[label_pos + num_classes + 1] = pos_flag
+        for input_seq, target_seq_tools in list(multi_paths.items()):
+            input_seq_tools = input_seq.split(",")
+            last_i_tool = input_seq_tools[-1]
+            for id_pos, pos in enumerate(input_seq_tools):
+                input_mat[train_counter][id_pos] = int(pos)
+            if last_i_tool in compatible_tools:
+                compatible_targets = compatible_tools[last_i_tool]
+            for k, t_label in enumerate(target_seq_tools):
+                target_mat[train_counter][int(t_label)] = 1
+            for c_tool in compatible_targets:
+                target_mat[train_counter][int(c_tool)] = 1
             train_counter += 1
-        return data_mat, label_mat
+        print("Final data size: ", input_mat.shape, target_mat.shape)
+        train_data, test_data, train_labels, test_labels = train_test_split(input_mat, target_mat, test_size=self.test_share, random_state=42)
+        return train_data, train_labels, test_data, test_labels
 
     def split_test_train_data(self, multilabels_paths):
         """
@@ -204,6 +209,27 @@ class PrepareData:
             class_weights[key] = np.round(np.log(u_score), 6)
         return class_weights
 
+    def get_train_tool_labels_freq(self, train_paths, reverse_dictionary):
+        """
+        Get the frequency of last tool of each tool sequence
+        to estimate the frequency of tool sequences
+        """
+        last_tool_freq = dict()
+        freq_dict_names = dict()
+        for path in train_paths:
+            tools_pos = np.where(path > 0)[0]
+            path_pos = tools_pos
+            path_pos = [str(int(item)) for item in path_pos]
+
+            for tool_pos in path_pos:
+                if tool_pos not in last_tool_freq:
+                    last_tool_freq[tool_pos] = 0
+                    freq_dict_names[reverse_dictionary[int(tool_pos)]] = 0
+                last_tool_freq[tool_pos] += 1
+                freq_dict_names[reverse_dictionary[int(tool_pos)]] += 1
+        sorted_dict = dict(sorted(last_tool_freq.items(), key=lambda kv: kv[1], reverse=True))
+        return sorted_dict
+
     def get_train_last_tool_freq(self, train_paths, reverse_dictionary):
         """
         Get the frequency of last tool of each tool sequence
@@ -212,13 +238,17 @@ class PrepareData:
         last_tool_freq = dict()
         freq_dict_names = dict()
         for path in train_paths:
-            last_tool = path.split(",")[-1]
+            tools_pos = np.where(path > 0)[0]
+            path_pos = path[tools_pos]
+            path_pos = [str(int(item)) for item in path_pos]
+            last_tool = path_pos[-1]
             if last_tool not in last_tool_freq:
                 last_tool_freq[last_tool] = 0
                 freq_dict_names[reverse_dictionary[int(last_tool)]] = 0
             last_tool_freq[last_tool] += 1
             freq_dict_names[reverse_dictionary[int(last_tool)]] += 1
-        return last_tool_freq
+        sorted_dict = dict(sorted(last_tool_freq.items(), key=lambda kv: kv[1], reverse=True))
+        return sorted_dict
 
     def get_toolid_samples(self, train_data, l_tool_freq):
         l_tool_tr_samples = dict()
@@ -231,12 +261,13 @@ class PrepareData:
                     l_tool_tr_samples[last_tool_id].append(index)
         return l_tool_tr_samples
 
-    def get_data_labels_matrices(self, workflow_paths, tool_usage_path, cutoff_date, compatible_next_tools, standard_connections, old_data_dictionary={}):
+    def get_data_labels_matrices(self, workflow_paths, usage_df, cutoff_date, standard_connections, old_data_dictionary={}):
         """
         Convert the training and test paths into corresponding numpy matrices
         """
         processed_data, raw_paths = self.process_workflow_paths(workflow_paths)
         dictionary, rev_dict = self.create_data_dictionary(processed_data, old_data_dictionary)
+
         num_classes = len(dictionary)
 
         print("Raw paths: %d" % len(raw_paths))
@@ -247,31 +278,26 @@ class PrepareData:
         random.shuffle(all_unique_paths)
 
         print("Creating dictionaries...")
-        multilabels_paths = self.prepare_paths_labels_dictionary(dictionary, rev_dict, all_unique_paths, compatible_next_tools)
+        multilabels_paths, compatible_tools, d_size = self.prepare_input_target_paths(dictionary, rev_dict, all_unique_paths)
 
-        print("Complete data: %d" % len(multilabels_paths))
-        train_paths_dict, test_paths_dict = self.split_test_train_data(multilabels_paths)
-
-        print("Train data: %d" % len(train_paths_dict))
-        print("Test data: %d" % len(test_paths_dict))
+        print("Complete data: %d" % d_size)
 
         print("Padding train and test data...")
-        # pad training and test data with leading zeros
-        test_data, test_labels = self.pad_paths(test_paths_dict, num_classes, standard_connections, rev_dict)
-        train_data, train_labels = self.pad_paths(train_paths_dict, num_classes, standard_connections, rev_dict)
+        # pad training and test data with trailing zeros
+        train_data, train_labels, test_data, test_labels = self.pad_paths_one_tool_target(multilabels_paths, compatible_tools, d_size, rev_dict, dictionary)
+
+        print("Train data: ", train_data.shape)
+        print("Test data: ", test_data.shape)
 
         print("Estimating sample frequency...")
-        l_tool_freq = self.get_train_last_tool_freq(train_paths_dict, rev_dict)
-        l_tool_tr_samples = self.get_toolid_samples(train_data, l_tool_freq)
+        tr_tool_freq = self.get_train_tool_labels_freq(train_labels, rev_dict)
 
         # Predict tools usage
         print("Predicting tools' usage...")
         usage_pred = predict_tool_usage.ToolPopularity()
-        usage = usage_pred.extract_tool_usage(tool_usage_path, cutoff_date, dictionary)
+        usage = usage_pred.extract_tool_usage(usage_df, cutoff_date, dictionary)
         tool_usage_prediction = usage_pred.get_pupularity_prediction(usage)
         t_pred_usage = self.get_predicted_usage(dictionary, tool_usage_prediction)
-
         # get class weights using the predicted usage for each tool
         class_weights = self.assign_class_weights(num_classes, t_pred_usage)
-
-        return train_data, train_labels, test_data, test_labels, dictionary, rev_dict, class_weights, t_pred_usage, l_tool_freq, l_tool_tr_samples
+        return train_data, train_labels, test_data, test_labels, dictionary, rev_dict, class_weights, compatible_tools, tr_tool_freq

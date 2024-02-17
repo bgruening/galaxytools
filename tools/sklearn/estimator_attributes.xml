@@ -1,10 +1,10 @@
-<tool id="sklearn_estimator_attributes" name="Estimator attributes" version="@VERSION@">
+<tool id="sklearn_estimator_attributes" name="Estimator attributes" version="@VERSION@" profile="@PROFILE@">
     <description>get important attributes from an estimator or scikit object</description>
     <macros>
         <import>main_macros.xml</import>
     </macros>
-    <expand macro="python_requirements"/>
-    <expand macro="macro_stdio"/>
+    <expand macro="python_requirements" />
+    <expand macro="macro_stdio" />
     <version_command>echo "@VERSION@"</version_command>
     <command>
         <![CDATA[
@@ -16,7 +16,6 @@
             <![CDATA[
 import json
 import pandas
-import pickle
 import skrebate
 import sys
 import warnings
@@ -30,15 +29,15 @@ from sklearn import (
 from imblearn.pipeline import Pipeline as imbPipeline
 from sklearn.pipeline import Pipeline
 
-from galaxy_ml.utils import load_model, get_search_params
+from galaxy_ml.model_persist import load_model_from_h5, dump_model_to_h5
+from galaxy_ml.utils import get_search_params
 
 warnings.simplefilter('ignore')
 
 infile_object = '$infile_object'
 attribute = '$attribute_type'
 
-with open(infile_object, 'rb') as f:
-    est_obj = load_model(f)
+est_obj = load_model_from_h5(infile_object)
 
 if attribute == 'get_params':
     ## get_params()
@@ -48,14 +47,12 @@ if attribute == 'get_params':
 elif attribute == 'final_estimator':
     res = est_obj.steps[-1][-1]
     print(repr(res))
-    with open('$outfile', 'wb') as f:
-        pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
+    dump_model_to_h5(res, '$outfile')
 elif attribute in ['best_estimator_', 'init_', 'classifier_', 'regressor_']:
     res = getattr(est_obj, attribute)
     print(repr(res))
-    with open('$outfile', 'wb') as f:
-        pickle.dump(res, f, pickle.HIGHEST_PROTOCOL)
-elif attribute in ['oob_score_', 'best_score_', 'n_features_']:
+    dump_model_to_h5(res, '$outfile')
+elif attribute in ['oob_score_', 'best_score_', 'n_features_in']:
     res = getattr(est_obj, attribute)
     res = pandas.DataFrame([res], columns=[attribute])
     res.to_csv('$outfile', sep='\t', index=False)
@@ -67,8 +64,6 @@ elif attribute == 'cv_results_':
     res = pandas.DataFrame(est_obj.cv_results_)
     res = res[sorted(res.columns)]
     res.to_csv('$outfile', sep='\t', index=False)
-elif attribute == 'save_weights':
-    est_obj.save_weights('$outfile')
 else:
     if attribute == 'get_signature':
         res = est_obj.get_signature()
@@ -87,7 +82,7 @@ else:
         </configfile>
     </configfiles>
     <inputs>
-        <param name="infile_object" type="data" format="zip" label="Choose the dataset containing estimator/pipeline object"/>
+        <param name="infile_object" type="data" format="h5mlm" label="Choose the dataset containing estimator/pipeline object" />
         <param name="attribute_type" type="select" label="Select an attribute retrival type">
             <option value="get_params" selected="true">Estimator - get_params()</option>
             <option value="feature_importances_" >Fitted estimator - feature_importances_ </option>
@@ -107,9 +102,8 @@ else:
             <option value="scores_">Feature_selection - scores_ </option>
             <option value="pvalues_">Feature_selection - pvalues_ </option>
             <option value="ranking_">Feature_selection - ranking_ </option>
-            <option value="n_features_">Feature_selection - n_features_ </option>
+            <option value="n_features_in">Feature_selection - n_features_in </option>
             <option value="grid_scores_">Feature_selection - grid_scores_ </option>
-            <option value="save_weights">KerasGClassifier/KerasGRegressor - save_weights</option>
         </param>
     </inputs>
     <outputs>
@@ -117,60 +111,54 @@ else:
             <change_format>
                 <when input="attribute_type" value="named_steps" format="txt" />
                 <when input="attribute_type" value="best_params_" format="txt" />
-                <when input="attribute_type" value="final_estimator" format="zip" />
-                <when input="attribute_type" value="best_estimator_" format="zip" />
-                <when input="attribute_type" value="init_" format="zip" />
-                <when input="attribute_type" value="classifier_" format="zip" />
-                <when input="attribute_type" value="regressor_" format="zip" />
-                <when input="attribute_type" value="save_weights" format="h5"/>
+                <when input="attribute_type" value="final_estimator" format="h5mlm" />
+                <when input="attribute_type" value="best_estimator_" format="h5mlm" />
+                <when input="attribute_type" value="init_" format="h5mlm" />
+                <when input="attribute_type" value="classifier_" format="h5mlm" />
+                <when input="attribute_type" value="regressor_" format="h5mlm" />
             </change_format>
         </data>
     </outputs>
     <tests>
         <test>
-            <param name="infile_object" value="GridSearchCV.zip" ftype="zip"/>
-            <param name="attribute_type" value="best_score_"/>
-            <output name="outfile" file="best_score_.tabular"/>
+            <param name="infile_object" value="GridSearchCV01.h5mlm" ftype="h5mlm" />
+            <param name="attribute_type" value="best_score_" />
+            <output name="outfile" file="best_score_.tabular" />
         </test>
         <test>
-            <param name="infile_object" value="GridSearchCV.zip" ftype="zip"/>
-            <param name="attribute_type" value="best_params_"/>
-            <output name="outfile" file="best_params_.txt"/>
+            <param name="infile_object" value="GridSearchCV01.h5mlm" ftype="h5mlm" />
+            <param name="attribute_type" value="best_params_" />
+            <output name="outfile" file="best_params_.txt" />
         </test>
         <test>
-            <param name="infile_object" value="GridSearchCV.zip" ftype="zip"/>
-            <param name="attribute_type" value="best_estimator_"/>
-            <output name="outfile" file="best_estimator_.zip" compare="sim_size" delta="10"/>
+            <param name="infile_object" value="GridSearchCV01.h5mlm" ftype="h5mlm" />
+            <param name="attribute_type" value="best_estimator_" />
+            <output name="outfile" file="best_estimator_.h5mlm" compare="sim_size" delta="10" />
         </test>
          <test>
-            <param name="infile_object" value="best_estimator_.zip" ftype="zip"/>
-            <param name="attribute_type" value="final_estimator"/>
-            <output name="outfile" file="final_estimator.zip" compare="sim_size" delta="10"/>
+            <param name="infile_object" value="searchCV01" ftype="h5mlm" />
+            <param name="attribute_type" value="final_estimator" />
+            <output name="outfile" file="final_estimator.h5mlm" compare="sim_size" delta="10" />
         </test>
         <test>
-            <param name="infile_object" value="best_estimator_.zip" ftype="zip"/>
-            <param name="attribute_type" value="named_steps"/>
-            <output name="outfile" file="named_steps.txt" compare="sim_size" delta="5"/>
+            <param name="infile_object" value="searchCV01" ftype="h5mlm" />
+            <param name="attribute_type" value="named_steps" />
+            <output name="outfile" file="named_steps.txt" compare="sim_size" delta="5" />
         </test>
         <test>
-            <param name="infile_object" value="final_estimator.zip" ftype="zip"/>
-            <param name="attribute_type" value="feature_importances_"/>
-            <output name="outfile" file="feature_importances_.tabular"/>
+            <param name="infile_object" value="best_estimator_.h5mlm" ftype="h5mlm" />
+            <param name="attribute_type" value="feature_importances_" />
+            <output name="outfile" file="feature_importances_.tabular" />
         </test>
         <test>
-            <param name="infile_object" value="RFE.zip" ftype="zip"/>
-            <param name="attribute_type" value="ranking_"/>
-            <output name="outfile" file="ranking_.tabular"/>
+            <param name="infile_object" value="RFE.h5mlm" ftype="h5mlm" />
+            <param name="attribute_type" value="ranking_" />
+            <output name="outfile" file="ranking_.tabular" />
         </test>
         <test>
-            <param name="infile_object" value="LinearRegression02.zip" ftype="zip"/>
-            <param name="attribute_type" value="get_params"/>
-            <output name="outfile" value="get_params.tabular"/>
-        </test>
-        <test>
-            <param name="infile_object" value="fitted_keras_g_regressor01.zip" ftype="zip"/>
-            <param name="attribute_type" value="save_weights"/>
-            <output name="outfile" value="keras_save_weights01.h5" compare="sim_size" delta="5"/>
+            <param name="infile_object" value="LinearRegression01.h5mlm" ftype="h5mlm" />
+            <param name="attribute_type" value="get_params" />
+            <output name="outfile" value="get_params.tabular" />
         </test>
     </tests>
     <help>
@@ -188,8 +176,8 @@ Common attributes are :
         ]]>
     </help>
     <expand macro="sklearn_citation">
-        <expand macro="skrebate_citation"/>
-        <expand macro="xgboost_citation"/>
-        <expand macro="imblearn_citation"/>
+        <expand macro="skrebate_citation" />
+        <expand macro="xgboost_citation" />
+        <expand macro="imblearn_citation" />
     </expand>
 </tool>

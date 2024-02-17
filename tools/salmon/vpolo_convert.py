@@ -4,7 +4,6 @@ import os
 
 from vpolo.alevin import parser as par
 
-
 parser = argparse.ArgumentParser()
 parser.add_argument("--mtx", "-m", action="store_true", help="--dumpMtx flag set")
 parser.add_argument("--umi", "-u", action="store_true", help="--dumpUmiGraph flag set")

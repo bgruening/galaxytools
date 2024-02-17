@@ -1,0 +1,164 @@
+<tool id="instagraal" name="instaGRAAL" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.01">
+    <description>Large genome reassembly based on Hi-C data</description>
+    <xrefs>
+        <xref type="bio.tools">instagraal</xref>
+    </xrefs>
+    <macros>
+        <token name="@TOOL_VERSION@">0.1.6</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <!-- use a versioned copy of the upstream container at koszullab/instagraal -->
+        <container type="docker">quay.io/galaxy/instagraal:0.1.6</container>
+        <resource type="cuda_version_min">10.0</resource>
+        <resource type="cuda_compute_capability">3.0</resource>
+        <resource type="cuda_device_count_min">1</resource>
+    </requirements>
+    <stdio>
+        <regex match="instagraal_class" level="warning" description="instaGRAAL is raining an expected error at the end."/>
+        <regex match="Exception:"/>
+        <exit_code range="2:"/>
+        <exit_code range=":-1"/>
+    </stdio>
+    <version_command>instagraal --version</version_command>
+    <command>
+    <![CDATA[
+
+#set gap_string = 'N' * int($number_of_n)
+
+mkdir -p hic_folder &&
+mkdir -p ./outputs/ &&
+ln -s '$abs_fragments_contacts_weighted' hic_folder/abs_fragments_contacts_weighted.txt &&
+ln -s '$fragments_list' hic_folder/fragments_list.txt &&
+ln -s '$info_contigs' hic_folder/info_contigs.txt &&
+
+#if $ref_source.source == "history"
+    #set $ref_genome = 'reference.fasta'
+    ln -s '${ref_source.ref_fasta}' $ref_genome &&
+#elif $ref_source.source == "builtin"
+   #set $ref_genome = '${ref_source.ref_fasta_builtin.fields.path}'
+#end if
+
+instagraal
+    ./hic_folder
+    $ref_genome
+    ./outputs/
+
+    --level $level
+    --cycles $cycles
+    --coverage-std $coverage_std
+    --neighborhood $neighborhood
+
+$circular
+$bomb
+$pyramid_only
+$simple
+&&
+
+mv ./outputs/*/test_*/genome.fasta ./outputs/genome.fasta &&
+mv ./outputs/*/test_*/info_frags.txt ./outputs/info_frags.txt
+
+&&
+instagraal-polish
+  -m polishing
+  -i ./outputs/info_frags.txt
+  -f $ref_genome
+  -o ./outputs/curated.fasta
+  -j $gap_string
+
+    ]]>
+    </command>
+    <inputs>
+ 
+        <param name="abs_fragments_contacts_weighted" type="data" format="tabular" label="Abs fragments contacts weighted"/>
+        <param name="fragments_list" type="data" format="tabular" label="Fragments list"/>
+        <param name="info_contigs" type="data" format="tabular" label="info_contigs"/>
+
+        <conditional name="ref_source">
+            <param type="select" name="source" label="Reference genome source">
+                <option value="history" selected="true">History</option>
+                <option value="builtin">Built-in</option>
+            </param>
+            <when value="history">
+                <param type="data" format="fasta" name="ref_fasta" label="Reference genome" />
+            </when>
+            <when value="builtin">
+                <param type="select" name="ref_fasta_builtin" label="Reference genome">
+                    <options from_data_table="all_fasta" />
+                </param>
+            </when>
+        </conditional>
+
+        <param argument="--level" type="integer" value="4" min="3" max="6" label="Level (resolution) of the contact map"
+            help="Increasing level by one means a threefold smaller resolution but also a threefold faster computation time."/>
+
+        <param argument="--cycles" type="integer" value="30" min="20" max="100" label="Number of iterations to perform for each bin (row/column of the contact map)"
+            help="A high number of cycles has diminishing returns but there is a necessary minimum for assembly convergence."/>
+
+        <param argument="--coverage-std" type="integer" value="1" min="0" max="1" label="Number of standard deviations below the mean"
+            help="Coverage below which fragments should be filtered out prior to binning." />
+
+        <param argument="--neighborhood" type="integer" value="5" min="0" max="100" label="Number of neighbors to sample for potential mutations for each bin" />
+        <param argument="--circular" type="boolean" truevalue="--circular" falsevalue="" label="Indicates genome is circular" />
+        <param argument="--bomb" type="boolean" truevalue="--bomb" falsevalue="" label="Explode the genome prior to scaffolding" />
+        <param argument="--pyramid-only" type="boolean" truevalue="--pyramid-only" falsevalue="" label="Only build multi-resolution contact maps (pyramids) and don't do any scaffolding" />
+        <param argument="--simple" type="boolean" truevalue="--simple" falsevalue="" label="Only perform operations at the edge of the contigs" />
+        <param name="number_of_n" type="integer" value="10" min="1" label="Number of Ns that you want to include during the polishing step" />
+
+    </inputs>
+    <outputs>
+        <data name="genome" format="fasta" from_work_dir="./outputs/genome.fasta" label="${tool.name} on ${on_string}: Genome sequence"/>
+        <data name="frags" format="tabular" from_work_dir="./outputs/info_frags.txt" label="${tool.name} on ${on_string}: Fragment information"/>
+        <data name="curated" format="fasta" from_work_dir="./outputs/curated.fasta" label="${tool.name} on ${on_string}: Curated sequences"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="abs_fragments_contacts_weighted" value="abs_fragments_contacts_weighted.tabular" />
+            <param name="fragments_list" value="fragments_list.tabular" />
+            <param name="info_contigs" value="info_contigs.tabular" />
+            <conditional name="ref_source">
+                <param name="source" value="history"/>
+                <param name="ref_fasta" value="fake.fasta" />
+            </conditional>
+            <assert_command>
+                <has_text text="NNNNNNNNNN"/> <!--  10 long, the default -->
+                <not_has_text text="NNNNNNNNNNN"/> <!-- too long -->
+                <has_text text="--cycles 30" />
+                <has_text text="instagraal" />
+                <has_text text="instagraal-polish" />
+            </assert_command>
+        </test>
+    </tests>
+    <help>
+    <![CDATA[
+
+Large genome reassembly based on Hi-C data.
+
+-----------
+Input files
+-----------
+
+instaGRAAL needs three files:
+
+* A file called *abs_fragments_contacts_weighted*, containing the (sparse) Hi-C map itself. The first line must be id_frag_a id_frag_b n_contact. All subsequent lines must represent the map's contacts in coordinate format (id_frag_a being the row indices, id_frag_b being the column indices, n_contact being the number of contacts between each locus or index pair, e.g. if 5 contacts are found between fragments #2 and #3, there should be a line reading 2 3 5 in the file). n_contact must be an integer. The list should be sorted according to id_frag_a first, then id_frag_b. Fragment ids start at 0.
+* A file called *fragments_list* containing information related to each fragment of the genome. The first line must be id chrom start_pos end_pos size gc_content, and subsequent lines (representing the fragments themselves) should follow that template. The fields should be self-explanatory; notably, chrom can be any string representing the chromosome's name to which the fragment at a given line belongs, and fragment ids should start over at 1 when the chromosome name changes. Aside from the chrom field and the gc field which is currently unused in this version and can be filled with any value, all fields should be integers. Note that start_pos starts at 0.
+* A file called *info_contigs* containing information related to each contig/scaffold/chromosome in the genome. The first line must be contig length_kb n_frags cumul_length. Field names should be again self-explanatory; naturally, the contig field must contain names that are consistent with those found in fragments_list.txt. Also, length_kb should be an integer (rounded up or down if need be), and n_frags and cumul_length are supposed to be consistent with each other in that the cumulated length (in fragments) of contig N should be equal to the sum of the fields found in n_frags for the N-1 preceding lines. Note that cumul_length starts at 0.
+
+All fields (including those in the files' headers) must be separated by tabs and are therefor `tabular` files.
+
+------------
+Output files
+------------
+
+After the scaffolder is done running, whatever path you specified as output will contain a test_mcmc_X directory, where X is the level (resolution) at which scaffolding was performed. This directory, in turn, will contain the following:
+
+* genome.fasta: the scaffolded genome. Scaffolds will be ordered by increasing size in fragments, which roughly (but not always) translates into increasing size in bp.
+* info_frags.txt: a file that contains, for each newly formed scaffold, the original coordinates of every single bin in that scaffold, in the format chromosome, id, orientation, start, end. Each bin has a unique ID that provides a convenient way of tracking consecutive stretches. Orientations are relative to one another, and when "-1" is supplied, it is understood that the reverse complement should be taken.
+
+
+    ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.5281/zenodo.3753973</citation>
+    </citations>
+</tool>

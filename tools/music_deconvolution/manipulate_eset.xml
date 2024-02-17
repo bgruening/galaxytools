@@ -1,0 +1,302 @@
+<tool id="music_manipulate_eset" name="Manipulate Expression Set Object" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@"
+      profile="21.09" license="GPL-3.0-or-later" >
+    <description>Manipulate ExpressionSet objects by a variety of attributes</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+cat '$conf' >> /dev/stderr &&
+Rscript --vanilla '$conf'
+
+]]></command>
+    <configfiles>
+        <configfile name="conf" >
+suppressWarnings(suppressPackageStartupMessages(library(xbioc)))
+suppressWarnings(suppressPackageStartupMessages(library(MuSiC)))
+
+vec_ranges = function(vstr) {
+    ## convert '3:1,22,12:15' to '3,2,1,22,12,13,14,15'
+    unlist(sapply(unlist(strsplit(vstr, split=",")),
+    function(x) {
+        tmp = as.integer(unlist(strsplit(x, split=":")))
+        if (length(tmp) > 1) {
+            seq(tmp[[1]], tmp[[2]])
+        } else {
+            tmp[[1]]
+        }
+    }, USE.NAMES=FALSE))
+}
+
+null_str_vec = function(gstr){
+   tokens = unlist(as.vector(strsplit(gstr, split=",")))
+   if (length(tokens) == 0){
+      return(NULL)
+   }
+   if (length(tokens) == 1){
+      return(tokens[[1]])
+   }
+   return(tokens)
+}
+
+get_subs = function(values, by_method){
+   if (by_method == "subsample") {
+      sample(as.integer(values))
+   } else if (by_method == "labels") {
+      null_str_vec(values)
+   } else if (by_method == "range_and_index") {
+      vec_ranges(values)
+   } else {
+      NA  ## equivalent to ALL
+   }
+}
+
+rds_eset = readRDS('$rds_eset')
+#if str($combine_eset.do) == "Yes":
+new_eset = combine(rds_eset,
+    #for $e, $egroup in enumerate($combine_eset.eset_group):
+    readRDS('$egroup.eset')
+        #if $e != len($combine_eset.eset_group)-1
+    ,
+        #end if
+    #end for
+)
+#else
+new_eset = rds_eset
+#end if
+sub_eset = new_eset
+#if str($subset_eset.do) == "Yes":
+    #if str($subset_eset.subset_yes.by) == "phenotype":
+        #for $s, $sgroup in enumerate($subset_eset.subset_yes.pheno_samples)
+sub_eset = sub_eset[ ,sub_eset[['$sgroup.column']] %in% c(null_str_vec('$sgroup.values'))]
+        #end for
+        #for $g, $ggroup in enumerate($subset_eset.subset_yes.pheno_genes)
+sub_eset = sub_eset[sub_eset[['$ggroup.column']] %in% c(null_str_vec('$ggroup.values')), ]
+        #end for
+    #else
+genes = get_subs('$subset_eset.subset_yes.genes', '$subset_eset.subset_yes.by')
+samples = get_subs('$subset_eset.subset_yes.samples', '$subset_eset.subset_yes.by')
+sub_eset = sub_eset[genes, samples]
+    #end if
+#end if
+
+## print data to stdout
+print(sub_eset)
+saveRDS(sub_eset, file= '$out_eset')
+
+        </configfile>
+    </configfiles>
+    <inputs>
+        <param name="rds_eset" label="Expression Set Dataset" type="data" format="@RDATATYPE@" />
+        <conditional name="combine_eset" >
+            <param name="do" type="select" label="Concatenate other Expression Set objects?"
+                   help="Phenotype data must match between objects, and objects will be concatenated in the order given below." >
+                <option value="No" selected="true" >No</option>
+                <option value="Yes" >Yes</option>
+            </param>
+            <when value="No" ></when>
+            <when value="Yes" >
+                <repeat name="eset_group" title="Additional Dataset" min="1" >
+                    <param name="eset" label="Expression Set Dataset" type="data" format="@RDATATYPE@" />
+                </repeat>
+            </when>
+        </conditional>
+        <conditional name="subset_eset" >
+            <param name="do" type="select" label="Subset the dataset?"
+                   help="If multiple objects are concatenated as in the above section, the resulting object will be subsetted." >
+                <option value="No" selected="true" >No</option>
+                <option value="Yes" >Yes</option>
+            </param>
+            <when value="No" ></when>
+            <when value="Yes" >
+                <conditional name="subset_yes" >
+                    <param name="by" type="select" label="By"
+                           help="e.g. random subsampling, index ranges and indices, specific labels, phenotype conditions" >
+                        <option value="subsample" selected="true" >Random Subsample</option>
+                        <option value="labels" >Specific Labels</option>
+                        <option value="range_and_index" >Index Ranges and Specific Indices</option>
+                        <option value="phenotype" >Filter Samples and Genes by Phenotype Values</option>
+                    </param>
+                    <when value="subsample" >
+                        <param name="samples" type="integer" label="Select N Samples"
+                               value="" optional="true" help="e.g. '10' will select 10 random samples." />
+                        <param name="genes" type="integer" label="Select N Genes"
+                               value="" optional="true" help="e.g. '123' will select 123 random genes." />
+                    </when>
+                    <when value="labels" >
+                        <param name="samples" type="text" label="List of Sample Labels, comma-delimited"
+                               value="" optional="true" help="e.g. 'Control1,ALPOL56,SampleX' would select just those 3 samples." />
+                        <param name="genes" type="text" label="List of Gene Labels , comma-delimited"
+                               value="" optional="true" help="e.g. 'GeneA,GeneX,Gene123' would select just those 3 genes." />
+                    </when>
+                    <when value="range_and_index" >
+                        <param name="samples" type="text"
+                               label="List of Sample Indexes, ranges are colon-delimited, seperated by commas."
+                               value="" optional="true" help="e.g. '5:3,57:60,27' would yield '5,4,3,57,58,59,60,27' " />
+                        <param name="genes" type="text"
+                               label="List of Gene Indexes, ranges are colon-delimited, seperated by commas."
+                               value="" optional="true" help="e.g. '15:18,26,27,3:1' would yield '15,16,17,18,26,27,3,2,1' " />
+                    </when>
+                    <when value="phenotype" >
+                        <repeat name="pheno_samples" title="Filter Samples by Condition" min="0" >
+                            <param name="column" type="text" value="" label="Name of phenotype column"
+                                   help="e.g. 'gender' or 'control' etc"/>
+                            <param name="values" type="text" value="" label="List of values in this column to filter for, comma-delimited"
+                                   help="e.g. 'female,unknown' selects only samples with values in the above phenotype column of 'female' and 'unknown'."/>
+                        </repeat>
+                        <repeat name="pheno_genes" title="Filter Genes by Condition" min="0" >
+                            <param name="column" type="text" value="" label="Name of phenotype column"
+                                   help="e.g. 'housekeeping' or 'marker' etc"/>
+                            <param name="values" type="text" value="" label="List of values in this column to filter for, comma-delimited"
+                                   help="e.g. '' selects only samples with values in the above phenotype column of 'female' and 'unknown'."/>
+                        </repeat>
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="out_eset" format="@RDATATYPE@" label="${tool.name} on ${on_string}: ExpressionSet Object" />
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1" >
+            <!-- No operation, do nothing -->
+            <param name="rds_eset" value="Control_Bulk.rds" />
+            <output name="out_eset" value="Control_Bulk.rds" compare="sim_size" />
+        </test>
+        <test expect_num_outputs="1" >
+            <!-- No concat, subset by ranges -->
+            <param name="rds_eset" value="Control_Bulk.rds" />
+            <conditional name="combine_eset" >
+                <param name="do" value="No" />
+            </conditional>
+            <conditional name="subset_eset" >
+                <param name="do" value="Yes" />
+                <conditional name="subset_yes" >
+                    <param name="by" value="range_and_index" />
+                    <param name="samples" value="2:3" />
+                    <param name="genes" value="100:20,22,1:5" />
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text text="assayData: 87 features, 2 samples" />
+            </assert_stdout>
+        </test>
+        <test expect_num_outputs="1" >
+            <!-- Concat and subset by ranges -->
+            <param name="rds_eset" value="Control_Bulk.rds" />
+            <conditional name="combine_eset" >
+                <param name="do" value="Yes" />
+                <repeat name="eset_group" >
+                    <param name="eset" value="APOL1_Bulk.rds" />
+                </repeat>
+                <repeat name="eset_group" >
+                    <param name="eset" value="Control_Bulk.rds" />
+                </repeat>
+            </conditional>
+            <conditional name="subset_eset" >
+                <param name="do" value="Yes" />
+                <conditional name="subset_yes" >
+                    <param name="by" value="range_and_index" />
+                    <param name="samples" value="5:7,1" />
+                    <param name="genes" value="100:20,22,1:3" />
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text text="assayData: 85 features, 4 samples" />
+            </assert_stdout>
+        </test>
+        <test expect_num_outputs="1" >
+            <!-- Concat and subset by labels -->
+            <param name="rds_eset" value="Control_Bulk.rds" />
+            <conditional name="combine_eset" >
+                <param name="do" value="Yes" />
+                <repeat name="eset_group" >
+                    <param name="eset" value="APOL1_Bulk.rds" />
+                </repeat>
+            </conditional>
+            <conditional name="subset_eset" >
+                <param name="do" value="Yes" />
+                <conditional name="subset_yes" >
+                    <param name="by" value="labels" />
+                    <param name="samples" value="control.NA.27,control.NA.39" />
+                    <param name="genes" value="Nqo1,Card14,Scube2,Nup214" />
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text text="assayData: 4 features, 2 samples" />
+                <has_text text="sampleNames: control.NA.27 control.NA.39" />
+            </assert_stdout>
+        </test>
+        <test expect_num_outputs="1" >
+            <!-- Concat and subset by filtering phenotype data -->
+            <param name="rds_eset" value="Control_Bulk.rds" />
+            <conditional name="combine_eset" >
+                <param name="do" value="Yes" />
+                <repeat name="eset_group" >
+                    <param name="eset" value="APOL1_Bulk.rds" />
+                </repeat>
+                <repeat name="eset_group" >
+                    <param name="eset" value="Control_Bulk.rds" />
+                </repeat>
+            </conditional>
+            <conditional name="subset_eset" >
+                <param name="do" value="Yes" />
+                <conditional name="subset_yes" >
+                    <param name="by" value="phenotype" />
+                    <repeat name="pheno_samples" >
+                        <param name="column" value="Control" />
+                        <param name="values" value="control" />
+                    </repeat>
+                    <repeat name="pheno_samples" >
+                        <param name="column" value="sampleID" />
+                        <param name="values" value="3" />
+                    </repeat>
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text text="assayData: 19033 features, 1 samples" />
+                <has_text text="sampleNames: control.NA.39" />
+            </assert_stdout>
+        </test>
+        <test expect_num_outputs="1" >
+            <!-- Concat and random subsample -->
+            <param name="rds_eset" value="Control_Bulk.rds" />
+            <conditional name="combine_eset" >
+                <param name="do" value="Yes" />
+                <repeat name="eset_group" >
+                    <param name="eset" value="APOL1_Bulk.rds" />
+                </repeat>
+                <repeat name="eset_group" >
+                    <param name="eset" value="Control_Bulk.rds" />
+                </repeat>
+            </conditional>
+            <conditional name="subset_eset" >
+                <param name="do" value="Yes" />
+                <conditional name="subset_yes" >
+                    <param name="by" value="subsample" />
+                    <param name="samples" value="3" />
+                    <param name="genes" value="25" />
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text text="assayData: 25 features, 3 samples" />
+            </assert_stdout>
+        </test>
+    </tests>
+    <help><![CDATA[
+Manipulate an ExpressionSet object by concatenation and or subsetting.
+
+For more options and information, consult `the manual <http://www.bioconductor.org/packages/release/bioc/vignettes/Biobase/inst/doc/ExpressionSetIntroduction.pdf>`_ and the `rdocumentation <https://www.rdocumentation.org/packages/Biobase/versions/2.32.0/topics/ExpressionSet>`_
+.
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+            @misc{falcon2007introduction,
+            title={An introduction to bioconductor’s expressionset class},
+            author={Falcon, Seth and Morgan, Martin and Gentleman, Robert},
+            year={2007}
+            }
+        </citation>
+    </citations>
+</tool>

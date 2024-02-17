@@ -2,21 +2,13 @@
 Predict tool usage to weigh the predicted tools
 """
 
-import os
-import numpy as np
-import warnings
-import csv
 import collections
 
-from sklearn.svm import SVR
+import numpy as np
+import utils
 from sklearn.model_selection import GridSearchCV
 from sklearn.pipeline import Pipeline
-
-import utils
-
-warnings.filterwarnings("ignore")
-
-main_path = os.getcwd()
+from sklearn.svm import SVR
 
 
 class ToolPopularity:
@@ -24,30 +16,30 @@ class ToolPopularity:
     def __init__(self):
         """ Init method. """
 
-    def extract_tool_usage(self, tool_usage_file, cutoff_date, dictionary):
+    def extract_tool_usage(self, tool_usage_df, cutoff_date, dictionary):
         """
         Extract the tool usage over time for each tool
         """
         tool_usage_dict = dict()
         all_dates = list()
         all_tool_list = list(dictionary.keys())
-        with open(tool_usage_file, 'rt') as usage_file:
-            tool_usage = csv.reader(usage_file, delimiter='\t')
-            for index, row in enumerate(tool_usage):
-                if (str(row[1]) > cutoff_date) is True:
-                    tool_id = utils.format_tool_id(row[0])
-                    if tool_id in all_tool_list:
-                        all_dates.append(row[1])
-                        if tool_id not in tool_usage_dict:
-                            tool_usage_dict[tool_id] = dict()
-                            tool_usage_dict[tool_id][row[1]] = int(row[2])
+        for index, row in tool_usage_df.iterrows():
+            row = row.tolist()
+            row = [str(item).strip() for item in row]
+            if (row[1] > cutoff_date) is True:
+                tool_id = utils.format_tool_id(row[0])
+                if tool_id in all_tool_list:
+                    all_dates.append(row[1])
+                    if tool_id not in tool_usage_dict:
+                        tool_usage_dict[tool_id] = dict()
+                        tool_usage_dict[tool_id][row[1]] = int(float(row[2]))
+                    else:
+                        curr_date = row[1]
+                        # merge the usage of different version of tools into one
+                        if curr_date in tool_usage_dict[tool_id]:
+                            tool_usage_dict[tool_id][curr_date] += int(float(row[2]))
                         else:
-                            curr_date = row[1]
-                            # merge the usage of different version of tools into one
-                            if curr_date in tool_usage_dict[tool_id]:
-                                tool_usage_dict[tool_id][curr_date] += int(row[2])
-                            else:
-                                tool_usage_dict[tool_id][curr_date] = int(row[2])
+                            tool_usage_dict[tool_id][curr_date] = int(float(row[2]))
         # get unique dates
         unique_dates = list(set(all_dates))
         for tool in tool_usage_dict:
@@ -70,7 +62,6 @@ class ToolPopularity:
         s_typ = 'neg_mean_absolute_error'
         n_jobs = 4
         s_error = 1
-        iid = True
         tr_score = False
         try:
             pipe = Pipeline(steps=[('regressor', SVR(gamma='scale'))])
@@ -78,7 +69,7 @@ class ToolPopularity:
                 'regressor__kernel': ['rbf', 'poly', 'linear'],
                 'regressor__degree': [2, 3]
             }
-            search = GridSearchCV(pipe, param_grid, iid=iid, cv=cv, scoring=s_typ, n_jobs=n_jobs, error_score=s_error, return_train_score=tr_score)
+            search = GridSearchCV(pipe, param_grid, cv=cv, scoring=s_typ, n_jobs=n_jobs, error_score=s_error, return_train_score=tr_score)
             search.fit(x_reshaped, y_reshaped.ravel())
             model = search.best_estimator_
             # set the next time point to get prediction for
@@ -87,7 +78,8 @@ class ToolPopularity:
             if prediction < epsilon:
                 prediction = [epsilon]
             return prediction[0]
-        except Exception:
+        except Exception as e:
+            print(e)
             return epsilon
 
     def get_pupularity_prediction(self, tools_usage):

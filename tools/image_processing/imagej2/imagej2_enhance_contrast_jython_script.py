@@ -24,16 +24,16 @@ bit_depth = image_processor_copy.getBitDepth()
 options = []
 # If equalize_histogram, saturated_pixels and normalize are ignored.
 if equalize_histogram:
-    options.append('equalize')
+    options.append("equalize")
 else:
-    if saturated_pixels not in [None, 'None']:
+    if saturated_pixels not in [None, "None"]:
         # Fiji allows only a single decimal place for this value.
-        options.append('saturated=%.3f' % float(saturated_pixels))
+        options.append("saturated=%.3f" % float(saturated_pixels))
     # Normalization of RGB images is not supported.
     if bit_depth != 24 and normalize:
-        options.append('normalize')
+        options.append("normalize")
 # Run the command.
-options = "%s" % ' '.join(options)
+options = "%s" % " ".join(options)
 IJ.run(input_image_plus_copy, "Enhance Contrast...", options)
 # Save the ImagePlus object as a new image.
 IJ.saveAs(input_image_plus_copy, output_datatype, tmp_output_path)

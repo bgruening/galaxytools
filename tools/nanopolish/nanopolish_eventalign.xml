@@ -1,73 +1,42 @@
-<tool id="nanopolish_eventalign" name="Nanopolish eventalign" version="@VERSION@+galaxy0">
+<tool id="nanopolish_eventalign" name="Nanopolish eventalign" version="@VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>- Align nanopore events to reference k-mers</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements" />
     <command detect_errors="exit_code"><![CDATA[
-        ln -s '$input_merged' reads.fasta && 
- 
-        #if $input_reads_raw.extension == 'fast5':
-            mkdir fast5_files && ln -s '$input_reads_raw' fast5_files/read1.fast5 &&
-
-        #else if $input_reads_raw.extension == 'fast5.tar':
-            ln -s '$input_reads_raw' fast5_files.tar &&
-            mkdir fast5_files && tar -xf fast5_files.tar -C fast5_files &&
-
-        #else if $input_reads_raw.extension == 'fast5.tar.bz2':
-            ln -s '$input_reads_raw' fast5_files.tar.bz2 &&
-            mkdir fast5_files && tar -xjf fast5_files.tar.bz2 -C fast5_files &&
-
-        #else:
-            ln -s '$input_reads_raw' fast5_files.tar.gz &&
-            mkdir fast5_files && tar -xzf fast5_files.tar.gz -C fast5_files &&
-
-        #end if
-
-        nanopolish index 
-        -d fast5_files/
-        #if $adv.input_seq_summary:
-          -s '$adv.input_seq_summary'
-        #end if 
-        reads.fasta &&
-
-        ln -s '$b' reads.bam &&
-        ln -s '${b.metadata.bam_index}' reads.bam.bai &&
-        #if $reference_source.reference_source_selector == 'history':
-            ln -f -s '$reference_source.ref_file' genome.fa &&
-        #else:
-            ln -f -s '$reference_source.ref_file.fields.path' genome.fa &&
-        #end if
+        @PREPROCESS_INPUTS@
         
         nanopolish eventalign
-        -r reads.fasta
-        -b reads.bam
-        -g genome.fa
-        #if str($min_mapping_quality):
-            -q $min_mapping_quality
-        #end if
-        --threads "\${GALAXY_SLOTS:-4}"        
-        $samples
-        $scale_events
-        $sam
-        $print_read_names
-        #if $w and str($w).strip():
-          -w "${w}"
-        #end if        
-        #if $input_models_fofn:
-          --models-fofn '$input_models_fofn'
-        #end if
-        #if $summary:
-            --summary eventalign-summary.txt
-        #end if
-        > eventalign.out
+            -r reads.fasta
+            -b reads.bam
+            -g genome.fa
+            #if str($min_mapping_quality):
+                -q $min_mapping_quality
+            #end if
+            --threads "\${GALAXY_SLOTS:-4}"        
+            $samples
+            $scale_events
+            $signal_index
+            $sam
+            $print_read_names
+            #if $w and str($w).strip():
+              -w "${w}"
+            #end if        
+            #if $input_models_fofn:
+              --models-fofn '$input_models_fofn'
+            #end if
+            #if $summary:
+                --summary eventalign-summary.txt
+            #end if
+            > eventalign.out
 
 
     ]]></command>
     <inputs>
       <!-- index inputs -->
         <param type="data" name="input_merged" format="fasta,fastq" label="Basecalled merged reads.fa"/>
-        <param type="data" name="input_reads_raw" format="fast5.tar.gz,fast5.tar.bz2,fast5.tar" label="Flat archive file of raw fast5 files"/>
+        <param type="data" name="input_reads_raw" format="fast5.tar.xz,fast5.tar.gz,fast5.tar.bz2,fast5.tar,fast5" label="Flat archive file of raw fast5 files"/>
 
         <!-- variants consensus inputs -->
         <param type="data" argument="-b" format="bam" label="Reads aligned to the reference genome" />
@@ -108,13 +77,16 @@
             label="Summarize the alignment of each read/strand" />
         <param argument="--samples" type="boolean" truevalue="--samples" falsevalue="" checked="false"
             label="Write the raw samples for the event to the tsv output" />
-        <param name="scale_events" argument="--scale-events" type="boolean" truevalue="--scale-events" falsevalue="" checked="false"
+        <param argument="--scale-events" type="boolean" truevalue="--scale-events" falsevalue="" checked="false"
             label="Scale events to the model, rather than vice-versa" />
+        <param argument="--signal-index" type="boolean" truevalue="--signal-index" falsevalue="" checked="false"
+            label="write the raw signal start and end index values for the event to the tsv output" />
+
+
         <param argument="--sam" type="boolean" truevalue="--sam" falsevalue="" checked="false"
             label="write output in SAM format" />
-        <param name="print_read_names" argument="--print-read-names" type="boolean" truevalue="--print-read-names" falsevalue="" checked="false"
+        <param argument="--print-read-names" type="boolean" truevalue="--print-read-names" falsevalue="" checked="false"
             label="Print read names instead of indexes" />
-
     </inputs>
 
     <outputs>
@@ -131,8 +103,25 @@
             <param name="ref_file" value="draft.fa" />
             <param name="w" value="tig00000001:200000-200010" />
             <param name="sam" value="true" />
-            <output name="output_summary" file="eventalign-summary.txt" />
-            <output name="output_eventalign" file="reads-draft.eventalign.sam"/>
+            <output name="output_summary" file="eventalign-summary.txt" compare="sim_size">
+                <assert_contents>
+                    <has_n_lines n="144"/>
+                    <has_n_columns n="14"/>
+                    <has_line_matching expression="read_index\sread_name\sfast5_path\smodel_name\sstrand\snum_events\snum_steps\snum_skips\snum_stays\stotal_duration\sshift\sscale\sdrift\svar"/>
+                    <has_text text="d57afb7d-903e-46cf-a43d-0e17fb0949d8"/>
+                    <has_text text="15727"/>
+                    <has_text text="fast5_files//odw_genlab4209_20161213_FN_MN16303_sequencing_run_sample_id_32395_ch378_read5665_strand.fast5"/>
+                </assert_contents>
+            </output>
+            <output name="output_eventalign" file="reads-draft.eventalign.sam" compare="sim_size">
+                <assert_contents>
+                    <has_n_lines n="148"/>
+                    <has_line_matching expression="@SQ\sSN:tig00000001\sLN:4376233"/>
+                    <has_text text="d57afb7d-903e-46cf-a43d-0e17fb0949d8"/>
+                    <has_text text="191118"/>
+                    <has_text text="274S1M2I3M1I2M2I9M1I1M1I1M1I9M6I3M1I1M2I2M2I2M1"/>
+                </assert_contents>
+            </output>
         </test>
         <test>
             <param name="input_merged" ftype="fasta" value="reads.fasta" />

@@ -1,0 +1,169 @@
+<tool id="cpat" name="CPAT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
+    <description>coding potential assessment</description>
+    <macros>
+        <token name="@TOOL_VERSION@">3.0.5</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@TOOL_VERSION@">cpat</requirement>
+    </requirements>
+    <version_command>cpat --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #set $gen_ext = $gene.ext
+        ln -s '${gene}' './gene_sequences.${gen_ext}' &&
+        #set $cod_ext = $c.ext
+        ln -s '${c}' './conding_sequences.${cod_ext}' &&
+        #set $ncod_ext = $n.ext
+        ln -s '${n}' './nonconding_sequences.${ncod_ext}' &&
+        #set $ref_ext = $r.ext
+        ln -s '${r}' './referece.${ref_ext}' &&
+        make_hexamer_tab.py 
+            -c './conding_sequences.${cod_ext}'
+            -n './nonconding_sequences.${ncod_ext}' > './hexamer.tsv' &&
+        make_logitModel.py  
+            -x './hexamer.tsv' 
+            -c './conding_sequences.${cod_ext}'
+            -n './nonconding_sequences.${ncod_ext}'
+            -r './referece.${ref_ext}'
+            --start='${start}'
+            --stop='${stop}'
+            --min-orf=$min_orf_model
+            -o './logit_model' &&
+        cpat.py --verbose
+            -x './hexamer.tsv'
+            -d './logit_model.logit.RData'
+            -g './gene_sequences.${gen_ext}'
+            --top-orf=$top_orf
+            --antisense
+            --start='${start}'
+            --stop='${stop}'
+            --min-orf=$min_orf_cpat
+            $antisense
+            --top-orf=$top_orf
+            --best-orf=$best_orf
+            -o 'output' 
+        ]]>
+    </command>
+    <inputs>
+        <param argument="--gene" type="data" format="fasta,fasta.gz" label="Query nucletide sequences" help="It is recommended to use short and unique sequence identifiers"/>
+        <param argument="-r" type="data" format="fasta,fasta.gz" label="Reference genome" help="Reference genome sequences in FASTA format" />
+        <param argument="-c" type="data" format="fasta,fasta.gz" label="Coding sequences file" help="Coding sequence (must be CDS without UTR, i.e. from start coden to stop coden) in FASTA format" />
+        <param argument="-n" type="data" format="fasta,fasta.gz" label="Non coding sequeces file" help="Noncoding sequences in FASTA format" />
+        <param argument="--start" type="text" value="ATG" label="Start codon">
+            <sanitizer invalid_char="">
+                <valid initial="string.letters"/>
+            </sanitizer>
+            <validator type="regex">[a-zA-Z]+</validator>
+        </param>
+        <param argument="--stop" type="text" value="TAG,TAA,TGA" label="Stop codons">
+            <sanitizer invalid_char="">
+                <valid initial="string.letters">
+                    <add value="," />
+                </valid>
+            </sanitizer>
+            <validator type="regex">[a-zA-Z,]+</validator>
+        </param>
+        <param argument="--min-orf" name="min_orf_model" type="integer" min="0" value="30" label="Minimum ORF length" help="Minimum ORF length in nucleotides" />
+        <param argument="--min-orf" name="min_orf_cpat" type="integer" min="0" value="75" label="Minimum ORF length" help="Minimum ORF length in nucleotides" />
+        <param argument="--antisense" type="boolean" truevalue="--antisense" falsevalue="" checked="false" label="Search for ORFs from the anti-sense strand"/>
+        <param argument="--top-orf" type="integer" min="0" value="5" label="Number of ORF candidates reported" help="RNAs may have dozens of putative ORFs, in most cases, the real ORF 
+            is ranked (by size) in the top several" />
+        <param argument="--best-orf" type="select" label="Criteria to select the best ORF">
+            <option value="l">ORF length (l)</option>
+            <option value="p" selected="true">Coding probability (p)</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="orf_seqs" format="fasta" from_work_dir="output.ORF_seqs.fa" label="${tool.name} on ${on_string}: ORF sequences (FASTA)"/>
+        <data name="orf_seqs_prob" format="tsv" from_work_dir="output.ORF_prob.tsv" label="${tool.name} on ${on_string}: ORF probabiities (TSV)"/>
+        <data name="orf_seqs_prob_best" format="tsv" from_work_dir="output.ORF_prob.best.tsv" label="${tool.name} on ${on_string}: ORF best probabilities (TSV)"/>
+        <data name="no_orf_seqs" format="txt" from_work_dir="output.no_ORF.txt" label="${tool.name} on ${on_string}: no ORFs (TXT)"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="gene" value="sequences.fasta.gz"/>
+            <param name="r" value="sequences.fasta.gz"/>
+            <param name="c" value="sequences.fasta.gz"/>
+            <param name="n" value="sequences.fasta.gz"/>
+            <param name="start" value="ATG"/>
+            <param name="stop" value="TAG,TAA,TGA"/>
+            <param name="min_orf_model" value="30"/>
+            <param name="min_orf_cpat" value="75"/>
+            <param name="antisense" value="false"/>
+            <param name="top_orf" value="5"/>
+            <param name="best_orf" value="l"/>
+            <output name="orf_seqs" ftype="fasta">
+                <assert_contents>
+                    <has_text text=">ENST00000616016.5_ORF_1"/>
+                    <has_n_lines n="41009"/>
+                </assert_contents>
+            </output>
+            <output name="orf_seqs_prob"  ftype="tsv">
+                <assert_contents>
+                    <has_text text="ENST00000616016.5_ORF_1"/>
+                    <has_n_lines n="6237"/>
+                </assert_contents>
+            </output>
+            <output name="orf_seqs_prob_best" ftype="tsv">
+                <assert_contents>
+                    <has_text text="ENST00000683977.1"/>
+                    <has_n_lines n="1301" delta="5"/>
+                </assert_contents>
+            </output>
+            <output name="no_orf_seqs" file="test01_no_orgs.txt" ftype="txt"/>
+        </test>
+        <test expect_num_outputs="4">
+            <param name="gene" value="sequences.fasta.gz"/>
+            <param name="r" value="sequences.fasta.gz"/>
+            <param name="c" value="sequences.fasta.gz"/>
+            <param name="n" value="sequences.fasta.gz"/>
+            <param name="start" value="ATG"/>
+            <param name="stop" value="TAG,TAA,TGA"/>
+            <param name="min_orf_model" value="15"/>
+            <param name="min_orf_cpat" value="60"/>
+            <param name="antisense" value="true"/>
+            <param name="top_orf" value="10"/>
+            <param name="best_orf" value="p"/>
+            <output name="orf_seqs" ftype="fasta">
+                <assert_contents>
+                    <has_text text=">ENST00000616016.5_ORF_1"/>
+                    <has_n_lines n="57357"/>
+                </assert_contents>
+            </output>            
+            <output name="orf_seqs_prob" ftype="tsv">
+                <assert_contents>
+                    <has_text text="ENST00000616016.5_ORF_1"/>
+                    <has_n_lines n="11667"/>
+                </assert_contents>
+            </output>
+            <output name="orf_seqs_prob_best" ftype="tsv">
+                <assert_contents>
+                    <has_text text="ENST00000683977.1"/>
+                    <has_n_lines n="1301"/>
+                </assert_contents>
+            </output>
+            <output name="no_orf_seqs" file="test02_no_orgs.txt" ftype="txt"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**Purpose**
+
+CPAT is a bioinformatics tool to predict RNAs coding probability based on the RNA sequence characteristics. To achieve this goal, CPAT calculates scores of these 4 linguistic features 
+from a set of known protein-coding genes and another set of non-coding genes.
+
+- ORF size
+- ORF coverage
+- Fickett TESTCODE
+- Hexamer usage bias
+
+CPAT will then builds a logistic regression model using these 4 features as predictor variables and the “protein-coding status” as the response variable. After evaluating the performance 
+and determining the probability cutoff, the model can be used to predict new RNA sequences.
+
+]]></help>
+    <citations>
+        <citation type="doi">10.1093/nar/gkt006</citation>
+    </citations>
+</tool>
