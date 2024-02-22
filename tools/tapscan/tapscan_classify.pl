@@ -1,16 +1,21 @@
 #!/usr/bin/perl
 use strict;
 use warnings;
+use File::Basename;
+
+my $tapscan_version = "v4.76";
+print "Running TAPscan Classify version $tapscan_version \n\n";
+
 
 # Written by Gerrit Timmerhaus (gerrit.timmerhaus@biologie.uni-freiburg.de).
-# Changes included by Kristian Ullrich, Per Wilhelmsson and Romy Petroll.
+# Changes included by Kristian Ullrich, Per Wilhelmsson, Romy Petroll and Saskia Hiltemann.
 
 # Script to extract all detected domains out of a hmmsearch results file and classify the families of all used proteins based on these domains.
 # The classification depends on a table which contains all known classification rules for the protein families of interest and on specific coverage values defined for every domain.
 # The script provides three outputs, namely output.1, output.2 and output.3. The output files are tables in ";"-delimited format.
-# The structure of output.1 is: "sequence ID ; TAP family ; number of classifications ; domains". 
+# The structure of output.1 is: "sequence ID ; TAP family ; number of classifications ; domains".
 # Output.3 shares in principle the same structure as output.1, except that subfamilies are considered. ("sequence ID ; TAP family ; Subfamily ; number of classifications ; domains")
-# The superior TAP family is specified first, followed by the subfamily. If a TAP family has no subfamily, the TAP family is specified first and then a "-". 
+# The superior TAP family is specified first, followed by the subfamily. If a TAP family has no subfamily, the TAP family is specified first and then a "-".
 # The structure of output.2 is: "TAP family";"number of detected proteins".
 # More than one entry for a protein is possible because the classification rules may allow more than one classification.
 #
@@ -26,7 +31,7 @@ my $hmmsearch_output = $ARGV [0];
 # decision_table: rules file
 my $decision_table = $ARGV [1];
 # family_classifications: output.1
-my $family_classifications = $ARGV [2]; 
+my $family_classifications = $ARGV [2];
 # family_statistics: output.2
 my $family_statistics = $ARGV [3];
 # subfamily_classifications: output.3
@@ -35,6 +40,9 @@ my $subfamily_classifications = $ARGV [4];
 my $domspec_cuts = $ARGV [5];
 # gene_model_filte: filter for ARATH and ORYSA
 my $gene_model_filter = $ARGV [6];
+
+# get basename for output files
+my($basename, $dirs, $suffix) = fileparse($hmmsearch_output, qr/\.[^.]*/);
 
 if ($family_statistics eq "") {
 	print "Usage: extract.and.classify.pl <hmmsearch output file> <classification rules> <output classifications file> <output family statistics file> <output subfamil classifications file> <\"filter\" (if desired)>\n\n";
@@ -56,7 +64,7 @@ my $entry_counter = 0;
 # Containes the actual result for a query sequence
 my $akt_entry = "";
 # Used to define query entry to ignore similar domains
-my $whole_entry = ""; 
+my $whole_entry = "";
 # Includes the final entries after ignoring similar domains
 my @results_of_extraction = ();
 # Used to define query entry to ignore similar domains
@@ -64,7 +72,7 @@ my $extracted_domain = "";
 # Used to define query entry to ignore similar domains
 my $present = "";
 # Used to define query entry to ignore similar domains
-my $protein = ""; 
+my $protein = "";
 
 my $lek = "";
 
@@ -84,7 +92,7 @@ if ($output [-9] !~ /^# Program:         hmmsearch.*/) {
 	exit;
 }
 
-### 1.1 Trim input file (hmmsearch) to fit script. Erase lines starting with #. 
+### 1.1 Trim input file (hmmsearch) to fit script. Erase lines starting with #.
 @output = grep !/^#.*/, @output;
 
 # Read domain-specific coverage values file
@@ -94,11 +102,11 @@ if ($output [-9] !~ /^# Program:         hmmsearch.*/) {
 open(FILENAME,$domspec_cuts);
 my %cuts = map { chomp; split /\t/ } <FILENAME>;
 
-### 1.2 Use first (prot name), third (domain name), eight (dom evalue), fourteenth (# overlapping) and fifteenth (# domain) column of data input(array element).	
+### 1.2 Use first (prot name), third (domain name), eight (dom evalue), fourteenth (# overlapping) and fifteenth (# domain) column of data input(array element).
 foreach my $output (@output) {
 	$output =~ /^(\S+)\s+\S+\s+\S+\s+(\S+)\s+\S+\s+(\S+)\s+\S+\s+\S+\s+\S+\s+\S+\s+\S+\s+(\S+)\s+\S+\s+\S+\s+\S+\s+(\S+)\s+(\S+)\s+.*/;
 	$lek = (($6-$5)+1)/$3;
-	$output = $1."\t".$2."\t".$4."\t".$lek;	
+	$output = $1."\t".$2."\t".$4."\t".$lek;
 	}
 
 # Stucture:
@@ -113,12 +121,18 @@ foreach my $output (@output) {
 
 ### 2.1 Run through length_cut_off loop (throws out entries below coverage values)
 my @cutarray;
+open(FH, '>', "${basename}_filtered_sequences.txt") or die $!;
+print FH "Below are the sequences that were filtered out, along with the reason";
 foreach my $output (@output) {
 	$output =~ /^(\S+)\t+(\S+)\t(\S+)\t(\S+)/;
 	if ($4 > $cuts{$2}) {
 	push (@cutarray, $output);
 	}
+    else{
+        print FH "$output --> did not meet coverage cutoff of $cuts{$2} (cov was $4)\n"
+    }
 }
+close(FH);
 
 # End up with (prot name) (domain name) (dom evalue) (overlapping)
 
@@ -139,7 +153,7 @@ my $scoreeval;
 my @newarray;
 foreach my $cutarray (@cutarray) {
 	$cutarray =~ /^(\S+)\t+(\S+)\t(\S+)\t(\S+)/;
-	$akt_entry = $1.$2; 
+	$akt_entry = $1.$2;
 	# If the protein contains more than one of the same domain
 	if ($old_prot eq $akt_entry) {
 		if ($3>$scoreeval) {
@@ -149,7 +163,7 @@ foreach my $cutarray (@cutarray) {
 		else {
 			$y++;
 			$newarray[$x] = $1."\t".$2."\t".$scoreeval."\t".$y;
-			}	
+			}
 		}
 	# If the protein is new reset $j and push the entry in the next array
 	else {
@@ -204,7 +218,7 @@ foreach my $line (@newarray) {
 		$C1domain = 0;
 
 	}
-	
+
 	# Get the Query entry
 	$line =~ /^(\S+)\s+(\S+)\s+(\S+)\s+(\S+)/;
 	$protein = "$1";
@@ -214,7 +228,7 @@ foreach my $line (@newarray) {
 
 
 	# Ignore FIE if it is not better scored than WD40
-	if ($extracted_domain eq "WD40" and $FIEdomain == 0) {$WD40domain = 1;}	 
+	if ($extracted_domain eq "WD40" and $FIEdomain == 0) {$WD40domain = 1;}
 
 	# Ignore similar domains part 1
 
@@ -240,10 +254,10 @@ foreach my $line (@newarray) {
 
        	if ($extracted_domain eq "GATA" and $Dofdomain == 1) {next;}
 	if ($extracted_domain eq "zf-Dof" and $GATAdomain == 1) {next;}
-	
+
 	# Save the entry
 	push @results_of_extraction, $whole_entry;
-	$entry_counter++;	
+	$entry_counter++;
 }
 print "$entry_counter domain matches were found in $hmmsearch_output\n\n";
 
@@ -272,12 +286,12 @@ if ($dec_table [0] !~ /^[^;]+;[^;]+;[^;]/) {
 foreach my $domain_entry (@sorted_results_of_extraction) {
 
 	$domain_entry =~ /^([^;]+);/;
-	$akt_entry = $1; 
+	$akt_entry = $1;
 	# If the protein has more than one domain push it behind the old entry
 	if ($old_entry eq $akt_entry) {
 		$j++;
 		$array_of_arrays->[$i][$j] = $domain_entry;
-	}	
+	}
 
 	# If the protein is new reset $j and push the entry in the next array
 	else {
@@ -319,14 +333,14 @@ my @classifications = sort @classifications_input;
 foreach my $classification (@classifications) {
 	$classification =~ /^([^;]+);/;
 	$akt_entry = $1;
-	
+
 	# If the family has more than one domain entry push it behind the old entry
 	if ($old_entry eq $akt_entry) {
-	    
+
 		$j++;
 		$array_of_classifications->[$i][$j] = $classification;
 	}
-			
+
 	# If the family is new push it in the next array and reset $j
 	else {
 		$j = 0;
@@ -334,8 +348,8 @@ foreach my $classification (@classifications) {
 		$array_of_classifications->[$i][$j] = $classification;
 		# Add family to list of all families in the classification rules
 		push(@liste_alle_familien,$akt_entry);
-		
-		# Add hardcoded "OR" defined families to list of families if subfamily is present 
+
+		# Add hardcoded "OR" defined families to list of families if subfamily is present
 		# Do this just once for each family
 		if (($akt_entry eq "GARP_ARR-B_Myb") or ($akt_entry eq "GARP_ARR-B_G2")) {
                 	if ($ARR_B_in_list == 0) {
@@ -354,10 +368,10 @@ foreach my $classification (@classifications) {
 			}}
 	}
 	$old_entry = $akt_entry;
-}	
+}
 
 my $number_of_classifications = $i+1;
-print "$number_of_classifications different families were found in $decision_table\n\n"; 
+print "$number_of_classifications different families were found in $decision_table\n\n";
 $number_of_classifications--;
 
 print "*** begin classification ***\n\n";
@@ -400,7 +414,7 @@ for (my $ii = 0; $ii <= $number_of_proteins; $ii++) {
 
     # Flag to mark that any family was found for the current protein
 	my $member_found = 0;
-	
+
 	# In this string all the domains of one protein will be stored
 	# The ; signs are important to mark a single entry (for example to differ AP2 and TF_AP2)
 	my $domains = ";";
@@ -456,13 +470,13 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 
         # This loop will be made for every domain classification entry for the current family
 	while ($array_of_classifications->[$i][$j]) {
-		
+
 		# For "should" entries
 		if ($array_of_classifications->[$i][$j] =~ /;should$/) {
 
 			# Get the domain from the classification entry
 			$array_of_classifications->[$i][$j] =~ /^[^;]+;([^;]+);[^;]+/;
-			
+
 			my $domain_classification_entry = $1;
 			# Check if the protein might be a member of the current family. If yes check the next entry
 			if ($domains =~ /;$domain_classification_entry;/) {
@@ -482,7 +496,7 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 
 			# Get the domain from the classification entry
 			$array_of_classifications->[$i][$j] =~ /^[^;]+;([^;]+);[^;]+/;
-			
+
 			# Check if the protein has the domain. If yes go to the next family
 			my $domain_check = $1;
 			if ($domains =~ /;$domain_check;/) {
@@ -495,11 +509,11 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 			    		next;
 			}
 		}
-			
+
 			# This happens when there is no "should" or "should not" entry at the right position
 			print "error in classification entry $array_of_classifications->[$i][$j]\n"
 	}
-		       
+
 	# If the check was successful print the found classification
 	if ($possible_member) {
 
@@ -542,7 +556,7 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 
 					pop @family_classifications_file;
 					pop @subfamily_classifications_file;
-					
+
 					# Merge "GARBP_ARR-B_Myb" and "GARP_ARR-B_G2" to "GARP_ARR-B"
 					if ( ($currentFamily eq "GARP_ARR-B_Myb") or ($currentFamily eq "GARP_ARR-B_G2")){
 
@@ -574,7 +588,7 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 
 						push @family_classifications_file, "$akt_entry;$currentFamily;$possibilities$domains\n";
 						push @subfamily_classifications_file, "$akt_entry;$currentFamily;-;$possibilities$domains\n";
-					}	
+					}
 					$possibilities--;
 					last;
 
@@ -587,12 +601,12 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 		# Normal enty: if the family is classified for one family write it in the array
 		else {
 
-			# Store the matched domains of the actual family for respectively later doubly classification decision 
+			# Store the matched domains of the actual family for respectively later doubly classification decision
 			$shoulds_prev_family = $shoulds_act_family;
 			# Store the entry in the output array
 			# Merge "GARBP_ARR-B_Myb" and "GARP_ARR-B_G2" to "GARP_ARR-B"
 			# Add GARP_ARR-B to @liste_alle_familien ONCE
-				
+
 				if ( ($currentFamily eq "GARP_ARR-B_Myb") or ($currentFamily eq "GARP_ARR-B_G2")){
 					push @family_classifications_file, "$akt_entry;GARP_ARR-B;$possibilities$domains\n";
 					push @subfamily_classifications_file, "$akt_entry;GARP_ARR-B;-;$possibilities$domains\n";
@@ -631,7 +645,7 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 		}
 
 	}
-	
+
 	if ($possibilities == 0) {
 
 		# If no family was found for the current protein give this out
@@ -639,7 +653,7 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 		push @subfamily_classifications_file, "$akt_entry;0_no_family_found;-;0$domains\n";
 		$unclassified_families++;
 	}
-	
+
 	# Increment the number of possible members in the array at the right position
 	else {
 
@@ -647,17 +661,17 @@ for ($i = 0;$i <= $number_of_classifications; $i++) {
 		$temp++;
 		$entry_counter[$possibilities] = $temp;
 	}
-	
+
 }
 # Define for which TAP families also subfamilies may be present:
 
 foreach my $subfamily_classifications_file (@subfamily_classifications_file) {
-	
-	# If "C2H2" was assigned to a sequence, write "C2H2;C2H2" to output.3 as TAP family and subfamily, respectively. 
+
+	# If "C2H2" was assigned to a sequence, write "C2H2;C2H2" to output.3 as TAP family and subfamily, respectively.
 	if ($subfamily_classifications_file =~ /C2H2/ ) {
 		$subfamily_classifications_file =~ s/C2H2;-/C2H2;C2H2/
 	}
-	# If "C2H2_IDD" was assigned to a sequence, write "C2H2;C2H2_IDD" to output.3 as TAP family and subfamily, respectively. 
+	# If "C2H2_IDD" was assigned to a sequence, write "C2H2;C2H2_IDD" to output.3 as TAP family and subfamily, respectively.
 	if ($subfamily_classifications_file =~ /C2H2_IDD/ ) {
 		$subfamily_classifications_file =~ s/C2H2_IDD;-/C2H2;C2H2_IDD/
 	}
@@ -745,7 +759,7 @@ shift @subfamily_classifications_file;
 @subfamily_classifications_file = sort @subfamily_classifications_file;
 if ($gene_model_filter and $gene_model_filter eq "filter") {
 	print "*** filtering gene models: removing splice variants ***\n";
-	
+
 	# temporary array for the filtered entries
 	my @filtered_entries = [];
 	my $models_removed_counter = 0;
@@ -785,7 +799,7 @@ foreach my $fcf_line (@subfamily_classifications_file) {
 		push @family_list, "$2";
 	}
 	print SUBFAMILY_CLASSIFICATIONS "$fcf_line";
-} 
+}
 
 close (SUBFAMILY_CLASSIFICATIONS);
 
@@ -842,8 +856,8 @@ delete $hash{'bZIPCDD'};
 delete $hash{'HRT'};
 delete $hash{'GIY_YIG'};
 
-# Add all not found families from the classification rules to @output_family_statistics 
-# With zero as number of families found 
+# Add all not found families from the classification rules to @output_family_statistics
+# With zero as number of families found
 
 foreach my $element (keys %hash) {
 	if (($hash{$element} == 1) and ( $element eq "0_no_family_found")) {
@@ -854,7 +868,7 @@ foreach my $element (keys %hash) {
 	}
 }
 
-# Sort @output_family_statistics caseinsensitive-alphabetically 
+# Sort @output_family_statistics caseinsensitive-alphabetically
 my @sortierte_statistik = sort {lc $a cmp lc $b} @output_family_statistics;
 
 # Print headline to @sortierte_statistik
@@ -891,10 +905,11 @@ print "\n$unclassified_families proteins could not be classified\n\n";
 print "*** The results were written in $family_classifications and $subfamily_classifications ***\n";
 print "*** done ***\n\n";
 
+
 exit;
 
 sub get_file_data {
-	
+
 	my ($filename) = @_;
 
 	use strict;
@@ -913,4 +928,5 @@ sub get_file_data {
 
 	return @filedata;
 }
+
 
