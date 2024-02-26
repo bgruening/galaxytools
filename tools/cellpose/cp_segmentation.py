@@ -50,8 +50,7 @@ def main(inputs, img_path, img_format, output_dir):
         channels = [1, 2]
 
     print(f"Image shape: {img.shape}")
-    model = models.Cellpose(gpu=gpu, model_type=model_type,
-                            net_avg=options['net_avg'])
+    model = models.Cellpose(gpu=gpu, model_type=model_type)
     masks, flows, styles, diams = model.eval(img, channels=channels,
                                              **options)
 
