@@ -28,11 +28,10 @@ def main(inputs, img_path, img_format, output_dir):
         params = json.load(param_handler)
 
     gpu = params['use_gpu']
-    #omni=params['omni']
-    model_selector = params['model_selector']
-    model_type = model_selector['model_type']
-    chan = model_selector['chan']
-    chan2 = model_selector['chan2']
+    model_type = params['model_type']
+    chan = params['chan']
+    chan2 = params['chan2']
+    chan_first = params['chan_first']
     if chan is None:
         channels = None
     else:
@@ -44,15 +43,13 @@ def main(inputs, img_path, img_format, output_dir):
 
     print(f"Image shape: {img.shape}")
     # transpose to Ly x Lx x nchann and reshape based on channels
-    if img_format.endswith('tiff') and params['channel_first']:
+    if img_format.endswith('tiff'):
         img = np.transpose(img, (1, 2, 0))
-        img = transforms.reshape(img, channels=channels)
-        channels = [1, 2]
+        img = transforms.reshape(img, channels=channels, chan_first=chan_first)
 
     print(f"Image shape: {img.shape}")
     model = models.Cellpose(gpu=gpu, model_type=model_type)
-    masks, flows, styles, diams = model.eval(img, channels=channels,
-                                             **options)
+    masks, flows, styles, diams = model.eval(img, channels=channels, **options)
 
     # save masks to tiff
     with warnings.catch_warnings():
@@ -66,10 +63,9 @@ def main(inputs, img_path, img_format, output_dir):
     if params['show_segmentation']:
         img = skimage.io.imread(img_path)
         # uniform image
-        if img_format.endswith('tiff') and params['channel_first']:
+        if img_format.endswith('tiff'):
             img = np.transpose(img, (1, 2, 0))
-            img = transforms.reshape(img, channels=channels)
-            channels = [1, 2]
+            img = transforms.reshape(img, channels=channels, chan_first=chan_first)
 
         maski = masks
         flowi = flows[0]
