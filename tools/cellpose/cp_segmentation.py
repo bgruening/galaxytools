@@ -6,8 +6,6 @@ import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage.io
-
-
 from cellpose import models, plot, transforms
 
 
