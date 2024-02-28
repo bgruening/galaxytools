@@ -1,9 +1,10 @@
 import argparse
 import json
-import numpy as np
-import skimage.io
-import matplotlib.pyplot as plt
 import os
+
+import numpy as np
+import matplotlib.pyplot as plt
+import skimage.io
 import warnings
 
 from cellpose import models, plot, transforms
@@ -58,8 +59,6 @@ def main(inputs, img_path, img_format, output_dir):
                           masks.astype(np.uint16))
 
     # make segmentation show #
-    #show_seg = False
-    #if show_seg:
     if params['show_segmentation']:
         img = skimage.io.imread(img_path)
         # uniform image
