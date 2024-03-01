@@ -1,0 +1,149 @@
+<tool id="cellpose" name="Run Cellpose segmentation" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.05">
+    <description>a generalist algorithm for cell and nucleus segmentation</description>
+    <macros>
+        <token name="@TOOL_VERSION@">3.0.1</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <xml name="channel">
+            <option value="0" selected="true">grayscale/None</option>
+            <option value="1">red</option>
+            <option value="2">green</option>
+            <option value="3">blue</option>
+        </xml>
+    </macros>
+    <requirements>
+	    <container type="docker">biocontainers/cellpose:3.0.1_cv1</container>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Error occurred. Please check Tool Standard Error"/>
+    </stdio>
+    <version_command>echo "@VERSION@"</version_command>
+    <command detect_errors="exit_code">
+         <![CDATA[
+        export CELLPOSE_LOCAL_MODELS_PATH='cellpose_models' &&
+        mkdir -p segmentation &&
+        ln -s '${img_in}' ./image.${img_in.ext} &&
+		
+        python '$__tool_directory__/cp_segmentation.py'
+            --inputs '$inputs'
+            --img_path ./image.${img_in.ext}
+            --img_format '${img_in.ext}'
+            --output_dir ./segmentation
+        ]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+    </configfiles>
+    <inputs>
+        <param name="img_in" type="data" format="ome.tiff,tiff,jpeg,png" label="Choose the image file for segmention (usually after registration)"/>
+        <param name="model_type" type="select" label="Choose the pre-trained model type">
+            <option value="nuclei" selected="true">nuclei</option>
+            <option value="cyto">cyto</option>
+            <option value="cyto2">cyto2</option>
+            <option value="cyto3">cyto3</option>
+        </param>
+        <param argument="chan" type="select" label="Select the channel to segment" help="In this case, the default is grayscale">
+            <expand macro="channel"/>
+        </param>
+        <param argument="chan2" type="select" optional="true" label="Select the channel for nuclei segmatation" help="In this case, the default is None">
+            <expand macro="channel"/>
+        </param>
+        <param name="chan_first" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Use the reshaped data with channel as the first dimension?"/>
+        <param name="show_segmentation" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Whether to show segmentation?"/>
+	    <param name="use_gpu" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Whether to use GPU?" />
+        <section name="options" title="Advanced Options" expanded="False">
+            <param argument="diameter" type="float" optional="true" label="Cell or nuclei diameter in pixels" help="Leave blank for automated estimation."/>
+            <param name="resample" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Run dynamics on the resampled image?"
+                help="Interpolated flows at the true image size. This option will create smoother ROIs when the cells are large but will be slower in case"/>
+            <param argument="flow_threshold" type="float" min="0" value="0.4" label="Flow error threshold (all cells with errors below threshold are kept) (not used for 3D)"/>
+            <param argument="cellprob_threshold" type="float" value="0.0" label="Cell probability threshold (all pixels with prob above threshold kept for masks)"/>
+            <param argument="niter" type="integer" min="0" value="0" label="Number of iterations" 
+                help="By defalut, sets the number of iterations to be proportional to the ROI diameter. For longer ROIs, more iterations might be needed."/>
+            <param argument="do_3D" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Whether to run 3D segmentation on 4D image input?"/>
+            <param argument="tile" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Tiles image for test time augmentation and to ensure GPU memory usage limited (recommended)"/>
+            <param argument="rescale" type="float" value="" optional="true" label="If diameter is set to None, and rescale is not None, then rescale is used instead of diameter for resizing image"/>
+            <param argument="invert" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Whether to invert image pixel intensity before running network?"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data format="tiff" name="cp_mask" from_work_dir="segmentation/cp_masks.tif" label="Cellpose ${model_type} masks on ${on_string}"/>
+        <data format="png" name="cp_segm" from_work_dir="segmentation/segm_show.png" label="Segmentation Show on ${on_string}">
+            <filter>show_segmentation</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="2">
+            <param name="img_in" value="img02.png"/>
+            <param name="model_type" value="cyto"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="3"/>
+            <output name="cp_mask" file="img02_cp_masks_cyto.tif" compare="sim_size" delta_frac="0.1"/>
+            <output name="cp_segm" file="img02_cp_segm_cyto.png" compare="sim_size" delta_frac="0.1"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="img_in" value="img02.png"/>
+            <param name="model_type" value="cyto2"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="3"/>
+            <output name="cp_mask" file="img02_cp_masks_cyto2.tif" compare="sim_size" delta_frac="0.1"/>
+            <output name="cp_segm" file="img02_cp_segm_cyto2.png" compare="sim_size" delta_frac="0.1"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="img_in" value="img02.png"/>
+            <param name="model_type" value="cyto3"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="3"/>
+            <output name="cp_mask" file="img02_cp_masks_cyto3.tif" compare="sim_size" delta_frac="0.1"/>
+            <output name="cp_segm" file="img02_cp_segm_cyto3.png" compare="sim_size" delta_frac="0.1"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="img_in" value="img02.png"/>
+            <param name="model_type" value="nuclei"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="3"/>
+            <output name="cp_mask" file="img02_cp_masks_nuclei.tif" compare="sim_size" delta_frac="0.1"/>
+            <output name="cp_segm" file="img02_cp_segm_nuclei.png" compare="sim_size" delta_frac="0.1"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="img_in" value="img02.png"/>
+            <param name="model_type" value="cyto"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="1"/>
+            <output name="cp_mask" file="img02_cp_masks_chan.tif" compare="sim_size" delta_frac="0.1"/>
+            <output name="cp_segm" file="img02_cp_segm_chan.png" compare="sim_size" delta_frac="0.1"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="img_in" value="img02.png"/>
+            <param name="model_type" value="cyto"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="3"/>
+            <param name="diameter" value="50"/>
+            <output name="cp_mask" file="img02_cp_masks_diameter.tif" compare="sim_size" delta_frac="0.1"/>
+            <output name="cp_segm" file="img02_cp_segm_diameter.png" compare="sim_size" delta_frac="0.1"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="img_in" value="img02.png"/>
+            <param name="use_gpu" value="true"/>
+            <param name="model_type" value="cyto"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="3"/>
+            <output name="cp_mask" file="img02_cp_masks_gpu.tif" compare="sim_size" delta_frac="0.1"/>
+            <output name="cp_segm" file="img02_cp_segm_gpu.png" compare="sim_size" delta_frac="0.1"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="img_in" value="img02.png"/>
+            <param name="model_type" value="cyto"/>
+            <param name="chan" value="2"/>
+            <param name="chan2" value="3"/>
+            <param name="show_segmentation" value="false"/>
+            <output name="cp_mask" file="img02_cp_masks_cyto.tif" compare="sim_size" delta_frac="0.1"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+        Cellpose: A generalist algorithm for cell and nucleus segmentation.
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1101/2020.02.02.931238</citation>
+    </citations>
+</tool>
