@@ -12,31 +12,36 @@
     </stdio>
     <version_command><![CDATA[mafft --version]]></version_command>
     <command><![CDATA[
+  ## Concatenate all input datasets no matter how they were provided
   bash inputs.sh &&
 
   ## Count total number of sequences across input datasets
+  ## Can't do this on the concatenated input data prepared above because it's
+  ## just a regular file and we don't have Galaxy-generated metadata for it.
   #set sequence_count = 0
-  #if $concatenate.concatenate_options == "single"
-    #for $data in $concatenate.datasets:
-      #set sequence_count += int($data.inputs.metadata.sequences)
+  #if $input.mapping == "implicit"
+    #for $batch in $input.batches:
+      #set sequence_count += int($batch.inputs.metadata.sequences)
     #end for
-  #elif $concatenate.concatenate_options == "row"
-    #for $data in $concatenate.datasets:
-      #for $input in $data.inputs:
-        #set sequence_count += int($input.metadata.sequences)
+  #elif $input.mapping == "merge"
+    #for $batch in $input.batches:
+      #for $dataset in $batch.inputs:
+        #set sequence_count += int($dataset.metadata.sequences)
       #end for
     #end for
   #end if
 
-  ## FASTA36
+  ## For those cases in which MAFFT needs fasta3, set an env variable to make it
+  ## find the executable. Necessary because the current version of MAFFT still
+  ## expects a fasta34 executable in path, but we bundle a newer version.
   #if $cond_flavour.flavourType == "custom"
     #if $cond_flavour.guidetree.guidetree_generation == "original"
       #if $cond_flavour.guidetree.dist_flavour.distance_method == "--fastapair"
-        export FASTA_4_MAFFT=`which fasta36` &&
+        export FASTA_4_MAFFT=`which @FASTA3_EXEC@` &&
       #end if
     #elif $cond_flavour.guidetree.guidetree_generation == "parttree"
       #if $cond_flavour.guidetree.parttree_selection.parttree_option == "--fastaparttree"
-        export FASTA_4_MAFFT=`which fasta36` &&
+        export FASTA_4_MAFFT=`which @FASTA3_EXEC@` &&
       #end if
     #end if
   #end if
@@ -45,7 +50,7 @@
   #if $cond_flavour.flavourType == "custom"
     #if $cond_flavour.guidetree.guidetree_generation == "parttree"
       #if $cond_flavour.guidetree.parttree_selection.groupsize > $sequence_count
-        echo "WARNING = Choosen groupsize number larger than number of input sequences. Not recommended for MAFFT." &&
+        echo "WARNING = Chosen groupsize number larger than number of input sequences. Not recommended for MAFFT." &&
       #end if
     #end if
   #end if
@@ -126,9 +131,7 @@
   $reorder
   $outputFormat
   $treeout
-  #if $concatenate.concatenate_options == "single" or $concatenate.concatenate_options == "row"
-    input.fa > '$outputAlignment'
-  #end if
+  input.fa > '$outputAlignment'
 
   ## Output alignment tree
   #if $treeout
@@ -137,32 +140,32 @@
     ]]></command>
     <configfiles>
         <configfile filename="inputs.sh"><![CDATA[
-  #if $concatenate.concatenate_options == "single"
-    #for $data in $concatenate.datasets:
-cat $data.inputs >> input.fa
+  #if $input.mapping == "implicit"
+    #for $batch in $input.batches:
+cat $batch.inputs >> input.fa
       #end for 
-  #elif $concatenate.concatenate_options == "row"
-    #for $data in $concatenate.datasets:
-      #for $input in $data.inputs:
-cat $input >> input.fa
+  #elif $input.mapping == "merge"
+    #for $batch in $input.batches:
+      #for $dataset in $batch.inputs:
+cat $dataset >> input.fa
       #end for
     #end for
   #end if
         ]]></configfile>
     </configfiles>
     <inputs>
-        <conditional name="concatenate">
-            <param name="concatenate_options" type="select" label="Concatenate?">
-                <option value="single">Single or multiple MAFFT</option>
-                <option value="row">Simple concatenation of multiple datasets in a row resulting in one alignment</option>
+        <conditional name="input">
+            <param name="mapping" type="select" label="For multiple inputs generate" help="All you have is a single dataset with the sequences to align? You can skip this help text and continue with the default setting. For multiple input datasets, the first mode will launch separate MAFFT jobs for all sequences from the first, second, ..., n-th dataset/element from each input batch, respectively, resulting in n separate MSAs. The second mode will concatenate all input sequences from all inputs for a single run of MAFFT and will generate a single MSA.">
+                <option value="implicit">one or several MSAs depending on input structure</option>
+                <option value="merge">a single MSA of all sequences from all inputs</option>
             </param>
-            <when value="single">
-                <repeat name="datasets" title="Dataset" default="1" min="1">
+            <when value="implicit">
+                <repeat name="batches" title="Input batch" default="1" min="1">
                     <param name="inputs" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format. Add Dataset for concatenation of every additional dataset with each file of the first upload panel"/>
                 </repeat>
             </when>
-            <when value="row">
-                <repeat name="datasets" title="Dataset" default="1" min="1">
+            <when value="merge">
+                <repeat name="batches" title="Input batch" default="1" min="1">
                     <param name="inputs" multiple="true" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format."/>
                 </repeat>
             </when>
@@ -324,15 +327,19 @@ cat $input >> input.fa
     </outputs>
     <tests>
         <test expect_num_outputs="1">
-            <param name="concatenate_options" value="single"/>
-            <param name="inputs" value="sample_amino.fa"/>
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_amino.fa"/>
+                </repeat>
+            </conditional>
             <param name="outputFormat" value=""/>
             <output name="outputAlignment" ftype="fasta" file="mafft_auto_result.aln"/>
         </test>
         <test expect_num_outputs="1">
-            <conditional name="concatenate">
-                <param name="concatenate_options" value="single"/>
-                <repeat name="datasets">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
                     <param name="inputs" value="sample_amino.fa"/>
                 </repeat>
             </conditional>
@@ -353,9 +360,9 @@ cat $input >> input.fa
         The result seems deterministic for single threaded execution, i.e. GALAXY_SLOTS=1 planemo test
         However, GH CI/CD uses 2 threads and results vary -->
         <test expect_num_outputs="1" >
-            <conditional name="concatenate">
-                <param name="concatenate_options" value="single"/>
-                <repeat name="datasets">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
                     <param name="inputs" value="sample_nuc.fa"/>
                 </repeat>
             </conditional>
@@ -373,9 +380,9 @@ cat $input >> input.fa
             <output name="outputAlignment" ftype="phylip" file="mafft_fftns_nuc_result.aln" />
         </test>
         <test expect_num_outputs="1">
-            <conditional name="concatenate">
-                <param name="concatenate_options" value="single"/>
-                <repeat name="datasets">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
                     <param name="inputs" value="sample_amino.fa"/>
                 </repeat>
             </conditional>
@@ -407,9 +414,9 @@ cat $input >> input.fa
             </output>
         </test>
         <test expect_num_outputs="1">
-            <conditional name="concatenate">
-                <param name="concatenate_options" value="single"/>
-                    <repeat name="datasets">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                    <repeat name="batches">
                         <param name="inputs" value="sample_amino.fa"/>
                     </repeat>
             </conditional>
@@ -433,9 +440,9 @@ cat $input >> input.fa
             <output name="outputAlignment" ftype="fasta" file="mafft_custom_parttree_result.aln" />
         </test>
         <test expect_num_outputs="1">
-            <conditional name="concatenate">
-                <param name="concatenate_option" value="row"/>
-                <repeat name="datasets">
+            <conditional name="input">
+                <param name="mapping" value="merge"/>
+                <repeat name="batches">
                     <param name="inputs" value="sample_amino.fa"/>
                 </repeat>
                 <repeat name="datasets">
