@@ -3,9 +3,8 @@ Predict images using AI models from BioImage
 """
 
 import argparse
-import numpy as np
-from PIL import Image
 
+import numpy as np
 import torch
 import torchvision.transforms as T
 
