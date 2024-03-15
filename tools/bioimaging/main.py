@@ -1,19 +1,16 @@
 """
-Segment image using models from BioImage
+Predict images using AI models from BioImage
 """
 
 import argparse
-import time
-import torch
 import numpy as np
 from PIL import Image
-from numpy import asarray
+
+import torch
 import torchvision.transforms as T
 
 
 if __name__ == "__main__":
-    start_time = time.time()
-
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-im", "--imaging_model", required=True, help="Input BioImage model")
     arg_parser.add_argument("-ii", "--image_file", required=True, help="Input image file")
@@ -26,6 +23,10 @@ if __name__ == "__main__":
     test_data = np.load(input_image_path)
     test_data = torch.Tensor(test_data)
     pred_data = model(test_data)
+    pred_data_output = pred_data.detach().numpy()
+    # save original image matrix
+    np.savez("output_predicted_image_matrix.npz", pred_data_output)
+    # reshape predicted image matrix to display
     pred_data = torch.squeeze(pred_data)
     if len(pred_data.shape) == 3:
         pred_data = pred_data[0, :, :]
