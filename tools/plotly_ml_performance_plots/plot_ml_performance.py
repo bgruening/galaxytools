@@ -3,12 +3,12 @@ import argparse
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
-
 from galaxy_ml.model_persist import load_model_from_h5
 from galaxy_ml.utils import clean_params
 from sklearn.metrics import (auc, confusion_matrix,
-                                     precision_recall_fscore_support, roc_curve)
+                             precision_recall_fscore_support, roc_curve)
 from sklearn.preprocessing import label_binarize
+
 
 def main(infile_input, infile_output, infile_trained_model):
     """
