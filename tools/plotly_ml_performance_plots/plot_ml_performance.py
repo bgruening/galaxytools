@@ -1,9 +1,10 @@
 import argparse
-import pickle
 
 import pandas as pd
 import plotly
 import plotly.graph_objs as go
+from galaxy_ml.model_persist import load_model_from_h5
+from galaxy_ml.utils import clean_params
 from sklearn.metrics import (auc, confusion_matrix,
                              precision_recall_fscore_support, roc_curve)
 from sklearn.preprocessing import label_binarize
@@ -70,8 +71,8 @@ def main(infile_input, infile_output, infile_trained_model):
     plotly.offline.plot(fig_prf, filename="output_prf.html", auto_open=False)
 
     # plot roc and auc curves for different classes
-    with open(infile_trained_model, "rb") as model_file:
-        model = pickle.load(model_file)
+    classifier_object = load_model_from_h5(infile_trained_model)
+    model = clean_params(classifier_object)
 
     # remove the last column (label column)
     test_data = df_input.iloc[:, :-1]
