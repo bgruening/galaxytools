@@ -1,13 +1,21 @@
 import argparse
+import json
 import re
 import sys
 import time
-import json
 import zlib
+from urllib.parse import (
+    parse_qs,
+    urlencode,
+    urlparse,
+)
 from xml.etree import ElementTree
-from urllib.parse import urlparse, parse_qs, urlencode
+
 import requests
-from requests.adapters import HTTPAdapter, Retry
+from requests.adapters import (
+    HTTPAdapter,
+    Retry,
+)
 
 
 POLLING_INTERVAL = 3
@@ -163,40 +171,64 @@ def get_id_mapping_results_search(url):
 # print(results)
 # {'results': [{'from': 'P05067', 'to': 'CHEMBL2487'}], 'failedIds': ['P12345']}
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='retrieve uniprot mapping')
-    subparsers = parser.add_subparsers(dest='tool')
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="retrieve uniprot mapping")
+    subparsers = parser.add_subparsers(dest="tool")
 
-    mapping = subparsers.add_parser('map')
-    mapping.add_argument('f', help='from')
-    mapping.add_argument('t', help='to')
-    mapping.add_argument('inp', nargs='?', type=argparse.FileType('r'),
-                         default=sys.stdin, help='input file (default: stdin)')
-    mapping.add_argument('out', nargs='?', type=argparse.FileType('w'),
-                         default=sys.stdout, help='output file (default: stdout)')
-    mapping.add_argument('--format', default='tab', help='output format')
+    mapping = subparsers.add_parser("map")
+    mapping.add_argument("f", help="from")
+    mapping.add_argument("t", help="to")
+    mapping.add_argument(
+        "inp",
+        nargs="?",
+        type=argparse.FileType("r"),
+        default=sys.stdin,
+        help="input file (default: stdin)",
+    )
+    mapping.add_argument(
+        "out",
+        nargs="?",
+        type=argparse.FileType("w"),
+        default=sys.stdout,
+        help="output file (default: stdout)",
+    )
+    mapping.add_argument("--format", default="tab", help="output format")
 
-    retrieve = subparsers.add_parser('retrieve')
-    retrieve.add_argument('inp', metavar='in', nargs='?', type=argparse.FileType('r'),
-                          default=sys.stdin, help='input file (default: stdin)')
-    retrieve.add_argument('out', nargs='?', type=argparse.FileType('w'),
-                          default=sys.stdout, help='output file (default: stdout)')
-    retrieve.add_argument('-f', '--format', help='specify output format', default='txt')
-    mapping = subparsers.add_parser('menu')
+    retrieve = subparsers.add_parser("retrieve")
+    retrieve.add_argument(
+        "inp",
+        metavar="in",
+        nargs="?",
+        type=argparse.FileType("r"),
+        default=sys.stdin,
+        help="input file (default: stdin)",
+    )
+    retrieve.add_argument(
+        "out",
+        nargs="?",
+        type=argparse.FileType("w"),
+        default=sys.stdout,
+        help="output file (default: stdout)",
+    )
+    retrieve.add_argument("-f", "--format", help="specify output format", default="txt")
+    mapping = subparsers.add_parser("menu")
 
     args = parser.parse_args()
 
     # code for auto generating the from - to conditional
-    if args.tool == 'menu':
+    if args.tool == "menu":
         from lxml import etree
-        request = session.get(f"https://rest.uniprot.org/configure/idmapping/fields")
+
+        request = session.get("https://rest.uniprot.org/configure/idmapping/fields")
         check_response(request)
         fields = request.json()
 
         tos = dict()
         from_cond = etree.Element("conditional", name="from_cond")
-        from_select = etree.SubElement(from_cond, "param", name="from", type="select", label="Source database:")
-        
+        from_select = etree.SubElement(
+            from_cond, "param", name="from", type="select", label="Source database:"
+        )
+
         rules = dict()
         for rule in fields["rules"]:
             rules[rule["ruleId"]] = rule["tos"]
@@ -216,15 +248,17 @@ if __name__ == '__main__':
                     continue
                 option = etree.SubElement(from_select, "option", value=item["name"])
                 option.text = f"{group_name} - {item['displayName']}"
-                when = etree.SubElement(from_cond, "when", value=item['name'])
+                when = etree.SubElement(from_cond, "when", value=item["name"])
 
-                to_select = etree.SubElement(when, "param", name="to", type="select", label="Target database:")
+                to_select = etree.SubElement(
+                    when, "param", name="to", type="select", label="Target database:"
+                )
                 ruleId = item["ruleId"]
                 for to in rules[ruleId]:
                     option = etree.SubElement(to_select, "option", value=to)
                     option.text = tos[to]
-        etree.indent(from_cond, space="    ") 
-        print(etree.tostring(from_cond, pretty_print=True, encoding='unicode'))
+        etree.indent(from_cond, space="    ")
+        print(etree.tostring(from_cond, pretty_print=True, encoding="unicode"))
         sys.exit(0)
 
     # get the IDs from the file as sorted list
@@ -234,13 +268,11 @@ if __name__ == '__main__':
         query.add(line.strip())
     query = sorted(query)
 
-    if args.tool == 'map':
+    if args.tool == "map":
+        job_id = submit_id_mapping(from_db=args.f, to_db=args.t, ids=query)
+    elif args.tool == "retrieve":
         job_id = submit_id_mapping(
-            from_db=args.f, to_db=args.t, ids=query
-        )
-    elif args.tool == 'retrieve':
-        job_id = submit_id_mapping(
-            from_db='UniProtKB_AC-ID', to_db='UniProtKB', ids=query
+            from_db="UniProtKB_AC-ID", to_db="UniProtKB", ids=query
         )
 
     if check_id_mapping_results_ready(job_id):
@@ -252,5 +284,3 @@ if __name__ == '__main__':
     if not isinstance(results, str):
         results = "\n".join(results)
     args.out.write(f"{results}\n")
-
-
