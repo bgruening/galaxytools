@@ -20,8 +20,8 @@ from collections import defaultdict
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("jbrowse")
 
-JB2VER = "v2.11.0"
-# version pinned if cloning - but not used until now
+JB2VER = "v2.11.1"
+# version pinned if cloning - but not cloning now
 logCommands = True
 # useful for seeing what's being written but not for production setups
 TODAY = datetime.datetime.now().strftime("%Y-%m-%d")
@@ -455,7 +455,7 @@ class JbrowseConnector(object):
             log.error(command)
             log.error(output)
             log.error(err)
-            raise RuntimeError(f"Command ( {command} ) failed with exit code {retcode}")
+            raise RuntimeError("Command failed with exit code %s" % (retcode))
 
     def subprocess_check_output(self, command):
         if logCommands:
@@ -698,8 +698,8 @@ class JbrowseConnector(object):
             ]
         }
         categ = trackData["category"]
-        fname = f"{tId}"
-        dest = os.path.join(self.outdir, fname)
+        fname = tId
+        dest = "%s/%s" % (self.outdir, fname)
         gname = trackData["assemblyNames"]
 
         cmd = [
@@ -1198,6 +1198,9 @@ class JbrowseConnector(object):
 
     def process_annotations(self, track):
         category = track["category"].replace("__pd__date__pd__", TODAY)
+        tt1 = ",/ :;\\"
+        tt2 = "______"
+        labttab = str.maketrans(tt1,tt2)
         for trackIndex, (
             dataset_path,
             dataset_ext,
@@ -1209,19 +1212,11 @@ class JbrowseConnector(object):
                 # Unsanitize labels (element_identifiers are always sanitized by Galaxy)
                 for key, value in mapped_chars.items():
                     track_human_label = track_human_label.replace(value, key)
-                track_human_label = track_human_label.replace(" ", "_")
+                track_human_label = track_human_label.translate(labttab)
             outputTrackConfig = {
                 "category": category,
                 "style": {},
             }
-
-            # hashData = [
-            #    str(dataset_path),
-            #    track_human_label,
-            #    track["category"],
-            # ]
-            # hashData = "|".join(hashData).encode("utf-8")
-            # hash_string = hashlib.md5(hashData).hexdigest()
 
             outputTrackConfig["assemblyNames"] = track["assemblyNames"]
             outputTrackConfig["key"] = track_human_label
@@ -1230,13 +1225,6 @@ class JbrowseConnector(object):
             outputTrackConfig["ext"] = dataset_ext
             outputTrackConfig["trackset"] = track.get("trackset", {})
             outputTrackConfig["label"] = track["label"]
-            # outputTrackConfig["label"] = "%s_%i_%s_%s" % (
-            #    dataset_ext,
-            #    trackIndex,
-            #    track_human_label,
-            #    hash_string,
-            # )
-
             outputTrackConfig["metadata"] = extra_metadata
             outputTrackConfig["name"] = track_human_label
             if track["label"] in self.trackIdlist:
@@ -1331,6 +1319,7 @@ class JbrowseConnector(object):
          https://github.com/abretaud/tools-iuc/blob/jbrowse2/tools/jbrowse2/jbrowse2.py
         """
         # TODO using the default session for now, but check out session specs in the future https://github.com/GMOD/jbrowse-components/issues/2708
+        bpPerPx = 50 # this is tricky since browser window width is unknown - this seems a compromise that sort of works....
         track_types = {}
         with open(self.config_json_file, "r") as config_file:
             config_json = json.load(config_file)
@@ -1369,24 +1358,17 @@ class JbrowseConnector(object):
                             "displays": [style_data],
                         }
                     )
-            view_json = {
-                "type": "LinearGenomeView",
-                "offsetPx": 0,
-                "minimized": False,
-                "tracks": tracks_data,
-            }
             first = [x for x in self.ass_first_contigs if x[0] == gnome]
-            if len(first) > 0:
-                [gnome, refName, end] = first[0]
-                start = 0
-                end = int(end)
-                drdict = {
-                    "refName": refName,
-                    "start": start,
-                    "end": end,
+            drdict = {
                     "reversed": False,
                     "assemblyName": gnome,
                 }
+            if len(first) > 0:
+                [gnome, refName, end] = first[0]
+                drdict["refName"] = refName
+                drdict["start"] = 0
+                end = int(end)
+                drdict["end"] = end        
             else:
                 ddl = default_data.get("defaultLocation", None)
                 if ddl:
@@ -1404,6 +1386,13 @@ class JbrowseConnector(object):
                             "@@@ regexp could not match contig:start..end in the supplied location %s - please fix"
                             % ddl
                         )
+            view_json = {
+                "type": "LinearGenomeView",
+                "offsetPx": 0,
+                "bpPerPx" : bpPerPx,
+                "minimized": False,
+                "tracks": tracks_data
+            }
             if drdict.get("refName", None):
                 # TODO displayedRegions is not just zooming to the region, it hides the rest of the chromosome
                 view_json["displayedRegions"] = [
@@ -1628,7 +1617,7 @@ if __name__ == "__main__":
             if trackfiles:
                 for x in trackfiles:
                     track_conf["label"] = "%s_%d" % (
-                        x.attrib["label"].replace(" ", "_").replace(",", ""),
+                        x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/","_"),
                         trackI,
                     )
                     trackI += 1
