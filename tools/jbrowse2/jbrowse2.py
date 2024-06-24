@@ -2,8 +2,8 @@
 
 import argparse
 import binascii
+import copy
 import datetime
-# import hashlib
 import json
 import logging
 import os
@@ -20,7 +20,7 @@ from collections import defaultdict
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("jbrowse")
 
-JB2VER = "v2.11.1"
+JB2VER = "v2.12.2"
 # version pinned if cloning - but not cloning now
 logCommands = True
 # useful for seeing what's being written but not for production setups
@@ -403,6 +403,7 @@ def metadata_from_node(node):
 
 class JbrowseConnector(object):
     def __init__(self, outdir, jbrowse2path):
+        self.bpPerPx = 50
         self.trackCounter = 0  # to avoid name clashes
         self.assemblies = []  # these require more than a few line diff.
         self.assmeta = {}
@@ -678,8 +679,8 @@ class JbrowseConnector(object):
             ],
             "adapter": {"type": "HicAdapter", "hicLocation": {"uri": uri}},
         }
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def add_maf(self, data, trackData):
         """
@@ -752,8 +753,8 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
-        self.tracksToAdd[gname].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[gname].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
         if self.config_json.get("plugins", None):
             self.config_json["plugins"].append(mafPlugin[0])
         else:
@@ -826,8 +827,8 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def add_bam(self, data, trackData, bam_indexes=None, **kwargs):
         tId = trackData["label"]
@@ -883,8 +884,8 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def add_cram(self, data, trackData, cram_indexes=None, **kwargs):
         tId = trackData["label"]
@@ -949,8 +950,8 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def add_vcf(self, data, trackData):
         tId = trackData["label"]
@@ -999,8 +1000,8 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def _sort_gff(self, data, dest):
         # Only index if not already done
@@ -1062,8 +1063,8 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def add_bed(self, data, ext, trackData):
         tId = trackData["label"]
@@ -1111,8 +1112,8 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def add_paf(self, data, trackData, pafOpts, **kwargs):
         tname = trackData["name"]
@@ -1146,10 +1147,10 @@ class JbrowseConnector(object):
             if gname not in self.genome_names:
                 # ignore if already there - eg for duplicates among pafs.
                 asstrack, first_contig = self.make_assembly(gpath, gname, useuri)
-                self.genome_names.append(gname)
+                self.genome_names.append(copy.copy(gname))
                 self.tracksToAdd[gname] = []
-                self.assemblies.append(asstrack)
-                self.ass_first_contigs.append(first_contig)
+                self.assemblies.append(copy.copy(asstrack))
+                self.ass_first_contigs.append(copy.copy(first_contig))
         trackDict = {
             "type": "SyntenyTrack",
             "trackId": tId,
@@ -1193,8 +1194,8 @@ class JbrowseConnector(object):
                 "displayId": "%s-LinearBasicDisplay" % tId,
             }
         trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(trackDict)
-        self.trackIdlist.append(tId)
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(copy.copy(tId))
 
     def process_annotations(self, track):
         category = track["category"].replace("__pd__date__pd__", TODAY)
@@ -1310,6 +1311,7 @@ class JbrowseConnector(object):
             else:
                 logging.warning("Do not know how to handle %s", dataset_ext)
             # Return non-human label for use in other fields
+            logging.debug("### processanno ext=%s trackstoadd = %s" % (dataset_ext, self.tracksToAdd))
             yield outputTrackConfig["label"]
 
     def add_default_session(self, default_data):
@@ -1319,7 +1321,7 @@ class JbrowseConnector(object):
          https://github.com/abretaud/tools-iuc/blob/jbrowse2/tools/jbrowse2/jbrowse2.py
         """
         # TODO using the default session for now, but check out session specs in the future https://github.com/GMOD/jbrowse-components/issues/2708
-        bpPerPx = 50 # this is tricky since browser window width is unknown - this seems a compromise that sort of works....
+        bpPerPx = self.bpPerPx # Browser window width is unknown and default session cannot be used to figure it out in JB2 code so could be 200-2000+ pixels.
         track_types = {}
         with open(self.config_json_file, "r") as config_file:
             config_json = json.load(config_file)
@@ -1337,16 +1339,23 @@ class JbrowseConnector(object):
                 tId = track_conf["trackId"]
                 if tId in default_data[gnome]["visibility"]["default_on"]:
                     track_types[tId] = track_conf["type"]
-                    style_data = default_data[gnome]["style"].get(tId, None)
+                    style_data = default_data[gnome]["style"].get(tId, {})
                     if not style_data:
                         logging.debug(
-                            "### No style data for %s in available default data %s"
+                            "No style data for %s in available default data %s"
                             % (tId, default_data)
                         )
-                        style_data = {"type": "LinearBasicDisplay"}
-                        if "displays" in track_conf:
-                            disp = track_conf["displays"][0]["type"]
-                            style_data["type"] = disp
+                    else:
+                        logging.debug(
+                            "style data for %s = %s"
+                            % (tId, style_data)
+                        )
+
+                    if style_data.get('type',None) == None:
+                        style_data["type"] = "LinearBasicDisplay"
+                    if "displays" in track_conf:
+                        disp = track_conf["displays"][0]["type"]
+                        style_data["type"] = disp
                     if track_conf.get("style_labels", None):
                         # TODO fix this: it should probably go in a renderer block (SvgFeatureRenderer) but still does not work
                         # TODO move this to per track displays?
@@ -1550,8 +1559,9 @@ class JbrowseConnector(object):
 def parse_style_conf(item):
     if item.text.lower() in ["false", "true", "yes", "no"]:
         return item.text.lower in ("yes", "true")
-    else:
-        return item.text
+    elif item.text.isdigit():
+        return int(item.text)
+    return item.text
 
 
 if __name__ == "__main__":
@@ -1631,28 +1641,27 @@ if __name__ == "__main__":
                             )
                         )
                     else:
-                        if trackfiles:
-                            metadata = metadata_from_node(x.find("metadata"))
-                            track_conf["dataset_id"] = metadata.get(
-                                "dataset_id", "None"
+                        metadata = metadata_from_node(x.find("metadata"))
+                        track_conf["dataset_id"] = metadata.get(
+                            "dataset_id", "None"
+                        )
+                        if x.attrib["useuri"].lower() == "yes":
+                            tfa = (
+                                x.attrib["path"],
+                                x.attrib["ext"],
+                                x.attrib["useuri"],
+                                track_conf["label"],
+                                metadata,
                             )
-                            if x.attrib["useuri"].lower() == "yes":
-                                tfa = (
-                                    x.attrib["path"],
-                                    x.attrib["ext"],
-                                    x.attrib["useuri"],
-                                    track_conf["label"],
-                                    metadata,
-                                )
-                            else:
-                                tfa = (
-                                    os.path.realpath(x.attrib["path"]),
-                                    x.attrib["ext"],
-                                    x.attrib["useuri"],
-                                    track_conf["label"],
-                                    metadata,
-                                )
-                            track_conf["trackfiles"].append(tfa)
+                        else:
+                            tfa = (
+                                os.path.realpath(x.attrib["path"]),
+                                x.attrib["ext"],
+                                x.attrib["useuri"],
+                                track_conf["label"],
+                                metadata,
+                            )
+                        track_conf["trackfiles"].append(tfa)
 
                 if is_multi_bigwig:
                     metadata = metadata_from_node(x.find("metadata"))
@@ -1682,11 +1691,10 @@ if __name__ == "__main__":
                         if trak["trackId"] == key:
                             stile = trak.get("style", {})
                     if track.find("options/style"):
-                        supdate = {
-                            item.tag: parse_style_conf(item)
-                            for item in track.find("options/style")
-                        }
-                        stile.update(supdate)
+                        for item in track.find("options/style"):
+                            if item.text:
+                                stile[item.tag] = parse_style_conf(item)
+                    logging.debug("stile=%s" % stile)
                     default_session_data[primaryGenome]["style"][key] = stile
                     if track.find("options/style_labels"):
                         default_session_data[primaryGenome]["style_labels"][key] = {
@@ -1702,6 +1710,7 @@ if __name__ == "__main__":
     ).text
     logging.debug("default_session=%s" % (json.dumps(default_session_data, indent=2)))
     jc.zipOut = root.find("metadata/general/zipOut").text == "true"
+    jc.bpPerPx = int(root.find("metadata/general/bpPerPx").text)
     general_data = {
         "analytics": root.find("metadata/general/analytics").text,
         "primary_color": root.find("metadata/general/primary_color").text,
@@ -1711,6 +1720,7 @@ if __name__ == "__main__":
         "font_size": root.find("metadata/general/font_size").text,
     }
     jc.add_general_configuration(general_data)
+    jc.add_default_session(default_session_data)
     trackconf = jc.config_json.get("tracks", [])
     for gnome in jc.genome_names:
         gtracks = jc.tracksToAdd[gnome]
@@ -1736,7 +1746,6 @@ if __name__ == "__main__":
         )
     )
     jc.write_config()
-    jc.add_default_session(default_session_data)
     # note that this can be left in the config.json but has NO EFFECT if add_defsess_to_index is called.
     # jc.add_defsess_to_index(default_session_data)
     # jc.text_index() not sure what broke here.
