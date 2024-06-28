@@ -1067,6 +1067,7 @@ class JbrowseConnector(object):
         self.trackIdlist.append(copy.copy(tId))
 
     def add_bed(self, data, ext, trackData):
+
         tId = trackData["label"]
         categ = trackData["category"]
         useuri = trackData["useuri"].lower() == "yes"
@@ -1076,6 +1077,16 @@ class JbrowseConnector(object):
             url = tId + ".gz"
             dest = os.path.join(self.outdir, url)
             self._sort_bed(data, dest)
+        if True or trackData.get("usebedscore",None):
+            bedgzlocation = {
+                    "uri": url,
+                    "columnNames": ["chr","start","end","name","score"],
+                    "scoreColumn": "score",
+                }
+        else:
+            bedgzlocation = {
+                    "uri": url,
+                }
         trackDict = {
             "type": "FeatureTrack",
             "trackId": tId,
@@ -1086,9 +1097,7 @@ class JbrowseConnector(object):
                     categ,
                 ],
                 "type": "BedTabixAdapter",
-                "bedGzLocation": {
-                    "uri": url,
-                },
+                "bedGzLocation": bedgzlocation,
                 "index": {
                     "location": {
                         "uri": url + ".tbi",
@@ -1610,10 +1619,12 @@ if __name__ == "__main__":
                 },
             }
         for track in ass.find("tracks"):
-            track_conf = {}
+            track_conf = {"usebedscore": False,}
             track_conf["trackfiles"] = []
             track_conf["assemblyNames"] = primaryGenome
             is_multi_bigwig = False
+            if track.find("options/bed/usebedscore"):
+                track_conf["usebedscore"] = True
             try:
                 if track.find("options/wiggle/multibigwig") and (
                     track.find("options/wiggle/multibigwig").text == "True"
@@ -1626,6 +1637,7 @@ if __name__ == "__main__":
             trackfiles = track.findall("files/trackFile")
             if trackfiles:
                 for x in trackfiles:
+                   
                     track_conf["label"] = "%s_%d" % (
                         x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/","_"),
                         trackI,
