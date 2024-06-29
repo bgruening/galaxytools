@@ -756,7 +756,7 @@ class JbrowseConnector(object):
         self.tracksToAdd[gname].append(copy.copy(trackDict))
         self.trackIdlist.append(copy.copy(tId))
         if self.config_json.get("plugins", None):
-            self.config_json["plugins"].append(mafPlugin[0])
+            self.config_json["plugins"].append(mafPlugin["plugins"][0])
         else:
             self.config_json.update(mafPlugin)
 
@@ -1067,7 +1067,7 @@ class JbrowseConnector(object):
         self.trackIdlist.append(copy.copy(tId))
 
     def add_bed(self, data, ext, trackData):
-
+        bedPlugin = {"name": "BedScorePlugin", "umdLoc": { "uri": "bedscoreplugin.js" } }
         tId = trackData["label"]
         categ = trackData["category"]
         useuri = trackData["useuri"].lower() == "yes"
@@ -1101,13 +1101,17 @@ class JbrowseConnector(object):
                 "index": {
                     "location": {
                         "uri": url + ".tbi",
-                    }
+                    },
                 },
             },
             "displays": [
                 {
                     "type": "LinearBasicDisplay",
                     "displayId": "%s-LinearBasicDisplay" % tId,
+                    "renderer": {
+                        "type": "SvgFeatureRenderer",
+                        "color1": "jexl:customColor(feature)",
+                        },
                 },
                 {
                     "type": "LinearPileupDisplay",
@@ -1121,6 +1125,10 @@ class JbrowseConnector(object):
         }
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
+        if self.config_json.get("plugins", None):
+            self.config_json["plugins"].append(bedPlugin)
+        else:
+            self.config_json["plugins"] = [bedPlugin,]
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
         self.trackIdlist.append(copy.copy(tId))
 
@@ -1348,23 +1356,10 @@ class JbrowseConnector(object):
                 tId = track_conf["trackId"]
                 if tId in default_data[gnome]["visibility"]["default_on"]:
                     track_types[tId] = track_conf["type"]
-                    style_data = default_data[gnome]["style"].get(tId, {})
-                    if not style_data:
-                        logging.debug(
-                            "No style data for %s in available default data %s"
-                            % (tId, default_data)
-                        )
-                    else:
-                        logging.debug(
-                            "style data for %s = %s"
-                            % (tId, style_data)
-                        )
-
-                    if style_data.get('type',None) == None:
-                        style_data["type"] = "LinearBasicDisplay"
+                    display = {"type": "linearBasicDisplay"}
                     if "displays" in track_conf:
-                        disp = track_conf["displays"][0]["type"]
-                        style_data["type"] = disp
+                        display["type"] = track_conf["displays"][0]["type"]
+                    display["configuration"] = track_conf["displays"][0]["displayId"]
                     if track_conf.get("style_labels", None):
                         # TODO fix this: it should probably go in a renderer block (SvgFeatureRenderer) but still does not work
                         # TODO move this to per track displays?
@@ -1373,7 +1368,7 @@ class JbrowseConnector(object):
                         {
                             "type": track_types[tId],
                             "configuration": tId,
-                            "displays": [style_data],
+                            "displays": [display],
                         }
                     )
             first = [x for x in self.ass_first_contigs if x[0] == gnome]
@@ -1562,7 +1557,8 @@ class JbrowseConnector(object):
                     os.remove(path)
             except OSError as e:
                 log.error("Error: %s - %s." % (e.filename, e.strerror))
-        shutil.copyfile(os.path.join(INSTALLED_TO, "jb2_webserver.py"), os.path.join(dest, "jb2_webserver.py"))
+        for neededfile in ["jb2_webserver.py", "bedscoreplugin.js"]:
+            shutil.copyfile(os.path.join(INSTALLED_TO, neededfile), os.path.join(dest, neededfile))
 
 
 def parse_style_conf(item):
@@ -1619,12 +1615,10 @@ if __name__ == "__main__":
                 },
             }
         for track in ass.find("tracks"):
-            track_conf = {"usebedscore": False,}
+            track_conf = {}
             track_conf["trackfiles"] = []
             track_conf["assemblyNames"] = primaryGenome
             is_multi_bigwig = False
-            if track.find("options/bed/usebedscore"):
-                track_conf["usebedscore"] = True
             try:
                 if track.find("options/wiggle/multibigwig") and (
                     track.find("options/wiggle/multibigwig").text == "True"
@@ -1637,7 +1631,9 @@ if __name__ == "__main__":
             trackfiles = track.findall("files/trackFile")
             if trackfiles:
                 for x in trackfiles:
-                   
+                    isBed = False
+                    if x.attrib['ext'] == "bed":
+                        isBed = True                   
                     track_conf["label"] = "%s_%d" % (
                         x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/","_"),
                         trackI,
@@ -1686,7 +1682,6 @@ if __name__ == "__main__":
                             {},  # No metadata for multiple bigwig
                         )
                     )
-
             track_conf["category"] = track.attrib["cat"]
             track_conf["format"] = track.attrib["format"]
             track_conf["conf"] = etree_to_dict(track.find("options"))
@@ -1697,22 +1692,6 @@ if __name__ == "__main__":
                     if not vis:
                         vis = "default_off"
                     default_session_data[primaryGenome]["visibility"][vis].append(key)
-                    trakdat = jc.tracksToAdd[primaryGenome]
-                    stile = {}
-                    for trak in trakdat:
-                        if trak["trackId"] == key:
-                            stile = trak.get("style", {})
-                    if track.find("options/style"):
-                        for item in track.find("options/style"):
-                            if item.text:
-                                stile[item.tag] = parse_style_conf(item)
-                    logging.debug("stile=%s" % stile)
-                    default_session_data[primaryGenome]["style"][key] = stile
-                    if track.find("options/style_labels"):
-                        default_session_data[primaryGenome]["style_labels"][key] = {
-                            item.tag: parse_style_conf(item)
-                            for item in track.find("options/style_labels")
-                        }
                     default_session_data[primaryGenome]["tracks"].append(key)
     default_session_data["defaultLocation"] = root.find(
         "metadata/general/defaultLocation"
