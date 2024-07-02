@@ -707,7 +707,7 @@ class JbrowseConnector(object):
         }
         categ = trackData["category"]
         fname = tId
-        dest = "%s/%s" % (self.outdir, fname)
+        dest = os.path.join(self.outdir, fname)
         gname = trackData["assemblyNames"]
 
         cmd = [
@@ -1074,7 +1074,7 @@ class JbrowseConnector(object):
         self.trackIdlist.append(tId)
 
     def add_bed(self, data, ext, trackData):
-        bedPlugin = {"name": "BedScorePlugin", "umdLoc": { "uri": "bedscoreplugin.js" } }
+        bedPlugin = {"name": "BedScorePlugin", "umdLoc": {"uri": "bedscoreplugin.js"}}
         tId = trackData["label"]
         categ = trackData["category"]
         useuri = trackData["useuri"].lower() == "yes"
@@ -1084,16 +1084,16 @@ class JbrowseConnector(object):
             url = tId + ".gz"
             dest = os.path.join(self.outdir, url)
             self._sort_bed(data, dest)
-        if True or trackData.get("usebedscore",None):
+        if True or trackData.get("usebedscore", None):
             bedgzlocation = {
-                    "uri": url,
-                    "columnNames": ["chr","start","end","name","score"],
-                    "scoreColumn": "score",
-                }
+                "uri": url,
+                "columnNames": ["chr", "start", "end", "name", "score"],
+                "scoreColumn": "score",
+            }
         else:
             bedgzlocation = {
-                    "uri": url,
-                }
+                "uri": url,
+            }
         trackDict = {
             "type": "FeatureTrack",
             "trackId": tId,
@@ -1118,7 +1118,7 @@ class JbrowseConnector(object):
                     "renderer": {
                         "type": "SvgFeatureRenderer",
                         "color1": "jexl:customColor(feature)",
-                        },
+                    },
                 },
                 {
                     "type": "LinearPileupDisplay",
@@ -1225,7 +1225,7 @@ class JbrowseConnector(object):
         category = track["category"].replace("__pd__date__pd__", TODAY)
         tt1 = ",/ :;\\"
         tt2 = "______"
-        labttab = str.maketrans(tt1,tt2)
+        labttab = str.maketrans(tt1, tt2)
         for trackIndex, (
             dataset_path,
             dataset_ext,
@@ -1335,7 +1335,6 @@ class JbrowseConnector(object):
             else:
                 logging.warning("Do not know how to handle %s", dataset_ext)
             # Return non-human label for use in other fields
-            logging.debug("### processanno ext=%s trackstoadd = %s" % (dataset_ext, self.tracksToAdd))
             yield outputTrackConfig["label"]
 
     def add_default_session(self, default_data):
@@ -1344,8 +1343,8 @@ class JbrowseConnector(object):
         .add_default_view() and other configuration code adapted from
          https://github.com/abretaud/tools-iuc/blob/jbrowse2/tools/jbrowse2/jbrowse2.py
         """
-        # TODO using the default session for now, but check out session specs in the future https://github.com/GMOD/jbrowse-components/issues/2708
-        bpPerPx = self.bpPerPx # Browser window width is unknown and default session cannot be used to figure it out in JB2 code so could be 200-2000+ pixels.
+        #  TODO using the default session for now, but check out session specs in the future https://github.com/GMOD/jbrowse-components/issues/2708
+        bpPerPx = self.bpPerPx  # Browser window width is unknown and default session cannot be used to figure it out in JB2 code so could be 200-2000+ pixels.
         track_types = {}
         with open(self.config_json_file, "r") as config_file:
             config_json = json.load(config_file)
@@ -1374,7 +1373,7 @@ class JbrowseConnector(object):
                             "style data for %s = %s"
                             % (tId, style_data)
                         )
-                    if style_data.get('type',None) == None:
+                    if style_data.get('type', None) is None:
                         style_data["type"] = "LinearBasicDisplay"
                     if "displays" in track_conf:
                         disp = track_conf["displays"][0]["type"]
@@ -1396,20 +1395,20 @@ class JbrowseConnector(object):
                     )
             first = [x for x in self.ass_first_contigs if x[0] == gnome]
             drdict = {
-                    "reversed": False,
-                    "assemblyName": gnome,
-                }
+                "reversed": False,
+                "assemblyName": gnome,
+            }
             if len(first) > 0:
                 [gnome, refName, end] = first[0]
                 drdict["refName"] = refName
                 drdict["start"] = 0
                 end = int(end)
-                drdict["end"] = end        
+                drdict["end"] = end
             else:
                 ddl = default_data.get("defaultLocation", None)
                 if ddl:
                     loc_match = re.search(r"^([^:]+):([\d,]*)\.*([\d,]*)$", ddl)
-                    # allow commas like 100,000 but ignore as integer 
+                    # allow commas like 100,000 but ignore as integer
                     if loc_match:
                         refName = loc_match.group(1)
                         drdict["refName"] = refName
@@ -1425,7 +1424,7 @@ class JbrowseConnector(object):
             view_json = {
                 "type": "LinearGenomeView",
                 "offsetPx": 0,
-                "bpPerPx" : bpPerPx,
+                "bpPerPx": bpPerPx,
                 "minimized": False,
                 "tracks": tracks_data
             }
@@ -1656,9 +1655,9 @@ if __name__ == "__main__":
                 for x in trackfiles:
                     isBed = False
                     if x.attrib['ext'] == "bed":
-                        isBed = True                   
+                        isBed = True
                     track_conf["label"] = "%s_%d" % (
-                        x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/","_"),
+                        x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/", "_"),
                         trackI,
                     )
                     trackI += 1
