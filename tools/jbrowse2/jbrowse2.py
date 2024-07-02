@@ -1171,7 +1171,7 @@ class JbrowseConnector(object):
             if gname not in self.genome_names:
                 # ignore if already there - eg for duplicates among pafs.
                 asstrack, first_contig = self.make_assembly(gpath, gname, useuri)
-                self.genome_names.append(copy.copy(gname))
+                self.genome_names.append(gname)
                 self.tracksToAdd[gname] = []
                 self.assemblies.append(copy.copy(asstrack))
                 self.ass_first_contigs.append(copy.copy(first_contig))
