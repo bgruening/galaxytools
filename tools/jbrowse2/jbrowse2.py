@@ -674,13 +674,20 @@ class JbrowseConnector(object):
             "trackId": tId,
             "name": trackData["name"],
             "assemblyNames": [trackData["assemblyNames"]],
+            "displays": [
+                {
+                    "type": "LinearHicDisplay",
+                    "displayId": "%s-LinearHicDisplay" % tId,
+                }
+            ],
             "category": [
                 categ,
             ],
             "adapter": {"type": "HicAdapter", "hicLocation": {"uri": uri}},
+
         }
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def add_maf(self, data, trackData):
         """
@@ -754,7 +761,7 @@ class JbrowseConnector(object):
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
         self.tracksToAdd[gname].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
         if self.config_json.get("plugins", None):
             self.config_json["plugins"].append(mafPlugin["plugins"][0])
         else:
@@ -828,7 +835,7 @@ class JbrowseConnector(object):
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def add_bam(self, data, trackData, bam_indexes=None, **kwargs):
         tId = trackData["label"]
@@ -885,7 +892,7 @@ class JbrowseConnector(object):
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def add_cram(self, data, trackData, cram_indexes=None, **kwargs):
         tId = trackData["label"]
@@ -951,7 +958,7 @@ class JbrowseConnector(object):
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def add_vcf(self, data, trackData):
         tId = trackData["label"]
@@ -1001,7 +1008,7 @@ class JbrowseConnector(object):
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def _sort_gff(self, data, dest):
         # Only index if not already done
@@ -1064,7 +1071,7 @@ class JbrowseConnector(object):
         style_json = self._prepare_track_style(trackDict)
         trackDict["style"] = style_json
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def add_bed(self, data, ext, trackData):
         bedPlugin = {"name": "BedScorePlugin", "umdLoc": { "uri": "bedscoreplugin.js" } }
@@ -1130,7 +1137,7 @@ class JbrowseConnector(object):
         else:
             self.config_json["plugins"] = [bedPlugin,]
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def add_paf(self, data, trackData, pafOpts, **kwargs):
         tname = trackData["name"]
@@ -1212,7 +1219,7 @@ class JbrowseConnector(object):
             }
         trackDict["style"] = style_json
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(copy.copy(tId))
+        self.trackIdlist.append(tId)
 
     def process_annotations(self, track):
         category = track["category"].replace("__pd__date__pd__", TODAY)
@@ -1356,10 +1363,26 @@ class JbrowseConnector(object):
                 tId = track_conf["trackId"]
                 if tId in default_data[gnome]["visibility"]["default_on"]:
                     track_types[tId] = track_conf["type"]
-                    display = {"type": "linearBasicDisplay"}
+                    style_data = default_data[gnome]["style"].get(tId, {})
+                    if not style_data:
+                        logging.debug(
+                            "No style data for %s in available default data %s"
+                            % (tId, default_data)
+                        )
+                    else:
+                        logging.debug(
+                            "style data for %s = %s"
+                            % (tId, style_data)
+                        )
+                    if style_data.get('type',None) == None:
+                        style_data["type"] = "LinearBasicDisplay"
                     if "displays" in track_conf:
-                        display["type"] = track_conf["displays"][0]["type"]
-                    display["configuration"] = track_conf["displays"][0]["displayId"]
+                        disp = track_conf["displays"][0]["type"]
+                        style_data["type"] = disp
+                    if track_conf.get("displays", None):
+                        style_data["configuration"] = track_conf["displays"][0]["displayId"]
+                    else:
+                        logging.debug("no display in track_conf for %s" % tId)
                     if track_conf.get("style_labels", None):
                         # TODO fix this: it should probably go in a renderer block (SvgFeatureRenderer) but still does not work
                         # TODO move this to per track displays?
@@ -1368,7 +1391,7 @@ class JbrowseConnector(object):
                         {
                             "type": track_types[tId],
                             "configuration": tId,
-                            "displays": [display],
+                            "displays": [style_data],
                         }
                     )
             first = [x for x in self.ass_first_contigs if x[0] == gnome]
@@ -1386,7 +1409,7 @@ class JbrowseConnector(object):
                 ddl = default_data.get("defaultLocation", None)
                 if ddl:
                     loc_match = re.search(r"^([^:]+):([\d,]*)\.*([\d,]*)$", ddl)
-                    # allow commas like 100,000 but ignore as integer
+                    # allow commas like 100,000 but ignore as integer 
                     if loc_match:
                         refName = loc_match.group(1)
                         drdict["refName"] = refName
@@ -1692,6 +1715,17 @@ if __name__ == "__main__":
                     if not vis:
                         vis = "default_off"
                     default_session_data[primaryGenome]["visibility"][vis].append(key)
+                    trakdat = jc.tracksToAdd[primaryGenome]
+                    stile = {}
+                    for trak in trakdat:
+                        if trak["trackId"] == key:
+                            stile = trak.get("style", {})
+                    if track.find("options/style"):
+                        for item in track.find("options/style"):
+                            if item.text:
+                                stile[item.tag] = parse_style_conf(item)
+                    logging.debug("stile=%s" % stile)
+                    default_session_data[primaryGenome]["style"][key] = stile
                     default_session_data[primaryGenome]["tracks"].append(key)
     default_session_data["defaultLocation"] = root.find(
         "metadata/general/defaultLocation"
