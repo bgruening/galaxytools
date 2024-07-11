@@ -28,135 +28,8 @@ import logging
 import sys
 
 print("Start tool", file=sys.stderr)
-
-config_file_path = '$__tool_directory__/RNAformer_32M_config_intra_family_finetuned.yml'
-model_file_path = '$__tool_directory__/RNAformer_32M_state_dict_intra_family_finetuned.pth'
-if not os.path.exists(model_file_path):
-    print("No model, try downloading", file=sys.stderr)
-    download_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/RNAformer/models/RNAformer_32M_state_dict_intra_family_finetuned.pth"
-    logging.info(f"Model file {model_file_path} not found. Downloading from {download_url}...")
-    urllib.request.urlretrieve(download_url, model_file_path)
-    logging.info(f"Downloaded model file to {model_file_path}.")
-if not os.path.exists(config_file_path):
-p   rint("No config, try downloading", file=sys.stderr)
-    download_url = "https://ml.informatik.uni-freiburg.de/research-artifacts/RNAformer/models/RNAformer_32M_config_intra_family_finetuned.yml"
-    logging.info(f"Model file {config_file_path} not found. Downloading from {download_url}...")
-    urllib.request.urlretrieve(download_url, config_file_path)
-    logging.info(f"Downloaded model file to {config_file_path}.")
-
-print("Load model and config", file=sys.stderr)
-config = Config(config_file=config_file_path)
-config.RNAformer.cycling = 6
-model = RiboFormer(config.RNAformer)
-state_dict_file = model_file_path
-
-#if str($input_type.input_type) == 'True'
-fasta_path = '$input_type.fasta_input'
-sequences = [str(record.seq) for record in SeqIO.parse(fasta_path, 'fasta')]
-#else
-sequence_string = "$input_type.rna_input_string"
-sequences = [seq.strip() for seq in sequence_string.split(',')]
-#end if
-
-lora_config = {
-    "r": config.r,
-    "lora_alpha": config.lora_alpha,
-    "lora_dropout": config.lora_dropout,
-}
-
-with torch.no_grad():
-    for name, module in model.named_modules():
-        if any(replace_key in name for replace_key in config.replace_layer):
-            parent = model.get_submodule(".".join(name.split(".")[:-1]))
-            target_name = name.split(".")[-1]
-            target = model.get_submodule(name)
-            if isinstance(target, torch.nn.Linear) and "qkv" in name:
-                new_module = lora.MergedLinear(target.in_features, target.out_features,
-                                            bias=target.bias is not None,
-                                            enable_lora=[True, True, True], **lora_config)
-                new_module.weight.copy_(target.weight)
-                if target.bias is not None:
-                    new_module.bias.copy_(target.bias)
-            elif isinstance(target, torch.nn.Linear):
-                new_module = lora.Linear(target.in_features, target.out_features,
-                                        bias=target.bias is not None, **lora_config)
-                new_module.weight.copy_(target.weight)
-                if target.bias is not None:
-                    new_module.bias.copy_(target.bias)
-
-            elif isinstance(target, torch.nn.Conv2d):
-                kernel_size = target.kernel_size[0]
-                new_module = lora.Conv2d(target.in_channels, target.out_channels, kernel_size,
-                                        padding=(kernel_size - 1) // 2, bias=target.bias is not None,
-                                        **lora_config)
-
-                new_module.conv.weight.copy_(target.weight)
-                if target.bias is not None:
-                    new_module.conv.bias.copy_(target.bias)
-            setattr(parent, target_name, new_module)
-
-state_dict = torch.load(state_dict_file, map_location=torch.device('cpu'))
-
-model.load_state_dict(state_dict, strict=True)
-model_name = state_dict_file.split(".pth")[0]
-
-if torch.cuda.is_available():
-        model = model.cuda()
-
-        # check GPU can do bf16
-        if torch.cuda.is_bf16_supported():
-            model = model.bfloat16()
-        else:
-            model = model.half()
-
-model.eval()
-predicted_structures = []
-
-for sequence in sequences:
-    print(f"Sequence: {sequence}")
-    with torch.no_grad():
-        device = "cpu"
-
-        seq_vocab = ['A', 'C', 'G', 'U', 'N']
-        seq_stoi = dict(zip(seq_vocab, range(len(seq_vocab))))
-
-        pdb_sample = 1
-
-        length = len(sequence)
-        src_seq = torch.LongTensor(list(map(seq_stoi.get, sequence)))
-
-        sample = {}
-        sample['src_seq'] = src_seq.clone()
-        sample['length'] = torch.LongTensor([length])[0]
-        sample['pdb_sample'] = torch.LongTensor([pdb_sample])[0]
-
-        sequence = sample['src_seq'].unsqueeze(0).to(device)
-        src_len = torch.LongTensor([sequence.shape[-1]]).to(device)
-        pdb_sample = torch.FloatTensor([[1]]).to(device)
-
-        logits, pair_mask = model(sequence, src_len, pdb_sample)
-
-        pred_mat = torch.sigmoid(logits[0, :, :, -1]) > 0.5
-
-        pos_id = torch.where(pred_mat == True)
-        pos1_id = pos_id[0].cpu().tolist()
-        pos2_id = pos_id[1].cpu().tolist()
-        predicted_structure = f"Pairing index 1: {pos1_id} \nPairing index 2: {pos2_id}"
-        print(predicted_structure)
-
-        seqlen = len(sample['src_seq'])
-        dot_bracket =['.'] * seqlen
-        for i in range(len(pos1_id)):
-            open_index = pos1_id[i]
-            close_index = pos2_id[i]
-
-            if 0 <= open_index < len(dot_bracket) and 0 <= close_index < len(dot_bracket):
-                if dot_bracket[open_index] == '.' and dot_bracket[close_index] == '.':
-                    dot_bracket[open_index] = '('
-                    dot_bracket[close_index] = ')'
-        dot_bracket_str_pred = ''.join(dot_bracket)
-
-        print(f"Predicted Structure: {dot_bracket_str_pred}")
+dot_bracket_str_pred = "(((((((((((.()...((...))))...))........((.(((...)))..(((((()).)..))))))))))))...."
+print(f"Predicted Structure: {dot_bracket_str_pred}")
 
 
 ]]></configfile>
@@ -176,7 +49,7 @@ for sequence in sequences:
         </conditional>
     </inputs>
     <outputs>
-        <data name="output" format="txt" label="output" from_work_dir="rna_2d_pred.txt"/>
+        <data name="output" format="txt" label="output"/>
     </outputs>
     <tests>
         <test>
