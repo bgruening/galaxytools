@@ -8,6 +8,8 @@ model = sys.argv[3]
 openai_api_key_path = sys.argv[4]
 with open(openai_api_key_path, "r") as f:
     openai_api_key = f.read().strip()
+if not openai_api_key:
+    raise ValueError("OpenAI API key is empty. Please provide a valid API key in user preferences.")
 client = OpenAI(api_key=openai_api_key)
 response = client.chat.completions.create(
     model=model,
