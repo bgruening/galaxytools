@@ -21,10 +21,6 @@ run = client.beta.threads.runs.create_and_poll(thread_id=thread.id, assistant_id
 messages = list(client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
 message_content = messages[0].content[0].text
 
-print(file_batch.status)
-print(file_batch.file_counts)
-print(thread.tool_resources.file_search)
-
 response = message_content.value
 print("Output has been saved!")
 with open("output.txt", "w") as f:
