@@ -96,7 +96,7 @@ if __name__ == "__main__":
                 sys.stderr.write(
                     "Please add at least one track (bam,bed,bigwig,blastxml,cram,gff,hic,maf,paf or vcf) to the collection. No suitable track files for autogenJB2 - nothing to process"
                 )
-                sys.exit(5)               
+                sys.exit(5)
             for i, track in enumerate(listtracks):
                 track_conf = {
                     "trackfiles": [],
