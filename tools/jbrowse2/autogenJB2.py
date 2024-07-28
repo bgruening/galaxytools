@@ -92,6 +92,11 @@ if __name__ == "__main__":
             # foo.paf must have a foo_paf.fasta or fasta.gz to match
             tnames = [x[2] for x in listtracks]
             texts = [x[1] for x in listtracks]
+            if len(listtracks) == 0:
+                sys.stderr.write(
+                    "Please add at least one track (bam,bed,bigwig,blastxml,cram,gff,hic,maf,paf or vcf) to the collection. No suitable track files for autogenJB2 - nothing to process"
+                )
+                sys.exit(5)               
             for i, track in enumerate(listtracks):
                 track_conf = {
                     "trackfiles": [],
@@ -224,5 +229,5 @@ if __name__ == "__main__":
             # jc.text_index() not sure what broke here.
     else:
         sys.stderr.write(
-            "Collection has no suitable trackfiles for autogenJB2 - nothing to process"
+            "Please add a fasta genome reference to the collection. No suitable reference fasta for autogenJB2 - nothing to process"
         )
