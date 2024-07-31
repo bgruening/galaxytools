@@ -1,305 +1,542 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <tool id="rbc_mafft" name="MAFFT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
-<description>Multiple alignment program for amino acid or nucleotide sequences</description>
-  <macros>
-    <import>macros.xml</import>
-  </macros>
-  <expand macro="biotools"/>
-  <expand macro="requirements" />
-  <stdio>
-    <exit_code range="1:" level="fatal" description="Error occurred. Please check Tool Standard Error" />
-    <exit_code range=":-1" level="fatal" description="Error occurred. Please check Tool Standard Error" />
-  </stdio>
-  <version_command>    <![CDATA[
-    mafft --version
-    ]]>
-  </version_command>
-  <command>
-    <![CDATA[
+    <description>Multiple alignment program for amino acid or nucleotide sequences</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="biotools"/>
+    <expand macro="requirements" />
+    <stdio>
+        <exit_code range="1:" level="fatal" description="Error occurred. Please check Tool Standard Error" />
+        <exit_code range=":-1" level="fatal" description="Error occurred. Please check Tool Standard Error" />
+    </stdio>
+    <version_command><![CDATA[mafft --version]]></version_command>
+    <command><![CDATA[
+  ## Concatenate all input datasets no matter how they were provided
+  bash inputs.sh &&
 
-      #if $cond_flavour.flavourType == 'custom'
-        #if $cond_flavour.dist_flavour.distance_method == '--fastapair'
-          export FASTA_4_MAFFT=`which fasta36`;
+  ## Count total number of sequences across input datasets
+  ## Can't do this on the concatenated input data prepared above because it's
+  ## just a regular file and we don't have Galaxy-generated metadata for it.
+  #set sequence_count = 0
+  #if $input.mapping == "implicit"
+    #for $batch in $input.batches:
+      #set sequence_count += int($batch.inputs.metadata.sequences)
+    #end for
+  #elif $input.mapping == "merge"
+    #for $batch in $input.batches:
+      #for $dataset in $batch.inputs:
+        #set sequence_count += int($dataset.metadata.sequences)
+      #end for
+    #end for
+  #end if
+
+  ## For those cases in which MAFFT needs fasta3, set an env variable to make it
+  ## find the executable. Necessary because the current version of MAFFT still
+  ## expects a fasta34 executable in path, but we bundle a newer version.
+  #if $flavour.type == "custom"
+    #if $flavour.guidetree.guidetree_generation == "original"
+      #if $flavour.guidetree.dist_flavour.distance_method == "--fastapair"
+        export FASTA_4_MAFFT=`which @FASTA3_EXEC@` &&
+      #end if
+    #elif $flavour.guidetree.guidetree_generation == "parttree"
+      #if $flavour.guidetree.parttree_selection.parttree_option == "--fastaparttree"
+        export FASTA_4_MAFFT=`which @FASTA3_EXEC@` &&
+      #end if
+    #end if
+  #end if
+
+  ## groupsize warning
+  #if $flavour.type == "custom"
+    #if $flavour.guidetree.guidetree_generation == "parttree"
+      #if $flavour.guidetree.parttree_selection.groupsize > $sequence_count
+        echo "WARNING = Chosen groupsize number larger than number of input sequences. Not recommended for MAFFT." &&
+      #end if
+    #end if
+  #end if
+
+  ## run MAFFT with predefined MSA flavours or custom settings
+  #if $flavour.type == "custom"
+    mafft
+    #if $flavour.guidetree.guidetree_generation == "original"
+      #if $flavour.guidetree.dist_flavour.distance_method == "--6merpair"
+        --6merpair
+        --retree $flavour.guidetree.dist_flavour.retree
+      #elif $flavour.guidetree.dist_flavour.distance_method == "--globalpair"
+        --globalpair
+        --weighti $flavour.guidetree.dist_flavour.weighti
+        #if $flavour.guidetree.dist_flavour.treat_unrelated_segments.unalignlevel > 0
+          --allowshift --unalignlevel $flavour.guidetree.dist_flavour.treat_unrelated_segments.unalignlevel
         #end if
+        $flavour.guidetree.dist_flavour.treat_unrelated_segments.leavegappyregion
+      #elif $flavour.guidetree.dist_flavour.distance_method == "--localpair"
+        --localpair
+        --weighti $flavour.guidetree.dist_flavour.weighti
+        --lop $flavour.guidetree.dist_flavour.lop
+        --lep $flavour.guidetree.dist_flavour.lep
+        --lexp $flavour.guidetree.dist_flavour.lexp
+      #elif flavour.guidetree.dist_flavour.distance_method == "--genafpair"
+        --genafpair
+        --weighti $flavour.guidetree.dist_flavour.weighti
+        --lop $flavour.guidetree.dist_flavour.lop
+        --lep $flavour.guidetree.dist_flavour.lep
+        --lexp $flavour.guidetree.dist_flavour.lexp
+        --LOP $flavour.guidetree.dist_flavour.LOP
+        --LEXP $flavour.guidetree.dist_flavour.LEXP
+      #elif $flavour.guidetree.dist_flavour.distance_method == "--fastapair"
+        --fastapair
+        --weighti $flavour.guidetree.dist_flavour.weighti
       #end if
-
-      #if $cond_flavour.flavourType != 'custom'
-        $cond_flavour.flavourType
-      #elif $cond_flavour.flavourType == 'custom'
-        ### full parameter options
-        mafft
-        $cond_flavour.dist_flavour.distance_method
-        #if $cond_flavour.dist_flavour.distance_method == '--6merpair'
-          --retree $cond_flavour.dist_flavour.retree
-          $cond_flavour.dist_flavour.distance_method.usetree.parttree
-
-          #if $cond_flavour.dist_flavour.distance_method.usetree.parttree==--parttree
-            $cond_flavour.dist_flavour.distance_method.usetree.treedistance
-            $cond_flavour.dist_flavour.distance_method.usetree.partsize
-            $cond_flavour.dist_flavour.distance_method.usetree.groupsize
-          #end if
-
-        #elif $cond_flavour.dist_flavour.distance_method == '--globalpair'
-          --weighti $cond_flavour.dist_flavour.weighti
-        #elif $cond_flavour.dist_flavour.distance_method == '--localpair'
-          --weighti $cond_flavour.dist_flavour.weighti
-          --lop $cond_flavour.dist_flavour.lop
-          --lep $cond_flavour.dist_flavour.lep
-          --lexp $cond_flavour.dist_flavour.lexp
-        #elif $cond_flavour.dist_flavour.distance_method == '--genafpair'
-          --weighti $cond_flavour.dist_flavour.weighti
-          --lop $cond_flavour.dist_flavour.lop
-          --lep $cond_flavour.dist_flavour.lep
-          --lexp $cond_flavour.dist_flavour.lexp
-          --LOP $cond_flavour.dist_flavour.skipLOP
-          --EXP $cond_flavour.dist_flavour.skipEXP 1
-        #elif $cond_flavour.dist_flavour.distance_method == '--fastapair'
-          --weighti $cond_flavour.dist_flavour.weighti
-        #end if
-        --maxiterate $cond_flavour.iterations
-        $cond_flavour.fft
-        $cond_flavour.score
+    #elif $flavour.guidetree.guidetree_generation == "parttree"
+      $flavour.guidetree.parttree_selection.parttree_option
+      --retree $flavour.guidetree.parttree_selection.retree
+      --partsize $flavour.guidetree.parttree_selection.partsize
+      #if $flavour.guidetree.parttree_selection.groupsize != -1
+        --groupsize $flavour.guidetree.parttree_selection.groupsize
       #end if
-
-      ## specify threads to use
-      --thread \${GALAXY_SLOTS:-1}
-      $datatype
-      --ep $ep
-      --op $op
-
-      #if $matrix_condition.matrix == "BLOSUM"
-        --bl $matrix_condition.BLOSUM
-      #elif $matrix_condition.matrix == "PAM"
-        --jtt $matrix_condition.PAM
-        --tm $matrix_condition.tm
-      #elif $matrix_condition.matrix == "custom"
-        --aamatrix  '$matrix_condition.matrixfile'
-        --fmodel $matrix_condition.fmodel
+    #end if
+    ## progressive alignment calculation
+    --maxiterate $flavour.progressive_alignment_calculation.maxiterate
+    $flavour.progressive_alignment_calculation.fft
+    $flavour.progressive_alignment_calculation.noscore
+  #else
+    $flavour.type
+    #if $flavour.type == "mafft-ginsi" or "--globalpair" in str($flavour.type)
+      #if $flavour.treat_unrelated_segments.unalignlevel > 0
+        --allowshift --unalignlevel $flavour.treat_unrelated_segments.unalignlevel
       #end if
+      $flavour.treat_unrelated_segments.leavegappyregion
+    #end if
+  #end if
 
-      $reorder
-      $getTree
-      $outputFormat
-      '$inputSequences' > '$outputAlignment';
+  ## handle scoring matrix
+  $datatype_selection.datatype
+  #if $datatype_selection.datatype != ""
+    #if $datatype_selection.scoring_matrix.type == "custom"
+      --aamatrix '$datatype_selection.scoring_matrix.aamatrix'
+    #else
+      $datatype_selection.scoring_matrix.type $datatype_selection.scoring_matrix.coefficient
+    #end if
+    $datatype_selection.fmodel
+    ## gap penalties
+    #if $datatype_selection.gap_costs.use_defaults == "no"
+      --ep $datatype_selection.gap_costs.ep --op $datatype_selection.gap_costs.op
+    #end if
+  #end if
 
-      #if $getTree == "--treeout"
-        mv '${inputSequences}.tree' '$outputTree';
-      #end if
-    ]]>
-  </command>
-  <inputs>
-    <param name="inputSequences" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format."/>
-    <param name="datatype" type="select" label="Data type">
-      <option value="">Auto detection</option>
-      <option value="--nuc">Nucleic acids</option>
-      <option value="--amino">Amino acids</option>
-    </param>
-    <conditional name="cond_flavour">
-      <param name="flavourType" type="select" label="MAFFT flavour" help="Run mafft with pre-defined input parameters. Specification of these parameters can be found in the help section.">
-        <option value="mafft --auto">auto</option>
-        <option value="mafft-fftns" selected="true">fftns</option>
-        <option value="mafft-fftnsi">fftnsi</option>
-        <option value="mafft-nwns">nwns</option>
-        <option value="mafft-nwnsi">nwnsi</option>
-        <option value="mafft-einsi">einsi</option>
-        <option value="mafft-ginsi">ginsi</option>
-        <option value="mafft-linsi">linsi</option>
-        <option value="mafft-qinsi">qinsi</option>
-        <option value="mafft-xinsi">xinsi</option>
-        <option value="custom">Custom Parameters</option>
-      </param>
-      <when value="mafft-fftns"/>
-      <when value="mafft --auto"/>
-      <when value="mafft-fftnsi"/>
-      <when value="mafft-nwns"/>
-      <when value="mafft-nwnsi"/>
-      <when value="mafft-einsi"/>
-      <when value="mafft-ginsi"/>
-      <when value="mafft-linsi"/>
-      <when value="mafft-qinsi"/>
-      <when value="mafft-xinsi"/>
-      <when value="custom">
-        <conditional name="dist_flavour">
-          <param name="distance_method" type="select" display="radio" label="Distance method" help="Distance method must be chosen regarding your data">
-            <option value="--6merpair" selected="true">Shared 6mers distance (fastest)</option>
-            <option value="--globalpair">Global alignment (Needleman-Wunsch)</option>
-            <option value="--localpair">Local alignment (Smith-Waterman)</option>
-            <option value="--genafpair">Local, affine gap cost</option>
-            <option value="--fastapair">All pairwise alignments are computed with FASTA</option>
-          </param>
-          <when value="--6merpair">
-            <param name="retree" type="integer" value="2" min="1" max="100" label="Guide tree is built this number of times in the progressive stage." help="Valid with 6mer distance" />
-            <conditional name="usetree">
-              <param name="parttree" type="select" label="Use a fast tree-building method?" help="Recommended for a large number (> ~10,000) of sequences are input" >
-                <option value="--parttree" selected="true">Yes</option>
-                <option value="">No</option>
-              </param>
-              <when value="--parttree">
-                <param name="treedistance" type="select" display="radio" label="Distance method" help="Distance method must be chosen regarding your data">
-                  <option value="--fastaparttree" selected="true">Distances based on FASTA</option>
-                  <option value="--dpparttree">Distances based on DP. (Needleman-Wunsch)</option>
-                </param>
-                <param name="partsize" type="integer" value="50" min="0" max="1000" label="Number of partitions in the PartTree algorithm" />
-                <param name="groupsize" type="integer" value="" min="0" max="1000" label="Do not make alignment larger than ... sequences" />
-              </when>
-              <when value=""/>
-            </conditional>
-          </when>
-          <when value="--globalpair">
-            <param name="weighti" type="float" value="2.7" min="1" max="100" label="Weighting factor for the consistency term calculated from pairwise alignments." help="Valid when either of --globalpair, --localpair, --genafpair, --fastapair or --blastpair is selected." />
-          </when>
-          <when value="--localpair">
-            <param name="weighti" type="float" value="2.7" min="1" max="100" label="Weighting factor for the consistency term calculated from pairwise alignments." help="Valid when either of --globalpair, --localpair, --genafpair, --fastapair or --blastpair is selected." />
-            <param name="lop" type="float" value="-2.0" label="Gap opening penalty at local pairwise alignment" help="-2.00 default value" />
-            <param name="lep" type="float" value="0.1" label="Offset value at local pairwise alignment" help="0.1 default value" />
-            <param name="lexp" type="float" value="-0.1" label="Gap extension penalty at local pairwise alignment." help="-0.1 default value" />
-          </when>
-          <when value="--genafpair">
-            <param name="weighti" type="float" value="2.7" min="1" max="100" label="Weighting factor for the consistency term calculated from pairwise alignments." help="Valid when either of --globalpair, --localpair, --genafpair, --fastapair or --blastpair is selected." />
-            <param name="lop" type="float" value="-2.0" label="Gap opening penalty at local pairwise alignment" help="-2.00 default value" />
-            <param name="lep" type="float" value="0.1" label="Offset value at local pairwise alignment" help="0.1 default value" />
-            <param name="lexp" type="float" value="-0.1" label="Gap extension penalty at local pairwise alignment." help="-0.1 default value" />
-            <param name="skipLOP" type="float" value="-6.00" label="Gap opening penalty to skip the alignment" help="-6.00 default value" />
-            <param name="skipEXP" type="float" value="0.00" label="Gap extension penalty to skip the alignment" help="0 default value" />
-          </when>
-          <when value="--fastapair">
-            <param name="weighti" type="float" value="2.7" min="1" max="100" label="Weighting factor for the consistency term calculated from pairwise alignments." help="Valid when either of --globalpair, --localpair, --genafpair, --fastapair or --blastpair is selected." />
-          </when>
+
+  ## output options
+  $reorder
+  $outputFormat
+  $treeout
+
+  ## specify threads to use
+  ## disable multithreading during iterative refinement step for reproducibility
+  ## cmp. https://mafft.cbrc.jp/alignment/software/multithreading.html
+  --thread \${GALAXY_SLOTS:-1} --threadit 0
+
+  input.fa > '$outputAlignment'
+
+  ## Output alignment tree
+  #if $treeout
+    && mv input.fa.tree '$outputTree'
+  #end if
+    ]]></command>
+    <configfiles>
+        <configfile filename="inputs.sh"><![CDATA[
+  #if $input.mapping == "implicit"
+    #for $batch in $input.batches:
+cat $batch.inputs >> input.fa
+      #end for 
+  #elif $input.mapping == "merge"
+    #for $batch in $input.batches:
+      #for $dataset in $batch.inputs:
+cat $dataset >> input.fa
+      #end for
+    #end for
+  #end if
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="input">
+            <param name="mapping" type="select" label="For multiple inputs generate" help="All you have is a single dataset with the sequences to align? You can skip this help text and continue with the default setting. For multiple input datasets, the first mode will launch separate MAFFT jobs for all sequences from the first, second, ..., n-th dataset/element from each input batch, respectively, resulting in n separate MSAs. The second mode will concatenate all input sequences from all inputs for a single run of MAFFT and will generate a single MSA.">
+                <option value="implicit">one or several MSAs depending on input structure</option>
+                <option value="merge">a single MSA of all sequences from all inputs</option>
+            </param>
+            <when value="implicit">
+                <repeat name="batches" title="Input batch" default="1" min="1">
+                    <param name="inputs" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format. Add Dataset for concatenation of every additional dataset with each file of the first upload panel"/>
+                </repeat>
+            </when>
+            <when value="merge">
+                <repeat name="batches" title="Input batch" default="1" min="1">
+                    <param name="inputs" multiple="true" type="data" format="fasta" label="Sequences to align" help="Amino acid or nucleotide sequences in FASTA format."/>
+                </repeat>
+            </when>
         </conditional>
-        <param name="iterations" type="integer" value="0" min="0" max="1000" label="Maximum number of iterations" help="1000 for maximum quality" />
-        <param name="fft" type="boolean" truevalue="--fft" falsevalue="--nofft" checked="True" label="Use FFT approximation in group-to-group alignment?" />
-        <param name="score" type="boolean" truevalue="" falsevalue="--noscore" checked="True" label="Check alignment score in the iterative refinement stage?" />
-      </when>
-    </conditional>
-    <param name="ep" type="float" value="0.0" label="Gap extend penalty for group-to-group alignment" help="Offset value, which works like gap extension penalty, for group-to-group alignment. For E-INS-i, 0 is recommended to allow large gaps" />
-    <param name="op" type="float" value="1.53" label="Gap opening penalty at group-to-group alignment." help="1.53 default value" />
-    <conditional name="matrix_condition">
-      <param name="matrix" type="select" label="Matrix selection" display="radio" help="Usefull only for amino acids" >
-        <option value="">No matrix</option>
-        <option value="BLOSUM" selected="true">BLOSUM</option>
-        <option value="PAM">PAM</option>
-        <option value="custom">Custom</option>
-      </param>
-      <when value=""/>
-      <when value="BLOSUM">
-        <param name="BLOSUM" type="select" display="radio" label="Coefficient of the BLOSUM matrix">
-          <option value="30">30</option>
-          <option value="45">45</option>
-          <option value="62" selected="true">62</option>
-          <option value="80">80</option>
+        <conditional name="datatype_selection">
+            <param name="datatype" type="select" label="Type of sequences" help="The tool can try to detect the type of the input sequences, but you likely want to declare it explicitly. Doing so will also give you control over the scoring matrix used for the alignment, while autodetection will result in the Kimura PAM200 and the BLOSUM62 matrix being used for nucleic acids and protein alignments, respectively.">
+                <option value="">auto-detect</option>
+                <option value="--nuc">Nucleic acids</option>
+                <option value="--amino">Amino acids</option>
+            </param>
+            <when value="" />
+            <when value="--nuc">
+                <conditional name="scoring_matrix">
+                    <param name="type" type="select" label="Type of scoring matrix" help="See the tool help below for details about the available options.">
+                        <option value="--kimura">Kimura</option>
+                    </param>
+                    <when value="--kimura">
+                        <param argument="--kimura" name="coefficient" type="integer" value="200" min="1" label="PAM value of the matrix" />
+                    </when>
+                </conditional>
+                <expand macro="misc_scoring_scheme" />
+            </when>
+            <when value="--amino">
+                <conditional name="scoring_matrix">
+                    <param name="type" type="select" label="Type of scoring matrix" help="See the tool help below for details about the available options.">
+                        <option value="--bl" selected="true">BLOSUM</option>
+                        <option value="--jtt">JTT</option>
+                        <option value="--tm">transmembrane protein-optimized JTT</option>
+                        <option value="custom">custom matrix</option>
+                    </param>
+                    <when value="--bl">
+                        <param argument="--bl" name="coefficient" type="select" display="radio" label="Coefficient of the BLOSUM matrix">
+                            <option value="30">30</option>
+                            <option value="45">45</option>
+                            <option value="62" selected="true">62</option>
+                            <option value="80">80</option>
+                        </param>
+                    </when>
+                    <when value="--jtt">
+                        <param argument="--jtt" name="coefficient" type="integer" value="200" min="1" label="PAM value of the matrix" />
+                    </when>
+                    <when value="--tm">
+                        <param argument="--tm" name="coefficient" type="integer" value="200" min="1" label="PAM value of the matrix"/>
+                    </when>
+                    <when value="custom">
+                        <param argument="--aamatrix" type="data" format="txt" label="User-defined AA scoring matrix" help="The expected format of the matrix is the same as that used by BLAST."/>
+                    </when>
+                </conditional>
+                <expand macro="misc_scoring_scheme" />
+            </when>
+        </conditional>
+        <conditional name="flavour">
+            <param name="type" type="select" label="MAFFT flavour" help="Run mafft with pre-defined input parameters. Specification of these parameters can be found in the help section. With 'Auto', the tool automatically selects an appropriate strategy from L-INS-i, FFT-NS-i and FFT-NS-2, according to data size from few to many respectively. Default setting: FFT-NS-2.">
+                <option value="mafft --auto">Auto</option>
+                <option value="mafft-fftns --retree 1">FFT-NS-1 (very fast, progressive method; use for &gt;2,000 sequences)</option>
+                <option value="mafft-fftns" selected="true">FFT-NS-2 (fast, progressive method)</option>
+                <option value="mafft-nwns">NW-NS-2 (fast, progressive method without FFT approximation)</option>
+                <option value="mafft --retree 1 --maxiterate 0 --nofft --parttree">NW-NS-PartTree-1 (very fast, progressive method using the PartTree algorithm; for ~10,000 to ~50,000 sequences)</option>
+                <option value="mafft --maxiterate 0 --globalpair">G-INS-1 (slow, progressive method with an accurate guide tree)</option>
+                <option value="mafft-fftnsi">FFT-NS-i (slow, iterative refinement method)</option>
+                <option value="mafft-nwnsi">NW-NS-i (slow, iterative refinement method without FFT approximation)</option>
+                <option value="mafft-einsi">E-INS-i (very slow; use for &lt;200 sequences with multiple conserved domains and long gaps)</option>
+                <option value="mafft-linsi">L-INS-i (very slow; use for &lt;200 sequences with one conserved domain and long gaps)</option>
+                <option value="mafft-ginsi">G-INS-i (very slow; recommended for &lt;200 sequences with global homology)</option>
+                <option value="custom">Custom Parameters</option>
+            </param>
+            <when value="mafft --auto"/>
+            <when value="mafft-fftns --retree 1"/>
+            <when value="mafft-fftns"/>
+            <when value="mafft-nwns"/>
+            <when value="mafft --retree 1 --maxiterate 0 --nofft --parttree"/>
+            <when value="mafft --maxiterate 0 --globalpair">
+                <expand macro="global_align_options"/>
+            </when>
+            <when value="mafft-fftnsi"/>
+            <when value="mafft-nwnsi"/>
+            <when value="mafft-einsi"/>
+            <when value="mafft-linsi"/>
+            <when value="mafft-ginsi">
+                <expand macro="global_align_options"/>
+            </when>
+            <when value="custom">
+                <conditional name="guidetree">
+                    <param name="guidetree_generation" type="select" label="GuideTree-Generation" help="Parttree is recommended for a large number (> ~10,000) of sequences as input">
+                        <option value="original">Original guidetree building method of MAFFT</option>
+                        <option value="parttree">Fast guidetree building method with PartTree-algorithm</option>
+                    </param>
+                    <when value="original">
+                        <conditional name="dist_flavour">
+                            <param name="distance_method" type="select" label="Distance method" help="Distance method must be chosen regarding your data">
+                                <option value="--6merpair" selected="true">Shared 6mers distance (fastest) (--6merpair)</option>
+                                <option value="--globalpair">Global alignment (Needleman-Wunsch) (--globalpair)</option>
+                                <option value="--localpair">Local alignment (Smith-Waterman) (--localpair)</option>
+                                <option value="--genafpair">Local, affine gap cost (--genafpair)</option>
+                                <option value="--fastapair">All pairwise alignments are computed with FASTA (--fastapair)</option>
+                            </param>
+                            <when value="--6merpair">
+                                <param argument="--retree" type="integer" value="2" min="1" max="3" label="Guide tree is build this number of times in the progressive stage."/>
+                            </when>
+                            <when value="--globalpair">
+                                <expand macro="global_align_options"/>
+                                <expand macro="weighti_param" />
+                            </when>
+                            <when value="--localpair">
+                                <expand macro="weighti_param" />
+                                <param argument="--lop" type="float" value="-2.0" label="Gap opening penalty at local pairwise alignment" help="-2.00 default value"/>
+                                <param argument="--lep" type="float" value="0.1" label="Offset value at local pairwise alignment" help="0.1 default value"/>
+                                <param argument="--lexp" type="float" value="-0.1" label="Gap extension penalty at local pairwise alignment." help="-0.1 default value" />
+                            </when>
+                            <when value="--genafpair">
+                                <expand macro="weighti_param" />
+                                <param argument="--lop" type="float" value="-2.0" label="Gap opening penalty at local pairwise alignment" help="-2.00 default value" />
+                                <param argument="--lep" type="float" value="0.1" label="Offset value at local pairwise alignment" help="0.1 default value" />
+                                <param argument="--lexp" type="float" value="-0.1" label="Gap extension penalty at local pairwise alignment." help="-0.1 default value" />
+                                <param argument="--LOP" type="float" value="-6.00" label="Gap opening penalty to skip the alignment" help="-6.00 default value" />
+                                <param argument="--LEXP" type="float" value="0.00" label="Gap extension penalty to skip the alignment" help="0 default value" />
+                            </when>
+                            <when value="--fastapair">
+                                <expand macro="weighti_param" />
+                            </when>
+                        </conditional>
+                    </when>
+                    <when value="parttree">
+                        <conditional name="parttree_selection">
+                            <param name="parttree_option" type="select" label="Which distance for the fast tree-building method?">
+                                <option value="--parttree" selected="true">Fast tree-building method with the 6mer distance (--parttree)</option>
+                                <option value="--fastaparttree">Distances based on FASTA (--fastaparttree)</option>
+                                <option value="--dpparttree">Distances based on DP. (Needleman-Wunsch) (--dpparttree)</option>
+                            </param>
+                            <when value="--parttree">
+                                <expand macro="parttree_parameters" />
+                            </when>
+                            <when value="--fastaparttree">
+                                <expand macro="parttree_parameters" />
+                            </when>
+                            <when value="--dpparttree">
+                                <expand macro="parttree_parameters" />
+                            </when>
+                        </conditional>
+                    </when>
+                </conditional>
+                <section name="progressive_alignment_calculation" title="Progressive alignment calculation" expanded="true">
+                    <param argument="--maxiterate" type="integer" value="0" min="0" max="1000" label="Maximum number of iterations" help="1000 for maximum quality" />
+                    <param argument="--fft" type="boolean" truevalue="--fft" falsevalue="--nofft" checked="True" label="Use FFT approximation in group-to-group alignment?" />
+                    <param argument="--noscore" type="boolean" truevalue="" falsevalue="--noscore" checked="True" label="Check alignment score in the iterative refinement stage?" />
+                </section>
+            </when>
+        </conditional>
+        <param argument="--reorder" type="boolean" truevalue="--reorder" falsevalue="" checked="False" label="Reorder output?" help="Default order is input order." />
+        <param argument="--treeout" type="boolean" truevalue="--treeout" falsevalue="" checked="False" label="Keep alignment tree as output?" />
+        <param name="outputFormat" type="select" label="Output format">
+            <option value="" selected="true">FASTA</option>
+            <option value="--clustalout">ClustalW</option>
+            <option value="--phylipout">Phylip</option>
         </param>
-      </when>
-      <when value="PAM">
-        <param name="PAM" type="integer" value="80" min="1" max="350" label="Coefficient of the JTT PAM matrix" />
-        <param name="tm" type="integer" value="80" min="1" max="350" label="Coefficient of the  transmembrane PAM matrix" />
-      </when>
-      <when value="custom">
-        <param name="matrixfile" type="data" format="txt" label="User-defined AA scoring matrix" help="The format of matrixfile is the same to that of BLAST. Ignored when nucleotide sequences are input."/>
-        <param name="fmodel" type="boolean" truevalue="--fmodel" falsevalue="" checked="False" label="Incorporate the AA/nuc composition information into the scoring matrix?" />
-      </when>
-    </conditional>
-    <param name="reorder" type="boolean" truevalue="--reorder" falsevalue="" checked="False" label="Reorder output?" />
-    <param name="getTree" type="boolean" truevalue="--treeout" falsevalue="" checked="False" label="Display alignment tree ?" />
-    <param name="outputFormat" type="select" label="Output format" help="Either FASTA or ClustalW">
-      <option value="" selected="true">FASTA</option>
-      <option value="--clustalout">ClustalW</option>
-      <option value="--phylipout">Phylip</option>
-    </param>
-  </inputs>
-  <outputs>
-    <data format="fasta" name="outputAlignment" label="${tool.name} on ${on_string}">
-      <change_format>
-        <when input="outputFormat" value="--clustalout" format="clustal"/>
-        <when input="outputFormat" value="--phylipout" format="phylip"/>
-      </change_format>
-    </data>
-    <data name="outputTree" format="txt" label="${tool.name} Guide Tree">
-      <filter>getTree == True</filter>
-    </data>
-  </outputs>
-  <tests>
-    <test expect_num_outputs="1" >
-      <param name="inputSequences" value="sample.fa"/>
-      <param name="flavourType" value="mafft-fftns"/>
-      <param name="outputFormat" value=""/>
-      <output name="outputAlignment" ftype="fasta" file="mafft_fftns_result.aln"/>
-    </test>
-    <test expect_num_outputs="1" >
-      <param name="inputSequences" value="sample.fa"/>
-      <param name="flavourType" value="mafft-nwns"/>
-      <param name="outputFormat" value="--clustalout"/>
-      <output name="outputAlignment" ftype="clustal" file="mafft_nwns_result.aln" lines_diff="2" />
-    </test>
-    <!-- WARNING: the results of the following test depends on #threads.
-    The result seems deterministic for single threaded execution, i.e. GALAXY_SLOTS=1 planemo test
-    However, GH CI/CD uses 2 threads and results vary -->
-    <test expect_num_outputs="1" >
-      <param name="inputSequences" value="sample.fa"/>
-      <param name="flavourType" value="custom"/>
-      <conditional name="matrix_condition">
-        <param name="matrix" value="BLOSUM"/>
-      </conditional>
-      <param name="BLOSUM" value="62"/>
-      <param name="distance_method" value="--fastapair"/>
-      <param name="weighti" value="2.7"/>
-      <param name="iterations" value="1000"/>
-      <param name="outputFormat" value="--clustalout"/>
-      <output name="outputAlignment" ftype="clustal" file="mafft_custom_result.aln" compare="sim_size">
-        <assert_contents>
-          <has_n_lines n="458" delta="0"/>
-          <has_text text="CLUSTAL format alignment by MAFFT F-INS-i"/>
-          <has_text text="NPIVYGISHPKY"/>
-          <has_text text="1=="/>
-          <has_text text="36=="/>
-          <has_line line="8=opsin,        ------------------------------------------------------------"/>
-        </assert_contents>
-      </output>
-    </test>
-  </tests>
-  <help>    <![CDATA[
-      **What it does**
+    </inputs>
+    <outputs>
+        <data format="fasta" name="outputAlignment" label="${tool.name} on ${on_string}">
+            <change_format>
+                <when input="outputFormat" value="--clustalout" format="clustal"/>
+                <when input="outputFormat" value="--phylipout" format="phylip"/>
+            </change_format>
+        </data>
+        <data name="outputTree" format="txt" label="${tool.name} Guide Tree">
+            <filter>treeout</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_amino.fa"/>
+                </repeat>
+            </conditional>
+            <output name="outputAlignment" ftype="fasta" file="mafft_default.aln"/>
+        </test>
+        <!-- test autodetection of suitable algorithm from input; expected to choose L-INS-i -->
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_amino.fa"/>
+                </repeat>
+            </conditional>
+             <conditional name="flavour">
+                <param name="type" value="mafft --auto"/>
+            </conditional>
+            <output name="outputAlignment" ftype="fasta" file="mafft_auto_linsi.aln"/>
+        </test>
+        <!-- test explicit specification of L-INS-i mode -->
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_amino.fa"/>
+                </repeat>
+            </conditional>
+             <conditional name="flavour">
+                <param name="type" value="mafft-linsi"/>
+            </conditional>
+            <output name="outputAlignment" ftype="fasta" file="mafft_auto_linsi.aln"/>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_amino.fa"/>
+                </repeat>
+            </conditional>
+            <conditional name="datatype_selection">
+                <param name="datatype" value="--amino"/>
+                <conditional name="scoring_matrix">
+                    <param name="type" value="--bl"/>
+                    <param name="coefficient" value="80"/>
+                </conditional>
+            </conditional>
+            <conditional name="flavour">
+                <param name="type" value="mafft-fftns"/>
+            </conditional>
+            <param name="outputFormat" value="--clustalout"/>
+            <output name="outputAlignment" ftype="clustal" file="mafft_explicit_amino_blosum80.clustal.aln" />
+        </test>
+        <test expect_num_outputs="1" >
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_nuc.fa"/>
+                </repeat>
+            </conditional>
+            <conditional name="datatype_selection">
+                <param name="datatype" value="--nuc"/>
+                <conditional name="scoring_matrix">
+                    <param name="type" value="--kimura"/>
+                    <param name="coefficient" value="40"/>
+                </conditional>
+            </conditional>
+            <conditional name="flavour">
+                <param name="type" value="mafft-fftns"/>
+            </conditional>
+            <param name="outputFormat" value="--phylipout"/>
+            <output name="outputAlignment" ftype="phylip" file="mafft_kimura40.phylip.aln" />
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_amino.fa"/>
+                </repeat>
+            </conditional>
+            <conditional name="datatype_selection">
+                <param name="datatype" value="--amino"/>
+            </conditional>
+            <conditional name="flavour">
+                <param name="type" value="custom"/>
+                <conditional name="guidetree">
+                    <param name="guidetree_generation" value="original"/>
+                    <conditional name="dist_flavour">
+                        <param name="distance_method" value="--globalpair"/>
+                        <param name="weighti" value="3"/>
+                    </conditional>
+                </conditional>
+                <section name="progressive_alignment_calculation">
+                    <param name="maxiterate" value="1000"/>
+                </section>
+            </conditional>
+            <param name="outputFormat" value="--clustalout"/>
+            <output name="outputAlignment" ftype="clustal" file="mafft_custom_original.clustal.aln">
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="mapping" value="implicit"/>
+                    <repeat name="batches">
+                        <param name="inputs" value="sample_amino.fa"/>
+                    </repeat>
+            </conditional>
+            <conditional name="datatype_selection">
+                <param name="datatype" value="--amino"/>
+            </conditional>
+            <conditional name="flavour">
+                <param name="type" value="custom"/>
+                <conditional name="guidetree">
+                    <param name="guidetree_generation" value="parttree"/>
+                    <conditional name="parttree_selection">
+                        <param name="parttree_option" value="--parttree"/>
+                        <param name="retree" value="2"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="outputAlignment" ftype="fasta" file="mafft_custom_parttree.aln" />
+        </test>
+        <!-- test concatenation of multiple inputs -->
+        <test expect_num_outputs="2">
+            <conditional name="input">
+                <param name="mapping" value="merge"/>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_amino.fa"/>
+                </repeat>
+                <repeat name="batches">
+                    <param name="inputs" value="sample_nuc.fa"/>
+                </repeat>
+            </conditional>
+            <param name="treeout" value="true"/>
+            <output name="outputAlignment" ftype="fasta">
+                <metadata name="sequences" value="39"/>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
 
-      MAFFT is a multiple sequence alignment program for unix-like operating systems.
-      It offers a range of multiple alignment methods, L-INS-i (accurate; for alignment of <∼200 sequences),
-      FFT-NS-2 (fast; for alignment of <∼30,000 sequences), etc.
-      From the MAFFT man page, an overview of the different predefined flavours of the tool is as follows:
+MAFFT is a multiple sequence alignment (MSA) program, which offers a range of multiple alignment methods.
 
-      **Accuracy-oriented methods:**
+Input types and alignment scoring matrices
+------------------------------------------
 
-      - L-INS-i (probably most accurate; recommended for <200 sequences; iterative refinement method incorporating local pairwise alignment information):
+For the alignment of *protein* sequences, you can choose between:
+
+- different flavors of BLOSUM matrices (`Henikoff S and Henikoff JG, 1992 <https://www.ncbi.nlm.nih.gov/pmc/articles/PMC50453/>`__)
+- JTT matrices with any point accepted mutation (PAM) rate (`Jones, Taylor and Thornton, 1992 <https://pubmed.ncbi.nlm.nih.gov/1633570/>`__)
+- PAM-based matrices optimized for transmembrane proteins (`Jones, Taylor and Thornton, 1994 <https://pubmed.ncbi.nlm.nih.gov/8112466/>`__)
+
+For nucleic acid sequence alignment, MAFFT uses Kimura's two parameter model (`Kimura 1980 <https://pubmed.ncbi.nlm.nih.gov/7463489/>`__)
+with a transitions to transversions ratio of 2 (kappa 2), but lets you configure the PAM value.
+
+The tool can also try to autodetect the sequence type from the input(s).
+In this mode, it will use the BLOSUM 62 matrix if it detects amino acids input, and the Kimura kappa 2 PAM200 matrix for nucleic acids.
+
+
+Pre-configured MSA methods
+--------------------------
+
+From the `MAFFT man page <https://mafft.cbrc.jp/alignment/software/manual/manual.html>`__, an overview of the different predefined flavours of the tool.
+
+**Accuracy-oriented methods:**
+
+- *L-INS-i* (probably most accurate; recommended for <200 sequences; iterative refinement method incorporating local pairwise alignment information):
+
       - mafft --localpair --maxiterate 1000 input [> output]
-      - G-INS-i (suitable for sequences of similar lengths; recommended for <200 sequences; iterative refinement method incorporating global pairwise alignment information):
+- *G-INS-i* (suitable for sequences of similar lengths; recommended for <200 sequences; iterative refinement method incorporating global pairwise alignment information):
+
       - mafft --globalpair --maxiterate 1000 input [> output]
-      - E-INS-i (suitable for sequences containing large unalignable regions; recommended for <200 sequences):
+- *E-INS-i* (suitable for sequences containing large unalignable regions; recommended for <200 sequences):
+
       - mafft --ep 0 --genafpair --maxiterate 1000 input [> output]. For E-INS-i, the --ep 0 option is recommended to allow large gaps.
 
-      **Speed-oriented methods:**
+**Speed-oriented methods:**
 
-      - FFT-NS-i (iterative refinement method; two cycles only):
-      - mafft --retree 2 --maxiterate 2 input [> output]
-      - FFT-NS-i (iterative refinement method; max. 1000 iterations):
-      - mafft --retree 2 --maxiterate 1000 input [> output]
-      - FFT-NS-2 (fast; progressive method):
-      - mafft --retree 2 --maxiterate 0 input [> output]
-      - FFT-NS-1 (very fast; recommended for >2000 sequences; progressive method with a rough guide tree):
-      - mafft --retree 1 --maxiterate 0 input [> output]
-      - NW-NS-i (iterative refinement method without FFT approximation; two cycles only):
-      - mafft --retree 2 --maxiterate 2 --nofft input [> output]
-      - NW-NS-2 (fast; progressive method without the FFT approximation):
-      - mafft --retree 2 --maxiterate 0 --nofft input [> output]
-      - NW-NS-PartTree-1 (recommended for ~10,000 to ~50,000 sequences; progressive method with the PartTree algorithm):
-      - mafft --retree 1 --maxiterate 0 --nofft --parttree input [> output]
+- *FFT-NS-i* (iterative refinement method; two cycles only):
 
-      **Options:**
+    - mafft --retree 2 --maxiterate 2 input [> output]
+- *FFT-NS-2* (fast; progressive method):
 
-      - --auto Automatically selects an appropriate strategy from L-INS-i, FFT-NS-i and FFT-NS-2, according to data size. Default: off (always FFT-NS-2)
-      - --adjustdirection Generate reverse complement sequences, as necessary, and align them together with the remaining sequences. In the case of protein alignment, these options are just ignored.
-      - --op Gap opening penalty, default: 1.53
-      - --ep Offset (works like gap extension penalty), default: 0.0
-      - --maxiterate Maximum number of iterative refinement, default: 0
-      - --clustalout Output: clustal format, default: fasta
-      - --retree number Guide tree is built number times in the progressive stage. Valid with 6mer distance. Default: 2
-      ]]>
-    </help>
-  <expand macro="citations" />
+    - mafft --retree 2 --maxiterate 0 input [> output]
+- *NW-NS-i* (iterative refinement method without FFT approximation; two cycles only):
+
+    - mafft --retree 2 --maxiterate 2 --nofft input [> output]
+- *NW-NS-2* (fast; progressive method without the FFT approximation):
+
+    - mafft --retree 2 --maxiterate 0 --nofft input [> output]
+- *NW-NS-PartTree-1* (recommended for ~10,000 to ~50,000 sequences; progressive method with the PartTree algorithm):
+
+    - mafft --retree 1 --maxiterate 0 --nofft --parttree input [> output]
+- *FFT-NS-1* (very fast; recommended for >2000 sequences; progressive method with a rough guide tree):
+
+    - mafft --retree 1 --maxiterate 0 input [> output]
+    ]]></help>
+    <expand macro="citations" />
 </tool>
