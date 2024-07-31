@@ -51,12 +51,6 @@ if __name__ == "__main__":
     print("test data mat:", test_data_mat.shape)
     input_image_shape = args["image_size"]
     print(input_image_shape)
-
-    #target_shape = input_image_shape.split(",")
-    #target_shape = [i for i in target_shape]
-    #print(target_shape)
-    # find correct dimensions of input image to be 
-    # used by the model
     im_test_data, shape_vals = find_dim_order(input_image_shape, test_data)
 
     model = torch.load(model_path)
@@ -77,33 +71,6 @@ if __name__ == "__main__":
     for i in range(target_dimension - current_dimension):
         exp_test_data = torch.unsqueeze(exp_test_data, i)
     print(exp_test_data.shape)
-
-
-    #reshaped_input = re_test_data
-    #s_vals = target_shape
-
-    #slices = tuple(slice(0, s_val) for s_val in s_vals)
-    # Apply the slices to the reshaped_input
-    #reshaped_input = reshaped_input[slices]
-    #if len(reshaped_input.shape) == 3:
-    #    reshaped_input = reshaped_input[:s_vals[0], :s_vals[1], : s_vals[2]]
-    #if len(reshaped_input.shape) == 4:
-    #    reshaped_input = reshaped_input[:s_vals[0], :s_vals[1], : s_vals[2], : s_vals[3]]
-    #if len(reshaped_input.shape) == 5:
-    #    reshaped_input = reshaped_input[:s_vals[0], :s_vals[1], : s_vals[2], :s_vals[3], : s_vals[4]]
-    #print(reshaped_input.shape)
-    #test_data = Image.open(input_image_path)
-    #test_data = np.array(test_data)
-    #test_data = torch.Tensor(test_data)
-    
-    #test_data = np.array(test_data)
-    #test_data = load_tensor(input_image_path)
-    #test_data = torch.Tensor(reshaped_input)
-    #test_data = torch.reshape(test_data, input_param.shape)
-    #print("Tiff input:", reshaped_input.shape)
-    #reshaped_input = torch.Tensor(reshaped_input.astype(np.float32))
-    #model = torch.load(model_path)
-    #model.eval()
     pred_data = model(exp_test_data)
     pred_data_output = pred_data.detach().numpy()
     # save original image matrix
