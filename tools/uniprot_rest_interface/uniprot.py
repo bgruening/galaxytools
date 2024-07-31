@@ -4,6 +4,7 @@ import re
 import sys
 import time
 import zlib
+from time import sleep
 from urllib.parse import (
     parse_qs,
     urlencode,
@@ -18,7 +19,8 @@ from requests.adapters import (
 )
 
 
-POLLING_INTERVAL = 3
+BATCH_SIZE = 50000  ## Limit at UniProt is 100k
+POLLING_INTERVAL = 5
 API_URL = "https://rest.uniprot.org"
 
 
@@ -31,7 +33,6 @@ def check_response(response):
     try:
         response.raise_for_status()
     except requests.HTTPError:
-        print(response.json())
         raise
 
 
@@ -59,7 +60,7 @@ def check_id_mapping_results_ready(job_id):
         check_response(request)
         j = request.json()
         if "jobStatus" in j:
-            if j["jobStatus"] == "RUNNING":
+            if j["jobStatus"] in["NEW", "RUNNING"]:
                 print(f"Retrying in {POLLING_INTERVAL}s")
                 time.sleep(POLLING_INTERVAL)
             else:
@@ -141,7 +142,7 @@ def print_progress_batches(batch_index, size, total):
     print(f"Fetched: {n_fetched} / {total}")
 
 
-def get_id_mapping_results_search(url):
+def get_id_mapping_results_search(url, first):
     parsed = urlparse(url)
     query = parse_qs(parsed.query)
     file_format = query["format"][0] if "format" in query else "json"
@@ -163,6 +164,8 @@ def get_id_mapping_results_search(url):
     for i, batch in enumerate(get_batch(request, file_format, compressed), 1):
         results = combine_batches(results, batch, file_format)
         print_progress_batches(i, size, total)
+    if len(results) > 1 and file_format == "tsv" and first:
+        results = results[1:]
     if file_format == "xml":
         return merge_xml_results(results)
     return results
@@ -266,20 +269,27 @@ if __name__ == "__main__":
     query = set()
     for line in args.inp:
         query.add(line.strip())
-    query = sorted(query)
+    query = list(query)
+    results = []
+    first = True
+    while len(query) > 0:
+        batch = query[:BATCH_SIZE]
+        query = query[BATCH_SIZE:]
+        print(f"processing {len(batch)} left {len(query)}")
+        if args.tool == "map":
+            job_id = submit_id_mapping(from_db=args.f, to_db=args.t, ids=batch)
+        elif args.tool == "retrieve":
+            job_id = submit_id_mapping(from_db="UniProtKB_AC-ID", to_db="UniProtKB", ids=batch)
 
-    if args.tool == "map":
-        job_id = submit_id_mapping(from_db=args.f, to_db=args.t, ids=query)
-    elif args.tool == "retrieve":
-        job_id = submit_id_mapping(
-            from_db="UniProtKB_AC-ID", to_db="UniProtKB", ids=query
-        )
-
-    if check_id_mapping_results_ready(job_id):
-        link = get_id_mapping_results_link(job_id)
-        link = f"{link}?format={args.format}"
-        print(link)
-        results = get_id_mapping_results_search(link)
+        if check_id_mapping_results_ready(job_id):
+            link = get_id_mapping_results_link(job_id)
+            link = f"{link}?format={args.format}"
+            print(link)
+            results.extend(get_id_mapping_results_search(link, first))
+            first = False
+        print(f"got {len(results)} results so far")
+        if len(query):
+            sleep(5)
 
     if not isinstance(results, str):
         results = "\n".join(results)
