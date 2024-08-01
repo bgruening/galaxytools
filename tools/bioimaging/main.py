@@ -81,8 +81,6 @@ if __name__ == "__main__":
     # post process predicted file to correctly save as TIF file
     pred_data = torch.squeeze(pred_data)
     pred_numpy = pred_data.detach().numpy()
-    pred_numpy = pred_numpy * 255
-    pred_numpy = pred_numpy.astype(np.uint8)
 
     # write predicted TIF image to file
     imageio.v3.imwrite("output_predicted_image.tif", pred_numpy, extension=".tif")
