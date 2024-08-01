@@ -10,8 +10,18 @@ import torch
 
 
 def find_dim_order(user_in_shape, input_image):
+    """
+    Find the correct order of input image's
+    shape. For a few models, the order of input size
+    mentioned in the RDF.yaml file is reversed compared
+    to the input image's original size. If it is reversed,
+    transpose the image to find correct order of image's
+    dimensions.
+    """
     image_shape = list(input_image.shape)
+    # reverse the input shape provided from RDF.yaml file
     correct_order = user_in_shape.split(",")[::-1]
+    # remove 1s from the original dimensions
     correct_order = [int(i) for i in correct_order if i != "1"]
     if (correct_order[0] == image_shape[-1]) and (correct_order != image_shape):
         input_image = torch.tensor(input_image.transpose())
