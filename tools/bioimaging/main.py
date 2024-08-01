@@ -5,18 +5,8 @@ Predict images using AI models from BioImage
 import argparse
 
 import numpy as np
-import PIL
-from PIL import Image
-import torch
-import torchvision.transforms as T
-
-import warnings
-from pathlib import Path
-from typing import Any, Dict, Literal, Mapping, Optional, Sequence, Tuple, Union
-
 import imageio
-from numpy.typing import NDArray
-from typing_extensions import assert_never
+import torch
 
 
 def find_dim_order(user_in_shape, input_image):    
@@ -31,53 +21,64 @@ def find_dim_order(user_in_shape, input_image):
     return input_image, correct_order
 
 
-
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-im", "--imaging_model", required=True, help="Input BioImage model")
     arg_parser.add_argument("-ii", "--image_file", required=True, help="Input image file")
-    arg_parser.add_argument("-inp", "--image_file_npy", required=True, help="Input image file as matrix")
     arg_parser.add_argument("-is", "--image_size", required=True, help="Input image file's size")
+
     # get argument values
     args = vars(arg_parser.parse_args())
     model_path = args["imaging_model"]
     input_image_path = args["image_file"]
+
+    # load all embedded images in TIF file
     test_data = imageio.v3.imread(input_image_path, index="...")
     test_data = np.squeeze(test_data)
     test_data = test_data.astype(np.float32)
 
-    test_data_mat = np.load(args["image_file_npy"])
-    test_data_mat = torch.Tensor(test_data_mat)
-    print("test data mat:", test_data_mat.shape)
+    # assess the correct dimensions of TIF input image
     input_image_shape = args["image_size"]
     print(input_image_shape)
     im_test_data, shape_vals = find_dim_order(input_image_shape, test_data)
 
+    # load model
     model = torch.load(model_path)
     model.eval()
-
+    
+    # find the number of dimensions required by the model
     target_dimension = 0
     for param in model.named_parameters():
         print(param[1].shape)
         target_dimension = len(param[1].shape)
         break
     current_dimension = len(list(im_test_data.shape))
-
+    
+    # update the dimensions of input image if the required image by
+    # the model is smaller
     slices = tuple(slice(0, s_val) for s_val in shape_vals)
-    # Apply the slices to the reshaped_input
+    
+    # apply the slices to the reshaped_input
     im_test_data = im_test_data[slices]
     exp_test_data = torch.tensor(im_test_data) 
-
+    
+    # expand input image's dimensions
     for i in range(target_dimension - current_dimension):
         exp_test_data = torch.unsqueeze(exp_test_data, i)
     print(exp_test_data.shape)
+
+    # make prediction
     pred_data = model(exp_test_data)
     pred_data_output = pred_data.detach().numpy()
+    
     # save original image matrix
     np.save("output_predicted_image_matrix.npy", pred_data_output)
-    # reshape predicted image matrix to display
+
+    # post process predicted file to correctly save as TIF file
     pred_data = torch.squeeze(pred_data)
     pred_numpy = pred_data.detach().numpy()
     pred_numpy = pred_numpy * 255
     pred_numpy = pred_numpy.astype(np.uint8)
+
+    # write predicted TIF image to file
     imageio.v3.imwrite("output_predicted_image.tif", pred_numpy, extension=".tif")
