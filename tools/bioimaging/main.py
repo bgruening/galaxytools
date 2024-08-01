@@ -11,11 +11,8 @@ import torch
 
 def find_dim_order(user_in_shape, input_image):
     image_shape = list(input_image.shape)
-    print(user_in_shape, image_shape)
     correct_order = user_in_shape.split(",")[::-1]
-    print("correct_order", correct_order)
     correct_order = [int(i) for i in correct_order if i != "1"]
-    print("correct order:", correct_order)
     if (correct_order[0] == image_shape[-1]) and (correct_order != image_shape):
         input_image = torch.tensor(input_image.transpose())
     return input_image, correct_order
@@ -39,7 +36,6 @@ if __name__ == "__main__":
 
     # assess the correct dimensions of TIF input image
     input_image_shape = args["image_size"]
-    print(input_image_shape)
     im_test_data, shape_vals = find_dim_order(input_image_shape, test_data)
 
     # load model
@@ -49,7 +45,6 @@ if __name__ == "__main__":
     # find the number of dimensions required by the model
     target_dimension = 0
     for param in model.named_parameters():
-        print(param[1].shape)
         target_dimension = len(param[1].shape)
         break
     current_dimension = len(list(im_test_data.shape))
@@ -65,7 +60,6 @@ if __name__ == "__main__":
     # expand input image's dimensions
     for i in range(target_dimension - current_dimension):
         exp_test_data = torch.unsqueeze(exp_test_data, i)
-    print(exp_test_data.shape)
 
     # make prediction
     pred_data = model(exp_test_data)
