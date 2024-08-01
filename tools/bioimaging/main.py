@@ -4,12 +4,12 @@ Predict images using AI models from BioImage
 
 import argparse
 
-import numpy as np
 import imageio
+import numpy as np
 import torch
 
 
-def find_dim_order(user_in_shape, input_image):    
+def find_dim_order(user_in_shape, input_image):
     image_shape = list(input_image.shape)
     print(user_in_shape, image_shape)
     correct_order = user_in_shape.split(",")[::-1]
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     # load model
     model = torch.load(model_path)
     model.eval()
-    
+
     # find the number of dimensions required by the model
     target_dimension = 0
     for param in model.named_parameters():
@@ -53,15 +53,15 @@ if __name__ == "__main__":
         target_dimension = len(param[1].shape)
         break
     current_dimension = len(list(im_test_data.shape))
-    
+
     # update the dimensions of input image if the required image by
     # the model is smaller
     slices = tuple(slice(0, s_val) for s_val in shape_vals)
-    
+
     # apply the slices to the reshaped_input
     im_test_data = im_test_data[slices]
-    exp_test_data = torch.tensor(im_test_data) 
-    
+    exp_test_data = torch.tensor(im_test_data)
+
     # expand input image's dimensions
     for i in range(target_dimension - current_dimension):
         exp_test_data = torch.unsqueeze(exp_test_data, i)
@@ -70,7 +70,7 @@ if __name__ == "__main__":
     # make prediction
     pred_data = model(exp_test_data)
     pred_data_output = pred_data.detach().numpy()
-    
+
     # save original image matrix
     np.save("output_predicted_image_matrix.npy", pred_data_output)
 
