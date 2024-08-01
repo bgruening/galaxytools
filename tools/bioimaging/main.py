@@ -1,5 +1,5 @@
 """
-Predict images using AI models from BioImage
+Predict images using AI models from BioImage.IO
 """
 
 import argparse
