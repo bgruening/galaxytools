@@ -1,5 +1,5 @@
 <tool id="blobtoolkit" name="BlobToolKit" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
-    <description>genome assembly QC</description>
+    <description>Genome Assembly QC</description>
     <macros>
         <import>macros.xml</import>
     </macros>
@@ -22,7 +22,14 @@
             --taxid $mode_conditional.taxid
             --taxdump './taxdump'
             './Blobdir'
+            
             && tar -C ./Blobdir -zcvf Blobdir.tgz .
+
+        #else if $mode_conditional.selector == 'plot'
+            mkdir -p blobtk_files && 
+            tar -xvf '$blobdir_input' -C blobtk_files &&
+            blobtk plot --blobdir blobtk_files  --view '$plot_view'
+            
         #else if $mode_conditional.selector == 'add'
             mkdir -p './Blobdir' &&
             mkdir -p './taxdump' &&
@@ -97,6 +104,11 @@
                 #end if
                 $mode_conditional.advanced_options.replace
                 './Blobdir'
+
+            #if $mode_conditional.blobtk_plot_options.blobtk_plot == 'yes'
+                && blobtk plot --blobdir './Blobdir' --view $blobtk_plot_options.plot_view
+            #end if
+            
             && tar -C ./Blobdir -zcvf Blobdir.tgz .
 
         #else if $mode_conditional.selector == 'filter'
@@ -156,8 +168,14 @@
                 #end if
                 ./Blobdir
             #end if
+
+            #if $mode_conditional.blobtk_plot_options.blobtk_plot == 'yes'
+                && blobtk plot --blobdir ./Blobdir --view $blobtk_plot_options.plot_view
+            #end if
+
             && tar -C ./Blobdir -zcvf Blobdir.tgz .
         #end if
+
     ]]></command>
     <inputs>
         <conditional name="mode_conditional">
@@ -165,6 +183,7 @@
                 <option value="create">Create a BlobToolKit dataset</option>
                 <option value="add">Add data to a BlobToolKit dataset</option>
                 <option value="filter">Edit a BlobToolKit dataset</option>
+                <option value="plot">Plot a BlobToolKit dataset</option>
             </param>
             <when value="create">
                 <param argument="--fasta" type="data" format="fasta" label="Genome assembly file" help="FASTA sequence file" />
@@ -217,6 +236,7 @@
                     <param argument="--text-no-array" type="boolean" truevalue="--text-no-array" falsevalue="" checked="false" label="Prevent duplicated identifiers" 
                         help="Prevent fields in files with duplicate identifiers being loaded as array fields" />
                 </expand>
+                <expand macro="blobtk_plotting"></expand>
                 <section name="advanced_options" title="Advanced options">
                     <param argument="--blobdb" type="data" format="json" optional="true" label="Blobtools v1 database" help="This file should have been generated with the previous Blobtools tool version"/>
                     <param argument="--synonyms" type="data" format="tsv" optional="true" label="Identifier and sinonyms" help="TSV file containing current identifiers and synonyms"/>
@@ -295,6 +315,16 @@
                         <validator type="regex">[0-9a-zA-Z]+</validator>
                     </param>
                 </section>
+                <expand macro="blobtk_plotting"></expand>
+            </when>
+            <when value="plot">
+                <param name="blobdir_input" type="data" format="tgz" label="Select the blobdir tar.gz file generated from blobtools"/>
+                <param name="plot_view" type="select" label="Select the view type for the plot">
+                    <option value="blob" selected="true">Blob view</option>
+                    <option value="cumulative">Cumulative view</option>
+                    <option value="legend">Legend view</option>
+                    <option value="snail">Snail view</option>
+                </param>
             </when>
         </conditional>
     </inputs>
@@ -302,8 +332,18 @@
         <data name="blobdir" format="tgz" from_work_dir="./Blobdir.tgz" label="${tool.name} on ${on_string}: Blobdir.tgz">
             <filter>mode_conditional['selector'] == 'create' or mode_conditional['selector'] == 'add' or mode_conditional['selector'] == 'filter'</filter>
         </data>
+        <data name="output_svg" format="svg" from_work_dir="output.svg" label="${tool.name} on ${on_string}: Output Plot">
+            <filter>
+                ((
+                (mode_conditional['selector'] == 'add' and mode_conditional['blobtk_plot_options']['blobtk_plot'] == 'yes') or 
+                (mode_conditional['selector'] == 'filter' and mode_conditional['blobtk_plot_options']['blobtk_plot'] == 'yes') or
+                (mode_conditional['selector'] == 'plot')
+                ))
+            </filter>
+        </data>
     </outputs>
     <tests>
+        <!-- Test 01: Testing blobtoolkit with create with no plotting enabled -->
         <test expect_num_outputs="1">
             <conditional name="mode_conditional">
                 <param name="selector" value="create"/>
@@ -314,7 +354,8 @@
             </conditional>
             <output name="blobdir" file="test01_blobdir.tar.gz" compare="sim_size" delta="100"/>
         </test>
-        <test expect_num_outputs="1">
+        <!-- Test 02: Testing blobtoolkit with add with plotting enabled -->
+        <test expect_num_outputs="2">
             <conditional name="mode_conditional">
                 <param name="selector" value="add"/>
                 <param name="blobdir" value="test01_blobdir.tar.gz"/>
@@ -334,9 +375,15 @@
                     <param name="hit_count" value="10"/>
                     <param name="hits_cols" value="1=qseqid,2=staxids,3=bitscore,5=sseqid,10=qstart,11=qend,14=evalue"/>
                 </conditional>
+                <conditional name="blobtk_plot_options">
+                    <param name="blobtk_plot" value="yes"/>
+                    <param name="plot_view" value="blob"/>
+                </conditional>
             </conditional>
             <output name="blobdir" file="test02_blobdir.tar.gz"  compare="sim_size" delta="100"/>
+            <output name="output_svg" file="test02_blob.svg"  compare="sim_size" delta="100"/>
         </test>
+        <!-- Test 03: Testing blobtoolkit with filtering and plotting disabled -->
         <test expect_num_outputs="1">
             <conditional name="mode_conditional">
                 <param name="selector" value="filter"/>
@@ -350,12 +397,16 @@
                     <param name="remove_selector" value="--all"/>
                 </section>
             </conditional>
+            <conditional name="blobtk_plot_options">
+                <param name="blobtk_plot" value="no"/>
+            </conditional>
             <output name="blobdir">
                 <assert_contents>
                     <has_size value="620" delta="50"/>
                 </assert_contents>
             </output>
         </test>
+        <!-- Test 04: Testing blobtoolkit with filter with list and fasta filtering -->
         <test expect_num_outputs="1">
             <conditional name="mode_conditional">
                 <param name="selector" value="filter"/>
@@ -368,11 +419,54 @@
                     <param name="remove_selector" value="--all"/>
                 </section>
             </conditional>
+            <conditional name="blobtk_plot_options">
+                <param name="blobtk_plot" value="no"/>
+            </conditional>
             <output name="blobdir">
                 <assert_contents>
                     <has_size value="620" delta="50"/>
                 </assert_contents>
             </output>
+        </test>
+        <!-- Test 05: Testing blobtoolkit blob plot -->
+        <test expect_num_outputs="1">
+            <conditional name="mode_conditional">
+                <param name="selector" value="plot"/>
+                <param name="blobdir_input" value="blobdir.tgz"/>
+                <param name="plot_view" value="blob"/>
+            </conditional>
+            <output name="output_svg" ftype="svg" file="output.svg" compare="sim_size"/>
+        </test>
+        <!-- Test 06 :Testing blobtoolkit Snail plot -->
+        <test expect_num_outputs="1">
+            <conditional name="mode_conditional">
+                <param name="selector" value="plot"/>
+                <param name="blobdir_input" value="blobdir.tgz"/>
+                <param name="plot_view" value="snail"/>
+            </conditional>
+                <output name="output_svg" ftype="svg">
+                 <assert_contents>
+                    <has_text text="Log10 scaffold count (total 242)"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 07: Testing blobtoolkit legend plot -->
+        <test expect_num_outputs="1">
+            <conditional name="mode_conditional">
+                <param name="selector" value="plot"/>
+                <param name="blobdir_input" value="blobdir.tgz"/>
+                <param name="plot_view" value="legend"/>
+            </conditional>
+            <output name="output_svg" ftype="svg" file="output_legend.svg" compare="sim_size"/>
+        </test>
+        <!-- Test 08: Testing blobtoolkit Cumulative plot -->
+        <test expect_num_outputs="1">
+            <conditional name="mode_conditional">
+                <param name="selector" value="plot"/>
+                <param name="blobdir_input" value="blobdir.tgz"/>
+                <param name="plot_view" value="cumulative"/>
+            </conditional>
+            <output name="output_svg" ftype="svg" file="output_cumulative.svg" compare="sim_size"/>
         </test>
     </tests>
     <help><![CDATA[
