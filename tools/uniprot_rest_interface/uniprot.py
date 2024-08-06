@@ -103,7 +103,7 @@ def decode_results(response, file_format, compressed):
         if file_format == "json":
             j = json.loads(decompressed.decode("utf-8"))
             return j
-        elif file_format == "tsv":
+        elif file_format in ["tsv", "gff"]:
             return [line for line in decompressed.decode("utf-8").split("\n") if line]
         elif file_format == "xlsx":
             return [decompressed]
@@ -113,7 +113,7 @@ def decode_results(response, file_format, compressed):
             return decompressed.decode("utf-8")
     elif file_format == "json":
         return response.json()
-    elif file_format == "tsv":
+    elif file_format in ["tsv", "gff"]:
         return [line for line in response.text.split("\n") if line]
     elif file_format == "xlsx":
         return [response.content]
@@ -164,7 +164,7 @@ def get_id_mapping_results_search(url, first):
     for i, batch in enumerate(get_batch(request, file_format, compressed), 1):
         results = combine_batches(results, batch, file_format)
         print_progress_batches(i, size, total)
-    if len(results) > 1 and file_format == "tsv" and first:
+    if len(results) > 1 and file_format == "tsv" and not first:
         results = results[1:]
     if file_format == "xml":
         return merge_xml_results(results)
@@ -271,7 +271,7 @@ if __name__ == "__main__":
         query.add(line.strip())
     query = list(query)
     results = []
-    first = True
+    first = True  # if False the header is removed
     while len(query) > 0:
         batch = query[:BATCH_SIZE]
         query = query[BATCH_SIZE:]
