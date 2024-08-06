@@ -19,7 +19,7 @@ from requests.adapters import (
 )
 
 
-BATCH_SIZE = 50000  ## Limit at UniProt is 100k
+BATCH_SIZE = 50000  # Limit at UniProt is 100k
 POLLING_INTERVAL = 5
 API_URL = "https://rest.uniprot.org"
 
@@ -60,7 +60,7 @@ def check_id_mapping_results_ready(job_id):
         check_response(request)
         j = request.json()
         if "jobStatus" in j:
-            if j["jobStatus"] in["NEW", "RUNNING"]:
+            if j["jobStatus"] in ["NEW", "RUNNING"]:
                 print(f"Retrying in {POLLING_INTERVAL}s")
                 time.sleep(POLLING_INTERVAL)
             else:
