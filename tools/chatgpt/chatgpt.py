@@ -6,8 +6,12 @@ from openai import OpenAI
 context_files = sys.argv[1].split(",")
 question = sys.argv[2]
 model = sys.argv[3]
+with open(sys.argv[4], "r") as f:
+    openai_api_key = f.read().strip()
+if not openai_api_key:
+    raise Exception("OpenAI API key is not provided in user preferences!")
 
-client = OpenAI()
+client = OpenAI(api_key=openai_api_key)
 
 file_search_sup_ext = [
     "c",
@@ -41,7 +45,7 @@ for path in context_files:
     ext = path.split(".")[-1].lower()
     if ext in vision_sup_ext and model in ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]:
         if os.path.getsize(path) > 20 * 1024 * 1024:
-            raise (f"File {path} exceeds the 20MB limit and will not be processed.")
+            raise Exception(f"File {path} exceeds the 20MB limit and will not be processed.")
         file = client.files.create(file=open(path, "rb"), purpose="vision")
         promt = {"type": "image_file", "image_file": {"file_id": file.id}}
         image_urls.append(promt)
@@ -49,10 +53,9 @@ for path in context_files:
     elif ext in file_search_sup_ext:
         file_search_file_streams.append(open(path, "rb"))
     else:
-        raise ("Not supported file!")
+        raise Exception("Not supported file!")
 
 assistant = client.beta.assistants.create(
-    name="Galaxy Project ChatGPT Tool",
     instructions="You are going to get question about the file(s).",
     model=model,
     tools=[{"type": "file_search"}] if file_search_file_streams else None,
@@ -86,3 +89,10 @@ message_content = messages[0].content[0].text.value
 print("Output has been saved!")
 with open("output.txt", "w") as f:
     f.write(message_content)
+
+for image in image_urls:
+    client.files.delete(image["image_file"]["file_id"])
+if file_search_file_streams:
+    client.beta.vector_stores.delete(vector_store.id)
+client.beta.threads.delete(thread.id)
+client.beta.assistants.delete(assistant.id)
