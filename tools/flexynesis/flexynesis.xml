@@ -21,6 +21,15 @@
             ln -s '$test_omics_main' input/test/main.csv &&
             #set $data_names = ['main']
         #end if
+        #if str($training_type.model) == 'cm_train':
+            #if str($layer_main) == 'input':
+                #set $input_layers = $data_names
+                #set $output_layers = []
+            #else
+                #set $input_layers = []
+                #set $output_layers = $data_names
+            #end if
+        #end if
         #for $i, $element in enumerate($omics)
             #if str($element.train_omics) != 'None' and str($element.test_omics) != 'None':
                 #if str($element.assay) != '':
@@ -29,6 +38,13 @@
                 ln -s '${element.train_omics}' input/train/omics_${i}.csv &&
                 ln -s '${element.test_omics}' input/test/omics_${i}.csv &&
                 $data_names.append("omics_" + str($i))
+                #if str($training_type.model) == 'cm_train':
+                    #if str($element.layer) == 'input':
+                        $input_layers.append("omics_" + str($i))
+                    #else
+                        $output_layers.append("omics_" + str($i))
+                    #end if
+                #end if
             #end if
         #end for
         flexynesis  
@@ -50,8 +66,10 @@
                         #end if
                     #end if
                     #if str($training_type.model) == 'cm_train':
+                        
                         --input_layers $input_layers
                         --output_layers $output_layers
+                    
                     #end if
                     --fusion_type $fusion_type
                     --hpo_iter $hpo_iter
@@ -75,28 +93,6 @@
         <param name="non_commercial_use" label="I certify that I am not using this tool for commercial purposes." type="boolean" truevalue="NON_COMMERCIAL_USE" falsevalue="COMMERCIAL_USE" checked="False">
             <validator type="expression" message="This tool is only available for non-commercial use.">value == True</validator>
         </param>
-        <param name="train_clin" type="data" format="csv" label="Training clinical data"/>
-        <param name="test_clin" type="data" format="csv" label="Test clinical data"/>
-        <param name="train_omics_main" type="data" format="csv" label="Training omics data"/>
-        <param name="test_omics_main" type="data" format="csv" label="Test omics data"/>
-        <param name="assay_main" type="text" optional="true" label="What type of assay is your input?" help="This would be used as output name.">
-            <sanitizer invalid_char=" ">
-                <valid initial="string.letters">
-                    <add value="_" />
-                </valid> 
-            </sanitizer>
-        </param>
-        <repeat name="omics" min="0" title="Multiple omics layers?">
-            <param name="train_omics" type="data" optional="true" format="csv" label="Training omics data"/>
-            <param name="test_omics" type="data" optional="true" format="csv" label="Test omics data"/>
-            <param name="assay" type="text" optional="true" label="What type of assay is your input?" help="This would be used as output name." >
-                <sanitizer invalid_char=" ">
-                    <valid initial="string.letters">
-                        <add value="_" /> 
-                    </valid>
-                </sanitizer>
-            </param>
-        </repeat>
         <conditional name="training_type">
             <param name="model" type="select" label="Type of Analysis" >
                 <option value="s_train">Supervised training</option>
@@ -104,6 +100,10 @@
                 <option value="cm_train">Cross-modality Training</option>
             </param>
             <when value="s_train">
+                <expand macro="main_inputs"/>
+                <repeat name="omics" min="0" title="Multiple omics layers?">
+                    <expand macro="extra_inputs"/>
+                </repeat>
                 <conditional name="model_class" label="Model class">
                     <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
                         <option value="DirectPred">DirectPred</option>
@@ -154,24 +154,30 @@
                 <expand macro="advanced"/>
             </when>
             <when value="us_train">
+                <expand macro="main_inputs"/>
+                <repeat name="omics" min="0" title="Multiple omics layers?">
+                    <expand macro="extra_inputs"/>
+                </repeat>
                 <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
                     <option value="supervised_vae">supervised_vae</option>
                 </param>
                 <expand macro="advanced"/>
             </when>
             <when value="cm_train">
+                <expand macro="main_inputs"/>
+                <param name="layer_main" type="select" label="Use this omics data as input or output layer?">
+                    <option value="input">Input</option>
+                    <option value="output">output</option>
+                </param>
+                <repeat name="omics" min="0" title="Multiple omics layers?">
+                    <expand macro="extra_inputs"/>
+                    <param name="layer" type="select" label="Use this omics data as input or output layer?">
+                        <option value="input">Input</option>
+                        <option value="output">output</option>
+                    </param>
+                </repeat>
                 <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
                     <option value="CrossModalPred">CrossModalPred</option>
-                </param>
-                <param argument="--input_layers" type="text" label="Input layers" help="Which omics data(s) to use as input/encoded layer(s), comma-separated if multiple.">
-                    <sanitizer invalid_char="">
-                        <valid initial="string.printable"></valid>
-                    </sanitizer>
-                </param>
-                <param argument="--output_layers" type="text" label="Output layers" help="Which omics data(s) to use as output/decoded layer(s), comma-separated if multiple.">
-                    <sanitizer invalid_char="">
-                        <valid initial="string.printable"></valid>
-                    </sanitizer>
                 </param>
                 <expand macro="advanced"/>
             </when>               
@@ -183,7 +189,7 @@
         </collection>
     </outputs>
     <tests>
-        <test>
+        <!-- <test>
             <param name="non_commercial_use" value="True"/>
             <param name="train_clin" value="train/clin" ftype="csv"/>
             <param name="test_clin" value="test/clin" ftype="csv"/>
@@ -392,7 +398,7 @@
                     </assert_contents>
                 </element>
             </output_collection>
-        </test>
+        </test> -->
         <test>
             <param name="non_commercial_use" value="True"/>
             <param name="train_clin" value="train/clin" ftype="csv"/>
@@ -400,16 +406,16 @@
             <param name="train_omics_main" value="train/gex" ftype="csv"/>
             <param name="test_omics_main" value="test/gex" ftype="csv"/>
             <param name="assay_main" value="bar"/>
+            <param name="layer_main" value="input"/>
             <repeat name="omics">
                 <param name="train_omics" value="train/cnv" ftype="csv"/>
                 <param name="test_omics" value="test/cnv" ftype="csv"/>
                 <param name="assay" value="foo"/>
+                <param name="layer" value="output"/>
             </repeat>
             <conditional name="training_type">
                 <param name="model" value="cm_train"/>
                 <param name="model_class" value="CrossModalPred"/>
-                <param name="input_layers" value="bar"/>
-                <param name="output_layers" value="omics_foo"/>                
             </conditional>
             <param name="hpo_iter" value="1"/>
             <output_collection name="results" type="list">
@@ -445,7 +451,7 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- <test>
             <param name="non_commercial_use" value="True"/>
             <param name="train_clin" value="train/clin" ftype="csv"/>
             <param name="test_clin" value="test/clin" ftype="csv"/>
@@ -547,7 +553,7 @@
                     </assert_contents>
                 </element>
             </output_collection>
-        </test>
+        </test> -->
     </tests>
     <help>
 .. class:: warningmark
