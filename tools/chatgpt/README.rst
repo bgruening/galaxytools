@@ -1,5 +1,5 @@
 ChatGPT
-======
+=======
 
 Set up user credentials on Galaxy
 ---------------------------------
