@@ -622,7 +622,7 @@ if __name__ == "__main__":
     for line in open(temp_final_result.name):
         options.output.write("%s\t\n" % line.strip().split("\t")[0])
 
-    if not type(options.output.name) != str():
+    if isinstance(options.output.name, str):
         logging.info(
             "Results are written to %s (%s)."
             % (options.output.name, CountLines(options.output.name))
