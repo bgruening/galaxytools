@@ -20,7 +20,7 @@ import sys
 import tempfile
 
 import openbabel
-import pybel
+from openbabel import pybel
 from cheminfolib import CountLines, split_smi_library
 
 openbabel.obErrorLog.StopLogging()
