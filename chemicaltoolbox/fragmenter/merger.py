@@ -21,7 +21,6 @@ import tempfile
 
 import openbabel
 from openbabel import pybel
-from cheminfolib import CountLines, split_smi_library
 
 openbabel.obErrorLog.StopLogging()
 
@@ -50,6 +49,34 @@ original_atomic_num_mapping = {
 atomic_num_regex = re.compile(
     r"(Ac|Th|Pa|U|Np|Pu|Am|Cm|Bk|Cf|Es|Fm|Md|No|Lr|Rf|Db|Sg|Bh|Hs)"
 )
+
+
+def CountLines(path):
+    out = subprocess.Popen(
+        ["wc", "-l", path], stdout=subprocess.PIPE, stderr=subprocess.STDOUT
+    ).communicate()[0]
+    return int(out.partition(b" ")[0])
+
+
+def split_smi_library(smiles_file, structures_in_one_file):
+    """
+    Split a file with SMILES to several files for multiprocessing usage.
+    Usage: split_smi_library( smiles_file, 10 )
+    """
+    output_files = []
+    tfile = tempfile.NamedTemporaryFile(delete=False)
+
+    smiles_handle = open(smiles_file, "r")
+    for count, line in enumerate(smiles_handle):
+        if count % structures_in_one_file == 0 and count != 0:
+            tfile.close()
+            output_files.append(tfile.name)
+            tfile = tempfile.NamedTemporaryFile(delete=False)
+        tfile.write(bytes(line, "utf-8"))
+    tfile.close()
+    output_files.append(tfile.name)
+    smiles_handle.close()
+    return output_files
 
 
 def unique_files(file_paths, unique_file, temp=False):
