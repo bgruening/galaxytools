@@ -9,7 +9,8 @@ model = sys.argv[3]
 with open(sys.argv[4], "r") as f:
     openai_api_key = f.read().strip()
 if not openai_api_key:
-    raise Exception("OpenAI API key is not provided in user preferences!")
+    print("OpenAI API key is not provided in user preferences!")
+    sys.exit(1)
 
 client = OpenAI(api_key=openai_api_key)
 
