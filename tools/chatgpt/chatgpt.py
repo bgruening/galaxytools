@@ -45,19 +45,14 @@ image_files = []
 for path in context_files:
     ext = path.split(".")[-1].lower()
     if ext in vision_sup_ext:
-        if model not in ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]:
-            raise Exception("Vision model is not supported for this model!")
         if os.path.getsize(path) > 20 * 1024 * 1024:
-            raise Exception(
-                f"File {path} exceeds the 20MB limit and will not be processed."
-            )
+            print(f"File {path} exceeds the 20MB limit and will not be processed.")
+            sys.exit(1)
         file = client.files.create(file=open(path, "rb"), purpose="vision")
         promt = {"type": "image_file", "image_file": {"file_id": file.id}}
         image_files.append(promt)
     elif ext in file_search_sup_ext:
         file_search_file_streams.append(open(path, "rb"))
-    else:
-        raise Exception(f"File type {ext} is not supported!")
 
 assistant = client.beta.assistants.create(
     instructions="You will receive questions about files from file searches and image files. For file search queries, identify and retrieve the relevant files based on the question. For image file queries, analyze the image content and provide relevant information or insights based on the image data.",
