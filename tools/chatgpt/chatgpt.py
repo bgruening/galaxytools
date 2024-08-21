@@ -4,8 +4,6 @@ import sys
 from openai import OpenAI
 
 context_files = sys.argv[1].split(",")
-print(context_files)
-sys.exit(0)
 question = sys.argv[2]
 model = sys.argv[3]
 with open(sys.argv[4], "r") as f:
