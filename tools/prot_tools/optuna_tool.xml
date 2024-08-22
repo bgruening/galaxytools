@@ -1,26 +1,24 @@
-<tool id="optuna_finetune" name="Optuna Hyperparameter Search for Finetuning model" version="0.1.0">
+<tool id="hyperparameter_finetune" name="Hyperpaaameter Search for Finetuning model" version="0.1.0">
     <requirements>
-        <requirement type="package" version="3.9.18">python</requirement>
-        <requirement type="package" version="2.1.1">torch</requirement>
-        <requirement type="package" version="0.16.1">torchvision</requirement>
-        <requirement type="package" version="2.1.1">torchaudio</requirement>
+        <requirement type="package" version="2.3.1">pytorch</requirement>
         <requirement type="package" version="4.35.2">transformers</requirement>
-        <requirement type="package" version="2.15.0">datasets</requirement>
+        <requirement type="package" version="2.12.0">datasets</requirement>
         <requirement type="package" version="1.26.2">numpy</requirement>
         <requirement type="package" version="2.1.3">pandas</requirement>
         <requirement type="package" version="1.11.4">scipy</requirement>
         <requirement type="package" version="1.3.2">scikit-learn</requirement>
         <requirement type="package" version="3.8.2">matplotlib</requirement>
-        <requirement type="package" version="0.13.0">seaborn</requirement>
-        <requirement type="package" version="0.5.5">umap-learn</requirement>
+
         <requirement type="package" version="1.81">biopython</requirement>
         <requirement type="package" version="3.6.1">optuna</requirement>
         <requirement type="package" version="4.66.1">tqdm</requirement>
         <requirement type="package" version="0.24.1">accelerate</requirement>
         <requirement type="package" version="0.4.1">evaluate</requirement>
+        <requirement type="package" version="0.1.99">sentencepiece</requirement>
+        <requirement type="package" version="5.9.0">plotly</requirement>  	
     </requirements>
     <command><![CDATA[
-        python '$__tool_directory__/test.py'
+        python '$__tool_directory__/final.py'
         --format '$input_type.format'
         #if $input_type.file_number.file_count == 'single':
         --input '$input_type.file_number.input_file'
@@ -33,6 +31,7 @@
             --train_percent '$input_type.file_number.train_percent'
         #end if
         --percentage_summary '$percentage_summary'
+        --model '$model'
         --hyperparameter_method '$hyperparameter_method.method'
         #if $hyperparameter_method.method == 'manual':
             --lr '$hyperparameter_method.lr'
@@ -41,11 +40,18 @@
             --dropout '$hyperparameter_method.dropout'
             --weight_decay '$hyperparameter_method.weight_decay'
             --warmup_pct '$hyperparameter_method.warmup_pct'
-            --lora_rank '$hyperparameter_method.lora_rank'
-            --lora_init_scale '$hyperparameter_method.lora_init_scale'
-            --lora_scaling_rank '$hyperparameter_method.lora_scaling_rank'
             --epochs '$hyperparameter_method.epochs'
+            --adaptation_method '$hyperparameter_method.adaptation_method.method'
+            #if $hyperparameter_method.adaptation_method.method == 'lora':
+                --lora_rank '$hyperparameter_method.adaptation_method.lora_rank'
+                --lora_init_scale '$hyperparameter_method.adaptation_method.lora_init_scale'
+                --lora_scaling_rank '$hyperparameter_method.adaptation_method.lora_scaling_rank'
+            #else:
+                --dora_rank '$hyperparameter_method.adaptation_method.dora_rank'
+                --dora_init_scale '$hyperparameter_method.adaptation_method.dora_init_scale'
+            #end if
         #else:
+            --optimization_algorithm '$hyperparameter_method.optimization_algorithm'
             --n_trials '$hyperparameter_method.n_trials'
             --lr '$hyperparameter_method.lr'
             --batch '$hyperparameter_method.batch'
@@ -53,10 +59,16 @@
             --dropout '$hyperparameter_method.dropout'
             --weight_decay '$hyperparameter_method.weight_decay'
             --warmup_pct '$hyperparameter_method.warmup_pct'
-            --lora_rank '$hyperparameter_method.lora_rank'
-            --lora_init_scale '$hyperparameter_method.lora_init_scale'
-            --lora_scaling_rank '$hyperparameter_method.lora_scaling_rank'
             --epochs_per_trial '$hyperparameter_method.epochs_per_trial'
+            --adaptation_method '$hyperparameter_method.adaptation_method.method'
+            #if $hyperparameter_method.adaptation_method.method == 'lora':
+                --lora_rank '$hyperparameter_method.adaptation_method.lora_rank'
+                --lora_init_scale '$hyperparameter_method.adaptation_method.lora_init_scale'
+                --lora_scaling_rank '$hyperparameter_method.adaptation_method.lora_scaling_rank'
+            #else:
+                --dora_rank '$hyperparameter_method.adaptation_method.dora_rank'
+                --dora_init_scale '$hyperparameter_method.adaptation_method.dora_init_scale'
+            #end if
         #end if
         --seed '$seed'
     ]]>
@@ -64,8 +76,8 @@
     <inputs>
         <conditional name="input_type">
             <param name="format" type="select" label="Input file format">
-                <option value="csv">CSV</option>
                 <option value="fasta">FASTA</option>
+                <option value="csv">CSV</option>
             </param>
             <when value="csv">
                 <conditional name="file_number">
@@ -110,10 +122,15 @@
                 </conditional>
             </when>
         </conditional>
+        <param name="model" type="select" label="Model Selection">
+            <option value="pt5-xl50">PT5-xl50</option>
+            <option value="esm">ESM</option>
+            <option value="pt5-bfd">PT5-BFD</option>
+        </param>
         <conditional name="hyperparameter_method">
             <param name="method" type="select" label="Hyperparameter Selection Method">
                 <option value="manual">Manual Selection</option>
-                <option value="optuna">Optuna Hyperparameter Search</option>
+                <option value="auto">Automated Hyperparameter Search</option>
             </param>
             <when value="manual">
                 <param name="lr" type="float" value="3e-5" label="Learning Rate" help="Learning rate for the optimizer"/>
@@ -133,12 +150,28 @@
                 <param name="dropout" type="float" value="0.1" min="0" max="1" label="Dropout Rate" help="Fraction of units to drop for regularization"/>
                 <param name="weight_decay" type="float" value="0.01" min="0" max="1" label="Weight Decay" help="L2 regularization term"/>
                 <param name="warmup_pct" type="float" value="0.1" min="0" max="1" label="Warmup Percentage" help="Fraction of total steps for learning rate warmup"/>
-                <param name="lora_rank" type="integer" value="4" min="1" label="LoRA Rank" help="Rank for Low-Rank Adaptation"/>
-                <param name="lora_init_scale" type="float" value="0.01" min="0" max="1" label="LoRA Init Scale" help="Initial scale for LoRA weights"/>
-                <param name="lora_scaling_rank" type="integer" value="1" min="1" label="LoRA Scaling Rank" help="Scaling rank for LoRA"/>
                 <param name="epochs" type="integer" value="20" min="1" label="Number of Epochs" help="Number of training epochs"/>
+                <conditional name="adaptation_method">
+                    <param name="method" type="select" label="Adaptation Method">
+                        <option value="lora">LoRA</option>
+                        <option value="dora">DoRA</option>
+                    </param>
+                    <when value="lora">
+                        <param name="lora_rank" type="integer" value="4" min="1" label="LoRA Rank" help="Rank for Low-Rank Adaptation"/>
+                        <param name="lora_init_scale" type="float" value="0.01" min="0" max="1" label="LoRA Init Scale" help="Initial scale for LoRA weights"/>
+                        <param name="lora_scaling_rank" type="integer" value="1" min="1" label="LoRA Scaling Rank" help="Scaling rank for LoRA"/>
+                    </when>
+                    <when value="dora">
+                        <param name="dora_rank" type="integer" value="4" min="1" label="DoRA Rank" help="Rank for Dense-to-Rank Adaptation"/>
+                        <param name="dora_init_scale" type="float" value="0.01" min="0" max="1" label="DoRA Init Scale" help="Initial scale for DoRA weights"/>
+                    </when>
+                </conditional>
             </when>
-            <when value="optuna">
+            <when value="auto">
+                <param name="optimization_algorithm" type="select" label="Optimization Algorithm">
+                    <option value="optuna">Optuna</option>
+                    <option value="smac3">SMAC3</option>
+                </param>
                 <param name="n_trials" type="integer" value="10" min="1" label="Number of trials" help="Number of parameter settings that are sampled"/>
                 <param name="lr" type="text" value="(1e-5,1e-2)" label="Learning Rate Range" help="(min,max) values for learning rate (log scale)"/>
                 <param name="batch" type="text" value="[1,2,4,8]" label="Batch Size Options" help="[option1,option2,...] for batch size"/>
@@ -146,64 +179,88 @@
                 <param name="dropout" type="text" value="(0.1,0.9)" label="Dropout Rate Range" help="(min,max) values for dropout rate"/>
                 <param name="weight_decay" type="text" value="(1e-5,1e-3)" label="Weight Decay Range" help="(min,max) values for weight decay (log scale)"/>
                 <param name="warmup_pct" type="text" value="(0.01,0.3)" label="Warmup Percentage Range" help="(min,max) values for warmup percentage"/>
-                <param name="lora_rank" type="text" value="(4,32,4)" label="LoRA Rank Range" help="(min,max,step) values for LoRA rank"/>
-                <param name="lora_init_scale" type="text" value="(1e-4,1e-1)" label="LoRA Init Scale Range" help="(min,max) values for LoRA init scale (log scale)"/>
-                <param name="lora_scaling_rank" type="text" value="(1,4)" label="LoRA Scaling Rank Range" help="(min,max) values for LoRA scaling rank"/>
-                <param name="epochs_per_trial" type="integer" value="5" min="1" label="Number of Epochs per Trial" help="Number of training epochs for each Optuna trial"/>
+                <param name="epochs_per_trial" type="integer" value="5" min="1" label="Number of Epochs per Trial" help="Number of training epochs for each trial"/>
+                <conditional name="adaptation_method">
+                    <param name="method" type="select" label="Adaptation Method">
+                        <option value="lora">LoRA</option>
+                        <option value="dora">DoRA</option>
+                    </param>
+                    <when value="lora">
+                        <param name="lora_rank" type="text" value="(4,32,4)" label="LoRA Rank Range" help="(min,max,step) values for LoRA rank"/>
+                        <param name="lora_init_scale" type="text" value="(1e-4,1e-1)" label="LoRA Init Scale Range" help="(min,max) values for LoRA init scale (log scale)"/>
+                        <param name="lora_scaling_rank" type="text" value="(1,4)" label="LoRA Scaling Rank Range" help="(min,max) values for LoRA scaling rank"/>
+                    </when>
+                    <when value="dora">
+                        <param name="dora_rank" type="text" value="(4,32,4)" label="DoRA Rank Range" help="(min,max,step) values for DoRA rank"/>
+                        <param name="dora_init_scale" type="text" value="(1e-4,1e-1)" label="DoRA Init Scale Range" help="(min,max) values for DoRA init scale (log scale)"/>
+                    </when>
+                </conditional>
             </when>
         </conditional>
         <param name="seed" type="integer" value="42" min="0" label="Random Seed" help="Set a seed for reproducibility (default: 42)"/>
     </inputs>
     <outputs>
         <data name="percentage_summary" format="txt" label="Percentage Summary"/>
+        <data name="training_history" format="pdf" from_work_dir="Training_History_with_metric.pdf" label="Training History Plot" />
+        <data name="metrics_table" format="csv" from_work_dir="metrics_table.csv" label="Metrics Table" />
     </outputs>
     <help><![CDATA[
-.. class:: infomark
+    .. class:: infomark
 
-**What it does**
+    **What it does**
 
-This tool performs protein sequence classification using a fine-tuned ProtT5 model with LoRA (Low-Rank Adaptation). It can be used for binary classification tasks on protein sequences.
+    This tool performs protein sequence classification using a fine-tuned model with LoRA (Low-Rank Adaptation) or DoRA (Dense-to-Rank Adaptation). It supports manual hyperparameter selection or automated hyperparameter search using either Optuna or SMAC3.
 
------
+    -----
 
-**Inputs**
+    **Inputs**
 
-1. Input Files:
-- For single file mode: One FASTA file containing both positive and negative examples.
-- For two file mode: Two FASTA files, one for train/validation and one for testing.
+    1. Input Files:
+       - For single file mode: One file containing both positive and negative examples.
+       - For two file mode: Two files, one for train/validation and one for testing.
 
-2. Training Parameters:
-- Train Percentage: Proportion of data to use for training (e.g., 0.8 for 80% training data).
-- Test and Validation Percentages (for single file mode): Proportions for test and validation sets.
+    2. Model Selection:
+       - Choose between PT5-xl50, ESM, or PT5-BFD models.
 
-3. Hyperparameter Selection:
-- Manual: Set specific values for learning rate, batch size, etc.
-- Optuna: Define ranges for hyperparameter optimization.
+    3. Hyperparameter Selection Method:
+       - Manual: Set specific values for all hyperparameters.
+       - Automated: Use Optuna or SMAC3 for hyperparameter optimization.
 
------
+    4. Adaptation Method:
+       - LoRA: Low-Rank Adaptation
+       - DoRA: Dense-to-Rank Adaptation
 
-**Outputs**
+    5. Training Parameters:
+       - Various hyperparameters including learning rate, batch size, etc.
+       - Ranges or options for these parameters when using automated search.
 
-1. Trained Model: The best performing model saved during training.
-2. Performance Metrics: Accuracy, loss, and other relevant metrics.
-3. (Optional) Optuna Study Results: If using Optuna, a summary of the hyperparameter search.
+    -----
 
------
+    **Outputs**
 
-**How to use**
+    1. Trained Model: The best performing model saved during training.
+    2. Performance Metrics: Accuracy, loss, and other relevant metrics.
+    3. Hyperparameter Search Results: If using automated search, a summary of the optimization process.
 
-1. Select your input file(s) and set the data split percentages.
-2. Choose between manual hyperparameter selection or Optuna optimization.
-3. If manual, input your desired hyperparameter values.
-4. If using Optuna, define the ranges for each hyperparameter.
-5. Run the tool and review the output metrics and model performance.
+    -----
 
------
+    **How to use**
 
-**Note**
+    1. Select your input file(s) and set the data split percentages.
+    2. Choose the model you want to use.
+    3. Select the hyperparameter selection method (manual or automated).
+    4. If manual, input your desired hyperparameter values.
+    5. If automated, choose between Optuna and SMAC3, and define the ranges for each hyperparameter.
+    6. Select the adaptation method (LoRA or DoRA) and set its parameters.
+    7. Run the tool and review the output metrics and model performance.
 
-- Ensure your FASTA files are properly formatted with labels.
-- The tool uses GPU acceleration if available, which can significantly reduce processing time.
-- For large datasets or extensive hyperparameter searches, the tool may take a considerable amount of time to run.    
-]]></help>
+    -----
+
+    **Note**
+
+    - Ensure your input files are properly formatted with labels.
+    - The tool uses GPU acceleration if available, which can significantly reduce processing time.
+    - For large datasets or extensive hyperparameter searches, the tool may take a considerable amount of time to run.
+    - Optuna and SMAC3 are both powerful hyperparameter optimization frameworks. Optuna uses various sampling methods and pruning techniques, while SMAC3 uses Bayesian optimization with random forests.
+    ]]>    </help>
 </tool>
