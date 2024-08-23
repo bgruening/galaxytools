@@ -1,4 +1,4 @@
-<tool id="hyperparameter_finetune" name="Hyperpaaameter Search for Finetuning model" version="0.1.0">
+<tool id="hyperparameter_finetune" name="Hyperparameter Search for Finetuning model" version="1.0.0">
     <requirements>
         <requirement type="package" version="2.3.1">pytorch</requirement>
         <requirement type="package" version="4.35.2">transformers</requirement>
@@ -8,17 +8,18 @@
         <requirement type="package" version="1.11.4">scipy</requirement>
         <requirement type="package" version="1.3.2">scikit-learn</requirement>
         <requirement type="package" version="3.8.2">matplotlib</requirement>
-
         <requirement type="package" version="1.81">biopython</requirement>
         <requirement type="package" version="3.6.1">optuna</requirement>
+        <requirement type="package" version="2.1.0">smac</requirement>
         <requirement type="package" version="4.66.1">tqdm</requirement>
         <requirement type="package" version="0.24.1">accelerate</requirement>
         <requirement type="package" version="0.4.1">evaluate</requirement>
         <requirement type="package" version="0.1.99">sentencepiece</requirement>
-        <requirement type="package" version="5.9.0">plotly</requirement>  	
+        <requirement type="package" version="5.9.0">plotly</requirement>
+        <requirement type="package" version="0.13.2">seaborn</requirement>
     </requirements>
     <command><![CDATA[
-        python '$__tool_directory__/final.py'
+        python '$__tool_directory__/optuna_tool.py'
         --format '$input_type.format'
         #if $input_type.file_number.file_count == 'single':
         --input '$input_type.file_number.input_file'
@@ -30,7 +31,6 @@
             --test '$input_type.file_number.test_file'
             --train_percent '$input_type.file_number.train_percent'
         #end if
-        --percentage_summary '$percentage_summary'
         --model '$model'
         --hyperparameter_method '$hyperparameter_method.method'
         #if $hyperparameter_method.method == 'manual':
@@ -59,6 +59,7 @@
             --dropout '$hyperparameter_method.dropout'
             --weight_decay '$hyperparameter_method.weight_decay'
             --warmup_pct '$hyperparameter_method.warmup_pct'
+            --epochs '$hyperparameter_method.epochs'
             --epochs_per_trial '$hyperparameter_method.epochs_per_trial'
             --adaptation_method '$hyperparameter_method.adaptation_method.method'
             #if $hyperparameter_method.adaptation_method.method == 'lora':
@@ -77,7 +78,7 @@
         <conditional name="input_type">
             <param name="format" type="select" label="Input file format">
                 <option value="fasta">FASTA</option>
-                <option value="csv">CSV</option>
+                <!-- <option value="csv">CSV</option> -->
             </param>
             <when value="csv">
                 <conditional name="file_number">
@@ -103,8 +104,8 @@
             <when value="fasta">
                 <conditional name="file_number">
                     <param name="file_count" type="select" label="Number of input files">
-                        <option value="single">Single file (for train/test/val)</option>
                         <option value="double">Two files (one for train/val, one for test)</option>
+                        <option value="single">Single file (for train/test/val)</option>
                     </param>
                     <when value="single">
                         <param name="input_file" type="data" format="fasta" label="FASTA input file" help="Select your input FASTA file for train/test/val"/>
@@ -123,9 +124,9 @@
             </when>
         </conditional>
         <param name="model" type="select" label="Model Selection">
-            <option value="pt5-xl50">PT5-xl50</option>
-            <option value="esm">ESM</option>
-            <option value="pt5-bfd">PT5-BFD</option>
+            <option value="pt5-xl50">ProtT5-XL-UniRef50</option>
+            <option value="esm">ESM-2</option>
+            <option value="pt5-bfd">ProtT5-XL-BFD</option>
         </param>
         <conditional name="hyperparameter_method">
             <param name="method" type="select" label="Hyperparameter Selection Method">
@@ -170,7 +171,7 @@
             <when value="auto">
                 <param name="optimization_algorithm" type="select" label="Optimization Algorithm">
                     <option value="optuna">Optuna</option>
-                    <option value="smac3">SMAC3</option>
+                    <!-- <option value="smac3">SMAC3</option> -->
                 </param>
                 <param name="n_trials" type="integer" value="10" min="1" label="Number of trials" help="Number of parameter settings that are sampled"/>
                 <param name="lr" type="text" value="(1e-5,1e-2)" label="Learning Rate Range" help="(min,max) values for learning rate (log scale)"/>
@@ -180,6 +181,7 @@
                 <param name="weight_decay" type="text" value="(1e-5,1e-3)" label="Weight Decay Range" help="(min,max) values for weight decay (log scale)"/>
                 <param name="warmup_pct" type="text" value="(0.01,0.3)" label="Warmup Percentage Range" help="(min,max) values for warmup percentage"/>
                 <param name="epochs_per_trial" type="integer" value="5" min="1" label="Number of Epochs per Trial" help="Number of training epochs for each trial"/>
+                <param name="epochs" type="integer" value="20" min="1" label="Number of Epochs for Final Run" help="Number of epochs for the best trial"/>
                 <conditional name="adaptation_method">
                     <param name="method" type="select" label="Adaptation Method">
                         <option value="lora">LoRA</option>
@@ -200,9 +202,27 @@
         <param name="seed" type="integer" value="42" min="0" label="Random Seed" help="Set a seed for reproducibility (default: 42)"/>
     </inputs>
     <outputs>
-        <data name="percentage_summary" format="txt" label="Percentage Summary"/>
         <data name="training_history" format="pdf" from_work_dir="Training_History_with_metric.pdf" label="Training History Plot" />
         <data name="metrics_table" format="csv" from_work_dir="metrics_table.csv" label="Metrics Table" />
+        <data name="Confusion_Matrix" format="png" from_work_dir="confusion_matrix.png" label="Confusion Matrix" />
+        
+        <!-- Optuna outputs -->
+        <data name="optuna_trial" format="sqlite3" from_work_dir="optuna_results.sqlite3" label="Optuna Results">
+            <filter>hyperparameter_method['method'] == "auto" and hyperparameter_method['optimization_algorithm'] == "optuna"</filter>
+        </data>
+        <data name="optuna_incumbents" format="txt" from_work_dir="optuna_incumbents.txt" label="Optuna Incumbent List">
+            <filter>hyperparameter_method['method'] == "auto" and hyperparameter_method['optimization_algorithm'] == "optuna"</filter>
+        </data>
+        
+        <!-- SMAC outputs (commented out as it's not in your current input options) -->
+        <!--
+        <data name="smac_runhistory" format="json" from_work_dir="runhistory.json" label="SMAC Run History">
+            <filter>hyperparameter_method['method'] == "auto" and hyperparameter_method['optimization_algorithm'] == "smac3"</filter>
+        </data>
+        <data name="smac_incumbents" format="txt" from_work_dir="smac_incumbents.txt" label="SMAC Incumbent List">
+            <filter>hyperparameter_method['method'] == "auto" and hyperparameter_method['optimization_algorithm'] == "smac3"</filter>
+        </data>
+        -->
     </outputs>
     <help><![CDATA[
     .. class:: infomark
@@ -220,7 +240,7 @@
        - For two file mode: Two files, one for train/validation and one for testing.
 
     2. Model Selection:
-       - Choose between PT5-xl50, ESM, or PT5-BFD models.
+       - Choose between ProtT5-XL-UniRef50, ESM, or ProtT5-XL-BFD models.
 
     3. Hyperparameter Selection Method:
        - Manual: Set specific values for all hyperparameters.

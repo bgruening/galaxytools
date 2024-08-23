@@ -1,34 +1,44 @@
+# Standard library imports
 import argparse
 import ast
 import copy
 import gc
+import json
 import os
 import random
 import re
-import json
-import plotly
-import plotly.graph_objs as go
-import matplotlib.pyplot as plt
-from tqdm import tqdm
 
+# Third-party library imports
+import matplotlib.pyplot as plt
 import numpy as np
 import optuna
-# from smac import HyperparameterOptimizationFacade as HPOFacade
-# from smac import Scenario
-# from smac.intensifier.hyperband import Hyperband
-# from smac.multi_objective.parego import ParEGO
 import pandas as pd
+import seaborn as sns
 import torch
 import torch.nn.functional as F
 from Bio import SeqIO
 from datasets import Dataset
 from optuna.samplers import TPESampler
-from sklearn.metrics import confusion_matrix, matthews_corrcoef, roc_auc_score, accuracy_score
+from sklearn.metrics import (
+    accuracy_score,
+    confusion_matrix,
+    f1_score,
+    matthews_corrcoef,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import LabelBinarizer
 from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 from transformers import (
+    EsmConfig,
+    EsmModel,
+    EsmTokenizer,
+    PreTrainedModel,
     T5EncoderModel,
     T5Tokenizer,
     Trainer,
@@ -38,14 +48,16 @@ from transformers import (
     TrainingArguments,
     set_seed,
 )
+from transformers.modeling_outputs import SequenceClassifierOutput
+from transformers.models.t5.modeling_t5 import T5Config, T5PreTrainedModel, T5Stack
+from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
+
+# from smac import HyperparameterOptimizationFacade as HPOFacade
+# from smac import Scenario
+# from smac.intensifier.hyperband import Hyperband
+# from smac.multi_objective.parego import ParEGO
 # from ConfigSpace import ConfigurationSpace, Configuration
 # from ConfigSpace.hyperparameters import UniformFloatHyperparameter, CategoricalHyperparameter, UniformIntegerHyperparameter
-from transformers.models.t5.modeling_t5 import T5Config, T5PreTrainedModel, T5Stack
-from transformers.modeling_outputs import SequenceClassifierOutput
-from transformers.utils.model_parallel_utils import assert_device_map, get_device_map
-# import warnings
-# warnings.filterwarnings('ignore')
-
 
 class MultiObjectiveEarlyStoppingAndSaveCallback(TrainerCallback):
     def __init__(self, early_stopping_patience, min_delta=0.001, output_dir='./model_output', filename='finetuned_model'):
@@ -162,7 +174,6 @@ def parse_optuna_param(param_str):
         raise ValueError(f"Unable to parse parameter: {param_str}")
 
 def parse_param(param_str):
-    print(f"Input to parse_param: {param_str}")
     # Handle Galaxy-specific encoding
     param_str = param_str.replace('__ob__', '[').replace('__cb__', ']')
     try:
@@ -525,67 +536,158 @@ class T5EncoderForSimpleSequenceClassification(T5PreTrainedModel):
             attentions=outputs.attentions,
         )
 
-def PT5_classification_model(num_labels, dropout, adaptation_method='lora', lora_rank=None, lora_init_scale=None, lora_scaling_rank=None, dora_rank=None, dora_init_scale=None):
-    # Load PT5 and tokenizer
-    model = T5EncoderModel.from_pretrained("Rostlab/prot_t5_xl_uniref50", cache_dir="/scratch/users/hai/huggingface_cache")
-    tokenizer = T5Tokenizer.from_pretrained("Rostlab/prot_t5_xl_uniref50", cache_dir="/scratch/users/hai/huggingface_cache") 
-    
-    # Create new Classifier model with PT5 dimensions
-    class_config=ClassConfig(num_labels=num_labels, dropout=dropout)
-    class_model=T5EncoderForSimpleSequenceClassification(model.config,class_config)
-    
-    # Set encoder and embedding weights to checkpoint weights
-    class_model.shared=model.shared
-    class_model.encoder=model.encoder    
-    
-    # Delete the checkpoint model
-    model=class_model
-    del class_model
-    
-    # Print number of trainable parameters
-    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-    params = sum([np.prod(p.size()) for p in model_parameters])
-    print("ProtT5_Classfier\nTrainable Parameter: "+ str(params))    
- 
-    if adaptation_method == 'lora':
-        print("USING LoRA")
-        # Add model modification lora
-        config = LoRAConfig(lora_rank=lora_rank, lora_init_scale=lora_init_scale, lora_scaling_rank=lora_scaling_rank)
+class ESMClassificationHead(nn.Module):
+    """Head for sentence-level classification tasks."""
+
+    def __init__(self, config, class_config):
+        super().__init__()
+        self.dense = nn.Linear(config.hidden_size, config.hidden_size)
+        self.dropout = nn.Dropout(class_config.dropout_rate)
+        self.out_proj = nn.Linear(config.hidden_size, class_config.num_labels)
+   
+        # Trainable emphasis factor
+        self.emphasis_factor = nn.Parameter(torch.tensor(1.0))
         
-        # Add LoRA layers
+    def forward(self, hidden_states):
+        seq_length = hidden_states.size(1)
+        middle_idx = seq_length // 2
+        middle_embedding = hidden_states[:, middle_idx, :]
+
+        # Apply trainable emphasis factor
+        emphasized_middle_embedding = middle_embedding * self.emphasis_factor
+
+        # Combine with the average embedding
+        average_embedding = torch.mean(hidden_states, dim=1)
+        combined_embedding = emphasized_middle_embedding + average_embedding
+
+        x = self.dropout(combined_embedding)
+        x = self.dense(x)
+        x = torch.tanh(x)
+        x = self.dropout(x)
+        logits = self.out_proj(x)
+        return logits
+    
+class ESMForSequenceClassification(PreTrainedModel):
+    config_class = EsmConfig
+
+    def __init__(self, config: EsmConfig, class_config):
+        super().__init__(config)
+        self.num_labels = class_config.num_labels
+        self.esm_model = EsmModel(config)
+        self.classifier = ESMClassificationHead(config, class_config)
+        self.init_weights()
+
+    def forward(self, input_ids=None, attention_mask=None, labels=None):
+        outputs = self.esm_model(input_ids, attention_mask=attention_mask)
+        hidden_states = outputs.last_hidden_state
+
+        logits = self.classifier(hidden_states)
+
+        loss = None
+        if labels is not None:
+            if self.num_labels == 1:
+                loss_fct = MSELoss()
+                loss = loss_fct(logits.squeeze(), labels.squeeze())
+            elif self.num_labels > 1 and labels.dtype in (torch.long, torch.int):
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            else:
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
+        
+        return SequenceClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=outputs.hidden_states,
+            attentions=outputs.attentions,
+        )
+
+def unified_classification_model(model_type, num_labels, dropout, adaptation_method='lora', lora_rank=None, lora_init_scale=None, lora_scaling_rank=None, dora_rank=None, dora_init_scale=None):
+    if model_type in ['pt5-xl50', 'pt5-bfd']:
+        # Load PT5 and tokenizer
+        model_name = "Rostlab/prot_t5_xl_uniref50" if model_type == 'pt5-xl50' else "Rostlab/prot_t5_xl_bfd"
+        model = T5EncoderModel.from_pretrained(model_name)
+        tokenizer = T5Tokenizer.from_pretrained(model_name)
+        
+        # Create new Classifier model with PT5 dimensions
+        class_config = ClassConfig(num_labels=num_labels, dropout=dropout)
+        class_model = T5EncoderForSimpleSequenceClassification(model.config, class_config)
+        
+        # Set encoder and embedding weights to checkpoint weights
+        class_model.shared = model.shared
+        class_model.encoder = model.encoder
+        
+        model = class_model
+        del class_model
+        
+        print(f"{model_type.upper()}_Classifier\nTrainable Parameter: {count_parameters(model)}")
+        
+    elif model_type == 'esm':
+        model_checkpoint = "facebook/esm2_t36_3B_UR50D"
+        
+        # Load ESM and tokenizer
+        tokenizer = EsmTokenizer.from_pretrained(model_checkpoint)
+        base_model = EsmModel.from_pretrained(model_checkpoint)
+        
+        # Create new Classifier model with ESM dimensions
+        class_config = ClassConfig(num_labels=num_labels, dropout=dropout)
+        model = ESMForSequenceClassification(base_model.config, class_config)
+        
+        model.esm_model = base_model
+        del base_model
+        
+        print(f"ESM_Classifier\nTrainable Parameter: {count_parameters(model)}")
+    
+    else:
+        raise ValueError(f"Unsupported model type: {model_type}")
+
+    if adaptation_method == 'lora':
+        config = LoRAConfig(lora_rank=lora_rank, lora_init_scale=lora_init_scale, lora_scaling_rank=lora_scaling_rank)
         model = modify_with_lora(model, config)
     elif adaptation_method == 'dora':
-        print("USING DoRA")
-        # Add model modification dora
         config = DoRAConfig(dora_rank=dora_rank, dora_init_scale=dora_init_scale)
-        
-        # Add DoRA layers
         model = modify_with_dora(model, config)
     else:
         raise ValueError(f"Unsupported adaptation method: {adaptation_method}")
-    
-    # Freeze Embeddings and Encoder (except LoRA)
-    for (param_name, param) in model.shared.named_parameters():
-                param.requires_grad = False
-    for (param_name, param) in model.encoder.named_parameters():
-                param.requires_grad = False       
 
-    for (param_name, param) in model.named_parameters():
-            if re.fullmatch(config.trainable_param_names, param_name):
-                param.requires_grad = True
+    # Freeze parameters
+    if model_type in ['pt5-xl50', 'pt5-bfd']:
+        for param in model.shared.parameters():
+            param.requires_grad = False
+        for param in model.encoder.parameters():
+            param.requires_grad = False
+    elif model_type == 'esm':
+        for param in model.parameters():
+            param.requires_grad = False
+        for param in model.classifier.parameters():
+            param.requires_grad = True
 
-    # Print trainable Parameter          
-    model_parameters = filter(lambda p: p.requires_grad, model.parameters())
-    params = sum([np.prod(p.size()) for p in model_parameters])
-    print("ProtT5_LoRA_Classfier\nTrainable Parameter: "+ str(params) + "\n")
+    # Unfreeze LoRA/DoRA parameters
+    for param_name, param in model.named_parameters():
+        if re.fullmatch(config.trainable_param_names, param_name):
+            param.requires_grad = True
+
+    print(f"{model_type.upper()}_{adaptation_method.upper()}_Classifier\nTrainable Parameter: {count_parameters(model)}\n")
     
     return model, tokenizer
+
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
+def validate_percentages(train_percent, test_percent=None, val_percent=None):
+    if test_percent is not None and val_percent is not None:
+        total = train_percent + test_percent + val_percent
+        if not np.isclose(total, 1.0, atol=1e-5):
+            raise ValueError(f"Percentages must sum to 1. Current sum: {total}")
+    elif train_percent >= 1:
+        raise ValueError(f"Training percentage must be less than 1. Current value: {train_percent}")
 
 def train_per_protein(
         train_dataset,
         valid_dataset,
         weight_decay,
         warmup_pct,
+        model_type,
         num_labels=2,
         batch=4,
         accum=2,
@@ -593,7 +695,6 @@ def train_per_protein(
         epochs=1,
         lr=3e-4,
         seed=42,
-        deepspeed=False,
         gpu=1,
         dropout=0.5,
         adaptation_method='lora',
@@ -610,7 +711,8 @@ def train_per_protein(
     set_seeds(seed)
     
     # load model
-    model, tokenizer = PT5_classification_model(
+    model, tokenizer = unified_classification_model(
+        model_type=model_type,
         num_labels=num_labels,
         dropout=dropout,
         adaptation_method=adaptation_method,
@@ -741,55 +843,63 @@ def get_train_per_protein_history(history):
     return fig  # Return the figure object in case you want to use it elsewhere
 
 def metrics_calculation(model, tokenizer, my_test):
-    # Set the device to use
     device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
     model.to(device)
 
-    # create Dataset
-    test_set=create_dataset(tokenizer,list(my_test['sequence']),list(my_test['label']))
-    # make compatible with torch DataLoader
+    test_set = create_dataset(tokenizer, list(my_test['sequence']), list(my_test['label']))
     test_set = test_set.with_format("torch", device=device)
-
-    # Create a dataloader for the test dataset
     test_dataloader = DataLoader(test_set, batch_size=16, shuffle=False)
 
-    # Put the model in evaluation mode
     model.eval()
-
-    # Make predictions on the test dataset
     raw_logits = []
     labels = []
     with torch.no_grad():
         for batch in tqdm(test_dataloader):
             input_ids = batch['input_ids'].to(device)
             attention_mask = batch['attention_mask'].to(device)
-            # add batch results (logits) to predictions
             raw_logits += model(input_ids, attention_mask=attention_mask).logits.tolist()
             labels += batch["labels"].tolist()
 
-    # Convert logits to predictions
     raw_logits = np.array(raw_logits)
     predictions = np.argmax(raw_logits, axis=1)
+    labels = np.array(labels)
+
+    # Ensure labels are 1D
+    if len(labels.shape) > 1:
+        labels = labels[:, 1]  # Assume the second column represents the positive class
 
     # Calculate metrics
     conf_matrix = confusion_matrix(labels, predictions)
     tn, fp, fn, tp = conf_matrix.ravel()
 
-    mcc = matthews_corrcoef(labels, predictions)
-    specificity = tn / (tn + fp)
-    sensitivity = tp / (tp + fn)
     accuracy = accuracy_score(labels, predictions)
-    roc_auc = roc_auc_score(labels, raw_logits[:, 1])  # Assuming binary classification, adjust accordingly
-
+    mcc = matthews_corrcoef(labels, predictions)
+    f1 = f1_score(labels, predictions)
+    precision = precision_score(labels, predictions)
+    recall = recall_score(labels, predictions)
+    specificity = tn / (tn + fp)
+    roc_auc = roc_auc_score(labels, raw_logits[:, 1])  # Use probabilities of positive class
 
     # Create a pandas DataFrame for metrics
     metrics_df = pd.DataFrame({
-        "Metric": ["MCC", "Specificity", "Sensitivity", "Accuracy", "ROC-AUC"],
-        "Value": [mcc, specificity, sensitivity, accuracy, roc_auc]
+        "Metric": ["Accuracy", "MCC", "F1 Score", "Precision", "Recall", "Specificity", "ROC-AUC"],
+        "Value": [accuracy, mcc, f1, precision, recall, specificity, roc_auc]
     })
 
+    # Save metrics to CSV
     metrics_table = "metrics_table.csv"
     metrics_df.to_csv(metrics_table, index=False)
+
+    # Create and save confusion matrix heatmap
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues')
+    plt.title('Confusion Matrix')
+    plt.ylabel('True Label')
+    plt.xlabel('Predicted Label')
+    plt.savefig('confusion_matrix.png')
+    plt.close()
+
+    return metrics_df
 
 def main():
     parser = argparse.ArgumentParser(description='Process and validate input data and hyperparameters')
@@ -800,7 +910,6 @@ def main():
     parser.add_argument('--train_percent', type=float, required=True)
     parser.add_argument('--test_percent', type=float)
     parser.add_argument('--val_percent', type=float)
-    parser.add_argument('--percentage_summary', required=True, help='Output file for percentage summary')
     
     parser.add_argument('--model', choices=['pt5-xl50', 'esm', 'pt5-bfd'], required=True)
     parser.add_argument('--hyperparameter_method', choices=['manual', 'auto'], required=True)
@@ -814,7 +923,7 @@ def main():
     parser.add_argument('--warmup_pct', type=str, required=True)
     parser.add_argument('--epochs', type=int)
     parser.add_argument('--epochs_per_trial', type=int)
-
+    
     parser.add_argument('--adaptation_method', choices=['lora', 'dora'], required=True)
     parser.add_argument('--lora_rank', type=str)
     parser.add_argument('--lora_init_scale', type=str)
@@ -829,6 +938,24 @@ def main():
     # Set the random seed for reproducibility
     np.random.seed(args.seed)
     try:
+        # Validate percentages
+        validate_percentages(args.train_percent, args.test_percent, args.val_percent)
+        
+        # Model and tokenizer initialization
+        model_config = {
+            'pt5-xl50': {
+                'tokenizer_class': T5Tokenizer,
+                'model_name': "Rostlab/prot_t5_xl_uniref50"
+            },
+            'esm': {
+                'tokenizer_class': EsmTokenizer,
+                'model_name': "facebook/esm2_t36_3B_UR50D"
+            },
+            'pt5-bfd': {
+                'tokenizer_class': T5Tokenizer,
+                'model_name': "Rostlab/prot_t5_xl_bfd"
+            }
+    }
 
         # Load and split data
         if args.input:
@@ -851,7 +978,6 @@ def main():
         print(f"\nRandom seed used: {args.seed}")
 
         # Load and prepare data, for now we will use only the train/val split. The test_size is the validation size
-        # train_df, valid_df = load_and_prepare_data(args.train_val, test_size=1-args.train_percent)
         train_df, valid_df = train_data, val_data
         test_df = test_data
         
@@ -860,41 +986,17 @@ def main():
         valid_df = preprocess_sequences(valid_df)
         test_df = preprocess_sequences(test_df)
 
-        # Print information about the datasets
-        print("\nDataset shapes after preprocessing:")
-        print(f"Train: {train_df.shape}")
-        print(f"Validation: {valid_df.shape}")
-        print(f"Test: {test_df.shape}")
-
-        print("\nFirst few rows of each dataset:")
-        print("\nTrain:")
-        print(train_df.head())
-        print("\nValidation:")
-        print(valid_df.head())
-        print("\nTest:")
-        print(test_df.head())
-
         # Initialize the tokenizer
-        tokenizer = T5Tokenizer.from_pretrained("Rostlab/prot_t5_xl_uniref50", cache_dir="/scratch/users/hai/huggingface_cache")
-
+        selected_model = model_config[args.model]
+        tokenizer = selected_model['tokenizer_class'].from_pretrained(selected_model['model_name'])
+        
         # Create Datasets
         train_set = create_dataset(tokenizer, list(train_df['sequence']), list(train_df['label']))
         valid_set = create_dataset(tokenizer, list(valid_df['sequence']), list(valid_df['label']))
         
-        
         hyperparams = process_hyperparameters(args)
         adaptation_params = process_adaptation_method(args)
-        
-        with open(args.percentage_summary, 'w') as f:
-            f.write("\n".join([f"{k}: {v}" for k, v in hyperparams.items()]))
-            f.write("\n")
-            f.write("\n".join([f"{k}: {v}" for k, v in adaptation_params.items()]))
-            f.write("\n")
-        
-        print("Hyperparameters:")
-        print(hyperparams["batch"])
             
-        # raise SystemExit(0)
         if args.hyperparameter_method == 'manual':
             # Train the model with manual hyperparameters
             tokenizer, model, history = train_per_protein(
@@ -910,7 +1012,8 @@ def main():
                 weight_decay=hyperparams['weight_decay'],
                 warmup_pct=hyperparams['warmup_pct'],
                 adaptation_method=adaptation_params['method'],
-                **{k: v for k, v in adaptation_params.items() if k != 'method'}
+                **{k: v for k, v in adaptation_params.items() if k != 'method'},
+                model_type=args.model,
             )
             
             print("Training completed. Final results:")
@@ -935,11 +1038,11 @@ def main():
                     lora_rank = trial.suggest_int('lora_rank', adaptation_params['lora_rank'][0], adaptation_params['lora_rank'][1], step=adaptation_params['lora_rank'][2] if len(adaptation_params['lora_rank']) > 2 else 1)
                     lora_init_scale = trial.suggest_float('lora_init_scale', adaptation_params['lora_init_scale'][0], adaptation_params['lora_init_scale'][1], log=True)
                     lora_scaling_rank = trial.suggest_int('lora_scaling_rank', adaptation_params['lora_scaling_rank'][0], adaptation_params['lora_scaling_rank'][1])
-                    adaptation_trial_params = {'method': adaptation_params['method'],'lora_rank': lora_rank, 'lora_init_scale': lora_init_scale, 'lora_scaling_rank': lora_scaling_rank}
+                    adaptation_trial_params = {'lora_rank': lora_rank, 'lora_init_scale': lora_init_scale, 'lora_scaling_rank': lora_scaling_rank}
                 else:
                     dora_rank = trial.suggest_int('dora_rank', adaptation_params['dora_rank'][0], adaptation_params['dora_rank'][1], step=adaptation_params['dora_rank'][2] if len(adaptation_params['dora_rank']) > 2 else 1)
                     dora_init_scale = trial.suggest_float('dora_init_scale', adaptation_params['dora_init_scale'][0], adaptation_params['dora_init_scale'][1], log=True)
-                    adaptation_trial_params = {'method': adaptation_params['method'], 'dora_rank': dora_rank, 'dora_init_scale': dora_init_scale}
+                    adaptation_trial_params = {'dora_rank': dora_rank, 'dora_init_scale': dora_init_scale}
 
                 
                 # Training and evaluation
@@ -954,9 +1057,10 @@ def main():
                     dropout=dropout,
                     weight_decay=weight_decay,
                     warmup_pct=warmup_pct,
+                    model_type=args.model,
                     seed=args.seed,
-                    adaptation_method=adaptation_trial_params['method'],
-                    **{k: v for k, v in adaptation_trial_params.items() if k != 'method'}
+                    adaptation_method=adaptation_params['method'],
+                    **adaptation_trial_params
                 )
                 
                 # Extract the last validation accuracy and loss from the history
@@ -983,48 +1087,125 @@ def main():
                     for key, value in trial.params.items():
                         print(f"    {key}: {value}")
 
+                with open("optuna_incumbents.txt", 'w') as f:
+                    for trial in study.best_trials:
+                        f.write(f"Trial {trial.number}")
+                        f.write(f"  Loss: {trial.values[0]}, Accuracy: {trial.values[1]}")
+                        f.write("  Params:")
+                        for key, value in trial.params.items():
+                            f.write(f"    {key}: {value}")
+                        f.write('\n')
+                
                 best_trial = study.best_trials[0]  # You might want to choose based on your criteria
                 best_params = best_trial.params
+                print("best_params", best_params)
 
+            # Currently SMAC is not working because conda-forge only has version 2.1.0, which is incompatible with the code (need version 2.2.0)
             # elif args.optimization_algorithm == 'smac3':
-                # # Define the configuration space for SMAC3
-                # cs = ConfigurationSpace()
-                # cs.add_hyperparameter(UniformFloatHyperparameter("lr", hyperparams['lr'][0], hyperparams['lr'][1], log=True))
-                # cs.add_hyperparameter(CategoricalHyperparameter("batch", choices=hyperparams['batch']))
-                # cs.add_hyperparameter(CategoricalHyperparameter("accum", choices=hyperparams['accum']))
-                # cs.add_hyperparameter(UniformFloatHyperparameter("dropout", hyperparams['dropout'][0], hyperparams['dropout'][1]))
-                # cs.add_hyperparameter(UniformFloatHyperparameter("weight_decay", hyperparams['weight_decay'][0], hyperparams['weight_decay'][1], log=True))
-                # cs.add_hyperparameter(UniformFloatHyperparameter("warmup_pct", hyperparams['warmup_pct'][0], hyperparams['warmup_pct'][1]))
+            #     def train(config: Configuration, seed: int = 42, budget: int = 10) -> dict[str, float]:
+            #         # Call your training function
+            #         tokenizer, model, history = train_per_protein(
+            #             train_dataset=train_set,
+            #             valid_dataset=valid_set,
+            #             num_labels=2,
+            #             batch=int(config['batch']),
+            #             accum=int(config['accum']),
+            #             epochs=int(budget),
+            #             lr=config['lr'],
+            #             dropout=config['dropout_rate'],
+            #             weight_decay=config['weight_decay'],
+            #             warmup_pct=config['warmup_pct'],
+            #             model_type=args.model,
+            #             adaptation_method=config['adaptation_method'],
+            #             lora_rank=config['lora_rank'],
+            #             lora_init_scale=config['lora_init_scale'],
+            #             lora_scaling_rank=config['lora_scaling_rank'],
+            #             dora_rank=config['dora_rank'],
+            #             dora_init_scale=config['dora_init_scale'],
+            #             seed=seed
+            #         )
 
-                # if adaptation_params['method'] == 'lora':
-                #     cs.add_hyperparameter(UniformIntegerHyperparameter("lora_rank", adaptation_params['lora_rank'][0], adaptation_params['lora_rank'][1]))
-                #     cs.add_hyperparameter(UniformFloatHyperparameter("lora_init_scale", adaptation_params['lora_init_scale'][0], adaptation_params['lora_init_scale'][1], log=True))
-                #     cs.add_hyperparameter(UniformIntegerHyperparameter("lora_scaling_rank", adaptation_params['lora_scaling_rank'][0], adaptation_params['lora_scaling_rank'][1]))
-                # else:
-                #     cs.add_hyperparameter(UniformIntegerHyperparameter("dora_rank", adaptation_params['dora_rank'][0], adaptation_params['dora_rank'][1]))
-                #     cs.add_hyperparameter(UniformFloatHyperparameter("dora_init_scale", adaptation_params['dora_init_scale'][0], adaptation_params['dora_init_scale'][1], log=True))
+            #         # Extract the last validation accuracy and loss from the history
+            #         val_accuracy = [entry['eval_accuracy'] for entry in history if 'eval_accuracy' in entry][-1]
+            #         val_loss = [entry['eval_loss'] for entry in history if 'eval_loss' in entry][-1]
+            #         return {
+            #             "val_loss": val_loss,
+            #             "1 - val_accuracy": 1 - val_accuracy,  # We minimize, so we use 1 - accuracy
+            #         }
+                    
+            #     # Define the configuration space for SMAC3
+            #     cs = ConfigurationSpace()
+            #     cs.add_hyperparameter(UniformFloatHyperparameter("lr", hyperparams['lr'][0], hyperparams['lr'][1], log=True))
+            #     cs.add_hyperparameter(CategoricalHyperparameter("batch", choices=hyperparams['batch']))
+            #     cs.add_hyperparameter(CategoricalHyperparameter("accum", choices=hyperparams['accum']))
+            #     cs.add_hyperparameter(UniformFloatHyperparameter("dropout", hyperparams['dropout'][0], hyperparams['dropout'][1]))
+            #     cs.add_hyperparameter(UniformFloatHyperparameter("weight_decay", hyperparams['weight_decay'][0], hyperparams['weight_decay'][1], log=True))
+            #     cs.add_hyperparameter(UniformFloatHyperparameter("warmup_pct", hyperparams['warmup_pct'][0], hyperparams['warmup_pct'][1]))
 
-                # # SMAC scenario
-                # scenario = Scenario({
-                #     "run_obj": "quality",
-                #     "runcount-limit": args.n_trials,
-                #     "cs": cs,
-                #     "deterministic": "true",
-                #     "output_dir": "smac3_output",
-                # })
+            #     if adaptation_params['method'] == 'lora':
+            #         cs.add_hyperparameter(UniformIntegerHyperparameter("lora_rank", adaptation_params['lora_rank'][0], adaptation_params['lora_rank'][1]))
+            #         cs.add_hyperparameter(UniformFloatHyperparameter("lora_init_scale", adaptation_params['lora_init_scale'][0], adaptation_params['lora_init_scale'][1], log=True))
+            #         cs.add_hyperparameter(UniformIntegerHyperparameter("lora_scaling_rank", adaptation_params['lora_scaling_rank'][0], adaptation_params['lora_scaling_rank'][1]))
+            #         cs.add_hyperparameter(CategoricalHyperparameter("adaptation_method", choices=["lora"]))
+            #     else:
+            #         cs.add_hyperparameter(UniformIntegerHyperparameter("dora_rank", adaptation_params['dora_rank'][0], adaptation_params['dora_rank'][1]))
+            #         cs.add_hyperparameter(UniformFloatHyperparameter("dora_init_scale", adaptation_params['dora_init_scale'][0], adaptation_params['dora_init_scale'][1], log=True))
+            #         cs.add_hyperparameter(CategoricalHyperparameter("adaptation_method", choices=["dora"]))
 
-                # def smac_objective(config):
-                #     loss, accuracy = objective(config)
-                #     return loss  # SMAC minimizes, so we return the loss
+            #     objectives = ["val_loss", "1 - val_accuracy"]
 
-                # # Run SMAC optimization
-                # smac = SMAC4HPO(scenario=scenario, rng=np.random.RandomState(args.seed),
-                #                 tae_runner=smac_objective)
-                # best_found_config = smac.optimize()
+            #     # Define output directory
+            #     output_dir = "./smac3_output"
+            #     os.makedirs(output_dir, exist_ok=True)
+                
+            #     # SMAC scenario
+            #     scenario = Scenario(
+            #         cs,
+            #         objectives=objectives,
+            #         n_trials=args.n_trials,
+            #         n_workers=1,
+            #         output_directory=output_dir,
+            #         name="ProteinModelOptimization",                    
+            #     )
 
-                # best_params = best_found_config.get_dictionary()
-                # print("Best configuration found:")
-                # print(best_params)
+            #     # We want to run five random configurations before starting the optimization.
+            #     initial_design = HPOFacade.get_initial_design(scenario, n_configs=5)
+                
+            #     intensifier = HPOFacade.get_intensifier(scenario, max_config_calls=2)
+
+            #     # Set up the multi-objective optimizer
+            #     multi_objective_algorithm = ParEGO(scenario=scenario)
+                
+            #     # Create our SMAC object and pass the scenario and the train method
+            #     smac = HPOFacade(
+            #         scenario,
+            #         train=train(),
+            #         initial_design=initial_design,
+            #         multi_objective_algorithm=multi_objective_algorithm,
+            #         intensifier=intensifier,
+            #         overwrite=True,
+            #     )
+                
+            #     # Let's optimize
+            #     incumbents = smac.optimize()
+
+            #     print("**************")
+            #     print("\nBest configurations:")
+            #     for incumbent in incumbents:
+            #         print("Configuration: ", incumbent)
+            #         print("Average Cost: ", smac.runhistory.average_cost(incumbent))
+            #         print("Value: ", smac.runhistory.get_cost(incumbent))
+            #         print("Hyperparameters: ", dict(incumbent))
+                
+            #     with open("smac_incumbents.txt", 'w') as f:
+            #         for incumbent in incumbents:
+            #             f.write(f"Configuration {incumbent}")
+            #             f.write(f"Average Cost: {smac.runhistory.average_cost(incumbent)}")
+            #             f.write(f"{dict(incumbent)})")
+            #             f.write('\n')
+                    
+            #     best_params = dict(incumbents[0])
+            #     print("Best Param", best_params)
 
             print("\nTraining with best hyperparameters:")
             tokenizer, model, history = train_per_protein(
@@ -1039,14 +1220,21 @@ def main():
                 dropout=best_params['dropout'],
                 weight_decay=best_params['weight_decay'],
                 warmup_pct=best_params['warmup_pct'],
+                model_type=args.model,
+                adaptation_method=adaptation_params['method'],
                 **{k: v for k, v in best_params.items() if k in ['lora_rank', 'lora_init_scale', 'lora_scaling_rank', 'dora_rank', 'dora_init_scale']}
             )
 
             print("Final training completed. Results:")
             print(history[-1])
+            
+            get_train_per_protein_history(history)
+            
+            metrics_calculation(model, tokenizer, test_df)
     except ValueError as e:
         print(f"Error: {str(e)}")
     except Exception as e:
         print(f"An unexpected error occurred: {str(e)}")
+        
 if __name__ == "__main__":
     main()
