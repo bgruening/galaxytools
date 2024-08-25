@@ -389,7 +389,7 @@ class ClassConfig:
 class T5EncoderClassificationHead(nn.Module):
     """Head for sentence-level classification tasks."""
 
-    def __init__(self, config, class_config):
+    def __init__(self, config, class_config, problem):
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.hidden_size)
         self.dropout = nn.Dropout(class_config.dropout_rate)
@@ -398,19 +398,28 @@ class T5EncoderClassificationHead(nn.Module):
         # Trainable emphasis factor
         self.emphasis_factor = nn.Parameter(torch.tensor(1.0))
         
+        # Problem selection
+        self.problem = problem
+        
     def forward(self, hidden_states):
-        seq_length = hidden_states.size(1)
-        middle_idx = seq_length // 2
-        middle_embedding = hidden_states[:, middle_idx, :]
+        if self.problem == "dephos":
+            seq_length = hidden_states.size(1)
+            middle_idx = seq_length // 2
+            middle_embedding = hidden_states[:, middle_idx, :]
 
-        # Apply trainable emphasis factor
-        emphasized_middle_embedding = middle_embedding * self.emphasis_factor
+            # Apply trainable emphasis factor
+            emphasized_middle_embedding = middle_embedding * self.emphasis_factor
 
-        # Combine with the average embedding
-        average_embedding = torch.mean(hidden_states, dim=1)
-        combined_embedding = emphasized_middle_embedding + average_embedding
+            # Combine with the average embedding
+            average_embedding = torch.mean(hidden_states, dim=1)
+            combined_embedding = emphasized_middle_embedding + average_embedding
+            
+            x = combined_embedding
+        else:
+            # For other problems, just use the average embedding
+            x = torch.mean(hidden_states, dim=1)
 
-        x = self.dropout(combined_embedding)
+        x = self.dropout(x)
         x = self.dense(x)
         x = torch.tanh(x)
         x = self.dropout(x)
@@ -419,7 +428,7 @@ class T5EncoderClassificationHead(nn.Module):
 
 class T5EncoderForSimpleSequenceClassification(T5PreTrainedModel):
 
-    def __init__(self, config: T5Config, class_config):
+    def __init__(self, config: T5Config, class_config, problem):
         super().__init__(config)
         self.num_labels = class_config.num_labels
         self.config = config
@@ -432,7 +441,7 @@ class T5EncoderForSimpleSequenceClassification(T5PreTrainedModel):
         self.encoder = T5Stack(encoder_config, self.shared)
 
         self.dropout = nn.Dropout(class_config.dropout_rate) 
-        self.classifier = T5EncoderClassificationHead(config, class_config)
+        self.classifier = T5EncoderClassificationHead(config, class_config, problem)
 
         # Initialize weights and apply final processing
         self.post_init()
@@ -602,7 +611,7 @@ class ESMForSequenceClassification(PreTrainedModel):
             attentions=outputs.attentions,
         )
 
-def unified_classification_model(model_type, num_labels, dropout, adaptation_method='lora', lora_rank=None, lora_init_scale=None, lora_scaling_rank=None, dora_rank=None, dora_init_scale=None):
+def unified_classification_model(model_type, num_labels, dropout, problem, adaptation_method='lora', lora_rank=None, lora_init_scale=None, lora_scaling_rank=None, dora_rank=None, dora_init_scale=None):
     if model_type in ['pt5-xl50', 'pt5-bfd']:
         # Load PT5 and tokenizer
         model_name = "Rostlab/prot_t5_xl_uniref50" if model_type == 'pt5-xl50' else "Rostlab/prot_t5_xl_bfd"
@@ -611,7 +620,7 @@ def unified_classification_model(model_type, num_labels, dropout, adaptation_met
         
         # Create new Classifier model with PT5 dimensions
         class_config = ClassConfig(num_labels=num_labels, dropout=dropout)
-        class_model = T5EncoderForSimpleSequenceClassification(model.config, class_config)
+        class_model = T5EncoderForSimpleSequenceClassification(model.config, class_config, problem)
         
         # Set encoder and embedding weights to checkpoint weights
         class_model.shared = model.shared
@@ -688,6 +697,7 @@ def train_per_protein(
         weight_decay,
         warmup_pct,
         model_type,
+        problem,
         num_labels=2,
         batch=4,
         accum=2,
@@ -713,6 +723,7 @@ def train_per_protein(
     # load model
     model, tokenizer = unified_classification_model(
         model_type=model_type,
+        problem=problem,
         num_labels=num_labels,
         dropout=dropout,
         adaptation_method=adaptation_method,
@@ -912,6 +923,7 @@ def main():
     parser.add_argument('--val_percent', type=float)
     
     parser.add_argument('--model', choices=['pt5-xl50', 'esm', 'pt5-bfd'], required=True)
+    parser.add_argument('--problem', choices=['dephos', 'other'], required=True)
     parser.add_argument('--hyperparameter_method', choices=['manual', 'auto'], required=True)
     parser.add_argument('--optimization_algorithm', choices=['optuna', 'smac3'])
     parser.add_argument('--n_trials', type=int)
@@ -1014,6 +1026,7 @@ def main():
                 adaptation_method=adaptation_params['method'],
                 **{k: v for k, v in adaptation_params.items() if k != 'method'},
                 model_type=args.model,
+                problem=args.problem,
             )
             
             print("Training completed. Final results:")
@@ -1058,6 +1071,7 @@ def main():
                     weight_decay=weight_decay,
                     warmup_pct=warmup_pct,
                     model_type=args.model,
+                    problem=args.problem,
                     seed=args.seed,
                     adaptation_method=adaptation_params['method'],
                     **adaptation_trial_params
@@ -1116,6 +1130,7 @@ def main():
             #             weight_decay=config['weight_decay'],
             #             warmup_pct=config['warmup_pct'],
             #             model_type=args.model,
+            #             problem=args.problem,
             #             adaptation_method=config['adaptation_method'],
             #             lora_rank=config['lora_rank'],
             #             lora_init_scale=config['lora_init_scale'],
@@ -1221,6 +1236,7 @@ def main():
                 weight_decay=best_params['weight_decay'],
                 warmup_pct=best_params['warmup_pct'],
                 model_type=args.model,
+                problem=args.problem,
                 adaptation_method=adaptation_params['method'],
                 **{k: v for k, v in best_params.items() if k in ['lora_rank', 'lora_init_scale', 'lora_scaling_rank', 'dora_rank', 'dora_init_scale']}
             )
