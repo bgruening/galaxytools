@@ -1,3 +1,22 @@
+# Suppress warning
+import warnings
+import os
+import torch
+import transformers
+from tqdm import tqdm
+
+# Suppress all Python warnings
+warnings.filterwarnings('ignore')
+
+# Suppress Hugging Face transformers warnings
+transformers.logging.set_verbosity_error()
+
+# Suppress TQDM progress bars
+tqdm.pandas(disable=True)
+
+# Suppress PyTorch warnings
+torch.set_warn_always(False)
+
 # Standard library imports
 import argparse
 import ast
@@ -993,6 +1012,8 @@ def main():
         train_df, valid_df = train_data, val_data
         test_df = test_data
         
+        num_labels = train_df['label'].nunique()
+        
         # Preprocess sequences
         train_df = preprocess_sequences(train_df)
         valid_df = preprocess_sequences(valid_df)
@@ -1014,7 +1035,7 @@ def main():
             tokenizer, model, history = train_per_protein(
                 train_set,
                 valid_set,
-                num_labels=2,
+                num_labels=num_labels,
                 batch=hyperparams['batch'],
                 accum=hyperparams['accum'],
                 epochs=hyperparams['epochs'],
@@ -1062,7 +1083,7 @@ def main():
                 tokenizer, model, history = train_per_protein(
                     train_dataset=train_set, 
                     valid_dataset=valid_set, 
-                    num_labels=2, 
+                    num_labels=num_labels, 
                     batch=batch, 
                     accum=accum, 
                     epochs=hyperparams['epochs_per_trial'],
@@ -1121,7 +1142,7 @@ def main():
             #         tokenizer, model, history = train_per_protein(
             #             train_dataset=train_set,
             #             valid_dataset=valid_set,
-            #             num_labels=2,
+            #             num_labels=num_labels,
             #             batch=int(config['batch']),
             #             accum=int(config['accum']),
             #             epochs=int(budget),
@@ -1226,7 +1247,7 @@ def main():
             tokenizer, model, history = train_per_protein(
                 train_set,
                 valid_set,
-                num_labels=2,
+                num_labels=num_labels,
                 batch=best_params['batch'],
                 accum=best_params['accum'],
                 epochs=args.epochs,
