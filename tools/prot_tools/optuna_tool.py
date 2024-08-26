@@ -1,21 +1,17 @@
-# Suppress warning
-import warnings
 import os
-import torch
-import transformers
-from tqdm import tqdm
+import warnings
 
-# Suppress all Python warnings
+# Suppress tqdm progress bars
+os.environ["TQDM_DISABLE"] = "1"
+
+# Suppress warnings
 warnings.filterwarnings('ignore')
 
 # Suppress Hugging Face transformers warnings
-transformers.logging.set_verbosity_error()
+os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
 
-# Suppress TQDM progress bars
-tqdm.pandas(disable=True)
-
-# Suppress PyTorch warnings
-torch.set_warn_always(False)
+# Suppress tokenizer warnings
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 # Standard library imports
 import argparse
