@@ -40,26 +40,24 @@ file_search_sup_ext = [
 vision_sup_ext = ["jpg", "jpeg", "png", "webp", "gif"]
 
 file_search_file_streams = []
-image_urls = []
+image_files = []
 
 for path in context_files:
     ext = path.split(".")[-1].lower()
-    if ext in vision_sup_ext and model in ["gpt-4o", "gpt-4o-mini", "gpt-4-turbo"]:
+    if ext in vision_sup_ext:
         if os.path.getsize(path) > 20 * 1024 * 1024:
-            raise Exception(f"File {path} exceeds the 20MB limit and will not be processed.")
+            print(f"File {path} exceeds the 20MB limit and will not be processed.")
+            sys.exit(1)
         file = client.files.create(file=open(path, "rb"), purpose="vision")
         promt = {"type": "image_file", "image_file": {"file_id": file.id}}
-        image_urls.append(promt)
-
+        image_files.append(promt)
     elif ext in file_search_sup_ext:
         file_search_file_streams.append(open(path, "rb"))
-    else:
-        raise Exception("Not supported file!")
 
 assistant = client.beta.assistants.create(
-    instructions="You are going to get question about the file(s).",
+    instructions="You will receive questions about files from file searches and image files. For file search queries, identify and retrieve the relevant files based on the question. For image file queries, analyze the image content and provide relevant information or insights based on the image data.",
     model=model,
-    tools=[{"type": "file_search"}] if file_search_file_streams else None,
+    tools=[{"type": "file_search"}] if file_search_file_streams else [],
 )
 if file_search_file_streams:
     vector_store = client.beta.vector_stores.create()
@@ -67,7 +65,8 @@ if file_search_file_streams:
         vector_store_id=vector_store.id, files=file_search_file_streams
     )
     assistant = client.beta.assistants.update(
-        assistant_id=assistant.id, tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}}
+        assistant_id=assistant.id,
+        tool_resources={"file_search": {"vector_store_ids": [vector_store.id]}},
     )
 
 messages = [
@@ -78,20 +77,24 @@ messages = [
                 "type": "text",
                 "text": question,
             },
-            *image_urls,
+            *image_files,
         ],
     }
 ]
 thread = client.beta.threads.create(messages=messages)
-run = client.beta.threads.runs.create_and_poll(thread_id=thread.id, assistant_id=assistant.id)
-messages = list(client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id))
+run = client.beta.threads.runs.create_and_poll(
+    thread_id=thread.id, assistant_id=assistant.id
+)
+assistant_messages = list(
+    client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id)
+)
 
-message_content = messages[0].content[0].text.value
+message_content = assistant_messages[0].content[0].text.value
 print("Output has been saved!")
 with open("output.txt", "w") as f:
     f.write(message_content)
 
-for image in image_urls:
+for image in image_files:
     client.files.delete(image["image_file"]["file_id"])
 if file_search_file_streams:
     client.beta.vector_stores.delete(vector_store.id)
