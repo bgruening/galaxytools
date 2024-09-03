@@ -9,9 +9,13 @@ warnings.filterwarnings('ignore')
 
 # Suppress Hugging Face transformers warnings
 os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
+os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = "1"
 
 # Suppress tokenizer warnings
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+from transformers.utils import logging
+logging.disable_progress_bar()
 
 # Standard library imports
 import argparse
@@ -75,7 +79,7 @@ from transformers.utils.model_parallel_utils import assert_device_map, get_devic
 # from ConfigSpace.hyperparameters import UniformFloatHyperparameter, CategoricalHyperparameter, UniformIntegerHyperparameter
 
 class MultiObjectiveEarlyStoppingAndSaveCallback(TrainerCallback):
-    def __init__(self, early_stopping_patience, min_delta=0.001, output_dir='./model_output', filename='finetuned_model'):
+    def __init__(self, early_stopping_patience, min_delta=0.001, output_dir='./model_output', filename='finetuned_model.pth'):
         self.early_stopping_patience = early_stopping_patience
         self.min_delta = min_delta
         self.best_val_loss = float('inf')
@@ -790,7 +794,7 @@ def train_per_protein(
             early_stopping_patience=3,
             min_delta=0.001,
             output_dir='./model_output',
-            filename='finetuned_model_all.pth'
+            filename='finetuned_model.pth'
         )],
     )    
         
@@ -798,7 +802,7 @@ def train_per_protein(
     trainer.train()
 
     # Load the best model
-    best_model_path = os.path.join('./model_output', 'finetuned_model_all.pth')
+    best_model_path = os.path.join('./model_output', 'finetuned_model.pth')
     if os.path.exists(best_model_path):
         state_dict = torch.load(best_model_path)
         model.load_state_dict(state_dict, strict=False)
@@ -1010,10 +1014,11 @@ def main():
         
         num_labels = train_df['label'].nunique()
         
-        # Preprocess sequences
-        train_df = preprocess_sequences(train_df)
-        valid_df = preprocess_sequences(valid_df)
-        test_df = preprocess_sequences(test_df)
+        # Preprocess sequences if it is PT5 model
+        if "pt5" in args.model:
+            train_df = preprocess_sequences(train_df)
+            valid_df = preprocess_sequences(valid_df)
+            test_df = preprocess_sequences(test_df)
 
         # Initialize the tokenizer
         selected_model = model_config[args.model]
