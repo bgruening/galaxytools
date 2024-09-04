@@ -1,11 +1,7 @@
-import os
 import sys
-
 
 model = sys.argv[1]
 prompt = sys.argv[2]
-
-os.environ["HF_HOME"] = "/scratch/users/arash/hf_home"
 
 import torch
 from diffusers import FluxPipeline
