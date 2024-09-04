@@ -1,7 +1,16 @@
 import sys
+import os
 
 model = sys.argv[1]
 prompt = sys.argv[2]
+if model == "black-forest-labs/FLUX.1-dev":
+    with open(sys.argv[3], "r") as f:
+        hf_token = f.read().strip()
+    if not hf_token:
+        print("HUGGINGFACE HUB TOKEN is not provided in user preferences!")
+        sys.exit(1)
+    os.environ["HUGGINGFACE_HUB_TOKEN"] = hf_token
+
 
 import torch
 from diffusers import FluxPipeline
