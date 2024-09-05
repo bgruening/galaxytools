@@ -105,7 +105,12 @@ run = client.beta.threads.runs.create_and_poll(
 assistant_messages = list(
     client.beta.threads.messages.list(thread_id=thread.id, run_id=run.id)
 )
-
+if not assistant_messages:
+    print(
+        "No output was generated!\nPlease ensure that your OpenAI account has sufficient credits.\n"
+        "You can check your balance here: https://platform.openai.com/settings/organization/billing"
+    )
+    sys.exit(1)
 message_content = assistant_messages[0].content[0].text.value
 print("Output has been saved!")
 with open("output.txt", "w") as f:
