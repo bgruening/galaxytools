@@ -53,6 +53,9 @@ for path in context_files:
         image_files.append(promt)
     elif ext in file_search_sup_ext:
         file_search_file_streams.append(open(path, "rb"))
+    else:
+        print(f"File {path} is not supported and will not be processed.")
+        sys.exit(1)
 
 assistant = client.beta.assistants.create(
     instructions="You will receive questions about files from file searches and image files. For file search queries, identify and retrieve the relevant files based on the question. For image file queries, analyze the image content and provide relevant information or insights based on the image data.",
