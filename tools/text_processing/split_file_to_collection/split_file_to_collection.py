@@ -329,6 +329,8 @@ def split_by_record(args, in_file, out_dir, top, ftype):
             else:
                 record += line
         # after loop, write final record to file
+        if new_file_counter in fresh_files:
+            new_file.write(header)
         new_file.write(record)
         new_file.close()
 
