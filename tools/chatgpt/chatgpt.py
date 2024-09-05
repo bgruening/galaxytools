@@ -1,7 +1,7 @@
 import os
 import sys
 
-from openai import OpenAI
+from openai import OpenAI, AuthenticationError
 
 context_files = sys.argv[1].split(",")
 question = sys.argv[2]
@@ -57,11 +57,25 @@ for path in context_files:
         print(f"File {path} is not supported and will not be processed.")
         sys.exit(1)
 
-assistant = client.beta.assistants.create(
-    instructions="You will receive questions about files from file searches and image files. For file search queries, identify and retrieve the relevant files based on the question. For image file queries, analyze the image content and provide relevant information or insights based on the image data.",
-    model=model,
-    tools=[{"type": "file_search"}] if file_search_file_streams else [],
-)
+try:
+    assistant = client.beta.assistants.create(
+        instructions=(
+            "You will receive questions about files from file searches "
+            "and image files. For file search queries, identify and "
+            "retrieve the relevant files based on the question. "
+            "For image file queries, analyze the image content and "
+            "provide relevant information or insights based on the image data."
+        ),
+        model=model,
+        tools=[{"type": "file_search"}] if file_search_file_streams else [],
+    )
+except AuthenticationError as e:
+    print(f"Authentication error: {e.message}")
+    sys.exit(1)
+except Exception as e:
+    print(f"An error occurred: {str(e)}")
+    sys.exit(1)
+
 if file_search_file_streams:
     vector_store = client.beta.vector_stores.create()
     file_batch = client.beta.vector_stores.file_batches.upload_and_poll(
