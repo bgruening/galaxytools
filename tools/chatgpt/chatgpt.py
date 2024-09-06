@@ -1,9 +1,10 @@
+import ast
 import os
 import sys
 
-from openai import OpenAI, AuthenticationError
+from openai import AuthenticationError, OpenAI
 
-context_files = sys.argv[1].split(",")
+context_files = ast.literal_eval(sys.argv[1])
 question = sys.argv[2]
 model = sys.argv[3]
 with open(sys.argv[4], "r") as f:
@@ -14,48 +15,19 @@ if not openai_api_key:
 
 client = OpenAI(api_key=openai_api_key)
 
-file_search_sup_ext = [
-    "c",
-    "cs",
-    "cpp",
-    "doc",
-    "docx",
-    "html",
-    "java",
-    "json",
-    "md",
-    "pdf",
-    "php",
-    "pptx",
-    "py",
-    "rb",
-    "tex",
-    "txt",
-    "css",
-    "js",
-    "sh",
-    "ts",
-]
-
-vision_sup_ext = ["jpg", "jpeg", "png", "webp", "gif"]
-
 file_search_file_streams = []
 image_files = []
 
-for path in context_files:
-    ext = path.split(".")[-1].lower()
-    if ext in vision_sup_ext:
+for path, type in context_files:
+    if type == "image":
         if os.path.getsize(path) > 20 * 1024 * 1024:
             print(f"File {path} exceeds the 20MB limit and will not be processed.")
             sys.exit(1)
         file = client.files.create(file=open(path, "rb"), purpose="vision")
         promt = {"type": "image_file", "image_file": {"file_id": file.id}}
         image_files.append(promt)
-    elif ext in file_search_sup_ext:
-        file_search_file_streams.append(open(path, "rb"))
     else:
-        print(f"File {path} is not supported and will not be processed.")
-        sys.exit(1)
+        file_search_file_streams.append(open(path, "rb"))
 
 try:
     assistant = client.beta.assistants.create(
