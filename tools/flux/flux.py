@@ -1,24 +1,26 @@
-import os
 import sys
 
+import torch
+from diffusers import FluxPipeline
+from huggingface_hub import login
+
 model = sys.argv[1]
+
 prompt_type = sys.argv[2]
 if prompt_type == "file":
     with open(sys.argv[3], "r") as f:
         prompt = f.read().strip()
 elif prompt_type == "text":
     prompt = sys.argv[3]
+
 if model == "black-forest-labs/FLUX.1-dev":
     with open(sys.argv[4], "r") as f:
         hf_token = f.read().strip()
     if not hf_token:
         print("HUGGINGFACE HUB TOKEN is not provided in user preferences!")
         sys.exit(1)
-    os.environ["HUGGINGFACE_HUB_TOKEN"] = hf_token
+    login(token=hf_token)
 
-
-import torch
-from diffusers import FluxPipeline
 
 pipe = FluxPipeline.from_pretrained(
     model,
