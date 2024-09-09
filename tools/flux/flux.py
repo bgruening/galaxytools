@@ -1,5 +1,5 @@
-import sys
 import os
+import sys
 
 model = sys.argv[1]
 prompt_type = sys.argv[2]
@@ -19,7 +19,6 @@ if model == "black-forest-labs/FLUX.1-dev":
 
 import torch
 from diffusers import FluxPipeline
-
 
 pipe = FluxPipeline.from_pretrained(
     model,
