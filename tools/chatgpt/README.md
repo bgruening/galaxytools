@@ -8,7 +8,7 @@ The tool then uploads the data to a OpenAI server and processes them using the s
 
 To utilize this tool, users need to input their OpenAI API key in the user preferences. To obtain an API key, visit https://platform.openai.com/account/api-keys.
 
-Make sure to setup the peyment method in your OpenAI account to use the API key in here: https://platform.openai.com/settings/organization/billing/
+Make sure to setup the payment method in your OpenAI account to use the API key in here: https://platform.openai.com/settings/organization/billing/
 
 When you run this tool, your input data is sent to OpenAI's servers using your API-key. 
 OpenAI's models process the data and generate a response based on the context and question provided. 

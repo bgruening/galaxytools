@@ -1,10 +1,10 @@
-import ast
+import json
 import os
 import sys
 
 from openai import AuthenticationError, OpenAI
 
-context_files = ast.literal_eval(sys.argv[1])
+context_files = json.loads(sys.argv[1])
 question = sys.argv[2]
 model = sys.argv[3]
 with open(sys.argv[4], "r") as f:
