@@ -23,8 +23,12 @@ If the tool fails to delete your uploaded files automatically, you can manually 
 1. **Upload Context Data**: Users can upload up to 500 files in formats such as DOC, DOCX, HTML, JSON, PDF, TXT, JPG, JPEG, PNG, WEBP, or GIF. 
 This context data serves as the background information for the question you wish to ask.
 
-2. **Ask a Question**: Once the context data is added, users can pose a question related to the content. 
-The more specific the question, the more tailored the response will be.
+2. **Provide a Prompt**: Once the context data is added, users can provide a prompt for a task ChatGPT should execute.
+The more specific the prompt, the more tailored the response will be.
+
+    [General thoughts on prompting with GPT-4](https://help.openai.com/en/articles/4936848-how-do-i-create-a-good-prompt-for-an-ai-model-like-gpt-4)
+
+    [Open Ai's prompt example page for more information](https://platform.openai.com/docs/examples)
 
 3. **Select a Model**: Choose the ChatGPT model that best fits your needs. 
 Information about different models and their pricing can be found at https://platform.openai.com/docs/models and https://openai.com/api/pricing.
