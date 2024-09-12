@@ -7,6 +7,7 @@ OPTIONS = ["edm=Overwrite", "iterations=1", "count=1"]
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
+roi_coordinate_file = sys.argv[-15]
 error_log = sys.argv[-14]
 input_file = sys.argv[-13]
 black_background = sys.argv[-12] == "yes"
@@ -45,6 +46,29 @@ if not image_processor_copy.isBinary():
 options = ["size=%s" % size]
 circularity_str = "%.3f-%.3f" % (circularity_min, circularity_max)
 options.append("circularity=%s" % circularity_str)
+if exclude_edges:
+    options.append("exclude")
+if include_holes:
+    options.append("include")
+
+# If you need the coordinates of ROIs we compute it twice
+if len(roi_coordinate_file) > 0:
+    options2 = list(options)
+    options2.append("show=Overlay")
+    IJ.run(input_image_plus_copy, "Analyze Particles...", " ".join(options2))
+    ov = input_image_plus_copy.getOverlay()
+    with open(roi_coordinate_file, 'w') as fo:
+        fo.write("shape\tpoints\tlabel\n")
+        for i, roi in enumerate(ov):
+            if roi.getName() is None:
+                roi.name = "ROI_%d" % i
+            poly = roi.getPolygon()
+            x_values = poly.xpoints
+            y_values = poly.ypoints
+            points_coo = ",".join(["(%d,%d)" % (x, y) for x, y in zip(x_values, y_values)])
+            fo.write("Polygon\t%s\t%s\n" % (points_coo, roi.getName()))
+    analyzer.resetCounter()
+
 if show.find("_") >= 0:
     show_str = "[%s]" % show.replace("_", " ")
 else:
@@ -54,10 +78,6 @@ if display_results:
     options.append("display")
     if not all_results:
         options.append("summarize")
-if exclude_edges:
-    options.append("exclude")
-if include_holes:
-    options.append("include")
 # Always run "in_situ".
 options.append("in_situ")
 
@@ -68,6 +88,6 @@ IJ.run(input_image_plus_copy, "Analyze Particles...", " ".join(options))
 if len(output_filename) > 0:
     # Save the ImagePlus object as a new image.
     IJ.saveAs(input_image_plus_copy, output_datatype, output_filename)
-if display_results and len(results_path) > 0:
+if len(results_path) > 0:
     results_table = analyzer.getResultsTable()
     results_table.saveAs(results_path)
