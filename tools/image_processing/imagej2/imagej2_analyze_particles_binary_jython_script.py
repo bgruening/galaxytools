@@ -7,16 +7,15 @@ OPTIONS = ["edm=Overwrite", "iterations=1", "count=1"]
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-roi_coordinate_file = sys.argv[-15]
-error_log = sys.argv[-14]
-input_file = sys.argv[-13]
-black_background = sys.argv[-12] == "yes"
-size = sys.argv[-11]
-circularity_min = float(sys.argv[-10])
-circularity_max = float(sys.argv[-9])
-show = sys.argv[-8]
-display_results = sys.argv[-7] == "yes"
-all_results = sys.argv[-6] == "yes"
+roi_coordinate_file = sys.argv[-14]
+error_log = sys.argv[-13]
+input_file = sys.argv[-12]
+black_background = sys.argv[-11] == "yes"
+size = sys.argv[-10]
+circularity_min = float(sys.argv[-9])
+circularity_max = float(sys.argv[-8])
+show = sys.argv[-7]
+display_results = sys.argv[-6] == "yes"
 exclude_edges = sys.argv[-5] == "yes"
 include_holes = sys.argv[-4] == "yes"
 output_filename = sys.argv[-3]
@@ -76,8 +75,6 @@ else:
 options.append("show=%s" % show_str)
 if display_results:
     options.append("display")
-    if not all_results:
-        options.append("summarize")
 # Always run "in_situ".
 options.append("in_situ")
 
