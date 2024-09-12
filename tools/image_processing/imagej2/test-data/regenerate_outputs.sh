@@ -22,3 +22,12 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 # Test 4
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_particles_binary_jython_script.py' 'tools/image_processing/imagej2/test-data/analyze_particles_rois.tabular' 'output_log.txt' 'tools/image_processing/imagej2/test-data/blobs.gif' 'no' '0-Infinity' 0.0 1.0 'Overlay_Masks' 'yes' 'yes' 'no' 'no' 'tools/image_processing/imagej2/test-data/analyze_particles_overlaymasks.gif' 'gif' 'tools/image_processing/imagej2/test-data/analyze_particles_nothing.tabular'
 
+# Skeleton
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/skeletonized_blobs.gif' 'no' 'none' 'no' 'no' 'no' 'tools/image_processing/imagej2/test-data/basic.tabular'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/skeletonized_clown.jpg' 'no' 'shortest_branch' 'no' 'no' 'no' 'tools/image_processing/imagej2/test-data/shortest_branch_basic.tabular'
+# Test 3
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/skeletonized_blobs.gif' 'no' 'none' 'no' 'yes' 'no' '/tmp/tmpnbw7tzf2/job_working_directory/000/6/outputs/dataset_9ac5bcf4-4e41-4240-871e-7d110c52a7ff.dat'
+# Test 4
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/skeletonized_clown.jpg' 'no' 'shortest_branch' 'no' 'yes' 'no' 'tools/image_processing/imagej2/test-data/shortest_branch_all_yes.tabular'
