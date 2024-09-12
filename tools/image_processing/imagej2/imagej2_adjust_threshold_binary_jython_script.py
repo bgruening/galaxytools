@@ -21,20 +21,17 @@ input_image_plus = IJ.openImage(input_file)
 input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
 
-# Convert image to binary if necessary.
-if not image_processor_copy.isBinary():
-    # Convert the image to binary grayscale.
-    IJ.run(
-        input_image_plus_copy,
-        "Make Binary",
-        "iterations=1 count=1 edm=Overwrite do=Nothing",
-    )
-# Set the options.
-if black_background:
-    method_str = "%s dark" % method
-else:
-    method_str = method
-IJ.setAutoThreshold(input_image_plus_copy, method_str)
+if method != "Manual":
+    # Set the options.
+    if black_background:
+        method_str = "%s dark" % method
+    else:
+        method_str = method
+    threshold_min = 1
+    threshold_max = float("inf")
+    print(method_str)
+    IJ.setAutoThreshold(input_image_plus_copy, method_str)
+    IJ.run(input_image_plus_copy, "Convert to Mask", "")
 if display == "red":
     display_mode = "Red"
 elif display == "bw":
@@ -42,7 +39,5 @@ elif display == "bw":
 elif display == "over_under":
     display_mode = "Over/Under"
 IJ.setThreshold(input_image_plus_copy, threshold_min, threshold_max, display_mode)
-# Run the command.
-IJ.run(input_image_plus_copy, "threshold", "")
 # Save the ImagePlus object as a new image.
 IJ.saveAs(input_image_plus_copy, output_datatype, output_filename)
