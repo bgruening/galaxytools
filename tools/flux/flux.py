@@ -2,7 +2,6 @@ import sys
 
 import torch
 from diffusers import FluxPipeline
-from huggingface_hub.utils import HfHubHTTPError
 
 model = sys.argv[1]
 
@@ -18,11 +17,7 @@ if model not in ["black-forest-labs/FLUX.1-dev", "black-forest-labs/FLUX.1-schne
     sys.exit(1)
 
 
-try:
-    pipe = FluxPipeline.from_pretrained(model, torch_dtype=torch.bfloat16)
-except HfHubHTTPError as e:
-    print(e)
-    sys.exit(1)
+pipe = FluxPipeline.from_pretrained(model, torch_dtype=torch.bfloat16)
 pipe.enable_sequential_cpu_offload()
 pipe.vae.enable_slicing()
 pipe.vae.enable_tiling()
