@@ -4,15 +4,13 @@ from ij import IJ
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-10]
-input_file = sys.argv[-9]
-threshold_min = float(sys.argv[-8])
-threshold_max = float(sys.argv[-7])
-method = sys.argv[-6]
-display = sys.argv[-5]
-black_background = sys.argv[-4] == "yes"
-# TODO: this is not being used.
-stack_histogram = sys.argv[-3] == "yes"
+error_log = sys.argv[-9]
+input_file = sys.argv[-8]
+threshold_min = float(sys.argv[-7])
+threshold_max = float(sys.argv[-6])
+method = sys.argv[-5]
+display = sys.argv[-4]
+black_background = sys.argv[-3] == "yes"
 output_filename = sys.argv[-2]
 output_datatype = sys.argv[-1]
 
