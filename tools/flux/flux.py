@@ -2,7 +2,7 @@ import sys
 
 import torch
 from diffusers import FluxPipeline
-from huggingface_hub import login
+from huggingface_hub.utils import HfHubHTTPError
 
 model = sys.argv[1]
 
@@ -13,19 +13,16 @@ if prompt_type == "file":
 elif prompt_type == "text":
     prompt = sys.argv[3]
 
-if model == "black-forest-labs/FLUX.1-dev":
-    with open(sys.argv[4], "r") as f:
-        hf_token = f.read().strip()
-    if not hf_token:
-        print("HUGGINGFACE HUB TOKEN is not provided in user preferences!")
-        sys.exit(1)
-    login(token=hf_token)
+if model not in ["black-forest-labs/FLUX.1-dev", "black-forest-labs/FLUX.1-schnell"]:
+    print("Invalid model!")
+    sys.exit(1)
 
 
-pipe = FluxPipeline.from_pretrained(
-    model,
-    torch_dtype=torch.bfloat16,
-)
+try:
+    pipe = FluxPipeline.from_pretrained(model, torch_dtype=torch.bfloat16)
+except HfHubHTTPError as e:
+    print(e)
+    sys.exit(1)
 pipe.enable_sequential_cpu_offload()
 pipe.vae.enable_slicing()
 pipe.vae.enable_tiling()
