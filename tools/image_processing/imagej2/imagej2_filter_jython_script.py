@@ -1,6 +1,6 @@
 import sys
 
-from ij import IJ, ImagePlus
+from ij import IJ
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
