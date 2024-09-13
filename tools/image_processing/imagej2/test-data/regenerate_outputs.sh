@@ -61,3 +61,13 @@ bunwarpj -compare_elastic_raw 'tools/image_processing/imagej2/test-data/dotblot.
 
 # imagej2...
 # TODO
+
+# Noise
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif' 'add_specified_noise' 5.0 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/add_specified_noise.gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif' 'despeckle' 'None' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/despeckle.gif'
+# Test 3
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_outliers' 'None' '10.0' '1' 'Bright' 'tools/image_processing/imagej2/test-data/remove_outliers.gif'
+# Test 4 fails
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_nans' 'None' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/remove_nans.gif'
