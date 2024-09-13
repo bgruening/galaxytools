@@ -1,0 +1,137 @@
+<tool id="imagej2_filter" name="Apply filter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+    <description>with ImageJ2</description>
+    <macros>
+        <import>imagej2_macros.xml</import>
+    </macros>
+    <edam_operations>
+        <edam_operation>operation_3443</edam_operation>
+    </edam_operations>
+    <xrefs>
+        <xref type="bio.tools">imagej</xref>
+        <xref type="biii">imagej2</xref>
+    </xrefs>
+    <expand macro="fiji_requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+#import os
+#set input_sans_ext = $os.path.splitext($os.path.basename($input.file_name))[0]
+#set input_with_ext = './' + '.'.join([input_sans_ext, $input.ext])
+ln -s '$input.file_name' '$input_with_ext' &&
+#set output_filename = '.'.join(['output', $input.ext])
+touch '$output_filename' &&
+ImageJ --ij2 --headless --debug
+--jython '$__tool_directory__/imagej2_filter_jython_script.py'
+'$input_with_ext'
+'$input.ext'
+'$filter_cond.filter'
+$radius
+#if $filter_cond.filter == 'unsharp_mask':
+    $filter_cond.mask
+#else:
+    'None'
+#end if
+#if $filter_cond.filter == 'top_hat':
+    '$filter_cond.light_background'
+    '$filter_cond.dont_substract'
+#else:
+    'None'
+    'None'
+#end if
+'$output_filename'
+&& mv '$output_filename' '$output';
+]]></command>
+    <inputs>
+        <expand macro="param_input"/>
+        <conditional name="filter_cond">
+            <param name="filter" type="select" label="filter">
+                <option value="gaussian_blur" selected="True">Gaussian Blur</option>
+                <option value="median">Median</option>
+                <option value="mean">Mean</option>
+                <option value="minimum">Minimum</option>
+                <option value="maximum">Maximum</option>
+                <option value="unsharp_mask">Unsharp Mask</option>
+                <option value="variance">Variance</option>
+                <option value="top_hat">Top Hat</option>
+            </param>
+            <when value="gaussian_blur"/>
+            <when value="median"/>
+            <when value="mean"/>
+            <when value="minimum"/>
+            <when value="maximum"/>
+            <when value="variance"/>
+            <when value="unsharp_mask">
+                <param name="mask" type="float" value="0.6" min="0.1" max="0.9" label="Mask Weight"/>
+            </when>
+            <when value="top_hat">
+                <param name="light_background" type="boolean" truevalue="light" falsevalue="" checked="false" label="Light Background" />
+                <param name="dont_substract" type="boolean" truevalue="dont" falsevalue="" checked="false" label="Don't substract (grayscale open)" />
+            </when>
+        </conditional>
+        <param name="radius" type="float" value="2.0" label="Radius / Sigma" help="(in pixels)"/>
+    </inputs>
+    <outputs>
+        <data name="output" format_source="input"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <param name="radius" value="5.0"/>
+            <conditional name="filter_cond">
+                <param name="filter" value="gaussian_blur"/>
+            </conditional>
+            <output name="output" file="gaussian_blur.gif" compare="sim_size"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <param name="radius" value="2.5"/>
+            <conditional name="filter_cond">
+                <param name="filter" value="median"/>
+            </conditional>
+            <output name="output" file="median.gif" compare="sim_size"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <param name="radius" value="5"/>
+            <conditional name="filter_cond">
+                <param name="filter" value="unsharp_mask"/>
+                <param name="mask" value="0.1"/>
+            </conditional>
+            <output name="output" file="unsharp_mask.gif" compare="sim_size"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <param name="radius" value="7.0"/>
+            <conditional name="filter_cond">
+                <param name="filter" value="top_hat"/>
+                <param name="light_background" value="true"/>
+                <param name="dont_substract" value="true"/>
+            </conditional>
+            <output name="output" file="top_hat.gif" compare="sim_size"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <param name="radius" value="7.0"/>
+            <conditional name="filter_cond">
+                <param name="filter" value="top_hat"/>
+                <param name="light_background" value="false"/>
+                <param name="dont_substract" value="false"/>
+            </conditional>
+            <output name="output" file="top_hat2.gif" compare="sim_size"/>
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+<![CDATA[
+Apply filters to images.
+
+- **Gaussian Blur...** - This filter uses convolution with a Gaussian function for smoothing. Sigma (Radius) is the radius of decay to exp(-0.5) ~ 61%, i.e. the standard deviation of the Gaussian (this is the same as in Photoshop, but different from ImageJ versions till 1.38q, where a value 2.5 times as much had to be entered). Like all ImageJ convolution operations, it assumes that out-of-image pixels have a value equal to the nearest edge pixel. This gives higher weight to edge pixels than pixels inside the image, and higher weight to corner pixels than non-corner pixels at the edge. Thus, when smoothing with very large blur radius, the output will be dominated by the edge pixels and especially the corner pixels (in the extreme case, with a blur radius of e.g. 1e20, the image will be raplaced by the average of the four corner pixels). For increased speed, except for small blur radii, the lines (rows or columns of the image) are downscaled before convolution and upscaled to their original length thereafter. The faster and more accurate version of Gaussian Blur in ImageJ 1.38r and later was contributed by Michael Schmid.
+- **Median...** - Reduces noise in the active image by replacing each pixel with the median of the neighboring pixel values.
+- **Mean...** - Smooths the current image by replacing each pixel with the neighborhood mean. The size of the neighborhood is specified by entering its radius in a dialog box.
+- **Minimum...** - This filter does grayscale erosion by replacing each pixel in the image with the smallest pixel value in that pixel's neighborhood.
+- **Maximum...** - This filter does grayscale dilation by replacing each pixel in the image with the largest pixel value in that pixel's neighborhood.
+- **Unsharp Mask...** - Sharpens and enhances edges by subtracting a blurred version of the image (the unsharp mask) from the original. The unsharp mask is created by Gaussian blurring the original image and then multiplying by the “Mask Weight” parameter. Increase the Guassian blur radius sigma to increase contrast and increase the “Mask Weight” value for additional edge enhancement (as for Process/Filters/Gaussian Blur, the “Gaussian Radius” entered in imageJ versions till 1.38q was 2.5 times sigma).
+- **Variance...** - Heighlights edges in the image by replacing each pixel with the neighborhood variance.
+]]>
+    </help>
+    <expand macro="fiji_headless_citations"/>
+</tool>

@@ -71,3 +71,15 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_outliers' 'None' '10.0' '1' 'Bright' 'tools/image_processing/imagej2/test-data/remove_outliers.gif'
 # Test 4 fails
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_nans' 'None' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/remove_nans.gif'
+
+# Filter
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'gaussian_blur' 5.0 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/gaussian_blur.gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'median' 2.5 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/median.gif'
+# Test 3
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'unsharp_mask' 5.0 0.1 'None' 'None' 'tools/image_processing/imagej2/test-data/unsharp_mask.gif'
+# Test 4
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'top_hat' 7.0 'None' 'light' 'dont' 'tools/image_processing/imagej2/test-data/top_hat.gif'
+# Test 5
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'top_hat' 7.0 'None' '' '' 'tools/image_processing/imagej2/test-data/top_hat2.gif'
