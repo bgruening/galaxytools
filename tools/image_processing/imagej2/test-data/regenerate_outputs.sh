@@ -31,3 +31,33 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/skeletonized_blobs.gif' 'no' 'none' 'no' 'yes' 'no' '/tmp/tmpnbw7tzf2/job_working_directory/000/6/outputs/dataset_9ac5bcf4-4e41-4240-871e-7d110c52a7ff.dat'
 # Test 4
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/skeletonized_clown.jpg' 'no' 'shortest_branch' 'no' 'yes' 'no' 'tools/image_processing/imagej2/test-data/shortest_branch_all_yes.tabular'
+
+# binary_to_edm
+# Test 1
+ImageJ --ij2 --headless --debug --jython '/home/ldelisle/Documents/mygit/galaxytools/tools/image_processing/imagej2/imagej2_binary_to_edm_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/blobs.gif' 1 1 'no' 'no' 'tools/image_processing/imagej2/test-data/blobs_edm.gif' 'gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython '/home/ldelisle/Documents/mygit/galaxytools/tools/image_processing/imagej2/imagej2_binary_to_edm_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/blobs.gif' 10 3 'yes' 'yes' 'tools/image_processing/imagej2/test-data/blobs_black_edm.gif' 'gif'
+
+# bunwarpj_adapt_transform
+# Test 1
+bunwarpj -adapt_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/adapted_transformation.txt' 2.0
+
+# bunwarpj_align
+# Test 1
+bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 '/tmp/tmp8ch18obd/job_working_directory/000/7/outputs/dataset_520929f6-c649-427e-8606-15450fc1a39a.dat' 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
+# Test 2
+bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png' '-save_transformation'
+mv 'tools/image_processing/imagej2/test-data/registered_source1_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_out_full.txt'
+mv 'tools/image_processing/imagej2/test-data/registered_target1_transf.txt' 'tools/image_processing/imagej2/test-data/target_elastic_transformation_out_full.txt' 
+# Test 3
+bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2.png' 'tools/image_processing/imagej2/test-data/registered_target2.png'
+
+# bunwarpj_compare_elastic_raw
+# Test 1
+bunwarpj -compare_elastic_raw 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/target_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/warping_index_raw_full.txt'  2>&1 | tee 'output_log.txt' && grep -Po 'Warping index = \K[^ ]+' 'output_log.txt' > 'tools/image_processing/imagej2/test-data/warping_index_raw_full.txt'
+
+# bunwarpj....
+# TODO
+
+# imagej2...
+# TODO
