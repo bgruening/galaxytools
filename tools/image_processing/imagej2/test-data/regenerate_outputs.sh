@@ -67,6 +67,10 @@ bunwarpj -compare_elastic_raw 'tools/image_processing/imagej2/test-data/dotblot.
 # imagej2...
 # TODO
 
+# make binary
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_make_binary_jython_script.py' 'output_log.txt' 'tools/image_processing/imagej2/test-data/clown.jpg' 1 1 'no' 'no' 'tools/image_processing/imagej2/test-data/clown_binary.jpg' 'jpg'
+
+
 # Noise
 # Test 1
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif' 'add_specified_noise' 5.0 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/add_specified_noise.gif'
