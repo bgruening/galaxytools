@@ -29,7 +29,6 @@ if method != "Manual":
         method_str = method
     threshold_min = 1
     threshold_max = float("inf")
-    print(method_str)
     IJ.setAutoThreshold(input_image_plus_copy, method_str)
     IJ.run(input_image_plus_copy, "Convert to Mask", "")
 if display == "red":
