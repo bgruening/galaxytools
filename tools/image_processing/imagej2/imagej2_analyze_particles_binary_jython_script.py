@@ -1,6 +1,6 @@
 import sys
 
-from ij import IJ
+from ij import IJ, Prefs
 from ij.plugin.filter import Analyzer
 
 OPTIONS = ["edm=Overwrite", "iterations=1", "count=1"]
@@ -22,6 +22,12 @@ output_filename = sys.argv[-3]
 output_datatype = sys.argv[-2]
 results_path = sys.argv[-1]
 
+
+if black_background:
+    Prefs.blackBackground = True
+else:
+    Prefs.blackBackground = False
+
 # Open the input image file.
 input_image_plus = IJ.openImage(input_file)
 
@@ -42,7 +48,7 @@ if not image_processor_copy.isBinary():
     IJ.run(input_image_plus_copy, "Make Binary", "")
 
 # Set the options.
-options = ["size=%s" % size]
+options = ["size=%s" % size, "stack"]
 circularity_str = "%.3f-%.3f" % (circularity_min, circularity_max)
 options.append("circularity=%s" % circularity_str)
 if exclude_edges:
@@ -57,7 +63,7 @@ if len(roi_coordinate_file) > 0:
     IJ.run(input_image_plus_copy, "Analyze Particles...", " ".join(options2))
     ov = input_image_plus_copy.getOverlay()
     with open(roi_coordinate_file, 'w') as fo:
-        fo.write("shape\tpoints\tlabel\n")
+        fo.write("shape\tpoints\tlabel\tt\tz\n")
         for i, roi in enumerate(ov):
             if roi.getName() is None:
                 roi.name = "ROI_%d" % i
@@ -65,7 +71,7 @@ if len(roi_coordinate_file) > 0:
             x_values = poly.xpoints
             y_values = poly.ypoints
             points_coo = ",".join(["(%d,%d)" % (x, y) for x, y in zip(x_values, y_values)])
-            fo.write("Polygon\t%s\t%s\n" % (points_coo, roi.getName()))
+            fo.write("Polygon\t%s\t%s\t%d\t%d\n" % (points_coo, roi.getName(), roi.getTPosition(), roi.getZPosition()))
     analyzer.resetCounter()
 
 if show.find("_") >= 0:

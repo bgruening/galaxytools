@@ -21,14 +21,14 @@ image_plus_copy = image_plus.duplicate()
 # Perform the analysis on the ImagePlus object.
 try:
     if filter == "gaussian_blur":
-        IJ.run(image_plus_copy, "Gaussian Blur...", "sigma=%s" % radius)
+        IJ.run(image_plus_copy, "Gaussian Blur...", "sigma=%s stack" % radius)
     elif filter in ["median", "mean", "minimum", "maximum", "variance"]:
-        IJ.run(image_plus_copy, "%s..." % filter.title(), "radius=%s" % radius)
+        IJ.run(image_plus_copy, "%s..." % filter.title(), "radius=%s stack" % radius)
     elif filter == "unsharp_mask":
-        IJ.run(image_plus_copy, "Unsharp Mask...", "radius=%s mask=%s" % (radius, mask))
+        IJ.run(image_plus_copy, "Unsharp Mask...", "radius=%s mask=%s stack" % (radius, mask))
     elif filter == "top_hat":
         print("radius=%s %s %s" % (radius, light_background, dont_substract.replace('dont', "don't")))
-        IJ.run(image_plus_copy, "Top Hat...", "radius=%s %s %s" % (radius, light_background, dont_substract.replace('dont', "don't")))
+        IJ.run(image_plus_copy, "Top Hat...", "radius=%s %s %s stack" % (radius, light_background, dont_substract.replace('dont', "don't")))
 except Exception as e:
     # This is due to some operations like gaussian_blur which block the script
     print(e)

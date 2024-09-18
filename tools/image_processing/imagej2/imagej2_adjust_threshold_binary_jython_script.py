@@ -1,6 +1,6 @@
 import sys
 
-from ij import IJ
+from ij import IJ, Prefs
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
@@ -21,16 +21,23 @@ input_image_plus = IJ.openImage(input_file)
 input_image_plus_copy = input_image_plus.duplicate()
 image_processor_copy = input_image_plus_copy.getProcessor()
 
+if black_background:
+    Prefs.blackBackground = True
+else:
+    Prefs.blackBackground = False
+
 if method != "Manual":
     # Set the options.
     if black_background:
         method_str = "%s dark" % method
+        suffix = "black"
     else:
         method_str = method
+        suffix = ""
     threshold_min = 1
     threshold_max = float("inf")
     IJ.setAutoThreshold(input_image_plus_copy, method_str)
-    IJ.run(input_image_plus_copy, "Convert to Mask", "")
+    IJ.run(input_image_plus_copy, "Convert to Mask", "calculate %s" % suffix)
 if display == "red":
     display_mode = "Red"
 elif display == "bw":
