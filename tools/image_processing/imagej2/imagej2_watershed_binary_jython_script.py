@@ -30,7 +30,7 @@ if not image_processor_copy.isBinary():
     IJ.run(input_image_plus_copy, "Make Binary", "")
 
 # Run the command.
-IJ.run(input_image_plus_copy, "Watershed", "")
+IJ.run(input_image_plus_copy, "Watershed", "stack")
 
 # Save the ImagePlus object as a new image.
 IJ.saveAs(input_image_plus_copy, output_datatype, tmp_output_path)

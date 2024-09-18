@@ -90,3 +90,9 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'top_hat' 7.0 'None' '' '' 'tools/image_processing/imagej2/test-data/top_hat2.gif'
 # Test 6
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel.tif'  'tiff' 'gaussian_blur' 2.0 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_gaussian_blur.tiff'
+
+# Watershed
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_watershed_binary_jython_script.py' 'output.log' 'tools/image_processing/imagej2/test-data/blobs.gif' 'no' 'tools/image_processing/imagej2/test-data/blobs_watershed_binary.gif' 'gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_watershed_binary_jython_script.py' 'output.log' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_threshold_default.tiff' 'yes' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_default_threshold_watershed.tiff' 'tiff'
