@@ -34,7 +34,7 @@ if bit_depth == 24:
     if weighted_rgb_conversions:
         options.append("weighted")
 # Perform conversion - must happen even if no options are set.
-IJ.run(input_image_plus_copy, "Conversions...", "%s" % " ".join(options))
+IJ.run(input_image_plus_copy, "Conversions...", " %s" % " ".join(options))
 if output_type in ["List", "Count"]:
     # W're  generating a tabular file for the output.
     # Set the Find Maxima options.
