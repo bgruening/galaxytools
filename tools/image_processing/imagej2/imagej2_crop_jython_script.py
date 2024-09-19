@@ -22,7 +22,7 @@ output_datatype = sys.argv[-1]
 # Open the input image file.
 input_image_plus = IJ.openImage(input_file)
 
-# Get image dimensions (width, height, nChannels, nSlices, nFrames) 
+# Get image dimensions (width, height, nChannels, nSlices, nFrames)
 image_dims = input_image_plus.getDimensions()
 
 # Create a copy of the image.
