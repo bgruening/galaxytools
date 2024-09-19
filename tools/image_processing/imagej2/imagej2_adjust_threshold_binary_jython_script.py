@@ -18,7 +18,8 @@ input_image_plus = IJ.openImage(input_file)
 
 # Create a copy of the image.
 input_image_plus_copy = input_image_plus.duplicate()
-image_processor_copy = input_image_plus_copy.getProcessor()
+
+bit_depth = input_image_plus_copy.getBitDepth()
 
 if black_background:
     Prefs.blackBackground = True
@@ -34,7 +35,15 @@ if method != "Manual":
         method_str = method
         suffix = ""
     threshold_min = 1
-    threshold_max = float("inf")
+    # Set threshold_max based on image bit-depth
+    # For 8-bit images, use 255; for 16-bit images, use 65535
+    if bit_depth == 8:
+        threshold_max = 255  # Default for 8-bit images
+    elif bit_depth == 16:
+        threshold_max = 65535  # Default for 16-bit images
+    else:
+        threshold_max = float('inf')  # General fallback if bit depth is unknown
+
     IJ.setAutoThreshold(input_image_plus_copy, method_str)
     IJ.run(input_image_plus_copy, "Convert to Mask", "calculate %s" % suffix)
 if display == "red":
