@@ -102,7 +102,10 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 0 0 50 0 1 0 1 0 1 0 'tools/image_processing/imagej2/test-data/blobs_crop_top50.gif' 'gif'
 # Test 4
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-both-channels.tiff' 17 16 18 8 1 1 1 0 1 0 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_cropped.tiff' 'tiff'
-
+# Test 5
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-both-channels.tiff' 17 16 18 8 1 0 1 1 1 0 'tools/image_processing/imagej2/test-data/confocal-series-both-channels_cropped_singleZ.tiff' 'tiff'
+# Test 6
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-both-channels.tiff' 17 16 18 8 1 1 1 1 1 0 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_cropped_singleZ.tiff' 'tiff'
 
 # Enhance contrast
 # Test 1
