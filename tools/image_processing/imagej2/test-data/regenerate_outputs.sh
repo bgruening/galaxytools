@@ -49,15 +49,16 @@ ImageJ --ij2 --headless --debug --jython '/home/ldelisle/Documents/mygit/galaxyt
 bunwarpj -adapt_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/adapted_transformation.txt' 2.0
 
 # I don't know why but my new outputs do not pass tests on CI...
-# # bunwarpj_align
-# # Test 1
-# bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
-# # Test 2
-# bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png' '-save_transformation'
-# mv 'tools/image_processing/imagej2/test-data/registered_source1_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_out_full.txt'
-# mv 'tools/image_processing/imagej2/test-data/registered_target1_transf.txt' 'tools/image_processing/imagej2/test-data/target_elastic_transformation_out_full.txt' 
-# # Test 3
-# bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2.png' 'tools/image_processing/imagej2/test-data/registered_target2.png'
+# Old do not pass CI neither
+# bunwarpj_align
+# Test 1
+bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
+# Test 2
+bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png' '-save_transformation'
+mv 'tools/image_processing/imagej2/test-data/registered_source1_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_out_full.txt'
+mv 'tools/image_processing/imagej2/test-data/registered_target1_transf.txt' 'tools/image_processing/imagej2/test-data/target_elastic_transformation_out_full.txt' 
+# Test 3
+bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2.png' 'tools/image_processing/imagej2/test-data/registered_target2.png'
 
 # bunwarpj_compare_elastic_raw
 # Test 1
