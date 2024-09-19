@@ -1,5 +1,5 @@
 source $(dirname $(dirname $(which conda)))/etc/profile.d/conda.sh
-conda_env=mulled-v1-e05ad707e739a59dbca8c6a1fe3f0275ce0ad5649e8bab53f43146c97b48b37e
+conda_env=mulled-v1-9e9e3735532d83dd44ff0f622055395263f964e81ca8113d4dfa7e133e3156bf
 conda activate $conda_env
 # Adjust threshold
 # Test 1
@@ -48,15 +48,16 @@ ImageJ --ij2 --headless --debug --jython '/home/ldelisle/Documents/mygit/galaxyt
 # Test 1
 bunwarpj -adapt_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/adapted_transformation.txt' 2.0
 
-# bunwarpj_align
-# Test 1
-bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
-# Test 2
-bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png' '-save_transformation'
-mv 'tools/image_processing/imagej2/test-data/registered_source1_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_out_full.txt'
-mv 'tools/image_processing/imagej2/test-data/registered_target1_transf.txt' 'tools/image_processing/imagej2/test-data/target_elastic_transformation_out_full.txt' 
-# Test 3
-bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2.png' 'tools/image_processing/imagej2/test-data/registered_target2.png'
+# I don't know why but my new outputs do not pass tests on CI...
+# # bunwarpj_align
+# # Test 1
+# bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
+# # Test 2
+# bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png' '-save_transformation'
+# mv 'tools/image_processing/imagej2/test-data/registered_source1_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_out_full.txt'
+# mv 'tools/image_processing/imagej2/test-data/registered_target1_transf.txt' 'tools/image_processing/imagej2/test-data/target_elastic_transformation_out_full.txt' 
+# # Test 3
+# bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2.png' 'tools/image_processing/imagej2/test-data/registered_target2.png'
 
 # bunwarpj_compare_elastic_raw
 # Test 1
