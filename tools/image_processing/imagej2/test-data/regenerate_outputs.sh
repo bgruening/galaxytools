@@ -1,3 +1,4 @@
+source $(dirname $(dirname $(which conda)))/etc/profile.d/conda.sh
 conda_env=mulled-v1-e05ad707e739a59dbca8c6a1fe3f0275ce0ad5649e8bab53f43146c97b48b37e
 conda activate $conda_env
 # Adjust threshold
@@ -33,7 +34,7 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 # Test 2
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'tools/image_processing/imagej2/test-data/skeletonized_clown.jpg' 'no' 'shortest_branch' 'no' 'no' 'no' 'tools/image_processing/imagej2/test-data/shortest_branch_basic.tabular'
 # Test 3
-ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'tools/image_processing/imagej2/test-data/skeletonized_blobs.gif' 'no' 'none' 'no' 'yes' 'no' '/tmp/tmpnbw7tzf2/job_working_directory/000/6/outputs/dataset_9ac5bcf4-4e41-4240-871e-7d110c52a7ff.dat'
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'tools/image_processing/imagej2/test-data/skeletonized_blobs.gif' 'no' 'none' 'no' 'yes' 'no' 'tools/image_processing/imagej2/test-data/largest_shortest_path_basic.tabular'
 # Test 4
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_analyze_skeleton_jython_script.py' 'tools/image_processing/imagej2/test-data/skeletonized_clown.jpg' 'no' 'shortest_branch' 'no' 'yes' 'no' 'tools/image_processing/imagej2/test-data/shortest_branch_all_yes.tabular'
 
@@ -49,7 +50,7 @@ bunwarpj -adapt_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg'
 
 # bunwarpj_align
 # Test 1
-bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 '/tmp/tmp8ch18obd/job_working_directory/000/7/outputs/dataset_520929f6-c649-427e-8606-15450fc1a39a.dat' 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
+bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
 # Test 2
 bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png' '-save_transformation'
 mv 'tools/image_processing/imagej2/test-data/registered_source1_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_out_full.txt'
@@ -61,25 +62,43 @@ bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/im
 # Test 1
 bunwarpj -compare_elastic_raw 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/target_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/warping_index_raw_full.txt'  2>&1 | tee 'output_log.txt' && grep -Po 'Warping index = \K[^ ]+' 'output_log.txt' > 'tools/image_processing/imagej2/test-data/warping_index_raw_full.txt'
 
-# bunwarpj....
-# TODO
+# bunwarpj_compare_elastic
+bunwarpj -compare_elastic 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/target_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 2>&1 | tee 'output_log.txt' && grep -Po 'Warping index = \K[^ ]+' 'output_log.txt' > 'tools/image_processing/imagej2/test-data/warping_index.txt'
 
-# imagej2...
-# TODO
-
-# make binary
-ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_make_binary_jython_script.py' 'tools/image_processing/imagej2/test-data/clown.jpg' 1 1 'no' 'no' 'tools/image_processing/imagej2/test-data/clown_binary.jpg' 'jpg'
-
-
-# Noise
+# bunwarpj_compare_raw
 # Test 1
-ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif' 'add_specified_noise' 5.0 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/add_specified_noise.gif'
+bunwarpj -compare_raw 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/target_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt' 2>&1 | tee 'output_log.txt' && grep -Po 'Warping index = \K[^ ]+' 'output_log.txt' > 'tools/image_processing/imagej2/test-data/warping_index1_full.txt'
 # Test 2
-ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif' 'despeckle' 'None' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/despeckle.gif'
+bunwarpj -compare_raw 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt' 2>&1 | tee 'output_log.txt' && grep -Po 'Warping index = \K[^ ]+' 'output_log.txt' > 'tools/image_processing/imagej2/test-data/warping_index2.txt'
+
+# bunwarpj_compose_elastic
+bunwarpj -compose_elastic 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/target_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/raw_transformation_full.txt'
+
+# bunwarpj_compose_raw_elastic
+bunwarpj -compose_raw_elastic 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/target_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/composed_raw_elastic_transformation_full.txt'
+
+# bunwarpj_compose_raw
+bunwarpj -compose_raw 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/target_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/composed_raw_transformation_full.txt'
+
+# bunwarpj_convert_to_raw
+bunwarpj -convert_to_raw 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt'
+
+# bunwarpj_elastic_transform
+bunwarpj -elastic_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/blobs_direct_transf.txt' 'tools/image_processing/imagej2/test-data/elastic_trans_registered_source1.png'
+
+# bunwarpj_raw_transform
+bunwarpj -raw_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/source_raw_transformation.txt' 'tools/image_processing/imagej2/test-data/raw_trans_registered_source1.png'
+
+# Create image
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_create_image_jython_script.py' 'MyTitle' 256 256 1 '8-bit_ramp' 'tools/image_processing/imagej2/test-data/create_image1.jpg'
+
+# Enhance contrast
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_enhance_contrast_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'yes' 'None' 'no' 'tools/image_processing/imagej2/test-data/blobs_equalize.gif' 'gif' 
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_enhance_contrast_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'no' 6.2 'no' 'tools/image_processing/imagej2/test-data/blobs_saturate.gif' 'gif'
 # Test 3
-ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_outliers' 'None' '10.0' '1' 'Bright' 'tools/image_processing/imagej2/test-data/remove_outliers.gif'
-# Test 4 fails
-ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_nans' 'None' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/remove_nans.gif'
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_enhance_contrast_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'no' 13.0 'yes' 'tools/image_processing/imagej2/test-data/blobs_normalize.gif' 'gif'
 
 # Filter
 # Test 1
@@ -94,6 +113,61 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'top_hat' 7.0 'None' '' '' 'tools/image_processing/imagej2/test-data/top_hat2.gif'
 # Test 6
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_filter_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel.tif'  'tiff' 'gaussian_blur' 2.0 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_gaussian_blur.tiff'
+
+# Find edges
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_find_edges_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/blobs_find_edges.gif' 'gif'
+
+# Find maxima
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_find_maxima_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'yes' 'no' 10 'Single_Points' 'no' 'no' 'tools/image_processing/imagej2/test-data/blobs_single_points.gif' 'gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_find_maxima_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'yes' 'no' 13 'Maxima_Within_Tolerance' 'no' 'no' 'tools/image_processing/imagej2/test-data/blobs_tolerance.gif' 'gif'
+# Test 3
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_find_maxima_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'yes' 'no' 16 'Segmented_Particles' 'yes' 'no' 'tools/image_processing/imagej2/test-data/blobs_segmented.gif' 'gif'
+# Test 4
+# ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_find_maxima_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'yes' 'no' 10 'List' 'no' 'no' 'tools/image_processing/imagej2/test-data/blobs_list.tabular' 'tabular'
+# Test 5
+# ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_find_maxima_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'yes' 'no' 10 'Count' 'no' 'no' 'tools/image_processing/imagej2/test-data/blobs_count.tabular' 'tabular'
+
+# make binary
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_make_binary_jython_script.py' 'tools/image_processing/imagej2/test-data/clown.jpg' 1 1 'no' 'no' 'tools/image_processing/imagej2/test-data/clown_binary.jpg' 'jpg'
+
+# Math
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_math_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'Multiply' 'None' 'None' 1.25 'tools/image_processing/imagej2/test-data/blobs_multiply.gif' 'gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_math_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'Min' 'None' 'None' 255.0 'tools/image_processing/imagej2/test-data/blobs_min.gif' 'gif'
+# Test 3
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_math_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'Log' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/blobs_log.gif' 'gif'
+# Test 4
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_math_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'Square' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/blobs_square.gif' 'gif'
+# Test 5
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_math_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'Macro' 'v=v+50*sin(d/17)' 'None' 'None' 'tools/image_processing/imagej2/test-data/blobs_macro.gif' 'gif'
+
+# Noise
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif' 'add_specified_noise' 5.0 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/add_specified_noise.gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif' 'despeckle' 'None' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/despeckle.gif'
+# Test 3
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_outliers' 'None' '10.0' '1' 'Bright' 'tools/image_processing/imagej2/test-data/remove_outliers.gif'
+# Test 4 fails
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_noise_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif'  'gif' 'remove_nans' 'None' 'None' 'None' 'None' 'tools/image_processing/imagej2/test-data/remove_nans.gif'
+
+# Shadows
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_shadows_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'Northwest' 'tools/image_processing/imagej2/test-data/blobs_northwest.gif' 'gif'
+
+# Sharpen
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_sharpen_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/blobs_sharpen.gif' 'gif'
+
+# Skeletonized 3D
+# Test 1
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_skeletonize3d_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'no' 'tools/image_processing/imagej2/test-data/skeletonized_blobs.gif' 'gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_skeletonize3d_jython_script.py' 'tools/image_processing/imagej2/test-data/clown.jpg' 'no' 'tools/image_processing/imagej2/test-data/skeletonized_clown.jpg' 'jpg'
+
+# Smooth
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_smooth_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/blobs_smooth.gif' 'gif'
 
 # Watershed
 # Test 1
