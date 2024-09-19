@@ -92,6 +92,17 @@ bunwarpj -raw_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg' '
 # Create image
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_create_image_jython_script.py' 'MyTitle' 256 256 1 '8-bit_ramp' 'tools/image_processing/imagej2/test-data/create_image1.jpg'
 
+# Crop
+# Test 1
+# ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 0 0 0 0 1 0 1 0 1 0 'tools/image_processing/imagej2/test-data/blobs.gif' 'gif'
+# Test 2
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 0 50 0 0 1 0 1 0 1 0 'tools/image_processing/imagej2/test-data/blobs_crop_width50.gif' 'gif'
+# Test 3
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 0 0 50 0 1 0 1 0 1 0 'tools/image_processing/imagej2/test-data/blobs_crop_top50.gif' 'gif'
+# Test 4
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_crop_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-both-channels.tiff' 17 16 18 8 1 1 1 0 1 0 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_cropped.tiff' 'tiff'
+
+
 # Enhance contrast
 # Test 1
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_enhance_contrast_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 'yes' 'None' 'no' 'tools/image_processing/imagej2/test-data/blobs_equalize.gif' 'gif' 
