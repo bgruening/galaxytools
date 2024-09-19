@@ -4,7 +4,6 @@ from ij import IJ, Prefs
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-9]
 input_file = sys.argv[-8]
 threshold_min = float(sys.argv[-7])
 threshold_max = float(sys.argv[-6])
