@@ -1440,8 +1440,6 @@ class JbrowseConnector(object):
                 )
             session_views.append(view_json)
         session_name = default_data.get("session_name", "New session")
-        for key, value in mapped_chars.items():
-            session_name = session_name.replace(value, key)
         session_json["name"] = session_name
 
         if "views" not in session_json:
