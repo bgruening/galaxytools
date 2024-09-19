@@ -4,7 +4,6 @@ from ij import IJ
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-5]
 input = sys.argv[-4]
 black_background = sys.argv[-3] == "yes"
 tmp_output_path = sys.argv[-2]

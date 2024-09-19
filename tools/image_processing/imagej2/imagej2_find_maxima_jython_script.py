@@ -6,7 +6,6 @@ from ij.process import ImageProcessor
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-10]
 input_file = sys.argv[-9]
 scale_when_converting = sys.argv[-8] == "yes"
 weighted_rgb_conversions = sys.argv[-7] == "yes"

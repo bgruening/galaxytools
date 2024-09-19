@@ -7,8 +7,7 @@ OPTIONS = ["edm=Overwrite", "iterations=1", "count=1"]
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-roi_coordinate_file = sys.argv[-14]
-error_log = sys.argv[-13]
+roi_coordinate_file = sys.argv[-13]
 input_file = sys.argv[-12]
 black_background = sys.argv[-11] == "yes"
 size = sys.argv[-10]
