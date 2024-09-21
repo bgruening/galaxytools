@@ -411,7 +411,7 @@ class JbrowseConnector(object):
             []
         )  # for default session - these are read as first line of the assembly .fai
         self.giURL = GALAXY_INFRASTRUCTURE_URL
-        self.outdir = outdir
+        self.outdir = os.path.abspath(outdir)
         self.jbrowse2path = jbrowse2path
         os.makedirs(self.outdir, exist_ok=True)
         self.genome_names = []
@@ -444,7 +444,7 @@ class JbrowseConnector(object):
             log.debug(command)
         p = subprocess.Popen(
             command,
-            cwd=self.get_cwd(cwd),
+            cwd=self.outdir,
             shell=True,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
