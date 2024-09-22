@@ -476,17 +476,17 @@ We highly recommend to use PostgreSQL for any kind of production system.
 .. _molecular frameworks and the reduced molecular frameworks: http://peter-ertl.com/reprints/Schuffenhauer-JCIM-47-47-2007.pdf
 .. _scaffold topologies: http://www.ncbi.nlm.nih.gov/pubmed/18605680
 .. _gaussian volumes as descriptor for molecular shape: http://pubs.acs.org/doi/abs/10.1021/j100011a016
-.. _obgrep: http://openbabel.org/wiki/Obgrep
-.. _FastSearch: http://openbabel.org/wiki/FastSearch
+.. _obgrep: https://open-babel.readthedocs.io/en/latest/Command-line_tools/babel.html#filtering-molecules-from-a-multimolecule-file
+.. _FastSearch: https://open-babel.readthedocs.io/en/latest/Command-line_tools/babel.html#substructure-and-similarity-searching
 .. _Silicos: http://www.silicos.be/technologies/spectrophore
 .. _chemfp: http://chemfp.com/
 .. _Open Babel command prompt converters: http://openbabel.org/docs/2.3.0/FileFormats/Overview.html
-.. _Open Babel: http://openbabel.org/wiki/Main_Page
+.. _Open Babel: https://open-babel.readthedocs.io/en/latest/index.html
 .. _OpenEye: http://www.eyesopen.com/
 .. _RDKit: http://www.rdkit.org/
 .. _Taylor-Butina clustering: http://www.redbrick.dcu.ie/~noel/R_clustering.html
-.. _PNG: http://openbabel.org/docs/dev/FileFormats/PNG_2D_depiction.html
-.. _SVG: http://openbabel.org/docs/dev/FileFormats/SVG_2D_depiction.html
+.. _PNG: https://open-babel.readthedocs.io/en/latest/FileFormats/PNG_2D_depiction.html
+.. _SVG: https://open-babel.readthedocs.io/en/latest/FileFormats/SVG_2D_depiction.html
 .. _OSRA: http://cactus.nci.nih.gov/osra/
 .. _Confab: https://code.google.com/p/confab/
 .. _numpy: http://www.numpy.org/
