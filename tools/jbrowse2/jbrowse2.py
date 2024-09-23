@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import ssl
+import string
 import struct
 import subprocess
 import tempfile
@@ -1600,7 +1601,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     tree = ET.parse(args.xml)
     root = tree.getroot()
-
+    removeMe = string.punctuation.replace('.','').replace('/','').replace('-','')
+    nopunct = str.maketrans(dict.fromkeys(removeMe))
     # This should be done ASAP
     GALAXY_INFRASTRUCTURE_URL = root.find("metadata/galaxyUrl").text
     # Sometimes this comes as `localhost` without a protocol
@@ -1617,7 +1619,7 @@ if __name__ == "__main__":
         genomes = [
             {
                 "path": x.attrib["path"],
-                "label": x.attrib["label"].split(" ")[0].replace(",", ""),
+                "label": x.attrib["label"].split(" ")[0].translate(nopunct),
                 "useuri": x.attrib["useuri"],
                 "meta": metadata_from_node(x.find("metadata")),
             }
@@ -1655,7 +1657,7 @@ if __name__ == "__main__":
                     if x.attrib['ext'] == "bed":
                         isBed = True
                     track_conf["label"] = "%s_%d" % (
-                        x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/", "_"),
+                        x.attrib["label"].translate(nopunct),
                         trackI,
                     )
                     trackI += 1
@@ -1663,7 +1665,7 @@ if __name__ == "__main__":
                     if is_multi_bigwig:
                         multi_bigwig_paths.append(
                             (
-                                track_conf["label"],
+                                track_conf["label"].translate(nopunct),
                                 track_conf["useuri"],
                                 os.path.realpath(x.attrib["path"]),
                             )
