@@ -48,9 +48,11 @@ ImageJ --ij2 --headless --debug --jython '/home/ldelisle/Documents/mygit/galaxyt
 # Test 1
 bunwarpj -adapt_transform 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/source_elastic_transformation.txt' 'tools/image_processing/imagej2/test-data/adapted_transformation.txt' 2.0
 
-# I don't know why but my new outputs do not pass tests on CI...
-# Old do not pass CI neither
+# bunwarpj_align gets different outputs when the number of CPUS is contrainted.
+# When galaxy uses docker, the CPUs are always constrainted.
+# Currently the CPUS are fixed to 1 to ensure consistency.
 # bunwarpj_align
+# Outputs without CPU fixed:
 # Test 1
 bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1.png' 'tools/image_processing/imagej2/test-data/registered_target1.png'
 # Test 2
@@ -60,15 +62,15 @@ mv 'tools/image_processing/imagej2/test-data/registered_target1_transf.txt' 'too
 # Test 3
 bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2.png' 'tools/image_processing/imagej2/test-data/registered_target2.png'
 
-# Requires that your user belong to the docker group
-# First generate the docker image with:
-# planemo test --biocontainers --no_dependency_resolution --no_conda_auto_init tools/image_processing/imagej2/imagej2_bunwarpj_align.xml
-# Then produce outputs with
-# docker run --name test_docker -v $PWD:$PWD:rw -w $PWD --cpus 4 --rm --user 1001:1001 quay.io/local/mulled-v2-557813cb01abcc9c2a8cf25415af954884af9f02:385522849f092c1db17139b50238266fc166e5b1-0 bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1_docker4cpus.png' 'tools/image_processing/imagej2/test-data/registered_target1_docker4cpus.png'
-# docker run --name test_docker -v $PWD:$PWD:rw -w $PWD --cpus 4 --rm --user 1001:1001 quay.io/local/mulled-v2-557813cb01abcc9c2a8cf25415af954884af9f02:385522849f092c1db17139b50238266fc166e5b1-0 bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1_docker4cpus.png' 'tools/image_processing/imagej2/test-data/registered_target1_docker4cpus.png' '-save_transformation'
-# mv 'tools/image_processing/imagej2/test-data/registered_source1_docker4cpus_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_out_full_docker4cpus.txt'
-# mv 'tools/image_processing/imagej2/test-data/registered_target1_docker4cpus_transf.txt' 'tools/image_processing/imagej2/test-data/target_elastic_transformation_out_full_docker4cpus.txt' 
-# docker run --name test_docker -v $PWD:$PWD:rw -w $PWD --cpus 4 --rm --user 1001:1001 quay.io/local/mulled-v2-557813cb01abcc9c2a8cf25415af954884af9f02:385522849f092c1db17139b50238266fc166e5b1-0 bunwarpj -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2_docker4cpus.png' 'tools/image_processing/imagej2/test-data/registered_target2_docker4cpus.png'
+# Outputs with CPU fixed to 1:
+# Test 1
+bunwarpj -XX:ActiveProcessorCount="1" -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1_forced1cpu.png' 'tools/image_processing/imagej2/test-data/registered_target1_forced1cpu.png'
+# Test 2
+bunwarpj -XX:ActiveProcessorCount="1" -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'NULL' 'tools/image_processing/imagej2/test-data/blobs.gif' 'NULL' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source1_forced1cpu.png' 'tools/image_processing/imagej2/test-data/registered_target1_forced1cpu.png' '-save_transformation'
+mv 'tools/image_processing/imagej2/test-data/registered_source1_forced1cpu_transf.txt' 'tools/image_processing/imagej2/test-data/source_elastic_transformation_forced1cpu_out_full.txt'
+mv 'tools/image_processing/imagej2/test-data/registered_target1_forced1cpu_transf.txt' 'tools/image_processing/imagej2/test-data/target_elastic_transformation_forced1cpu_out_full.txt' 
+# Test 3
+bunwarpj -XX:ActiveProcessorCount="1" -align 'tools/image_processing/imagej2/test-data/dotblot.jpg' 'tools/image_processing/imagej2/test-data/mask_white.png' 'tools/image_processing/imagej2/test-data/blobs.gif' 'tools/image_processing/imagej2/test-data/mask_ramp.gif' 0 2 1 0.0 0.0 1.0 10.0 'tools/image_processing/imagej2/test-data/registered_source2_forced1cpu.png' 'tools/image_processing/imagej2/test-data/registered_target2_forced1cpu.png'
 
 # bunwarpj_compare_elastic_raw
 # Test 1
