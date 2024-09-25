@@ -621,18 +621,9 @@ class JbrowseConnector(object):
         # Index tracks
         args = [
             "jbrowse",
-            "text-index",
-            "--target",
-            self.outdir,
-            "--assemblies",
-            self.genome_name,
+            "text-index"
         ]
-
-        tracks = ",".join(self.trackIdlist)
-        if tracks:
-            args += ["--tracks", tracks]
-
-            self.subprocess_check_call(args)
+        self.subprocess_check_call(args)
 
     def add_hic(self, data, trackData):
         """
@@ -1601,7 +1592,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     tree = ET.parse(args.xml)
     root = tree.getroot()
-    removeMe = string.punctuation.replace('.','').replace('/','').replace('-','')
+    removeMe = string.punctuation.replace('.', ' ').replace('/', '').replace('-', '')
+    # first is a space because space needs to be added here for removal from labels as paths.
     nopunct = str.maketrans(dict.fromkeys(removeMe))
     # This should be done ASAP
     GALAXY_INFRASTRUCTURE_URL = root.find("metadata/galaxyUrl").text
@@ -1772,4 +1764,5 @@ if __name__ == "__main__":
     jc.write_config()
     # note that this can be left in the config.json but has NO EFFECT if add_defsess_to_index is called.
     # jc.add_defsess_to_index(default_session_data)
-    # jc.text_index() not sure what broke here.
+    # this command line tool appears currently broken - or at least not working here.
+    # jc.text_index()
