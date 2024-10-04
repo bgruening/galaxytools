@@ -21,7 +21,7 @@ from collections import defaultdict
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("jbrowse")
 
-JB2VER = "v2.12.3"
+JB2VER = "v2.15.4"
 # version pinned if cloning - but not cloning now
 logCommands = True
 # useful for seeing what's being written but not for production setups
@@ -1547,7 +1547,7 @@ class JbrowseConnector(object):
 
         """
         dest = self.outdir
-        if realclone:
+        if (not os.path.exists(self.jbrowse2path)) or realclone:
             self.subprocess_check_call(
                 ["jbrowse", "create", dest, "-f", "--tag", f"{JB2VER}"]
             )
