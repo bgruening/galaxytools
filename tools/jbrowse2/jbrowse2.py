@@ -420,7 +420,7 @@ class JbrowseConnector(object):
         self.tracksToAdd = {}
         self.config_json = {}
         self.config_json_file = os.path.join(outdir, "config.json")
-        self.clone_jbrowse()
+        self.clone_jbrowse(realclone=False)
 
     def get_cwd(self, cwd):
         if cwd:
