@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import ssl
+import string
 import struct
 import subprocess
 import tempfile
@@ -20,7 +21,7 @@ from collections import defaultdict
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("jbrowse")
 
-JB2VER = "v2.12.3"
+JB2VER = "v2.15.4"
 # version pinned if cloning - but not cloning now
 logCommands = True
 # useful for seeing what's being written but not for production setups
@@ -419,7 +420,7 @@ class JbrowseConnector(object):
         self.tracksToAdd = {}
         self.config_json = {}
         self.config_json_file = os.path.join(outdir, "config.json")
-        self.clone_jbrowse()
+        self.clone_jbrowse(realclone=False)
 
     def get_cwd(self, cwd):
         if cwd:
@@ -620,18 +621,9 @@ class JbrowseConnector(object):
         # Index tracks
         args = [
             "jbrowse",
-            "text-index",
-            "--target",
-            self.outdir,
-            "--assemblies",
-            self.genome_name,
+            "text-index"
         ]
-
-        tracks = ",".join(self.trackIdlist)
-        if tracks:
-            args += ["--tracks", tracks]
-
-            self.subprocess_check_call(args)
+        self.subprocess_check_call(args)
 
     def add_hic(self, data, trackData):
         """
@@ -1555,7 +1547,7 @@ class JbrowseConnector(object):
 
         """
         dest = self.outdir
-        if realclone:
+        if (not os.path.exists(self.jbrowse2path)) or realclone:
             self.subprocess_check_call(
                 ["jbrowse", "create", dest, "-f", "--tag", f"{JB2VER}"]
             )
@@ -1600,7 +1592,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     tree = ET.parse(args.xml)
     root = tree.getroot()
-
+    removeMe = string.punctuation.replace('.', ' ').replace('/', '').replace('-', '')
+    # first is a space because space needs to be added here for removal from labels as paths.
+    nopunct = str.maketrans(dict.fromkeys(removeMe))
     # This should be done ASAP
     GALAXY_INFRASTRUCTURE_URL = root.find("metadata/galaxyUrl").text
     # Sometimes this comes as `localhost` without a protocol
@@ -1617,7 +1611,7 @@ if __name__ == "__main__":
         genomes = [
             {
                 "path": x.attrib["path"],
-                "label": x.attrib["label"].split(" ")[0].replace(",", ""),
+                "label": x.attrib["label"].split(" ")[0].translate(nopunct),
                 "useuri": x.attrib["useuri"],
                 "meta": metadata_from_node(x.find("metadata")),
             }
@@ -1655,7 +1649,7 @@ if __name__ == "__main__":
                     if x.attrib['ext'] == "bed":
                         isBed = True
                     track_conf["label"] = "%s_%d" % (
-                        x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/", "_"),
+                        x.attrib["label"].translate(nopunct),
                         trackI,
                     )
                     trackI += 1
@@ -1663,7 +1657,7 @@ if __name__ == "__main__":
                     if is_multi_bigwig:
                         multi_bigwig_paths.append(
                             (
-                                track_conf["label"],
+                                track_conf["label"].translate(nopunct),
                                 track_conf["useuri"],
                                 os.path.realpath(x.attrib["path"]),
                             )
@@ -1770,4 +1764,5 @@ if __name__ == "__main__":
     jc.write_config()
     # note that this can be left in the config.json but has NO EFFECT if add_defsess_to_index is called.
     # jc.add_defsess_to_index(default_session_data)
-    # jc.text_index() not sure what broke here.
+    # this command line tool appears currently broken - or at least not working here.
+    # jc.text_index()
