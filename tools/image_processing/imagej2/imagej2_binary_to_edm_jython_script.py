@@ -4,7 +4,6 @@ from ij import IJ
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-8]
 input_file = sys.argv[-7]
 iterations = int(sys.argv[-6])
 count = int(sys.argv[-5])

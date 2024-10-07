@@ -4,7 +4,6 @@ from ij import IJ
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-7]
 input = sys.argv[-6]
 equalize_histogram = sys.argv[-5] == "yes"
 saturated_pixels = sys.argv[-4]
