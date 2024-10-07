@@ -1220,16 +1220,11 @@ class JbrowseConnector(object):
                 "pafLocation": {"uri": url},
                 "assemblyNames": passnames,
             }
-        if (not usePIF) and (nrow > 10000):
-            style_json = {
-                "type": "LGVSyntenyDisplay",
-                "displayId": "%s-LGVSyntenyDisplay" % tId,
-            }
-        else:
-            style_json = {
-                "type": "LinearBasicDisplay",
-                "displayId": "%s-LinearBasicDisplay" % tId,
-            }
+        style_json = {
+            "type": "LGVSyntenyDisplay",
+            "displayId": "%s-LGVSyntenyDisplay" % tId,
+        }
+        
         trackDict["style"] = style_json
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
         self.trackIdlist.append(tId)
