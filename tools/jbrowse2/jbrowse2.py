@@ -1136,13 +1136,15 @@ class JbrowseConnector(object):
         usePIF = False  # much faster if indexed remotely or locally
         useuri = data.startswith("http://") or data.startswith("https://")
         if not useuri:
-            dest = os.path.join(self.outdir, url)
-            self.symlink_or_copy(os.path.realpath(data), dest)
-            cmd = ["jbrowse", "make-pif", dest]
+            # self.symlink_or_copy(os.path.realpath(data), url)
+            # cmd = ["jbrowse", "make-pif", url]
+            url = '%s.pif.gz' % tId
+            cmd = "sort -b -n -k1,1 -k2,3 -k3,4 '%s' | bgzip -c > '%s'" % (data, url)
+            self.subprocess_popen(cmd)
+            cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
             self.subprocess_check_call(cmd)
             usePIF = True
-            url = '%s.pif.gz' % tId
-            nrow = self.getNrow(dest)
+            nrow = 1
         else:
             url = data
             if data.endswith(".pif.gz") or data.endswith(".paf.gz"):  # is tabix
@@ -1731,7 +1733,7 @@ if __name__ == "__main__":
                     for trak in trakdat:
                         if trak["trackId"] == key:
                             stile = trak.get("style", {})
-                    if track.find("options/style"):
+                    if len(track.find("options/style")) > 0:
                         for item in track.find("options/style"):
                             if item.text:
                                 stile[item.tag] = parse_style_conf(item)
