@@ -1141,12 +1141,13 @@ class JbrowseConnector(object):
             cmd = ["jbrowse", "make-pif", dest]
             self.subprocess_check_call(cmd)
             usePIF = True
-            url = '%s.gz' % tId
+            url = '%s.pif.gz' % tId
             nrow = self.getNrow(dest)
         else:
             url = data
-            if data.endswith(".pif.gz"):  # is tabix
+            if data.endswith(".pif.gz") or data.endswith(".paf.gz"):  # is tabix
                 usePIF = True
+                nrow = 1
             else:
                 nrow = self.getNrow(url)
         categ = trackData["category"]
