@@ -3,8 +3,7 @@ import sys
 from ij import IJ
 
 # Fiji Jython interpreter implements Python 2.5 which does not
-# provide support for argparse.
-error_log = sys.argv[-8]
+# provide support for argparse.\
 input_file = sys.argv[-7]
 operation = sys.argv[-6]
 expression = sys.argv[-5]
@@ -19,7 +18,6 @@ else:
 tmp_output_path = sys.argv[-2]
 output_datatype = sys.argv[-1]
 
-print("\nerror_log: %s\n" % str(error_log))
 print("\ninput_file: %s\n" % str(input_file))
 print("\noperation: %s\n" % str(operation))
 print("\nexpression: %s\n" % str(expression))

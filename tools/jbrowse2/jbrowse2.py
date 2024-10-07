@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 import ssl
+import string
 import struct
 import subprocess
 import tempfile
@@ -20,7 +21,7 @@ from collections import defaultdict
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("jbrowse")
 
-JB2VER = "v2.12.3"
+JB2VER = "v2.15.4"
 # version pinned if cloning - but not cloning now
 logCommands = True
 # useful for seeing what's being written but not for production setups
@@ -360,43 +361,43 @@ def metadata_from_node(node):
     except Exception:
         return {}
 
-    for (key, value) in node.findall("dataset")[0].attrib.items():
+    for key, value in node.findall("dataset")[0].attrib.items():
         metadata["dataset_%s" % key] = value
 
     if node.findall("history"):
-        for (key, value) in node.findall("history")[0].attrib.items():
+        for key, value in node.findall("history")[0].attrib.items():
             metadata["history_%s" % key] = value
 
     if node.findall("metadata"):
-        for (key, value) in node.findall("metadata")[0].attrib.items():
+        for key, value in node.findall("metadata")[0].attrib.items():
             metadata["metadata_%s" % key] = value
         # Additional Mappings applied:
-        metadata[
-            "dataset_edam_format"
-        ] = '<a target="_blank" href="http://edamontology.org/{0}">{1}</a>'.format(
-            metadata["dataset_edam_format"], metadata["dataset_file_ext"]
+        metadata["dataset_edam_format"] = (
+            '<a target="_blank" href="http://edamontology.org/{0}">{1}</a>'.format(
+                metadata["dataset_edam_format"], metadata["dataset_file_ext"]
+            )
         )
         metadata["history_user_email"] = '<a href="mailto:{0}">{0}</a>'.format(
             metadata["history_user_email"]
         )
         metadata["hist_name"] = metadata["history_display_name"]
-        metadata[
-            "history_display_name"
-        ] = '<a target="_blank" href="{galaxy}/history/view/{encoded_hist_id}">{hist_name}</a>'.format(
-            galaxy=GALAXY_INFRASTRUCTURE_URL,
-            encoded_hist_id=metadata.get("history_id", "not available"),
-            hist_name=metadata.get("history_display_name", "not available"),
+        metadata["history_display_name"] = (
+            '<a target="_blank" href="{galaxy}/history/view/{encoded_hist_id}">{hist_name}</a>'.format(
+                galaxy=GALAXY_INFRASTRUCTURE_URL,
+                encoded_hist_id=metadata.get("history_id", "not available"),
+                hist_name=metadata.get("history_display_name", "not available"),
+            )
         )
     if node.findall("tool"):
-        for (key, value) in node.findall("tool")[0].attrib.items():
+        for key, value in node.findall("tool")[0].attrib.items():
             metadata["tool_%s" % key] = value
-        metadata[
-            "tool_tool"
-        ] = '<a target="_blank" href="{galaxy}/datasets/{encoded_id}/show_params">{tool_id}{tool_version}</a>'.format(
-            galaxy=GALAXY_INFRASTRUCTURE_URL,
-            encoded_id=metadata.get("dataset_id", ""),
-            tool_id=metadata.get("tool_tool_id", ""),
-            tool_version=metadata.get("tool_tool_version", ""),
+        metadata["tool_tool"] = (
+            '<a target="_blank" href="{galaxy}/datasets/{encoded_id}/show_params">{tool_id}{tool_version}</a>'.format(
+                galaxy=GALAXY_INFRASTRUCTURE_URL,
+                encoded_id=metadata.get("dataset_id", ""),
+                tool_id=metadata.get("tool_tool_id", ""),
+                tool_version=metadata.get("tool_tool_version", ""),
+            )
         )
     return metadata
 
@@ -411,7 +412,7 @@ class JbrowseConnector(object):
             []
         )  # for default session - these are read as first line of the assembly .fai
         self.giURL = GALAXY_INFRASTRUCTURE_URL
-        self.outdir = outdir
+        self.outdir = os.path.abspath(outdir)
         self.jbrowse2path = jbrowse2path
         os.makedirs(self.outdir, exist_ok=True)
         self.genome_names = []
@@ -419,7 +420,7 @@ class JbrowseConnector(object):
         self.tracksToAdd = {}
         self.config_json = {}
         self.config_json_file = os.path.join(outdir, "config.json")
-        self.clone_jbrowse()
+        self.clone_jbrowse(realclone=False)
 
     def get_cwd(self, cwd):
         if cwd:
@@ -444,7 +445,7 @@ class JbrowseConnector(object):
             log.debug(command)
         p = subprocess.Popen(
             command,
-            cwd=self.get_cwd(cwd),
+            cwd=self.outdir,
             shell=True,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
@@ -618,20 +619,8 @@ class JbrowseConnector(object):
 
     def text_index(self):
         # Index tracks
-        args = [
-            "jbrowse",
-            "text-index",
-            "--target",
-            self.outdir,
-            "--assemblies",
-            self.genome_name,
-        ]
-
-        tracks = ",".join(self.trackIdlist)
-        if tracks:
-            args += ["--tracks", tracks]
-
-            self.subprocess_check_call(args)
+        args = ["jbrowse", "text-index"]
+        self.subprocess_check_call(args)
 
     def add_hic(self, data, trackData):
         """
@@ -684,7 +673,6 @@ class JbrowseConnector(object):
                 categ,
             ],
             "adapter": {"type": "HicAdapter", "hicLocation": {"uri": uri}},
-
         }
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
         self.trackIdlist.append(tId)
@@ -1135,7 +1123,9 @@ class JbrowseConnector(object):
         if self.config_json.get("plugins", None):
             self.config_json["plugins"].append(bedPlugin)
         else:
-            self.config_json["plugins"] = [bedPlugin,]
+            self.config_json["plugins"] = [
+                bedPlugin,
+            ]
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
         self.trackIdlist.append(tId)
 
@@ -1143,14 +1133,25 @@ class JbrowseConnector(object):
         tname = trackData["name"]
         tId = trackData["label"]
         url = tId
+        usePIF = False  # much faster if indexed remotely or locally
         useuri = data.startswith("http://") or data.startswith("https://")
         if not useuri:
-            dest = os.path.join(self.outdir, url)
-            self.symlink_or_copy(os.path.realpath(data), dest)
-            nrow = self.getNrow(dest)
+            # self.symlink_or_copy(os.path.realpath(data), url)
+            # cmd = ["jbrowse", "make-pif", url]
+            url = '%s.pif.gz' % tId
+            cmd = "sort -b -n -k1,1 -k2,3 -k3,4 '%s' | bgzip -c > '%s'" % (data, url)
+            self.subprocess_popen(cmd)
+            cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
+            self.subprocess_check_call(cmd)
+            usePIF = True
+            nrow = 1
         else:
             url = data
-            nrow = self.getNrow(url)
+            if data.endswith(".pif.gz") or data.endswith(".paf.gz"):  # is tabix
+                usePIF = True
+                nrow = 1
+            else:
+                nrow = self.getNrow(url)
         categ = trackData["category"]
         pg = pafOpts["genome"].split(",")
         pgc = [x.strip() for x in pg if x.strip() > ""]
@@ -1183,11 +1184,6 @@ class JbrowseConnector(object):
                 categ,
             ],
             "name": tname,
-            "adapter": {
-                "type": "PAFAdapter",
-                "pafLocation": {"uri": url},
-                "assemblyNames": passnames,
-            },
             "displays": [
                 {
                     "type": "LGVSyntenyDisplay",
@@ -1207,7 +1203,24 @@ class JbrowseConnector(object):
                 },
             ],
         }
-        if nrow > 10000:
+        if usePIF:
+            trackDict["adapter"] = {
+                "type": "PairwiseIndexedPAFAdapter",
+                "pifGzLocation": {"uri": url},
+                "assemblyNames": passnames,
+                "index": {
+                    "location": {
+                        "uri": url + ".tbi",
+                    }
+                },
+            }
+        else:
+            trackDict["adapter"] = {
+                "type": "PAFAdapter",
+                "pafLocation": {"uri": url},
+                "assemblyNames": passnames,
+            }
+        if (not usePIF) and (nrow > 10000):
             style_json = {
                 "type": "LGVSyntenyDisplay",
                 "displayId": "%s-LGVSyntenyDisplay" % tId,
@@ -1344,7 +1357,9 @@ class JbrowseConnector(object):
          https://github.com/abretaud/tools-iuc/blob/jbrowse2/tools/jbrowse2/jbrowse2.py
         """
         #  TODO using the default session for now, but check out session specs in the future https://github.com/GMOD/jbrowse-components/issues/2708
-        bpPerPx = self.bpPerPx  # Browser window width is unknown and default session cannot be used to figure it out in JB2 code so could be 200-2000+ pixels.
+        bpPerPx = (
+            self.bpPerPx
+        )  # Browser window width is unknown and default session cannot be used to figure it out in JB2 code so could be 200-2000+ pixels.
         track_types = {}
         with open(self.config_json_file, "r") as config_file:
             config_json = json.load(config_file)
@@ -1369,17 +1384,16 @@ class JbrowseConnector(object):
                             % (tId, default_data)
                         )
                     else:
-                        logging.debug(
-                            "style data for %s = %s"
-                            % (tId, style_data)
-                        )
-                    if style_data.get('type', None) is None:
+                        logging.debug("style data for %s = %s" % (tId, style_data))
+                    if style_data.get("type", None) is None:
                         style_data["type"] = "LinearBasicDisplay"
                     if "displays" in track_conf:
                         disp = track_conf["displays"][0]["type"]
                         style_data["type"] = disp
                     if track_conf.get("displays", None):
-                        style_data["configuration"] = track_conf["displays"][0]["displayId"]
+                        style_data["configuration"] = track_conf["displays"][0][
+                            "displayId"
+                        ]
                     else:
                         logging.debug("no display in track_conf for %s" % tId)
                     if track_conf.get("style_labels", None):
@@ -1426,7 +1440,7 @@ class JbrowseConnector(object):
                 "offsetPx": 0,
                 "bpPerPx": bpPerPx,
                 "minimized": False,
-                "tracks": tracks_data
+                "tracks": tracks_data,
             }
             if drdict.get("refName", None):
                 # TODO displayedRegions is not just zooming to the region, it hides the rest of the chromosome
@@ -1440,8 +1454,6 @@ class JbrowseConnector(object):
                 )
             session_views.append(view_json)
         session_name = default_data.get("session_name", "New session")
-        for key, value in mapped_chars.items():
-            session_name = session_name.replace(value, key)
         session_json["name"] = session_name
 
         if "views" not in session_json:
@@ -1549,15 +1561,15 @@ class JbrowseConnector(object):
 
     def clone_jbrowse(self, realclone=False):
         """
-            Clone a JBrowse directory into a destination directory.
+        Clone a JBrowse directory into a destination directory.
 
-            `realclone=true` will use the `jbrowse create` command.
-            To allow running on internet-less compute and for reproducibility
-            use frozen code with `realclone=false
+        `realclone=true` will use the `jbrowse create` command.
+        To allow running on internet-less compute and for reproducibility
+        use frozen code with `realclone=false
 
         """
         dest = self.outdir
-        if realclone:
+        if (not os.path.exists(self.jbrowse2path)) or realclone:
             self.subprocess_check_call(
                 ["jbrowse", "create", dest, "-f", "--tag", f"{JB2VER}"]
             )
@@ -1580,7 +1592,9 @@ class JbrowseConnector(object):
             except OSError as e:
                 log.error("Error: %s - %s." % (e.filename, e.strerror))
         for neededfile in ["jb2_webserver.py", "bedscoreplugin.js"]:
-            shutil.copyfile(os.path.join(INSTALLED_TO, neededfile), os.path.join(dest, neededfile))
+            shutil.copyfile(
+                os.path.join(INSTALLED_TO, neededfile), os.path.join(dest, neededfile)
+            )
 
 
 def parse_style_conf(item):
@@ -1602,7 +1616,9 @@ if __name__ == "__main__":
     args = parser.parse_args()
     tree = ET.parse(args.xml)
     root = tree.getroot()
-
+    removeMe = string.punctuation.replace(".", " ").replace("/", "").replace("-", "")
+    # first is a space because space needs to be added here for removal from labels as paths.
+    nopunct = str.maketrans(dict.fromkeys(removeMe))
     # This should be done ASAP
     GALAXY_INFRASTRUCTURE_URL = root.find("metadata/galaxyUrl").text
     # Sometimes this comes as `localhost` without a protocol
@@ -1619,7 +1635,7 @@ if __name__ == "__main__":
         genomes = [
             {
                 "path": x.attrib["path"],
-                "label": x.attrib["label"].split(" ")[0].replace(",", ""),
+                "label": x.attrib["label"].split(" ")[0].translate(nopunct),
                 "useuri": x.attrib["useuri"],
                 "meta": metadata_from_node(x.find("metadata")),
             }
@@ -1654,10 +1670,10 @@ if __name__ == "__main__":
             if trackfiles:
                 for x in trackfiles:
                     isBed = False
-                    if x.attrib['ext'] == "bed":
+                    if x.attrib["ext"] == "bed":
                         isBed = True
                     track_conf["label"] = "%s_%d" % (
-                        x.attrib["label"].replace(" ", "_").replace(",", "_").replace("/", "_"),
+                        x.attrib["label"].translate(nopunct),
                         trackI,
                     )
                     trackI += 1
@@ -1665,16 +1681,14 @@ if __name__ == "__main__":
                     if is_multi_bigwig:
                         multi_bigwig_paths.append(
                             (
-                                track_conf["label"],
+                                track_conf["label"].translate(nopunct),
                                 track_conf["useuri"],
                                 os.path.realpath(x.attrib["path"]),
                             )
                         )
                     else:
                         metadata = metadata_from_node(x.find("metadata"))
-                        track_conf["dataset_id"] = metadata.get(
-                            "dataset_id", "None"
-                        )
+                        track_conf["dataset_id"] = metadata.get("dataset_id", "None")
                         if x.attrib["useuri"].lower() == "yes":
                             tfa = (
                                 x.attrib["path"],
@@ -1719,7 +1733,7 @@ if __name__ == "__main__":
                     for trak in trakdat:
                         if trak["trackId"] == key:
                             stile = trak.get("style", {})
-                    if track.find("options/style"):
+                    if len(track.find("options/style")) > 0:
                         for item in track.find("options/style"):
                             if item.text:
                                 stile[item.tag] = parse_style_conf(item)
@@ -1772,4 +1786,5 @@ if __name__ == "__main__":
     jc.write_config()
     # note that this can be left in the config.json but has NO EFFECT if add_defsess_to_index is called.
     # jc.add_defsess_to_index(default_session_data)
-    # jc.text_index() not sure what broke here.
+    # this command line tool appears currently broken - or at least not working here.
+    # jc.text_index()

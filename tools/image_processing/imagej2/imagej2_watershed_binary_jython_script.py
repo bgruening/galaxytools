@@ -4,7 +4,6 @@ from ij import IJ
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-5]
 input = sys.argv[-4]
 black_background = sys.argv[-3] == "yes"
 tmp_output_path = sys.argv[-2]
@@ -30,7 +29,7 @@ if not image_processor_copy.isBinary():
     IJ.run(input_image_plus_copy, "Make Binary", "")
 
 # Run the command.
-IJ.run(input_image_plus_copy, "Watershed", "")
+IJ.run(input_image_plus_copy, "Watershed", "stack")
 
 # Save the ImagePlus object as a new image.
 IJ.saveAs(input_image_plus_copy, output_datatype, tmp_output_path)
