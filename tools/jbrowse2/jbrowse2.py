@@ -1136,20 +1136,16 @@ class JbrowseConnector(object):
         usePIF = False  # much faster if indexed remotely or locally
         useuri = data.startswith("http://") or data.startswith("https://")
         if not useuri:
-            url = '%s.pif.gz' % tId
+            url = "%s.pif.gz" % tId
             cmd = "sort -b -k1,1 -k2,3n -k3,4n '%s' | bgzip -c > '%s'" % (data, url)
             self.subprocess_popen(cmd)
             cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
             self.subprocess_check_call(cmd)
             usePIF = True
-            nrow = 1
         else:
             url = data
             if data.endswith(".pif.gz") or data.endswith(".paf.gz"):  # is tabix
                 usePIF = True
-                nrow = 1
-            else:
-                nrow = self.getNrow(url)
         categ = trackData["category"]
         pg = pafOpts["genome"].split(",")
         pgc = [x.strip() for x in pg if x.strip() > ""]
@@ -1218,7 +1214,7 @@ class JbrowseConnector(object):
                 "pafLocation": {"uri": url},
                 "assemblyNames": passnames,
             }
-        if (not usePIF) and (nrow > 10000):
+        if not usePIF:
             style_json = {
                 "type": "LGVSyntenyDisplay",
                 "displayId": "%s-LGVSyntenyDisplay" % tId,
