@@ -1139,7 +1139,7 @@ class JbrowseConnector(object):
             # self.symlink_or_copy(os.path.realpath(data), url)
             # cmd = ["jbrowse", "make-pif", url]
             url = '%s.pif.gz' % tId
-            cmd = "sort -b -n -k1,1 -k2,3 -k3,4 '%s' | bgzip -c > '%s'" % (data, url)
+            cmd = "sort -b -k1,1 -k2,3n -k3,4n '%s' | bgzip -c > '%s'" % (data, url)
             self.subprocess_popen(cmd)
             cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
             self.subprocess_check_call(cmd)
