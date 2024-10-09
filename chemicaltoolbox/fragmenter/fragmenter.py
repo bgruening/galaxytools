@@ -3,8 +3,7 @@ import argparse
 import sys
 
 import openbabel
-import pybel
-
+from openbabel import pybel
 openbabel.obErrorLog.StopLogging()
 
 
