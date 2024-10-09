@@ -1,22 +1,3 @@
-import os
-import warnings
-
-# Suppress tqdm progress bars
-os.environ["TQDM_DISABLE"] = "1"
-
-# Suppress warnings
-warnings.filterwarnings('ignore')
-
-# Suppress Hugging Face transformers warnings
-os.environ['TRANSFORMERS_VERBOSITY'] = 'error'
-os.environ['TRANSFORMERS_NO_ADVISORY_WARNINGS'] = "1"
-
-# Suppress tokenizer warnings
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-
-from transformers.utils import logging
-logging.disable_progress_bar()
-
 # Standard library imports
 import argparse
 import ast
@@ -26,6 +7,7 @@ import json
 import os
 import random
 import re
+import sys
 
 # Third-party library imports
 import matplotlib.pyplot as plt
@@ -120,14 +102,7 @@ class MultiObjectiveEarlyStoppingAndSaveCallback(TrainerCallback):
 def load_data(file_path, file_format):
     print(f"Loading data from {file_path} in {file_format} format")
     
-    if file_format == 'fasta':
-        sequences = []
-        for record in SeqIO.parse(file_path, "fasta"):
-            description_parts = record.description.split("%")
-            label = int(description_parts[-1].split("LABEL=")[1])
-            sequences.append([record.name, str(record.seq), label])
-        df = pd.DataFrame(sequences, columns=["name", "sequence", "label"])
-    elif file_format == 'csv':
+    if file_format == 'csv':
         df = pd.read_csv(file_path)
     else:
         raise ValueError(f"Unsupported file format: {file_format}")
@@ -146,21 +121,37 @@ def split_data(data, train_percent, test_percent=None, val_percent=None, seed=42
         train, val = train_test_split(train_val, train_size=train_size, stratify=train_val['label'], random_state=seed)
         return train, val, test
 
-def load_and_prepare_data(file_path, test_size=0.2, random_state=42):
+def process_unlabeled_file(input_file, label):
     sequences = []
-    for record in SeqIO.parse(file_path, "fasta"):
-        description_parts = record.description.split("%")
-        label = int(description_parts[-1].split("LABEL=")[1])
-        sequences.append([record.name, str(record.seq), label])
+    with open(input_file, 'r') as handle:
+        for record in SeqIO.parse(handle, 'fasta'):
+            sequences.append([record.id, str(record.seq), label])
+    return sequences
 
-    df = pd.DataFrame(sequences, columns=["name", "sequence", "label"])
-    
-    train_df, valid_df = train_test_split(df, test_size=test_size, random_state=random_state)
-    
-    train_df = train_df[["sequence", "label"]]
-    valid_df = valid_df[["sequence", "label"]]
-    
-    return train_df, valid_df
+def process_unknown_args(unknown):
+    file_dict = {'single': {'positive': [], 'negative': []},
+                 'train': {'positive': [], 'negative': []},
+                 'test': {'positive': [], 'negative': []}}
+    i = 0
+    while i < len(unknown):
+        arg = unknown[i]
+        if arg.startswith('--input_positive_') or arg.startswith('--input_negative_'):
+            if i + 1 < len(unknown) and not unknown[i+1].startswith('--'):
+                file_path = unknown[i+1]
+                if '_train_' in arg or '_test_' in arg:
+                    mode = 'train' if '_train_' in arg else 'test'
+                    label = 'positive' if arg.startswith('--input_positive_') else 'negative'
+                    file_dict[mode][label].append(file_path)
+                else:
+                    label = 'positive' if arg.startswith('--input_positive_') else 'negative'
+                    file_dict['single'][label].append(file_path)
+                i += 2
+            else:
+                print(f"Warning: No file path provided for {arg}")
+                i += 1
+        else:
+            i += 1
+    return file_dict
 
 def preprocess_sequences(df):
     # Replace uncommon AAs with "X"
@@ -934,13 +925,23 @@ def metrics_calculation(model, tokenizer, my_test):
 def main():
     parser = argparse.ArgumentParser(description='Process and validate input data and hyperparameters')
     parser.add_argument('--format', choices=['csv', 'fasta'], required=True)
-    parser.add_argument('--input', help='Input file for single file mode')
-    parser.add_argument('--train_val', help='Train/val file for two file mode')
-    parser.add_argument('--test', help='Test file for two file mode')
+    parser.add_argument('--input', help='Input file for single file mode (CSV)')
+    parser.add_argument('--train_val', help='Train/val file for two file mode (CSV)')
+    parser.add_argument('--test', help='Test file for two file mode (CSV)')
     parser.add_argument('--train_percent', type=float, required=True)
     parser.add_argument('--test_percent', type=float)
     parser.add_argument('--val_percent', type=float)
     
+    # Arguments for unlabeled FASTA files (single mode)
+    parser.add_argument('--input_positive', nargs='*', help='Unlabeled positive FASTA files')
+    parser.add_argument('--input_negative', nargs='*', help='Unlabeled negative FASTA files')
+    
+    # Arguments for unlabeled FASTA files (double mode)
+    parser.add_argument('--input_positive_train', nargs='*', help='Unlabeled positive FASTA files for train/val')
+    parser.add_argument('--input_negative_train', nargs='*', help='Unlabeled negative FASTA files for train/val')
+    parser.add_argument('--input_positive_test', nargs='*', help='Unlabeled positive FASTA files for test')
+    parser.add_argument('--input_negative_test', nargs='*', help='Unlabeled negative FASTA files for test')
+        
     parser.add_argument('--model', choices=['pt5-xl50', 'esm', 'pt5-bfd'], required=True)
     parser.add_argument('--problem', choices=['dephos', 'other'], required=True)
     parser.add_argument('--hyperparameter_method', choices=['manual', 'auto'], required=True)
@@ -964,7 +965,7 @@ def main():
 
     parser.add_argument('--seed', type=int, default=42, help='Random seed for reproducibility')
 
-    args = parser.parse_args()
+    args, unknown = parser.parse_known_args()
 
     # Set the random seed for reproducibility
     np.random.seed(args.seed)
@@ -986,18 +987,57 @@ def main():
                 'tokenizer_class': T5Tokenizer,
                 'model_name': "Rostlab/prot_t5_xl_bfd"
             }
-    }
+        }
 
         # Load and split data
-        if args.input:
-            data = load_data(args.input, args.format)
-            train_data, val_data, test_data = split_data(data, args.train_percent, args.test_percent, args.val_percent, seed=args.seed)
-            print(f"Single file mode: Train size: {len(train_data)}, Validation size: {len(val_data)}, Test size: {len(test_data)}")
-        else:
-            train_val_data = load_data(args.train_val, args.format)
-            test_data = load_data(args.test, args.format)
-            train_data, val_data = split_data(train_val_data, args.train_percent, seed=args.seed)
-            print(f"Two file mode: Train size: {len(train_data)}, Validation size: {len(val_data)}, Test size: {len(test_data)}")
+        if args.format == 'fasta':
+            file_dict = process_unknown_args(unknown)
+            
+            if file_dict['single']['positive'] or file_dict['single']['negative']:
+                # Single file mode for unlabeled FASTA
+                all_sequences = []
+                for file in file_dict['single']['positive']:
+                    all_sequences.extend(process_unlabeled_file(file, 1))
+                for file in file_dict['single']['negative']:
+                    all_sequences.extend(process_unlabeled_file(file, 0))
+                data = pd.DataFrame(all_sequences, columns=["name", "sequence", "label"])
+                train_data, val_data, test_data = split_data(data, args.train_percent, args.test_percent, args.val_percent, seed=42)
+                print(f"FASTA (single file mode): Train size: {len(train_data)}, Validation size: {len(val_data)}, Test size: {len(test_data)}")
+                
+            elif file_dict['train']['positive'] or file_dict['train']['negative']:
+                # Two file mode for unlabeled FASTA
+                train_val_sequences = []
+                for file in file_dict['train']['positive']:
+                    train_val_sequences.extend(process_unlabeled_file(file, 1))
+                for file in file_dict['train']['negative']:
+                    train_val_sequences.extend(process_unlabeled_file(file, 0))
+                train_val_data = pd.DataFrame(train_val_sequences, columns=["name", "sequence", "label"])
+                
+                test_sequences = []
+                for file in file_dict['test']['positive']:
+                    test_sequences.extend(process_unlabeled_file(file, 1))
+                for file in file_dict['test']['negative']:
+                    test_sequences.extend(process_unlabeled_file(file, 0))
+                test_data = pd.DataFrame(test_sequences, columns=["name", "sequence", "label"])
+                
+                train_data, val_data = split_data(train_val_data, args.train_percent, seed=42)
+                print(f"FASTA (two file mode): Train size: {len(train_data)}, Validation size: {len(val_data)}, Test size: {len(test_data)}")
+                
+            else:
+                raise ValueError("No FASTA input files provided")
+            
+        else:  # CSV format
+            if args.input:
+                data = load_data(args.input, args.format)
+                train_data, val_data, test_data = split_data(data, args.train_percent, args.test_percent, args.val_percent, seed=42)
+                print(f"CSV (single file mode): Train size: {len(train_data)}, Validation size: {len(val_data)}, Test size: {len(test_data)}")
+            elif args.train_val and args.test:
+                train_val_data = load_data(args.train_val, args.format)
+                test_data = load_data(args.test, args.format)
+                train_data, val_data = split_data(train_val_data, args.train_percent, seed=42)
+                print(f"CSV (two file mode): Train size: {len(train_data)}, Validation size: {len(val_data)}, Test size: {len(test_data)}")
+            else:
+                raise ValueError("Invalid CSV input configuration")
 
         # Print class distribution for each split
         for name, dataset in [("Train", train_data), ("Validation", val_data), ("Test", test_data)]:
@@ -1269,10 +1309,16 @@ def main():
             get_train_per_protein_history(history)
             
             metrics_calculation(model, tokenizer, test_df)
-    except ValueError as e:
-        print(f"Error: {str(e)}")
+            
+            # If we've made it this far without raising an exception, the job was successful
+            print("Job completed successfully")
+            sys.exit(0)
+    except ValueError as ve:
+        print(f"Error: {str(ve)}", file=sys.stderr)
+        sys.exit(1)
     except Exception as e:
-        print(f"An unexpected error occurred: {str(e)}")
+        print(f"An unexpected error occurred: {str(e)}", file=sys.stderr)
+        sys.exit(2)
         
 if __name__ == "__main__":
     main()
