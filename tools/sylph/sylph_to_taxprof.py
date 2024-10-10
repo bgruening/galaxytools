@@ -6,7 +6,7 @@ import pandas as pd
 
 
 def genome_file_to_gtdb_acc(file_name):
-    return(file_name.split('/')[-1].split("_genomic")[0])
+    return (file_name.split('/')[-1].split("_genomic")[0])
 
 
 parser = argparse.ArgumentParser(description='Convert a sylph output tsv file to a set of output files in MetaPhlAn format.')
