@@ -1,7 +1,8 @@
-import pandas as pd
-from collections import defaultdict
-import gzip
 import argparse
+import gzip
+from collections import defaultdict
+
+import pandas as pd
 
 
 def genome_file_to_gtdb_acc(file_name):
