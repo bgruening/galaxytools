@@ -16,6 +16,7 @@ taxo_level = {
     's': 'species',
     't': 'strains'}
 
+
 def format_for_krona(metaphlan_output_fp, krona_out_fp):
     '''
     Split default MetaPhlAn into a report for each taxonomic levKRONAel
