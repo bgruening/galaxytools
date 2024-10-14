@@ -1130,18 +1130,28 @@ class JbrowseConnector(object):
         self.trackIdlist.append(tId)
 
     def add_paf(self, data, trackData, pafOpts, **kwargs):
+        # the pif indexer breaks in the biocontainer so cannot use pif right now
+        canPIF = False
         tname = trackData["name"]
         tId = trackData["label"]
         url = tId
         usePIF = False  # much faster if indexed remotely or locally
         useuri = data.startswith("http://") or data.startswith("https://")
         if not useuri:
-            url = "%s.pif.gz" % tId
-            cmd = "sort -b -k1,1 -k2,3n -k3,4n '%s' | bgzip -c > '%s'" % (data, url)
-            self.subprocess_popen(cmd)
-            cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
-            self.subprocess_check_call(cmd)
-            usePIF = True
+            if canPIF:
+                url = "%s.pif.gz" % tId
+                # cmd = "sort -b -k1,1 -k2,3n -k3,4n '%s' | bgzip -c > '%s'" % (data, url)
+                # self.subprocess_popen(cmd)
+                # cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
+                # self.subprocess_check_call(cmd)
+                cmd = ["cp", data, "./temppif"]
+                self.subprocess_check_call(cmd)
+                cmd = ["jbrowse", "make-pif", "./temppif", "--out", './' + url]  # jbrowse pif input.paf --out output.pif.gz # specify output file, creates output.pif.gz.tbi also
+                self.subprocess_check_call(cmd)
+                usePIF = True
+            else:
+                dest = os.path.join(self.outdir, url)
+                self.symlink_or_copy(os.path.realpath(data), dest)
         else:
             url = data
             if data.endswith(".pif.gz") or data.endswith(".paf.gz"):  # is tabix
