@@ -1138,11 +1138,11 @@ class JbrowseConnector(object):
         useuri = data.startswith("http://") or data.startswith("https://")
         if not useuri:
             if canPIF:
-                fakename =  '%s.paf' % tId
+                fakeName = '%s.paf' % tId
                 url = "%s.pif.gz" % tId
-                cmd = ["cp", data, "fakeName"]
+                cmd = ["cp", data, fakeName]
                 self.subprocess_check_call(cmd)
-                cmd = ["jbrowse", "make-pif", "fakeName"]  # jbrowse pif input.paf --out output.pif.gz # specify output file, creates output.pif.gz.tbi also
+                cmd = ["jbrowse", "make-pif", fakeName]  # jbrowse pif input.paf --out output.pif.gz # specify output file, creates output.pif.gz.tbi also
                 self.subprocess_check_call(cmd)
                 usePIF = True
             else:
