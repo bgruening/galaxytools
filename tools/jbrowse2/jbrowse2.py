@@ -1130,12 +1130,11 @@ class JbrowseConnector(object):
         self.trackIdlist.append(tId)
 
     def add_paf(self, data, trackData, pafOpts, **kwargs):
-        # the pif indexer breaks in the biocontainer so cannot use pif right now
         canPIF = False
         tname = trackData["name"]
         tId = trackData["label"]
         url = tId
-        usePIF = False  # much faster if indexed remotely or locally
+        usePIF = False  # much faster if indexed remotely or locally but broken in biocontainer.
         useuri = data.startswith("http://") or data.startswith("https://")
         if not useuri:
             if canPIF:
