@@ -1139,10 +1139,6 @@ class JbrowseConnector(object):
         if not useuri:
             if canPIF:
                 url = "%s.pif.gz" % tId
-                # cmd = "sort -b -k1,1 -k2,3n -k3,4n '%s' | bgzip -c > '%s'" % (data, url)
-                # self.subprocess_popen(cmd)
-                # cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
-                # self.subprocess_check_call(cmd)
                 cmd = ["cp", data, "./temppif"]
                 self.subprocess_check_call(cmd)
                 cmd = ["jbrowse", "make-pif", "./temppif", "--out", './' + url]  # jbrowse pif input.paf --out output.pif.gz # specify output file, creates output.pif.gz.tbi also
