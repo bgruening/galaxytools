@@ -213,7 +213,7 @@ def make_report(yaml_file):
             elif trait == "Sample Sex":
                 # Compare case-insensitive and trimmed strings
                 if expected.strip().lower() != observed.strip().lower():
-                    message = f". Observed sex is different from Sample sex"
+                    message = ". Observed sex is different from Sample sex"
                     paragraphs.append(Paragraph(message, styles["midiStyle"]))
         except Exception as e:
             logging.warning(f"Error in generating warning for {trait}: {str(e)}")
@@ -345,7 +345,7 @@ def make_report(yaml_file):
     valid_tags = ["ERGA-BGE", "ERGA-Pilot", "ERGA-Community", "ERGA-testing"]
     if tags not in valid_tags:
         tags += "[INVALID TAG]"
-        logging.warning(f"# SAMPLE INFORMATION section in the yaml file contains an invalid tag. Valid tags are ERGA-BGE, ERGA-Pilot and ERGA-Community.")
+        logging.warning("# SAMPLE INFORMATION section in the yaml file contains an invalid tag. Valid tags are ERGA-BGE, ERGA-Pilot and ERGA-Community.")
 
     # Get data from GoaT based on species name
     # urllib.parse.quote to handle special characters and spaces in the species name
@@ -353,7 +353,7 @@ def make_report(yaml_file):
 
     # Get stuff from GoaT
     goat_response = requests.get(f'https://goat.genomehubs.org/api/v2/search?query=tax_name%28{species_name}%29&result=taxon')
-    goat_data = goat_response.json() # convert json to dict
+    goat_data = goat_response.json()  # convert json to dict
 
     taxon_number = goat_data['results'][0]['result']['taxon_id']
 
@@ -522,7 +522,7 @@ def make_report(yaml_file):
             asm_table_data.append([metric] + [format_number(gfastats_data.get((asm_stage, haplotypes), ['N/A'] * len(keys))[i]) if (asm_stage, haplotypes) in gfastats_data else 'N/A' for asm_stage in asm_data for haplotypes in asm_stages if haplotypes in asm_data[asm_stage]])
 
     # Add the gaps/gbp in between
-    asm_table_data.insert(gaps_index + 1, ['Gaps/Gbp'] + [format_number(gaps_per_gbp_data.get((asm_stage, haplotypes), 'N/A')) for asm_stage in asm_data for haplotypes in asm_stages if haplotypes in asm_data[asm_stage]])    
+    asm_table_data.insert(gaps_index + 1, ['Gaps/Gbp'] + [format_number(gaps_per_gbp_data.get((asm_stage, haplotypes), 'N/A')) for asm_stage in asm_data for haplotypes in asm_stages if haplotypes in asm_data[asm_stage]])
     # get QV, Kmer completeness and BUSCO data
     qv_data = {}
     completeness_data = {}
@@ -530,7 +530,7 @@ def make_report(yaml_file):
     for asm_stage, stage_properties in asm_data.items():
         asm_stage_elements = list(stage_properties.keys())
         for i, haplotypes in enumerate(asm_stage_elements):
-            haplotype_properties = stage_properties[haplotypes]    
+            haplotype_properties = stage_properties[haplotypes]
             if isinstance(haplotype_properties, dict):
                 if 'merqury_qv' in haplotype_properties:
                     qv_data[(asm_stage, haplotypes)] = get_qv_value(haplotype_properties['merqury_qv'], i, asm_stage, haplotypes)
@@ -916,7 +916,7 @@ def make_report(yaml_file):
             unique_name1, unique_name2 = find_unique_parts(os.path.basename(similar_files[0]), os.path.basename(similar_files[1]))
     else:
         shortest_spectra_cn_file = spectra_cn_files[0] if spectra_cn_files else None
-        unique_name1 = unique_name2 = None
+        # unique_name1 = unique_name2 = None
 
     # Create image objects and add filename below each image
     images = []
