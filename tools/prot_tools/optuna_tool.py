@@ -39,6 +39,7 @@ from transformers import (
     EsmModel,
     EsmTokenizer,
     PreTrainedModel,
+    set_seed,
     T5EncoderModel,
     T5Tokenizer,
     Trainer,
@@ -46,7 +47,6 @@ from transformers import (
     TrainerControl,
     TrainerState,
     TrainingArguments,
-    set_seed,
 )
 from transformers.modeling_outputs import SequenceClassifierOutput
 from transformers.models.t5.modeling_t5 import T5Config, T5PreTrainedModel, T5Stack
