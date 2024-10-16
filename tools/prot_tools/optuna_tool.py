@@ -1112,7 +1112,7 @@ def main():
                 if adaptation_params['method'] == 'lora':
                     lora_rank = trial.suggest_int('lora_rank', adaptation_params['lora_rank'][0], adaptation_params['lora_rank'][1], step=adaptation_params['lora_rank'][2] if len(adaptation_params['lora_rank']) > 2 else 1)
                     lora_init_scale = trial.suggest_float('lora_init_scale', adaptation_params['lora_init_scale'][0], adaptation_params['lora_init_scale'][1], log=True)
-                    lora_scaling_rank = trial.suggest_int('lora_scaling_rank', adaptation_params['lora_scaling_rank'][0], adaptation_params['lora_scaling_rank'][1])
+                    lora_scaling_rank = trial.suggest_int('lora_scaling_rank', adaptation_params['lora_scaling_rank'][0], adaptation_params['lora_scaling_rank'][1], step=adaptation_params['lora_scaling_rank'][2] if len(adaptation_params['lora_scaling_rank']) > 2 else 1)
                     adaptation_trial_params = {'lora_rank': lora_rank, 'lora_init_scale': lora_init_scale, 'lora_scaling_rank': lora_scaling_rank}
                 else:
                     dora_rank = trial.suggest_int('dora_rank', adaptation_params['dora_rank'][0], adaptation_params['dora_rank'][1], step=adaptation_params['dora_rank'][2] if len(adaptation_params['dora_rank']) > 2 else 1)
