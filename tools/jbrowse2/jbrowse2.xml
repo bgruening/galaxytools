@@ -10,9 +10,7 @@
     <expand macro="requirements"/>
     <required_files>
         <include path="autogenJB2.py"/>
-        <include path="blastxml_to_gapped_gff3.py"/>
         <include path="convertMAF.sh"/>
-        <include path="gff3_rebase.py"/>
         <include path="jb2_webserver.py"/>
         <include path="jbrowse2.py"/>
         <include path="maf2bed.py"/>
@@ -20,6 +18,7 @@
     </required_files>
     <version_command>python '${__tool_directory__}/jbrowse2.py' --version</version_command>
     <command detect_errors="aggressive"><![CDATA[
+export SHELL="/bin/sh" &&
 mkdir -p '$output.files_path' &&
 cp '$trackxml' '$output.files_path/galaxy.xml' &&
 export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) &&
@@ -99,10 +98,10 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                   </metadata>
                   </genome>
                 #else if str($assembly.reference_genome.genome_type_select) == "indexed":
-                  <genome path="${assembly.reference_genome.genome.fields.path}" label="${assembly.reference_genome.genome.fields.dbkey}" useuri="no">
+                  <genome path="${assembly.reference_genome.indexed.fields.path}" label="${assembly.reference_genome.indexed.fields.dbkey}" useuri="no">
                       <metadata>
                          <dataset
-                          dname = "${assembly.reference_genome.genome.fields.name}" />
+                          dname = "${assembly.reference_genome.indexed.fields.name}" />
                       </metadata>
                   </genome>
                 #else
@@ -213,7 +212,7 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                 #if $input_exists == "True":
                       <options>
                         <style>
-                            #if str($track.data_format.data_format_select) in ["gff", "bed", "maf", "blastxml"]:
+                            #if str($track.data_format.data_format_select) in ["gff", "bed", "maf"]:
                                 <type>${track.data_format.jbstyle.display}</type>
                                 #if str($track.data_format.jbstyle.display) in ["LinearBasicDisplay", "LinearVariantDisplay"]:
                                     <trackShowLabels>${track.data_format.jbstyle.show_labels}</trackShowLabels>
@@ -245,29 +244,25 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                             #end if
                         </style>
                         #if str($track.data_format.data_format_select) == "bam":
-                            <bam>
-                            <bam_index>
-                                #for $dataset in $track.data_format.useuri.annotation:
-                                    ${dataset} ~ ${dataset.metadata.bam_index},
-                                #end for
-                            </bam_index>
-                            </bam>
+                            #if str($track.data_format.useuri.insource) == "history":
+                                <bam>
+                                <bam_index>
+                                    #for $dataset in $track.data_format.useuri.annotation:
+                                        ${dataset}~~~${dataset.metadata.bam_index},
+                                    #end for
+                                </bam_index>
+                                </bam>
+                            #end if
                         #else if str($track.data_format.data_format_select) == "cram":
-                            <cram>
-                            <cram_index>
-                                #for $dataset in $track.data_format.useuri.annotation:
-                                    ${dataset} ~ ${dataset.metadata.cram_index},
-                                #end for
-                            </cram_index>
-                            </cram>
-                        #else if str($track.data_format.data_format_select) == "blastxml":
-                            <blast>
-                              #if str($track.data_format.blast_parent) != "":
-                                <parent>${track.data_format.blast_parent}</parent>
-                              #end if
-                                <protein>${track.data_format.is_protein}</protein>
-                                <min_gap>${track.data_format.min_gap}</min_gap>
-                            </blast>
+                            #if str($track.data_format.useuri.insource) == "history":
+                                <cram>
+                                <cram_index>
+                                    #for $dataset in $track.data_format.useuri.annotation:
+                                        ${dataset}~~~${dataset.metadata.cram_index},
+                                    #end for
+                                </cram_index>
+                                </cram>
+                            #end if
                         #else if str($track.data_format.data_format_select) == "gff":
                             <gff>
                               #if $track.data_format.match_part.match_part_select == "true":
@@ -279,7 +274,8 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                                 #if str($track.data_format.pafuseuri.insource) == "history":
                                 <genome>
                                     #for $anno in $track.data_format.pafuseuri.annotation:
-                                        ${anno} ~ ${anno.name},
+                                        #set nospaces = $anno.element_identifier.replace(' ','')
+                                        ${anno}~~~${nospaces},
                                     #end for
                                 </genome>
                                 <useuri>
@@ -288,7 +284,8 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                                 #else:
                                 <genome>
                                     #for $refgenome in $track.data_format.pafuseuri.refuri:
-                                        ${refgenome.annotation} ~ ${refgenome.annoname},
+                                        #set nospaces = $refgenome.refname.replace(' ','')
+                                        ${refgenome.uri}~~~${nospaces},
                                     #end for
                                 </genome>
                                 <useuri>
@@ -336,7 +333,8 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                         tabix bgzip with predictable index file URI</option>
                 </param>
                 <when value="indexed">
-                    <param name="genome" type="select" optional="false" label="Select a built in reference genome or custom genome" help="If not listed, add a custom genome, use a history genome or a remote URI tabix genome">
+                    <param name="indexed" type="select" optional="false" label="Select a built in reference genome or custom genome" 
+                      help="If not listed, add a custom genome, use a history genome or a remote URI tabix genome">
                         <options from_data_table="all_fasta">
                             <filter column="2" type="sort_by"/>
                             <validator message="No genomes are available for the selected input dataset" type="no_options"/>
@@ -354,14 +352,14 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                 </when>
             </conditional>
             <repeat name="track_groups" title="Track Group">
-                <param name="category" type="text" value="Default" optional="False" label="Track Category" help="Organise your tracks into Categories for a nicer end-user experience. You can use #date# and it will be replaced with the current date in 'yyyy-mm-dd' format, which is very useful for repeatedly updating a JBrowse instance when member databases / underlying tool versions are updated."/>
+                <param name="category" type="text" value="Default" optional="False" label="Track Category" 
+                   help="Organise your tracks into Categories for a nicer end-user experience. #date# is replaced with current date"/>
                 <repeat name="data_tracks" title="Annotation Track">
                     <conditional name="data_format" label="Track Data Selection Options">
                         <param name="data_format_select" type="select" label="Track Type">
                             <option value="bam">BAM track. Recommend converting to BED/bigWig unless mapping annotation needed</option>
                             <option value="bed">BED track</option>
                             <option value="bigwig">BigWig track</option>
-                            <option value="blastxml">Blast XML track (as GFF3)</option>
                             <option value="cram">CRAM track. Recommend converting to BED/bigWig unless mapping annotation needed</option>
                             <option value="gff">GFF/GFF3 track</option>
                             <option value="cool">HiC as cool/mcool/scool format files</option>
@@ -370,14 +368,6 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                             <option value="paf">PAF - Pairwise approximate mapping positions between two set of sequences</option>
                             <option value="vcf">VCF SNP track</option>
                         </param>
-                        <when value="blastxml">
-                            <expand macro="input_conditional" label="BlastXML Track Data" format="blastxml"/>
-                            <param name="blast_parent" type="data" format="gff3" optional="true" label="Features used in Blast Search" help="in GFF3. This is used  so we know where to map features. E.g. where results of which CDS Protein32 match up to. The query IDs in your blast results should MATCH some feature IDs in your GFF3 file. This is an optional field and is most useful if using JBrowse to display protein blast results on a DNA genome. blastn results don't need this, blastp results on a protein sequence don't need this."/>
-                            <param name="min_gap" type="integer" min="2" value="10" label="Minimum Gap Size" help="before a new match_part feature is created"/>
-                            <param name="is_protein" type="boolean" truevalue="true" falsevalue="false" label="Is this a protein blast search?"/>
-                            <expand macro="track_styling_vgp"/>
-                            <expand macro="track_visibility"/>
-                        </when>
                         <when value="vcf">
                             <expand macro="input_conditional" label="SNP Track Data" format="vcf,vcf_bgzip"/>
                             <expand macro="track_styling_vcf"/>
@@ -520,24 +510,6 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                             </conditional>
                         </conditional>
                     </repeat>
-                    <repeat name="data_tracks">
-                        <conditional name="data_format">
-                            <param name="data_format_select" value="blastxml"/>
-                            <conditional name="useuri">
-                                <param name="insource" value="history"/>
-                                <param name="annotation" location="https://usegalaxy.eu/static/share/ebp/jbrowse2/test-data/merlin.blastxml"/>
-                            </conditional>
-                        </conditional>
-                    </repeat>
-                    <repeat name="data_tracks">
-                        <conditional name="data_format">
-                            <param name="data_format_select" value="bam"/>
-                            <conditional name="useuri">
-                                <param name="insource" value="history"/>
-                                <param name="annotation" value=""/>
-                            </conditional>
-                        </conditional>
-                    </repeat>
                 </repeat>
             </repeat>
             <repeat name="assemblies">
@@ -590,12 +562,12 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                             <conditional name="pafuseuri">
                                 <param name="insource" value="uri"/>
                                 <repeat name="refuri">
-                                    <param name="annotation" value="https://usegalaxy.eu/static/share/ebp/jbrowse2/test-data/arabidopsis.fa.gz"/>
-                                    <param name="annoname" value="arabidopsis.URI"/>
+                                    <param name="uri" value="https://usegalaxy.eu/static/share/ebp/jbrowse2/test-data/arabidopsis.fa.gz"/>
+                                    <param name="refname" value="arabidopsis.URI"/>
                                 </repeat>
                                 <repeat name="refuri">
-                                    <param name="annotation" value="https://usegalaxy.eu/static/share/ebp/jbrowse2/test-data/Vvinifera1.fa.gz"/>
-                                    <param name="annoname" value="Vvinifera1.URI"/>
+                                    <param name="uri" value="https://usegalaxy.eu/static/share/ebp/jbrowse2/test-data/Vvinifera1.fa.gz"/>
+                                    <param name="refname" value="Vvinifera1.URI"/>
                                 </repeat>
                             </conditional>
                         </conditional>
@@ -642,7 +614,7 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
             </section>
             <output name="output" ftype="zip">
                 <assert_contents>
-                    <has_archive_member path=".*" n="678" delta="10"/>
+                    <has_archive_member path=".*" n="676" delta="10"/>
                     <has_archive_member path="index.html"/>
                     <has_archive_member path="manifest.json">
                         <has_text text="favicon.ico"/>
@@ -664,10 +636,9 @@ export JBROWSE2_PATH=\$(realpath \$(dirname \$(which jbrowse))/../opt/jbrowse2) 
                     <has_archive_member path="merlin-sample.bam_5"/>
                     <has_archive_member path="merlin-sample.bam_5.bai"/>
                     <has_archive_member path="merlinlastz.maf_6.sorted.bed.gz.tbi"/>
-                    <has_archive_member path="merlin.blastxml_7.gz"/>
-                    <has_archive_member path="dm3test.cool_9.hic"/>
-                    <has_archive_member path="peach-grape-map.paf_10"/>
-                    <has_archive_member path="arabgrapepeach.paf_11"/>
+                    <has_archive_member path="dm3test.cool_7.hic"/>
+                    <has_archive_member path="peach-grape-map.paf_8"/>
+                    <has_archive_member path="arabgrapepeach.paf_10"/>
                     <has_archive_member path="Merlin.fa.gz.fai"/>
                     <has_archive_member path="dm3.fa.fa.gz.fai"/>
                     <has_archive_member path="Ppersica1.fa.fa.gz"/>
@@ -1198,7 +1169,6 @@ used to generate the data:
     bam
     bed
     bigwig
-    blastxml
     cram
     gff3
     hic
@@ -1206,6 +1176,7 @@ used to generate the data:
     paf
     vcf
 
+Blastxml was deprecated in JBrowse 2.15.4 because the emitted GFF fails validation and will not display
 Note that cram and bam will be large, so very slow amd are only recommended if you need the cigar annotation. Otherwise conversion to bed is recommended to slim them down. 
 Unfortunately if you have millions of rows in a bed, it will also be very slow - in which case a bigwig is recommended. 
 
@@ -1282,26 +1253,8 @@ that bam data.
 BlastXML
 ~~~~~~~~
 
-JiG now supports both blastn and blastp datasets. JiG internally uses a
-blastXML to gapped GFF3 tool to convert your blastxml datasets into a
-format amenable to visualization in JBrowse. This tool is also
-available separately from the IUC on the toolshed.
-
-**Minimum Gap Size** reflects how long a gap must be before it becomes a
-real gap in the processed gff3 file. In the picture above, various sizes
-of gaps can be seen. If the minimum gap size was set much higher, say
-100nt, many of the smaller gaps would disappear, and the features on
-both sides would be merged into one, longer feature. This setting is
-inversely proportional to runtime and output file size. *Do not set this
-to a low value for large datasets*. By setting this number lower, you
-will have extremely large outputs and extremely long runtimes. The
-default was configured based off of the author's experience, but the
-author only works on small viruses. It is *strongly* recommended that
-you filter your blast results before display, e.g. picking out the top
-10 hits or so.
-
-**Protein blast search** option merely informs underlying tools that
-they should adjust feature locations by 3x.
+Deprecated in 2.15.4 because the new GFF parser rejects the output of the 
+original JBrowse1 blastxml to gff converter. 
 
 Local viewing
 =============
