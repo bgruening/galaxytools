@@ -13,7 +13,6 @@ import ssl
 import string
 import struct
 import subprocess
-import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
 from collections import defaultdict
@@ -554,13 +553,10 @@ class JbrowseConnector(object):
         else:
             faname = gname + ".fa.gz"
             fadest = os.path.realpath(os.path.join(self.outdir, faname))
-            cmd = "bgzip -i -c %s -I %s.gzi > %s && samtools faidx %s" % (
-                fapath,
-                fadest,
-                fadest,
-                fadest,
-            )
-            self.subprocess_popen(cmd)
+            cmd = "bgzip -k -i -c -I '%s.gzi' '%s' > '%s'" % (fadest, fapath, fadest)
+            subprocess.run(cmd, shell=True)
+            cmd = ["samtools", "faidx", fadest]
+            self.subprocess_check_call(cmd)
             contig = open(fadest + ".fai", "r").readline().strip()
         adapter = {
             "type": "BgzipFastaAdapter",
@@ -755,38 +751,59 @@ class JbrowseConnector(object):
         else:
             self.config_json.update(mafPlugin)
 
-    def _blastxml_to_gff3(self, xml, min_gap=10):
-        gff3_unrebased = tempfile.NamedTemporaryFile(delete=False)
-        cmd = [
-            "python",
-            os.path.join(INSTALLED_TO, "blastxml_to_gapped_gff3.py"),
-            "--trim",
-            "--trim_end",
-            "--include_seq",
-            "--min_gap",
-            str(min_gap),
-            xml,
-        ]
-        subprocess.check_call(cmd, cwd=self.outdir, stdout=gff3_unrebased)
-        gff3_unrebased.close()
-        logging.debug("### blastxml to gff3 cmd = %s" % " ".join(cmd))
-        return gff3_unrebased.name
+    def _sort_gff(self, data, dest):
+        # Only index if not already done
+        if not os.path.exists(dest):
+            e = os.environ
+            e["SHELL"] = "/bin/sh"
+            cmd = "jbrowse sort-gff %s | bgzip -c > %s" % (data, dest)
+            subprocess.run(cmd, env=e, shell=True)
+            self.subprocess_check_call(["tabix", "-f", "-p", "gff", dest])
 
-    def add_blastxml(self, data, trackData, blastOpts, **kwargs):
-        gff3 = self._blastxml_to_gff3(data, min_gap=blastOpts["min_gap"])
-        if "parent" in blastOpts and blastOpts["parent"] != "None":
-            gff3_rebased = tempfile.NamedTemporaryFile(delete=False)
-            cmd = ["python", os.path.join(INSTALLED_TO, "gff3_rebase.py")]
-            if blastOpts.get("protein", "false") == "true":
-                cmd.append("--protein2dna")
-            cmd.extend([os.path.realpath(blastOpts["parent"]), gff3])
-            subprocess.check_call(cmd, cwd=self.outdir, stdout=gff3_rebased)
-            logging.debug("### gff3rebase cmd = %s" % " ".join(cmd))
-            gff3_rebased.close()
-            # Replace original gff3 file
-            shutil.copy(gff3_rebased.name, gff3)
-            os.unlink(gff3_rebased.name)
-        self.add_gff(gff3, trackData, **kwargs)
+    def add_gff(self, data, trackData):
+        tId = trackData["label"]
+        useuri = trackData["useuri"].lower() == "yes"
+        if useuri:
+            url = trackData["path"]
+        else:
+            url = tId + ".gz"
+            dest = os.path.join(self.outdir, url)
+            self._sort_gff(data, dest)
+        categ = trackData["category"]
+        trackDict = {
+            "type": "FeatureTrack",
+            "trackId": tId,
+            "name": trackData["name"],
+            "assemblyNames": [trackData["assemblyNames"]],
+            "category": [
+                categ,
+            ],
+            "adapter": {
+                "type": "Gff3TabixAdapter",
+                "gffGzLocation": {
+                    "uri": url,
+                },
+                "index": {
+                    "location": {
+                        "uri": url + ".tbi",
+                    }
+                },
+            },
+            "displays": [
+                {
+                    "type": "LinearBasicDisplay",
+                    "displayId": "%s-LinearBasicDisplay" % tId,
+                },
+                {
+                    "type": "LinearArcDisplay",
+                    "displayId": "%s-LinearArcDisplay" % tId,
+                },
+            ],
+        }
+        style_json = self._prepare_track_style(trackDict)
+        trackDict["style"] = style_json
+        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
+        self.trackIdlist.append(tId)
 
     def add_bigwig(self, data, trackData):
         tId = trackData["label"]
@@ -840,9 +857,9 @@ class JbrowseConnector(object):
             bindex = fname + ".bai"
             bi = bam_indexes.split(",")
             bam_index = [
-                x.split(" ~ ")[1].strip()
+                x.split("~~~")[1].strip()
                 for x in bi
-                if " ~ " in x and x.split(" ~ ")[0].strip() == realFName
+                if "~~~" in x and x.split("~~~")[0].strip() == realFName
             ]
             logging.debug(
                 "===realFName=%s got %s as bam_indexes %s as bi, %s for bam_index"
@@ -902,9 +919,9 @@ class JbrowseConnector(object):
             self.subprocess_check_call(["cp", data, dest])
             ci = cram_indexes.split(",")
             cram_index = [
-                x.split(" ~ ")[1].strip()
+                x.split("~~~")[1].strip()
                 for x in ci
-                if " ~ " in x and x.split(" ~ ")[0].strip() == realFName
+                if "~~~" in x and x.split("~~~")[0].strip() == realFName
             ]
             logging.debug(
                 "===realFName=%s got %s as cram_indexes %s as ci, %s for cram_index"
@@ -957,8 +974,9 @@ class JbrowseConnector(object):
         else:
             url = tId
             dest = os.path.join(self.outdir, url)
-            cmd = "bgzip -c %s  > %s" % (data, dest)
-            self.subprocess_popen(cmd)
+            cmd = ["bgzip", "-c", data]
+            with open(dest, "wb") as fout:
+                subprocess.run(cmd, stdout=fout)
             cmd = ["tabix", "-f", "-p", "vcf", dest]
             self.subprocess_check_call(cmd)
         trackDict = {
@@ -998,68 +1016,16 @@ class JbrowseConnector(object):
         self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
         self.trackIdlist.append(tId)
 
-    def _sort_gff(self, data, dest):
-        # Only index if not already done
-        if not os.path.exists(dest):
-            cmd = "jbrowse sort-gff '%s' | bgzip -c > '%s'" % (
-                data,
-                dest,
-            )
-            self.subprocess_popen(cmd)
-            self.subprocess_check_call(["tabix", "-f", "-p", "gff", dest])
-
     def _sort_bed(self, data, dest):
         # Only index if not already done
         if not os.path.exists(dest):
-            cmd = "sort -k1,1 -k2,2n '%s' | bgzip -c > '%s'" % (data, dest)
-            self.subprocess_popen(cmd)
+            cmd = ["sort", "-k1,1", "-k2,2n", data]
+            ps = subprocess.run(cmd, check=True, capture_output=True)
+            cmd = ["bgzip", "-c"]
+            with open(dest, "wb") as fout:
+                subprocess.run(cmd, input=ps.stdout, stdout=fout)
             cmd = ["tabix", "-f", "-p", "bed", dest]
             self.subprocess_check_call(cmd)
-
-    def add_gff(self, data, trackData):
-        tId = trackData["label"]
-        useuri = trackData["useuri"].lower() == "yes"
-        if useuri:
-            url = trackData["path"]
-        else:
-            url = tId + ".gz"
-            dest = os.path.join(self.outdir, url)
-            self._sort_gff(data, dest)
-        categ = trackData["category"]
-        trackDict = {
-            "type": "FeatureTrack",
-            "trackId": tId,
-            "name": trackData["name"],
-            "assemblyNames": [trackData["assemblyNames"]],
-            "category": [
-                categ,
-            ],
-            "adapter": {
-                "type": "Gff3TabixAdapter",
-                "gffGzLocation": {
-                    "uri": url,
-                },
-                "index": {
-                    "location": {
-                        "uri": url + ".tbi",
-                    }
-                },
-            },
-            "displays": [
-                {
-                    "type": "LinearBasicDisplay",
-                    "displayId": "%s-LinearBasicDisplay" % tId,
-                },
-                {
-                    "type": "LinearArcDisplay",
-                    "displayId": "%s-LinearArcDisplay" % tId,
-                },
-            ],
-        }
-        style_json = self._prepare_track_style(trackDict)
-        trackDict["style"] = style_json
-        self.tracksToAdd[trackData["assemblyNames"]].append(copy.copy(trackDict))
-        self.trackIdlist.append(tId)
 
     def add_bed(self, data, ext, trackData):
         bedPlugin = {"name": "BedScorePlugin", "umdLoc": {"uri": "bedscoreplugin.js"}}
@@ -1130,18 +1096,28 @@ class JbrowseConnector(object):
         self.trackIdlist.append(tId)
 
     def add_paf(self, data, trackData, pafOpts, **kwargs):
+        canPIF = True
         tname = trackData["name"]
         tId = trackData["label"]
         url = tId
-        usePIF = False  # much faster if indexed remotely or locally
+        usePIF = False  # much faster if indexed remotely or locally but broken in biocontainer.
         useuri = data.startswith("http://") or data.startswith("https://")
         if not useuri:
-            url = "%s.pif.gz" % tId
-            cmd = "sort -b -k1,1 -k2,3n -k3,4n '%s' | bgzip -c > '%s'" % (data, url)
-            self.subprocess_popen(cmd)
-            cmd = ["tabix", "-b", "3", "-e", "4", "-f", url]
-            self.subprocess_check_call(cmd)
-            usePIF = True
+            if canPIF:
+                fakeName = os.path.join(self.outdir, "%s.paf" % tId)
+                url = "%s.pif.gz" % tId
+                cmd = ["cp", data, fakeName]
+                self.subprocess_check_call(cmd)
+                cmd = [
+                    "jbrowse",
+                    "make-pif",
+                    fakeName,
+                ]
+                self.subprocess_check_call(cmd)
+                usePIF = True
+            else:
+                dest = os.path.join(self.outdir, url)
+                self.symlink_or_copy(os.path.realpath(data), dest)
         else:
             url = data
             if data.endswith(".pif.gz") or data.endswith(".paf.gz"):  # is tabix
@@ -1149,7 +1125,7 @@ class JbrowseConnector(object):
         categ = trackData["category"]
         pg = pafOpts["genome"].split(",")
         pgc = [x.strip() for x in pg if x.strip() > ""]
-        gnomes = [x.split(" ~ ") for x in pgc]
+        gnomes = [x.split("~~~") for x in pgc]
         logging.debug("pg=%s, gnomes=%s" % (pg, gnomes))
         passnames = [trackData["assemblyNames"]]  # always first
         for i, (gpath, gname) in enumerate(gnomes):
@@ -1324,12 +1300,6 @@ class JbrowseConnector(object):
                     dataset_path,
                     outputTrackConfig,
                     cram_indexes=real_indexes,
-                )
-            elif dataset_ext == "blastxml":
-                self.add_blastxml(
-                    dataset_path,
-                    outputTrackConfig,
-                    track["conf"]["options"]["blast"],
                 )
             elif dataset_ext == "vcf":
                 self.add_vcf(dataset_path, outputTrackConfig)
