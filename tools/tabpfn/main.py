@@ -6,9 +6,7 @@ import time
 
 import matplotlib.pyplot as plt
 import pandas as pd
-
-from sklearn.metrics import accuracy_score
-from sklearn.metrics import precision_recall_curve, average_precision_score
+from sklearn.metrics import accuracy_score, average_precision_score, precision_recall_curve
 from tabpfn import TabPFNClassifier
 
 
