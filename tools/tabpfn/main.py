@@ -1,14 +1,11 @@
 """
 Tabular data prediction using TabPFN
 """
-
 import argparse
 import time
 
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
-import torch
 
 from sklearn.metrics import accuracy_score
 from sklearn.metrics import precision_recall_curve, average_precision_score
