@@ -11,12 +11,7 @@ import torch
 
 def find_dim_order(user_in_shape, input_image):
     """
-    Find the correct order of input image's
-    shape. For a few models, the order of input size
-    mentioned in the RDF.yaml file is reversed compared
-    to the input image's original size. If it is reversed,
-    transpose the image to find correct order of image's
-    dimensions.
+    Find the correct order of input image's shape. For a few models, the order of input size mentioned in the RDF.yaml file is reversed compared to the input image's original size. If it is reversed, transpose the image to find correct order of image's dimensions.
     """
     image_shape = list(input_image.shape)
     # reverse the input shape provided from RDF.yaml file
