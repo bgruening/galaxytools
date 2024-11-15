@@ -1,0 +1,444 @@
+<tool id="flye" name="Flye" version="@TOOL_VERSION@+galaxy@SUFFIX_VERSION@" profile="20.01">
+    <description>de novo assembler for single molecule sequencing reads</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="edam_ontology"/>
+    <expand macro="xrefs"/>
+    <expand macro="requirements" />
+    <version_command>flye --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #for $counter, $input in enumerate($inputs):
+            #if $input.is_of_type('fastqsanger', 'fastq'):
+                #set $ext = 'fastq'
+            #elif $input.is_of_type('fastqsanger.gz', 'fastq.gz'):
+                #set $ext = 'fastq.gz'
+            #elif $input.is_of_type('fasta.gz'):
+                #set $ext = 'fasta.gz'
+            #elif $input.is_of_type('fasta'):
+                #set $ext = 'fasta'
+            #end if
+            ln -sf '$input' ./input_${counter}.${ext} &&
+        #end for
+        flye
+        $mode_conditional.mode
+        #for $counter, $input in enumerate($inputs):
+            ./input_${counter}.$ext
+        #end for
+        -o out_dir
+        -t \${GALAXY_SLOTS:-4}
+        -i $iterations
+        #if $mode_conditional.mode == '--pacbio-hifi' and $mode_conditional.hifi_error:
+            --hifi-error $mode_conditional.hifi_error
+        #end if
+        #if $min_overlap:
+            -m $min_overlap
+        #end if
+        #if $asm.asm_select == 'true':
+            --asm-coverage $asm.asm_coverage
+            -g '${asm.genome_size}'
+        #end if
+        $meta
+        $scaffold
+        $no_alt_contigs
+    ]]></command>
+    <inputs>
+        <param name="inputs" type="data" format="fasta,fasta.gz,fastq,fastq.gz,fastqsanger.gz,fastqsanger" multiple="true" label="Input reads" />
+        <conditional name="mode_conditional">
+            <param name="mode" type="select" label="Mode">
+                <option value="--nano-raw">Nanopore raw (--nano-raw)</option>
+                <option value="--nano-corr">Nanopore corrected (--nano-corr)</option>
+                <option value="--nano-hq">Nanopore HQ (--nano-hq)</option>
+                <option value="--pacbio-raw">PacBio raw (--pacbio-raw)</option>
+                <option value="--pacbio-corr">PacBio corrected (--pacbio-corr)</option>
+                <option value="--pacbio-hifi">PacBio HiFi (--pacbio-hifi)</option>
+            </param>
+            <when value="--nano-raw"/>
+            <when value="--nano-corr"/>
+            <when value="--nano-hq"/>
+            <when value="--pacbio-raw"/>
+            <when value="--pacbio-corr"/>
+            <when value="--pacbio-hifi">
+                <param argument="--hifi-error" type="float" min="0" max="1" optional="true" label="Expected HiFi reads error rate" help="Default: 0.01"/>
+            </when>
+        </conditional>
+        <param argument="--iterations" type="integer" value="1" label="Number of polishing iterations" 
+            help="Polishing is performed as the final assembly stage. By default, Flye runs one polishing iteration. Additional iterations 
+                might correct a small number of extra errors (due to improvements on how reads may align to the corrected assembly). If the 
+                parameter is set to 0, the polishing is not performed"/>
+        <param argument="--min-overlap" type="integer" min="1000" max="10000" optional="true" label="Minimum overlap between reads" 
+            help="This sets a minimum overlap length for two reads to be considered overlapping. By default it is chosen 
+                automatically based on the read length distribution (reads N90) and does not require manual setting. Typical 
+                value is 3k-5k (and down to 1k for datasets with shorter read length). Intuitively, we want to set this 
+                parameter as high as possible, so the repeat graph is less tangled. However, higher values might lead to assembly gaps.
+                In some rare cases it makes sense to manually increase minimum overlap for assemblies of big genomes with long reads and high coverage." />
+        <param argument="--keep-haplotypes" type="boolean" truevalue="--keep-haplotypes" falsevalue="" checked="False" label="Keep haplotypes"
+            help="By default, Flye collapses graph structures caused by alternative haplotypes (bubbles, superbubbles, roundabouts) to produce longer 
+                consensus contigs. This option retains the alternative paths on the graph, producing less contigouos, but more detailed assembly."/>
+        <param argument="--scaffold" type="boolean" truevalue="--scaffold" falsevalue="" label="Enable scaffolding using graph" 
+            help="Starting from the version 2.9 Flye does not perform scaffolding by default, which guarantees that all assembled sequences do not have any gaps" />
+        <param argument="--meta" type="boolean" truevalue="--meta" falsevalue="" checked="False" label="Perform metagenomic assembly" 
+            help="It is designed for highly non-uniform coverage and is sensitive to underrepresented sequence at low coverage (as low as 2x).
+                In some examples of simple metagenomes, we observed that the normal mode assembled more contigious bacterial 
+                consensus sequence, while the metagenome mode was slightly more fragmented, but revealed strain mixtures"/>
+        <conditional name="asm">
+            <param name="asm_select" type="select" label="Reduced contig assembly coverage" help="Typically, assemblies of large genomes at high coverage require a hundreds of RAM. For high coverage assemblies, 
+                        you can reduce memory usage by using only a subset of longest reads for initial contig extension stage (usually, the memory bottleneck)">
+                <option value="true">Enable reduced coverage for initial disjointing assembly</option>
+                <option value="false" selected="true">Disable reduced coverage for initial disjointing assembly</option>
+            </param>
+            <when value="true">
+                <param argument="--asm-coverage" type="integer" min="0" value="30"
+                    label="Reduced coverage for initial disjointing assembly" 
+                    help="This parameter specifies the target coverage of the longest reads. For a typical assembly, 30x is enough to produce good 
+                        initial contigs. Regardless of this parameter, all reads will be used at the later pipeline stages."/>
+                <param argument="--genome-size" type="text" optional="true" label="Estimated genome size"
+                    help="For example, 5m or 2.6g. No longer required as input. However, it must be used in conjunction with --asm-coverage option.">
+                    <validator type="regex" message="Genome size must be a float  or integer, optionally followed by the a unit prefix (kmg)">^([0-9]*[.])?[0-9]+[kmg]?$</validator>
+                </param>
+            </when>
+            <when value="false" />
+        </conditional>
+        <param argument="--no-alt-contigs" type="boolean" truevalue="--no-alt-contigs" falsevalue="" checked="false" label="Remove all non-primary contigs from the assembly"/>
+        <param name="generate_log" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Generate a log file"/>
+    </inputs>
+    <outputs>
+        <data name="consensus" format="fasta" from_work_dir="out_dir/assembly.fasta" label="${tool.name} on ${on_string}: consensus"/>
+        <data name="assembly_graph" format="graph_dot" from_work_dir="out_dir/assembly_graph.gv" label="${tool.name} on ${on_string}: assembly graph"/>
+        <data name="assembly_gfa" format="gfa" from_work_dir="out_dir/assembly_graph.gfa" label="${tool.name} on ${on_string}: graphical fragment assembly"/>
+        <data name="assembly_info" format="tabular" from_work_dir="out_dir/assembly_info.txt" label="${tool.name} on ${on_string}: assembly info"/>
+        <data name="flye_log" format="txt" from_work_dir="out_dir/flye.log" label="${tool.name} on ${on_string}: log">
+            <filter>generate_log</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!--Test 01: pacbio-raw-->
+        <test expect_num_outputs="5">
+            <param name="inputs" ftype="fastq.gz" value="ecoli_01.fastq.gz,ecoli_02.fastq.gz,ecoli_03.fastq.gz,ecoli_04.fastq.gz,ecoli_05.fastq.gz,ecoli_06.fastq.gz,ecoli_07.fastq.gz"/>
+            <param name="mode" value="--pacbio-raw"/>
+            <param name="iterations" value="0"/>
+            <param name="generate_log" value="true"/>
+            <output name="assembly_info" file="result1_assembly_info.txt" ftype="tabular" compare="sim_size"/>
+            <output name="assembly_graph" file="result1_assembly_graph.dot" ftype="graph_dot" compare="sim_size"/>
+            <output name="assembly_gfa" file="result1_assembly_graph.gfa" ftype="gfa" compare="diff" lines_diff="10"/>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_line line=">contig_1"/>
+                </assert_contents>
+            </output>
+            <output name="flye_log" file="result1.log" ftype="txt" compare="sim_size"/>
+        </test>
+        <!--Test 02: nano raw-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fasta.gz" value="nanopore.fasta.gz"/>
+            <param name="mode" value="--nano-raw"/>
+            <param name="iterations" value="0"/>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="95" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="803" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="35047" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="35573" delta="100"/>
+               </assert_contents>
+            </output>
+        </test>
+        <!--Test 03: reduce coverage-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fastq.gz" value="ecoli_hifi_01.fastq.gz,ecoli_hifi_02.fastq.gz,ecoli_hifi_03.fastq.gz,ecoli_hifi_04.fastq.gz,ecoli_hifi_05.fastq.gz,ecoli_hifi_06.fastq.gz,ecoli_hifi_07.fastq.gz,ecoli_hifi_08.fastq.gz,ecoli_hifi_09.fastq.gz"/>
+            <conditional name="mode_conditional">
+                <param name="mode" value="--nano-raw"/>
+            </conditional>
+            <conditional name="asm">
+                <param name="asm_select" value="true" />
+                <param name="asm" value="30"/>
+                <param name="genome_size" value="3980000"/>
+            </conditional>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="286" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="1840" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="420752" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="427580" delta="100"/>
+               </assert_contents>
+            </output>
+        </test>
+        <!--Test 04: metagenomic mode-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fastq.gz" value="ecoli_01.fastq.gz,ecoli_02.fastq.gz,ecoli_03.fastq.gz,ecoli_04.fastq.gz,ecoli_05.fastq.gz,ecoli_06.fastq.gz,ecoli_07.fastq.gz"/>
+            <conditional name="mode_conditional">
+                <param name="mode" value="--pacbio-raw"/>
+            </conditional>
+            <param name="meta" value="true"/>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="95" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="367" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="418729" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="425667" delta="100"/>
+               </assert_contents>
+            </output>
+        </test>
+        <!--Test 05: nanopore HQ mode-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fastq.gz" value="ecoli_hifi_01.fastq.gz,ecoli_hifi_02.fastq.gz,ecoli_hifi_03.fastq.gz,ecoli_hifi_04.fastq.gz,ecoli_hifi_05.fastq.gz,ecoli_hifi_06.fastq.gz,ecoli_hifi_07.fastq.gz,ecoli_hifi_08.fastq.gz,ecoli_hifi_09.fastq.gz"/>
+            <conditional name="mode_conditional">
+                <param name="mode" value="--nano-hq"/>
+            </conditional>
+            <param name="min_overlap" value="1000"/>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="286" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="1248" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="419414" delta="1000"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="426277" delta="1000"/>
+               </assert_contents>
+            </output>
+        </test>
+        <!--Test 06: hifi error option-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fastq.gz" value="ecoli_hifi_01.fastq.gz,ecoli_hifi_02.fastq.gz,ecoli_hifi_03.fastq.gz,ecoli_hifi_04.fastq.gz,ecoli_hifi_05.fastq.gz,ecoli_hifi_06.fastq.gz,ecoli_hifi_07.fastq.gz,ecoli_hifi_08.fastq.gz,ecoli_hifi_09.fastq.gz"/>
+            <conditional name="mode_conditional">
+                <param name="mode" value="--pacbio-hifi"/>
+                <param name="hifi_error" value="0.21"/> 
+            </conditional>
+            <param name="min_overlap" value="1000"/>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="286" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="1248" delta="500"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="420254" delta="2000"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="427131" delta="2000"/>
+               </assert_contents>
+            </output>
+        </test>
+        <!--Test 07: keep haplotypes-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fastq.gz" value="ecoli_hifi_01.fastq.gz,ecoli_hifi_02.fastq.gz,ecoli_hifi_03.fastq.gz,ecoli_hifi_04.fastq.gz,ecoli_hifi_05.fastq.gz,ecoli_hifi_06.fastq.gz,ecoli_hifi_07.fastq.gz,ecoli_hifi_08.fastq.gz,ecoli_hifi_09.fastq.gz"/>
+            <conditional name="mode_conditional">
+                <param name="mode" value="--pacbio-corr"/>
+                <param name="hifi_error" value="0.21"/>
+            </conditional>
+            <param name="min_overlap" value="1000"/>
+            <param name="keep-haplotypes" value="true"/>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="286" delta="200"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="1273" delta="500"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="420254" delta="3000"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="427131" delta="3000"/>
+               </assert_contents>
+            </output>
+        </test>
+        <!--Test 08: scaffolding mode-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fastq.gz" value="ecoli_hifi_01.fastq.gz,ecoli_hifi_02.fastq.gz,ecoli_hifi_03.fastq.gz,ecoli_hifi_04.fastq.gz,ecoli_hifi_05.fastq.gz,ecoli_hifi_06.fastq.gz,ecoli_hifi_07.fastq.gz,ecoli_hifi_08.fastq.gz,ecoli_hifi_09.fastq.gz"/>
+            <param name="mode" value="--nano-hq"/>
+            <param name="min_overlap" value="1000"/>
+            <param name="scaffold" value="true"/>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="286" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="1248" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="419414" delta="2000"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="426277" delta="2000"/>
+               </assert_contents>
+            </output>
+        </test>
+        <!--Test 09: test not-alt-contigs parameter w-->
+        <test expect_num_outputs="4">
+            <param name="inputs" ftype="fasta.gz" value="nanopore.fasta.gz"/>
+            <param name="mode" value="--nano-raw"/>
+            <param name="iterations" value="0"/>
+            <param name="no_alt_contigs" value="true"/>
+            <output name="assembly_info" ftype="tabular">
+                <assert_contents>
+                    <has_size value="151" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_graph" ftype="graph_dot">
+                <assert_contents>
+                    <has_size value="217" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="assembly_gfa" ftype="gfa">
+                <assert_contents>
+                    <has_size value="5110" delta="100"/>
+               </assert_contents>
+            </output>
+            <output name="consensus" ftype="fasta">
+                <assert_contents>
+                    <has_size value="5123" delta="100"/>
+               </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+**Purpose**
+
+Flye is a de novo assembler for single molecule sequencing reads, such as those produced by PacBio and Oxford Nanopore Technologies. 
+It is designed for a wide range of datasets, from small bacterial projects to large mammalian-scale assemblies. The package represents 
+a complete pipeline: it takes raw PacBio/ONT reads as input and outputs polished contigs. Flye also has a special mode for metagenome 
+assembly.
+
+----
+
+**Quick usage**
+
+Input reads can be in FASTA or FASTQ format, uncompressed or compressed with gz. Currently, PacBio (raw, corrected, HiFi) and ONT reads 
+(raw, corrected) are supported. Expected error rates are <30% for raw, <3% for corrected, and <1% for HiFi. Note that Flye was primarily 
+developed to run on raw reads. You may specify multiple files with reads (separated by spaces). Mixing different read types is not yet supported. The *--meta* o
+ption enables the mode for metagenome/uneven coverage assembly.
+
+Genome size estimate is no longer a required option. You need to provide an estimate if using *--asm-coverage* option.
+
+To reduce memory consumption for large genome assemblies, you can use a subset of the longest reads for initial disjointig assembly by 
+specifying *--asm-coverage* and *--genome-size* options. Typically, 40x coverage is enough to produce good disjointigs.
+
+----
+
+**Outputs**
+
+The main output files are:
+
+* Final assembly: contains contigs and possibly scaffolds (see below).
+* Final repeat graph: note that the edge sequences might be different (shorter) than contig sequences, because contigs might include multiple graph edges.
+* Extra information about contigs (such as length or coverage).
+
+Each contig is formed by a single unique graph edge. If possible, unique contigs are extended with the sequence from flanking unresolved repeats on the graph. Thus, 
+a contig fully contains the corresponding graph edge (with the same id), but might be longer then this edge. This is somewhat similar to unitig-contig relation in 
+OLC assemblers. In a rare case when a repetitive graph edge is not covered by the set of "extended" contigs, it will be also output in the assembly file.
+
+Sometimes it is possible to further order contigs into scaffolds based on the repeat graph structure. These ordered contigs will be output as a part of scaffold in 
+the assembly file (with a scaffold prefix). Since it is hard to give a reliable estimate of the gap size, those gaps are represented with the default 100 Ns. 
+assembly_info.txt file (below) contains additional information about how scaffolds were formed.
+
+Extra information about contigs/scaffolds is output into the assembly_info.txt file. It is a tab-delimited table with the columns as follows:
+
+*  Contig/scaffold id
+*  Length
+*  Coverage
+*  Is circular, (Y)es or (N)o
+*  Is repetitive, (Y)es or (N)o
+*  Multiplicity (based on coverage)
+*  Alternative group
+*  Graph path (graph path corresponding to this contig/scaffold).
+
+Scaffold gaps are marked with `??` symbols, and `*` symbol denotes a terminal graph node. Alternative contigs (representing alternative haplotypes) will have the same alt. 
+group ID. Primary contigs are marked by `*`.
+
+----
+
+**Algorithm Description**
+
+This is a brief description of the Flye algorithm. Please refer to the manuscript for more detailed information. The draft contig extension is organized as follows:
+
+*  K-mer counting / erroneous k-mer pre-filtering
+*  Solid k-mer selection (k-mers with sufficient frequency, which are unlikely to be erroneous)
+*  Contig extension. The algorithm starts from a single read and extends it with a next overlapping read (overlaps are dynamically detected using the selected solid k-mers).
+
+Note that we do not attempt to resolve repeats at this stage, thus the reconstructed contigs might contain misassemblies. Flye then aligns the reads on these draft 
+contigs using minimap2 and calls a consensus. Afterwards, Flye performs repeat analysis as follows:
+
+*  Repeat graph is constructed from the (possibly misassembled) contigs
+*  In this graph all repeats longer than minimum overlap are collapsed
+*  The algorithm resolves repeats using the read information and graph structure
+*  The unbranching paths in the graph are output as contigs
+
+If enabled, after resolving bridged repeats, Trestle module attempts to resolve simple unbridged repeats (of multiplicity 2) using the heterogeneities between repeat copies. 
+Finally, Flye performs polishing of the resulting assembly to correct the remaining errors:
+
+*  Alignment of all reads to the current assembly using minimap2
+*  Partition the alignment into mini-alignments (bubbles)
+*  Error correction of each bubble using a maximum likelihood approach
+
+The polishing steps could be repeated, which might slightly increase quality for some datasets.
+
+
+  ]]></help>
+    <expand macro="citations" />
+</tool>

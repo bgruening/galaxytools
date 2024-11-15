@@ -1,0 +1,126 @@
+<tool id="fpocket" name="fpocket" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
+    <description>- find potential binding sites in protein structures</description>
+    <macros>
+        <import>macros.xml</import>
+        <token name="@GALAXY_VERSION@">0</token>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="exit_code"><![CDATA[
+
+        ln -s '$input' ./input.pdb &&
+        fpocket
+            -f ./input.pdb
+            #if $inp.pocket_type == 'channel':
+                --min_alpha_size 2.8 --max_alpha_size 5.5 --min_spheres_per_pocket 30
+            #elif $inp.pocket_type == 'external':
+                --min_alpha_size 3.5 --max_alpha_size 10 --min_spheres_per_pocket 30
+            #elif $inp.pocket_type == 'custom':
+                --min_alpha_size $inp.min
+                --max_alpha_size $inp.max
+                --min_spheres_per_pocket $inp.i
+                --clustering_distance $inp.D
+                --clustering_method $inp.C
+                --clustering_measure $inp.e
+            #end if
+
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="pdb" label="Input file" help="Protein structure file (PDB) to search."/>
+        <expand macro="inputs" />
+        <param name="outputs" type="select" display="checkboxes" multiple="true" label="Output files">
+            <option value="atoms" selected="true">PDB files containing the atoms in contact with each pocket</option>
+            <option value="pock_verts">PQR files containing Voronoi vertices of each pocket</option>
+            <option value="alpha_pdb" selected="true">PDB file containing alpha spheres found</option>
+            <option value="all_verts" selected="true">PQR file containing all Voronoi vertices found</option>
+            <option value="info" selected="true">Log file containing pocket properties</option>
+        </param>
+    </inputs>
+
+    <outputs>
+        <collection type="list" name="atoms_output" label="Atoms in contact with each pocket">
+            <discover_datasets pattern="(?P&lt;designation&gt;^pocket\d+)_atm\.pdb$" directory="input_out/pockets" ext="pdb"/>
+            <filter>"atoms" in outputs</filter>
+        </collection>
+        <collection type="list" name="pock_verts_output" label="Voronoi vertices of each pocket">
+            <discover_datasets pattern="(?P&lt;designation&gt;^pocket\d+)_vert\.pqr$" directory="input_out/pockets" ext="pqr"/>
+            <filter>"pock_verts" in outputs</filter>
+        </collection>
+        <data format="pqr" name="all_verts_output" label="All Voronoi vertices found" from_work_dir="input_out/input_pockets.pqr">
+            <filter>"all_verts" in outputs</filter>
+        </data>
+        <data format="pdb" name="alpha_pdb_output" label="PDB output with alpha spheres" from_work_dir="input_out/input_out.pdb">
+            <filter>"alpha_pdb" in outputs</filter>
+        </data>
+        <data format="txt" name="info_output" label="Pocket properties" from_work_dir="input_out/input_info.txt">
+            <filter>"info" in outputs</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <!-- lines_diff needed because volume estimates are calculated via a Monte Carlo method and vary with each run -->
+        <test>
+            <param name="input" ftype="pdb" value="2brc.pdb"/>
+            <param name='pocket_type' value='custom' />
+            <param name="min" value="1.0"/>
+            <param name="max" value="3.0"/>
+            <param name="i" value="20" />
+            <param name="D" value="2.0"/>
+            <param name="C" value="c" />
+            <param name="e" value="b" />
+            <param name='outputs' value='pock_verts,all_verts' />
+            <output_collection name="pock_verts_output" type="list">
+                <element name="pocket2" ftype="pqr" file="pocket2_vert.pqr" lines_diff="2"/>
+            </output_collection>
+            <output name="all_verts_output" ftype="pqr" file='custom_pockets.pqr'/>
+        </test>
+        <test>
+            <param name="input" ftype="pdb" value="2brc.pdb"/>
+            <param name='pocket_type' value='small_mol' />
+            <output_collection name="atoms_output" type="list">
+                <element name="pocket1" ftype="pdb" file="pocket1_atm.pdb" lines_diff="2"/>
+            </output_collection>
+            <output name="info_output" ftype="txt" file='2brc_info.txt' lines_diff="20"/>
+            <output name="alpha_pdb_output" ftype="pdb">
+              <assert_contents>
+                <has_text text="ATOM      1    N MET A   1"/>
+                <has_text text="HETATM    6 APOL STP C   "/>
+              </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+Detect 'pockets' in a protein structure using the fpocket software. A potential use 
+of this tool is locating potential binding sites in a protein prior to performing 
+protein-ligand docking.
+
+To use, upload a protein structure in PDB format and select the type of pocket to 
+detect. 'Custom options' can also be selected - this exposes all internal fpocket 
+parameters. Using this option requires some knowledge of the fpocket prediction 
+algorithm. Please consult the cited publications for more details.
+
+
+-----
+
+.. class:: infomark
+
+**Input**
+
+A protein structure in PDB format.
+
+-----
+
+.. class:: infomark
+
+**Output**
+
+Some or all of the following files:
+
+- A collection of PDB files, one for each pocket, each containing the atoms bordering the pocket.
+- A collection of PQR files, one for each pocket, each containing Voronoi vertices of the pocket.
+- A single PQR file containing all Voronoi vertices for all pockets.
+- A text file listing properties of all pockets detected.
+
+    ]]></help>
+    <expand macro="citations" />
+</tool>

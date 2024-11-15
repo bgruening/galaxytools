@@ -1,0 +1,294 @@
+<tool id="quast" name="Quast" version="3.1.0">
+    <description>QUality ASsessment Tool for Genome Assemblies</description>
+    <macros>
+        <token name="@EXECUTABLE@">RNAshapes</token>
+        <macro name="macro-meta_reference">
+            <param name="meta_reference" type="data" format="fasta"
+                label="Reference file (optional)"
+                optional="true" multiple="true" 
+                help="Accepts multiple fasta files with multiple sequences each (FASTA format)"/>
+        </macro>
+        <macro name="macro-eupro_reference">
+            <param name="eupro_reference" type="data" format="fasta"
+                label="Reference file (optional)"
+                optional="true" multiple="false" 
+                help="Accepts one reference file (FASTA format)"/>
+        </macro>
+    </macros>
+    <requirements>
+        <requirement type="package" version="5.18.1">perl</requirement>
+        <requirement type="package" version="2.7.10">python</requirement>
+        <requirement type="package" version="3.1">quast</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+        <exit_code range=":-1" />
+        <regex match="Error:" />
+        <regex match="Exception:" />
+    </stdio>
+    <version_command>Quast --version</version_command>
+    <command><![CDATA[
+        #if $organism_type.organism == 'meta':
+            metaquast.py
+            #if $organism_type.meta_reference is not None:
+               -R #echo ','.join(['"%s"' % $ref for $ref in $organism_type.meta_reference])#
+            #end if
+            --output-dir ./out
+        #else:
+            quast.py
+            #if $organism_type.eupro_reference:
+                -R $organism_type.eupro_reference
+            #end if
+            --output-dir ./out
+        #end if
+        --min-contig $min_contig
+        $scaffolds
+        #if $genes.find_genes:
+            $genes.find_genes
+            #if $organism_type.organism=="eukaryote":
+                --eukaryote
+            #end if
+            #if $organism_type.organism=="meta":
+                --meta
+            #end if
+            #if $genes.gene_coordinates:
+                -G $genes.gene_coordinates
+            #end if
+            #if $genes.operon_coordinates:
+                -O $genes.operon_coordinates
+            #end if
+        #end if
+        #for $file in $fasta_input:
+            '$file'
+        #end for
+        #if $organism_type.organism=="meta":
+            &&
+            mv ./out/combined_quast_output/report.html $html 2> /dev/null
+            
+            ## move aux files to accessible directory
+            &&
+            mkdir -p $html.files_path 2> /dev/null
+            &&
+            mv ./out/combined_quast_output/report_html_aux $html.files_path 2> /dev/null
+        #end if
+    ]]></command>
+    <inputs>
+        <conditional name="organism_type">
+            <param name="organism" type="select" label="Data files are:">
+                 <option value="">prokaryotic</option>
+                 <option value="eukaryote">eukaryotic</option>
+                 <option value="meta">metagenome</option>
+            </param>
+            <when value ="meta">
+                 <expand macro="macro-meta_reference"/>
+            </when>
+            <when value ="eukaryote">
+                 <expand macro="macro-eupro_reference"/>
+            </when>
+            <when value ="">
+                 <expand macro="macro-eupro_reference"/>
+            </when>
+        </conditional>
+        <param name="fasta_input" multiple="True" type="data" format="fasta" label="Alignment file(s)"/>
+        <param name="min_contig" type="integer" value="500" label="Skip contigs shorter than x bp"/>
+        <param name="scaffolds" type="boolean" checked="false" truevalue="--scaffolds" falsevalue=""
+            label="Split scaffolds?"
+            help="The assemblies are scaffolds (rather than contigs).
+                QUAST will add split versions of assemblies to the comparison.
+                Assemblies are split by continuous fragments of N's of length >= 10." />
+        <conditional name="genes">
+            <param name="find_genes" type="select" label="Find genes?" 
+                    help="Prokaryotic (find genes with GenemarkS, process circular chromosomes), Eukaryotic (find genes with GlimmerHMM), Metagenome (use MetaGeneMark for gene prediction)">
+                <option value="">No</option>
+                <option value="--gene-finding">Yes</option>
+            </param>
+            <when value="--gene-finding">
+                <param name="gene_coordinates" type="data" format="gff" optional="true" multiple="false"
+                    label="Gene coordinates in the reference (optional)" />
+                <param name="operon_coordinates" type="data" format="gff" optional="true" multiple="false"
+                    label="Operon coordinates in the reference (optional)" />
+            </when>
+            <when value=""/>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="outfile" format="pdf" from_work_dir="./out/combined_quast_output/report.pdf" />
+        <data name="outfile2" format="tabular" from_work_dir="./out/combined_quast_output/report.txt"/>
+        <data name="html" format="html" label="${tool.name} on ${on_string} (html report)"/>
+    </outputs>
+    <tests>
+        <test>
+            <param name="organism" value="meta"/>
+            <param name="fasta_input" value="meta_contigs_1.fasta,meta_contigs_2.fasta" />
+            <param name="meta_reference" value="meta_ref_3.fasta,meta_ref_2.fasta" />
+            <output name="outfile" file="report_4.pdf" ftype="pdf" compare="sim_size"/>
+            <output name="outfile2" file="report_4.txt" ftype="tabular" compare="sim_size"/>
+            <output name="html" file="report_4.html" ftype="html" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="organism" value="" />
+            <param name="fasta_input" value="reference.fasta.gz" />
+            <param name="scaffolds" value="True" />
+            <output name="outfile" file="report_5.pdf" ftype="pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="organism" value="" />
+            <param name="find_genes" value="--gene-finding" />
+            <param name="gene_coordinates" value="genes.gff" />
+            <param name="operon_coordinates" value="operons.gff" />
+            <param name="fasta_input" value="contigs_1.fasta,contigs_2.fasta" />
+            <param name="eupro_reference" value="reference.fasta.gz" />
+            <output name="outfile" file="report_3.pdf" ftype="pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="organism" value="" />    <package name="perl" version="5.18.1">
+        <repository name="package_perl_5_18" owner="iuc" prior_installation_required="True" />
+    </package>
+            <param name="fasta_input" value="contigs_1.fasta,contigs_2.fasta" />
+            <param name="eupro_reference" value="reference.fasta.gz" />
+            <output name="outfile" file="report_2.pdf" ftype="pdf" compare="sim_size"/>
+        </test>
+        <test>
+            <param name="organism_type" value="" />
+            <param name="fasta_input" value="contigs_1.fasta,contigs_2.fasta" />
+            <output name="outfile" file="report_1.pdf" ftype="pdf" compare="sim_size"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+     QUAST stands for QUality ASsesment Tool. The tool evaluates genome assemblies by computing various metrics.  
+
+**Metrics descriptions**
+
+# contigs >= x
+
+    is the total number of contigs of length >= x. This metric doesn't depend on --min-contig command line parameter.
+
+Total length (>= x)
+
+    is the total number of bases in contigs of length >= x. This metric doesn't depend on --min-contig command line parameter. All remaining metrics are computed on the contigs of length >= x where x is specified in command line option --min-contig.
+
+N50
+
+    is the contig length such that using longer or equal length contigs produces half (50%) the bases of the assembly. Usually there is no value that produces exactly 50%, so the more technical definition is the minimal length x such that using contigs of length at least x accounts for at least 50% of the total assembly length.
+
+NG50
+
+    is the contig length such that using longer or equal length contigs produces half (50%) the bases of the reference genome. This metric could be computed only if the reference is given.
+
+N75 and NG75
+
+    are defined similarly with 75% instead of 50%.
+
+Number of contigs
+  
+    is the total number of contigs in the assembly.
+
+Largest contig
+    
+    is the length of the longest contig in the assembly.
+
+Total length
+
+    is the total number of bases in the assembly.
+
+Reference length
+
+    is the total number of bases in the reference.
+
+Average %IDY
+
+    is the average of alignment identity percent (i.e. alignment accuracy) among all contigs.
+
+Misassemblies
+
+    gives the number of positions at the assembled contigs where the left flanking sequence aligns over 1kb away from the right flanking sequence on the reference or they overlap on more than 1 kb or flanking sequences align on different strands. This metric could be computed only if the reference is given.
+
+Misassembled Contigs
+
+    is the number of contigs that contain misassembly events.
+
+Misassembled Contig Bases
+
+    the number of total bases contained in all contigs that have one or more misassemblies.
+
+Misassembled and Unaligned
+
+    the number of contigs which contain misassembly events but which have alignment to the reference of length less than 10% of contigs length (almost unaligned contigs).
+
+Unaligned Contigs
+
+    the number of contigs that have no alignment to the reference sequence. The value "X + Y part" means: X totally unaligned contigs plus Y partially unaligned contigs.
+
+Unaligned Contig Bases
+
+    the total number of unaligned bases in totally and partially unaligned contigs (only bases from unaligned parts).
+
+Ambiguous Contigs
+
+    the number of contigs which have reference alignments of equal quality in multiple locations on the reference. The value "X (Y)" means X ambiguous contigs with Y bases in them.
+
+NA50, NGA50, NA75, NGA75 (A stands for "aligned")
+
+    like the same metrics without A but in this case we count lengths of aligned blocks instead of contigs lengths. I.e. if a contig has a misassembly with respect to the reference, we break the contig into smaller pieces. Also, if a contig has bases that don't align to the reference, they are not counted in NAx, NGAx.
+
+Mapped genome (%)
+
+    the ratio of total number of aligned bp in the assembly to the genome size. Short contigs (less than 500 bp) that map to multiple places may be counted many times in this quantity. A base in the genome is counted as aligned one if there is at least one contig with at least one alignment with this base.
+
+Genes   
+
+    the number of genes in the assembly (full and partial), based on the positions the contigs map to in the reference genome with an annotated list of genes. The value "X + Y part" means X full genes and Y partial ones (at least 100 bases are aligned). This metric could be computed only if the reference and genes annotations file are given.
+
+Operons   
+
+    is defined similarly to the previous metric but you need operons annotations file for computing this metric.
+
+# ORFs >= x bp
+
+    is the total number of Open Reading Frames of length >= x bp founded in the assembly (the length of one codon is 3 bp). This metric will be computed if genes annotations file is not given.
+
+**Plots descriptions**
+
+Cumulative length
+
+    This plot shows the growth rate of assemblies lengthes. The y-axis is the size of assembly and x-axis is the number of contigs in the assembly (from the largest one to the smallest one).
+
+Nx
+
+    This plot shows the changes of Nx metric value in dependence of x value. The y-axis is the Nx value and x-axis is the x value.
+
+NGx
+
+    This plot is similar to the previous one but for NGx metric.
+
+Cumulative length (aligned contigs)
+
+    This plot is similar to Cumulative length plot but we plot only aligned contigs instead of contigs itself. If a contig has a misassembly with respect to the reference, we break the contig into smaller pieces. This plot could be created only if the reference is given.
+
+NAx and NGAx
+
+    These plot are similar to the Nx and NGx plots but for NAx and NGAx metrics respectively. These plots could be created only only if the reference is given.
+
+Genes
+
+    This plot shows the growth rate of full genes in assemblies. The y-axis is the number of full genes in the assembly and x-axis is the number of contigs in the assembly (from the largest one to the smallest one). This plot could be created only if the reference and genes annotations file are given.
+
+Operons
+
+    This plot is similar to the previous one but for operons.
+
+
+-----
+
+**Quast** is a Free and Open Source Software, see more details on the Quast_ Website or on GitHub_
+
+.. _Quast: http://quast.bioinf.spbau.ru/
+.. _GitHub: https://github.com/ablab/quast
+
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btt086</citation>
+    </citations>
+</tool>

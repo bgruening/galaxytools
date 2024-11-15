@@ -1,0 +1,455 @@
+<tool id="edta" name="edta" version="@WRAPPER_VERSION@+@VERSION_SUFFIX@" profile="20.01">
+    <description>
+        Whole-genome de-novo TE annotation 
+    </description>
+    <macros>
+        <token name="@WRAPPER_VERSION@">2.1.0</token>
+        <token name="@VERSION_SUFFIX@">galaxy0</token>
+        <import>edta_macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"></expand>
+    <requirements>
+        <requirement type="package" version="@WRAPPER_VERSION@">edta</requirement>
+        <!--container type="docker">oushujun/edta:@WRAPPER_VERSION@</container-->
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+    ## Genome to TE annotations 
+    #if $function_select.function == 'genome':
+        ln -s '$function_select.genome' ./input.fa &&
+        EDTA.pl
+        --genome input.fa
+        --species '$function_select.species'
+        --step '$function_select.step'
+        #if $function_select.cds:
+            --cds '$function_select.cds'
+        #end if 
+        #if $function_select.curatedlib:
+            --curatedlib '$function_select.curatedlib'
+        #end if
+        $function_select.sensitive
+        #if $function_select.mutation_rate:
+            --u '$function_select.mutation_rate'
+        #end if 
+        #if $function_select.anno_select.anno == 'yes':
+            --anno 1
+            $function_select.anno_select.evaluate
+            #if $function_select.anno_select.exclude:
+                --exclude '$function_select.anno_select.exclude'
+            #end if
+            &&  mv ./input.fa.mod.EDTA.anno/*.sum .
+        #end if 
+    ## Find elements of a paticular TE type
+    #else if $function_select.function == 'te':
+        ln -s '$function_select.genome' ./input.fa &&
+        EDTA_raw.pl
+        --genome input.fa
+        --species '$function_select.species'
+        --type '$function_select.te_type'
+        && mv ./input.fa.mod.EDTA.raw/input.fa.mod* .
+    ## pan-EDTA
+    #else if $function_select.function =='pan-edta':
+        #set $cds_list = []
+        #for $i, $s in enumerate($function_select.te_library)
+            ln -s '${s.genome}' ./${i}_input.fa &&
+            EDTA.pl 
+            --genome ${i}_input.fa 
+            --species '${s.species}'
+            --anno 1
+            #if $s.cds:
+                --cds '${s.cds}'
+            #end if 
+            #if $s.curatedlib:
+                --curatedlib '${s.curatedlib}'
+            #end if
+            $s.sensitive
+            #if $s.mutation_rate:
+                --u '${s.mutation_rate}'
+            #end if
+            $s.evaluate
+            #if $s.exclude:
+                --exclude '${s.exclude}'
+            #end if
+            #silent$cds_list.append(str($i) + '_input.fa')
+            &&  mv ./${i}_input.fa.mod.EDTA.anno/*.mod.out .
+            &&      
+        #end for
+        #for $i in $cds_list
+            bash '$__tool_directory__/filter_out_single_copies.sh' $i  &&
+        #end for
+        #if $function_select.known_te:
+            bash '$__tool_directory__/make_pan_library.sh' '${known_te}' 
+        #else:
+            bash '$__tool_directory__/make_pan_library.sh'
+        #end if    
+    #end if    
+    ]]></command>
+    <inputs>
+        <conditional name="function_select">
+            <param name="function" type="select" label="Which Function should be run">
+                <option value="genome">Whole Genome</option>
+                <option value="te">Specific TE</option>
+                <option value="pan-edta">Pan-EDTA</option>
+            </param>
+            <!-- pan-EDTA run -->
+            <when value="pan-edta">
+                <expand macro="pan_edta"></expand>
+            </when>
+            <!-- Default EDTA run -->
+            <when value="genome">
+              <expand macro="edta_main_param"></expand>
+            </when>
+            <!-- Find elements of a paticular TE type -->
+            <when value="te">
+                <expand macro="te_only"></expand>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <!--  Genome to TE Annotations-->
+        <data name="outfile_library" from_work_dir="*.mod.EDTA.TElib.fa" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library">
+            <filter>function_select['function'] == "genome"</filter>
+        </data>
+        <data name="Novel_TE_Families"  from_work_dir="*.mod.EDTA.TElib.novel.fa" format="fasta" label="${tool.name} on ${on_string}: Novel TE Families">
+            <filter>function_select['function'] == "genome" and function_select['curatedlib']</filter>
+        </data>
+        <data name="Whole_Genome_TE_Annotation" from_work_dir="*.mod.EDTA.TEanno.gff3" format="gff3" label="${tool.name} on ${on_string}: Whole Genome TE Annotation">
+            <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" </filter>
+        </data>
+        <data name="Summary_Whole_Genome_TE_Annotation" from_work_dir="*.mod.EDTA.TEanno.sum" format="xml" label="${tool.name} on ${on_string}: Summary of Whole Genome TE Annotation">
+            <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes"</filter>
+        </data>
+        <data name="Low_Threshold_TE_Masking" from_work_dir="*.mod.MAKER.masked" format="gff3" label="${tool.name} on ${on_string}: Low_Threshold_TE_Masking">
+            <filter>function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes"</filter>
+        </data>
+        <data name="Annotation_Inconsistency_Simple_TEs" from_work_dir="*.mod.EDTA.TE.fa.stat.redun.sum" format="xml" label="${tool.name} on ${on_string}: Simple TE Annotation Inconsistency">
+            <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True </filter>
+        </data>
+        <data name="Annotation_Inconsistency_Nested_TEs" from_work_dir="*.mod.EDTA.TE.fa.stat.nested.sum" format="xml" label="${tool.name} on ${on_string}: Nested TE Annotation Inconsistency">
+            <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True </filter>
+        </data>
+        <data name="Overall_Annotation_Inconsistency" from_work_dir="*.mod.EDTA.TE.fa.stat.all.sum" format="xml" label="${tool.name} on ${on_string}: Overall Annotation Inconsistency">
+            <filter> function_select['function'] == "genome" and  function_select['anno_select']['anno'] == "yes" and function_select['anno_select']['evaluate'] is True</filter>
+        </data>
+        <!-- Find elements of a paticular TE type -->
+        <data name='ltr_intact_fa' from_work_dir="*.LTR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'ltr'  </filter>
+        </data>
+        <data name='ltr_intact_gff3' from_work_dir="*.LTR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_LTR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'ltr'  </filter>
+        </data>
+        <data name='ltr_raw_fa' from_work_dir="*.LTR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'ltr' </filter>
+        </data>
+        <data name='tir_intact_fa' from_work_dir="*.TIR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'tir'  </filter>
+        </data>
+        <data name='tir_intact_gff3' from_work_dir="*.TIR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_TIR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'tir'  </filter>
+        </data>
+        <data name='tir_raw_fa' from_work_dir="*.TIR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'tir' </filter>
+        </data>
+        <data name='helitron_intact_fa' from_work_dir="*.Helitron.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'helitron'  </filter>
+        </data>
+        <data name='helitron_intact_gff3' from_work_dir="*.Helitron.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_Helitron.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'helitron'  </filter>
+        </data>
+        <data name='helitron_raw_fa' from_work_dir="*.Helitron.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'helitron' </filter>
+        </data>
+        <data name='all_ltr_intact_fa' from_work_dir="*.LTR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_ltr_intact_gff3' from_work_dir="*.LTR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_LTR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_ltr_raw_fa' from_work_dir="*.LTR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_LTR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all' </filter>
+        </data>
+        <data name='all_tir_intact_fa' from_work_dir="*.TIR.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_tir_intact_gff3' from_work_dir="*.TIR.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_TIR.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_tir_raw_fa' from_work_dir="*.TIR.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_TIR.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all' </filter>
+        </data>
+        <data name='all_helitron_intact_fa' from_work_dir="*.Helitron.intact.fa" format="fasta" label="${tool.name} on ${on_string}: Intact_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_helitron_intact_gff3' from_work_dir="*.Helitron.intact.gff3" format="gff3" label="${tool.name} on ${on_string}: Intact_Helitron.gff3">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all'  </filter>
+        </data>
+        <data name='all_helitron_raw_fa' from_work_dir="*.Helitron.raw.fa" format="fasta" label="${tool.name} on ${on_string}: Raw_Helitron.fa">
+            <filter>function_select['function'] == "te" and function_select['te_type'] == 'all' </filter>
+        </data>
+        <!-- pan-edta -->
+        <data name="pan_outfile_library" from_work_dir="*.mod.EDTA.TElib.fa" format="fasta"  label="${tool.name} on ${on_string}: Non-Redundant TE Library">
+            <filter>function_select['function'] == 'pan-edta'</filter>
+        </data>
+        <data name='filter_copy' from_work_dir="*.mod.EDTA.TElib.novel.fa.real" format="fasta" label="${tool.name} on ${on_string}: filter out copy"> 
+            <filter>function_select['function'] == 'pan-edta'</filter>
+        </data>
+        <data name='get_classification_info' from_work_dir="*.mod.EDTA.TElib.novel.fa.real.ori" format="fasta" label="${tool.name} on ${on_string}: aggregate novel TE libraries"> 
+            <filter>function_select['function'] == 'pan-edta'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!--  Genome to TE Annotations-->
+        <test expect_num_outputs="8">
+            <conditional name="function_select">
+                <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
+                <param name='speices' value='Others' />
+                <param name='step' value='all' />
+                <param name ='curatedlib' value='rice6.9.5.liban' ftype='fasta'/>
+                <param name ='sensitive' value='1' />
+                <conditional name ='anno_select'>
+                    <param name='anno' value='yes'/>
+                    <param name='evaluate' value='1' />
+                    <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
+                </conditional>  
+            </conditional>
+            <output name='outfile_library'>
+                <assert_contents>
+                    <has_text text='>RST-Osativa-Cluster'></has_text>
+                    <has_text text="match=NEW"></has_text>
+                </assert_contents>
+            </output>
+            <output name='Novel_TE_Families'>
+                <assert_contents>
+                    <has_text text='Helitron'></has_text>
+                </assert_contents>
+            </output>
+            <output name="Whole_Genome_TE_Annotation">
+                <assert_contents>
+                    <has_text text="Chr2"></has_text>
+                    <has_text text="EDTA"></has_text>
+                </assert_contents>
+            </output>
+            <output name="Summary_Whole_Genome_TE_Annotation">
+                <assert_contents>
+                    <has_text text="Repeat Classes"></has_text>
+                    <has_text text="Repeat Stats"></has_text>
+                </assert_contents>
+            </output>
+            <output name="Low_Threshold_TE_Masking">
+                <assert_contents>
+                    <has_text text=">Chr2"></has_text>
+                </assert_contents>
+            </output>
+            <output name="Annotation_Inconsistency_Simple_TEs">
+                <assert_contents>
+                    <has_text text="LTR/Gypsy"></has_text>
+                </assert_contents>
+            </output>
+            <output name="Annotation_Inconsistency_Nested_TEs">
+                <assert_contents>
+                    <has_text text="TIR/Mutator"></has_text>
+                </assert_contents>
+            </output>
+            <output name="Overall_Annotation_Inconsistency">
+                <assert_contents>
+                    <has_text text="LTR/Copia"></has_text>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="5">
+            <conditional name="function_select">
+                <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
+                <param name='speices' value='Others' />
+                <param name='step' value='all' />
+                <param name ='curatedlib' value='rice6.9.5.liban' ftype='fasta'/>
+                <param name ='sensitive' value='1' />
+                <conditional name ='anno_select'>
+                    <param name='anno' value='yes'/>
+                    <param name='evaluate' value='0' />
+                    <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
+                </conditional>
+            </conditional>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="function_select">
+                <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                <param name='speices' value='Others' />
+                <param name='step' value='all' />
+                <param name ='sensitive' value='1' />
+                <conditional name ='anno_select'>
+                    <param name='anno' value='no'/>
+                </conditional>
+            </conditional>
+        </test>
+        <!-- Find elements of a paticular TE type -->
+        <test expect_num_outputs="3">
+            <conditional name="function_select">
+                <param name="function" value="te"/>
+                <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                <param name='species' value='Others'/>
+                <param name="te_type" value="ltr"/>
+            </conditional>
+            <output name="ltr_intact_fa">
+                <assert_contents>
+                    <has_text text=">Chr2:"></has_text>
+                </assert_contents>
+            </output>
+            <output name="ltr_intact_gff3">
+                <assert_contents>
+                    <has_text text="##gff-version 3"></has_text>
+                </assert_contents>
+            </output>
+            <output name="ltr_raw_fa">
+                <assert_contents>
+                    <has_text text=">Chr2:"></has_text>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="9">
+            <conditional name="function_select">
+                <param name="function" value="te"/>
+                <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                <param name='species' value='Others'/>
+                <param name="te_type" value="all"/>
+            </conditional>
+        </test>
+        <!-- pan-EDTA -->
+        <test expect_num_outputs="3">
+            <conditional name="function_select">
+                <param name="function" value="pan-edta"></param>
+                <repeat name="te_library">
+                    <param name='genome' value='test_genome.fa' ftype='fasta'/>
+                    <param name='cds' value='test_genome.cds.fa' ftype='fasta' />
+                    <param name='species' value='Others' />
+                    <param name ='curatedlib' value='rice6.9.5.liban' ftype='fasta'/>
+                    <param name ='sensitive' value='1' />
+                    <param name='evaluate' value='1' />
+                    <param name='exclude' value='test_genome.exclude.bed' ftype='bed' />
+                </repeat>
+            </conditional>
+        </test>
+    </tests>
+    <help><![CDATA[
+    
+===============================================        
+**The Extensive *de novo* TE Annotator (EDTA)**
+===============================================
+        
+.. class:: infomark
+
+**What it does**
+
+This package is developed for automated whole-genome de-novo TE annotation and benchmarking the annotation performance of TE libraries.
+
+----
+
+The EDTA package was designed to filter out false discoveries in raw TE candidates and generate a high-quality non-redundant TE library for whole-genome TE annotations. Selection of initial search programs were based on benckmarkings on the annotation performance using a manually curated TE library in the rice genome.
+
+.. image:: https://github.com/oushujun/EDTA/blob/master/development/EDTA%20workflow.png?raw=true
+    :alt: several example circos plots
+
+''''''''''
+**Inputs**
+''''''''''
+
+
+**Required**
+
+1. **The genome file [FASTA]**. Please make sure sequence names are short (<=13 characters) and simple (i.e, letters, numbers, and underscore).
+
+**Optional**
+
+1. Coding sequence of the species or a closely related species [FASTA]. This file helps to purge gene sequences in the TE library.
+2. Known gene positions of this version of the genome assembly [BED]. Coordinates specified in this file will be excluded from TE annotation to avoid over-masking.
+3. Curated TE library of the species [FASTA]. This file is trusted 100%. Please make sure it's curated. If you only have a couple of curated sequences, that's fine. It doesn't need to be complete. Providing curated TE sequences, especially for those under annotated TE types (i.e., SINEs and LINEs), will greatly improve the annotation quality.
+
+'''''''''''
+**Outputs**
+'''''''''''
+
+1. **A non-redundant TE library.** The curated library will be included in this file if provided. TEs are classified into the superfamily level and using the three-letter naming system reported in Wicker et al. (2007).(https://www.nature.com/articles/nrg2165). Each sequence can be considered as a TE family.
+
+**Optional**
+
+1. Novel TE families: This file contains TE sequences that are not included in the curated library (`curatedlib` required).
+2. Whole-genome TE annotation: This file contains both structurally intact and fragmented TE annotations (`anno` required).
+3. Summary of whole-genome TE annotation: (`anno` required).
+4. Low-threshold TE masking: This is a genome file with only long TEs (>=1 kb) being masked. You may use this for de novo gene annotations. In practice, this approach will reduce overmasking for genic regions, which can improve gene prediction quality. However, initial gene models should contain TEs and need further filtering (`anno` required).
+5. Annotation inconsistency for simple TEs: (`anno and evaluate` required).
+6. Annotation inconsistency for nested TEs: (`anno and evaluate` required).
+7. Overall annotation inconsistency: (`anno and evaluate` required).
+
+'''''''''''''''
+**EDTA Usage**
+'''''''''''''''
+`````````````````````
+**From head to toe:**
+`````````````````````
+*You got a genome and you want to get a high-quality TE annotation:*
+
+
+- **--genome** [File]		The genome FASTA file. Required.
+
+- **--species** [Rice|Maize|others]	Specify the species for identification of TIR candidates. Default: others
+
+- **--step** [all|filter|final|anno]	Specify which steps you want to run EDTA.
+
+    1. all: run the entire pipeline (default
+    2. filter: start from raw TEs to the end.
+    3. final: start from filtered TEs to finalizing the run.
+    4. anno: perform whole-genome annotation/analysis after TE library construction.
+
+- **--overwrite** [0|1]	If previous results are found, decide to overwrite (1, rerun) or not (0, default).
+
+- **--cds** [File]	Provide a FASTA file containing the coding sequence (no introns, UTRs, nor TEs) of this genome or its close relative.
+
+- **--curatedlib** [file]	Provided a curated library to keep consistant naming and classification for known TEs. All TEs in this file will be trusted 100%, so please ONLY provide MANUALLY CURATED ones here.This option is not mandatory. It's totally OK if no file is provided (default).
+
+- **--sensitive** [0|1]		Use RepeatModeler to identify remaining TEs (1) or not (0, default). This step is very slow and MAY help to recover some TEs.
+
+- **--anno** [0|1]	Perform (1) or not perform (0, default) whole-genome TE annotation after TE library construction.
+
+- **--rmout** [File]	Provide your own homology-based TE annotation instead of using the EDTA library for masking. File is in RepeatMasker .out format. This file will be merged with the structural-based TE annotation. (--anno 1 required). Default: use the EDTA library for annotation.
+
+- **--evaluate** [0|1]	Evaluate (1) classification consistency of the TE annotation. (--anno 1 required). Default: 0. This step is slow and does not affect the annotation result.
+
+- **--exclude**	[File]	Exclude bed format regions from TE annotation. Default: undef. (--anno 1 required).
+
+- **--u** [float]	Neutral mutation rate to calculate the age of intact LTR elements.
+
+----
+
+```````````````````````
+**Divide and conquer:**
+```````````````````````
+*Identify intact elements of a paticular TE type*
+
+
+- **--genome**	[File]	The genome FASTA
+
+- **--species**   [Rice|Maize|others]	Specify the species for identification of TIR candidates. Default: others
+
+- **--type**	[ltr|tir|helitron|all]	Specify which type of raw TE candidates you want to get. Default: all
+
+----
+
+````````````
+**PAN-EDTA**
+````````````
+
+For pan-genome annotations, you need to annotate each genome with EDTA, generate a pan-genome library, then reannotate each genome with the pan-genome library.
+
+.. image:: https://github.com/HuffordLab/NAM-genomes/raw/master/te-annotation/assets/Pan-EDTA_scheme.png
+    :alt: several example circos plots
+    :width: 70%
+
+For more information see the EDTA documentation_.
+
+.. _documentation: https://github.com/oushujun/EDTA
+
+]]></help>
+    <citations>
+        <citation type="doi">10.1186/s13059-019-1905-y</citation>
+    </citations>
+</tool>

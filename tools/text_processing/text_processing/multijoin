@@ -1,0 +1,320 @@
+#!/usr/bin/env perl
+use strict;
+use warnings;
+use Getopt::Long qw(:config no_ignore_case);
+use Data::Dumper;
+use Carp;
+use File::Basename;
+
+my $version = "0.1.1";
+my $field_sep = "\t";
+my $key_column;
+my @values_columns;
+my $max_value_column;
+my @input_files;
+my $input_headers ;
+my $output_headers;
+my $filler = "0";
+my $filler_string ;
+my $ignore_duplicates;
+my $debug = 0 ;
+my %input_headers;
+my $have_file_labels;
+my %file_labels;
+
+sub parse_command_line_parameters();
+sub show_help();
+sub read_input_file($);
+sub print_combined_data();
+sub sanitize_filename($);
+sub print_output_header();
+sub show_examples();
+
+##
+## Program Start
+##
+
+parse_command_line_parameters();
+
+my %data;
+foreach my $file (@input_files) {
+	read_input_file($file);
+}
+#print STDERR Dumper(\%input_headers),"\n";
+#print STDERR Dumper(\%data) if $debug;
+print_output_header() if $output_headers;
+print_combined_data();
+
+
+##
+## Program End
+##
+sub print_output_header()
+{
+	my @output = ("key");
+	foreach my $file ( @input_files ) {
+		foreach my $column ( @values_columns ) {
+			my $column_name = ( exists $input_headers{$file}->{$column} ) ?
+				$input_headers{$file}->{$column} :
+				"V$column" ;
+
+			push @output, $file_labels{$file} . "_" . $column_name;
+		}
+	}
+	print join($field_sep,@output),"\n"
+		or die "Output error: can't write output line: $!\n";
+}
+
+sub print_combined_data()
+{
+	my @keys = sort keys %data ;
+
+	foreach my $key ( @keys ) {
+		my @outputs;
+
+		foreach my $file (@input_files) {
+			push @outputs,
+				(exists $data{$key}->{$file}) ? $data{$key}->{$file} : $filler_string;
+		}
+
+		print join($field_sep,$key,@outputs),"\n"
+			or die "Output error: can't write output line: $!\n";
+	}
+}
+
+sub sanitize_filename($)
+{
+	my ($filename) = shift or croak "missing file name";
+	my $file_ID = basename($filename);
+	$file_ID =~ s/\.\w+$//; # remove extension
+	$file_ID =~ s/^[^\w\.\-]+//;
+	$file_ID =~ s/[^\w\.\-]+$//;
+	$file_ID =~ s/[^\w\.\-]+/_/g; # sanitize bad characters
+	return $file_ID;
+}
+
+sub read_input_file($)
+{
+	my ($filename) = shift or croak "Missing input file name";
+
+	my @value_indexes = map { $_-1 } @values_columns; #zero-based indexes for value columns
+
+	open FILE, "<", $filename
+		or die "Error: can't open file '$filename': $!\n";
+
+	## Read file's header
+	if ($input_headers) {
+		my $line = <FILE>;
+		chomp $line;
+		my @fields = split $field_sep, $line;
+
+		my $num_input_fields = scalar(@fields);
+		die "Input error: file '$filename' line $. doesn't have enough columns (value column = $max_value_column, line has only $num_input_fields columns)\n" if $num_input_fields < $max_value_column ;
+
+		foreach my $col (@values_columns) {
+			$input_headers{$filename}->{$col} = $fields[$col-1] ;
+		}
+	}
+
+
+	## Read file's data
+	while ( my $line = <FILE> ) {
+		chomp $line;
+		my @fields = split $field_sep, $line;
+
+		my $num_input_fields = scalar(@fields);
+		die "Input error: file '$filename' line $. doesn't have enough columns (key column = $key_column, line has only $num_input_fields columns)\n" if $num_input_fields < $key_column ;
+		die "Input error: file '$filename' line $. doesn't have enough columns (value column = $max_value_column, line has only $num_input_fields columns)\n" if $num_input_fields < $max_value_column ;
+
+
+		my $key = $fields[$key_column-1];
+		my $value = join($field_sep, @fields[@value_indexes]);
+
+		die "Input error: file '$filename' line $. have duplicated key '$key'.\n"
+			if (exists $data{$key}->{$filename} && !$ignore_duplicates) ;
+		$data{$key}->{$filename} = $value;
+	}
+	close FILE
+		or die "Error: can't write and close file '$filename': $!\n";
+}
+
+sub parse_command_line_parameters()
+{
+	my $values_columns_string;
+
+	my $rc = GetOptions("help" => \&show_help,
+			    "key|k=i" => \$key_column,
+			    "values|v=s" => \$values_columns_string,
+		            "t=s" => \$field_sep,
+		            "in-header" => \$input_headers,
+		            "out-header|h" => \$output_headers,
+		            "H" => sub { $input_headers = 1 ; $output_headers = 1 ; },
+			    "ignore-dups" => \$ignore_duplicates,
+		            "filler|f=s" => \$filler,
+		            "examples"   => \&show_examples,
+			    "labels" => \$have_file_labels,
+			);
+	die "Error: inalid command-line parameters.\n" unless $rc;
+
+	die "Error: missing key column. use --key N. see --help for more details.\n" unless defined $key_column;
+	die "Error: Invalid key column ($key_column). Must be bigger than zero. see --help for more details.\n" if $key_column <= 0 ;
+
+	die "Error: missing values column. use --values V1,V2,Vn. See --help for more details.\n" unless defined $values_columns_string;
+	@values_columns = split(/\s*,\s*/, $values_columns_string);
+
+	die "Error: missing values column. use --values N,N,N. see --help for more details.\n" unless scalar(@values_columns)>0;
+	foreach my $v (@values_columns) {
+		die "Error: invalid value column ($v), please use only numbers>=1. see --help for more details.\n"
+			unless $v =~ /^\d+$/ && $v>=1;
+
+		$max_value_column = $v unless defined $max_value_column && $max_value_column>$v;
+	}
+
+	$filler_string = join($field_sep, map { $filler } @values_columns);
+
+
+	if ($have_file_labels) {
+		## have file labels - each pair of parameters is a file/label pair.
+		die "Error: missing input files and labels\n" if scalar(@ARGV)==0;
+		die "Error: when using --labels, a pair of file names + labels is required (got odd number of argiments)\n" unless scalar(@ARGV)%2==0;
+
+		while (@ARGV) {
+			my $filename = shift @ARGV;
+			my $label = shift @ARGV;
+			$label =~ s/^[^\.\w\-]+//;
+			$label =~ s/[^\.\w\-]+$//g;
+			$label =~ s/[^\.\w\-]+/_/g;
+
+			my $file_ID = sanitize_filename($filename);
+			$file_labels{$filename} = $label;
+			push @input_files, $filename;
+		}
+	} else {
+		## no file labels - the rest of the arguments are just file names;
+		@input_files = @ARGV;
+		die "Error: missing input files\n" if scalar(@input_files)==0;
+		die "Error: need more than one input file to join.\n" if scalar(@input_files)==1;
+
+		foreach my $file (@input_files) {
+			my $file_ID = sanitize_filename($file);
+			$file_labels{$file} = $file_ID;
+		}
+	}
+
+}
+
+sub show_help()
+{
+	print<<EOF;
+Multi-File join, version $version
+Copyright (C) 2012 - A. Gordon (gordon at cshl dot edu)
+License AGPLv3+: Affero GPL version 3 or later (http://www.gnu.org/licenses/agpl.html)
+
+Usage:
+ multijoin [OPTIONS] -k N -v V1,V2,Vn,..  FILE1  FILE2  ... FILEn
+
+Options:
+
+ --help         This helpful help screen.
+
+  -k N
+  --key N       Use column N as key column.
+
+  -v V1,V2,Vn
+  --values V1,V2,Vn
+                 Use columns V1,V2,Vn as value columns - those will be joined
+                According to the Key column.
+		Multiple columns can be specified.
+
+  -t SEP        Use SEP as field separator character (default: tab).
+
+  -h
+  --out-header  Add a header line to the output file.
+
+  --in-header   The input files have a header line.
+                The first line will not be joined.
+		if '--out-header' is also used, the output column headers will
+		be constructed based on the input header column names.
+
+  -H
+  --headers     Same as '--in-header --out-header' combined.
+
+  --ignore-dups   Ignore duplicated keys (within a file).
+                By default, duplicated keys cause an error.
+
+ -f X
+ --filler X     Fill missing values with X.
+                (Default: '$filler').
+
+ --labels       When printing output headers with '-h', instead of using the file name,
+                use specific labels.
+		Each file name must be followed by a name.
+
+		example (without labels):
+		 \$ multijoin -h -k 1 -v 2 A.TXT B.TXT C.TXT
+
+		example (with labels):
+                 \$ multijoin -h --labels -k 1 -v 2 A.TXT Sample1 B.TXT SampleB C.TXT SampleC
+
+ --examples     Show detailed examples.
+
+EOF
+	exit(0);
+}
+
+sub show_examples()
+{
+	print<<EOF;
+
+To join three files, based on the 4th column, and keeping the 7th,8th,9th columns:
+
+\$ head *.txt
+==> AAA.txt <==
+chr4	888449	890171	FBtr0308778	0	+	266	1527	1722
+chr4	972167	979017	FBtr0310651	0	-	3944	6428	6850
+chr4	972186	979017	FBtr0089229	0	-	3944	6428	6831
+chr4	972186	979017	FBtr0089231	0	-	3944	6428	6831
+chr4	972186	979017	FBtr0089233	0	-	3944	6428	6831
+chr4	995793	996435	FBtr0111046	0	+	7	166	642
+chr4	995793	997931	FBtr0111044	0	+	28	683	2138
+chr4	995793	997931	FBtr0111045	0	+	28	683	2138
+chr4	1034029	1047719	FBtr0089223	0	-	5293	13394	13690
+
+==> BBB.txt <==
+chr4	90286	134453	FBtr0309803	0	+	657	29084	44167
+chr4	251355	266499	FBtr0089116	0	+	56	1296	15144
+chr4	252050	266506	FBtr0308086	0	+	56	1296	14456
+chr4	252050	266506	FBtr0308087	0	+	56	1296	14456
+chr4	252053	266528	FBtr0300796	0	+	56	1296	14475
+chr4	252053	266528	FBtr0300800	0	+	56	1296	14475
+chr4	252055	266528	FBtr0300798	0	+	56	1296	14473
+chr4	252055	266528	FBtr0300799	0	+	56	1296	14473
+chr4	252541	266528	FBtr0300797	0	+	56	1296	13987
+
+==> CCC.txt <==
+chr4	972167	979017	FBtr0310651	0	-	9927	6738	6850
+chr4	972186	979017	FBtr0089229	0	-	9927	6738	6831
+chr4	972186	979017	FBtr0089231	0	-	9927	6738	6831
+chr4	972186	979017	FBtr0089233	0	-	9927	6738	6831
+chr4	995793	996435	FBtr0111046	0	+	5	304	642
+chr4	995793	997931	FBtr0111044	0	+	17	714	2138
+chr4	995793	997931	FBtr0111045	0	+	17	714	2138
+chr4	1034029	1047719	FBtr0089223	0	-	17646	13536	13690
+
+\$ multijoin -h --key 4 --values 7,8,9 *.txt | head -n 10
+key           AAA__V7   AAA__V8   AAA__V9   BBB__V7    BBB__V8    BBB__V9    CCC__V7   CCC__V8   CCC__V9
+FBtr0089116         0         0         0        56       1296      15144          0         0         0
+FBtr0089223      5293     13394     13690         0          0          0      17646     13536     13690
+FBtr0089229      3944      6428      6831         0          0          0       9927      6738      6831
+FBtr0089231      3944      6428      6831         0          0          0       9927      6738      6831
+FBtr0089233      3944      6428      6831         0          0          0       9927      6738      6831
+FBtr0111044        28       683      2138         0          0          0         17       714      2138
+FBtr0111045        28       683      2138         0          0          0         17       714      2138
+FBtr0111046         7       166       642         0          0          0          5       304       642
+FBtr0300796         0         0         0        56       1296      14475          0         0         0
+
+
+
+EOF
+	exit(0);
+}

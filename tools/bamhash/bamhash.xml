@@ -1,0 +1,161 @@
+<tool id="bamhash" name="BamHash" version="1.1">
+    <description>Hash BAM and FASTQ files to verify data integrity</description>
+    <requirements>
+        <requirement type="package" version="1.1">bamhash</requirement>
+    </requirements>
+    <stdio>
+        <exit_code range="1:" />
+        <exit_code range=":-1" />
+        <regex match="Error:" />
+        <regex match="Exception:" />
+    </stdio>
+    <version_command>bamhash_checksum_fastq --version</version_command>
+    <command><![CDATA[
+        #if $tool.tool_choice=="bam":
+            #for $counter, $file in enumerate($tool.input_bam):
+                ln -s "${file}" "${counter}.bam" ## 1.bam ... 2.bam
+                &&
+            #end for
+            bamhash_checksum_bam
+            $tool.noQuality_bam
+            $tool.noPaired_bam
+            #for $counter, $filename in enumerate($tool.input_bam):
+                "${counter}.bam"
+            #end for
+        #elif $tool.tool_choice=="fastq":
+            #for $counter, $file in enumerate($tool.input_fastq):
+                ln -s "${file}" "${counter}.fastq" ## 1.fastq ... 2.fastq
+                &&
+            #end for
+            bamhash_checksum_fastq
+            $tool.noQuality_fastq
+            $tool.noPaired_fastq
+            #for $counter, $filename in enumerate($tool.input_fastq):
+                "${counter}.fastq"
+            #end for
+        #elif $tool.tool_choice=="fasta":
+            #for $counter, $file in enumerate($tool.input_fasta):
+                ln -s "${file}" "${counter}.fasta" ## 1.fasta ... 2.fasta
+                &&
+            #end for
+            bamhash_checksum_fasta
+            #for $counter, $filename in enumerate($tool.input_fasta):
+                "${counter}.fasta"
+            #end for
+       #end if
+       $readnames
+       > output.txt
+    ]]></command>
+    <inputs>
+        <conditional name="tool">
+            <param name="tool_choice" type="select" label="Choose file type:"
+                help="">
+                <option value="bam">BAM file(s)</option>
+                <option value="fastq">FASTQ file(s)</option>
+                <option value="fasta">FASTA file(s)</option>
+            </param>
+            <when value="bam">
+                <param name="input_bam" multiple="True" type="data" format="bam" label="Input file in BAM format"/>
+                <param name="noQuality_bam" type="boolean" checked="false" truevalue="--no-quality"
+                        falsevalue=""
+                        label="Ignore read quality?" 
+                        help="Do not use read quality as part of checksum. (--no-quality)"/>
+                <param name="noPaired_bam" type="boolean" checked="false" truevalue="--no-paired"
+                        falsevalue=""
+                        label="Bam files were not generated with paired-end reads?"
+                        help="(--no-paired)" />
+            </when>
+            <when value="fasta">
+                <param name="input_fasta" multiple="True" type="data" format="fasta" label="Input file in FASTA format"/>
+            </when>
+            <when value="fastq">
+                <param name="input_fastq" multiple="True" type="data" format="fastq" label="Input file in FASTQ format"/>
+                <param name="noQuality_fastq" type="boolean" checked="false" truevalue="--no-quality"
+                        falsevalue=""
+                        label="Ignore read quality?" 
+                        help="Do not use read quality as part of checksum. (--no-quality)"/>
+                <param name="noPaired_fastq" type="boolean" checked="false" truevalue="--no-paired"
+                        falsevalue=""
+                        label="List of fastq files are not paired-end reads?"
+                        help="(--no-paired)" />
+            </when>
+        </conditional>
+        <param name="readnames" type="boolean" checked="false" truevalue="--no-readnames"
+                falsevalue=""
+                label="Ignore readnames?" 
+                help="Do not use read names as part of checksum. (--no-readnames)"/>
+
+    </inputs>
+    <outputs>
+        <data name="output" format="txt" from_work_dir="./output.txt" 
+            label="${tool.name} on ${on_string}">
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_bam" value="Example.bam" ftype="bam"/>
+            <param name="tool_choice" value="bam"/>
+            <output name="output" file="output1_bam.txt" ftype="txt"/>
+        </test>
+        <test>
+            <param name="input_fasta" value="UnAligSeq24606.fasta" ftype="fasta"/>
+            <param name="tool_choice" value="fasta"/>
+            <param name="readnames" value="--no-readnames"/>
+            <output name="output" file="output2_fasta.txt" ftype="txt"/>
+        </test>
+        <test>
+            <param name="input_fastq" value="1_mismatch.fastq,2_mismatch.fastq" ftype="fastq"/>
+            <param name="tool_choice" value="fastq"/>
+            <param name="noQuality" value="--no-quality"/>
+            <output name="output" file="output3_fastq.txt" ftype="txt"/>
+        </test>
+        <test>
+            <param name="input_fastq" value="1_mismatch.fastq,2_mismatch.fastq" ftype="fastq"/>
+            <param name="tool_choice" value="fastq"/>
+            <output name="output" file="output4_fastq.txt" ftype="txt"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+**WHAT IT DOES**
+
+Hash BAM and FASTQ files to verify data integrity
+
+For each pair of reads in a BAM or FASTQ file we compute a hash value composed of the readname,
+whether it is first or last in pair, sequence and quality value. All the hash values are summed
+up so the result is independent of the ordering within the files. The result can be compared to
+verify that the pair of FASTQ files contain the same read information as the aligned BAM file.
+
+-----
+
+**BAM**
+
+processes a number of BAM files. BAM files are assumed to contain paired end reads.
+If you run with --no-paired it treats all reads as single end and displays a warning if any read is marked as "second in pair" in the BAM file.
+
+-----
+
+**FASTA**
+
+processes a number of FASTA files. All FASTA files are assumed to be single end reads with no quality information.
+To compare to a BAM file, run bamhash_checksum_bam --no-paired --no-quality
+
+-----
+
+
+**FASTQ**
+
+processes a number of FASTQ files. FASTQ files are assumed to contain paired end reads,
+such that the first two files contain the first pair of reads, etc. If any of the read names in the two pairs don't match the program exits with failure.
+
+
+-----
+
+
+**BamHash** is a Free and Open Source Software, see more details on the BamHash github_ Website.
+
+.. _github: https://github.com/DecodeGenetics/BamHash
+
+    ]]></help>
+    <citations></citations>
+</tool>

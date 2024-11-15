@@ -1,0 +1,437 @@
+<tool id="gfastats" name="gfastats" version="@TOOL_VERSION@+galaxy@SUFFIX_VERSION@" profile="23.2">
+    <description>The swiss army knife for Genome Assembly</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="biotools"/>
+    <expand macro="requirements"/>
+    <version_command>gfastats --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        gfastats
+        '$input_file'
+        #if $mode_condition.selector == 'statistics'
+            #if $mode_condition.statistics_condition.selector == 'assembly'
+                $mode_condition.statistics_condition.expected_genomesize
+            #end if
+        #end if
+        #if $target_condition.target_option == 'true'
+            $target_condition.target_sequence
+            #if $target_condition.include_bed
+                --include-bed $target_condition.include_bed
+            #end if
+            #if $target_condition.exclude_bed
+                --exclude-bed $target_condition.exclude_bed
+            #end if
+        #end if
+        #if $mode_condition.selector == 'manipulation'
+            #if $mode_condition.swiss_army_knife
+                -k $mode_condition.swiss_army_knife
+            #end if
+            #if $mode_condition.sort
+                --sort $mode_condition.sort
+            #end if
+            #if $mode_condition.homopolymer_compress
+                --homopolymer-compress $mode_condition.homopolymer_compress
+            #end if
+            $mode_condition.discover_paths
+            $mode_condition.remove_terminal_gaps
+            -o dataset.$mode_condition.output_condition.out_format
+            #if $mode_condition.output_condition.out_format in ['fasta','fasta.gz']
+                #if $mode_condition.output_condition.line_length
+                    --line-length $mode_condition.output_condition.line_length
+                #end if
+            #end if
+            #if $mode_condition.output_condition.out_format in ['gfa','gfa.gz']
+                #if $mode_condition.output_condition.terminal_overlaps_condition.terminal_overlaps_select == 'yes':
+                --discover-terminal-overlaps $mode_condition.output_condition.terminal_overlaps_condition.terminal_overlaps_length
+                #end if
+            #end if
+        #else if $mode_condition.selector == "statistics"
+            #if $mode_condition.statistics_condition.selector == 'size'
+                --out-size $mode_condition.statistics_condition.out_size
+            #else if $mode_condition.statistics_condition.selector == 'coordinates'
+                --out-coord $mode_condition.statistics_condition.out_coord
+            #else if $mode_condition.statistics_condition.selector == 'assembly'
+                --nstar-report
+            #else
+                --segment-report
+                $mode_condition.statistics_condition.out_sequence
+            #end if
+            $mode_condition.locale
+            $mode_condition.discover_paths
+            $mode_condition.tabular > '$stats'
+        #else
+            --agp-to-path $mode_condition.agp_to_path
+            $mode_condition.discover_paths
+            -o dataset.gfa
+        #end if
+        --threads \${GALAXY_SLOTS:-8}
+        #if $mode_condition.selector == 'manipulation' or $mode_condition.selector == 'scaffolding'
+            && mv dataset* output_dataset
+        #end if
+    ]]></command>
+    <inputs>
+        <param name="input_file" argument="--fasta" type="data"
+            format="fasta,fastq,fastqsanger,gfa1,fasta.gz,fastq.gz,fastqsanger.gz,gfa1.gz"
+            label="Input file"/>
+        <conditional name="target_condition">
+            <param name="target_option" type="select" label="Specify target sequences">
+                <option value="false">Disabled</option>
+                <option value="true">Enabled</option>
+            </param>
+            <when value="false"/>
+            <when value="true">
+                <param name="target_sequence" type="text" value="" label="Target sequence" optional="true" help="Target specific sequence by header, optionally with coordinates: header[:start-end]">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.digits,string.letters">
+                            <add value=":"/>
+                            <add value="-"/>
+                            <add value="_"/>
+                            <add value="|"/>
+                            <add value=" "/>
+                        </valid>
+                    </sanitizer>
+                    <validator type="regex">[0-9A-Za-z:-_| ]+</validator>
+                </param>
+                <param argument="--include-bed" type="data" optional="true"
+                    format="bed" label="Include specific intervals"
+                    help="Generates output on a subset list of headers or coordinates   
+                        in 0-based bed format. It can be combined with --exclude-bed. Optional."/>
+                <param argument="--exclude-bed" type="data" format="bed" optional="true"
+                    label="Exclude specific intervals"
+                    help="Exclude a subset of headers or coordinates in 0-base bed format. It can be conmbined with --include-bed. Optional."/>
+            </when>
+            <when value="false"/>
+        </conditional>
+        <conditional name="mode_condition">
+            <param name="selector" type="select" label="Tool mode">
+                <option value="statistics">Summary statistics generation</option>
+                <option value="manipulation">Genome assembly manipulation</option>
+                <option value="scaffolding">Scaffolding</option>
+            </param>
+            <when value="manipulation">
+                <param argument="--swiss-army-knife" type="data"
+                    format="text" label="SAK input file" optional="true"
+                    help="Set of instructions provided as an ordered list"/>
+                <conditional name="output_condition">
+                    <param argument="--out-format" type="select" 
+                        label="Output format" help="Outputs selected sequences.">
+                            <option value="fasta">FASTA</option>
+                            <option value="fasta.gz">FASTA.gz</option>
+                            <option value="fastq">FASTQ</option>
+                            <option value="fastq.gz" selected="true">FASTQ.gz</option>
+                            <option value="gfa">GFA</option>
+                            <option value="gfa.gz">GFA.gz</option>
+                    </param>
+                    <when value="fasta">
+                        <expand macro="length_macro"/>
+                    </when>
+                    <when value="fasta.gz">
+                        <expand macro="length_macro"/>
+                    </when>
+                    <when value="fastq"/>
+                    <when value="fastq.gz"/>
+                    <when value="gfa">
+                        <expand macro="terminal_overlaps_macro"/>
+                    </when>
+                    <when value="gfa.gz">
+                        <expand macro="terminal_overlaps_macro"/>
+                    </when>
+		        </conditional>
+                <param argument="--discover-paths" type="boolean" truevalue="--discover-paths" falsevalue="" checked="false" label="Generates the initial set of paths" help="In the graph space, an assembly 
+                    is a collection of segments and edges/gaps between these segments. A path defines a potential walk through the segments and edges/gaps that corresponds to a hypothesis of the actual linear sequence." />
+                <param argument="--sort" type="select" label="Sort sequences" help="Specify how to sort the sequences. Ascending/descending uses the sequence/path header.">
+                    <option value="" selected="true">Disabled</option>
+                    <option value="ascending">Ascending</option>
+                    <option value="descending">Descending</option>
+                    <option value="largest">Largest</option>
+                    <option value="smallest">Smallest</option>
+                </param>
+                <param argument="--remove-terminal-gaps" type="boolean" truevalue="--remove-terminal-gaps" falsevalue="" checked="false" label="Remove gaps from the beginning and end of sequences"/>
+                <param argument="--homopolymer-compress" type="integer" min="0" value="" optional="true" label="Homopolymer compression" help="Compress all the homopolymers in the input above the given threshold." />
+            </when>
+            <when value="statistics">
+                <conditional name="statistics_condition">
+                    <param name="selector" type="select" label="Report mode">
+                        <option value="assembly" selected="true">Genome assembly statistics (--nstar-report)</option>
+                        <option value="size">Scaffold, contig or gap sizes (--out-size)</option>
+                        <option value="coordinates">AGP, contig or gap coordinates (--out-coord)</option>
+                        <option value="sequence">Sequence statistics (--segment-report)</option>
+                    </param>
+                    <when value="size">
+                        <param argument="--out-size" type="select" label="Feature for reporting sizes"
+                            help="Generate a tabular file with the sequence sizes">
+                            <option value="s">Scaffolds</option>
+                            <option value="c">Contigs</option>
+                            <option value="g">Gaps</option>
+                        </param>
+                    </when>
+                    <when value="coordinates">
+                        <param argument="--out-coord" type="select" label="BED coordinares feature"
+                            help="Generates bed coordinates of given feature. Default: AGP">
+                            <option value="a">AGP</option>
+                            <option value="c">Contigs</option>
+                            <option value="g">Gaps</option>
+                        </param>
+                    </when>
+                    <when value="assembly">
+                        <param name="expected_genomesize" type="integer" min="0" optional="true"
+                            label="Expected genome size" help="Estimated genome size. This parameter is optional, but required for NG* statistics."/>
+                    </when>
+                    <when value="sequence">
+                        <param argument="--out-sequence" type="boolean" truevalue="--out-sequence" falsevalue="" checked="false"
+                            label="Report actual sequence" help="It reports also the actual sequence"/>
+                    </when>
+                </conditional>
+                <param argument="--locale" type="boolean" truevalue="--locale en_US.UTF-8" falsevalue="" checked="true"
+                    label="Thousands separator in output" help="Use commas for thousands separator in output?"/>
+                <param argument="--tabular" type="boolean" truevalue="--tabular" falsevalue="" checked="true"
+                    label="Tabular-format output" help="Generate output in tabular format"/>
+                <param argument="--discover-paths" type="boolean" truevalue="--discover-paths" falsevalue="" checked="false" label="Generates the initial set of paths" help="In the graph space an assembly 
+                    is a collection of segment and edges/gaps between these segments. A path defines a potential walk through the segments and edges/gaps that corresponds to a hypothesis of the actual linear sequence" />
+            </when>
+            <when value="scaffolding">
+                <param argument="--agp-to-path" type="data" format="agp" label="Input AGP file" help="Integrate the AGP information into the assembly graph as paths. The scaffolding information is converted into paths through the graph" />
+                <param argument="--discover-paths" type="boolean" truevalue="--discover-paths" falsevalue="" checked="false" label="Generates the initial set of paths" help="In the graph space an assembly 
+                    is a collection of segment and edges/gaps between these segments. A path defines a potential walk through the segments and edges/gaps that corresponds to a hypothesis of the actual linear sequence" />
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="stats" format="tabular" label="${tool.name} on ${on_string}: stats">
+            <filter>mode_condition['selector'] == 'statistics'</filter>
+            <change_format>
+                <when input="tabular" value="false" format="text"/>
+            </change_format>
+        </data>
+        <data name="output" format="fastq" from_work_dir="output_dataset" label="${tool.name} on ${on_string}: edited sequences">
+            <filter>mode_condition['selector'] == 'manipulation' or mode_condition['selector'] == 'scaffolding'</filter>
+            <change_format>
+                <when input="mode_condition.output_condition.out_format" value="fasta" format="fasta"/>
+                <when input="mode_condition.output_condition.out_format" value="fasta.gz" format="fasta.gz"/>
+                <when input="mode_condition.output_condition.out_format" value="fastq" format="fastq"/>
+                <when input="mode_condition.output_condition.out_format" value="fastq.gz" format="fastq.gz"/>
+                <when input="mode_condition.output_condition.out_format" value="gfa" format="gfa1"/>
+                <when input="mode_condition.output_condition.out_format" value="gfa.gz" format="gfa1.gz"/>
+                <when input="mode_condition.selector" value="scaffolding" format="gfa1"/>
+            </change_format>
+        </data>
+    </outputs>
+    <tests>
+        <!--Test 01 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_01.fastq.gz"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="manipulation"/>
+                <param name="swiss_army_knife" value="swiss_army.sak"/>
+                <conditional name="output_condition">
+                    <param name="out_format" value="fasta.gz"/>
+                </conditional>
+            </conditional>
+            <output name="output" value="test_01.fasta.gz" ftype="fasta.gz"/>
+        </test>
+        <!--Test 01 A) -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_01.fastq.gz"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="manipulation"/>
+                <param name="swiss_army_knife" value="swiss_army.sak"/>
+                <param name="remove_terminal_gaps" value="true"/>
+                <conditional name="output_condition">
+                    <param name="out_format" value="fasta.gz"/>
+                </conditional>
+            </conditional>
+            <output name="output" value="test_01_a.fasta.gz" ftype="fasta.gz"/>
+        </test>
+        <!--Test 02 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_01.fastq.gz"/>
+            <conditional name="target_condition">
+                <param name="target_condition" value="true"/>
+                <param name="target_sequence" value="S1_1"/>
+            </conditional>
+            <conditional name="mode_condition">
+                <param name="selector" value="statistics"/>
+                <conditional name="statistics_condition">
+                    <param name="selector" value="size"/>
+                    <param name="out_size" value="c"/>
+                </conditional>
+                <param name="locale" value="false"/>
+            </conditional>
+            <output name="stats" ftype="tabular">
+                <assert_contents>
+                    <has_text text="S1_1.1&#009;8550" />
+                </assert_contents>
+            </output>
+        </test>
+        <!--Test 03 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_02.fasta.gz"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="statistics"/>
+                <conditional name="statistics_condition">
+                    <param name="selector" value="sequence"/>
+                </conditional>
+                <param name="locale" value="false"/>
+            </conditional>
+            <output name="stats" ftype="tabular">
+                <assert_contents>
+                    <has_text text="23029444-6c7d-4f19-ac8e-4c0a478589d0.1&#009;&#009;476&#009;198&#009;68&#009;93&#009;117&#009;33.82&#009;0" />
+                </assert_contents>
+            </output>
+        </test>
+        <!--Test 04 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_03.fasta"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="statistics"/>
+                <conditional name="statistics_condition">
+                    <param name="selector" value="assembly"/>
+                    <param name="expected_genomesize" value="600000"/>
+                </conditional>
+                <param name="locale" value="false"/>
+            </conditional>
+            <output name="stats" value="test_04_stats.tabular" ftype="tabular"/>
+        </test>
+        <!--Test 05 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_04.gfa"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="statistics"/>
+                <conditional name="statistics_condition">
+                    <param name="selector" value="coordinates"/>
+                    <param name="out_coord" value="a"/>
+                </conditional>
+                <param name="locale" value="false"/>
+            </conditional>
+            <output name="stats" value="test_05_stats.tabular" ftype="tabular"/>
+        </test>
+        <!--Test 06 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_04.gfa"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="manipulation"/>
+                <conditional name="output_condition">
+                    <param name="out_format" value="fasta.gz"/>
+                </conditional>
+            </conditional>
+            <output name="output" value="test_06.fasta.gz" ftype="fasta.gz"/>
+        </test>
+        <!--Test 07 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_03.fasta"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="statistics"/>
+                <conditional name="statistics_condition">
+                    <param name="selector" value="assembly"/>
+                </conditional>
+                <param name="locale" value="false"/>
+                <param name="tabular" value="false"/>
+            </conditional>
+            <output name="stats" value="test_07_stats.tabular" ftype="tabular"/>
+        </test>
+        <!--Test 08 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_01.fastq.gz"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="manipulation"/>
+                <conditional name="output_condition">
+                    <param name="out_format" value="fasta.gz"/>
+                </conditional>
+                <param name="sort" value="ascending"/>
+            </conditional>
+            <output name="output" value="test_08.fasta.gz" ftype="fasta.gz"/>
+        </test>
+        <!--Test 09 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_03.fasta"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="manipulation"/>
+                <conditional name="output_condition">
+                    <param name="out_format" value="fasta.gz"/>
+                </conditional>
+                <param name="homopolymer_compress" value="10"/>
+            </conditional>
+            <output name="output" value="test_09.fasta.gz" ftype="fasta.gz"/>
+        </test>
+        <!--Test 10 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_04.gfa"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="scaffolding"/>
+                <param name="agp_to_path" value="dataset_05.agp"/>
+                <param name="discover_paths" value="true"/>
+            </conditional>
+            <output name="output" value="test_10.gfa" ftype="gfa1"/>
+        </test>
+        <!--Test 11 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_03.fasta"/>
+            <conditional name="target_condition">
+                <param name="target_option" value="true"/>
+                <param name="include_bed" value="regions.bed"/>
+            </conditional>
+            <conditional name="mode_condition">
+                <param name="locale" value="false"/>
+            </conditional>
+            <output name="stats" value="test_11_stats.tabular" ftype="tabular"/>
+        </test>
+        <!--Test 12 -->
+        <test expect_num_outputs="1">
+            <param name="input_file" value="dataset_04.gfa"/>
+            <conditional name="mode_condition">
+                <param name="selector" value="statistics"/>
+                <conditional name="statistics_condition">
+                    <param name="selector" value="assembly"/>
+                </conditional>
+                <param name="locale" value="false"/>
+                <param name="tabular" value="false"/>
+                <param name="discover_paths" value="true"/>
+            </conditional>
+            <output name="stats" value="test_12_stats.tabular" ftype="tabular"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**Purpose**
+
+gfastats is a single fast and exhaustive tool for summary statistics and simultaneous genome assembly file manipulation. gfastats also allows seamless format conversion.
+
+
+.. class:: infomark
+
+**Metrics details**
+
+Typical fast* metrics include:
+
+- Scaffold, contig and gap size
+- Number of scaffolds, contigs and gaps
+- Total length of scaffolds, contigs and gaps
+- Scaffold, contig, gap N50 and statistics (full N*/NG* statistics with the --nstar-report flag)
+- Area under the curve (AuN/AuNG) values for scaffolds, contigs and gaps
+- Average scaffold, contig, gap size
+- Largest scaffold, contig and gap
+- Base composition and GC content
+- Soft-masked base counts (lower case bases)
+
+
+Typical gfa metrics include:
+
+- Number of nodes and edges
+- Average degree
+- Number of connected components, and length of the largets connected component
+- Number of dead ends
+- Number of disconnected components, and their total length
+
+
+.. class:: infomark
+
+**Assembly manipulation**
+
+gfastats allows extensive assembly manipulation at the sequence level. Manipulation is achieved using a set of instructions provided as an ordered list in a file to the option **swiss army knife**. See the `instruction wiki <https://github.com/vgl-hub/gfastats/tree/main/instructions>`_ for a full list of instructions.
+
+  ]]></help>
+    <expand macro="citations"/>
+</tool>

@@ -1,0 +1,125 @@
+<tool id="ctb_simsearch" name="Similarity search" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
+    <description>of fingerprint data sets with chemfp</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.6.1</token>
+        <token name="@GALAXY_VERSION@">1</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@TOOL_VERSION@">chemfp</requirement>
+    </requirements>
+    <command>
+<![CDATA[
+        #if $method_opts.method_opts_selector == "chemfp":
+            ln -s '${method_opts.query_opts.targets}' ./targets.fps &&
+
+            #if $method_opts.query_opts.query_opts_selector == "normal":
+                ln -s '${method_opts.query_opts.query}' ./query.fps &&
+            #end if
+
+            simsearch
+                #if int($method_opts.knn) == 0:
+                    #set $k = 'all'
+                    ## count is only available if k nearest neighbor search is disabled
+                    $method_opts.counts
+                #else:
+                    #set $k = int($method_opts.knn)
+                #end if
+
+                -k $k
+                --threshold $method_opts.threshold
+                -o ./output.fps
+
+                ## build and search an in-memory data structure (faster for multiple queries)
+                --memory
+
+                #if $method_opts.query_opts.query_opts_selector == "normal":
+                    -q ./query.fps
+                #else:
+                    --NxN
+                #end if
+
+                ./targets.fps
+                &&
+                mv ./output.fps '${outfile}'
+        #else:
+            ## OpenBabel needs the original molecule file (molecule.'fileformat') next to the fastsearch index (molecule.fs). We use a composite datatype to accomplish that.
+            ## Furthermore OpenBabel is really picky with file extensions. We need to specify every datatype. I did not find a solution to specify the query-filetype.
+            ## A workaround is to create a symlink with a proper file-extension.
+            ln -s '$method_opts.query' ./temp_query.$method_opts.query.ext
+            obabel 
+                -i fs '$method_opts.fastsearch.files_path/molecule.fs'
+                -S ./temp_query.$method_opts.query.ext
+                -at${method_opts.threshold}
+                -O '${outfile}'
+                -osmi
+                -aa
+        #end if
+]]>
+    </command>
+    <inputs>
+        <conditional name="method_opts">
+            <param name="method_opts_selector" type="select" label="Subject database/sequences">
+              <option value="chemfp">Chemfp fingerprint file</option>
+              <option value="obabel">OpenBabel Fastsearch Index</option>
+            </param>
+            <when value="chemfp">
+                <conditional name="query_opts">
+                    <param name="query_opts_selector" type="select" label="Query mode">
+                      <option value="normal">Query molecules are stores in a separate file</option>
+                      <option value="nxn">Target molecules are also queries (NxN)</option>
+                    </param>
+                    <when value="normal">
+                        <param name='query' type='data' format="fps" label='Query molecules'/>
+                        <param name='targets' type='data' format="fps" label='Target molecules'/>
+                    </when>
+                    <when value="nxn">
+                        <param name='targets' type='data' format="fps" label='Target moleculs'/>
+                    </when>
+                </conditional>
+                <param name='knn' type='integer' value='0' label='Select the k nearest neighbors' help='0 means all neighbors'>
+                   <validator type="in_range" min="0" />
+                </param>
+                <param name='threshold' type='float' value='0.7' label='Minimum similarity score threshold' />
+                <param name="counts" type="boolean" truevalue="-c" falsevalue="" checked="false" label="Report counts (-c)" help="Is ignored if k nearest neighbor search is enabled" />
+            </when>
+            <when value="obabel">
+                <param name="query" type='data' format="smi,mol,sdf,inchi" label="Query"/>
+                <param name="fastsearch" type='data' format="obfs" label="OpenBabel Fastsearch Index"/>
+                <param name="threshold" type='float' label="Minimum similarity score threshold" value='0.7'/>
+            </when>
+        </conditional>
+
+    </inputs>
+    <outputs>
+        <data name="outfile" format="tabular" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="targets" ftype="fps" value="targets.fps"/>
+            <param name="query" ftype="fps" value="q.fps"/>
+            <param name="knn" value='4'/>
+            <param name="threshold" value='0.7'/>
+            <output name="outfile" ftype="tabular" file="simsearch_on_tragets_and_q.tabular"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+
+.. class:: infomark
+
+**What this tool does**
+
+Similarity searches using a variety of different fingerprints using either the chemfp_ FPS type or the Open Babel FastSearch_ index.
+
+.. _chemfp: http://chemfp.com/
+.. _FastSearch: https://open-babel.readthedocs.io/en/latest/Command-line_tools/babel.html#substructure-and-similarity-searching
+
+
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1186/1758-2946-3-33</citation>
+        <citation type="doi">10.1186/1758-2946-5-S1-P36</citation>
+    </citations>
+</tool>

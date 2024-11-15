@@ -1,0 +1,245 @@
+<tool id="blockclust" name="BlockClust" version="1.1.1">
+    <description>efficient clustering and classification of non-coding RNAs from short read RNA-seq profiles</description>
+    <requirements>
+        <requirement type="package" version="1.1.1">blockclust</requirement>
+    </requirements>
+    <version_command>blockclust.py -v</version_command>
+    <command detect_errors="aggressive"><![CDATA[
+        export BLOCKCLUST_DATA_PATH=\$(dirname \$(which blockclust.py))/../share/blockclust_data &&
+
+        #if str($tool_mode.operation) == "pre":
+            ln -s '$tool_mode.reads_bam' reads.bam &&
+            ln -f -s '${$tool_mode.reads_bam.metadata.bam_index}' reads.bam.bai &&
+            blockclust.py 
+                -m PRE -bam reads.bam
+                -tbed '$tags_bed'
+        #elif str($tool_mode.operation) == "analysis":
+            #set $outputdir = $clusters.files_path
+            blockclust.py 
+            -o ./
+            -m ANALYSIS
+            -f "\$BLOCKCLUST_DATA_PATH/blockclust.config"
+            -t $tool_mode.input_bbo
+            -a "\$BLOCKCLUST_DATA_PATH/$tool_mode.reference/${tool_mode.reference}.accept.bed"
+            -r "\$BLOCKCLUST_DATA_PATH/$tool_mode.reference/${tool_mode.reference}.reject.bed"
+            #if $tool_mode.nochr:
+                -nochr
+            #end if
+            #if str($tool_mode.pred.enable_pred) == "yes":
+                -c
+                -cm $tool_mode.pred.pred_mode
+                -md "\$BLOCKCLUST_DATA_PATH/models"
+            #end if
+        #elif str($tool_mode.operation) == "post":
+            blockclust.py
+                -m POST 
+                -cbed '$tool_mode.clusters_bed'
+                -cs '$tool_mode.cmsearch_out'
+                -tab '$tool_mode.sim_tab_in'
+                -rfam "\$BLOCKCLUST_DATA_PATH/rfam_map.txt"
+                -o ./
+        #end if
+]]>
+    </command>
+    <inputs>
+        <conditional name="tool_mode">
+            <param name="operation" type="select" label="Select mode of operation">
+                <option value="pre">Pre-processing </option>
+                <option value="analysis">Clustering and classification</option>
+                <option value="post">Post-processing</option>
+            </param>
+            <when value="pre">
+                <param name="reads_bam" type="data" format="bam" label="BAM file containing alignments" />
+            </when>
+            <when value="analysis">
+                <param name="input_bbo" type="data" format="tabular" label="Input blockgroups file" />
+                <param name="reference" type="select" label="Select reference genome">
+                    <option value="hg19">Human (hg19)</option>
+                    <option value="mm10">Mouse (mm10)</option>
+                    <option value="dm3">Fly (dm3)</option>
+                    <option value="rheMac3">Monkey (rheMac3)</option>
+                    <option value="panTro4">Chimp (panTro4)</option>
+                    <option value="xenTro3">Frog (xenTro3)</option>
+                    <option value="celWS235">C. elegans (celWS235)</option>
+                    <option value="tair10">Arabidopsis thaliana (tair10)</option>
+                </param>
+                <param name="nochr" type="boolean" label="My input files have no 'chr' for chromosome names" checked="False"/>
+                <conditional name="pred">
+                    <param name="enable_pred" type="select" label="Would you like to perform classification?">
+                        <option value="no">No</option>
+                        <option value="yes">Yes</option>
+                    </param>
+                    <when value="yes">
+                        <param name="pred_mode" type="select" label="Mode of classification">
+                            <option value="MODEL">Model based</option>
+                            <option value="NEAREST">Nearest neighbour</option>
+                        </param>
+                    </when>
+                </conditional>
+            </when>
+            <when value="post">
+                <param name="cmsearch_out" type="data" format="tabular" label="Output of cmsearch tool" />
+                <param name="clusters_bed" type="data" format="bed" label="BED file containing clusters (output of BlockClust)" />
+                <param name="sim_tab_in" type="data" format="tabular" label="Pairwise similarities file" />
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data format="bed" name="tags_bed" label="BlockClust: BAM to BED on ${on_string}">
+            <filter>tool_mode["operation"]=="pre"</filter>
+        </data>
+        <data format="pdf" name="hclust_plot" from_work_dir="hclust_tree.pdf" label="BlockClust: Hierarchical clustering plot on ${on_string}" >
+            <filter>tool_mode["operation"]=="analysis"</filter>
+        </data>
+        <data format="bed" name="clusters" from_work_dir="mcl_clusters/all_clusters.bed" label="BlockClust: BED of predicted clusters on ${on_string}">
+            <filter>tool_mode["operation"]=="analysis"</filter>
+        </data>
+        <data format="bed" name="model_based_pred_bed" from_work_dir="model_based_predictions.txt" label="BlockClust: Model based predictions BED on ${on_string}">
+            <filter>
+            ((
+                tool_mode["operation"] == 'analysis' and
+                tool_mode["pred"]["enable_pred"] == "yes" and
+                tool_mode["pred"]["pred_mode"] == "MODEL"
+             ))
+             </filter>
+        </data>
+        <data format="bed" name="nearest_neighbour_pred_bed" from_work_dir="nearest_neighbour_predictions.txt" label="BlockClust: Nearest neighbor predictions BED on ${on_string}">
+            <filter>
+            ((
+                tool_mode["operation"] == 'analysis' and
+                tool_mode["pred"]["enable_pred"] == "yes" and
+                tool_mode["pred"]["pred_mode"] == "NEAREST"
+             ))
+             </filter>
+        </data>
+        <data format="tabular" name="sim_tab_out" from_work_dir="discretized.gspan.tab" label="BlockClust: Pairwise similarities on ${on_string}">
+            <filter>tool_mode["operation"]=="analysis"</filter>
+        </data>
+        <data format="pdf" name="cluster_dist" from_work_dir="cluster_distribution.pdf" label="BlockClust: Cluster distribution on ${on_string}" >
+            <filter>tool_mode["operation"]=="post"</filter>
+        </data>
+        <data format="pdf" name="cluster_hclust" from_work_dir="hclust_tree_clusters.pdf" label="BlockClust: Hierarchical clustering plot of cluster centroids on ${on_string}" >
+            <filter>tool_mode["operation"]=="post"</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test: PRE mode -->
+
+        <test expect_num_outputs="1">
+            <param name="operation" value="pre"/>
+            <param name="reads_bam" value="test.bam"/>
+            <output name="tags_bed">
+                <assert_contents>
+                    <has_text_matching expression="chr6\t26555497\t26555527\ttag_10\|1\|19\t0.052632\t\+" />
+                    <has_text_matching expression="chr11\t122017275\t122017297\ttag_30\|1\|3\t0.333333\t-" />
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test: Clustering only -->
+        <test expect_num_outputs="3">
+            <param name="operation" value="analysis"/>
+            <param name="input_bbo" value="test.tabular"/>
+            <param name="reference" value="hg19"/>
+            <param name="enable_pred" value="no"/>
+            <output name="clusters">
+                <assert_contents>
+                    <has_text_matching expression="chr1\t173833959\t173834043\t10:snoRNA_CD-box:blockgroup_939:cluster_1\t451.50\t-" />
+                    <has_text_matching expression="chr13\t92003008\t92003075\t8:miRNA:blockgroup_256:cluster_3\t2950.50\t\+" />
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test: Model based prediction -->
+
+        <test expect_num_outputs="4">
+            <param name="operation" value="analysis"/>
+            <param name="input_bbo" value="test.tabular"/>
+            <param name="reference" value="hg19"/>
+            <param name="enable_pred" value="yes"/>
+            <param name="pred_mode" value="MODEL"/>
+            <output name="model_based_pred_bed">
+                <assert_contents>
+                    <has_text_matching expression="chr2\t203211000\t203211097\tpredicted_tRNA\t284.07\t-" />
+                </assert_contents>
+            </output>
+        </test>
+    
+        <!-- Test: Nearest neighbour based prediction -->
+
+        <test expect_num_outputs="4">
+            <param name="operation" value="analysis"/>
+            <param name="input_bbo" value="test.tabular"/>
+            <param name="reference" value="hg19"/>
+            <param name="enable_pred" value="yes"/>
+            <param name="pred_mode" value="NEAREST"/>
+            <output name="nearest_neighbour_pred_bed">
+                <assert_contents>
+                    <has_text_matching expression="chr2\t203211000\t203211097\tpredicted_tRNA\t284.07\t-" />
+                </assert_contents>
+            </output>
+        </test>
+
+    </tests>
+    <help>
+<![CDATA[
+
+.. class:: infomark
+
+**What it does**
+
+BlockClust is an efficient approach to detect transcripts with similar
+processing patterns. We propose a novel way to encode expression profiles
+in compact discrete structures, which can then be processed using
+fast graph-kernel techniques. BlockClust allows both clustering and
+classification of small non-coding RNAs.
+
+BlockClust runs in three operating modes:
+
+1) Pre-processing - converts given mapped reads (BAM) into BED file of tags
+
+2) Clustering and classification - of given input blockgroups (output of blockbuster tool) as explained in the original paper.
+
+3) Post-processing - plots for overview of predicted clusters.
+
+For a thorough analysis of your data, we suggest you to use complete blockclust workflow, which contains all three modes of operation.
+
+**Inputs**
+
+BlockClust input files are dependent on the mode of operation:
+
+1. Pre-processing mode:
+    * Binary Sequence Alignment Map (BAM) file
+
+2. Clustering and classification:
+    * A blockgroups file generated by blockbuster tool
+    * Select reference genome
+
+3. Post-processing:
+    * Output of cmsearch, searched clusters generated by BlockClust against Rfam
+    * BED file containing clusters generated by BlockClust
+    * Pairwise similarities of blockgroups generated by BlockClust
+
+**Outputs**
+
+1. Pre-processing mode:
+    * BED file of tags with expressions
+
+2. Clustering and classification:
+    * Hierarchical clustering plot of all input blockgroups by their similarity
+    * Pairwise similarities of all input blockgroups
+    * BED file containing predicted clusters
+    * BED file containing prediction of blockgroups by pre-compiled SVM binary classification model.
+
+3. Post-processing:
+    * Plot of distribution of ncRNA families per predicted cluster (overview of cluster precissions). The annotation of ncRNA families are retrieved by searching cluster instances against Rfam database.
+    * Hierarchical clustering made out of centroids of each BlockClust predicted cluster
+
+
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1093/bioinformatics/btu270</citation>
+    </citations>
+</tool>

@@ -1,0 +1,308 @@
+#!/usr/bin/env perl
+## EASY Join -
+## Join with automatic pre-sorting of both files
+## Copyright (C) 2010 A. Gordon (gordon@cshl.edu)
+## license: AGPLv3+
+use strict;
+use warnings;
+use Data::Dumper;
+use Getopt::Long qw(:config bundling no_ignore_case_always);
+use File::Temp qw/tempfile/;
+use POSIX qw(locale_h);
+
+sub show_help();
+sub show_version();
+sub show_examples();
+sub parse_commandline_options();
+sub sort_file($$$);
+sub join_files($$);
+sub cleanup_files(@);
+
+
+my $PROGRAM="easyjoin";
+my $VERSION="0.6.1";
+
+my $debug=undef;
+my $HEADER=undef;
+my $IGNORE_CASE=undef;
+my $FIELD_SEP=undef;
+my $FILE1_KEY_COLUMN=1;
+my $FILE2_KEY_COLUMN=1;
+my @OUTPUT_SPECIFIERS=();
+my $OUTPUT_FORMAT=undef;
+my $EMPTY_FILLER=undef;
+my $SORT_BUFFER_SIZE=undef;
+my $SORT_TEMP_DIR=undef;
+my $input_filename1;
+my $input_filename2;
+
+##
+## Program Start
+##
+$ENV{'LANG'}="C";## "C" locale is critical for sorting and joining correctly
+parse_commandline_options();
+my (undef, $tmp_filename1) = tempfile(OPEN=>0);
+my (undef, $tmp_filename2) = tempfile(OPEN=>0);
+sort_file($input_filename1, $tmp_filename1, $FILE1_KEY_COLUMN);
+sort_file($input_filename2, $tmp_filename2, $FILE2_KEY_COLUMN);
+my $join_exit_code = join_files($tmp_filename1, $tmp_filename2);
+cleanup_files($tmp_filename1, $tmp_filename2);
+exit($join_exit_code);
+
+##
+## Program end
+##
+
+
+sub show_help()
+{
+print<<EOF;
+${PROGRAM}: Wrapper for GNU join+sort, automaticalyl sorts files before joining them.
+
+Usage: $PROGRAM [OPTIONS] [JOIN-OPTIONS] [SORT-OPTIONS] FILE1 FILE2
+
+OPTIONS: Options specific to this program:
+
+   --header      =  Both input files have a header line as the first line.
+                    The header line will be joined properly, without being sorted.
+
+   --version     =  Print ${PROGRAM}'s version.
+
+   --debug       =  Print debug messages (relating to ${PROGRAM}'s operation).
+
+   --help        =  Show this help screen.
+
+   --example     =  Show usage examples.
+
+   --all         =  Short-cut for:
+                      -a 1 -a 2 -o auto -e . -t <TAB>
+                    This will show all values (paired and unpared) from both files,
+		    Automatically formatting the columns, and using TAB as field separator.
+		    You can override the empty filler (-e X) on the command line.
+
+   --allh        =  Short-cut for:
+                       -a 1 -a 2 -o auto -e . -t <TAB> --header
+		    Same as above, but will also respect the header line from both input files.
+
+JOIN-OPTIONS:
+   All of GNU join options are supported.
+   Run:
+       join --help
+   To see all possible joining options.
+
+SORT-OPTIONS:
+   The following options are supported for the intermediate sorting step:
+
+   -S SIZE
+   --buffer-size SIZE   = GNU sort's --buffer-size option.
+
+   -T DIR
+   --temporary-directory DIR = GNU sort's --temporary-directory option.
+
+   Run:
+      sort --help
+   To learn about these options. They might improve sorting performances for big files.
+
+FILE1 FILE2:
+   The two input files to be sorted, joined.
+   Unlike GNU join,  joining STDIN is not supported. Both files must be real files.
+
+
+NOTE About "--header" and "--auto-format":
+   The "--header" feature requires GNU coreutils version 8.6 or later.
+   The "-o auto" feature requires GNU coreutils version 8.10 or later.
+
+EOF
+	exit(0);
+}
+
+sub show_version()
+{
+print<<EOF;
+$PROGRAM $VERSION
+Copyright (C) 2010 A. Gordon (gordon\@cshl.edu)
+License AGPLv3+: Affero GPL version 3 or later (http://www.gnu.org/licenses/agpl.html)
+
+To see the GNU's join version, run:
+	join --version
+EOF
+	exit(0);
+}
+
+sub show_examples()
+{
+print<<EOF;
+Example of joining two unsorted files (each file having a header line):
+
+\$ cat input1.txt
+Fruit	Color
+Apple	red
+Banana	yellow
+Orange	orange
+Melon	green
+
+\$ cat input2.txt
+Fruit	Price
+Orange	7
+Avocado	8
+Apple	4
+Banana	3
+
+\$ easyjoin -j 1 -a 1 -a 2 --header -e . -o auto input1.txt input2.txt
+Fruit   Color   Price
+Apple   red     4
+Avocado .       8
+Banana  yellow  3
+Melon   green   .
+Orange  orange  7
+
+## A short-cut for all the options above:
+\$ easyjoin --allh input1.txt input2.txt
+Fruit   Color   Price
+Apple   red     4
+Avocado .       8
+Banana  yellow  3
+Melon   green   .
+Orange  orange  7
+
+EOF
+	exit(0);
+}
+
+sub parse_commandline_options()
+{
+	##
+	## Parse command line
+	##
+	my $rc = GetOptions(
+			"a=i" => sub { push @OUTPUT_SPECIFIERS, '-a', $_[1] },
+			"e=s" => \$EMPTY_FILLER,
+			"ignore-case|i" => \$IGNORE_CASE,
+			"j=i" => sub { $FILE1_KEY_COLUMN = $_[1] ; $FILE2_KEY_COLUMN = $_[1] ; },
+			"o=s" => \$OUTPUT_FORMAT,
+			"t=s" => \$FIELD_SEP,
+			"v=i" => sub { push @OUTPUT_SPECIFIERS, '-v', $_[1] },
+			"1=i" => \$FILE1_KEY_COLUMN,
+			"2=i" => \$FILE2_KEY_COLUMN,
+			"debug" => \$debug,
+			"header" => \$HEADER,
+			"help" => \&show_help,
+			"version" => \&show_version,
+			"examples" => \&show_examples,
+			"buffer-size|S=s" => \$SORT_BUFFER_SIZE,
+			"temporary-directory|T=s" => \$SORT_TEMP_DIR,
+			"all" => sub {
+					push @OUTPUT_SPECIFIERS, "-a", 1, "-a", 2;
+					$FIELD_SEP = "\t";
+					$OUTPUT_FORMAT = "auto";
+					$EMPTY_FILLER = "." unless defined $EMPTY_FILLER;
+				},
+			"allh" => sub {
+					push @OUTPUT_SPECIFIERS, "-a", 1, "-a", 2;
+					$FIELD_SEP = "\t";
+					$OUTPUT_FORMAT = "auto";
+					$HEADER=1;
+					$EMPTY_FILLER = "." unless defined $EMPTY_FILLER;
+				},
+		);
+	die "$PROGRAM: invalid command-line arguments.\n" unless $rc;
+
+	## We need two file names to join
+	my @INPUT_FILES = @ARGV;
+	die "$PROGRAM: missing operand: two file names to join\n" if (scalar(@INPUT_FILES)<2);
+	die "$PROGRAM: error: too many files specified (can only join two files)\n" if (scalar(@INPUT_FILES)>2);
+	die "$PROGRAM: error: input file can't be STDIN, please use a real file name.\n" if $INPUT_FILES[0] eq "-" || $INPUT_FILES[1] eq "-";
+	die "$PROGRAM: error: input file 1 '" . $INPUT_FILES[0] . "' not found!" unless -e $INPUT_FILES[0];
+	die "$PROGRAM: error: input file 2 '" . $INPUT_FILES[1] . "' not found!" unless -e $INPUT_FILES[1];
+
+	$input_filename1 = $INPUT_FILES[0];
+	$input_filename2 = $INPUT_FILES[1];
+}
+
+sub sort_file($$$)
+{
+	my ($input_filename, $output_filename, $key_column) = @_;
+
+	my @SORT_COMMAND;
+	push @SORT_COMMAND, $HEADER ? "./sort-header" : "sort" ;
+	push @SORT_COMMAND, "-f" if $IGNORE_CASE;
+	push @SORT_COMMAND, "-k${key_column},${key_column}" ;
+	push @SORT_COMMAND, "--buffer-size", $SORT_BUFFER_SIZE if $SORT_BUFFER_SIZE;
+	push @SORT_COMMAND, "--temporary-directory", $SORT_TEMP_DIR if $SORT_TEMP_DIR;
+	push @SORT_COMMAND, "--output", $output_filename;
+	push @SORT_COMMAND, "--debugheader" if $debug && $HEADER;
+	push @SORT_COMMAND, "-t", $FIELD_SEP if $FIELD_SEP;
+	push @SORT_COMMAND, $input_filename;
+
+	if ($debug) {
+		warn "$PROGRAM: Running sort on '$input_filename' => '$output_filename'\n";
+		warn "$PROGRAM: Sort command line:\n";
+		print STDERR Dumper(\@SORT_COMMAND), "\n";
+	}
+
+	my $sort_exit_code=1;
+	system(@SORT_COMMAND);
+	if ($? == -1) {
+		die "$PROGRAM: Error: failed to execute 'sort': $!\n";
+	}
+	elsif ($? & 127) {
+		my $signal = ($? & 127);
+		kill 2, $$ if $signal == 2; ##if sort was interrupted (CTRL-C) - just pass it on and commit suicide
+		die "$PROGRAM: Error: 'sort' child-process died with signal $signal\n";
+	}
+	else {
+		$sort_exit_code = ($? >> 8);
+	}
+	die "$PROGRAM: Error: 'sort' process failed, exit code $sort_exit_code\n" if $sort_exit_code!=0;
+}
+
+sub join_files($$)
+{
+	my ($file1, $file2) = @_;
+
+	my @join_command = qw/join/;
+	push @join_command, "--header" if $HEADER;
+	push @join_command, "--ignore-case" if $IGNORE_CASE;
+	push @join_command, "-t", $FIELD_SEP if $FIELD_SEP;
+	push @join_command, "-1", $FILE1_KEY_COLUMN if $FILE1_KEY_COLUMN;
+	push @join_command, "-2", $FILE2_KEY_COLUMN if $FILE2_KEY_COLUMN;
+	push @join_command, "-e", $EMPTY_FILLER if defined $EMPTY_FILLER;
+	push @join_command, "-o", $OUTPUT_FORMAT if $OUTPUT_FORMAT;
+	push @join_command, @OUTPUT_SPECIFIERS;
+	push @join_command, $file1, $file2;
+
+	if ($debug) {
+		warn "$PROGRAM: Running join on '$file1'  and '$file2'\n";
+		warn "$PROGRAM: join command line:\n";
+		print STDERR Dumper(\@join_command), "\n";
+	}
+
+	my $join_exit_code=1;
+	system(@join_command);
+	if ($? == -1) {
+		die "$PROGRAM: Error: failed to execute 'join': $!\n";
+	}
+	elsif ($? & 127) {
+		my $signal = ($? & 127);
+		kill 2, $$ if $signal == 2; ##if join was interrupted (CTRL-C) - just pass it on and commit suicide
+		die "$PROGRAM: Error: 'join' child-process died with signal $signal\n";
+	}
+	else {
+		$join_exit_code = ($? >> 8);
+	}
+	return $join_exit_code;
+}
+
+sub cleanup_files(@)
+{
+	my (@files) = @_;
+
+	foreach my $file (@files) {
+		if ($debug) {
+			warn "$PROGRAM: debug mode, not deleting temporary file '$file'\n";
+		} else {
+			my $count = unlink $file;
+			warn "$PROGRAM: Error: failed to delete temporary file '$file': $!\n" if ($count != 1);
+		}
+	}
+}

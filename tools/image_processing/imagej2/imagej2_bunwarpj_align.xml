@@ -1,0 +1,278 @@
+<tool id="imagej2_bunwarpj_align" name="Align two images" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+    <description>with ImageJ2</description>
+    <macros>
+        <import>imagej2_macros.xml</import>
+    </macros>
+    <edam_operations>
+        <edam_operation>operation_3443</edam_operation>
+    </edam_operations>
+    <xrefs>
+        <xref type="bio.tools">imagej</xref>
+        <xref type="biii">imagej2</xref>
+    </xrefs>
+    <expand macro="fiji_requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+#import os
+#set error_log = 'output_log.txt'
+touch '$error_log';
+
+## ImageJ2 requires file extensions to be valid image data types.
+#set source_out_suffix = '.' + str($source_out_datatype)
+#set target_out_suffix = '.' + str($target_out_datatype)
+#set source_image_sans_ext = $os.path.splitext($os.path.basename($source_image.file_name))[0]
+#set source_image_with_ext = './' + '.'.join([$source_image_sans_ext, $source_image.ext])
+ln -s '$source_image.file_name' '$source_image_with_ext';
+#set target_image_sans_ext = $os.path.splitext($os.path.basename($target_image.file_name))[0]
+#set target_image_with_ext = './' + '.'.join([$target_image_sans_ext, $target_image.ext])
+ln -s '$target_image.file_name' '$target_image_with_ext';
+
+#set save_transformation = str($advanced_options_cond.advanced_options) == 'save_transformation'
+#set mono = str($advanced_options_cond.advanced_options) == 'mono'
+#set landmarks = str($advanced_options_cond.advanced_options) == 'landmarks'
+#set affine = str($advanced_options_cond.advanced_options) == 'affine'
+
+#if str($align_with_mask_cond.align_with_mask) == 'yes':
+    #set source_mask_sans_ext = $os.path.splitext($os.path.basename($align_with_mask_cond.source_mask.file_name))[0]
+    #set source_mask_with_ext =  './' + '.'.join([$source_mask_sans_ext, $source_mask.ext])
+    #set source_mask = $source_mask_with_ext
+    ln -s '$align_with_mask_cond.source_mask.file_name' '$source_mask_with_ext';
+    #set target_mask_sans_ext = $os.path.splitext($os.path.basename($align_with_mask_cond.target_mask.file_name))[0]
+    #set target_mask_with_ext =  './' + '.'.join([$target_mask_sans_ext, $target_mask.ext])
+    #set target_mask = $target_mask_with_ext
+    ln -s '$align_with_mask_cond.target_mask.file_name' '$target_mask_with_ext';
+#else:
+    #set source_mask = 'NULL'
+    #set target_mask = 'NULL'
+#end if
+
+#if not $mono:
+    #set tmp_target_out = 'tmp_target_out' + $target_out_suffix
+    touch '$tmp_target_out';
+
+    ## bUnwarpJ automatically names the transformation files based
+    ## on the names of the source and target image file names.
+    #set tmp_target_out_transf_name_sans_ext = $os.path.splitext($target_out.file_name)[0]
+    #set tmp_target_out_transf_name = $tmp_target_out_transf_name_sans_ext + '_transf.txt'
+    touch '$tmp_target_out_transf_name';
+#end if
+#set tmp_source_out = 'tmp_source_out' + $source_out_suffix
+touch '$tmp_source_out';
+
+## bUnwarpJ automatically names the transformation files based
+## on the names of the source and target image file names.
+#set tmp_source_out_transf_name_sans_ext = $os.path.splitext($source_out.file_name)[0]
+#set tmp_source_out_transf_name = $tmp_source_out_transf_name_sans_ext + '_transf.txt'
+touch '$tmp_source_out_transf_name';
+
+## Align the two images using bUnwarpJ.
+## The option -XX:ActiveProcessorCount="1" was set in version 20231211 to ensure reproducibility
+bunwarpj -XX:ActiveProcessorCount="1" -align
+'$target_image_with_ext'
+'$target_mask'
+'$source_image_with_ext'
+'$source_mask'
+$min_scale_def
+$max_scale_def
+$max_subsamp_fact
+$divergence_weight
+$curl_weight
+$image_weight
+$consistency_weight
+'$source_out'
+#if not $mono:
+    '$target_out'
+#end if
+#if $landmarks:
+    '-landmarks'
+    $advanced_options_cond.landmarks_weight
+    '$landmarks_file'
+#end if
+#if $affine:
+    '-affine'
+    '$advanced_options_cond.target_affine_file'
+    '$advanced_options_cond.source_affine_file'
+#end if
+#if $mono:
+    '-mono'
+#end if
+#if $save_transformation:
+    '-save_transformation'
+#end if
+#if $save_transformation:
+    && mv '$tmp_source_out_transf_name' '$source_trans_out'
+    && mv '$tmp_target_out_transf_name' '$target_trans_out';
+#end if
+]]></command>
+    <inputs>
+        <expand macro="param_target_image"/>
+        <expand macro="param_source_image"/>
+        <conditional name="align_with_mask_cond">
+            <param name="align_with_mask" type="select" label="Align with masks?" help="Source and target mask can be any image format.">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <expand macro="param_target_mask"/>
+                <expand macro="param_source_mask"/>
+            </when>
+        </conditional>
+        <param name="min_scale_def" type="select" label="Initial deformation">
+            <option value="0" selected="true">Very Coarse</option>
+            <option value="1">Coarse</option>
+            <option value="2">Fine</option>
+            <option value="3">Very Fine</option>
+        </param>
+        <param name="max_scale_def" type="select" label="Final deformation">
+            <option value="0">Very Coarse</option>
+            <option value="1">Coarse</option>
+            <option value="2" selected="true">Fine</option>
+            <option value="3">Very Fine</option>
+        </param>
+        <param name="max_subsamp_fact" type="integer" value="0" min="0" label="Image sub-sample factor" help="Power of 2: [0, 1, 2 .. 7]"/>
+        <param name="divergence_weight" type="float" value="0.0" label="Weight of the divergence term" help="Value is a floating point number"/>
+        <param name="curl_weight" type="float" label="Weight of the curl term" value="0.0" help="Value is a floating point number"/>
+        <param name="image_weight" type="float" label="Weight of the image term" value="1.0" help="Value is a floating point number"/>
+        <param name="consistency_weight" type="float" label="Weight of the deformation consistency" value="10.0" help="Value is a floating point number"/>
+        <param name="target_out_datatype" type="select" label="Save registered target image as format">
+            <expand macro="image_datatypes"/>
+        </param>
+        <param name="source_out_datatype" type="select" label="Save registered source image as format">
+            <expand macro="image_datatypes"/>
+        </param>
+        <!--
+        The following additional options can be added to the advanced_options select
+        list as soon as appropriate.  Their use is supported in the imagej2_bunwarp_align.py
+        wrapper.
+
+        I invested heavily in working with landmarks, but could never get them to
+        produce the same results from both the ImageJ GUI and the command line.  I'm
+        convinced this is not a result of using Galaxy as I tested using ImageJ in headless
+        mode outside of Galaxy and the results differed from using the ImageJ GUI. Until
+        we know the reasons for these differences, we will eliminate this option.
+        <option value="landmarks">Apply landmarks</option>
+
+        A separate tool will be needed to create an affine matrix transformation file,
+        so we'll eliminate this option until we have that tool.
+        <option value="affine">Apply affine matrix transformation</option>
+        
+        Similar to landmarks, I could not get the ImageJ mono option to produce the same
+        results from the ImageJ GUI and in headless mode from the command line.
+        <option value="mono">Unidirectional registration (source to target)</option>
+        -->
+        <conditional name="advanced_options_cond">
+            <param name="advanced_options" type="select" label="Advanced options" help="These are mutually exclusive for each execution">
+                <option value="none" selected="true">None</option>
+                <option value="save_transformation">Save calculated transformations</option>
+            </param>
+            <when value="none"/>
+            <!--
+            <when value="landmarks">
+                <param name="landmarks_weight" type="float" label="Landmark weight" value="0.0" help="Value is a floating point number"/>
+                <param format="txt" name="landmarks_file" type="data" label="Landmark file"/>
+            </when>
+            <when value="affine">
+                <param format="txt" name="target_affine_file" type="data" label="Initial target affine matrix transformation"/>
+                <param format="txt" name="source_affine_file" type="data" label="Initial source affine matrix transformation"/>
+            </when>
+            <when value="mono"/>
+            -->
+            <when value="save_transformation"/>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="source_out" format="png" label="${tool.name} (registered source)  ${on_string}">
+            <actions>
+                <action type="format">
+                    <option type="from_param" name="source_out_datatype"/>
+                </action>
+            </actions>
+        </data>
+        <data name="target_out" format="png"  label="${tool.name} (registered target) ${on_string}">
+            <filter>advanced_options_cond['advanced_options'] != "mono"</filter>
+            <actions>
+                <action type="format">
+                    <option type="from_param" name="target_out_datatype"/>
+                </action>
+            </actions>
+        </data>
+        <data format="txt" name="source_trans_out" label="${tool.name} (source transf matrix)  ${on_string}">
+            <filter>advanced_options_cond['advanced_options'] == "save_transformation"</filter>
+        </data>
+        <data format="txt" name="target_trans_out" label="${tool.name} (target transf matrix) ${on_string}">
+            <filter>advanced_options_cond['advanced_options'] == "save_transformation"</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="2">
+            <!-- Align two images without landmarks or mask and not saving transformation matrices -->
+            <expand macro="test_target_source_images"/>
+            <param name="max_subsamp_fact" value="1"/>
+            <output name="source_out" file="registered_source1_forced1cpu.png" compare="image_diff"/>
+            <output name="target_out" file="registered_target1_forced1cpu.png" compare="image_diff"/>
+        </test>
+        <test expect_num_outputs="4">
+            <!-- Align two images without landmarks or mask, but saving transformation matrices -->
+            <expand macro="test_target_source_images"/>
+            <param name="max_subsamp_fact" value="1"/>
+            <param name="advanced_options" value="save_transformation"/>
+            <output name="source_out" file="registered_source1_forced1cpu.png" compare="image_diff"/>
+            <output name="target_out" file="registered_target1_forced1cpu.png" compare="image_diff"/>
+            <output name="source_trans_out" file="source_elastic_transformation_out.txt" compare="contains"/>
+            <output name="target_trans_out" file="target_elastic_transformation_out.txt" compare="contains"/>
+        </test>
+        <test expect_num_outputs="2">
+            <!-- Align two images without landmarks but with mask, not saving transformation matrices -->
+            <expand macro="test_target_source_images"/>
+            <param name="align_with_mask" value="yes"/>
+            <param name="target_mask" value="mask_white.png"/>
+            <param name="source_mask" value="mask_ramp.gif"/>
+            <param name="max_subsamp_fact" value="1"/>
+            <output name="source_out" file="registered_source2_forced1cpu.png" compare="image_diff"/>
+            <output name="target_out" file="registered_target2_forced1cpu.png" compare="image_diff"/>
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+<![CDATA[
+Performs a simultaneous registration of two images, A and B. Image A is elastically deformed
+in order to look as similar as possible to image B, and, at the same time, the "inverse"
+transformation (from B to A) is also calculated so a pseudo-invertibility of the final deformation
+could be guaranteed.  RGB Color images will be converted to grayscale during the registration
+process but the resulting transformations will be applied to the original color images.
+
+Two images are produced: the deformed versions of A and B images.
+
+.. image:: ./static/images/bunwarpj_scheme.png
+
+Both selected images will work simultaneously as source and target, their tags are there only for the sake
+of clarification. The registration mode is currently restricted to "Fast" ("Mono" has been eliminated for now).
+The registration mode "Mono" perfoms only unidirectional registration, i.e. from source to target.  The
+registration mode "Fast" involve performing bidirectional registration and affects the stopping criteria
+internally used by the bUnwarpJ program.
+
+Using the **Align with masks** otion, masks are introduced together with the input images.  In this mode, the
+input images is treated as the first slice of the mask pair and the mask is treated as the second slice.  In this
+way, the mask can have any shape.
+
+The **Initial deformation** and **Final deformation** options allow you to select the coarsest and finest scale
+of the spline deformation field. "Very coarse" corresponds to 4 splines (one in each corner of the image). As you
+increase the deformation level, the number of splines is doubled in each direction (horizontal and vertical).
+
+The value of the **Image sub-sample factor** will enable the registration to be calculated using the subsampled
+versions of the images but the results will be applied to the original ones. The image subsampling parameter can
+be set from 0 and 7, i.e. the image dimensions can be reduced by a factor of 20 = 1 to 27 = 128. This is very
+useful when registering large images.
+
+The different weights of the goal function control the relative weight of each one of the terms. These weights
+are not restricted to be between 0 and 1, and they may take any value as long as it is non-negative=2E.
+
+If the **Advanced option - Save transformation** option is selected, two files are produced in addition to
+the registerd source and target images: the direct transformation matrix of A and the inverse transformation
+matrix of B.
+]]>
+
+    </help>
+    <expand macro="bunwarpj_citations"/>
+</tool>

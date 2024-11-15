@@ -1,0 +1,175 @@
+<tool id="nastiseq" name="NASTIseq" version="1.0">
+  <description>Identify cis-NATs using ssRNA-seq</description>
+
+  <requirements>
+    <requirement type="package" version="1.0">r-nastiseq</requirement>
+  </requirements>
+  <stdio>
+        <regex match="Execution halted"
+           source="both"
+           level="fatal"
+           description="Execution halted." />
+        <regex match="Error in"
+           source="both"
+           level="fatal"
+           description="An undefined error occured, please check your intput carefully and contact your administrator." />
+  </stdio>
+  <command>
+<![CDATA[
+      Rscript '$script_file'
+]]>
+  </command>
+  <configfiles>
+    <configfile name="script_file">
+          library(NASTIseq)
+
+          genepos = read.delim("${annotation}", header=FALSE, comment.char="#")
+          colnames(genepos) = c("seqname", "source", "feature", "start", "end", "score", "strand", "frame", "attributes")
+          genepos = subset(genepos, feature=="gene")
+
+          get_id = function(attri){
+              gene_info = strsplit(attri, ";")[[1]][1]
+              gene_id = strsplit(gene_info, " ")[[1]][2]
+              gene_id = gsub('\"', '', gene_id)
+              return(gene_id)
+           }
+
+          genepos\$attributes = as.character(lapply(as.character(genepos\$attributes), get_id))
+
+          pospairs = read.table("${positive_pair}", sep = "\t", as.is = TRUE)
+
+          smat = as.matrix(read.table("${count_smt}",  sep = "\t",  row.names = 1))
+
+          asmat = as.matrix(read.table("${count_asmt}",  sep = "\t",  row.names = 1))
+
+          WRscore = getNASTIscore(smat, asmat)
+
+          negpairs = getnegativepairs(genepos)
+
+          WRpred = NASTIpredict(smat,asmat, pospairs, negpairs)
+
+          WRpred_rocr = prediction(WRpred\$predictions,WRpred\$labels)
+
+          thr = defineFDR(WRpred_rocr,0.05)
+
+          WR_names = FindNATs(WRscore, thr, pospairs, genepos)
+
+          write.table(WR_names\$newpairs, file = "output_newpairs.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+
+          write.table(WR_names\$neworphan, file = "output_neworphan.tsv", row.names = FALSE, col.names = FALSE, sep = "\t", quote = FALSE)
+
+    </configfile>
+  </configfiles>
+  <inputs>
+    <param name="annotation" type="data" format="gtf" label="Annotation file"
+        help="The gene ids should be in agreement in the files of annotation, known pairs and read count.">
+    </param>
+    <param name="positive_pair" type="data" format="tabular" label="Known pairs"
+        help="A known pair of cis-natural antisense transcripts">
+    </param>
+    <param name="count_smt" type="data" format="tabular" label="Read count of sense strand"
+        help="">
+    </param>
+    <param name="count_asmt" type="data" format="tabular" label="Read count of antisense strand"
+        help="">
+    </param>
+  </inputs>
+  <outputs>
+      <data name="newpairs" format="tabular"
+      from_work_dir="output_newpairs.tsv"
+      label="${tool.name} on ${on_string}: New pairs">
+      </data>
+      <data name="neworphan" format="tabular"
+      from_work_dir="output_neworphan.tsv"
+      label="${tool.name} on ${on_string}: New orphans">
+      </data>
+  </outputs>
+  <tests>
+    <test>
+        <param name="annotation" value="input_TAIR10_annotation.gtf" ftype="gtf" />
+        <param name="positive_pair" value="input_positive_pair.tsv" ftype="tabular" />
+        <param name="count_smt" value="input_read_count_smt.tsv" ftype="tabular" />
+        <param name="count_asmt" value="input_read_count_asmt.tsv" ftype="tabular" />
+        <output name="newpairs" file="output_newpairs.tsv" ftype="tabular"/>
+        <output name="neworphan" file="output_neworphan.tsv" ftype="tabular"/>
+    </test>
+  </tests>
+<help>
+<![CDATA[
+.. class:: infomark
+
+**What it does**
+
+  Pairs of RNA molecules transcribed from partially or entirely complementary loci
+  are called cis-natural antisense transcripts (cis-NATs),
+  and they play key roles in the regulation of gene expression in many organisms.
+  A promising experimental tool for profiling sense and antisense transcription
+  is strand-specific RNA sequencing (ssRNA-seq). `NASTIseq`_  is to identify
+  cis-NATs using ssRNA-seq. `NASTIseq`_  is based on model comparison that incorporates
+  the inherent variable efficiency of generating perfectly strand-specific libraries.
+  Applying the method to the ssRNA-seq data from whole root and
+  cell-type specific Arabidopsis libraries confirmed most of
+  the known cis-NAT pairs and identified hundreds of additional cis-NAT pairs.
+
+.. _NASTIseq: https://ohlerlab.mdc-berlin.de/software/NASTIseq_104/
+
+.. class:: infomark
+
+**Inputs**
+
+  ``Annotation file``:  the annotation in `gtf`_ format
+
+  .. _gtf: http://www.ensembl.org/info/website/upload/gff.html
+
+  ``Known pairs``: a table of two  column  matrix,  with  each  row  contains  the
+  names of a known pair of cis-natural antisense transcripts. Example as following::
+
+          AT2G46910       AT2G46915
+          AT3G12250       AT3G12260
+          AT5G50315       AT5G50320
+
+  ``Read count of sense strand``: a table of N by M matrix of read count for reads that mapped
+  to  the  sense  strand.   N  is  the  number  of  gene  loci.   M  is  the
+  number of biological replicates in the sample.  Each
+  rowname must be a unique locus name. Example as following::
+
+          AT1G38440       0       2       0
+          AT1G43171       2       8       1
+          AT1G67670       3       7       0
+
+  ``Read count of antisense strand``: a table of N by M matrix of read count for reads that mapped
+  to  the  antisense  strand.    N  is  the  number  of  gene  loci.   M  is  the
+  number of biological replicates in the sample.  Each
+  rowname must be a unique locus name. Example as following::
+
+          AT1G38440       0       0       0
+          AT1G43171       0       0       0
+          AT1G67670       0       0       2
+
+  Read counts can be obtained using popular software such as `RSamtools`_.
+
+.. _RSamtools: http://bioconductor.org/packages/release/bioc/html/Rsamtools.html
+
+.. class:: infomark
+
+**Outputs**
+
+  ``New pairs``: a table of two  column  matrix,  with  each  row  contains  the
+  names of a new pair of cis-natural antisense transcripts. Example as following::
+
+        AT1G76630       AT1G76640
+        AT2G06045       AT2G06050
+        AT4G30100       AT4G30110
+
+
+  ``New orphans``: a list of new orphan transcripts. Example as following::
+
+        ATMG00030
+        AT5G49440
+        AT2G11240
+]]>
+</help>
+<citations>
+    <citation type="doi">10.1101/gr.149310.112</citation>
+</citations>
+</tool>

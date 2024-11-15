@@ -1,0 +1,156 @@
+<tool id="imagej2_find_maxima" name="Find maxima" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+    <description>with ImageJ2</description>
+    <macros>
+        <import>imagej2_macros.xml</import>
+    </macros>
+    <edam_operations>
+        <edam_operation>operation_3443</edam_operation>
+    </edam_operations>
+    <xrefs>
+        <xref type="bio.tools">imagej</xref>
+        <xref type="biii">imagej2</xref>
+    </xrefs>
+    <expand macro="fiji_requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+#import os
+#set input_sans_ext = $os.path.splitext($os.path.basename($input.file_name))[0]
+#set input_with_ext = './' + '.'.join([input_sans_ext, $input.ext])
+ln -s '$input.file_name' '$input_with_ext' &&
+#if str($output_type) == 'List' or str($output_type) == 'Count':
+    #set list_or_count = True
+#else:
+    #set output_filename = '.'.join(['output', $input.ext])
+    touch '$output_filename' &&
+    #set list_or_count = False
+#end if
+ImageJ --ij2 --headless --debug
+--jython '$__tool_directory__/imagej2_find_maxima_jython_script.py'
+'$input_with_ext'
+'$scale_when_converting'
+'$weighted_rgb_conversions'
+$noise_tolerance
+'$output_type'
+'$exclude_edge_maxima'
+'$light_background'
+#if $list_or_count:
+    '$results'
+    'tabular'
+#else:
+    '$output_filename'
+    '$input.ext'
+#end if
+#if $list_or_count
+    && mv '$results' '$output';
+#else
+    && mv '$output_filename' '$output';
+#end if
+]]></command>
+    <inputs>
+        <expand macro="param_input"/>
+        <param name="noise_tolerance" type="integer" value="10" min="0" label="Noise tolerance" help="Maxima are ignored if they do not stand out from the surroundings by more than this value."/>
+        <param name="output_type" type="select" label="Output type">
+            <option value="Single_Points" selected="True">Single Points</option>
+            <option value="Maxima_Within_Tolerance">Maxima Within Tolerance</option>
+            <option value="Segmented_Particles">Segmented Particles</option>
+            <!--
+            This version of Fiji does not produce the same resultsTable
+            as the previous version, so eliminating these options until
+            there is time to investigate
+            <option value="List">List</option>
+            <option value="Count">Count</option>
+            -->
+        </param>
+        <param name="exclude_edge_maxima" type="select" label="Exclude edge maxima?">
+            <option value="no" selected="True">No</option>
+            <option value="yes">Yes</option>
+        </param>
+        <param name="light_background" type="select" label="Light background?">
+            <option value="no" selected="True">No</option>
+            <option value="yes">Yes</option>
+        </param>
+        <param name="scale_when_converting" type="select" label="Scale when converting?" help="Applies only to 24-bit (RGB) images, ignored for other types.">
+            <option value="yes" selected="True">Yes</option>
+            <option value="no">No</option>
+        </param>
+        <param name="weighted_rgb_conversions" type="select" label="Weighted RGB conversions?" help="Applies only to 24-bit (RGB) images, ignored for other types.">
+            <option value="no" selected="True">No</option>
+            <option value="yes">Yes</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="output" format_source="input">
+            <filter>output_type != "List" and output_type != "Count"</filter>
+        </data>
+        <!-- see comment at output_type parameter
+        <data name="results" format="tabular">
+            <filter>output_type == "List" or output_type == "Count"</filter>
+        </data> -->
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <output name="output" file="blobs_single_points.gif" compare="image_diff"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <param name="noise_tolerance" value="13"/>
+            <param name="output_type" value="Maxima_Within_Tolerance"/>
+            <output name="output" file="blobs_tolerance.gif" compare="image_diff"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="blobs.gif"/>
+            <param name="noise_tolerance" value="16"/>
+            <param name="output_type" value="Segmented_Particles"/>
+            <param name="exclude_edge_maxima" value="yes"/>
+            <output name="output" file="blobs_segmented.gif" compare="image_diff"/>
+        </test>
+        <!--
+        This version of Fiji does not produce the same resultsTable
+        as the previous version, so eliminating these options until
+        there is time to investigate
+        <test>
+            <param name="input" value="blobs.gif" />
+            <param name="output_type" value="List" />
+            <output name="output" file="blobs_list.tabular" />
+        </test>
+        <test>
+            <param name="input" value="blobs.gif" />
+            <param name="output_type" value="Count" />
+            <output name="output" file="blobs_count.tabular" />
+        </test>
+        -->
+    </tests>
+    <help>
+
+**What it does**
+
+Determines the local maxima in an image and creates a binary (mask-like) image of the same size with the
+maxima (or one segmented particle per maximum) marked.  For RGB images, maxima of luminance are selected
+with the luminance defined as the weighted or unweighted average of the colors depending on the **Scale
+when converting** and **Weighted RGB conversions** settings.
+
+- **Scale when converting** (RGB images only) - If "yes", the tool will scale from min--max to 0--255 when converting from 16-bit or 32-bit to 8-bit or to scale from min--max to 0--65535 when converting from 32-bit to 16-bit.
+
+- **Weighted RGB conversions** (RGB images only) - If "yes", the formula gray = 0.299 × red + 0.587 × green + 0.114 × blue is used to convert RGB images to grayscale.  If "no", the formula gray = (red + green + blue) ⁄ 3 is used.
+
+- **Noise Tolerance** - Maxima are ignored if they do not stand out from the surroundings by more than this value (calibrated units for calibrated images). In other words, a threshold is set at the maximum value minus noise tolerance and the contiguous area around the maximum above the threshold is analyzed. For accepting a maximum, this area must not contain any point with a value higher than the maximum. Only one maximum within this area is accepted.
+
+- **Output Type** can be:
+
+ - **Single Points** - Produces an image with one single point per maximum.
+
+ - **Maxima Within Tolerance** - Produces an image with all points within the "Noise Tolerance" for each maximum.
+
+ - **Segmented Particles** - Assumes that each maximum belongs to a particle and segments the image by a watershed algorithm applied to the values of the image.
+
+ - **List** - Produces the list x, y of maxima in the image.
+
+ - **Count** - Produces the number of maxima in the image.
+
+- **Exclude Edge Maxima** - Excludes maxima if the area within the noise tolerance surrounding a maximum touches the edge of the image (edge of the selection does not matter).
+
+- **Light Background** - Select "yes" if the image background is brighter than the objects you want to find.
+
+    </help>
+    <expand macro="fiji_headless_citations"/>
+</tool>

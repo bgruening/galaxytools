@@ -1,0 +1,538 @@
+<tool id="openbabel_compound_convert" name="Compound conversion" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
+    <description>- interconvert between various chemistry and molecular modeling data files</description>
+    <!--<parallelism method="multi" split_inputs="infile" split_mode="to_size" split_size="10000" shared_inputs="" merge_outputs="outfile"></parallelism>
+        We can't use that currently, because a few output-datatypes, like the fastsearch index do not support merging. We need to patch galaxy to not abort in such a case
+        and run the job in non-multi mode.
+    -->
+    <macros>
+        <import>macros.xml</import>
+        <token name="@GALAXY_VERSION@">1</token>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="aggressive">
+<![CDATA[
+
+    #set $format = $oformat.oformat_opts_selector
+
+    #if $format == 'fs':
+        ## For the fastsearch index we need to copy the original molecule files to the composite datatype of obfs.
+        ## Because openbabel likes file extensions, we give the molecule file a proper file extension.
+        mkdir $outfile.files_path;
+        cp '${infile}' ${os.path.join($outfile.files_path, 'molecule.%s' % $infile.ext )};
+    #end if
+
+    #if $split == 'true':
+        mkdir output &&
+    #end if
+
+    obabel -i '${infile.ext}'
+
+        #if $format == 'fs':
+            ## the fs filetype need his own symlink path, all others can take the original ones
+            ${os.path.join($outfile.files_path, 'molecule.%s' % $infile.ext )}
+            -o '$format' -e
+            -O ${os.path.join($outfile.files_path,'molecule.fs')}
+            #if int($oformat.fs_fold) > 0:
+                -xN$oformat.fs_fold
+            #end if
+            ${oformat.fs_fptype}
+        #else:
+            '${infile}'
+            -o '${format}'
+            #if $split == 'true':
+                -O 'output/molecule.$format'
+                -m
+            #else:
+                -O '${outfile}'
+            #end if
+            -e
+        #end if
+
+        #if $format == 'cml':
+            $oformat.cml_array
+            $oformat.cml_cml1
+            $oformat.cml_aromatic
+            $oformat.cml_hydrogen
+            $oformat.cml_metadata
+            $oformat.cml_omit
+            $oformat.cml_continuous
+            $oformat.cml_properties
+            $oformat.gen2d
+            $oformat.gen3d
+        #elif $format == 'inchi':
+            ## Ignore less import warnings
+            -w
+            #if $oformat.inchi_truncate:
+                #set $truncate = ''.join( str( $oformat.inchi_truncate ).split( ',' ) )
+                -xT ${truncate}
+            #end if
+
+            #if $oformat.inchi_additional:
+                #set $additional = ' '.join( str( $oformat.inchi_additional ).split( ',' ) )
+                -xX '${additional}'
+            #end if
+
+            $oformat.inchi_key
+            $oformat.inchi_name
+            $oformat.inchi_unique
+            $oformat.inchi_unique_sort
+        #elif $format == 'can':
+            $oformat.can_exp_h
+            $oformat.can_iso_chi
+            $oformat.can_rad
+            $oformat.can_atomclass_out
+        #elif $format == 'smi':
+            $oformat.smi_exp_h
+            $oformat.smi_iso_chi
+            $oformat.smi_rad
+            $oformat.smi_atomclass_out
+            $oformat.smi_can
+            $oformat.smi_coordinates
+        #elif $format == 'sdf':
+            $oformat.sdf_exp_h
+            $oformat.sdf_no_prop
+            $oformat.sdf_wedge_bonds
+            $oformat.sdf_alias_out
+            $oformat.gen2d
+            $oformat.gen3d
+        #elif $format == 'fpt':
+            $oformat.fpt_fptype
+            #if int($oformat.fpt_fold) > 0:
+                $oformat.fpt_fold
+            #end if
+            $oformat.fpt_hex_multiple
+            $oformat.fpt_hex
+            $oformat.fpt_set
+            $oformat.fpt_unset
+        #elif $format == 'mol2':
+            $oformat.mol2_ignore_res
+            $oformat.gen2d
+            $oformat.gen3d
+        #end if
+
+        ## Uniqueness according to stripped InChI's or canonical SMILES
+        #if str($unique.unique_opts_selector):
+            #if $unique.unique_opts_selector == 'inchi':
+                #if $unique.truncate:
+                    #set $truncate = ''.join( str( $unique.truncate ).split( ',' ) )
+                    --unique $truncate
+                #end if
+            #else
+                --unique $unique.unique_opts_selector
+            #end if
+        #end if
+
+        #if str($appendtotitle).strip():
+            --addtotitle '${appendtotitle}'
+        #end if
+
+        $remove_h
+        $dative_bonds
+
+        #if float($ph) >= 0:
+            -p $ph
+        #end if
+        
+        #if $appendproperties:
+            #set $props = str($appendproperties).replace(',', ' ')
+            --append '$props'
+        #end if
+]]>
+    </command>
+    <inputs>
+        <expand macro="infile_all_types"/>
+        <conditional name="oformat">
+            <param name="oformat_opts_selector" type="select" label="Output format">
+                <option value="acr">Carine ASCI Crystal</option>
+                <option value="alc">Alchemy format</option>
+                <option value="bgf">MSI BGF format</option>
+                <option value="box">Dock 3.5 Box format</option>
+                <option value="bs">Ball and Stick format</option>
+                <option value="c3d1">Chem3D Cartesian 1 format</option>
+                <option value="c3d2">Chem3D Cartesian 2 format</option>
+                <option value="caccrt">Cacao Cartesian format</option>
+                <option value="cache">CAChe MolStruct format</option>
+                <option value="cacint">Cacao Internal format</option>
+                <option value="can" selected="True">Canonical SMILES format (can)</option>
+                <option value="cdxml">ChemDraw CDXML format</option>
+                <option value="cht">Chemtool format</option>
+                <option value="cif">Crystallographic Information File</option>
+                <option value="cml">Chemical Markup Language (CML)</option>
+                <option value="cmlr">CML Reaction format</option>
+                <option value="com">Gaussian 98/03 Cartesian Input(com)</option>
+                <option value="copy">Copies raw text</option>
+                <option value="crk2d">Chemical Resource Kit 2D diagram format</option>
+                <option value="crk3d">Chemical Resource Kit 3D format</option>
+                <option value="csr">Accelrys/MSI Quanta CSR format</option>
+                <option value="cssr">CSD CSSR format</option>
+                <option value="ct">ChemDraw Connection Table format</option>
+                <option value="dmol">DMol3 coordinates format</option>
+                <option value="fasta">FASTA format</option>
+                <option value="feat">Feature format</option>
+                <option value="fh">Fenske-Hall Z-Matrix format</option>
+                <option value="fix">SMILES FIX format</option>
+                <option value="fpt">Fingerprint format (fpt)</option>
+                <option value="fract">Free Form Fractional format</option>
+                <option value="fs">Open Babel FastSearching database (fs)</option>
+                <option value="gamin">GAMESS Input (gamin)</option>
+                <option value="inp">GAMESS Input (inp)</option>
+                <option value="gau">Gaussian 98/03 Cartesian Input(gau)</option>
+                <option value="gpr">Ghemical format</option>
+                <option value="gr96">GROMOS96 format</option>
+                <option value="hin">HyperChem HIN format</option>
+                <option value="inchi">IUPAC InChI</option>
+                <option value="jin">Jaguar input format</option>
+                <option value="mmd">MacroModel format (mmd)</option>
+                <option value="mmod">MacroModel format (mmod)</option>
+                <option value="mol2">Sybyl Mol2 format (mol2)</option>
+                <option value="molreport">Open Babel molecule report</option>
+                <option value="mop">MOPAC Cartesian format (mop)</option>
+                <option value="mopcrt">MOPAC Cartesian format (mopcrt)</option>
+                <option value="mopin">MOPAC Internal</option>
+                <option value="mpc">MOPAC Cartesian format (mpc)</option>
+                <option value="mpd">Sybyl descriptor format</option>
+                <option value="mpqcin">MPQC simplified input format</option>
+                <option value="nw">NWChem input format</option>
+                <option value="pcm">PCModel format</option>
+                <option value="pdb">Protein Data Bank format (pdb)</option>
+                <option value="pdbqt">PDBQT input format</option>
+                <option value="pov">POV-Ray input format</option>
+                <option value="pqs">Parallel Quantum Solutions format</option>
+                <option value="qcin">Q-Chem input format</option>
+                <option value="report">Open Babel report format</option>
+                <option value="rxn">MDL RXN format</option>
+                <option value="sdf">MDL MOL format (sdf, mol)</option>
+                <option value="smi">SMILES format (smi)</option>
+                <option value="tdd">Thermo format (tdd)</option>
+                <option value="test">Test format</option>
+                <option value="therm">Thermo format (therm)</option>
+                <option value="tmol">TurboMole Coordinate format</option>
+                <option value="txyz">Tinker MM2 format</option>
+                <option value="unixyz">UniChem XYZ format</option>
+                <option value="vmol">ViewMol format</option>
+                <option value="xed">XED format</option>
+                <option value="xyz">XYZ cartesian coordinates format</option>
+                <option value="yob">YASARA.org YOB format</option>
+                <option value="zin">ZINDO input format</option>
+            </param>
+            <when value="acr" />
+            <when value="alc" />
+            <when value="bgf" />
+            <when value="box" />
+            <when value="bs" />
+            <when value="c3d1" />
+            <when value="c3d2" />
+            <when value="caccrt" />
+            <when value="cache" />
+            <when value="cacint" />
+            <when value="can">
+                <param name="can_exp_h" type="boolean" label="Explicitly include hydrogens in output (-xh)" truevalue="-xh" falsevalue="" checked="false" />
+                <param name="can_iso_chi" type="boolean" label="Do not include isotopic or chiral markings (-xi)" truevalue="-xi" falsevalue="" checked="false" />
+                <param name="can_rad" type="boolean" label="Show radicals in lower case (e.g. ethyl as Cc) (-xr)" truevalue="-xr" falsevalue="" checked="false" />
+                <param name="can_atomclass_out" type="boolean" label="Output atomclass (e.g. [C:2]) (-xa)" truevalue="-xa" falsevalue="" checked="false" />
+            </when>
+            <when value="cdxml" />
+            <when value="cht" />
+            <when value="cif" />
+            <when value="cml">
+                <param name="cml_cml1" type="boolean" label="Convert to CML 1 (rather than CML 2) (-x1)" truevalue="-x1" falsevalue="" checked="false" />
+                <param name="cml_array" type="boolean" label="Write array format for atoms and bonds (-xa)" truevalue="-xa" falsevalue="" checked="false" />
+                <param name="cml_aromatic" type="boolean" label="Write aromatic bonds as such, not Kekule form (-xA)" truevalue="-xA" falsevalue="" checked="false" />
+                <param name="cml_hydrogen" type="boolean" label="Use hydrogen count for all hydrogens (-xh)" truevalue="-xh" falsevalue="" checked="false" />
+                <param name="cml_metadata" type="boolean" label="Write metadata (-xm)" truevalue="-xm" falsevalue="" checked="false" />
+                <param name="cml_omit" type="boolean" label="Omit XML and namespace declarations (-xx)" truevalue="-xx" falsevalue="" checked="false" />
+                <param name="cml_continuous" type="boolean" label="Continuous output: no formatting (-xc)" truevalue="-xc" falsevalue="" checked="false" />
+                <param name="cml_properties" type="boolean" label="Write properties (-xp)" truevalue="-xp" falsevalue="" checked="false" />
+                <expand macro="2D_3D_opts" />
+            </when>
+            <when value="cmlr" />
+            <when value="com" />
+            <when value="copy" />
+            <when value="crk2d" />
+            <when value="crk3d" />
+            <when value="csr" />
+            <when value="cssr" />
+            <when value="ct" />
+            <when value="dmol" />
+            <when value="fasta" />
+            <when value="feat" />
+            <when value="fh" />
+            <when value="fix" />
+            <when value="fpt">
+                <param name="fpt_fptype" type="select" label="Fingerprint type">
+                    <option value="-xfFP2" selected="True">FP2</option>
+                    <option value="-xfFP3">FP3</option>
+                    <option value="-xfFP4">FP4</option>
+                    <option value="-xfMACCS">MACCS</option>
+                </param>
+                <param name="fpt_fold" type="integer" value="0" label="Fold fingerprint to the number of specified bits (32, 64, 128, etc.)" help="Use zero for default">
+                   <validator type="in_range" min="0" />
+                </param>
+                <param name="fpt_hex_multiple" type="boolean" label="Hex output when multiple molecules (-xh)" truevalue="-xh" falsevalue="" checked="false" />
+                <param name="fpt_hex" type="boolean" label="Hex output only (-xo)" truevalue="-xo" falsevalue="" checked="false" />
+                <param name="fpt_set" type="boolean" label="Describe each set bit (-xs)" truevalue="-xs" falsevalue="" checked="false" />
+                <param name="fpt_unset" type="boolean" label="Describe each unset bit (-xu)" truevalue="-xu" falsevalue="" checked="false" />
+            </when>
+            <when value="fract" />
+            <when value="fs">
+                <param name="fs_fptype" type="select" label="Fingerprint type">
+                    <option value="-xfFP2" selected="True">FP2</option>
+                    <option value="-xfFP3">FP3</option>
+                    <option value="-xfFP4">FP4</option>
+                    <option value="-xfMACCS">MACCS</option>
+                </param>
+                <param name="fs_fold" type="integer" value="0" label="Fold fingerprint to the number of specified bits (32, 64, 128, etc.)" help="Use zero for default">
+                   <validator type="in_range" min="0" />
+                </param>
+            </when>
+            <when value="gamin" />
+            <when value="gau" />
+            <when value="gpr" />
+            <when value="gr96" />
+            <when value="hin" />
+            <when value="inchi">
+                <param name="inchi_key" type="boolean" label="Output InChIKey only (-xK)" truevalue="-xK" falsevalue="" checked="false" />
+                <param name="inchi_name" type="boolean" label="Add molecule name after InChI (-xt)" truevalue="-xt" falsevalue="" checked="true" />
+                <param name="inchi_unique" type="boolean" label="Output only unique molecules (-xu)" truevalue="-xu" falsevalue="" checked="false" />
+                <param name="inchi_unique_sort" type="boolean" label="Output only unique molecules and sort them (-xU)" truevalue="-xU" falsevalue="" checked="false" />
+                <param name="inchi_truncate" type="select" multiple="True" display="checkboxes" label="Truncate InChI according to various parameters">
+                    <option value="/formula">formula only</option>
+                    <option value="/connect">formula and connectivity only</option>
+                    <option value="/nostereo">ignore E/Z and sp3 stereochemistry</option>
+                    <option value="/sp3">ignore sp3 stereochemistry</option>
+                    <option value="/noEZ">ignore E/Z steroeochemistry</option>
+                    <option value="/nochg">ignore charge and protonation</option>
+                    <option value="/noiso">ignore isotopes</option>
+                </param>
+
+                <param name="inchi_additional" type="select" multiple="True" display="checkboxes" label="Additional InChI options" help="For more information please see the InChI documentation (http://www.inchi-trust.org/fileadmin/user_upload/html/inchifaq/inchi-faq.html).">
+                    <option value="NEWPSOFF">Narrow End of Wedge Points to Stereo is OFF (NEWPSOFF - stdInChI)</option>
+                    <option value="DoNotAddH">Skip the addition of hydrogen atoms (DoNotAddH - stdInChI)</option>
+                    <option value="SNon">Exclude stereo (SNon - stdInChI)</option>
+                    <option value="SRel">Relative stereo (SRel)</option>
+                    <option value="SRac">Racemic stereo (SRac)</option>
+                    <option value="SUCF">Use Chiral Flag (SUCF)</option>
+                    <option value="ChiralFlagON">Set Chiral Flag (ChrialFlagON)</option>
+                    <option value="ChiralFlagOFF">Set Not-Chiral Flag (ChrialFlagOFF)</option>
+                    <option value="SUU">Include omitted unknown/undefined stereo (SUU)</option>
+                    <option value="SLUUD">Stereo labels for "unknown" and "undefined" are different, 'u' and '?', respectively (SLUUD) </option>
+                    <option value="FixedH">Mobile H Perception Off (FixedH)</option>
+                    <option value="RecMet">Include reconnected bond to metal results (RecMet)</option>
+                    <option value="KET">Keto-enol tautomerism (KET)</option>
+                    <option value="15T">1,5-tautomerism (15T)</option>
+                </param>
+            </when>
+            <when value="inp" />
+            <when value="jin" />
+            <when value="mmd" />
+            <when value="mmod" />
+            <when value="mol2">
+                <param name="mol2_ignore_res" type="boolean" label="Output ignores residue information for ligands?" help="(-xl)"
+                    truevalue="-xl" falsevalue="" checked="false" />
+                <expand macro="2D_3D_opts" />
+            </when>
+            <when value="molreport" />
+            <when value="mop" />
+            <when value="mopcrt" />
+            <when value="mopin" />
+            <when value="mpc" />
+            <when value="mpd" />
+            <when value="mpqcin" />
+            <when value="nw" />
+            <when value="pcm" />
+            <when value="pdb" />
+            <when value="pdbqt" />
+            <when value="pov" />
+            <when value="pqs" />
+            <when value="qcin" />
+            <when value="report" />
+            <when value="rxn" />
+            <when value="sdf">
+                <param name="sdf_exp_h" type="boolean" truevalue="-x3" falsevalue="" checked="false"
+                    label="Output V3000 not V2000 (used for >999 atoms/bonds)" help="(-x3)" />
+                <param name="sdf_no_prop" type="boolean" truevalue="-xm" falsevalue="" checked="false"
+                    label="Do not write properties" help="(-xm)" />
+                <param name="sdf_wedge_bonds" type="boolean" truevalue="-xw" falsevalue="" checked="false" 
+                    label="Use wedge and hash bonds from input (2D structures only)" help="(-xw)"/>
+                <param name="sdf_alias_out" type="boolean" truevalue="-xA" falsevalue="" checked="false"
+                    label="Output in alias form, e.g. Ph for phenyl" help="(-xA)" />
+                <expand macro="2D_3D_opts" />
+            </when>
+            <when value="smi">
+                <param name="smi_exp_h" type="boolean" label="Explicitly include hydrogens in output" help="(-xh)"
+                    truevalue="-xh" falsevalue="" checked="false" />
+                <param name="smi_iso_chi" type="boolean" label="Do not include isotopic or chiral markings" help="(-xi)"
+                    truevalue="-xi" falsevalue="" checked="false" />
+                <param name="smi_rad" type="boolean" label="Show radicals in lower case (e.g. ethyl as Cc)" help="(-xr)" truevalue="-xr"
+                    falsevalue="" checked="false" />
+                <param name="smi_atomclass_out" type="boolean" label="Output atomclass (e.g. [C:2])" help="(-xa)"
+                    truevalue="-xa" falsevalue="" checked="false" />
+                <param name="smi_can" type="boolean" label="Output in canonical form" help="(-xc)"
+                    truevalue="-xc" falsevalue="" checked="false" />
+                <param name="smi_coordinates" type="boolean" label="Append X/Y coordinates in canonical-SMILES order" help="(-xx)"
+                    truevalue="-xx" falsevalue="" checked="false" />
+            </when>
+            <when value="tdd" />
+            <when value="test" />
+            <when value="therm" />
+            <when value="tmol" />
+            <when value="txyz" />
+            <when value="unixyz" />
+            <when value="vmol" />
+            <when value="xed" />
+            <when value="xyz" />
+            <when value="yob" />
+            <when value="zin" />
+        </conditional>
+
+        <!-- Options for all formats.-->
+        <param name="split" type="boolean" value="false" label="Split multi-molecule files into a collection"/>
+        <param name="remove_h" type="boolean" truevalue="-d" falsevalue=""
+            label="Delete hydrogen atoms, make all hydrogens implicit" help="(-d)" />
+        <param name="ph" type="float" value="-1" label="Add hydrogens appropriate for pH" help="-1 means deactivated (-p)"/>
+        <param name="dative_bonds" type="boolean" truevalue="-b" falsevalue=""
+            label="Convert dative bonds" help="e.g. [N+]([O-])=O to N(=O)=O (-b)" />
+        <param name="appendtotitle" type="text" value="" label="Append the specified text after each molecule title"/>
+        <param name="appendproperties" type="select" multiple="true" label="Molecular properties to append to the title." optional="true">
+            <option value="abonds">Number of aromatic bonds</option>
+            <option value="atoms">Number of atoms</option>
+            <option value="bonds">Number of bonds</option>
+            <option value="cansmi">Canonical SMILES</option>
+            <option value="cansmiNS">Canonical SMILES without isotopes or stereo</option>
+            <option value="dbonds">Number of double bonds</option>
+            <option value="sbonds">Number of single bonds</option>
+            <option value="tbonds">Number of triple bonds</option>
+            <option value="formula">Chemical formula</option>
+            <option value="HBA1">Number of Hydrogen Bond Acceptors 1 (JoelLib)</option>
+            <option value="HBA2">Number of Hydrogen Bond Acceptors 2 (JoelLib)</option>
+            <option value="HBD">Number of Hydrogen Bond Donors (JoelLib)</option>
+            <option value="InChI">IUPAC InChI identifier</option>
+            <option value="InChIKey">InChIKey</option>
+            <option value="L5">Lipinski Rule of Five</option>
+            <option value="logP">octanol/water partition coefficient</option>
+            <option value="MR">molar refractivity</option>
+            <option value="MW">Molecular Weight</option>
+            <option value="TPSA">topological polar surface area</option>
+        </param>
+
+        <!-- Uniqueness -->
+        <conditional name="unique">
+            <param name="unique_opts_selector" type="select" label="Uniqueness according to">
+                <option value="" selected="True">No unique filter</option>
+                <option value="inchi">InChI</option>
+                <option value="cansmi">Canonical SMILES with stereochemical information</option>
+                <option value="cansmiNS">Canonical SMILES without stereochemical information</option>
+                <option value="title">Title</option>
+            </param>
+            <when value="" />
+            <when value="cansmi" />
+            <when value="cansmiNS" />
+            <when value="title" />
+            <when value="inchi">
+                <param name="truncate" type="select" multiple="True" display="checkboxes" label="Uniqueness defined as truncated InChI">
+                    <option value="/formula">formula only</option>
+                    <option value="/connect">formula and connectivity only</option>
+                    <option value="/nostereo">ignore E/Z and sp3 stereochemistry</option>
+                    <option value="/sp3">ignore sp3 stereochemistry</option>
+                    <option value="/noEZ">ignore E/Z steroeochemistry</option>
+                    <option value="/nochg">ignore charge and protonation</option>
+                    <option value="/noiso">ignore isotopes</option>
+                </param>
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data name="outfile" format="text" label="Convert to ${oformat.oformat_opts_selector} from ${on_string}">
+            <filter>split == False</filter>
+            <change_format>
+                <when input="oformat.oformat_opts_selector" value="sdf" format="sdf"/>
+                <when input="oformat.oformat_opts_selector" value="can" format="smi"/>
+                <when input="oformat.oformat_opts_selector" value="smi" format="smi"/>
+                <when input="oformat.oformat_opts_selector" value="mol2" format="mol2"/>
+                <when input="oformat.oformat_opts_selector" value="inchi" format="inchi"/>
+                <when input="oformat.oformat_opts_selector" value="cml" format="cml"/>
+                <when input="oformat.oformat_opts_selector" value="mol" format="mol"/>
+                <when input="oformat.oformat_opts_selector" value="pdb" format="pdb"/>
+                <when input="oformat.oformat_opts_selector" value="pdbqt" format="pdbqt"/>
+                <when input="oformat.oformat_opts_selector" value="fs" format="obfs"/>
+            </change_format>
+        </data>
+
+        <collection name="file_outputs" type="list" label="Prepared ligands" >
+            <filter>split == True</filter>
+			<discover_datasets pattern="__name_and_ext__" directory="output" visible="false" />
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="sdf" value="CID_2244.sdf"/>
+            <param name="oformat_opts_selector" value="cml" />
+            <output name="outfile" ftype="cml" file="ob_convert_on_CID2244.cml" />
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="sdf" value="CID_2244.sdf"/>
+            <param name="oformat_opts_selector" value="fs" />
+            <output name="outfile" compare="contains" file="ob_convert_on_CID2244_obfs.txt" ftype="obfs" >
+                <extra_files type="file" value="molecule.sdf" name="molecule.sdf" />
+                <extra_files type="file" value="molecule.fs" name="molecule.fs" compare="sim_size" />
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="sdf" value="CID_2244.sdf"/>
+            <param name="oformat_opts_selector" value="inchi" />
+            <output name="outfile" ftype="inchi" file="ob_convert_on_CID2244.inchi" />
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="sdf" value="CID_2244.sdf"/>
+            <param name="oformat_opts_selector" value="pdb" />
+            <output name="outfile" ftype="pdb" file="ob_convert_on_CID2244.pdb" lines_diff="4" />
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="sdf" value="CID_2244.sdf"/>
+            <param name="oformat_opts_selector" value="can" />
+            <output name="outfile" ftype="smi" file="ob_convert_on_CID2244.smi" />
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="sdf" value="CID_2244.sdf"/>
+            <param name="oformat_opts_selector" value="sdf" />
+            <output name="outfile" ftype="sdf" file="ob_convert_on_CID2244.sdf" lines_diff="2"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="smi" value="2_mol.smi"/>
+            <param name="oformat_opts_selector" value="pdbqt"/>
+            <param name="split" value="true"/>
+            <output_collection name="file_outputs" type="list" count="2">
+                <element name="molecule1" file="split1.pdbqt" />
+                <element name="molecule2" file="split2.pdbqt" />
+            </output_collection>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" ftype="smi" value="2_mol.smi"/>
+            <param name="oformat_opts_selector" value="sdf" />
+            <param name="appendproperties" value="cansmi,InChI"/>
+            <output name="outfile" ftype="sdf" file="2_mol.sdf" lines_diff="4"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+.. class:: infomark
+
+**What this tool does**
+
+The compound converter combines several Open Babel command prompt converters into a single easy-to-use tool. It interconverts various chemistry and molecular modeling data files. The output format can be specified as well as several parameters. Some parameters are available for all tools (e.g. protonation state and pH) while others are specific for a given output format (e.g. exclude isotopes for conversion to canSMI).
+
+-----
+
+.. class:: infomark
+
+**Output**
+
+Can be specified manually.
+
+
+]]>
+    </help>
+    <expand macro="citations"/>
+</tool>

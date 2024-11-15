@@ -1,0 +1,272 @@
+<tool id="rbc_rnacode" name="RNAcode" version="0.3.2">
+    <description>Analyze the protein coding potential in MSA.</description>
+    <requirements>
+        <requirement type="package" version="0.3">rnacode</requirement>
+        <requirement type="package" version="9.22">ghostscript</requirement>
+    </requirements>
+    <version_command>RNAcode --version</version_command>
+    <command detect_errors="exit_code">
+    <![CDATA[
+        #if $cond_breakmaf.select_breakmaf == 'breakmaf'
+            '$__tool_directory__/breakMAF.pl'
+            --maxlength $cond_breakmaf.maxlength
+            --desiredLength $cond_breakmaf.desiredlength
+            < '$alignment' |  
+        #else
+            cat '$alignment' | 
+        #end if
+
+        #if $cond_breakmaf.select_breakmaf == 'breakmaf' and $cond_breakmaf.processseparately == 'yes'
+            '$__tool_directory__/processMAF.sh'
+        #else
+            RNAcode
+        #end if
+
+        $outputFormat
+        
+        #if $cutoff and $cutoff is not None
+            --cutoff $cutoff
+        #end if
+        
+        #if $num_samples and $num_samples is not None
+            --num-samples $num_samples
+        #end if
+        
+        $stop_early
+        $best_region
+        $best_only
+        
+        #if $cond_generateEPS.generateEPS == 'create'
+            --eps
+            --eps-dir eps/ 
+            #if $cond_generateEPS.eps_cutoff and $cond_generateEPS.eps_cutoff is not None
+                --eps-cutoff $cond_generateEPS.eps_cutoff
+            #end if
+        #end if
+        
+        #if $cond_scoringParameters.scoringParameters == 'custom'
+            --pars "$pars"
+        #end if
+        
+        #if $outputFormat.value == '--tabular'
+            --outfile $outFileDefault
+        #elif $outputFormat.value == '--gtf'
+            --outfile $outFileGTF
+        #end if
+
+        ## add missing header 
+        #if $cond_breakmaf.select_breakmaf != 'breakmaf' and $outputFormat.value == '--tabular':
+            && sed -i -e "1 i\HSS #\tStrand\tFrame\tLength\tFrom\tTo\tName\tStart\tEnd\tScore\tP" $outFileDefault        #end if
+
+        #if $cond_generateEPS.generateEPS == 'create'
+            #if $cond_generateEPS.imgoutfmt == 'zipeps'
+                 && tar -czf '$out_eps_zip' eps
+            #else if $cond_generateEPS.imgoutfmt == 'eps'
+                 && gs -sDEVICE=eps2write -dNOPAUSE -dBATCH -dSAFER -sOutputFile='$out_eps_mp' `ls -v eps/*.eps`
+            #end if     
+        #end if     
+    ]]>
+    </command>
+    <inputs>
+        <param name="alignment" type="data" format="maf" label="Multiple Alignment" help="Alignment needs to be formatted in ClustalW or MAF format"/>
+        <conditional name="cond_breakmaf">
+            <param name="select_breakmaf" type="select" label="Break long alignment blocks" help="If your alignments contain blocks of long genomic regions it is usually not reasonable to score these long regions as a whole.">
+                <option value="keepmaf" selected="true">Process original alignment</option>
+                <option value="breakmaf">Break long alignment blocks</option>
+            </param>
+            <when value="breakmaf">
+                <param argument="--maxLength" name="maxlength" type="integer" optional="true" value="400" label="maxLength" help="Break all blocks longer than that."/>
+                <param argument="--desiredLength" name="desiredlength" type="integer" optional="true" value="200" label="desiredLength" help="Try to create blocks of this size."/>
+                <param name="processseparately" type="boolean" value="false" truevalue="yes" falsevalue="no" label="process blocks separately" help="If enables RNAcode is called separately for each block. This might be a reasonable strategy if RNAcode fails for some blocks."/>
+            </when>
+            <when value="keepmaf"/>
+        </conditional>
+        <param argument="--cutoff" name="cutoff" type="float" optional="true" value="1.0" label="Cutoff" help="Show only regions that have a p-value below the given number. By default all hits are shown."/>
+        <param argument="--num_samples" name="num_samples" type="integer" optional="true" value="100" label="Number of samples" help="Number of random alignments that are sampled to calculate the p-value. RNAcode estimates the significance of a coding prediction by sampling a given number of random alignments. Default is 100 which gives reasonably stable p-values that are useful for assessing the relevance of a prediction."/>
+        <param argument="--stop_early" name="stop_early" type="boolean" truevalue="--stop-early" falsevalue="" checked="false" label="Stop early" help="Setting this option stops the sampling process as soon as it is clear that the best hit will not fall below the given p-value cutoff. For example, assume a p-value cutoff of 0.05 (see --cutoff) and a sample size of 1000 is given (see --num-samples). As soon as 50 random samples score better than the original alignment, the process is stopped and all hits in the original alignment are reported as p>0.05 (or by convention as 1.0 in gtf and tabular output)."/>
+        <param argument="--best_region" name="best_region" type="boolean" truevalue="--best-region" falsevalue="" checked="false" label="Show only best non-overlapping hits" help="By default all positive scoring segments are shown in the output if they fall below the given p-value cutoff. If two hits overlap (different frame or different strand) and --best_region is given only the hit with the highest score is shown. Strong coding regions often lead to statistically significant signals also in other frames. These hits are suppressed by this option and only the correct reading frame is reported."/>
+        <param argument="--best_only" name="best_only" type="boolean" truevalue="--best-only" falsevalue="" checked="false" label="Show only best hit" help="This options shows only the one single best hit for each alignment."/>
+        <conditional name="cond_scoringParameters">
+            <param name="scoringParameters" type="select" label="Scoring parameters" help="">
+                <option value="default" selected="true">Default</option>
+                <option value="custom">Custom</option>
+            </param>
+            <when value="default"/>
+            <when value="custom">
+                <param argument="--pars" name="pars" type="text" label="Scoring parameters as comma separated string:'DELTA,OMEGA,omega,stop_penalty'" help="See the appendix of the Paper for an explanation for the meaning of these parameters. Default: '-10.0,-4.0,-2.0,-8.0'"/>
+            </when>
+        </conditional>
+        <conditional name="cond_generateEPS">
+            <param name="generateEPS" type="select" label="Create plots" help="The generated plots are resolution independent vector graphics that can be included in any graphics software. For each high scoring segment below a given cutoff (see --eps-cutoff) a file named hss-N.eps is created (N is the running number of the high scoring segment)">
+                <option value="create">Create Plots</option>
+                <option value="nocreate" selected="true">Do not generate EPS plots</option>
+            </param>
+            <when value="create">
+                <param argument="--eps_cutoff" name="eps_cutoff" type="float" optional="true" value="0.05" label="Create plots only for high scoring segments with p better than:" help=""/>
+                <param name="imgoutfmt" type="select" label="Output format" help="For larger numbers of high scoring segments output to a collection can be slow. Choose zipped or single page eps in this case.">
+                    <option value="sepeps" selected="true">separate eps in collection</option>
+                    <option value="zipeps">zipped eps</option>
+                    <option value="eps">multi page eps</option>
+                </param>
+	    </when>
+            <when value="nocreate"/>
+        </conditional>
+
+        <param name="outputFormat" type="select" label="Output format">
+            <option value="--tabular" selected="true">Default</option>
+            <option value="--gtf">GTF genome annotation file</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="outFileDefault" format="tabular" label="${tool.name} on ${on_string}">
+            <filter>outputFormat == '--tabular'</filter>
+        </data>
+        <data name="outFileGTF" format="gtf" label="${tool.name} on ${on_string}">
+            <filter>outputFormat == '--gtf'</filter>
+        </data>
+        <collection name="output_eps" type="list" label="Plots for ${tool.name} on ${on_string} (plots)">
+            <filter>cond_generateEPS['generateEPS'] == "create" and cond_generateEPS['imgoutfmt'] == "sepeps"</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.eps" directory="eps" ext="eps"/>
+        </collection>
+        <data name="out_eps_zip" format="zip" label="${tool.name} on ${on_string} (plots)">
+            <filter>cond_generateEPS['generateEPS'] == "create" and cond_generateEPS['imgoutfmt'] == "zipeps"</filter>
+        </data>
+        <data name="out_eps_mp" format="eps" label="${tool.name} on ${on_string} (plots)">
+            <filter>cond_generateEPS['generateEPS'] == "create" and cond_generateEPS['imgoutfmt'] == "eps"</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="alignment" value="coding.aln"/>
+            <param name="outputFormat" value="--tabular"/>
+            <output name="outFileDefault" ftype="tabular" file="rnacode_result1.tabular" compare="sim_size"/>
+            <conditional name="cond_generateEPS">
+                <param name="generateEPS" value="create"/>
+                <param name="eps_cutoff" value="0.05"/>
+                <param name="imgoutfmt" value="sepeps" />
+            </conditional>
+            <output_collection name="output_eps" type="list" count="2">
+                <element name="hss-0" file="hss-0.eps" ftype="eps" compare="sim_size" delta="50000"/>
+                <element name="hss-1" file="hss-1.eps" ftype="eps" compare="sim_size" delta="50000"/>
+            </output_collection>
+            <!-- sim_size is needed due to rnacode using random sampling: result files differ, better tests should be implemented -->
+        </test>
+        <test>
+            <param name="alignment" value="coding.aln"/>
+            <conditional name="cond_generateEPS">
+                <param name="generateEPS" value="create"/>
+                <param name="eps_cutoff" value="0.05"/>
+                <param name="imgoutfmt" value="zipeps" />
+            </conditional>
+            <param name="outputFormat" value="--tabular"/>
+            <output name="outFileDefault" ftype="tabular" file="rnacode_result1.tabular" compare="sim_size"/>
+            <output name="out_eps_zip" ftype="zip" file="eps.tar.gz" compare="sim_size" delta="50000"/>
+            <!-- sim_size is needed due to rnacode using random sampling: result files differ, better tests should be implemented -->
+        </test>
+        <test>
+            <param name="alignment" value="coding.maf"/>
+            <conditional name="cond_breakmaf">
+                <param name="select_breakmaf" value="breakmaf"/>
+            </conditional>
+            <conditional name="cond_generateEPS">
+                <param name="generateEPS" value="create"/>
+                <param name="eps_cutoff" value="0.05"/>
+                <param name="imgoutfmt" value="eps" />
+            </conditional>
+            <param name="outputFormat" value="--gtf"/>
+            <output name="outFileGTF" ftype="gtf" file="rnacode_result2.gtf" compare="sim_size"/>
+            <output name="out_eps_mp" ftype="eps" file="eps.eps" compare="sim_size" delta="50000"/>
+            <!-- sim_size is needed due to rnacode using random sampling: result files differ, better tests should be implemented -->
+        </test>
+        <test>
+            <param name="alignment" value="coding.maf"/>
+            <conditional name="cond_breakmaf">
+                <param name="select_breakmaf" value="breakmaf"/>
+                <param name="processseparately" value="yes"/>
+            </conditional>
+            <param name="generateEPS" value="nocreate"/>
+            <param name="outputFormat" value="--gtf"/>
+            <output name="outFileGTF" ftype="gtf" file="rnacode_result2.gtf" compare="sim_size"/>
+            <!-- sim_size is needed due to rnacode using random sampling: result files differ, better tests should be implemented -->
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**RNAcode** 
+Predicts protein coding regions in an alignment of homologous
+nucleotide sequences. The prediction is based on evolutionary
+signatures typical for protein genese, i.e. the presence of
+synonyomous/conservative nucleotide mutations, conservation of the
+reading frame and absence of stop codons.
+
+RNAcode does not rely on any species specific sequence characteristics
+whatsoever and does not use any machine learning techniques. The only
+input required for RNAcode is a multiple sequence alignment either in
+MAF or Clustal W format. RNAcode reports local regions of unusual high
+coding potential together with an associated p-value.
+
+**Input alignment**
+
+The input alignment needs to be formatted in ClustalW format or MAF
+format (http://genome.ucsc.edu/FAQ/FAQformat#format5). The latter
+format allows to include genomic coordinates which can be used to
+produce annotation files. 
+
+Important: RNAcode uses the first sequence as reference sequence,
+i.e. all results and reported coding regions apply to this reference
+sequence.
+
+Currently the alignments has to contain at least 3 sequences. Gaps
+have to be given as dash ('-'). Unspecified letters given as 'N' are
+allowed and treated neutrally during all calculations. No difference is
+made between uppercase or lowercase input, i.e. 'softly'-repeat masked
+sequences which use lowercase letters for masked regions are treated
+the same way as unmasked sequences.
+
+**Output format**
+
+In the default output each prediction is reported on one line by 10 fields.
+
+1. HSS id    
+            Unique running number for each high scoring segment
+            predicted in one RNAcode call
+
+2. Frame    
+            The reading frame phasing relative to the starting
+            nucleotide position in the reference sequence. +1 means
+            that the first nucleotide in the reference sequence is in
+            the same frame as the predicted coding region. Negative
+            frames indicate that the predicted regions are on the
+            reverse complement strand.
+
+3. Length   
+            The length of the predicted region in amino acids
+
+4. From  5. To   
+            The position of the first/last amino acid in the translated
+            nucleotide sequence of the reference sequence starting
+            with 1.
+
+6. Name      
+            The name of the reference sequence as given in the input alignment.
+  
+7. Start 8. End   
+            The nucleotide position in the reference sequence of the
+            predicted coding region. If no genomic coordinates are given
+            (if you provide a CLUSTAL W as input) the first nucleotide position in
+            the references sequence is set to 1, otherwise the positions are the
+            1-based genomic coordinates as given in the input MAF file.
+
+9.  Score    
+            The coding potential score. High scores indicate high coding potential. 
+
+10. P        
+            The p-value associated with the score. This is the probability
+            that a random alignment with same properties contains an equally good
+            or better hit.
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1261/rna.2536111</citation>
+    </citations>
+</tool>

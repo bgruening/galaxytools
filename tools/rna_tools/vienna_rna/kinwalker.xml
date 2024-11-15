@@ -1,0 +1,134 @@
+<tool id="viennarna_kinwalker" name="@EXECUTABLE@" version="@VERSION@.0">
+    <description>cotranscriptional folding of RNAs</description>
+    <macros>
+        <token name="@EXECUTABLE@">kinwalker</token>
+        <import>macros.xml</import>
+    </macros>
+     <expand macro="requirements" />
+    <expand macro="stdio" />
+    <expand macro="version_command" />
+    <command>
+<![CDATA[
+    head -n 1 '$input_sequence' | head -c -1 -q  > seq.ident
+    &&
+    sed '1d' '$input_sequence' > input.seq
+    &&
+    kinwalker
+        $init_structure
+        $interrupt
+        ##$printfront
+        
+        --barrier_heuristic $barrier_heuristic.used
+        
+        #if $barrier_heuristic.used == "M"
+            --grouping $barrier_heuristic.grouping
+            --lookahead $barrier_heuristic.lookahead
+        #else if $barrier_heuristic.used == "B"
+            --maxkeep $barrier_heuristic.maxkeep
+        #end if
+        
+        --dangle $dangle
+        --noLonelyPairs $noLonelyPairs
+        --transcribed $transcribed
+        --transcription_rate $transcription_rate
+        --windowsize $windowsize
+        
+        < input.seq
+        
+        > blah
+         
+        &&
+        sed -n '2s/[\.\(\)]\+\s\+\(.\+\)$/ mfe: \1/p' blah > energy
+        
+        &&
+        cat seq.ident energy > '$mfe_struct'
+        
+        &&
+        sed -e '2s/^\([\.\(\)]\+\).*$/\1/' -ne '1,2p' blah >> '$mfe_struct'
+        
+        &&
+        sed -e 's/[ \t]*$//' -ne '/TRAJ/,/Kinwal/ {/TRAJ/n;/Kinwal/!{s/\s/\t/gp}}' blah > '$trajectory'
+]]>
+    </command>
+    <inputs>
+        <param name="input_sequence" format="fasta" type="data" label="Input sequence" help="A single sequence in FASTA format"/>
+        <param name="init_structure" type="boolean" truevalue="--init_structure" falsevalue="" checked="false" label="Start with a structure other than the open chain" help="(--init_structure)"/>
+        <param name="interrupt" type="boolean" truevalue="--interrupt" falsevalue="" checked="false" label="Allow interrupted folding trajectories when the barrier is exceeded" help="(--interrupt)"/>
+        <!-- need to implement with dataset collections <param name="printfront" type="boolean" truevalue="!doublehypen!printfront" falsevalue="" checked="true" label="Creates PS plots of front progression" help="(!doublehypen!printfront)"/> -->
+        <conditional name="barrier_heuristic">
+            <param name="used" type="select" label="Barrier Heuristic" help="(--barrier_heuristic)">
+                <option value="M" selected="true">Morgan-Higgs</option>
+                <option value="S">Limit small stacks</option>
+                <option value="B">Barriers</option>
+                <option value="A">All</option>
+            </param>
+            <when value="M">
+                <param name="grouping" type="select" label="How to treat conflict groups" help="(--grouping)">
+                    <option value="standard" selected="true">Standard</option>
+                    <option value="regroup">Re-group</option>
+                </param>
+                <param name="lookahead" type="integer" value="1" label="Number of basepairs that MorganHiggs forms its subpaths from" help="(--lookahead)"/>
+            </when>
+            <when value="S" />
+            <when value="B">
+                <param name="maxkeep" type="integer" value="1" label="Breadth of breadth first search" help="(--maxkeep)"/>
+            </when>
+            <when value="A" />
+        </conditional>
+        <param name="dangle" type="select" label="Dangle value as in VienneRNA package" help="(--dangle)">
+            <option value="0" selected="true">0</option>
+            <option value="1">1</option>
+            <option value="2">2</option>
+        </param>
+        <param name="noLonelyPairs" type="integer" value="2" label="Value of noLonelyPairs as in ViennaRNA" help="(--noLonelyPairs)"/>
+        
+        <param name="transcribed" type="integer" value="1" label="Number of bases initially transcribed" help="0 means all is transcribed (--transcribed)"/>
+        <param name="transcription_rate" type="float" value="200" label="Number of bases transcribed per second" help="(--transcription_rate)"/>
+        <param name="windowsize" type="integer" value="0" label="Max size of substructures considered for folding events during transcription" help="0= all are considered. (--windowsize)"/>
+    </inputs>
+    <outputs>
+        <data format="fasta" name="mfe_struct" label="MFE structure from ${tool.name} on ${on_string}" />
+        <data format="tabular" name="trajectory" label="Trajectory of ${tool.name} on ${on_string}" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_sequence" value="test_sequence_input.fasta" />
+            <param name="init_structure" value="" />
+            <param name="interrupt" value="" />
+            <param name="used" value="M" />
+            <param name="grouping" value="standard" />
+            <param name="lookahead" value="1" />
+            <param name="dangle" value="0" />
+            <param name="noLonelyPairs" value="2" />
+            <param name="transcribed" value="1" />
+            <param name="transcription_rate" value="200" />
+            <param name="windowsize" value="0" />
+            <output name="mfe_struct" file="mfe_struct_result.fasta" />
+            <output name="trajectory" file="trajectory_result.tabular" />
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+Kinwalker splits the folding process into a series of events where each event can either be a folding event or a transcription event. In each transcription event one base from the RNA sequence is appended to the already transcribed and (partially) folded subsequence. 
+Kinwalker executes transcription events at regular time intervals. In each folding event a subsequence of the already transcribed RNA sequence is selected and a new structure is formed by combining base pairs from the current structure with base pairs from the mfE structure of that subsequence. 
+
+This is done in such a way that the new structure includes base pairs from both structures in an energetically favorable manner. Kinwalker estimates the waiting times for individual folding events depending on the height of the energy barrier between the current structure and the new structure into which the molecule is folded. Folding events between structures can only occur, if the energy barrier between them is less than the maximum allowed energy barrier. 
+
+As folding paths can only be calculated exhaustively for short sequences (n>100), heuristic approaches have to be employed which explicitly construct a (re)folding path between the two structures. The saddle height is then estimated as the highest point along the path. The best known algorithm for approximating saddle heights between RNA conformations is the Morgan-Higgs heuristic, which tries to find a folding path from an origin secondary structure to a target secondary structure where the maximum height along the path is minimal. The  heuristic models state transitions at base pair resolution.
+]]>
+
+**Input**
+
+RNA sequence in FASTA format
+
+**Output**
+
+RNA folding trajectory
+
+    </help>
+    <citations>
+        <citation type="doi">10.1016/j.jmb.2008.02.064</citation>
+    </citations>
+</tool>

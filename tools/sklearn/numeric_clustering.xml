@@ -1,0 +1,405 @@
+<tool id="sklearn_numeric_clustering" name="Numeric Clustering" version="@VERSION@" profile="@PROFILE@">
+    <description></description>
+    <macros>
+        <import>main_macros.xml</import>
+    </macros>
+    <expand macro="python_requirements" />
+    <expand macro="macro_stdio" />
+    <version_command>echo "@VERSION@"</version_command>
+    <command><![CDATA[
+    python "$cluster_script" '$inputs'
+]]>
+    </command>
+    <configfiles>
+        <inputs name="inputs" />
+        <configfile name="cluster_script">
+            <![CDATA[
+import sys
+import json
+import numpy as np
+import sklearn.cluster
+import pandas
+
+from sklearn import metrics
+from scipy.io import mmread
+from galaxy_ml.utils import read_columns
+
+
+N_JOBS = int(__import__('os').environ.get('GALAXY_SLOTS', 1))
+
+input_json_path = sys.argv[1]
+with open(input_json_path, "r") as param_handler:
+    params = json.load(param_handler)
+
+
+selected_algorithm = params["input_types"]["algorithm_options"]["selected_algorithm"]
+
+my_class = getattr(sklearn.cluster, selected_algorithm)
+cluster_object = my_class()
+options = params["input_types"]["algorithm_options"]["options"]
+
+cluster_object.set_params(**options)
+if 'n_jobs' in cluster_object.get_params():
+    cluster_object.set_params( n_jobs=N_JOBS )
+
+header = None
+#if $input_types.selected_input_type == "sparse":
+data_matrix = mmread("$infile")
+#else:
+data = pandas.read_csv("$infile", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None)
+
+header = 'infer' if params["input_types"]["header"] else None
+column_option = params["input_types"]["column_selector_options"]["selected_column_selector_option"]
+if column_option in ["by_index_number", "all_but_by_index_number", "by_header_name", "all_but_by_header_name"]:
+    c = params["input_types"]["column_selector_options"]["col"]
+else:
+    c = None
+data_matrix = read_columns(
+    "$infile",
+    c = c,
+    c_option = column_option,
+    sep='\t',
+    header=header,
+    parse_dates=True,
+    encoding=None)
+#end if
+
+prediction = cluster_object.fit_predict( data_matrix )
+
+if len(np.unique(prediction)) > 1:
+    silhouette_score = metrics.silhouette_score(data_matrix,prediction,metric='euclidean')
+else:
+    silhouette_score = -1
+sys.stdout.write('silhouette score:' + '\t' + str(silhouette_score) + '\n')
+
+prediction_df = pandas.DataFrame(prediction, columns=["predicted"])
+
+#if $input_types.selected_input_type == "sparse":
+res = prediction_df
+#else:
+res = pandas.concat([data, prediction_df], axis=1)
+#end if
+
+res.to_csv(path_or_buf = "$outfile", sep="\t", index=False, header=False)
+]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="input_types">
+            <param name="selected_input_type" type="select" label="Select the format of input data">
+                <option value="tabular" selected="true">Tabular Format (tabular, txt)</option>
+                <option value="sparse">Sparse Vector Representation (mtx)</option>
+            </param>
+            <when value="sparse">
+                <param name="infile" type="data" format="txt" label="Sparse vector (scipy.sparse.csr_matrix) file:" help="The following clustering algorithms support sparse matrix operations: ''Birch'', ''DBSCAN'', ''KMeans'', ''Mini BatchK Means'', and ''Spectral Clustering''. If your data is in tabular format, please use other clustering algorithms." />
+                <expand macro="clustering_algorithms_options" />
+            </when>
+            <when value="tabular">
+                <param name="infile" type="data" format="tabular" label="Data file with numeric values" />
+                <param name="header" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="True" label="Does the dataset contain header:" />
+                <conditional name="column_selector_options">
+                    <expand macro="samples_column_selector_options" col_name="col" multiple="true" infile="infile" />
+                </conditional>
+                <!--expand macro="clustering_algorithms_options"-->
+                <conditional name="algorithm_options">
+                    <param name="selected_algorithm" type="select" label="Clustering Algorithm">
+                        <option value="AgglomerativeClustering">Hierarchical Agglomerative Clustering</option>
+                        <option value="AffinityPropagation">Affinity Propagation</option>
+                        <option value="SpectralClustering">Spectral Clustering</option>
+                        <option value="MiniBatchKMeans">Mini Batch KMeans</option>
+                        <option value="MeanShift">MeanShift</option>
+                        <option value="KMeans">KMeans</option>
+                        <option value="DBSCAN">DBSCAN</option>
+                        <option value="Birch">Birch</option>
+                    </param>
+                    <when value="KMeans">
+                        <expand macro="kmeans_advanced_options" />
+                    </when>
+                    <when value="DBSCAN">
+                        <expand macro="dbscan_advanced_options" />
+                    </when>
+                    <when value="Birch">
+                        <expand macro="birch_advanced_options" />
+                    </when>
+                    <when value="SpectralClustering">
+                        <expand macro="spectral_clustering_advanced_options" />
+                    </when>
+                    <when value="MiniBatchKMeans">
+                        <expand macro="minibatch_kmeans_advanced_options" />
+                    </when>
+                    <when value="AffinityPropagation">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <param argument="damping" type="float" optional="true" value="0.5" label="Damping factor" help="Damping factor between 0.5 and 1." />
+                            <expand macro="max_iter" default_value="200" />
+                            <param argument="convergence_iter" type="integer" optional="true" value="15" label="Number of iterations at each convergence step" help="Number of iterations with no change in the number of estimated clusters that stops the convergence." />
+                            <param argument="copy" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Copy" help="If False, the affinity matrix is modified inplace by the algorithm, for memory efficiency." />
+                            <!--param argument="preference"/-->
+                            <param argument="affinity" type="select" label="Affinity" help="Affinity to use; euclidean uses the negative squared euclidean distance between points.">
+                                <option value="euclidean">Euclidean</option>
+                                <option value="precomputed">precomputed</option>
+                            </param>
+                        </section>
+                    </when>
+                    <when value="MeanShift">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <param argument="bandwidth" type="float" optional="true" value="" label="Kernel bandwidth" help="Bandwidth used in the RBF kernel. If not given, it will be computed using a heuristic based on the median of all pairwise distances." />
+                            <!--param argument="seeds"/-->
+                            <param argument="bin_seeding" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Discretize initial kernel locations" help="If true, initial kernel locations are the bins grid whose coarseness corresponds to the bandwidth, speeding up the algorithm." />
+                            <param argument="min_bin_freq" type="integer" optional="true" value="1" label="Minimum number of seeds per bin" help="To speed up the algorithm, accept only those bins with at least min_bin_freq points as seeds." />
+                            <param argument="cluster_all" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolflase" checked="true" label="Cluster all" help="If true, all points (including orphans) are clustered. If false, orphans are given cluster label -1." />
+                        </section>
+                    </when>
+                    <when value="AgglomerativeClustering">
+                        <section name="options" title="Advanced Options" expanded="False">
+                            <expand macro="n_clusters" default_value="2" />
+                            <param argument="affinity" type="select" label="Affinity" help="Metric used to compute the linkage. If linkage is ''ward'', only ''euclidean'' is accepted.">
+                                <option value="euclidean">Euclidean</option>
+                                <option value="manhattan">Manhattan</option>
+                                <option value="l1">L1</option>
+                                <option value="l2">L2</option>
+                                <option value="cosine">cosine</option>
+                                <option value="precomputed">precomputed</option>
+                            </param>
+                            <!--param argument="memory"-->
+                            <!--param argument="connectivity"-->
+                            <!--param argument="n_components"/-->
+                            <!--param argument="compute_full_tree"-->
+                            <param argument="linkage" type="select" optional="true" label="Linkage" help="">
+                                <option value="ward" selected="true">ward</option>
+                                <option value="complete">complete</option>
+                                <option value="average">average</option>
+                                <option value="single">single</option>
+                            </param>
+                            <!--param argument="pooling_func"-->
+                        </section>
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="outfile" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="selected_algorithm" value="KMeans" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="n_clusters" value="4" />
+            <param name="init" value="k-means++" />
+            <param name="random_state" value="100" />
+            <output name="outfile" file="cluster_result01.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="KMeans" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="n_clusters" value="4" />
+            <param name="init" value="random" />
+            <param name="random_state" value="100" />
+            <output name="outfile" file="cluster_result02.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="DBSCAN" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="algorithm" value="kd_tree" />
+            <param name="leaf_size" value="10" />
+            <param name="eps" value="1.0" />
+            <output name="outfile" file="cluster_result03.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="Birch" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="n_clusters" value="4" />
+            <param name="threshold" value="0.008" />
+            <output name="outfile" file="cluster_result04.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="Birch" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="branching_factor" value="20" />
+            <output name="outfile" file="cluster_result05.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="AffinityPropagation" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="affinity" value="euclidean" />
+            <param name="copy" value="false" />
+            <output name="outfile" file="cluster_result06.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="AffinityPropagation" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="damping" value="0.8" />
+            <output name="outfile" file="cluster_result07.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="MeanShift" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="min_bin_freq" value="3" />
+            <output name="outfile" file="cluster_result08.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="MeanShift" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="cluster_all" value="False" />
+            <output name="outfile" file="cluster_result09.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="AgglomerativeClustering" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="affinity" value="euclidean" />
+            <param name="linkage" value="average" />
+            <param name="n_clusters" value="4" />
+            <output name="outfile" file="cluster_result10.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="AgglomerativeClustering" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="linkage" value="complete" />
+            <param name="n_clusters" value="4" />
+            <output name="outfile" file="cluster_result11.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="SpectralClustering" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="col" value="2,3,4" />
+            <param name="header" value="false" />
+            <param name="eigen_solver" value="arpack" />
+            <param name="n_neighbors" value="12" />
+            <param name="n_clusters" value="4" />
+            <param name="assign_labels" value="discretize" />
+            <param name="random_state" value="100" />
+            <output name="outfile" file="cluster_result12.txt" compare="sim_size" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="SpectralClustering" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="col" value="2,3,4" />
+            <param name="header" value="false" />
+            <param name="assign_labels" value="discretize" />
+            <param name="random_state" value="100" />
+            <param name="degree" value="2" />
+            <output name="outfile" file="cluster_result13.txt" compare="sim_size" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="MiniBatchKMeans" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="2,3,4" />
+            <param name="tol" value="0.5" />
+            <param name="random_state" value="100" />
+            <output name="outfile" file="cluster_result14.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="MiniBatchKMeans" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="n_init" value="5" />
+            <param name="col" value="2,3,4" />
+            <param name="batch_size" value="10" />
+            <param name="n_clusters" value="4" />
+            <param name="random_state" value="100" />
+            <param name="reassignment_ratio" value="1.0" />
+            <output name="outfile" file="cluster_result15.txt" />
+        </test>
+        <test>
+            <param name="infile" value="numeric_values.tabular" ftype="tabular" />
+            <param name="selected_algorithm" value="KMeans" />
+            <param name="selected_input_type" value="tabular" />
+            <param name="header" value="false" />
+            <param name="col" value="1" />
+            <param name="n_clusters" value="4" />
+            <param name="random_state" value="100" />
+            <output name="outfile" file="cluster_result16.txt" />
+        </test>
+        <test>
+            <param name="infile" value="sparse.mtx" ftype="txt" />
+            <param name="selected_input_type" value="sparse" />
+            <param name="selected_algorithm" value="KMeans" />
+            <param name="n_clusters" value="2" />
+            <param name="init" value="k-means++" />
+            <param name="random_state" value="100" />
+            <output name="outfile" file="cluster_result17.txt" />
+        </test>
+        <test>
+            <param name="infile" value="sparse.mtx" ftype="txt" />
+            <param name="selected_algorithm" value="DBSCAN" />
+            <param name="selected_input_type" value="sparse" />
+            <param name="algorithm" value="kd_tree" />
+            <param name="leaf_size" value="10" />
+            <param name="eps" value="1.0" />
+            <output name="outfile" file="cluster_result18.txt" />
+        </test>
+        <test>
+            <param name="infile" value="sparse.mtx" ftype="txt" />
+            <param name="selected_algorithm" value="Birch" />
+            <param name="selected_input_type" value="sparse" />
+            <param name="n_clusters" value="2" />
+            <param name="threshold" value="0.008" />
+            <output name="outfile" file="cluster_result19.txt" />
+        </test>
+        <test>
+            <param name="infile" value="sparse.mtx" ftype="txt" />
+            <param name="selected_algorithm" value="MiniBatchKMeans" />
+            <param name="selected_input_type" value="sparse" />
+            <param name="n_init" value="5" />
+            <param name="batch_size" value="10" />
+            <param name="n_clusters" value="2" />
+            <param name="random_state" value="100" />
+            <param name="reassignment_ratio" value="1.0" />
+            <output name="outfile" file="cluster_result20.txt" />
+        </test>
+        <test>
+            <param name="infile" value="sparse.mtx" ftype="txt" />
+            <param name="selected_algorithm" value="SpectralClustering" />
+            <param name="selected_input_type" value="sparse" />
+            <param name="assign_labels" value="discretize" />
+            <param name="n_clusters" value="2" />
+            <param name="random_state" value="100" />
+            <param name="degree" value="2" />
+            <output name="outfile" file="cluster_result21.txt" />
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+This tool offers different clustering algorithms which are provided by
+scikit-learn to find similarities among samples and cluster the samples based on these similarities.
+    ]]>    </help>
+    <expand macro="sklearn_citation" />
+</tool>

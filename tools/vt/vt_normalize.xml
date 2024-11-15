@@ -1,0 +1,109 @@
+<tool id="vt_@BINARY@" name="VT @BINARY@" version="@VERSION@.0">
+    <description>normalizes variants in a VCF file</description>
+    <macros>
+        <import>vt_macros.xml</import>
+        <token name="@BINARY@">normalize</token>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="stdio" />
+    <expand macro="version_command" />
+    <command>
+<![CDATA[
+        vt @BINARY@
+            #if str($output_format) == 'bcf':
+                -o normalised.bcf
+            #else:
+                -o normalised.vcf
+            #end if
+            ##-q  do not print options and summary []
+            -w $window
+
+            #if str( $intervals_file ) != 'None':
+                -I  "${intervals_file}"
+            #end if
+            $n
+            ##-i  intervals []
+
+            #if $reference_source.reference_source_selector != "history":
+                -r "${reference_source.reference_genome.fields.path}"
+            #else:
+                -r "${reference_source.reference_genome}"
+            #end if
+
+            "${ infile }"
+
+        &&
+        ## For some reason, the file move will randomly produce empty files.
+        ## Wait two seconds to let the system close file handlers and clean up.
+        sleep 2
+        &&
+
+        #if str($output_format) == 'bcf':
+            mv normalised.bcf "${ outfile }";
+        #else:
+            mv normalised.vcf "${ outfile }";
+        #end if
+
+]]>
+    </command>
+    <inputs>
+        <param name="infile" type="data" format="vcf" label="VCF file to be normalised" />
+
+        <conditional name="reference_source">
+            <param name="reference_source_selector" type="select" label="Choose the source for the reference list">
+                <option value="cached" selected="True">Locally cached</option>
+                <option value="history">History</option>
+            </param>
+            <when value="cached">
+                <param name="reference_genome" type="select" label="Using reference genome">
+                    <options from_data_table="fasta_indexes">
+                        <filter type="data_meta" ref="infile" key="dbkey" column="1" />
+                        <validator type="no_options" message="No reference genome is available for the build associated with the selected input dataset" />
+                    </options>
+                </param>
+            </when>
+            <when value="history">
+                <param name="reference_genome" type="data" format="fasta" label="Using reference file" />
+            </when>
+        </conditional>
+        <param name="intervals_file" type="data" format="bed" optional="True" label="File containing list of intervals" />
+        <param name="window" type="integer" value="10000" label="Window size for local sorting of variants"
+            help="(-w)">
+            <validator type="in_range" min="0"/>
+        </param>
+        <param argument="-n" type="boolean" truevalue="-n" falsevalue=""
+            label="Do not fail when REF is inconsistent with reference sequence for non SNPs"
+            help=""/>
+        <param name="output_format" type="select" label="Choose the output format" help="">
+            <option value="bcf">BCF</option>
+            <option value="vcf" selected="true">VCF</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="outfile" format="vcf" label="${tool.name} on ${on_string}">
+            <change_format>
+                <when input="output_format" value="bcf" format="bcf" />
+            </change_format>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <param name="infile" value="infile01.vcf" />
+            <param name="reference_source_selector" value="history" />
+            <param name="reference_genome" value="20.fa.bz2" />
+            <param name="n" value="True" />
+            <output name="outfile" file="normalize_result01.vcf" ftype="vcf" />
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+Normalize variants in a VCF file. Normalized variants may have their positions changed; in such cases,
+the normalized variants are reordered and output in an ordered fashion. The local reordering takes place over a window of 10000 base pairs.
+
+@CITATION@
+]]>
+    </help>
+    <expand macro="citations"/>
+</tool>
