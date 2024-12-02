@@ -1,7 +1,7 @@
-<tool id="diff" name="diff" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@">
+<tool id="diff" name="diff" version="@TOOL_VERSION@+galaxy@GALAXY_VERSION@" profile="23.0">
     <description>analyzes two files and generates an unidiff text file with information about the differences and an optional Html report</description>
     <macros>
-        <token name="@TOOL_VERSION@">3.7</token>
+        <token name="@TOOL_VERSION@">3.10</token>
         <token name="@GALAXY_VERSION@">0</token>
     </macros>
     <requirements>
@@ -13,8 +13,15 @@
         <regex match="diff: memory exhausted" source="stdout" level="fatal_oom" description="Out of memory error occurred"/>
     </stdio>
     <command><![CDATA[
-        diff -u '$input1' '$input2' > '$diff_file';
-        #if $generate_report:
+        diff
+        #if $report_format.report_format_select in ['txt_lines', 'html']:
+            ## the -u option is needed to convert the output later to HTML
+            -u
+        #else if $report_format.report_format_select == 'txt_columns':
+            -y
+        #end if
+        '$input1' '$input2' > '$diff_file' &&
+        #if $report_format.report_format_select == 'html':
             sed -e 's/@@title@@/Diff report for "$input1.element_identifier" and "$input2.element_identifier"/g'
                 -e 's/@@outputformat@@/'$output_format'/g'
                 -e '/@@diffoutput@@/{r'$diff_file'' -e ';d}'
@@ -25,11 +32,21 @@
     <inputs>
         <param name="input1" type="data" format="txt" label="First input file"/>
         <param name="input2" type="data" format="txt" label="Second input file"/>
-        <param name="generate_report" type="boolean" checked="true" truevalue="true" falsevalue="false" label="Generate HTML report" help="Generates an HTML report to visualize the differences"/>
-        <param name="output_format" type="select" label="Choose report output format" help="Displays the differences in the report using the selected format. Either line by line or side by side.">
-            <option value="side-by-side">Side by side</option>
-            <option value="line-by-line">Line by line</option>
-        </param>
+        <conditional name="report_format">
+            <param name="report_format_select" type="select" label="Choose a report format">
+                <option value="txt_lines">Text file, line-by-line (-u)</option>
+                <option value="txt_columns">Text file, side-by-side (-y)</option>
+                <option value="html">Generates an HTML report to visualize the differences</option>
+            </param>
+            <when value="txt_lines"/>
+            <when value="txt_columns"/>
+            <when value="html">
+                <param name="output_format" type="select" label="Choose report output format" help="Displays the differences in the report using the selected format. Either line by line or side by side.">
+                    <option value="side-by-side">Side by side</option>
+                    <option value="line-by-line">Line by line</option>
+                </param>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
         <data format="txt" name="diff_file" from_work_dir="output.txt" label="${tool.name} on ${on_string}: Raw Output"/>
@@ -41,7 +58,9 @@
         <test expect_exit_code="0" expect_failure="false" expect_num_outputs="1">
             <param name="input1" value="file1.txt"/>
             <param name="input2" value="file1.txt"/>
-            <param name="generate_report" value="false"/>
+            <conditional name="report_format">
+                <param name="report_format_select" value="txt_lines"/>
+            </conditional>
             <output name="diff_file">
                 <assert_contents>
                     <has_n_lines n="0"/>
@@ -51,7 +70,9 @@
         <test expect_exit_code="1" expect_failure="false" expect_num_outputs="1">
             <param name="input1" value="file1.txt"/>
             <param name="input2" value="file2.txt"/>
-            <param name="generate_report" value="false"/>
+            <conditional name="report_format">
+                <param name="report_format_select" value="txt_lines"/>
+            </conditional>
             <output name="diff_file">
                 <assert_contents>
                     <has_n_lines n="5"/>
@@ -63,7 +84,9 @@
         <test expect_exit_code="0" expect_failure="false" expect_num_outputs="2">
             <param name="input1" value="file1.txt"/>
             <param name="input2" value="file2.txt"/>
-            <param name="generate_report" value="true"/>
+            <conditional name="report_format">
+                <param name="report_format_select" value="html"/>
+            </conditional>
             <output name="html_file">
                 <assert_contents>
                     <has_text text="!DOCTYPE html"/>
@@ -73,8 +96,10 @@
         <test expect_exit_code="0" expect_failure="false" expect_num_outputs="2">
             <param name="input1" value="file1.txt"/>
             <param name="input2" value="file2.txt"/>
-            <param name="generate_report" value="true"/>
-            <param name="output_format" value="side-by-side"/>
+            <conditional name="report_format">
+                <param name="report_format_select" value="html"/>
+                <param name="output_format" value="side-by-side"/>
+            </conditional>
             <output name="html_file">
                 <assert_contents>
                     <has_text text="!DOCTYPE html"/>
@@ -85,8 +110,10 @@
         <test expect_exit_code="0" expect_failure="false" expect_num_outputs="2">
             <param name="input1" value="file1.txt"/>
             <param name="input2" value="file2.txt"/>
-            <param name="generate_report" value="true"/>
-            <param name="output_format" value="line-by-line"/>
+            <conditional name="report_format">
+                <param name="report_format_select" value="html"/>
+                <param name="output_format" value="line-by-line"/>
+            </conditional>
             <output name="html_file">
                 <assert_contents>
                     <has_text text="!DOCTYPE html"/>
@@ -97,7 +124,10 @@
         <test expect_exit_code="0" expect_failure="false" expect_num_outputs="2">
             <param name="input1" value="file 3.txt"/>
             <param name="input2" value="file 3.txt"/>
-            <param name="generate_report" value="true"/>
+            <conditional name="report_format">
+                <param name="report_format_select" value="html"/>
+                <param name="output_format" value="side-by-side"/>
+            </conditional>
             <output name="diff_file">
                 <assert_contents>
                     <has_n_lines n="0"/>
