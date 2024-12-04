@@ -615,8 +615,10 @@ class JbrowseConnector(object):
 
     def text_index(self):
         # Index tracks
-        args = ["jbrowse", "text-index"]
-        self.subprocess_check_call(args)
+        e = os.environ
+        e["SHELL"] = "/bin/sh"
+        cmd = ["jbrowse", "text-index"]
+        subprocess.run(cmd, env=e, shell=True)
 
     def add_hic(self, data, trackData):
         """
@@ -1108,12 +1110,14 @@ class JbrowseConnector(object):
                 url = "%s.pif.gz" % tId
                 cmd = ["cp", data, fakeName]
                 self.subprocess_check_call(cmd)
+                e = os.environ
+                e["SHELL"] = "/bin/sh"
                 cmd = [
                     "jbrowse",
                     "make-pif",
                     fakeName,
                 ]
-                self.subprocess_check_call(cmd)
+                subprocess.run(cmd, env=e, shell=True)
                 usePIF = True
             else:
                 dest = os.path.join(self.outdir, url)
@@ -1534,9 +1538,10 @@ class JbrowseConnector(object):
         """
         dest = self.outdir
         if (not os.path.exists(self.jbrowse2path)) or realclone:
-            self.subprocess_check_call(
-                ["jbrowse", "create", dest, "-f", "--tag", f"{JB2VER}"]
-            )
+            e = os.environ
+            e["SHELL"] = "/bin/sh"
+            cmd = ["jbrowse", "create", dest, "-f", "--tag", f"{JB2VER}"]
+            subprocess.run(cmd, env=e, shell=True)
         else:
             shutil.copytree(self.jbrowse2path, dest, dirs_exist_ok=True)
         for fn in [
