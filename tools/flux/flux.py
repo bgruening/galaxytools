@@ -12,6 +12,7 @@ if prompt_type == "file":
         prompt = f.read().strip()
 elif prompt_type == "text":
     prompt = sys.argv[3]
+print(f"Creating image from prompt: {prompt}")
 
 if "dev" in model_path:
     num_inference_steps = 20
