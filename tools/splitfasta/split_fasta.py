@@ -42,7 +42,6 @@ with open(input_filename) as input_file:
     chunk_record_count = 0  # how many lines have we written to the output file
     records = []
     for record in SeqIO.parse(input_file, "fasta"):
-        print(f"processing record {record}")
         records.append(record)
         if num_chunks == 0 or (
             count < num_chunks and len(records) >= records_per_chunk
