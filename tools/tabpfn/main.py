@@ -23,12 +23,12 @@ def train_evaluate(args):
     """
     tr_features, tr_labels = separate_features_labels(args["train_data"])
     te_features, te_labels = separate_features_labels(args["test_data"])
-    classifier = TabPFNClassifier(device='cpu', N_ensemble_configurations=32)
+    classifier = TabPFNClassifier(device='cpu')
     s_time = time.time()
     classifier.fit(tr_features, tr_labels)
     e_time = time.time()
     print("Time taken by TabPFN for training: {} seconds".format(e_time - s_time))
-    y_eval, p_eval = classifier.predict(te_features, return_winning_probability=True)
+    y_eval = classifier.predict(te_features)
     print('Accuracy', accuracy_score(te_labels, y_eval))
     pred_probas_test = classifier.predict_proba(te_features)
     te_features["predicted_labels"] = y_eval
