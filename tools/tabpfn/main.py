@@ -11,7 +11,7 @@ from tabpfn import TabPFNClassifier
 
 
 def separate_features_labels(data):
-    df = pd.read_csv(data, sep=",")
+    df = pd.read_csv(data, sep="\t")
     labels = df.iloc[:, -1]
     features = df.iloc[:, :-1]
     return features, labels
@@ -32,7 +32,7 @@ def train_evaluate(args):
     print('Accuracy', accuracy_score(te_labels, y_eval))
     pred_probas_test = classifier.predict_proba(te_features)
     te_features["predicted_labels"] = y_eval
-    te_features.to_csv("output_predicted_data", sep="\t", index=None)
+    te_features.to_csv("output_predicted_data.tabular", sep="\t", index=None)
     precision, recall, thresholds = precision_recall_curve(te_labels, pred_probas_test[:, 1])
     average_precision = average_precision_score(te_labels, pred_probas_test[:, 1])
     plt.figure(figsize=(8, 6))
