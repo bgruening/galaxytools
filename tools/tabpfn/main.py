@@ -10,8 +10,8 @@ import pandas as pd
 from sklearn.metrics import (
     average_precision_score,
     precision_recall_curve,
-    root_mean_squared_error,
     r2_score,
+    root_mean_squared_error
 )
 from tabpfn import TabPFNClassifier, TabPFNRegressor
 
