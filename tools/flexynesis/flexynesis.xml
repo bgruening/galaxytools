@@ -1,0 +1,741 @@
+<tool id="flexynesis" name="Flexynesis" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>A deep-learning based multi-omics bulk sequencing data integration suite</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="edam"/>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+        @CHECK_NON_COMMERCIAL_USE@
+        mkdir -p input/test input/train output &&
+        ln -s '$train_clin' input/train/clin.csv &&
+        ln -s '$test_clin' input/test/clin.csv &&
+
+        #if str($assay_main) != '':
+            #set $name = str($assay_main.replace(" ", "_"))
+            ln -s '$train_omics_main' input/train/${name}.csv &&
+            ln -s '$test_omics_main' input/test/${name}.csv &&
+            #set $data_names = [$name]      
+        #else
+            ln -s '$train_omics_main' input/train/main.csv &&
+            ln -s '$test_omics_main' input/test/main.csv &&
+            #set $data_names = ['main']
+        #end if
+        #if str($training_type.model) == 'cm_train':
+            #if str($layer_main) == 'input':
+                #set $input_layers = $data_names
+                #set $output_layers = []
+            #else
+                #set $input_layers = []
+                #set $output_layers = $data_names
+            #end if
+        #end if
+        #for $i, $element in enumerate($omics)
+            #if str($element.train_omics) != 'None' and str($element.test_omics) != 'None':
+                #if str($element.assay) != '':
+                    #set $i = str($element.assay.replace(" ", "_"))
+                #end if
+                ln -s '${element.train_omics}' input/train/omics_${i}.csv &&
+                ln -s '${element.test_omics}' input/test/omics_${i}.csv &&
+                $data_names.append("omics_" + str($i))
+                #if str($training_type.model) == 'cm_train':
+                    #if str($element.layer) == 'input':
+                        $input_layers.append("omics_" + str($i))
+                    #else
+                        $output_layers.append("omics_" + str($i))
+                    #end if
+                #end if
+            #end if
+        #end for
+        flexynesis  
+                    --data_path 'input'
+                    --outdir 'output'
+                    --model_class $model_class
+                    #if str($model_class) == 'GNN':
+                        --gnn_conv_type $gnn_conv_type
+                        --string_organism $string_organism
+                        --string_node_name $string_node_name
+                    #end if
+                    #if str($training_type.model) == 's_train':
+                        #if str($target_variables) != '':
+                            --target_variables $target_variables
+                        #end if
+                        #if str($surv_event_var) != '':
+                            --surv_event_var $surv_event_var
+                            --surv_time_var $surv_time_var
+                        #end if
+                    #end if
+                    #if str($training_type.model) == 'cm_train':
+                        --input_layers $str(",".join($input_layers))
+                        --output_layers $str(",".join($output_layers))
+                    #end if
+                    --fusion_type $fusion_type
+                    --hpo_iter $hpo_iter
+                    --finetuning_samples $finetuning_samples
+                    --variance_threshold $variance_threshold
+                    --correlation_threshold $correlation_threshold
+                    --subsample $subsample
+                    --features_min $features_min
+                    --features_top_percentile $features_top_percentile
+                    --data_types $str(",".join($data_names))
+                    --early_stop_patience $early_stop_patience
+                    --hpo_patience $hpo_patience
+                    $log_transform
+                    $use_loss_weighting
+                    $use_cv
+                    $evaluate_baseline_performance
+                    $disable_marker_finding
+                    \${GALAXY_FLEXYNESIS_EXTRA_ARGUMENTS}
+    ]]></command>
+    <inputs>
+        <param name="non_commercial_use" label="I certify that I am not using this tool for commercial purposes." type="boolean" truevalue="NON_COMMERCIAL_USE" falsevalue="COMMERCIAL_USE" checked="False">
+            <validator type="expression" message="This tool is only available for non-commercial use.">value == True</validator>
+        </param>
+        <conditional name="training_type">
+            <param name="model" type="select" label="Type of Analysis" >
+                <option value="s_train">Supervised training</option>
+                <option value="us_train">Unsupervised Training</option>
+                <option value="cm_train">Cross-modality Training</option>
+            </param>
+            <when value="s_train">
+                <expand macro="main_inputs"/>
+                <repeat name="omics" min="0" title="Multiple omics layers?">
+                    <expand macro="extra_inputs"/>
+                </repeat>
+                <conditional name="model_class" label="Model class">
+                    <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
+                        <option value="DirectPred">DirectPred</option>
+                        <option value="GNN">GNN</option>
+                        <option value="MultiTripletNetwork">MultiTripletNetwork</option>
+                        <option value="RandomForest">RandomForest</option>
+                        <option value="SVM">SVM</option>
+                        <option value="RandomSurvivalForest">RandomSurvivalForest</option>
+                        <option value="XGBoost">XGBoost</option>
+                    </param>
+                    <when value="DirectPred"/>
+                    <when value="GNN">
+                        <param argument="--gnn_conv_type" type="select" label="Which graph convolution type to use.">
+                            <option value="GC">GC</option>
+                            <option value="GCN">GCN</option>
+                            <option value="SAGE">SAGE</option>
+                        </param>
+                        <param argument="--string_organism" type="select" label="STRING DB organism">
+                            <option value="9606">Homo sapiens</option>
+                            <option value="10090">Mus musculus</option>
+                            <option value="10116">Rattus norvegicus</option>
+                            <option value="9544">Macaca mulatta</option>
+                        </param>
+                        <param argument="--string_node_name" type="select" label="String node name" >
+                            <option value="gene_name">Gene name</option>
+                            <option value="gene_id">Gene id</option>
+                        </param>
+                    </when>
+                    <when value="MultiTripletNetwork"/>
+                    <when value="RandomForest"/>
+                    <when value="SVM"/>
+                    <when value="RandomSurvivalForest"/>
+                    <when value="XGBoost"/>
+                </conditional>
+                <param argument="--target_variables" type="text" label="Target variables" help="Which variables in 'clin.csv' to use for predictions, comma-separated if multiple.">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.printable"></valid>
+                    </sanitizer>
+                </param>
+                <param argument="--surv_event_var" type="text" label="Survival event" help="Which column in 'clin.csv' to use as event/status indicator for survival modeling.">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.printable"></valid>
+                    </sanitizer>
+                </param>
+                <param argument="--surv_time_var" type="text" label="Survival time" help="Which column in 'clin.csv' to use as time/duration indicator for survival modeling.">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.printable"></valid>
+                    </sanitizer>
+                </param>
+                <expand macro="advanced"/>
+            </when>
+            <when value="us_train">
+                <expand macro="main_inputs"/>
+                <repeat name="omics" min="0" title="Multiple omics layers?">
+                    <expand macro="extra_inputs"/>
+                </repeat>
+                <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
+                    <option value="supervised_vae">supervised_vae</option>
+                </param>
+                <expand macro="advanced"/>
+            </when>
+            <when value="cm_train">
+                <expand macro="main_inputs"/>
+                <param name="layer_main" type="select" label="Use this omics data as input or output layer?">
+                    <option value="input">Input</option>
+                    <option value="output">output</option>
+                </param>
+                <repeat name="omics" min="0" title="Multiple omics layers?">
+                    <expand macro="extra_inputs"/>
+                    <param name="layer" type="select" label="Use this omics data as input or output layer?">
+                        <option value="input">Input</option>
+                        <option value="output">output</option>
+                    </param>
+                </repeat>
+                <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
+                    <option value="CrossModalPred">CrossModalPred</option>
+                </param>
+                <expand macro="advanced"/>
+            </when>               
+        </conditional>
+    </inputs>
+    <outputs>
+        <collection name="results" type="list" label="${tool.name} on ${on_string}: results">
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.csv$" format="csv" directory="output"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="train_omics" value="train/cnv" ftype="csv"/>
+                <param name="test_omics" value="test/cnv" ftype="csv"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="DirectPred"/>
+                </conditional>
+                <param name="target_variables" value="Erlotinib"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib,0,,bar,A2M,"/>
+                        <has_text_matching expression="Erlotinib,0,,bar,ABCC4,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.omics_foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704,Erlotinib,"/>
+                        <has_text_matching expression="target_dataset:KMRC-20,Erlotinib,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,mse,"/>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,r2,"/>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,pearson_corr,"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="bar"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="DirectPred"/>
+                </conditional>
+                <param name="target_variables" value="Erlotinib"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib,0,,bar,A2M,"/>
+                        <has_text_matching expression="Erlotinib,0,,bar,ABCC4,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704,Erlotinib,"/>
+                        <has_text_matching expression="target_dataset:KMRC-20,Erlotinib,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,mse,"/>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,r2,"/>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,pearson_corr,"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="train_omics" value="train/cnv" ftype="csv"/>
+                <param name="test_omics" value="test/cnv" ftype="csv"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="DirectPred"/>
+                </conditional>
+                <param name="target_variables" value="Irinotecan"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance">
+                    <assert_contents>
+                        <has_text_matching expression="Irinotecan,0,,bar,A2M,"/>
+                        <has_text_matching expression="Irinotecan,0,,bar,ABCC4,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704,Irinotecan,"/>
+                        <has_text_matching expression="target_dataset:KMRC-20,Irinotecan,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred,Irinotecan,numerical,mse,"/>
+                        <has_text_matching expression="DirectPred,Irinotecan,numerical,r2,"/>
+                        <has_text_matching expression="DirectPred,Irinotecan,numerical,pearson_corr,"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="train_omics" value="train/cnv" ftype="csv"/>
+                <param name="test_omics" value="test/cnv" ftype="csv"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <conditional name="training_type">
+                <param name="model" value="us_train"/>
+                <param name="model_class" value="supervised_vae"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.omics_foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="bar"/>
+            <param name="layer_main" value="input"/>
+            <repeat name="omics">
+                <param name="train_omics" value="train/cnv" ftype="csv"/>
+                <param name="test_omics" value="test/cnv" ftype="csv"/>
+                <param name="assay" value="foo"/>
+                <param name="layer" value="output"/>
+            </repeat>
+            <conditional name="training_type">
+                <param name="model" value="cm_train"/>
+                <param name="model_class" value="CrossModalPred"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.omics_foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.test_decoded.omics_foo">
+                    <assert_contents>
+                        <has_n_lines n="23"/>
+                    </assert_contents>
+                </element>
+                <element name="job.train_decoded.omics_foo">
+                    <assert_contents>
+                        <has_n_lines n="23"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="train_omics" value="train/cnv" ftype="csv"/>
+                <param name="test_omics" value="test/cnv" ftype="csv"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="GNN"/>
+                </conditional>
+                <param name="gnn_conv_type" value="GC"/>
+                <param name="string_organism" value="9606"/>
+                <param name="string_node_name" value="gene_name"/>
+                <param name="target_variables" value="Erlotinib"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib,0,,bar,A2M,"/>
+                        <has_text_matching expression="Erlotinib,0,,bar,ABCC4,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.omics_foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704,Erlotinib,"/>
+                        <has_text_matching expression="target_dataset:KMRC-20,Erlotinib,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="GNN,Erlotinib,numerical,mse,"/>
+                        <has_text_matching expression="GNN,Erlotinib,numerical,r2,"/>
+                        <has_text_matching expression="GNN,Erlotinib,numerical,pearson_corr,"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="b ar"/>
+            <repeat name="omics">
+                <param name="train_omics" value="train/cnv" ftype="csv"/>
+                <param name="test_omics" value="test/cnv" ftype="csv"/>
+                <param name="assay" value="f oo"/>
+            </repeat>
+            <conditional name="training_type">
+                <param name="model" value="us_train"/>
+                <param name="model_class" value="supervised_vae"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.b_ar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.omics_f_oo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="train_clin" value="train/clin" ftype="csv"/>
+            <param name="test_clin" value="test/clin" ftype="csv"/>
+            <param name="train_omics_main" value="train/gex" ftype="csv"/>
+            <param name="test_omics_main" value="test/gex" ftype="csv"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="train_omics" value="train/cnv" ftype="csv"/>
+                <param name="test_omics" value="test/cnv" ftype="csv"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="XGBoost"/>
+                </conditional>
+                <param name="target_variables" value="Erlotinib"/>
+            </conditional>
+            <param name="hpo_iter" value="1"/>
+            <output_collection name="results" type="list">
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="XGBoostRegressor,Erlotinib,numerical,mse,"/>
+                        <has_text_matching expression="XGBoostRegressor,Erlotinib,numerical,r2,"/>
+                        <has_text_matching expression="XGBoostRegressor,Erlotinib,numerical,pearson_corr,"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help>
+.. class:: warningmark
+
+**WARNING: This tool is only available for NON-COMMERCIAL use. Permission is only granted for academic, research, and educational purposes. Before using, be sure to review, agree, and comply with the license.**
+
+Flexynesis is a deep-learning based multi-omics bulk sequencing data integration suite with a focus on (pre-)clinical endpoint prediction.
+The package includes multiple types of deep learning architectures such as simple fully connected networks, supervised variational autoencoders, graph convolutional networks, multi-triplet networks different options of data layer fusion, and automates feature selection and hyperparameter optimisation.
+
+For more information, please check the Documentation_ :
+
+For commercial use, please review the license_ and contact the `copyright holders`_ .
+
+-----
+
+.. image:: https://raw.githubusercontent.com/BIMSBbioinfo/flexynesis/c4634d97f84e51f569dcfdab2caf42c9be453ef6/img/graphical_abstract.jpg
+    :width: 600
+
+-----
+
+**Input Files**
+
+**clin.csv**
+
+clin.csv contains the sample metadata. The first column contains unique sample identifiers. The other columns contain sample-associated clinical variables. NA values are allowed in the clinical variables. 
+
+The format might look like so:
+
+========    === === === 
+,           v1  v2  ...
+--------    --- --- ---
+sample1     a   b   ...
+--------    --- --- ---
+sample2     c   d   ...
+--------    --- --- ---
+sample3     e   f   ...          
+--------    --- --- ---
+...         ... ... ...          
+========    === === ===
+
+.
+
+**omics.csv**
+
+The first column of the feature tables must be unique feature identifiers (e.g. gene names). The column names must be sample identifiers that should overlap with those in the clin.csv. They don't have to be completely identical or in the same order. Samples from the clin.csv that are not represented in the omics table will be dropped. 
+
+The format might look like so:
+
+=====   ======= ======= ======= =======
+,       sample1 sample2 sample3 ...
+-----   ------- ------- ------- -------
+gene1   0       1       2       ...
+-----   ------- ------- ------- -------
+gene2   3       3       5       ...
+-----   ------- ------- ------- -------
+gene3   2       3       4       ...
+-----   ------- ------- ------- -------
+...     ...     ...     ...     ...
+=====   ======= ======= ======= =======
+
+.
+
+.. class:: infomark
+
+**Concordance between train/test splits:**
+
+The corresponding omics files in train/test splits must contain overlapping feature names (they don't have to be identical or in the same order). The clin.csv files in train/test must contain matching clinical variables. 
+
+-----
+
+**Supervised Training**
+
+**Minimum requirements**
+
+* clin.csv and omics.csv files for training and testing
+* Selection of a tool/model 
+* One target variable which can be numerical or categorical for regression/classification tasks.
+
+Flexynesis supports both single-task and multi-task training. We can provide one or more target variables and optionally survival variables as input and Flexynesis will build the appropriate model architecture. If the selected variable is numerical, a Multi-Layered-Perceptron (MLP) with MSE loss will be used. If a categorical variable is provided, an MLP with cross-entropy-loss will be utilized. If survival variables are provided, an MLP with Cox-Proportional-Hazards loss will be attached to the model. 
+
+**Regression:**
+
+
+If your target variable is numerical, Flexynesis will build a regression model.
+
+**Classification:**
+
+
+If your target variable is categorical, Flexynesis will build a classification model.
+
+**Survival Analysis:**
+
+
+If your target variable is survival data, Flexynesis will build a survival analysis model.
+For survival analysis, two separate variables are required, where the first variable is a numeric event variable (consisting of 0's or 1's, where 1 means an event such as disease progression or death has occurred). The second variable is also a numeric time variable, which indicates how much time it took since last patient follow-up. 
+
+.. class:: infomark
+
+**Note:** Flexynesis can be trained with multiple target variables, which can be a mixture of regression/classification/survival tasks. 
+
+.. class:: infomark
+
+**Note:** For the supervised tasks, the user can easily switch between different model architectures. 
+
+.. class:: infomark
+
+**Note:**  If you choose **MultiTripletNetwork** model, the first target variable should be a categorical variable.
+
+.. class:: infomark
+
+**Note:**  If you choose **GNN** model, the features should have the same naming convention between different omics modalities.
+
+.. class:: infomark
+
+**Note:**  The **GNN** model only works with genes (for example CpG methylation sites does not work). The reason is that GNNs require a prior knowledge network, which is currently set to use STRING database.
+
+-----
+
+**Unsupervised Training**
+
+In the absence of any target variables or survival variables, you can use a VAE architecture to carry out unsupervised training. 
+
+-----
+
+**Cross-modality Training**
+
+We have implemented a special case of VAEs where the input data layers and output data layers can be set to different data modalities. The purpose of a cross-modality encoder is to learn embeddings that can translate from one data modality to another. Crossmodality encoder we implemented supports both single/multiple input layers and also one or more target/survival variables can be added to the model. 
+
+.. class:: infomark
+
+**Note:** if you use same input and output layers, it will be the same as unsupervised training.
+
+-----
+
+.. class:: infomark
+
+**Modality fusion:** 
+
+Flexynesis currently supports two main ways of fusing different omics data modalities: 1. Early fusion: The input data matrices are initially concatenated and pushed through the networks 2. Intermediate fusion: The input data matrices are initially pushed through the networks to obtain a modality-specific embedding space, which then gets concatenated to serve as input for the supervisor MLPs. 
+
+.. _license: https://github.com/BIMSBbioinfo/flexynesis/blob/main/LICENSE
+.. _Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
+.. _copyright holders: https://github.com/BIMSBbioinfo/flexynesis
+    </help>
+
+    <expand macro="citations" />
+</tool>
