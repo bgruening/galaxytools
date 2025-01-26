@@ -1,4 +1,4 @@
-<tool id="infer_rnaformer" name="@EXECUTABLE@" version="@TOOL_VERSION@" profile="22.05">
+<tool id="infer_rnaformer" name="@EXECUTABLE@" version="@TOOL_VERSION@+galaxy1" profile="22.05">
     <description>Predict the secondary structure of an RNA with RNAformer</description>
     <macros>
         <import>macros.xml</import>
@@ -112,6 +112,8 @@ if torch.cuda.is_available():
 model.eval()
 predicted_structures = []
 
+orig_seq = ""
+
 for sequence in sequences:
     with torch.no_grad():
         device = "cpu"
@@ -123,6 +125,8 @@ for sequence in sequences:
 
         length = len(sequence)
         src_seq = torch.LongTensor(list(map(seq_stoi.get, sequence)))
+
+        orig_seq = sequence
 
         sample = {}
         sample['src_seq'] = src_seq.clone()
@@ -141,10 +145,12 @@ for sequence in sequences:
         pos1_id = pos_id[0].cpu().tolist()
         pos2_id = pos_id[1].cpu().tolist()
         predicted_structure = f"Pairing index 1: {pos1_id} \nPairing index 2: {pos2_id}"
-        print(predicted_structure)
+        pairs = [[a, b] for a, b in zip(pos1_id, pos2_id)]
 
         seqlen = len(sample['src_seq'])
         dot_bracket =['.'] * seqlen
+        pk_count = 0
+        pk_list = []
         for i in range(len(pos1_id)):
             open_index = pos1_id[i]
             close_index = pos2_id[i]
@@ -153,7 +159,17 @@ for sequence in sequences:
                 if dot_bracket[open_index] == '.' and dot_bracket[close_index] == '.':
                     dot_bracket[open_index] = '('
                     dot_bracket[close_index] = ')'
+                else:
+                    ## pseudoknots or multiplets present in structure- cannot represent with dot-bracket
+                    pk_count += 1
+                    pk_list.append(pairs[i])
         dot_bracket_str_pred = ''.join(dot_bracket)
+
+        print(f"{orig_seq}")
+        print(f"Base pairs: {str(pairs)}")
+        print(f"Predicted Structure: {dot_bracket_str_pred}")
+        if pk_count > 0:
+            print(f"NOTE: {pk_count} pseudoknots and/or multiplets present in predicted structure excluded from dot-bracket notation: {pk_list}")
 
 
 
@@ -186,7 +202,7 @@ for sequence in sequences:
         <test>
             <param name="input_type" value="False"/>
             <param name="rna_input_string" value="GCCCGCAUGGUGAAAUCGGUAAACACAUCGCACUAAUGCGCCGCCUCUGGCUUGCCGGUUCAAGUCCGGCUGCGGGCACCA"/>
-            <output name="output" file="rna_2d_pred_text.txt"/>
+            <output name="output" file="rna_2d_pred_out.txt"/>
         </test>
         <test>
             <param name="input_type" value="True"/>
@@ -196,7 +212,7 @@ for sequence in sequences:
     </tests>
     <help><![CDATA[
     **RNAformer**
-        This tool reads RNA sequences and predicts their secondary structure using RNAformer.
+        This tool reads RNA sequences and predicts their secondary structure using RNAformer. Note that unlike conventional methods, RNAformer is capable of predicting all possible secondary structure motifs, including pseudoknots and multiplets. These cannot be represented in dot-bracket notation and thus the output will be partial in these cases, excluding these which will be noted in the output file below the (partial) dot-bracket structure. 
 
     **Input format**
 
@@ -204,9 +220,10 @@ for sequence in sequences:
 
     **Outputs**
 
-    - Predicted secondary structure as a text file in the following formats:
-        - base pair positions
-        - dot-bracket notation
+    - Predicted secondary structure as a text file containing the following:
+        - RNA input sequence
+        - Base pairs of predicted secondary structure
+        - Predicted secondary structure in dot-bracket notation
     ]]></help>
     <expand macro="citations" />
 </tool>
