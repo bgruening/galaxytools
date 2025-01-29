@@ -5,8 +5,11 @@
     </macros>
     <expand macro="requirements">
         <requirement type="package" version="1.83">biopython</requirement>
+        <!-- <requirement type="package" version="3.7.2">matplotlib</requirement>
+        <requirement type="package" version="0.13.2">seaborn</requirement> -->
     </expand>
     <command detect_errors="exit_code"><![CDATA[
+    pip install seaborn matplotlib &&
     mkdir -p './model' &&
     wget -O './model/RNAformer_32M_state_dict_intra_family_finetuned.pth' 'https://ml.informatik.uni-freiburg.de/research-artifacts/RNAformer/models/RNAformer_32M_state_dict_intra_family_finetuned.pth'
     &&
@@ -32,6 +35,11 @@ from Bio import SeqIO
 import logging
 import sys
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+import seaborn as sns
+
 def is_valid_rna_sequence(sequence):
     """Check if the sequence contains only RNA bases."""
     valid_bases = {'A', 'C', 'G', 'U', 'N'}  # Include 'N' if unknown bases are allowed
@@ -44,6 +52,13 @@ config = Config(config_file=config_file_path)
 config.RNAformer.cycling = 6
 model = RiboFormer(config.RNAformer)
 state_dict_file = model_file_path
+
+## For having variable number of outputs based on (variable) number of input sequences 
+out_dir = "per_sequence_outputs"
+os.makedirs(out_dir, exist_ok=True)
+
+matrix_color_type = '$matrix_color_type'
+matrix_out_type = '$matrix_out_type'
 
 #if str($input_type.input_type) == 'True'
 fasta_path = '$input_type.fasta_input'
@@ -114,6 +129,7 @@ predicted_structures = []
 
 orig_seq = ""
 
+count = 0
 for sequence in sequences:
     with torch.no_grad():
         device = "cpu"
@@ -171,7 +187,32 @@ for sequence in sequences:
         if pk_count > 0:
             print(f"NOTE: {pk_count} pseudoknots and/or multiplets present in predicted structure excluded from dot-bracket notation: {pk_list}")
 
+        ## Create heatmap plot of adjacency matrix
+        plt.figure(figsize=(12, 10))
 
+        if matrix_color_type == 'color':
+            raw_pred_mat = torch.sigmoid(logits[0, :, :, -1])
+            sns.heatmap(raw_pred_mat, cmap="inferno", vmin=0.0, vmax=1.0,
+                        xticklabels=list(orig_seq),
+                        yticklabels=list(orig_seq)
+            )
+            plt.title(f"Base-pair Probability Matrix")
+            plt.xticks(rotation=90)
+            plt.tight_layout()
+            plt.savefig(f'./RNAformer_structure_adjacency_matrix_color_{count}.{matrix_out_type}', dpi=150)
+            plt.close()
+        else:
+            sns.heatmap(pred_mat, cmap="gray", vmin=0.0, vmax=1.0,
+                        xticklabels=list(orig_seq),
+                        yticklabels=list(orig_seq)
+            )
+            plt.title(f"Base-pair Binary Probability Matrix")
+            plt.xticks(rotation=90)
+            plt.tight_layout()
+            plt.savefig(f'./RNAformer_structure_adjacency_matrix_binary_{count}.{matrix_out_type}', dpi=150)
+            plt.close()
+
+    count += 1
 
 ]]></configfile>
     </configfiles>
@@ -194,19 +235,46 @@ for sequence in sequences:
                 <param format="fasta" name="fasta_input" type="data" label="Sequence to fold (FASTA file)"/>
             </when>
         </conditional>
+            <param name="matrix_color_type" type="select" label="Coloring of base probability matrix">
+                <option value="color">Color: base pair probabilities are shown and colored</option>
+                <option value="binary">Binary: probabilities are binarized to show only final predicted structure without probabilities</option>
+            </param>
+            <param name="matrix_out_type" type="select" label="Base probability adjacency matrix heatmap format">
+                <option value="pdf">PDF</option>
+                <option value="eps">EPS</option>
+                <option value="png">PNG</option>
+                <option value="gif">GIF</option>
+                <option value="svg">SVG</option>
+            </param>
     </inputs>
     <outputs>
         <data name="output" format="txt" label="output"/>
+        <!-- Adjacency matrix heatmap -->
+         <directory name="plots_dir" path="per_sequence_outputs">
+            <discover_datasets>
+                <param_regex discover_dataset="true"
+                            regex="^.+\.(pdf|png|eps|gif|svg)$"
+                            format="auto" />
+            </discover_datasets>
+        </directory>
+        <!-- <data name="matrix_heatmap" format="pdf" label="Base-pair Probability Matrix Heatmap" from_work_dir="RNAformer_structure_adjacency_matrix_color_0.pdf"/> -->
+
     </outputs>
     <tests>
+        <!-- Test 1: Single sequence as text input, color matrix PDF -->
         <test>
             <param name="input_type" value="False"/>
             <param name="rna_input_string" value="GCCCGCAUGGUGAAAUCGGUAAACACAUCGCACUAAUGCGCCGCCUCUGGCUUGCCGGUUCAAGUCCGGCUGCGGGCACCA"/>
+            <param name="matrix_out_type" value="pdf"/>
+            <param name="matrix_color_type" value="color"/>
             <output name="output" file="rna_2d_pred_out.txt"/>
         </test>
+        <!-- Test 2: Multiple sequences as FASTA input, binary matrix PDF -->
         <test>
             <param name="input_type" value="True"/>
             <param name="fasta_input" value="fasta_input1.fa"/>
+            <param name="matrix_out_type" value="png"/>
+            <param name="matrix_color_type" value="binary"/>
             <output name="output" file="rna_2d_pred_FASTA.txt"/>
         </test>
     </tests>
