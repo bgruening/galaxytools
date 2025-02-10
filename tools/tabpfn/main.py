@@ -11,7 +11,7 @@ from sklearn.metrics import (
     average_precision_score,
     precision_recall_curve,
     r2_score,
-    root_mean_squared_error
+    root_mean_squared_error,
 )
 from sklearn.preprocessing import label_binarize
 from tabpfn import TabPFNClassifier, TabPFNRegressor
@@ -31,10 +31,12 @@ def classification_plot(y_true, y_scores):
     if is_binary:
         # Compute precision-recall curve
         precision, recall, _ = precision_recall_curve(y_true, y_scores[:, 1])
-        average_precision = average_precision_score(
-            y_true, y_scores[:, 1]
+        average_precision = average_precision_score(y_true, y_scores[:, 1])
+        plt.plot(
+            recall,
+            precision,
+            label=f"Precision-Recall Curve (AP={average_precision:.2f})",
         )
-        plt.plot(recall, precision, label=f"Precision-Recall Curve (AP={average_precision:.2f})")
         plt.title("Precision-Recall Curve (binary classification)")
     else:
         y_true_bin = label_binarize(y_true, classes=np.unique(y_true))
@@ -42,12 +44,20 @@ def classification_plot(y_true, y_scores):
         class_labels = [f"Class {i}" for i in range(n_classes)]
         # Plot PR curve for each class
         for i in range(n_classes):
-            precision, recall, _ = precision_recall_curve(y_true_bin[:, i], y_scores[:, i])
+            precision, recall, _ = precision_recall_curve(
+                y_true_bin[:, i], y_scores[:, i]
+            )
             ap_score = average_precision_score(y_true_bin[:, i], y_scores[:, i])
-            plt.plot(recall, precision, label=f"{class_labels[i]} (AP = {ap_score:.2f})")
+            plt.plot(
+                recall, precision, label=f"{class_labels[i]} (AP = {ap_score:.2f})"
+            )
         # Compute micro-average PR curve
-        precision, recall, _ = precision_recall_curve(y_true_bin.ravel(), y_scores.ravel())
-        plt.plot(recall, precision, linestyle="--", color="black", label="Micro-average")
+        precision, recall, _ = precision_recall_curve(
+            y_true_bin.ravel(), y_scores.ravel()
+        )
+        plt.plot(
+            recall, precision, linestyle="--", color="black", label="Micro-average"
+        )
         plt.title("Precision-Recall Curve (Multiclass Classification)")
     plt.xlabel("Recall")
     plt.ylabel("Precision")
