@@ -27,7 +27,6 @@ def separate_features_labels(data):
 def classification_plot(y_true, y_scores):
     plt.figure(figsize=(8, 6))
     is_binary = len(np.unique(y_true)) == 2
-    print(y_true)
     if is_binary:
         # Compute precision-recall curve
         precision, recall, _ = precision_recall_curve(y_true, y_scores[:, 1])
