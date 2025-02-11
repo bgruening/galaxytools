@@ -23,7 +23,7 @@ def main(inputs, img_path, img_format, output_dir):
         Folder to save the outputs.
     """
     warnings.simplefilter('ignore')
-
+    np.random.seed(42)
     with open(inputs, 'r') as param_handler:
         params = json.load(param_handler)
 
