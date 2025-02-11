@@ -62,7 +62,6 @@ def classification_plot(y_true, y_scores):
     plt.ylabel("Precision")
     plt.legend(loc="lower left")
     plt.grid(True)
-    plt.show()
     plt.savefig("output_plot.png")
 
 
