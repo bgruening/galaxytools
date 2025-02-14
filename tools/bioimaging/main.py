@@ -38,39 +38,29 @@ if __name__ == "__main__":
     args = vars(arg_parser.parse_args())
     model_path = args["imaging_model"]
     input_image_path = args["image_file"]
-
+    
     # load all embedded images in TIF file
     test_data = imageio.v3.imread(input_image_path, index="...")
-    test_data = np.squeeze(test_data)
+    #test_data = np.squeeze(test_data)
     test_data = test_data.astype(np.float32)
+    current_dimension = len(test_data.shape)
 
     # assess the correct dimensions of TIF input image
     input_image_shape = args["image_size"]
-    im_test_data, shape_vals = find_dim_order(input_image_shape, test_data)
-
+    target_dimension = len(input_image_shape)
+    print(current_dimension, target_dimension)
+    #im_test_data, shape_vals = find_dim_order(input_image_shape, test_data)
+    #print(im_test_data.shape, shape_vals)
+    # expand input image's dimensions
+    exp_test_data = torch.tensor(test_data)
+    print(exp_test_data.shape)
+    for i in range(target_dimension - current_dimension):
+        exp_test_data = torch.unsqueeze(exp_test_data, i)
+    print(exp_test_data.shape)
     # load model
     model = torch.load(model_path)
     model.eval()
-
-    # find the number of dimensions required by the model
-    target_dimension = 0
-    for param in model.named_parameters():
-        target_dimension = len(param[1].shape)
-        break
-    current_dimension = len(list(im_test_data.shape))
-
-    # update the dimensions of input image if the required image by
-    # the model is smaller
-    slices = tuple(slice(0, s_val) for s_val in shape_vals)
-
-    # apply the slices to the reshaped_input
-    im_test_data = im_test_data[slices]
-    exp_test_data = torch.tensor(im_test_data)
-
-    # expand input image's dimensions
-    for i in range(target_dimension - current_dimension):
-        exp_test_data = torch.unsqueeze(exp_test_data, i)
-
+    
     # make prediction
     pred_data = model(exp_test_data)
     pred_data_output = pred_data.detach().numpy()
