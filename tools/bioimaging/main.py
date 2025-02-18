@@ -29,6 +29,51 @@ def find_dim_order(user_in_shape, input_image):
     return input_image, correct_order
 
 
+def dynamic_resize(image: torch.Tensor, target_shape: tuple):
+    """
+    Resize an input tensor dynamically to the target shape.
+    
+    Parameters:
+    - image: Input tensor with shape (C, D1, D2, ..., DN) (any number of spatial dims)
+    - target_shape: Tuple specifying the target shape (C', D1', D2', ..., DN')
+    
+    Returns:
+    - Resized tensor with shape target_shape.
+    """
+    # Extract input shape
+    input_shape = image.shape
+    num_dims = len(input_shape)  # Includes channels and spatial dimensions
+
+    # Ensure target shape matches the number of dimensions
+    if len(target_shape) != num_dims:
+        raise ValueError(f"Target shape {target_shape} must match input dimensions {num_dims}")
+
+    # Extract target channels and spatial sizes
+    target_channels = target_shape[0]  # First element is the target channel count
+    target_spatial_size = target_shape[1:]  # Remaining elements are spatial dimensions
+
+    # Step 1: Expand channels dynamically if needed
+    if target_channels > input_shape[0]:
+        # Expand existing channels to match target_channels
+        image = image.expand(target_channels, *input_shape[1:])
+    elif target_channels < input_shape[0]:
+        # Reduce channels using interpolation
+        image = image.unsqueeze(0)  # Add batch dim (1, C, ...)
+        image = F.interpolate(image, size=(target_channels, *input_shape[1:]), mode='trilinear' if num_dims == 4 else 'bilinear', align_corners=False)
+        image = image.squeeze(0)  # Remove batch dim
+
+    # Step 2: Add batch dim (N=1) for resizing
+    image = image.unsqueeze(0)  # Shape: (1, C, D1, D2, ..., DN)
+
+    # Step 3: Resize spatial dimensions dynamically
+    image = F.interpolate(image, size=target_spatial_size, mode='trilinear' if num_dims == 4 else 'bilinear', align_corners=False)
+
+    # Step 4: Remove batch dim
+    image = image.squeeze(0)  # Shape: (C, D1', D2', ..., DN')
+
+    return image
+
+
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument("-im", "--imaging_model", required=True, help="Input BioImage model")
@@ -58,23 +103,19 @@ if __name__ == "__main__":
     # apply the slices to the reshaped_input
     exp_test_data = torch.tensor(test_data)
     
-    '''if exp_test_data.dim() == 2:
-        exp_test_data = exp_test_data.unsqueeze(0)  # Now shape is (1, 1, 512, 512)
-        exp_test_data = exp_test_data.unsqueeze(0)
-    elif exp_test_data.dim() == 3:
-        exp_test_data = exp_test_data.unsqueeze(0)'''
+    reversed_order = list(reversed(range(exp_test_data.dim())))
+    print(exp_test_data.permute(*reversed_order).shape)
+    exp_test_data_T = exp_test_data.permute(*reversed_order)
+    print(exp_test_data_T.shape)
+    if exp_test_data_T.shape == target_image_dim:
+        exp_test_data = exp_test_data_T
+    print("Transposed image dim: ", exp_test_data.shape)
     
     if exp_test_data.shape != target_image_dim:
         for i in range(len(target_image_dim) - exp_test_data.dim()):
-            exp_test_data = exp_test_data.unsqueeze(i)
-    
-        print("Unsqueezed image shape: ", exp_test_data.shape)
-        resized_image = F.interpolate(exp_test_data, size=target_image_dim, mode='bilinear', align_corners=False)
-        print("Resize image: ", resized_image.shape)
-        # Remove the channel dimension if not needed
-        exp_test_data = torch.squeeze(resized_image)
-        print("Resize and squeezed image: ", exp_test_data.shape)
-        #exp_test_data = exp_test_data[slices]
+            exp_test_data = exp_test_data.unsqueeze(i)   
+        exp_test_data = dynamic_resize(exp_test_data, target_image_dim)
+        print("Resized image: ", exp_test_data.shape)
     
     current_dimension = len(exp_test_data.shape)
     input_axes = args["image_axes"]
