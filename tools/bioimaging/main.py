@@ -19,7 +19,7 @@ def dynamic_resize(image: torch.Tensor, target_shape: tuple):
     - target_shape: Tuple specifying the target shape (C', D1', D2', ..., DN')
     
     Returns:
-    - Resized tensor with target shape target.
+    - Resized tensor with target shape target_shape.
     """
     # Extract input shape
     input_shape = image.shape
@@ -32,28 +32,40 @@ def dynamic_resize(image: torch.Tensor, target_shape: tuple):
     # Extract target channels and spatial sizes
     target_channels = target_shape[0]  # First element is the target channel count
     target_spatial_size = target_shape[1:]  # Remaining elements are spatial dimensions
-    
-    print("Inside image resize method")
-    print("input_shape: ", input_shape)
-    print("target channels: ", target_channels)
-    print("target spatial size: ", target_spatial_size)
-
-    # Expand channels dynamically if needed
-    if target_channels > input_shape[0]:
-        # Expand existing channels to match target_channels
-        image = image.expand(target_channels, *input_shape[1:])
-    elif target_channels < input_shape[0]:
-        # Reduce channels using interpolation
-        image = image.unsqueeze(0)
-        image = F.interpolate(image, size=(target_channels, *input_shape[1:]), mode='trilinear' if num_dims == 4 else 'bilinear', align_corners=False)
-        image = image.squeeze(0)
 
     # Add batch dim (N=1) for resizing
-    image = image.unsqueeze(0)  # Shape: (1, C, D1, D2, ..., DN)
+    image = image.unsqueeze(0)
+    
+    # Choose the best interpolation mode based on dimensionality
+    if num_dims == 4:
+        interp_mode = 'trilinear'
+    elif num_dims == 3:
+        interp_mode = 'bilinear'
+    elif num_dims == 2:
+        interp_mode = 'bicubic'
+    else:
+        interp_mode = 'nearest'
 
     # Resize spatial dimensions dynamically
-    image = F.interpolate(image, size=target_spatial_size, mode='trilinear' if num_dims == 4 else 'bilinear', align_corners=False)
-    return image.squeeze(0)
+    image = F.interpolate(image, size=target_spatial_size, mode=interp_mode, align_corners=False)
+
+    # Adjust channels if necessary
+    current_channels = image.shape[1]
+
+    if target_channels > current_channels:
+        # Expand channels by repeating existing ones
+        expand_factor = target_channels // current_channels
+        remainder = target_channels % current_channels
+        image = image.repeat(1, expand_factor, *[1] * (num_dims - 1))
+        
+        if remainder > 0:
+            extra_channels = image[:, :remainder, ...]  # Take the first few channels to match target
+            image = torch.cat([image, extra_channels], dim=1)
+
+    elif target_channels < current_channels:
+        # Reduce channels by averaging adjacent ones
+        image = image[:, :target_channels, ...]  # Simply slice to reduce channels
+    return image.squeeze(0)  # Remove batch dimension before returning
 
 
 if __name__ == "__main__":
@@ -72,7 +84,6 @@ if __name__ == "__main__":
     # load all embedded images in TIF file
     test_data = imageio.v3.imread(input_image_path, index="...")
     test_data = test_data.astype(np.float32)
-    print("Raw input shape: ", test_data.shape)
     test_data = np.squeeze(test_data)
     
     target_image_dim = input_size.split(",")[::-1]
@@ -80,32 +91,26 @@ if __name__ == "__main__":
     target_image_dim = tuple(target_image_dim)
 
     exp_test_data = torch.tensor(test_data)
-    print("Tensor input image shape: ", exp_test_data.shape)
     # check if image dimensions are reversed
     reversed_order = list(reversed(range(exp_test_data.dim())))
     exp_test_data_T = exp_test_data.permute(*reversed_order)
     if exp_test_data_T.shape == target_image_dim:
         exp_test_data = exp_test_data_T
-    print("Tensor input image shape: ", exp_test_data.shape)
-    print("Target dimensions: ", target_image_dim)
     if exp_test_data.shape != target_image_dim:
         for i in range(len(target_image_dim) - exp_test_data.dim()):
             exp_test_data = exp_test_data.unsqueeze(i)
         try:
             exp_test_data = dynamic_resize(exp_test_data, target_image_dim)
-            print("Resized input image shape: ", exp_test_data.shape)
         except Exception as e:
             raise RuntimeError(f"Error during resizing: {e}") from e
     
     current_dimension = len(exp_test_data.shape)
     input_axes = args["image_axes"]
     target_dimension = len(input_axes)
-    print(current_dimension, target_dimension)
     # expand input image based on the number of target dimensions
     for i in range(target_dimension - current_dimension):
         exp_test_data = torch.unsqueeze(exp_test_data, i)
 
-    print("Final input image shape after pre-processing: ", exp_test_data.shape)
     # load model
     model = torch.load(model_path)
     model.eval()
