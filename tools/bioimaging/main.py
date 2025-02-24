@@ -13,11 +13,11 @@ import torch.nn.functional as F
 def dynamic_resize(image: torch.Tensor, target_shape: tuple):
     """
     Resize an input tensor dynamically to the target shape.
-    
+
     Parameters:
     - image: Input tensor with shape (C, D1, D2, ..., DN) (any number of spatial dims)
     - target_shape: Tuple specifying the target shape (C', D1', D2', ..., DN')
-    
+
     Returns:
     - Resized tensor with target shape target_shape.
     """
@@ -27,7 +27,9 @@ def dynamic_resize(image: torch.Tensor, target_shape: tuple):
 
     # Ensure target shape matches the number of dimensions
     if len(target_shape) != num_dims:
-        raise ValueError(f"Target shape {target_shape} must match input dimensions {num_dims}")
+        raise ValueError(
+            f"Target shape {target_shape} must match input dimensions {num_dims}"
+        )
 
     # Extract target channels and spatial sizes
     target_channels = target_shape[0]  # First element is the target channel count
@@ -35,19 +37,21 @@ def dynamic_resize(image: torch.Tensor, target_shape: tuple):
 
     # Add batch dim (N=1) for resizing
     image = image.unsqueeze(0)
-    
+
     # Choose the best interpolation mode based on dimensionality
     if num_dims == 4:
-        interp_mode = 'trilinear'
+        interp_mode = "trilinear"
     elif num_dims == 3:
-        interp_mode = 'bilinear'
+        interp_mode = "bilinear"
     elif num_dims == 2:
-        interp_mode = 'bicubic'
+        interp_mode = "bicubic"
     else:
-        interp_mode = 'nearest'
+        interp_mode = "nearest"
 
     # Resize spatial dimensions dynamically
-    image = F.interpolate(image, size=target_spatial_size, mode=interp_mode, align_corners=False)
+    image = F.interpolate(
+        image, size=target_spatial_size, mode=interp_mode, align_corners=False
+    )
 
     # Adjust channels if necessary
     current_channels = image.shape[1]
@@ -57,9 +61,11 @@ def dynamic_resize(image: torch.Tensor, target_shape: tuple):
         expand_factor = target_channels // current_channels
         remainder = target_channels % current_channels
         image = image.repeat(1, expand_factor, *[1] * (num_dims - 1))
-        
+
         if remainder > 0:
-            extra_channels = image[:, :remainder, ...]  # Take the first few channels to match target
+            extra_channels = image[
+                :, :remainder, ...
+            ]  # Take the first few channels to match target
             image = torch.cat([image, extra_channels], dim=1)
 
     elif target_channels < current_channels:
@@ -70,22 +76,30 @@ def dynamic_resize(image: torch.Tensor, target_shape: tuple):
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
-    arg_parser.add_argument("-im", "--imaging_model", required=True, help="Input BioImage model")
-    arg_parser.add_argument("-ii", "--image_file", required=True, help="Input image file")
-    arg_parser.add_argument("-is", "--image_size", required=True, help="Input image file's size")
-    arg_parser.add_argument("-ia", "--image_axes", required=True, help="Input image file's axes")
+    arg_parser.add_argument(
+        "-im", "--imaging_model", required=True, help="Input BioImage model"
+    )
+    arg_parser.add_argument(
+        "-ii", "--image_file", required=True, help="Input image file"
+    )
+    arg_parser.add_argument(
+        "-is", "--image_size", required=True, help="Input image file's size"
+    )
+    arg_parser.add_argument(
+        "-ia", "--image_axes", required=True, help="Input image file's axes"
+    )
 
     # get argument values
     args = vars(arg_parser.parse_args())
     model_path = args["imaging_model"]
     input_image_path = args["image_file"]
     input_size = args["image_size"]
-    
+
     # load all embedded images in TIF file
     test_data = imageio.v3.imread(input_image_path, index="...")
     test_data = test_data.astype(np.float32)
     test_data = np.squeeze(test_data)
-    
+
     target_image_dim = input_size.split(",")[::-1]
     target_image_dim = [int(i) for i in target_image_dim if i != "1"]
     target_image_dim = tuple(target_image_dim)
@@ -103,7 +117,7 @@ if __name__ == "__main__":
             exp_test_data = dynamic_resize(exp_test_data, target_image_dim)
         except Exception as e:
             raise RuntimeError(f"Error during resizing: {e}") from e
-    
+
     current_dimension = len(exp_test_data.shape)
     input_axes = args["image_axes"]
     target_dimension = len(input_axes)
