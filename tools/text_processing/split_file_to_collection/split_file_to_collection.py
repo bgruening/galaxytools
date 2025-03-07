@@ -224,6 +224,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
             for i in range(top):
                 f.readline()
             n_records = 0
+            last_line_matched = False
             for line in f:
                 if (num == 0 and re.match(sep, line) is not None) or (
                     num > 0 and n_records % num == 0
@@ -241,7 +242,7 @@ def split_by_record(args, in_file, out_dir, top, ftype):
         if chunksize == 0:  # i.e. no chunking
             n_per_file = n_records // numnew
         else:
-            numnew = n_records // chunksize
+            numnew = max(n_records // chunksize, 1)  # should not be less than 1
             n_per_file = chunksize
 
     # make new files
@@ -328,6 +329,8 @@ def split_by_record(args, in_file, out_dir, top, ftype):
             else:
                 record += line
         # after loop, write final record to file
+        if new_file_counter in fresh_files:
+            new_file.write(header)
         new_file.write(record)
         new_file.close()
 

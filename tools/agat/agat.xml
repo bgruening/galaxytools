@@ -1,0 +1,604 @@
+<tool id="agat" name="AGAT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
+    <description>GTF/GFF analysis toolkit</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="biotools"/>
+    <expand macro="requirements" />
+    <version_command>agat_sq_stat_basic.pl --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+
+        #if $tool.selector == 'functional_annotation'
+            #if $tool.blast_adv.options == "yes":
+                ln -s '$tool.blast_adv.database' ./functional_annotation_blast.fasta &&
+            #end if
+        #end if
+
+        #if $tool.selector == 'fix'
+            @input_annotation_single@
+            agat_convert_sp_gxf2gxf.pl 
+                --gxf '$input_annotation'
+                --config '$agat_configfile'
+                --output ./output &&
+            cat ./output > '${annotation}'
+        #else if $tool.selector == 'convert_GFF2GTF'
+            @input_annotation_single@
+            agat_convert_sp_gff2gtf.pl 
+                --gff '$input_annotation'
+                --gtf_version $tool.gtf_version 
+                --output ./output.gtf &&
+            cat ./output.gtf > '${annotation_gtf}'
+        #else if $tool.selector == 'convert_GTF2GFF'
+            @input_annotation_single@
+            agat_convert_sp_gxf2gxf.pl
+                --gff '$input_annotation'
+                --output ./output.gff &&
+            cat ./output.gff > '${annotation_gff}'
+        #else if $tool.selector == 'compare'
+            @input_annotation_double@
+            agat_sp_compare_two_annotations.pl 
+                --gff1 '$input1'
+                --gff2 '$input2'
+                --output ./temp_output &&
+            cat ./temp_output/report.txt > '${stats_output}'
+        #else if $tool.selector == 'extract'
+            @input_annotation_single@
+            @input_reference@
+            agat_sp_extract_sequences.pl
+            --gff '$input_annotation'
+            -f '$ref_genome'
+            $tool.mrna
+            $tool.cdna
+            $tool.clean_final_stop
+            $tool.clean_internal_stop
+            #if $tool.downstream
+                --downstream $tool.downstream
+            #end if
+            $tool.full
+            $tool.keep_attributes
+            $tool.keep_parent_attributes
+            $tool.merge
+            $tool.plus_strand_only
+            $tool.protein
+            $tool.remove_orf_offset
+            $tool.revcomp
+            $tool.split
+            #if $tool.type
+                --type $tool.type
+            #end if
+            #if $tool.upstream
+                --upstream $tool.upstream
+            #end if
+            --output '${sequence_output}'
+        #else if $tool.selector == 'functional_analysis'
+            @input_annotation_single@
+            @input_reference@
+            mkdir -p './statistics' &&
+            agat_sp_functional_statistics.pl
+            --gff '$input_annotation'
+            --gs '$ref_genome'
+            --output ./temp_output &&
+            cat 'temp_output/gene@transcript/table_per_feature_type.txt' > '$stats_output'
+
+        #else if  $tool.selector == 'merge_annotations'
+            @input_annotation_double@
+            agat_sp_merge_annotations.pl 
+                --gff '$input1'
+                --gff '$input2'
+                --config '$agat_configfile'
+                --output ./output &&
+             cat ./output > '${annotation}'
+        #else if $tool.selector == 'annotation_statistics'
+            @input_annotation_single@
+            @input_reference@
+            agat_sp_statistics.pl 
+                --gff '$input_annotation'
+                --gs '$ref_genome'
+                -d
+                --output ./temp_output &&
+            cat ./temp_output > '$stats_output'
+        #else if $tool.selector == 'filter_feature_fasta'
+            @input_annotation_single@
+            @input_reference@
+            agat_sq_filter_feature_from_fasta.pl 
+                --gff '$input_annotation' 
+                --fasta '$ref_genome' 
+                --config '$agat_configfile'
+                --output ./output &&
+            cat ./output > '${annotation}'
+        #else if $tool.selector == 'complement'
+            @input_annotation_double@
+            agat_sp_complement_annotations.pl 
+                --ref '$input1'
+                --add '$input2'
+                --size_min $tool.size_min
+                --config '$agat_configfile'
+                --output ./temp_output &&
+            cat ./temp_output > '${annotation}'
+        #else if $tool.selector == 'splice_sites'
+            @input_annotation_single@
+            agat_sp_add_splice_sites.pl 
+                --gff '$input_annotation'
+                --config '$agat_configfile'
+                --output ./output &&
+            cat ./output > '${annotation}'
+        #else if $tool.selector == 'functional_annotation'
+            @input_annotation_single@
+            agat_sp_manage_functional_annotation.pl
+                --gff '$input_annotation'
+                #if $tool.input_interpro:
+                    --interpro '$tool.input_interpro'
+                #end if
+                #if str($tool.blast_adv.options) == "yes":
+                    -b '$tool.blast_adv.input_blast'
+                    --db ./functional_annotation_blast.fasta
+                    --blast_evalue $tool.blast_adv.evalue
+                #end if
+                -pe $tool.prot_existence
+                -o galaxy_functional_annot
+        #else if $tool.selector == 'keep_longest_isoform'
+            @input_annotation_single@
+            agat_sp_keep_longest_isoform.pl
+                --gff '$input_annotation'
+                --config '$agat_configfile'
+                --output ./output &&
+            cat ./output > '${annotation}'
+        #else if $tool.selector == 'fix_overlapping_genes'
+            @input_annotation_single@
+            agat_sp_fix_overlaping_genes.pl
+                --gff '$input_annotation'
+                --config '$agat_configfile'
+                --output ./output &&
+            cat ./output > '${annotation}'
+        #end if
+        ]]>
+    </command>
+        <configfiles>
+        <configfile name="agat_configfile"><![CDATA[
+#if $tool.selector in ['fix','merge_annotations','complement','splice_sites','filter_feature_fasta','keep_longest_isoform', 'fix_overlapping_genes']
+---
+output_format: $tool.output_format.selector
+#if $tool.output_format.selector == "GFF"
+gff_output_version: $tool.output_format.version
+gtf_output_version: relax
+#else
+gff_output_version: 3
+gtf_output_version: $tool.output_format.version
+#end if
+verbose: 1
+progress_bar: true
+log: true
+debug: false
+tabix: false
+merge_loci: $tool.merge_loci
+throw_fasta: false
+force_gff_input_version: 0
+create_l3_for_l2_orphan: $tool.create_exon 
+locus_tag:
+- locus_tag
+- gene_id
+prefix_new_id: nbis
+check_sequential: true
+check_l2_linked_to_l3: true
+check_l1_linked_to_l2: true
+remove_orphan_l1: true
+check_all_level3_locations: true
+check_cds: true
+check_exons: true
+check_utrs: true
+check_all_level2_locations: true
+check_all_level1_locations: true
+check_identical_isoforms: true
+clean_attributes_from_template: false
+#end if
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="tool">
+            <param name="selector" type="select" label="AGAT tool selector" help="As AGAT is a toolkit, it contains a lot of tools. If any of them is missing, please contact the server admin.">
+                <option value="splice_sites">Add splice sites</option>
+                <option value="annotation_statistics">Annotation statistics (agat_sp_statistics.pl)</option>
+                <option value="compare">Compare annotation files (agat_sp_compare_two_annotations.pl)</option>
+                <option value="complement">Complement annotation file (agat_sp_complement_annotations.pl)</option>
+                <option value="extract">Extract sequences (agat_sp_extract_sequences.pl)</option>
+                <option value="convert_GFF2GTF">GFF to GTF format conversion (agat_convert_sp_gff2gtf.pl)</option>
+                <option value="convert_GTF2GFF">GTF to GFF3 format conversion (agat_convert_sp_gxf2gxf.pl)</option>
+                <option value="filter_feature_fasta">Filter annotation by sequence name (agat_sq_filter_feature_from_fasta.pl)</option>
+                <option value="fix">Fix and/or standarize GFF3 annotation file (agat_convert_sp_gxf2gxf.pl)</option>
+                <option value="functional_analysis">Functional analysis (agat_sp_functional_statistics.pl)</option>
+                <option value="merge_annotations">Merge annotations (agat_sp_merge_annotations.pl)</option>
+                <option value="functional_annotation">Functional annotation (agat_sp_manage_functional_annotation.pl)</option>
+                <option value="keep_longest_isoform">Keep longest isoform (agat_sp_keep_longest_isoform.pl)</option>
+                <option value="fix_overlapping_genes">Fix Overlapping Genes (agat_sp_fix_overlaping_genes.pl)</option>
+            </param>
+            <when value="annotation_statistics">
+                <expand macro="ANNOTATION_INPUT"/>
+                <expand macro="REFERENCE_FASTA"/>
+            </when>
+            <when value="compare">
+                <param argument="--gff1" name="input_annotation1" type="data" format="gff,gtf,gff3,gff3.gz" label="Annotation file 1" help="Input GTF/GFF file" />
+                <param argument="--gff2" name="input_annotation2" type="data" format="gff,gtf,gff3,gff3.gz" label="Annotation file 2" help="Input GTF/GFF file" />
+            </when>
+            <when value="extract">
+                <expand macro="ANNOTATION_INPUT"/>
+                <expand macro="REFERENCE_FASTA"/>
+                <param name="type" type="select" label="Type of feature to extract" optional="true" help="Define the feature you want to extract the sequence from.">
+                    <option value="gene">Gene</option>
+                    <option value="transcript">Transcript</option>
+                    <option value="exon">Exon</option>
+                    <option value="cds">CDS</option>
+                    <option value="trna">tRNA</option>
+                    <option value="three_prime_utr">3 UTR</option>
+                    <option value="five_prime_utr">5 UTR</option>
+                </param>
+                <param argument="--mrna" type="boolean" truevalue="--mrna" falsevalue="" checked="false" label="Extract mRNA sequences" help=" This extract the mrna 
+                    sequence (i.e transcribed sequence (devoid of introns, but containing untranslated exons))." />
+                <param argument="--cdna" type="boolean" truevalue="--cdna" falsevalue="" checked="false" label="Extract the cDNA sequence" 
+                    help=" This extract the cdna sequence (i.e reverse complement of the mRNA: transcribed sequence (devoid of introns, but 
+                    containing untranslated exons, then reverse complemented)." />
+                <param argument="--clean_final_stop" type="boolean" truevalue="--clean_final_stop" falsevalue="" checked="false" label="Clean final stop codons" 
+                    help=" This option allows removing the translation of the final stop codons that is represented by the '*' character. This character can be 
+                        disturbing for many programs (e.g interproscan)" />
+                <param argument="--clean_internal_stop" type="boolean" truevalue="--clean_internal_stop" falsevalue="" checked="false" label="Clean internal 
+                    stop codons" help="The Clean Internal Stop option allows replacing the translation of the stop codons present among the sequence that is 
+                    represented by the '*' character by . This character can be disturbing for many programs (e.g interproscan)" />
+                <param argument="--upstream" type="integer" min="0" value="" optional="true" label="Upstream nucleotides" help="It will take that number of nucleotide in more at the 5 extremity." />
+                <param argument="--downstream" type="integer" min="0" value="" optional="true" label="Downstream nucleotides" help="It will take that number of downstream nucleotides." />
+                <param argument="--full" type="boolean" truevalue="--full" falsevalue="" checked="false" label="Full" help="This option allows dealing 
+                    with feature that may span over several locations like CDS or exon, in order to extract the full sequence from the start extremity 
+                    of the first chunck to the end extremity of the last chunk. The use of that option with '--type exon' will extract the pre-mRNA 
+                    sequence (i.e with introns). Use of that option on CDS will give the pre-mRNA without the untraslated regions (UTRs). " />
+                <param argument="--keep_attributes" type="boolean" truevalue="--keep_attributes" falsevalue="" checked="false" label="Keep attributes" 
+                    help="The value of the attribute tags will be extracted from the feature type specified by the option --type and stored in the FASTA header." />
+                <param argument="--keep_parent_attributes" type="boolean" truevalue="--keep_parent_attributes" falsevalue="" checked="false" label="Keep parental attributes" 
+                    help="Keep parental attributes" />
+                <param argument="--merge" type="boolean" truevalue="--merge" falsevalue="" checked="false" label="Merge" help="By default, only features that span 
+                    several locations (e.g. CDS and utr can span over several exons) are merged together. In order to merge other type of features (e.g. exon) you 
+                    must activate this parameter." />
+                <param argument="--plus_strand_only" type="boolean" truevalue="--plus_strand_only" falsevalue="" checked="false" label="Plus strand only" help="By default 
+                    the extrated feature sequences from a minus strand is reverse complemented. Activating this option you will always get sequence from plus strand (not reverse complemented). " />
+                <param argument="--protein" type="boolean" truevalue="--protein" falsevalue="" checked="false" label="Protein" help="It will extract the sequence in amino acids." />
+                <param argument="--remove_orf_offset" type="boolean" truevalue="--remove_orf_offset" falsevalue="" checked="false" label="Remove ORF offset" help=" CDS can start with a phase different 
+                    from 0 when a gene model is fragmented. When asking for protein translation this (start) offset is trimmed out automatically. But when you extract CDS dna sequences, this (start) 
+                    offset is not removed by default. To remove it activate this option. If --upstream or --downstream option are used too, the (start) offset is trimmed first, then is added the piece 
+                    of sequence asked for." />
+                <param argument="--revcomp" type="boolean" truevalue="--revcomp" falsevalue="" checked="false" label="Reverse complement the extracted sequence" help="By default the extrated feature 
+                    sequences from a minus strand is reverse complemented. Consequently, for minus strand features that option will extract the sequences from plus strand from left to right." />
+                <param argument="--split" type="boolean" truevalue="--split" falsevalue="" checked="false" label="Split" help="By default, all features that span several locations (e.g. CDs and UTR can 
+                    span over several exons) are merge together to shape the biological feature (e.g. several CDS chuncks are merged to create the CDS in its whole). If you wish to extract all the chuncks 
+                    independently activate this option." />
+            </when>
+            <when value="convert_GFF2GTF">
+                <expand macro="ANNOTATION_INPUT" format="gff,gff3,gff3.gz"/>
+                <param argument="--gtf_version" type="select" label="GTF version">
+                    <option value="3">GTF v3 - 9 feature types accepted: gene, transcript, exon, CDS, Selenocysteine, start_codon, stop_codon, three_prime_utr and five_prime_utr</option>
+                    <option value="2.5">GTF v2.5 - 8 feature types accepted: gene, transcript, exon, CDS, UTR, start_codon, stop_codon and Selenocysteine</option>
+                    <option value="2.2">GTF v2.2 - 9 feature types accepted: CDS, start_codon, stop_codon, 5UTR, 3UTR, inter, inter_CNS, intron_CNS and exon</option>
+                    <option value="2.1">GTF v2.1 - 6 feature types accepted: CDS, start_codon, stop_codon, exon, 5UTR and 3UTR</option>
+                    <option value="2">GTF v2 - 4 feature types accepted: CDS, start_codon, stop_codon and exon</option>
+                    <option value="1">GTF v1 - 5 feature types accepted: CDS, start_codon, stop_codon, exon and intron</option>
+                    <option value="relax">Relax: all feature types are accepted.</option>
+                </param>
+            </when>
+            <when value="convert_GTF2GFF">
+                <expand macro="ANNOTATION_INPUT" format="gtf"/>
+            </when>
+            <when value="filter_feature_fasta">
+                <expand macro="ANNOTATION_INPUT" />
+                <expand macro="REFERENCE_FASTA"/>
+                <expand macro="AGAT_CONFIG"/>
+            </when>
+            <when value="fix">
+                <expand macro="ANNOTATION_INPUT" format="gff,gff3,gff3.gz"/>
+                <expand macro="AGAT_CONFIG"/>
+            </when>
+            <when value="functional_analysis">
+                <expand macro="ANNOTATION_INPUT" format="gff,gtf,gff3,gff3.gz"/>
+                <expand macro="REFERENCE_FASTA"/>
+            </when>
+            <when value="merge_annotations">
+                <param argument="--gff1" name="input_annotation1" type="data" format="gff,gtf,gff3,gff3.gz" label="Annotation file 1" help="Input GTF/GFF file" />
+                <param argument="--gff2" name="input_annotation2" type="data" format="gff,gtf,gff3,gff3.gz" label="Annotation file 2" help="Input GTF/GFF file" />
+                <expand macro="AGAT_CONFIG"/>
+            </when>
+            <when value="complement">
+                <param argument="--ref" name="input_annotation1" type="data" format="gff,gtf,gff3,gff3.gz" label="Reference annotaiton" help="Reference GTF/GFF file" />
+                <param argument="--add" name="input_annotation2" type="data" format="gff,gtf,gff3,gff3.gz" label="Annotation to complement" help="Annotation file you would like to use to complement the reference annotation." />
+                <param argument="--size_min" type="integer" min="0" value="0" label="Minimun CDS size" help="Option to keep the non-overlping gene only if the CDS size (in nucleotide) is over the minimum 
+                    size defined. Default = 0 that means all of them are kept." />
+                <expand macro="AGAT_CONFIG"/>
+            </when>
+            <when value="splice_sites">
+                <expand macro="ANNOTATION_INPUT" format="gff,gff3,gff3.gz"/>
+                <expand macro="AGAT_CONFIG"/>
+            </when>
+            <when value="functional_annotation">
+                <expand macro="ANNOTATION_INPUT" format="gff,gff3,gff3.gz"/>
+                <param argument="-i" name="input_interpro" type="data" format="tabular" optional="true" label="Input interpro file"/>
+                
+                <conditional name="blast_adv">
+                    <param name="options" type="select" label="Blast options">
+                        <option value="yes">Show</option>
+                        <option value="no" selected="true">Hide</option>
+                    </param>
+                    <when value="yes">
+                        <param argument="-b" name="input_blast" type="data" format="tabular" optional="true" label="Input blast file"/>
+                        <param argument="--db" name="database" type="data" format="fasta" optional="true" label="Fasta file using for the blast" help="Gene names and products/descriptions will be fished from this file." />
+                        <param argument="--blast_evalue" name="evalue" type="float" min="0" max="1" value="0.000001" label="Maximum e-value to keep the annotation from the blast file"/>
+                    </when>
+                    <when value="no">
+                    </when>
+                </conditional>
+                <param name="prot_existence" type="select" label="Protein existence (PE)" help="You can decide until which protein existence level you want to consider to lift the finctional information">
+                    <option value="1">Experimental evidence at protein level</option>
+                    <option value="2">Experimental evidence at transcript level</option>
+                    <option value="3">Protein inferred from homology </option>
+                    <option value="4">Protein predicted</option>
+                    <option value="5" selected="true">Protein uncertain</option>
+                </param>
+            </when>
+            <when value="keep_longest_isoform">
+                <expand macro="ANNOTATION_INPUT" format="gff,gff3,gff3.gz"/>
+                <expand macro="AGAT_CONFIG"/>
+            </when>
+            <when value="fix_overlapping_genes">
+                <expand macro="ANNOTATION_INPUT" format="gff,gff3,gff3.gz"/>
+                <expand macro="AGAT_CONFIG"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="annotation_gff" format="gff3" label="${tool.name} on ${on_string}: annotation file (GFF)">
+            <filter>tool['selector'] == 'convert_GTF2GFF'</filter>
+        </data>
+        <data name="annotation_gtf" format="gtf" label="${tool.name} on ${on_string}: annotation file (GTF)">
+            <filter>tool['selector'] == 'convert_GFF2GTF'</filter>
+        </data>
+        <data name="annotation" format="gff3" label="${tool.name} on ${on_string}: annotation file">
+            <filter>tool['selector'] in ['fix','merge_annotations','complement','filter_feature_fasta','splice_sites','bam2gff','keep_longest_isoform', 'fix_overlapping_genes']</filter>
+            <change_format>
+                <when input="output_format.selector" value="GTF" format="gtf" />
+            </change_format>
+        </data>
+        <data name="sequence_output" format="fasta" label="${tool.name} on ${on_string}: FASTA file">
+            <filter>tool['selector'] =='extract'</filter>
+        </data>
+        <data name="stats_output" format="txt" label="${tool.name} on ${on_string}: stats file">
+            <filter>tool['selector'] in ['annotation_statistics','compare','functional_analysis']</filter>
+        </data>
+        <collection name="distribution_plots_wiso" type="list" label="${tool.name} on ${on_string}: distribution plots (with isoforms)">
+            <discover_datasets pattern="__designation_and_ext__" directory="temp_output_distribution_plots/with_isoforms" format="pdf"/>
+            <filter>tool['selector'] == 'annotation_statistics'</filter>
+        </collection>
+        <collection name="distribution_plots_woiso" type="list" label="${tool.name} on ${on_string}: distribution plots (without isoforms)">
+            <discover_datasets pattern="__designation_and_ext__" directory="temp_output_distribution_plots/without_isoforms" format="pdf"/>
+            <filter>tool['selector'] == 'annotation_statistics'</filter>
+        </collection>
+        <data name="sequence_annot_functional_report" format="txt" from_work_dir="galaxy_functional_annot/report.txt" label="${tool.name} on ${on_string}: Report">
+            <filter>tool['selector'] =='functional_annotation'</filter>
+        </data>
+        <data name="sequence_annot_functional_error" format="txt" from_work_dir="galaxy_functional_annot/error.txt" label="${tool.name} on ${on_string}: Error">
+            <filter>tool['selector'] =='functional_annotation'</filter>
+        </data>
+        <data name="sequence_annot_functional_duplicate_blast" format="txt" from_work_dir="galaxy_functional_annot/duplicatedNameFromBlast.txt" label="${tool.name} on ${on_string}: Duplicate name from Blast">
+            <filter>tool['selector'] =='functional_annotation' and tool['blast_adv']['options'] == 'yes'</filter>
+        </data>
+        <data name="sequence_annot_functional_interpro_GO" format="txt" from_work_dir="galaxy_functional_annot/GO.txt" label="${tool.name} on ${on_string}: GO terms">
+            <filter>tool['selector'] =='functional_annotation' and tool['input_interpro']</filter>
+        </data >
+        <data name="sequence_annot_functional_interpro" format="txt" from_work_dir="galaxy_functional_annot/InterPro.txt" label="${tool.name} on ${on_string}: InterPro">
+            <filter>tool['selector'] =='functional_annotation' and tool['input_interpro']</filter>
+        </data>
+        <data name="sequence_annot_functional_MetaCyc" format="txt" from_work_dir="galaxy_functional_annot/MetaCyc.txt" label="${tool.name} on ${on_string}: MetaCyc">
+            <filter>tool['selector'] =='functional_annotation' and tool['input_interpro']</filter>
+        </data>
+        <data name="sequence_annot_functional_ProSitePatterns" format="txt" from_work_dir="galaxy_functional_annot/ProSitePatterns.txt" label="${tool.name} on ${on_string}: ProSitePatterns">
+            <filter>tool['selector'] =='functional_annotation' and tool['input_interpro']</filter>
+        </data>
+        <data name="sequence_annot_functional_Reactome" format="txt" from_work_dir="galaxy_functional_annot/Reactome.txt" label="${tool.name} on ${on_string}: Reactome">
+            <filter>tool['selector'] =='functional_annotation' and tool['input_interpro']</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 01: annotation statistics-->
+        <test expect_num_outputs="3">
+            <conditional name="tool">
+                <param name="selector" value="annotation_statistics"/>
+                <param name="gff" value="annotation.gtf" ftype="gtf"/>
+                <conditional name="reference_genome">
+                    <param name="source" value="history"/>
+                    <param name="history_item" value="genome.fasta.gz"/>
+                </conditional>
+            </conditional>
+            <output name="stats_output" file="test01_stats.txt" ftype="txt"/>
+            <output_collection name="distribution_plots_wiso" type="list" count="4">
+                <element name="transcriptClass_cds" file="test01_plot1.pdf" ftype="pdf" compare="sim_size" delta="100"/>
+            </output_collection>
+        </test>
+        <!-- Test 02: extract sequences -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="extract"/>
+                <param name="gff" value="annotation_small.gtf"/>
+                <conditional name="reference_genome">
+                    <param name="source" value="history"/>
+                    <param name="history_item" value="genome.fasta.gz"/>
+                </conditional>
+                <param name="type" value="gene"/>
+                <param name="upstream" value="10"/>
+                <param name="downstream" value="20"/>
+            </conditional>
+            <output name="sequence_output" file="test02.fasta" ftype="fasta"/>
+        </test>
+        <!-- Test 03: compare annotations -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="compare"/>
+                <param name="input_annotation1" value="annotation.gtf"/>
+                <param name="input_annotation2" value="annotation_small.gtf"/>
+            </conditional>
+            <output name="stats_output" file="test03.txt" ftype="txt" lines_diff="2"/>
+        </test>
+        <!-- Test 04: complement annotation -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="complement"/>
+                <param name="input_annotation1" value="annotation_small.gtf" ftype="gtf"/>
+                <param name="input_annotation2" value="annotation_unique.gtf" ftype="gtf"/>
+                <param name="size_min" value="10"/>
+                <conditional name="output_format">
+                    <param name="selector" value="gff"/>
+                    <param name="version" value="3"/>
+                </conditional>
+            </conditional>
+            <output name="annotation_gff" file="test04.gff" ftype="gff3"/>
+        </test>
+        <!-- Test 05: Convert GFF2GTF -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="convert_GFF2GTF"/>
+                <param name="gff" value="test04.gff" ftype="gff3"/>
+                <param name="gtf_version" value="2"/>
+            </conditional>
+            <output name="annotation_gtf" file="test05.gtf" ftype="gtf"/>
+        </test>
+        <!-- Test 06: Convert GTF2GFF -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="convert_GTF2GFF"/>
+                <param name="gff" value="annotation_small.gtf" ftype="gtf"/>
+            </conditional>
+            <output name="annotation_gff" file="test06.gff" ftype="gff3"/>
+        </test>
+        <!-- Test 07: Filter feature FASTA -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="filter_feature_fasta"/>
+                <param name="gff" value="annotation_small.gtf" ftype="gtf"/>
+                <conditional name="reference_genome">
+                    <param name="source" value="history"/>
+                    <param name="history_item" value="genome.fasta.gz"/>
+                </conditional>
+            </conditional>
+            <output name="annotation" file="test07.gff" ftype="gff3"/>
+        </test>
+        <!-- Test 08: Fix annotation file -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="fix"/>
+                <param name="gff" value="annotation_broken.gff" ftype="gff3"/>
+            </conditional>
+            <output name="annotation_gff" file="annotation_fixed.gff" ftype="gff3"/>
+            <assert_stdout>
+                <has_text text="2 exons created that were missing" />
+            </assert_stdout>
+        </test>
+        <!-- Test 09: Functional analysis -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="functional_analysis"/>
+                <param name="gff" value="annotation_small.gtf"/>
+                <conditional name="reference_genome">
+                    <param name="source" value="history"/>
+                    <param name="history_item" value="genome.fasta.gz"/>
+                </conditional>
+            </conditional>
+            <output name="stats_output" file="test09.txt" ftype="txt"/>
+        </test>
+        <!-- Test 10: Merge annotations -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="merge_annotations"/>
+                <param name="input_annotation1" value="annotation_small.gtf"/>
+                <param name="input_annotation2" value="annotation_unique.gtf"/>
+            </conditional>
+            <conditional name="output_format">
+                <param name="selector" value="gff"/>
+                <param name="version" value="3"/>
+            </conditional>
+            <output name="annotation_gff" file="test10.gff" ftype="gff3"/>
+        </test>
+        <!-- Test 11: Test compressed files -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="fix"/>
+                <param name="gff" value="annotation_broken.gff.gz" ftype="gff3"/>
+            </conditional>
+            <output name="annotation_gff" file="annotation_fixed.gff" ftype="gff3"/>
+            <assert_stdout>
+                <has_text text="2 exons created that were missing" />
+            </assert_stdout>
+        </test>
+        <!-- Test 12:test indexed references -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="extract"/>
+                <param name="gff" value="phix174.gff"/>
+                <conditional name="reference_genome">
+                    <param name="source" value="indexed"/>
+                    <param name="index" value="phix174"/>
+                </conditional>
+                <param name="type" value="gene"/>
+            </conditional>
+            <assert_stdout>
+                <has_text text="Job done" />
+            </assert_stdout>
+        </test>
+        <!-- Test 13: Add splicing sites -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="splice_sites"/>
+                <param name="gff" value="test04.gff" ftype="gff3"/>
+            </conditional>
+            <output name="annotation" file="test13.gff" ftype="gff3"/>
+        </test>
+        <!-- Test 14: Functional annotation -->
+        <test expect_num_outputs="7">
+            <conditional name="tool">
+                <param name="selector" value="functional_annotation"/>
+                <param name="gff" value="annotation_fixed.gff" ftype="gff3"/>
+                <param name="input_interpro" value="interpro_input.tabular"/>
+                <conditional name="blast_adv">
+                    <param name="options" value="no"/>
+                </conditional>
+            </conditional>
+            <output name="sequence_annot_functional_report" file="functional_annot/report.txt" ftype="txt" lines_diff="4"/>
+            <output name="sequence_annot_functional_error" file="functional_annot/error.txt" ftype="txt" lines_diff="2"/>
+            <output name="sequence_annot_functional_interpro_GO" file="functional_annot/GO.txt" ftype="txt" lines_diff="2"/>
+            <output name="sequence_annot_functional_interpro" file="functional_annot/InterPro.txt" ftype="txt" lines_diff="2"/>
+            <output name="sequence_annot_functional_MetaCyc" file="functional_annot/MetaCyc.txt" ftype="txt" lines_diff="2"/>
+            <output name="sequence_annot_functional_ProSitePatterns" file="functional_annot/ProSitePatterns.txt" ftype="txt" lines_diff="2"/>
+            <output name="sequence_annot_functional_Reactome" file="functional_annot/Reactome.txt" ftype="txt" lines_diff="2"/>
+        </test>
+        <!-- Test 15: Keep longest isoform -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="keep_longest_isoform"/>
+                <param name="gff" value="annotation_dup.gff"/>
+            </conditional>
+            <output name="annotation" file="test15.gff" ftype="gff3"/>
+        </test>
+        <!-- Test 16: Fix overlapping genes -->
+        <test expect_num_outputs="1">
+            <conditional name="tool">
+                <param name="selector" value="fix_overlapping_genes"/>
+                <param name="gff" value="test16_input.gff"/>
+            </conditional>
+            <output name="annotation" file="test16.gff" ftype="gff3"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**Purpose**
+
+AGAT a GFF/GTF toolkit allowing you to perform almost everything you might want to achieve ^^
+
+AGAT has the power to check, fix, pad missing information (features/attributes) of any kind of GTF and GFF to create complete, sorted and standardised gff3 format. 
+Over the years it has been enriched by many many tools to perform just about any tasks that is possible related to GTF/GFF format files (sanitizing, conversions, 
+merging, modifying, filtering, FASTA sequence extraction, adding information, etc). Comparing to other methods AGAT is robust to even the most despicable GTF/GFF files.
+
+]]></help>
+    <expand macro="citations"/>
+</tool>
