@@ -6,53 +6,82 @@
     <expand macro="requirements" />
     <command detect_errors="aggressive">
 <![CDATA[
-        wget -r 'ftp://ftp.ebi.ac.uk/biostudies/$mode/$path'/Files; 
-        #if '$ftp_output'
-            #set study = $path.split('/')[-1].rstrip('/')
-            curl https://www.ebi.ac.uk/biostudies/api/v1/studies/$study/info -s |jq -r .ftpLink >>ftpLink.txt
-        #end if
+    curl -s https://www.ebi.ac.uk/biostudies/api/v1/studies/$accession/info | jq -r .ftpLink >> ftpLink.txt &&
+    wget -q -r -l 0 -A "*.tif,*.png,*.jpg,*.zip" -i ftpLink.txt &&
+
+    find . -type f -name "*.zip" | while read zip_file; do
+        unzip -o "\$zip_file" -d "\$(dirname "\$zip_file")";
+    done
+
 ]]>
     </command>
     <inputs>
-    <param name="mode" type="text" label="Storage mode" help="The storage mode, can be either nfs or fire."/>
-    <param name="path" type="text" label="The path of accession. e.g. S-BIAD/570/S-BIAD570 "/>
+        <param name="accession" type="text" label="The accession ID of BioImages-Core or BioStudies-JCB" help="for eg. S-BIAD570, S-JCBD-201309038"/>
         <param name="ftplink_output" type="boolean" label="Generate FTP links?" help="If set, a file containing FTP links associated with the accession will be generated." />
     </inputs>
     <outputs>
-        <data name="images" format="tiff">
-            <discover_datasets pattern="__name_and_ext__" format="tif,tiff" directory="ftp.ebi.ac.uk" visible="true" recurse="true" />
-        </data>
-        <data format="txt" name="ftplinks" from_work_dir="ftpLink.txt" label="FTP Links">
+        <collection name="tif_images" type="list" label="${tool.name} on ${on_string}: TIF Images">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.tif" format="tif" directory="ftp.ebi.ac.uk" recurse="true" />
+        </collection>
+        <collection name="png_images" type="list" label="${tool.name} on ${on_string}: PNG Images">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.png" format="png" directory="ftp.ebi.ac.uk" recurse="true" />
+        </collection>
+        <collection name="jpg_images" type="list" label="${tool.name} on ${on_string}: JPG Images">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.jpg" format="jpg" directory="ftp.ebi.ac.uk" recurse="true" />
+        </collection>
+        <data format="txt" name="ftplinks" from_work_dir="ftpLink.txt" label="${tool.name} on ${on_string}: FTP Links">
             <filter>ftplink_output</filter>
         </data>
     </outputs>
     <tests>
-        <test expect_num_outputs='1'>
-            <param name="mode" value="fire" />
-            <param name="path" value="S-BIAD/961/S-BIAD961" />
+        <test expect_num_outputs='3'>
+            <param name="accession" value="S-BIAD961" />
             <param name="ftplink_output" value="False" />
-            <output name="images">
-                <discovered_dataset designation="Study_Component-4_mznanog_mCherry-AAT" ftype="tif">
+            <output_collection name="tif_images" type="list" count="1">
+                <element name="Study_Component-4_mznanog_mCherry-AAT">
                     <assert_contents><has_size value="14092624" /></assert_contents>
-                </discovered_dataset>
-            </output>
+                </element>
+            </output_collection>
         </test>
-        <test expect_num_outputs='2'>
-            <param name="mode" value="fire" />
-            <param name="path" value="S-BIAD/961/S-BIAD961" />
+        <test expect_num_outputs='4'>
+            <param name="accession" value="S-JCBD-201309038" />
             <param name="ftplink_output" value="True" />
-            <output name="images">
-                 <discovered_dataset designation="Study_Component-4_mznanog_mCherry-AAT" ftype="tif">
-                     <assert_contents><has_size value="14092624" /></assert_contents>
-                </discovered_dataset>
-            </output>
-               <output name="ftplinks" ftype="txt" file="ftpLink.txt" lines_diff="0" />
-            </test>
+            <output_collection name="tif_images" type="list" count="2">
+                 <element name="JCB_STIL_serial">
+                    <assert_contents><has_size value="7446240" /></assert_contents>
+                </element>
+                <element name="Sir_JCB_STIL_serial">
+                    <assert_contents><has_size value="7436060" /></assert_contents>
+                </element>
+            </output_collection>
+            <output name="ftplinks" ftype="txt" file="ftpLink.txt" lines_diff="0" />
+        </test>
+        <test expect_num_outputs='3'>
+            <param name="accession" value="S-BSST564" />
+            <param name="ftplink_output" value="False" />
+            <output_collection name="jpg_images" type="list" count="4">
+                 <element name="580-16_P0-2">
+                    <assert_contents><has_size value="1026747" /></assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_num_outputs='3'>
+            <param name="accession" value="S-BSST221" />
+            <param name="ftplink_output" value="False" />
+            <output_collection name="png_images" type="list" count="81">
+                <element name="d1 normalized_CXCL13">
+                    <assert_contents><has_size value="1583299" /></assert_contents>
+                </element>
+                <element name="normalized_KI67">
+                    <assert_contents><has_size value="1722406" /></assert_contents>
+                </element>
+            </output_collection>
+        </test>
     </tests>
     <help>
 <![CDATA[
         **What it does**
-        This tool downloads images from the Bioimage Archive and optionally outputs FTP links associated with the input accession.
+        This tool downloads images from the Bioimage Archive and optionally outputs FTP links associated with the input accession. The tools currently supports downloading TIF, PNG and JPG formats that are supported by Galaxy.
 ]]>
     </help>
     <expand macro="citations" />
