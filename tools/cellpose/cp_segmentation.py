@@ -6,7 +6,18 @@ import warnings
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage.io
+import torch
 from cellpose import models, plot, transforms
+
+
+# Make sure, that MKL_NUM_THREADS is set to 1, to ensure reproducibility:
+# https://forum.image.sc/t/reproducibility-how-we-spent-years-building-containers-and-then-mkl-decided-to-screw-our-results/109599
+assert str(os.environ['MKL_NUM_THREADS']) == '1'
+
+# Apply PyTorch guidelines for reproducibility
+torch.backends.cudnn.benchmark = True
+torch.backends.cudnn.deterministic = True
+torch.manual_seed(0)
 
 
 def main(inputs, img_path, img_format, output_dir):
