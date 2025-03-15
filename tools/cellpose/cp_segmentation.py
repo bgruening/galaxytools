@@ -3,16 +3,18 @@ import json
 import os
 import warnings
 
+# Make sure, that `MKL_NUM_THREADS` is set to 1, to ensure reproducibility:
+# https://forum.image.sc/t/reproducibility-how-we-spent-years-building-containers-and-then-mkl-decided-to-screw-our-results/109599
+if str(os.environ['MKL_NUM_THREADS']) != '1':
+    warnings.warn('MKL_NUM_THREADS must be set to 1 to ensure reproducibility, and will be adjusted accordingly for now.')
+    os.environ['MKL_NUM_THREADS'] = '1'
+
+# Load the remaining packages *after* adjusting `MKL_NUM_THREADS` (this likely necessary for it to take effect)
 import matplotlib.pyplot as plt
 import numpy as np
 import skimage.io
 import torch
 from cellpose import models, plot, transforms
-
-
-# Make sure, that MKL_NUM_THREADS is set to 1, to ensure reproducibility:
-# https://forum.image.sc/t/reproducibility-how-we-spent-years-building-containers-and-then-mkl-decided-to-screw-our-results/109599
-assert str(os.environ['MKL_NUM_THREADS']) == '1'
 
 # Apply PyTorch guidelines for reproducibility
 torch.backends.cudnn.benchmark = True
