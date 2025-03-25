@@ -107,7 +107,6 @@ def train_evaluate(args):
             te_features["predicted_labels"] = y_eval
             te_features.to_csv("output_predicted_data_{}".format(m_name), sep="\t", index=None)
     else:
-        #regressor = TabPFNRegressor()
         models = [
             ('TabPFN', TabPFNRegressor(random_state=42)),
             ('CatBoost', CatBoostRegressor(random_state=42, verbose=0))
