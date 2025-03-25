@@ -16,7 +16,6 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import label_binarize
 from tabpfn import TabPFNClassifier, TabPFNRegressor
-from xgboost import XGBClassifier, XGBRegressor
 
 
 def separate_features_labels(data):
@@ -33,6 +32,7 @@ def classification_plot(y_true, y_scores, m_name):
         # Compute precision-recall curve
         precision, recall, _ = precision_recall_curve(y_true, y_scores[:, 1])
         average_precision = average_precision_score(y_true, y_scores[:, 1])
+        print(m_name, average_precision)
         plt.plot(
             recall,
             precision,
@@ -96,21 +96,20 @@ def train_evaluate(args):
     if args["selected_task"] == "Classification":
         models = [
             ('TabPFN', TabPFNClassifier(random_state=42)),
-            ('XGBoost', XGBClassifier(random_state=42)),
             ('CatBoost', CatBoostClassifier(random_state=42, verbose=0))
         ]
-        #classifier = TabPFNClassifier()
         for m_name, model in models:
             model.fit(tr_features, tr_labels)
             y_eval = model.predict(te_features)
             pred_probas_test = model.predict_proba(te_features)
             if len(te_labels) > 0:
                 classification_plot(te_labels, pred_probas_test, m_name)
+            te_features["predicted_labels"] = y_eval
+            te_features.to_csv("output_predicted_data_{}".format(m_name), sep="\t", index=None)
     else:
         #regressor = TabPFNRegressor()
         models = [
             ('TabPFN', TabPFNRegressor(random_state=42)),
-            ('XGBoost', XGBRegressor(random_state=42)),
             ('CatBoost', CatBoostRegressor(random_state=42, verbose=0))
         ]
         for m_name, model in models:
@@ -126,14 +125,14 @@ def train_evaluate(args):
                     "True values",
                     "Predicted values",
                 )
+            te_features["predicted_labels"] = y_eval
+            te_features.to_csv("output_predicted_data_{}".format(m_name), sep="\t", index=None)
     e_time = time.time()
     print(
         "Time taken by TabPFN for training and prediction: {} seconds".format(
             e_time - s_time
         )
     )
-    te_features["predicted_labels"] = y_eval
-    te_features.to_csv("output_predicted_data", sep="\t", index=None)
 
 
 if __name__ == "__main__":
