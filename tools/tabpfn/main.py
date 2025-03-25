@@ -32,7 +32,6 @@ def classification_plot(y_true, y_scores, m_name):
         # Compute precision-recall curve
         precision, recall, _ = precision_recall_curve(y_true, y_scores[:, 1])
         average_precision = average_precision_score(y_true, y_scores[:, 1])
-        print(m_name, average_precision)
         plt.plot(
             recall,
             precision,
