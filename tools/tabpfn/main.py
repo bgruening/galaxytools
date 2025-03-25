@@ -7,6 +7,7 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+from catboost import CatBoostClassifier, CatBoostRegressor
 from sklearn.metrics import (
     average_precision_score,
     precision_recall_curve,
@@ -15,6 +16,7 @@ from sklearn.metrics import (
 )
 from sklearn.preprocessing import label_binarize
 from tabpfn import TabPFNClassifier, TabPFNRegressor
+from xgboost import XGBClassifier, XGBRegressor
 
 
 def separate_features_labels(data):
@@ -24,7 +26,7 @@ def separate_features_labels(data):
     return features, labels
 
 
-def classification_plot(y_true, y_scores):
+def classification_plot(y_true, y_scores, m_name):
     plt.figure(figsize=(8, 6))
     is_binary = len(np.unique(y_true)) == 2
     if is_binary:
@@ -36,7 +38,7 @@ def classification_plot(y_true, y_scores):
             precision,
             label=f"Precision-Recall Curve (AP={average_precision:.2f})",
         )
-        plt.title("Precision-Recall Curve (binary classification)")
+        plt.title("{}: Precision-Recall Curve (binary classification)".format(m_name))
     else:
         y_true_bin = label_binarize(y_true, classes=np.unique(y_true))
         n_classes = y_true_bin.shape[1]
@@ -57,15 +59,15 @@ def classification_plot(y_true, y_scores):
         plt.plot(
             recall, precision, linestyle="--", color="black", label="Micro-average"
         )
-        plt.title("Precision-Recall Curve (Multiclass Classification)")
+        plt.title("{}: Precision-Recall Curve (Multiclass Classification)".format(m_name))
     plt.xlabel("Recall")
     plt.ylabel("Precision")
     plt.legend(loc="lower left")
     plt.grid(True)
-    plt.savefig("output_plot.png")
+    plt.savefig("output_plot_{}.png".format(m_name))
 
 
-def regression_plot(xval, yval, title, xlabel, ylabel):
+def regression_plot(xval, yval, title, xlabel, ylabel, m_name):
     plt.figure(figsize=(8, 6))
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
@@ -75,7 +77,7 @@ def regression_plot(xval, yval, title, xlabel, ylabel):
     plt.scatter(xval, yval, alpha=0.8)
     xticks = np.arange(len(xval))
     plt.plot(xticks, xticks, color="red", linestyle="--", label="y = x")
-    plt.savefig("output_plot.png")
+    plt.savefig("output_plot_{}.png".format(m_name))
 
 
 def train_evaluate(args):
@@ -92,26 +94,38 @@ def train_evaluate(args):
         te_labels = []
     s_time = time.time()
     if args["selected_task"] == "Classification":
-        classifier = TabPFNClassifier()
-        classifier.fit(tr_features, tr_labels)
-        y_eval = classifier.predict(te_features)
-        pred_probas_test = classifier.predict_proba(te_features)
-        if len(te_labels) > 0:
-            classification_plot(te_labels, pred_probas_test)
+        models = [
+            ('TabPFN', TabPFNClassifier(random_state=42)),
+            ('XGBoost', XGBClassifier(random_state=42)),
+            ('CatBoost', CatBoostClassifier(random_state=42, verbose=0))
+        ]
+        #classifier = TabPFNClassifier()
+        for m_name, model in models:
+            model.fit(tr_features, tr_labels)
+            y_eval = model.predict(te_features)
+            pred_probas_test = model.predict_proba(te_features)
+            if len(te_labels) > 0:
+                classification_plot(te_labels, pred_probas_test, m_name)
     else:
-        regressor = TabPFNRegressor()
-        regressor.fit(tr_features, tr_labels)
-        y_eval = regressor.predict(te_features)
-        if len(te_labels) > 0:
-            score = root_mean_squared_error(te_labels, y_eval)
-            r2_metric_score = r2_score(te_labels, y_eval)
-            regression_plot(
-                te_labels,
-                y_eval,
-                f"Scatter plot: True vs predicted values. RMSE={score:.2f}, R2={r2_metric_score:.2f}",
-                "True values",
-                "Predicted values",
-            )
+        #regressor = TabPFNRegressor()
+        models = [
+            ('TabPFN', TabPFNRegressor(random_state=42)),
+            ('XGBoost', XGBRegressor(random_state=42)),
+            ('CatBoost', CatBoostRegressor(random_state=42, verbose=0))
+        ]
+        for m_name, model in models:
+            model.fit(tr_features, tr_labels)
+            y_eval = model.predict(te_features)
+            if len(te_labels) > 0:
+                score = root_mean_squared_error(te_labels, y_eval)
+                r2_metric_score = r2_score(te_labels, y_eval)
+                regression_plot(
+                    te_labels,
+                    y_eval,
+                    f"Scatter plot for {m_name}: True vs predicted values. RMSE={score:.2f}, R2={r2_metric_score:.2f}",
+                    "True values",
+                    "Predicted values",
+                )
     e_time = time.time()
     print(
         "Time taken by TabPFN for training and prediction: {} seconds".format(
