@@ -124,6 +124,7 @@ def train_evaluate(args):
                     f"Scatter plot for {m_name}: True vs predicted values. RMSE={score:.2f}, R2={r2_metric_score:.2f}",
                     "True values",
                     "Predicted values",
+                    m_name
                 )
             te_features["predicted_labels"] = y_eval
             te_features.to_csv("output_predicted_data_{}".format(m_name), sep="\t", index=None)
