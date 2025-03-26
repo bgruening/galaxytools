@@ -59,7 +59,7 @@ def classification_plot(y_true, y_scores, m_name):
             recall, precision, linestyle="--", color="black", label="Micro-average"
         )
         plt.title(
-            f "{m_name}: Precision-Recall Curve (Multiclass Classification)"
+            f"{m_name}: Precision-Recall Curve (Multiclass Classification)"
         )
     plt.xlabel("Recall")
     plt.ylabel("Precision")
@@ -78,7 +78,7 @@ def regression_plot(xval, yval, title, xlabel, ylabel, m_name):
     plt.scatter(xval, yval, alpha=0.8)
     xticks = np.arange(len(xval))
     plt.plot(xticks, xticks, color="red", linestyle="--", label="y = x")
-    plt.savefig("output_plot_{}.png".format(m_name))
+    plt.savefig(f"output_plot_{m_name}.png")
 
 
 def train_evaluate(args):
@@ -107,7 +107,7 @@ def train_evaluate(args):
                 classification_plot(te_labels, pred_probas_test, m_name)
             te_features["predicted_labels"] = y_eval
             te_features.to_csv(
-                "output_predicted_data_{}".format(m_name), sep="\t", index=None
+                f"output_predicted_data_{m_name}", sep="\t", index=None
             )
     else:
         models = [
@@ -130,13 +130,11 @@ def train_evaluate(args):
                 )
             te_features["predicted_labels"] = y_eval
             te_features.to_csv(
-                "output_predicted_data_{}".format(m_name), sep="\t", index=None
+                f"output_predicted_data_{m_name}", sep="\t", index=None
             )
     e_time = time.time()
     print(
-        "Time taken by TabPFN for training and prediction: {} seconds".format(
-            e_time - s_time
-        )
+        f"Time taken by TabPFN for training and prediction: {e_time - s_time} seconds"
     )
 
 
