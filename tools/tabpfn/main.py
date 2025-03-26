@@ -59,7 +59,7 @@ def classification_plot(y_true, y_scores, m_name):
             recall, precision, linestyle="--", color="black", label="Micro-average"
         )
         plt.title(
-            "{}: Precision-Recall Curve (Multiclass Classification)".format(m_name)
+            f "{m_name}: Precision-Recall Curve (Multiclass Classification)"
         )
     plt.xlabel("Recall")
     plt.ylabel("Precision")
