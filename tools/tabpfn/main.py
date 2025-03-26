@@ -88,7 +88,7 @@ def train_evaluate(args):
     # prepare train data
     tr_features, tr_labels = separate_features_labels(args["train_data"])
     # prepare test data
-    if args["testhaslabels"] == "haslabels":
+    if args["testhaslabels"] == "true":
         te_features, te_labels = separate_features_labels(args["test_data"])
     else:
         te_features = pd.read_csv(args["test_data"], sep="\t")
