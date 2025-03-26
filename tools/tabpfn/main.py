@@ -65,7 +65,7 @@ def classification_plot(y_true, y_scores, m_name):
     plt.ylabel("Precision")
     plt.legend(loc="lower left")
     plt.grid(True)
-    plt.savefig("output_plot_{}.png".format(m_name))
+    plt.savefig(f"output_plot_{m_name}.png")
 
 
 def regression_plot(xval, yval, title, xlabel, ylabel, m_name):
