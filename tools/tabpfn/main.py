@@ -37,7 +37,7 @@ def classification_plot(y_true, y_scores, m_name):
             precision,
             label=f"Precision-Recall Curve (AP={average_precision:.2f})",
         )
-        plt.title("{}: Precision-Recall Curve (binary classification)".format(m_name))
+        plt.title(f"{m_name}: Precision-Recall Curve (binary classification)")
     else:
         y_true_bin = label_binarize(y_true, classes=np.unique(y_true))
         n_classes = y_true_bin.shape[1]
