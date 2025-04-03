@@ -1,0 +1,503 @@
+<tool id="vrhyme" name="vRhyme" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+    <description>Dereplication and Binning Virus Genomes from Metagenomes</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="biotools"/>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+    mkdir -p "Raw_reads" &&
+        #if $input_types.input.selector == 'single_read'
+            cp ${input_types.input.single_read} 'Raw_reads/single_reads.fastq.gz'&&
+        #elif $input_types.input.selector == 'paired_reads'
+            cp ${input_types.input.reads1} 'Raw_reads/paired_1.fastq.gz' && 
+            cp ${input_types.input.reads2} 'Raw_reads/paired_2.fastq.gz'&&
+        #elif $input_types.input.selector == 'paired_collection'
+            cp ${input_types.input.paired_collection.forward} Raw_reads/paired_1.fastq.gz &&
+            cp ${input_types.input.paired_collection.reverse} Raw_reads/paired_2.fastq.gz &&
+        
+        #end if
+    
+        vRhyme 
+            -i '$input_fasta'
+            -o 'output_dir'
+            -t \${GALAXY_SLOTS:-6}
+
+            #if $optional_genes
+                -g '$optional_genes'
+            #end if
+            #if $optional_proteins
+                -p '$optional_proteins'
+            #end if
+
+            #if $input_types.input.selector == 'SAM_input'
+                -s '${input_types.input.SAM_inputs}'
+            #elif $input_types.input.selector == 'BAM_input'
+                -b '${input_types.input.BAM_inputs}' 
+            #elif $input_types.input.selector == 'cov_table'
+                -c '${input_types.input.cov_tables}'
+            #elif $input_types.input.selector == 'single_read'
+                -u 'Raw_reads/*.fastq.gz'
+            #elif $input_types.input.selector == 'paired_reads'
+                -r Raw_reads/paired_1.fastq.gz Raw_reads/paired_2.fastq.gz
+            #elif $input_types.input.selector == 'paired_collection'
+                -r Raw_reads/paired_1.fastq.gz Raw_reads/paired_2.fastq.gz
+            #end if
+
+
+            #if $min_length
+                -l '$min_length'
+            #end if
+
+            #if $read_alignment.alignment.customize_read_alignment == 'customize'
+                --aligner  $read_alignment.alignment.alignment_software
+                --read_id  $read_alignment.alignment.minimum_identity
+                --mask $read_alignment.alignment.mask_coverage
+            #end if 
+
+             #if $bin_filters.bin.customize_bin_output == 'customize'
+                --outliers $bin_filters.bin.outliers
+                --bin_size $bin_filters.bin.bin_size
+                --iter $bin_filters.bin.number_bin_iteration
+                --red $bin_filters.bin.maximum_redundant_proteins
+                --cov $bin_filters.bin.coverage_threshold
+                --model $bin_filters.bin.ml_model
+
+                --max_gc $bin_filters.bin.maximum_gc_distance
+                --min_kmer $bin_filters.bin.minimum_kmer_distance
+                --mems $bin_filters.bin.minimum_bins_member
+            #end if 
+             #if $dereplication_options.dereplication.customize_dereplication == 'customize'
+                --method $dereplication_options.dereplication.dereplication_method
+                -m $dereplication_options.dereplication.minimum_length
+                --derep_id  $dereplication_options.dereplication.min_identity
+                --frac $dereplication_options.dereplication.min_coverage
+            #end if 
+       
+    ]]></command>
+    <inputs>
+        <param name="input_fasta" type="data" format="fasta,fasta.gz" label="Input nucleotide scaffolds" help="It is predicted virus scaffolds from a metagenome or entire virome assembly."/>       
+        <param name="optional_genes" type="data" format="fasta" optional="true" label="Input nucleotide genes" help="input nucleotide genes in the format (name_#), and it can be skipped."/>
+        <param name="optional_proteins" type="data" format="fasta" optional="true" label="Input amino acid proteins" help=" input amino acid proteins genes in the format(name_#), and it can be skipped."/>
+
+        <param name="min_length" type="integer" value="2000" min="2000" label="minimum scaffold length to consider for binning(-l)" help="Minimum scaffold length to consider for binning. Default: 2000 bp. Cannot be lower than 2000 bp(2kb)"/>
+        <section name="input_types" title="Input_types" expanded="true">
+            <conditional name="input">
+                <param name="selector" type="select" label="Input file(s)">
+                    <option value="BAM_input">BAM_input file(s), sequence alignment files.</option>
+                    <option value="SAM_input">SAM input file(s), sequence alignment files.</option>
+                    <option value="cov_table">Coverage Table (Precomputed - TSV)</option>
+                    <option value="single_read" selected="True">single_read file(s)</option>
+                    <option value="paired_reads">paired_reads file(s)</option>
+                    <option value="paired_collection">Paired Collection (forward/reverse pairs)</option>
+                </param>
+                <when value="BAM_input">
+                    <param name="BAM_inputs" type="data" format="bam" label="BAM sequence alignment files" help="-i SAM or BAM input file(s) generated by motus map_tax"/>
+                </when>
+                <when value="SAM_input">
+                    <param name="SAM_inputs" type="data" format="sam" label="SAM sequence alignment files" help="-i SAM or BAM input file(s) generated by motus map_tax"/>
+                </when>
+                <when value="cov_table">
+                    <param name="cov_tables" type="data" format="tabular" label="Coverage Table (TSV)" help="coverage table generated from vRhyme or from cov_table_convert.py.This is useful if re-binning after a coverage table has already be generated by vRhyme or if an error caused vRhyme to exit after the coverage table was created."/>
+                </when>
+                <when value="single_read">
+                    <param name="single_read" type="data" format="fastq,fastq.gz" label="Single reads files" help="unpaired (.fastq) read files."/>
+                </when>
+                <when value="paired_reads">
+                    <param name="reads1" type="data" format="fastq,fastq.gz" label="paired forward (_1.fastq) read files." />
+                    <param name="reads2" type="data" format="fastq,fastq.gz" label="Paired reverse (_2.fastq) read files." /> 
+                </when>
+                <when value="paired_collection">
+                    <param name="paired_collection" type="data_collection" collection_type="paired" format="fastq,fastq.gz" label="Paired-end FASTQ Collection" />
+                </when>
+            </conditional>
+        </section>             
+        <section name="read_alignment" title="Read_alignment" expanded="true">
+            <conditional name="alignment">
+                <param argument="customize_read_alignment" type="select" label="Read alignment">
+                    <option value="default_options" selected="True">No, Use param defaults</option>
+                    <option value="customize">Yes, See full parameter list</option>
+                </param>
+                <when value="customize">
+                    <param name="minimum_identity" type="float" min="0.9" max="1.0" value="0.97" label="Minimum percent identity" help="Minimum percent identity per aligned read for calculating coverage [0.97]."/>
+                    <param name="mask_coverage" type="integer" value="150" min="0" label="Masks coverage value, bases on each end of a scaffold. The default is 150 suitable for most situation, but adjusting to average read length maybe beneficial."/>
+                    <param name="alignment_software" type="select" label="Read alignment software" help=" Read alignment software to use [bowtie2].">
+                        <option value="bowtie2" selected="true">bowtie2</option>
+                        <option value="bwa">bwa</option>
+                    </param>
+                    </when>
+                <when value="default_options">
+                    <!-- Define actions or defaults for the default option if necessary -->
+                </when>
+            </conditional>
+        </section>        
+        <section name="bin_filters" title="Bin_filters" expanded="true">
+            <conditional name="bin">
+                <param argument="customize_bin_output" type="select" label="Bin filters">
+                    <option value="default_options" selected="True">No, Use param defaults</option>
+                    <option value="customize">Yes, See full parameter list</option>
+                </param>
+                <when value="customize">
+                    <param name="outliers" type="float" value="4.0" min="0" label="Outlier Removal (Std Dev) (--outliers)" help="Remove outlier coverage values exceeding this many standard deviations above the average. Default: 4.0."/>       
+                    <param name="bin_size" type="integer" value="2" min="1" label="Minimum Scaffolds per Bin (--bin_size)" help="Minimum number of scaffolds required to form a bin. Default: 2."/>                        
+                    <param name="number_bin_iteration" type="integer" value="20" min="10" max="20" label="Number of Binning Iterations (--iter)" help="Number of binning iterations (presets) to run. Default: 20. Allowed range: 10-20."/>                        
+                    <param name="maximum_redundant_proteins" type="integer" value="50" min="1" label="Max Redundant Proteins per Bin (--red)" help="Maximum number of redundant proteins allowed per bin. Default: 50. Note: some eukaryotic viruses, and few prokaryotic viruses, can normally have up to 10 redundant proteins and in few cases may have greater than 10."/>                        
+                    <param name="coverage_threshold" type="float" value="0.80" min="0.0" max="1.0" label="Coverage Threshold (--cov)" help="Coverage threshold to consider a scaffold as present in a sample. Default: 0.80.Typically, lowering this value increases recall along with contamination, whereas increasing this value lowers recall and contamination."/>                        
+                    <param name="ml_model" type="select" label="Machine Learning Model (--model)" help="Select the machine learning model used for binning. Default: hybrid.">
+                        <option value="hybrid" selected="true">Hybrid (Default)</option>
+                        <option value="NN">Neural Network (NN)</option>
+                        <option value="ET">Extra Trees (ET)</option>
+                    </param>
+                    <param name="maximum_gc_distanc" type="float" value="0.20" min="0.0" max="1.00" label="Max GC Distance (--max_gc)" help="Maximum GC content difference between scaffolds for pre-filtering. Default: 0.20; setting to 1.00 disables filtering."/>
+                    <param name="minimum_kmer_distance" type="float" value="0.60" min="0.0" max="1.0" label="Min K-mer Distance (--min_kmer)" help="Minimum k-mer similarity required for scaffolds to be considered related. Default: 0.60; increasing speeds up filtering, setting to 0.00 disables filtering."/>
+                    <param name="minimum_bins_member" type="integer" value="4" min="1" label="Min Members for Refinement (--mems)" help="Refine bins with at least this many members. Default: 4; increasing may prevent splitting large viral genomes but could introduce contamination."/>
+                    </when>
+                <when value="default_options">
+                    <!-- Define actions or defaults for the default option if necessary -->
+                </when>
+            </conditional>
+        </section>        
+        <section name="dereplication_options" title="Dereplication_options" expanded="true">
+            <conditional name="dereplication">
+                <param argument="customize_dereplication" type="select" label="Dereplication options">
+                    <option value="default_options" selected="True">No, Use param defaults</option>
+                    <option value="customize">Yes, See full parameter list</option>
+                </param>
+                <when value="customize">
+                    <param name="dereplication_method" type="select" label="Dereplication Method (--method)" help="Select the method for input scaffold dereplication. Default: none, meaning dereplication by default is off.">
+                        <option value="none" selected="true">None (No Dereplication) [Default]</option>
+                        <option value="longest" >Longest (Keep the longest representative)</option>
+                        <option value="composite">Composite (Merge overlapping scaffolds, compatible with reads input)</option>
+                    </param>
+                    <param name="minimum_length" type="integer" value="1000" min="1000" label="Min Scaffold Length for Dereplication (-m)" help="Minimum scaffold length to consider for dereplication. Default: 1000 bp. Cannot be lower than 1000 bp."/>
+                    <param name="min_identity" type="float" value="0.97" min="0.0" max="1.0" label="Min Similarity for Dereplication (--derep_id)" help="Minimum percent identity for dereplication. Default: 0.97 for longest, 0.99 for composite."/>
+                    <param name="min_coverage" type="float" value="0.70" min="0.0" max="1.0" label="Min Coverage Overlap for Dereplication (--frac)" help="Minimum overlap coverage required for dereplication. Default: 0.70 for longest, 0.20 for composite."/>
+                </when>
+                <when value="default_options">
+                    <!-- Define actions or defaults for the default option if necessary -->
+                </when>
+            </conditional>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="circular" format="tabular" label="Circular_file" from_work_dir="output_dir/*.circular.tsv"/>
+        <data name="best_bins_membership" format="tabular" label="Best_bins_membership" from_work_dir="output_dir/vRhyme_best_bins*.membership.tsv"/>
+        <data name="best_bins_summery" format="tabular" label="Best_bins_summery" from_work_dir="output_dir/vRhyme_best_bins*.summary.tsv"/>
+        <data name="machine" format="tabular" label="Machine_distances" from_work_dir="output_dir/vRhyme_machine*.tsv"/>
+        <data name="logfile" format="tabular" label="Log_file" from_work_dir="output_dir/log_vRhyme_dataset_*.log"/>
+        <data name="bin_scoring" format="tabular" label="Bin_scoring" from_work_dir="output_dir/vRhyme_alternate_bins/vRhyme_bin_scoring.tsv"/>
+        <data name="genes" format="fasta" label="Input_genes" from_work_dir="output_dir/*.prodigal.ffn">
+            <filter>not optional_genes</filter>
+        </data>
+        <data name="proteins" format="fasta" label="Input_Proteine" from_work_dir="output_dir/*.prodigal.faa">
+            <filter>not optional_proteins</filter>
+        </data>
+        <data name="dereplication" format="fasta" label="Dereplication" from_work_dir="output_dir/vRhyme_dereplication/vRhyme_derep*.fa">
+            <filter>dereplication_options['dereplication']['customize_dereplication']=='customize' and none in customize_dereplication </filter>
+        </data>
+        <data name="dereplication_identical" format="tabular" label="Dereplication_Identical" from_work_dir="output_dir/vRhyme_dereplication/vRhyme_derep_indentical-seqs*.tsv">
+            <filter>dereplication_options['dereplication']['customize_dereplication']=='customize' and none in customize_dereplication </filter>
+        </data>
+        <collection name="best_bins_fasta" type="list" label="Best_bins_fasta">
+            <discover_datasets pattern="vRhyme_bin_(?P&lt;designation&gt;[0-9]+).fasta" format="fasta" directory="output_dir/vRhyme_best_bins_fasta/" />
+        </collection>
+        <collection name="best_bins_genes" type="list" label="Best_bins_genes">
+            <discover_datasets pattern="vRhyme_bin_(?P&lt;designation&gt;[0-9]+).ffn" format="fasta" directory="output_dir/vRhyme_best_bins_fasta/" />
+        </collection>
+        <collection name="best_bins_proteins" type="list" label="Best_bins_proteins">
+            <discover_datasets pattern="vRhyme_bin_(?P&lt;designation&gt;[0-9]+).faa" format="fasta" directory="output_dir/vRhyme_best_bins_fasta/" />
+        </collection>
+        <collection name="alternate_bins_summary" type="list" label="Alternate-bins_summary">
+            <discover_datasets pattern="vRhyme_alternate_bins.(?P&lt;designation&gt;[0-9]+).summary.tsv" format="tabular" directory="output_dir/vRhyme_alternate_bins/" />
+        </collection>
+        <collection name="alternate_bins_membership" type="list" label="Alternate-bins_membership">
+            <discover_datasets pattern="vRhyme_alternate_bins.(?P&lt;designation&gt;[0-9]+).membership.tsv" format="tabular" directory="output_dir/vRhyme_alternate_bins/" />
+        </collection> 
+        <data name="coverage_file" format="tabular" label="Coverage_file" from_work_dir="output_dir/vRhyme_coverage_files/vRhyme_coverage_values.tsv">
+            <filter> not input_types['input']['selector']=='cov_table'</filter>
+        </data>
+        <collection name="bam" type="list" label="BAM_file">
+            <filter> input_types['input']['selector'] in ['paired_reads', 'paired_collection']</filter>                    
+            <discover_datasets pattern="(?P&lt;designation&gt;.+).sorted.bam" format="bam" directory="output_dir/vRhyme_bam_files/" />
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="11">
+            <param name="input_fasta" value="example_scaffolds.fasta"/>
+            <param name="optional_genes" value="example_scaffolds.prodigal.ffn"/>
+            <param name="optional_proteins" value="example_scaffolds.prodigal.faa"/>
+             <section name="input_types">
+                <conditional name="input">
+                    <param name="selector" value="cov_table"/>
+                    <param name="cov_tables" value="example_coverage_values.tsv"/>
+                </conditional>
+            </section>
+            <output name="circular" file="output_coverage-table/example_scaffolds.circular.tsv" compare="sim_size" />
+            <output name="best_bins_summery" file="output_coverage-table/vRhyme_best_bins.0.summary.tsv" compare="sim_size" /> 
+            <output name="best_bins_membership" file="output_coverage-table/vRhyme_best_bins.0.membership.tsv" compare="sim_size" /> 
+            <output name="machine" file="output_coverage-table/vRhyme_machine_distances.tsv" compare="sim_size" /> 
+            <output name="logfile" file="output_coverage-table/log_vRhyme_example_scaffolds.log" compare="sim_size" /> 
+            <output name="bin_scoring" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_bin_scoring.tsv" compare="sim_size" />
+
+            <output_collection name="best_bins_fasta"  type="list" count="2"> 
+                <element name="1" file="output_coverage-table/vRhyme_best_bins_fasta/vRhyme_bin_1.fasta" ftype="fasta"/>
+                <element name="2" file="output_coverage-table/vRhyme_best_bins_fasta/vRhyme_bin_2.fasta" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_genes"  type="list" count="2"> 
+                <element name="1" file="output_coverage-table/vRhyme_best_bins_fasta/vRhyme_bin_1.ffn" ftype="fasta"/>
+                <element name="2" file="output_coverage-table/vRhyme_best_bins_fasta/vRhyme_bin_2.ffn" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_proteins"  type="list" count="2"> 
+                <element name="1" file="output_coverage-table/vRhyme_best_bins_fasta/vRhyme_bin_1.faa" ftype="fasta"/>
+                <element name="2" file="output_coverage-table/vRhyme_best_bins_fasta/vRhyme_bin_2.faa" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="alternate_bins_summary" type="list" count="19">
+                <element name="1" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_alternate_bins.1.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_alternate_bins.10.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_alternate_bins.3.summary.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output_collection name="alternate_bins_membership" type="list" count="19">
+                <element name="1" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_alternate_bins.1.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_alternate_bins.10.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_alternate_bins.3.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="4" file="output_coverage-table/vRhyme_alternate_bins/vRhyme_alternate_bins.4.membership.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="16">
+            <param name="input_fasta" value="example_scaffolds_replication.fasta"/>
+            <section name="input_types">
+                <conditional name="input">
+                    <param name="selector" value="single_read"/>
+                    <param name="single_read" value="Test_simulated.fastq"/>
+                </conditional>
+            </section>
+            <section name="dereplication_options">
+                <conditional name="dereplication">
+                    <param name="customize_dereplication" value="customize"/>
+                    <param name="dereplication_method" value="longest"/>
+                    <param name="minimum_length" value="1000"/>
+                    <param name="min_identity" value="0.97"/>
+                    <param name="min_coverage" value="0.70"/>
+                </conditional>
+            </section>
+            <output name="circular" file="output_single_reads/example_scaffolds_replication.circular.tsv" compare="sim_size" />
+            <output name="best_bins_summery" file="output_single_reads/vRhyme_best_bins.0.summary.tsv" compare="sim_size" /> 
+            <output name="best_bins_membership" file="output_single_reads/vRhyme_best_bins.0.membership.tsv" compare="sim_size" /> 
+            <output name="machine" file="output_single_reads/vRhyme_machine_distances.tsv" compare="sim_size" /> 
+            <output name="logfile" file="output_single_reads/log_vRhyme_example_scaffolds_replication.log" compare="sim_size" /> 
+            <output name="bin_scoring" file="output_single_reads/vRhyme_alternate_bins/vRhyme_bin_scoring.tsv" compare="sim_size" />
+            <output name="genes" file="output_single_reads/example_scaffolds_replication.prodigal.ffn" compare="sim_size" />
+            <output name="proteins" file="output_single_reads/example_scaffolds_replication.prodigal.faa" compare="sim_size" />
+            <output_collection name="best_bins_fasta"  type="list" count="1" > 
+                <element name="1" file="output_single_reads/vRhyme_best_bins_fasta/vRhyme_bin_1.fasta" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_genes"  type="list" count="1" > 
+                <element name="1" file="output_single_reads/vRhyme_best_bins_fasta/vRhyme_bin_1.ffn" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_proteins"  type="list" count="1" > 
+                <element name="1" file="output_single_reads/vRhyme_best_bins_fasta/vRhyme_bin_1.faa" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="alternate_bins_summary" type="list">
+                <element name="1" file="output_single_reads/vRhyme_alternate_bins/vRhyme_alternate_bins.1.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_single_reads/vRhyme_alternate_bins/vRhyme_alternate_bins.10.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_single_reads/vRhyme_alternate_bins/vRhyme_alternate_bins.3.summary.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output_collection name="alternate_bins_membership" type="list" count="19">
+                <element name="1" file="output_single_reads/vRhyme_alternate_bins/vRhyme_alternate_bins.1.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_single_reads/vRhyme_alternate_bins/vRhyme_alternate_bins.10.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_single_reads/vRhyme_alternate_bins/vRhyme_alternate_bins.3.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="4" file="output_single_reads/vRhyme_alternate_bins/vRhyme_alternate_bins.4.membership.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output name="coverage_file" file="output_single_reads/vRhyme_coverage_values.tsv" compare="sim_size" />  
+            <output name="dereplication" file="output_single_reads/vRhyme_dereplication/vRhyme_derep_longest_example_scaffolds_replication.fa" compare="sim_size" />  
+            <output name="dereplication_identical" file="output_single_reads/vRhyme_dereplication/vRhyme_derep_indentical-seqs_example_scaffolds_replication.tsv" compare="sim_size" />  
+        </test>
+        <test expect_num_outputs="17">
+            <param name="input_fasta" value="example_scaffolds_replication.fasta"/>
+            <section name="input_types">
+                <conditional name="input">
+                    <param name="selector" value="paired_reads"/>
+                    <param name="reads1" value="Test_simulated_1.fastq"/>
+                    <param name="reads2" value="Test_simulated_2.fastq"/>
+                </conditional>
+            </section>
+            <section name="dereplication_options">
+                <conditional name="dereplication">
+                    <param name="customize_dereplication" value="customize"/>
+                    <param name="dereplication_method" value="composite"/>
+                    <param name="minimum_length" value="1000"/>
+                    <param name="min_identity" value="0.97"/>
+                    <param name="min_coverage" value="0.70"/>
+                </conditional>
+            </section>
+            <output name="circular" file="output_Paired_Reads/example_scaffolds_replication.circular.tsv" compare="sim_size" />
+            <output name="best_bins_summery" file="output_Paired_Reads/vRhyme_best_bins.0.summary.tsv" compare="sim_size" /> 
+            <output name="best_bins_membership" file="output_Paired_Reads/vRhyme_best_bins.0.membership.tsv" compare="sim_size" /> 
+            <output name="machine" file="output_Paired_Reads/vRhyme_machine_distances.tsv" compare="sim_size" /> 
+            <output name="logfile" file="output_Paired_Reads/log_vRhyme_example_scaffolds_replication.log" compare="sim_size" /> 
+            <output name="bin_scoring" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_bin_scoring.tsv" compare="sim_size" />
+            <output name="genes" file="output_Paired_Reads/example_scaffolds_replication.prodigal.ffn" compare="sim_size" />
+            <output name="proteins" file="output_Paired_Reads/example_scaffolds_replication.prodigal.faa" compare="sim_size" />
+            <output_collection name="best_bins_fasta"  type="list" count="1" > 
+                <element name="1" file="output_Paired_Reads/vRhyme_best_bins_fasta/vRhyme_bin_1.fasta" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_genes"  type="list" count="1" > 
+                <element name="1" file="output_Paired_Reads/vRhyme_best_bins_fasta/vRhyme_bin_1.ffn" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_proteins"  type="list" count="1" > 
+                <element name="1" file="output_Paired_Reads/vRhyme_best_bins_fasta/vRhyme_bin_1.faa" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="alternate_bins_summary" type="list">
+                <element name="1" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_alternate_bins.1.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_alternate_bins.10.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_alternate_bins.3.summary.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output_collection name="alternate_bins_membership" type="list" count="19">
+                <element name="1" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_alternate_bins.1.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_alternate_bins.10.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_alternate_bins.3.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="4" file="output_Paired_Reads/vRhyme_alternate_bins/vRhyme_alternate_bins.4.membership.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output name="coverage_file" file="output_Paired_Reads/vRhyme_coverage_values.tsv" compare="sim_size"/>  
+            <output_collection name="bam" type="list" count="1"> 
+                <element name="paired_1" file="output_Paired_Reads/vRhyme_bam_files/paired_1.sorted.bam" ftype="bam" compare="sim_size"/>
+            </output_collection> 
+            <output name="dereplication" file="output_Paired_Reads/vRhyme_dereplication/vRhyme_derep_composite_example_scaffolds_replication.fa" compare="sim_size" />    
+            <output name="dereplication_identical" file="output_Paired_Reads/vRhyme_dereplication/vRhyme_derep_indentical-seqs_example_scaffolds_replication.tsv" compare="sim_size" />  
+        </test>
+        <test expect_num_outputs="16">
+            <param name="input_fasta" value="example_scaffolds_replication.fasta"/>
+            <section name="input_types">
+                <conditional name="input">
+                    <param name="selector" value="BAM_input"/>
+                    <param name="BAM_inputs" value="Test_simulated.bam"/>
+                </conditional>
+            </section>
+            <section name="dereplication_options">
+                <conditional name="dereplication">
+                    <param name="customize_dereplication" value="customize"/>
+                    <param name="dereplication_method" value="longest"/>
+                </conditional>
+            </section>
+            <output name="circular" file="output_BAM_Input/example_scaffolds_replication.circular.tsv" compare="sim_size" />
+            <output name="best_bins_summery" file="output_BAM_Input/vRhyme_best_bins.0.summary.tsv" compare="sim_size" /> 
+            <output name="best_bins_membership" file="output_BAM_Input/vRhyme_best_bins.0.membership.tsv" compare="sim_size" /> 
+            <output name="machine" file="output_BAM_Input/vRhyme_machine_distances.tsv" compare="sim_size" /> 
+            <output name="logfile" file="output_BAM_Input/log_vRhyme_example_scaffolds_replication.log" compare="sim_size" /> 
+            <output name="bin_scoring" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_bin_scoring.tsv" compare="sim_size" />
+            <output name="genes" file="output_BAM_Input/example_scaffolds_replication.prodigal.ffn" compare="sim_size" />
+            <output name="proteins" file="output_BAM_Input/example_scaffolds_replication.prodigal.faa" compare="sim_size" />
+            <output_collection name="best_bins_fasta"  type="list" count="1" > 
+                <element name="1" file="output_BAM_Input/vRhyme_best_bins_fasta/vRhyme_bin_1.fasta" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_genes"  type="list" count="1" > 
+                <element name="1" file="output_BAM_Input/vRhyme_best_bins_fasta/vRhyme_bin_1.ffn" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_proteins"  type="list" count="1" > 
+                <element name="1" file="output_BAM_Input/vRhyme_best_bins_fasta/vRhyme_bin_1.faa" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="alternate_bins_summary" type="list">
+                <element name="1" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_alternate_bins.1.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_alternate_bins.10.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_alternate_bins.3.summary.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output_collection name="alternate_bins_membership" type="list">
+                <element name="1" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_alternate_bins.1.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_alternate_bins.10.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_alternate_bins.3.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="4" file="output_BAM_Input/vRhyme_alternate_bins/vRhyme_alternate_bins.4.membership.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output name="coverage_file" file="output_BAM_Input/vRhyme_coverage_values.tsv" compare="sim_size"/> 
+            <output name="dereplication" file="output_BAM_Input/vRhyme_dereplication/vRhyme_derep_longest_example_scaffolds_replication.fa" compare="sim_size" />    
+            <output name="dereplication_identical" file="output_BAM_Input/vRhyme_dereplication/vRhyme_derep_indentical-seqs_example_scaffolds_replication.tsv" compare="sim_size" />  
+
+        </test>
+        <test expect_num_outputs="13">
+            <param name="input_fasta" value="example_scaffolds.fasta"/>
+            <param name="optional_genes" value="example_scaffolds.prodigal.ffn"/>
+            <param name="optional_proteins" value="example_scaffolds.prodigal.faa"/>
+            <section name="input_types">
+                <conditional name="input">
+                    <param name="selector" value="paired_collection"/>
+                    <param name="paired_collection">
+                        <collection type="paired">
+                            <element name="forward" value="Test_simulated_1.fastq" ftype="fastqsanger"/>
+                            <element name="reverse" value="Test_simulated_2.fastq" ftype="fastqsanger"/>
+                        </collection>
+                    </param>
+                </conditional>
+            </section>
+            <output name="circular" file="output_Paired_collection/example_scaffolds.circular.tsv" compare="sim_size" />
+            <output name="best_bins_summery" file="output_Paired_collection/vRhyme_best_bins.0.summary.tsv" compare="sim_size" /> 
+            <output name="best_bins_membership" file="output_Paired_collection/vRhyme_best_bins.0.membership.tsv" compare="sim_size" /> 
+            <output name="machine" file="output_Paired_collection/vRhyme_machine_distances.tsv" compare="sim_size" /> 
+            <output name="logfile" file="output_Paired_collection/log_vRhyme_example_scaffolds.log" compare="sim_size" /> 
+            <output name="bin_scoring" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_bin_scoring.tsv" compare="sim_size" />
+            <output_collection name="best_bins_fasta"  type="list" count="1" > 
+                <element name="1" file="output_Paired_collection/vRhyme_best_bins_fasta/vRhyme_bin_1.fasta" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_genes"  type="list" count="1" > 
+                <element name="1" file="output_Paired_collection/vRhyme_best_bins_fasta/vRhyme_bin_1.ffn" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="best_bins_proteins"  type="list" count="1" > 
+                <element name="1" file="output_Paired_collection/vRhyme_best_bins_fasta/vRhyme_bin_1.faa" ftype="fasta"/>
+            </output_collection>
+            <output_collection name="alternate_bins_summary" type="list">
+                <element name="1" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_alternate_bins.1.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_alternate_bins.10.summary.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_alternate_bins.3.summary.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output_collection name="alternate_bins_membership" type="list" count="19">
+                <element name="1" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_alternate_bins.1.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="2" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_alternate_bins.10.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="3" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_alternate_bins.3.membership.tsv" ftype="tabular" compare="contains"/>
+                <element name="4" file="output_Paired_collection/vRhyme_alternate_bins/vRhyme_alternate_bins.4.membership.tsv" ftype="tabular" compare="contains"/>
+            </output_collection>
+            <output name="coverage_file" file="output_Paired_collection/vRhyme_coverage_values.tsv" compare="sim_size" /> 
+            <output_collection name="bam" type="list" count="1"> 
+                <element name="paired_1" file="output_Paired_collection/vRhyme_bam_files/paired_1.sorted.bam" ftype="bam" compare="sim_size"/>
+            </output_collection>        
+        </test>
+    </tests>
+    <help><![CDATA[
+What it does
+============
+vRhyme is a tool for binning viral genomes from metagenomes. It groups viral contigs into metagenome-assembled genomes (vMAGs) using sequence features, read coverage patterns, and machine learning. It also includes an optional dereplication function to remove redundant sequences.
+
+Dereplication function
+=======================
+vRhyme also supports 'scaffold dereplication', which removes redundant sequences before binning. This can be useful when:
+- Reducing dataset complexity before clustering.
+- Merging highly similar or overlapping sequences.
+
+Required Inputs
+===============
+- A FASTA file containing predicted virus scaffolds from a metagenome or entire virome assembly.
+- A TSV file with scaffold coverage across samples (optional).
+- FASTQ, BAM, or SAM files for coverage calculations.
+
+Main Features
+===============
+- Viral Genome Binning: Groups viral sequences into high-quality vMAGs.
+- Automatic Bin Refinement: Adjusts bins for better quality.
+- Dereplication (Optional): Removes redundant sequences before binning.
+- Coverage Filtering: Filters scaffolds based on read coverage.
+- Support for Circular Genomes: Identifies and optionally removes circular sequences.
+- Multiple Machine Learning Models: Uses neural networks and extra trees classifiers.
+
+Generated Outputs
+=================
+vRhyme produces several key output files:
+
+1. Log File (`log_vRhyme.log`): Contains run details and parameters.
+2. Clustered Genomes Summary (`vRhyme_best_bins.summary.tsv`): Overview of the binned vMAGs.
+3. Scaffold Membership (`vRhyme_best_bins.membership.tsv`): Lists which contigs belong to each bin.
+4. Best Binned Genomes (`vRhyme_best_bins_fasta/`): FASTA files of final binned sequences.
+
+Additional Resources
+====================
+For full documentation, visit:
+- vRhyme GitHub: [https://github.com/AnantharamanLab/vRhyme]
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
