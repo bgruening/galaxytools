@@ -2,7 +2,9 @@
 
 import argparse
 import os
+
 from flexynesis.utils import CBioPortalData
+
 
 def main():
     parser = argparse.ArgumentParser(description="Fetch and prepare cBioPortal data for Flexynesis.")
@@ -19,8 +21,8 @@ def main():
         raise ValueError("Clinical data ('clin') is required for splitting the dataset.")
     
     file_mapping = {
-        "clin": "data_clinical_patient.txt", # can be any with 'clinical' in file name
-        "mut": "data_mutations.txt", # any with 'mutations' in file name
+        "clin": "data_clinical_patient.txt",  # can be any with 'clinical' in file name
+        "mut": "data_mutations.txt",  # any with 'mutations' in file name
         "omics": "data_cna.txt",
         "other": None
     }
@@ -49,12 +51,11 @@ def main():
     for data_type in data_types:
         if data_type in dataset['train']:
             train_file = os.path.join(args.output_dir, f"{data_type}_train.csv")
-            dataset['train'][data_type].to_csv(train_file, index=True)  
-            print(f"Wrote training data to {train_file}")
+            dataset['train'][data_type].to_csv(train_file, index=True)
         if data_type in dataset['test']:
             test_file = os.path.join(args.output_dir, f"{data_type}_test.csv")
-            dataset['test'][data_type].to_csv(test_file, index=True) 
-            print(f"Wrote test data to {test_file}")
+            dataset['test'][data_type].to_csv(test_file, index=True)
+
 
 if __name__ == "__main__":
     main()
