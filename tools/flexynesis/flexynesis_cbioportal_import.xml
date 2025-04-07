@@ -1,0 +1,121 @@
+<tool id="flexynesis_cbioportal_import" name="Flexynesis cBioPortal import" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>and prepare cBioPortal data for Flexynesis analysis</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+        @CHECK_NON_COMMERCIAL_USE@
+        python '$__tool_directory__/fetch_cbioportal_data.py'
+            --study_id '$study_id'
+            --data_types '$data_types'
+            #if $mapped_files:
+                --mapped_files '$mapped_files'
+            #end if
+            --split_ratio '$split_ratio'
+            --output_dir 'output'
+    ]]></command>
+    <inputs>
+        <param name="non_commercial_use" label="I certify that I am not using this tool for commercial purposes." type="boolean" truevalue="NON_COMMERCIAL_USE" falsevalue="COMMERCIAL_USE" checked="False">
+            <validator type="expression" message="This tool is only available for non-commercial use.">value == True</validator>
+        </param>
+        <param name="study_id" type="text" label="cBioPortal study ID" help="The ID of the study to fetch from cBioPortal (e.g., 'brca_tcga')." />
+        <param name="data_types" type="select" multiple="true" label="Data types to fetch" help="Select the types of data to retrieve from cBioPortal.">
+            <option value="clin" selected="true">Clinical data (default: data_clinical_patient.txt)</option>
+            <option value="mut">Mutations (default: data_mutations.txt)</option>
+            <option value="omics">Omics data (default: data_cna.txt)</option>
+            <option value="other">Other custom data</option>
+        </param>
+        <param name="mapped_files" type="text" optional="true" label="Mapped files" help="Comma-separated list of .txt files to map to the selected data types (e.g., 'data_clinical_sample.txt,data_mutations.txt,data_castom.txt'). Must match the number and order of data types." />
+        <param name="split_ratio" type="float" value="0.7" min="0.0" max="1.0" label="Training/Test split ratio" help="Proportion of data to use for training (e.g., 0.7 means 70% train, 30% test)." />
+    </inputs>
+    <outputs>
+        <collection name="datasets" type="list" label="${tool.name} on ${study_id}: datasets">
+            <discover_datasets pattern="(?P&lt;name&gt;.+_(train|test))\.csv$" format="csv" directory="output" />
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <param name="study_id" value="lgg_tcga" />
+            <param name="data_types" value="clin,mut" />
+            <param name="split_ratio" value="0.7" />
+            <output_collection name="datasets" type="list">
+                <element name="clin_test">
+                    <assert_contents>
+                        <has_text_matching expression="PATIENT_ID"/>
+                    </assert_contents>
+                </element>
+                <element name="clin_train">
+                    <assert_contents>
+                        <has_text_matching expression="PATIENT_ID"/>
+                    </assert_contents>
+                </element>
+                <element name="mut_test">
+                    <assert_contents>
+                        <has_text_matching expression="Hugo_Symbol"/>
+                    </assert_contents>
+                </element>
+                <element name="mut_train">
+                    <assert_contents>
+                        <has_text_matching expression="Hugo_Symbol"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <param name="study_id" value="lgg_tcga" />
+            <param name="data_types" value="clin,mut,other" />
+            <param name="mapped_files" value="data_clinical_patient.txt,data_mutations.txt,data_cna.txt" />
+            <param name="split_ratio" value="0.8" />
+            <output_collection name="datasets" type="list">
+                <element name="clin_train">
+                    <assert_contents>
+                        <has_text_matching expression="PATIENT_ID"/>
+                    </assert_contents>
+                </element>
+                <element name="mut_train">
+                    <assert_contents>
+                        <has_text_matching expression="Hugo_Symbol"/>
+                    </assert_contents>
+                </element>
+                <element name="other_test">
+                    <assert_contents>
+                        <has_text_matching expression="Hugo_Symbol"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests><help><![CDATA[
+**Flexynesis cBioPortal import**
+
+This tool fetches data from cBioPortal using the Flexynesis `CBioPortalData` class and prepares it for use with the Flexynesis Galaxy tool. It downloads a specified study, extracts the requested data types, splits them into training and test sets, and outputs them as CSV files compatible with Flexynesis (e.g., `clin_train.csv`, `mut_test.csv`).
+
+**Inputs**
+
+- **cBioPortal study ID**: The identifier of the study to fetch (e.g., `brca_tcga`, `lgg_tcga`). Find study IDs on the cBioPortal.
+- **Data types to fetch**: Select one or more data types to retrieve. 'Clinical data' (`clin`) is required for splitting. Options:
+    - `clin`: Clinical data (default: `data_clinical_patient.txt`)
+    - `mut`: Mutation data (default: `data_mutations.txt`)
+    - `omics`: Omics data (default: `data_cna.txt`)
+    - `other`: Custom data type (requires `--mapped_files`)
+- **Mapped files (optional)**: A comma-separated list of `.txt` files to override default filenames. Must match the number and order of selected data types (e.g., `data_clinical_sample.txt,data_mutations.txt,data_custom.txt`).
+- **Training/Test split ratio**: The proportion of data for training (e.g., 0.7 means 70% train, 30% test).
+
+**Outputs**
+
+A collection of datasets including:
+    - `clin_train.csv` and `clin_test.csv`: Training and test clinical data (always included).
+    - `mut_train.csv` and `mut_test.csv`: Training and test mutation data (if selected).
+    - `omics_train.csv` and `omics_test.csv`: Training and test omics/CNA data (if selected).
+    - `other_train.csv` and `other_test.csv`: Training and test custom data (if `other` is selected with a mapped file).
+
+These datasets can be used as inputs to the Flexynesis Galaxy tool for multi-omics analysis.
+
+**Note**: Ensure the study ID is valid and the selected data types (or mapped files) are available in the study archive. Clinical data (`clin`) is mandatory for splitting.
+]]></help>
+    <citations>
+        <citation type="doi">10.1101/2024.07.16.603606</citation>
+    </citations>
+</tool>
