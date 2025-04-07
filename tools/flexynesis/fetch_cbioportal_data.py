@@ -13,13 +13,13 @@ def main():
     parser.add_argument("--mapped_files", default=None, help="Comma-separated list of .txt files to map to data_types (optional)")
     parser.add_argument("--split_ratio", type=float, default=0.7, help="Training/test split ratio (0.0 to 1.0)")
     parser.add_argument("--output_dir", required=True, help="Output directory for datasets")
-    
+
     args = parser.parse_args()
-    
+
     data_types = args.data_types.split(",")
     if "clin" not in data_types:
         raise ValueError("Clinical data ('clin') is required for splitting the dataset.")
-    
+
     file_mapping = {
         "clin": "data_clinical_patient.txt",  # can be any with 'clinical' in file name
         "mut": "data_mutations.txt",  # any with 'mutations' in file name
@@ -37,7 +37,7 @@ def main():
                 raise ValueError(f"Mapped file '{mf}' must end with '.txt'.")
     else:
         files_to_fetch = {dt: file_mapping[dt] for dt in data_types if dt in file_mapping}
-    
+
     invalid_types = set(data_types) - set(file_mapping.keys())
     if invalid_types:
         raise ValueError(f"Invalid data types: {invalid_types}. Supported types: {list(file_mapping.keys())}")
