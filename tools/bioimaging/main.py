@@ -141,4 +141,4 @@ if __name__ == "__main__":
     pred_numpy = pred_data.detach().numpy()
 
     # write predicted TIF image to file
-    imageio.v3.imwrite("output_predicted_image.tif", pred_numpy, extension=".tif")
+    imageio.v3.imwrite("output_predicted_image.tiff", pred_numpy, extension=".tiff")
