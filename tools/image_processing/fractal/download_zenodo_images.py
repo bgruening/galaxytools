@@ -12,10 +12,9 @@ def download_files(zenodo_doi_or_url, file_names, output_path, hash_dict=None):
     slug = zenodo_doi.replace("/", "_").replace(".", "_")
     root = Path(output_path) / slug
     root.mkdir(parents=True, exist_ok=True)
-
     if hash_dict:
         registry = {name: hash_dict[name] for name in file_names if name in hash_dict}
-
+        
         pooch_obj = pooch.create(
             path=pooch.os_cache("pooch") / slug,
             base_url=f"doi:{zenodo_doi}",
@@ -48,16 +47,27 @@ if __name__ == "__main__":
     parser.add_argument("--zenodo_doi", required=True)
     parser.add_argument("--file_list", required=True)
     parser.add_argument("--hash_dict", required=False)
-    parser.add_argument("--output_dir", required=True)
-    parser.add_argument("--output_path_file", required=True)
+    parser.add_argument("--image_folder", required=True)
+    parser.add_argument("--output_json", required=True)
 
     args = parser.parse_args()
 
     with open(args.file_list) as f:
         file_names = [line.strip() for line in f if line.strip()]
+    
+    if args.hash_dict and args.hash_dict.lower() != "none":
+        with open(args.hash_dict) as f:
+            hash_dict = json.load(f)
+    else:
+        hash_dict = None
 
-    result_path,downloaded_files = download_files(args.zenodo_doi, file_names, args.output_dir,args.hash_dict)
+    result_path,downloaded_files = download_files(args.zenodo_doi, file_names, args.image_folder,hash_dict)
 
-    with open(args.output_path_file, "w") as f:
-        f.write(result_path)
+    import json
+
+    with open(args.output_json, "w") as f:
+        json.dump({
+            "download_path": result_path,
+            "files": downloaded_files
+        }, f, indent=2)
 
