@@ -10,54 +10,81 @@
       ##SYMLINK SYLPH DB
 @DB_SELECTOR@
 ##Single input
-        #if $sketch.type == 'single':
-            @SINGLE_INPUT@
+        #if $sketch_reads.type_reads == 'single_fastq':
+            @SINGLE_INPUT_FASTQ@
 ##Single group
-        #else if $sketch.type == 'single_group':
-            @SINGLE_GROUP@
+        #else if $sketch_reads.type_reads == 'single_group_fastq':
+            @SINGLE_GROUP_FASTQ@
 ##Paired input
-        #else if $sketch.type == 'paired':
+        #else if $sketch_reads.type_reads == 'paired':
             @PAIRED@
 ##Paired  group
-        #else if $sketch.type == 'paired_group':
+        #else if $sketch_reads.type_reads == 'paired_group':
             @PAIRED_GROUP@
         #end if
-##SKETCHING
+##SKETCHING_READS
         sylph sketch
-        #if $sketch.type == 'single':
-            '$input'
-        #else if $sketch.type == 'single_group':
-            -r '$input'
-        #else if $sketch.type == 'paired': 
-            -1 '$read1'
-            -2 '$read2'
-        #else if $sketch.type == 'paired_group': 
-            -1 '$read1'
-            -2 '$read2'
+        #if $sketch_reads.type_reads == 'single_fastq':
+            $input
+        #else if $sketch_reads.type_reads == 'single_group_fastq':
+            -r $input
+        #else if $sketch_reads.type_reads == 'paired': 
+            -1 $read1
+            -2 $read2
+        #else if $sketch_reads.type_reads == 'paired_group': 
+            -1 $read1
+            -2 $read2
         #end if
         -t \${GALAXY_SLOTS:-4}
         -d sylph_sketches &&
+
+##Single fasta input
+    #if $database_select.select == 'custom':
+        #if $database_select.type_fasta == 'single_fasta':
+            @SINGLE_INPUT_FASTA@
+##Single fasta group
+        #else if $database_select.type_fasta == 'single_group_fasta':
+            @SINGLE_GROUP_FASTA@
+        #end if
+##SKETCHING_FASTA
+        sylph sketch
+        #if $database_select.type_fasta == 'single_fasta':
+            $input
+        #else if $database_select.type_fasta == 'single_group_fasta':
+            -r $input
+        #end if
+        -t \${GALAXY_SLOTS:-4}
+        -c $compression
+        #if str($database_select.grouped_genomes) == 'Yes':
+            -i
+        #end if
+        -o custom_database &&
+    #end if
 ##QUERY COMMAND
         sylph query
         -t \${GALAXY_SLOTS:-4}
-        database.syldb
+        #if $database_select.select == 'cached':
+            cached_database.syldb
+        #else if $database_select.select == 'custom':
+            custom_database.syldb
+        #end if        
         sylph_sketches/*.sylsp
         -o '$output'
 
     ]]></command>
     <inputs>
-        <conditional name="sketch">
-            <param name="type" type="select" label="Select the type of reads used">
-                <option value="single">Individual single-end reads</option>
-                <option value="single_group">Group of single-ended reads</option>
+        <conditional name="sketch_reads">
+            <param name="type_reads" type="select" label="Select the type of reads used">
+                <option value="single_fastq">Individual single-end reads</option>
+                <option value="single_group_fastq">Group of single-ended reads</option>
                 <option value="paired">One set of paired-end reads</option>
                 <option value="paired_group"> Group of paired-ended reads</option>
             </param>
         <!-- Only permitting fastq as tool input only allows fastq and fastq.gz as file ext -->
-            <when value="single">
+            <when value="single_fastq">
                 <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads"/>
             </when>
-            <when value="single_group">
+            <when value="single_group_fastq">
                 <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads" multiple="true"/>
             </when>            
             <when value="paired">
@@ -68,7 +95,21 @@
                 <param name="input" type="data_collection" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Paired-end input reads" collection_type="paired"/>
             </when>
         </conditional>
-        <expand macro="input_database"/>
+        <conditional name="database_select">
+            <param name="select" type="select" label="Choose the source for databases and metadata">
+                <option value="cached">Cached data</option>
+                <option value="custom">Custom</option>
+                <option value="cached_and_custom">Cached and custom databases</option>
+            </param>
+            <when value="cached">
+                <param label="Select a sylph database" name="sylph_database" type="select" multiple="true" optional="false">
+                    <options from_data_table="sylph_databases">
+                        <validator message="No Sylph databases are available" type="no_options" />
+                    </options>
+                </param>
+            </when>
+            <expand macro="input_database"/>
+        </conditional>
     </inputs>
     <outputs>
         <data format="tabular" name="output" label="${tool.name} on ${on_string}"/>
@@ -76,60 +117,70 @@
     <tests>
         <!-- Test 1 Single-end Read ANI -->
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="single"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>            
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_fastq"/>
                 <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
             </conditional>
-            <output name="output" value="output_5.tabular"/>
+            <output name="output" value="output_query_1.tabular"/>
         </test>
         <!-- Test 2 Group of single Read ANI -->
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="single_group"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
                 <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
             </conditional>
-            <output name="output" value="output_6.tabular"/>
+            <output name="output" value="output_query_2.tabular" compare="sim_size"/>
         </test>
         <!-- 3 and 4 have the same generated command and output, it's testing if the wrapper is handling data properly. -->
         <!-- Test 3 paired-end Read ANI -->
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="paired"/>
-                <param name="input_1" value="test R1.fq" ftype="fastq"/>
-                <param name="input_2" value="test R2.fq" ftype="fastqsanger"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>            
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired"/>
+                <param name="input_1" value="test_R1.fq" ftype="fastq"/>
+                <param name="input_2" value="test_R2.fq" ftype="fastqsanger"/>
             </conditional>
-            <output name="output" value="output_7_8.tabular"/>
+            <output name="output" value="output_query_3_4.tabular"/>
         </test>
         <!-- Test 4 paired-end collection read ANI -->
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="paired_group"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>            
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired_group"/>
                 <param name="input">
                     <collection type="paired" name="test_R1.fq">
-                        <element name="forward" ftype="fastq" value="test R1.fq"/>
-                        <element name="reverse" ftype="fastq" value="test R2.fq"/>
+                        <element name="forward" ftype="fastq" value="test_R1.fq"/>
+                        <element name="reverse" ftype="fastq" value="test_R2.fq"/>
                     </collection>
                 </param>
             </conditional>
-            <output name="output" value="output_7_8.tabular"/>
-        </test>
-        <!-- Test 5 History Database -->
-        <test expect_num_outputs="1">
-            <conditional name="database_select">
-                <param name="select" value="history"/>
-                <param name="sylph_database" value="sylph_db/database.syldb"/>
-                <param name="metadata" value="sylph_db/database.tsv.gz"/>
-            </conditional>
-            <conditional name="sketch">
-                <param name="type" value="paired"/>
-                <param name="input_1" value="test R1.fq" ftype="fastq"/>
-                <param name="input_2" value="test R2.fq" ftype="fastqsanger"/>
-            </conditional>
-            <output name="output" value="output_3.tabular"/>
+            <output name="output" value="output_query_3_4.tabular"/>
         </test>
     </tests>
     <help><![CDATA[
