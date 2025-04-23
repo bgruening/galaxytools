@@ -15,6 +15,7 @@ if __name__ == "__main__":
 
     with open(args.allowed_channels) as f:
         allowed_channels = json.load(f)
+    
 
     result = cellvoyager_to_ome_zarr_init(
         zarr_urls=[],
@@ -28,5 +29,5 @@ if __name__ == "__main__":
     )
 
     with open(args.output_json, "w") as f:
-        json.dump(result["parallelization_list"], f, indent=2)
+        json.dump(result, f, indent=2)
 
