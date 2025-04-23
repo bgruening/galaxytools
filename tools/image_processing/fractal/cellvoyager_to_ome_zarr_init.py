@@ -1,6 +1,8 @@
 import argparse
 import json
 from fractal_tasks_core.tasks.cellvoyager_to_ome_zarr_init import cellvoyager_to_ome_zarr_init
+from fractal_tasks_core.tasks.cellvoyager_to_ome_zarr_compute import cellvoyager_to_ome_zarr_compute
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -27,6 +29,16 @@ if __name__ == "__main__":
         metadata_table_file=None,
         image_extension=args.image_extension
     )
+
+    compute_results = []
+    for item in result["parallelization_list"]:
+        compute_results.append(
+            cellvoyager_to_ome_zarr_compute(
+                zarr_url=item["zarr_url"],
+                init_args=item["init_args"],
+            )
+        )
+    
 
     with open(args.output_json, "w") as f:
         json.dump(result, f, indent=2)
