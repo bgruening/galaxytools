@@ -16,29 +16,75 @@
         path=`which python3` &&
         base="\${path%/*/*}" &&
         new_path="\$base/lib/\$version/site-packages/fractal_tasks_core/tasks" &&
-        cli_cmd="cellvoyager_to_ome_zarr_init.py" &&
-        init_execute="\$new_path/\$cli_cmd" &&
+        init_execute="cellvoyager_to_ome_zarr_init.py" &&
+        cli_init="\$new_path/\$init_execute" &&
        
-        python3 \$init_execute && 
+        python3 \$cli_init --args-json '${init_params}' --out-json ./outout.json &&
 
-        python3 $__tool_directory__/cellvoyager_to_ome_zarr_init.py 
-	    --image_dirs 'tmp/input_images'
-	    --zarr_dir 'tmp/zarr_output' 
-            --allowed_channels '${allowed_channels}' 
-            --num_levels ${num_levels} 
-            --coarsening_xy ${coarsening_xy} 
-            --image_extension '${image_extension}' 
-            --output_json '${output_json}' &&
+        input="./outout.json"  &&
+        outdir="compute_jsons" &&
+        mkdir -p "\$outdir" &&
+
+        count=`jq '.parallelization_list | length' "\$input"` &&
+
+        ## FIXME: This fails, switch to Python script
+        for i in \$(seq 0 \$((count - 1))); do jq ".parallelization_list[\$i]" "\$input" > "\$outdir/entry_\$i.json" done &&
+        echo \$outdir &&
+
+        mv ./outout.json $output_json
+        compute_execute="cellvoyager_to_ome_zarr_compute.py" &&
+        cli_compute="\$new_path/\$compute_execute" &&
+
+        ## split_json_add_params --init_json ./outout.json --extra_params $compute_extra_params --outdir \$outdir &&
+
+        ## TODO: Loop with GNU parallel
+        compute_params=\$outdir/entry_0.json &&
+        python3 \$cli_compute --args-json '\${compute_params}' --out-json ./outout_compute.json &&
     
         cp -r tmp/zarr_output/* $zarr_plate.extra_files_path
         ]]>
     </command>
 
-
+    <configfiles>
+        <configfile name="init_params"> <![CDATA[
+            {
+                "zarr_urls": [],
+                "image_dirs": ["tmp/input_images"],
+                "zarr_dir": "tmp/zarr_output",
+                "allowed_channels": [
+                    #set $sep = ''
+                    #for $ch in $allowed_channels
+                    $sep{
+                    "label":         "$ch.label",
+                    "wavelength_id": "$ch.wavelength_id",
+                    "color":         "$ch.color",
+                    "window": {
+                        "start":      $ch.start,
+                        "end":        $ch.end
+                    }
+                    }
+                    #set $sep = ','
+                    #end for
+                ],
+                "num_levels": ${num_levels},
+                "coarsening_xy": ${coarsening_xy},
+                "image_extension": "${image_extension}",
+                "overwrite": ${overwrite}
+            }
+            ]]>
+        </configfile>
+    </configfiles>
 
     <inputs>
         <param name="input_images" type="data" multiple="true" format="@FORMATS@" label="Images" />
-        <param name="allowed_channels" type="data" format="json" label="Allowed Channels in JSON format" />
+        <!-- <param name="allowed_channels" type="data" format="json" label="Allowed Channels in JSON format" /> -->
+         <repeat name="allowed_channels" title="Allowed Channels">
+            <param name="label" type="text" label="Images" />
+            <param name="wavelength_id" type="text" label="Wavelength ID" />
+            <param name="color" type="text" label="Color" />
+            <param name="start" type="integer" label="Visualization Start" />
+            <param name="end" type="integer" label="Visualization End" />
+        </repeat>
         <param name="num_levels" type="integer" value="5" label="Number of pyramid levels" help="Number of resolution-pyramid levels. If set to 5, there will be the full-resolution level and 4 levels of downsampled images."/>
         <param name="coarsening_xy" type="integer" value="2" label="" help="Linear coarsening factor between subsequent levels. If set to `2`, level 1 is 2x downsampled, level 2 is 4x downsampled etc."/>
 	    <param name="image_extension" type="text" value="tif" label="Image extension" help="Filename extension of images (e.g. tif or png)"/>
@@ -49,21 +95,27 @@
         <data name="output_json" format="json" label="Parallelization list in JSON" />
     </outputs>
     <tests>
-      <test>
-        <param name="input_images" location="https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F001L01A01Z01C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F001L01A01Z02C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F002L01A01Z01C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F002L01A01Z02C01.png,https://zenodo.org/records/8287221/files/MeasurementData.mlf,https://zenodo.org/records/8287221/files/MeasurementDetail.mrf" />
-        <param name="allowed_channels" value="allowed_channels.json"/>
-        <param name="num_levels" value="2"/>
-        <param name="coarsening_xy" value="2"/>
-	    <param name="image_extension" value="png"/>
-	    <output name="zarr_plate" file="output.zarr" compare="" />
-        <!-- <output name="output_json" file="parallelization_list.json" compare="sim_size" delta_frac="0.1"/> -->
-         <!-- <output name="output_json">
-            <assert_contents>
-                <has_json_property_with_text property="zarr_url" text="tmp/zarr_output/20200812-CardiomyocyteDifferentiation14-Cycle1.zarr/B/03/0" />
-            </assert_contents>
-         </output> -->
-        </test>
-    </tests>
+        <test>
+          <param name="input_images" location="https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F001L01A01Z01C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F001L01A01Z02C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F002L01A01Z01C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F002L01A01Z02C01.png,https://zenodo.org/records/8287221/files/MeasurementData.mlf,https://zenodo.org/records/8287221/files/MeasurementDetail.mrf" />
+          <repeat name="allowed_channels">
+            <param name="label" value="DAPI" />
+            <param name="wavelength_id" value="A01_C01" />
+            <param name="color" value="00FFFF" />
+            <param name="start" value="0" />
+            <param name="end" value="700" />
+          </repeat>
+          <param name="num_levels" value="2"/>
+          <param name="coarsening_xy" value="2"/>
+          <param name="image_extension" value="png"/>
+          <!-- <output name="zarr_plate" file="output.zarr" compare="" /> -->
+          <!-- <output name="output_json" file="parallelization_list.json" compare="sim_size" delta_frac="0.1"/> -->
+          <output name="output_json">
+              <assert_contents>
+                  <has_json_property_with_text property="zarr_url" text="tmp/zarr_output/20200812-CardiomyocyteDifferentiation14-Cycle1.zarr/B/03/0" />
+              </assert_contents>
+           </output>
+          </test>
+      </tests>
     <help>
         <![CDATA[
         **What it does**
