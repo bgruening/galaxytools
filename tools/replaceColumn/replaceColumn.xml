@@ -1,5 +1,8 @@
-<tool id="replace_column_with_key_value_file" name="Replace column" version="0.2">
+<tool id="replace_column_with_key_value_file" name="Replace column" version="0.3">
     <description>by values which are defined in a convert file</description>
+    <requirements>
+        <requirement type="package" version="3.8">python</requirement>
+    </requirements>
     <command>
         <![CDATA[
         python '$replaceColumnScript'
@@ -35,24 +38,30 @@ with open("output_file", 'w') as output:
                 output.write(line)
                 continue
 
-            line_content = line.rstrip().split(delimiter_local)
+            line_content = line.rstrip('\n\r').split(delimiter_local)
 
-            out = list()
-            for j, line_content_column in enumerate(line_content):
-                if j == column:
+            if column >= len(line_content) or line_content[column] not in conversion:
+                if unk_strat == "skip":
+                    continue
+                if unk_strat == "error":
+                    if column >= len(line_content):
+                        raise Exception(
+                            'ERROR: Encountered a line in the file that has '
+                            'only %d columns, but you asked to replace '
+                            'values in column %d.\n'
+                            'The offending line was: %s' % (
+                                len(line_content), column + 1, line
+                            )
+                        )
+                    raise Exception(
+                        'ERROR: Encountered a value [%s] in the file that is '
+                        'not in the replacements file and is not commented '
+                        'with [%s]' % (line_content[column], comment_str)
+                    )
+            else:
+                line_content[column] = conversion[line_content[column]]
 
-                    if line_content_column in conversion:
-                        out.append(conversion[line_content_column])
-                    elif unk_strat == "print":
-                        out.append(line_content_column)
-                    elif unk_strat == "error":
-                        raise Exception('ERROR: Encountered a value [%s] in the file that is not in the replacements file and is not commented with [%s]' % (line_content_column, comment_str))
-                else:
-                    out.append(line_content_column)
-
-            if len(out) == len(line_content):
-                output.write('%s\n' % delimiter_local.join(out))
-
+            output.write('%s\n' % delimiter_local.join(line_content))
 ]]>
         </configfile>
     </configfiles>
@@ -75,7 +84,7 @@ with open("output_file", 'w') as output:
             <option value="_">Underscore</option>
             <option value="|">Pipe</option>
         </param>
-        <param name="unknowns_strategy" type="select" label="When an unknown value is encountered">
+        <param name="unknowns_strategy" type="select" label="When an unknown value or a truncated line is encountered">
             <option value="skip" selected="True">Skip / Do not print</option>
             <option value="print">Print without modification</option>
             <option value="error">Exit with an error</option>
@@ -89,7 +98,7 @@ with open("output_file", 'w') as output:
         </param>
     </inputs>
     <outputs>
-        <data  name="outfile_replace" format="txt" from_work_dir="output_file"/>
+        <data  name="outfile_replace" format_source="original_file" from_work_dir="output_file"/>
     </outputs>
     <tests>
         <test>
@@ -100,7 +109,7 @@ with open("output_file", 'w') as output:
             <param name="delimiter" value="tab" />
             <param name="unknowns_strategy" value="skip"/>
             <param name="pass_comments" value="#"/>
-            <output name="outfile_replace" file="result_file"/>
+            <output name="outfile_replace" ftype="tabular" file="result_file"/>
         </test>
         <test>
             <param name="replace_information" value="GRCh38_ensembl2UCSC.txt" ftype="tabular" />
@@ -110,9 +119,9 @@ with open("output_file", 'w') as output:
             <param name="delimiter" value="tab" />
             <param name="unknowns_strategy" value="skip"/>
             <param name="pass_comments" value="#"/>
-            <output name="outfile_replace" file="result_file_empty_mapping"/>
+            <output name="outfile_replace" ftype="tabular" file="result_file_empty_mapping"/>
         </test>
-        <test expect_failure="True">
+        <test expect_failure="true">
             <param name="replace_information" value="neg_test_map.txt" ftype="tabular" />
             <param name="original_file" value="neg_test_commented.txt" ftype="tabular" />
             <param name="column_replace" value="1"/>
@@ -129,7 +138,56 @@ with open("output_file", 'w') as output:
             <param name="delimiter" value="tab" />
             <param name="unknowns_strategy" value="print"/>
             <param name="pass_comments" value="#"/>
-            <output name="outfile_replace" file="neg_test_commented.txt"/>
+            <output name="outfile_replace" ftype="tabular" file="neg_test_commented.txt"/>
+        </test>
+        <!-- Test on input with empty columns -->
+        <test>
+            <param name="replace_information" value="tsv_with_empty_cols_mapping.txt" ftype="tabular" />
+            <param name="original_file" value="tsv_with_empty_cols.txt" ftype="tabular" />
+            <param name="column_replace" value="12"/>
+            <param name="skip_lines" value="1"/>
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="skip"/>
+            <param name="pass_comments" value="#"/>
+            <output name="outfile_replace" ftype="tabular" file="tsv_with_empty_cols_expect.txt"/>
+        </test>
+        <!-- Tests of behavior with truncated columns -->
+        <test>
+            <param name="replace_information" value="tsv_with_empty_cols_mapping.txt" ftype="tabular" />
+            <param name="original_file" value="tsv_with_empty_cols.txt" ftype="tabular" />
+            <param name="column_replace" value="12"/>
+            <param name="skip_lines" value="0"/>
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="print"/>
+            <param name="pass_comments" value="#"/>
+            <output name="outfile_replace" ftype="tabular" file="tsv_with_empty_cols_expect.txt" lines_diff="1">
+                <assert_contents>
+                    <has_n_lines n="3" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true">
+            <param name="replace_information" value="tsv_with_empty_cols_mapping.txt" ftype="tabular" />
+            <param name="original_file" value="tsv_with_empty_cols.txt" ftype="tabular" />
+            <param name="column_replace" value="12"/>
+            <param name="skip_lines" value="0"/>
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="error"/>
+            <param name="pass_comments" value="#"/>
+        </test>
+        <test>
+            <param name="replace_information" value="tsv_with_empty_cols_mapping.txt" ftype="tabular" />
+            <param name="original_file" value="tsv_with_empty_cols.txt" ftype="tabular" />
+            <param name="column_replace" value="12"/>
+            <param name="skip_lines" value="0"/>
+            <param name="delimiter" value="tab" />
+            <param name="unknowns_strategy" value="skip"/>
+            <param name="pass_comments" value="#"/>
+            <output name="outfile_replace" ftype="tabular" file="tsv_with_empty_cols_expect.txt" lines_diff="1">
+                <assert_contents>
+                    <has_n_lines n="1" />
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help>
