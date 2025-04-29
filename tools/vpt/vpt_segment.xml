@@ -1,0 +1,541 @@
+<tool id="vpt_segment" name="Vizgen Post-processing Tool - Segment Cells" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Reprocess and refine the single-cell results of MERSCOPE experiments</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir -p 'input/images' 'output/collection' &&
+        #for $image in $input_images:
+            ln -s '$image' 'input/images/${image.element_identifier}.${image.ext}' &&
+        #end for
+        ln -s '$input_micron_to_mosaic' 'input/micron_to_mosaic_pixel_transform.csv' &&
+        ln -s '$detected_transcripts' 'input/detected_transcripts.csv' &&
+        ln -s '$vpt_config_file' 'input/vpt_config_file.json' &&
+        ### segmentation
+        vpt
+            @COMMON_ARGS@
+            run-segmentation
+            --segmentation-algorithm 'input/vpt_config_file.json'
+            --input-images 'input/images/'
+            --input-micron-to-mosaic 'input/micron_to_mosaic_pixel_transform.csv'
+            --output-path 'output/'
+            --tile-size $tile_size
+            #if $max_row_group_size:
+                --max-row-group-size $max_row_group_size
+            #end if
+            --tile-overlap $tile_overlap &&
+        ### counting partition transcripts
+        vpt
+            @COMMON_ARGS@
+            partition-transcripts
+            --input-boundaries 'output/cellpose2_micron_space.parquet'
+            --input-transcripts 'input/detected_transcripts.csv'
+            --output-entity-by-gene 'output/cell_by_gene.csv'
+            --output-transcripts 'output/detected_transcripts.csv' &&
+        ### sum signals
+        vpt
+            @COMMON_ARGS@
+            sum-signals
+            --input-images 'input/images/'
+            --input-boundaries 'output/cellpose2_micron_space.parquet'
+            --input-micron-to-mosaic 'input/micron_to_mosaic_pixel_transform.csv'
+            --output-csv 'output/sum_signals.csv' &&
+        ### derive entity metadata
+        vpt
+            @COMMON_ARGS@
+            derive-entity-metadata
+            --input-boundaries 'output/cellpose2_micron_space.parquet'
+            --input-entity-by-gene 'output/cell_by_gene.csv'
+            --output-metadata 'output/cell_metadata.csv' &&
+        ### segmentation QC
+        vpt
+            @COMMON_ARGS@
+            generate-segmentation-metrics
+            --input-entity-by-gene 'output/cell_by_gene.csv'
+            --input-metadata 'output/cell_metadata.csv'
+            --input-transcripts 'output/detected_transcripts.csv'
+            --input-boundaries 'output/cellpose2_micron_space.parquet'
+            --input-micron-to-mosaic 'input/micron_to_mosaic_pixel_transform.csv'
+            --input-images 'input/images/'
+            --experiment-name '$qc_params.experiment_name'
+            --input-z-index '$qc_params.input_z_index'
+            #if $qc_params.red_stain_name != "":
+                --red-stain-name '$qc_params.red_stain_name'
+            #end if
+            #if $qc_params.green_stain_name != "":
+                --green-stain-name '$qc_params.green_stain_name'
+            #end if
+            #if $qc_params.blue_stain_name != "":
+                --blue-stain-name '$qc_params.blue_stain_name'
+            #end if
+            --transcript-count-filter-threshold '$qc_params.transcript_count_filter_threshold'
+            --volume-filter-threshold '$qc_params.volume_filter_threshold'
+            --output-csv 'output/metrics.csv'
+            --output-report 'output/metrics.html'
+            --output-clustering 'output/metrics_clustering.parquet' &&
+        mv 'input/vpt_config_file.json' 'output/vpt_config_file.json'
+    ]]></command>
+    <configfiles>
+        <configfile name="vpt_config_file"><![CDATA[
+{
+    "experiment_properties": {
+        #set $indices = ",".join([str(i) for i in range(len(str($vpt_config.experiment_properties.z_positions_um.value).split(",")))])
+
+        "all_z_indexes": [$indices],
+        "z_positions_um": [$vpt_config.experiment_properties.z_positions_um]
+    },
+    #set $task_n = len($vpt_config.segmentation_tasks.segmentation_task) - 1
+    #for $i, $task in enumerate($vpt_config.segmentation_tasks.segmentation_task):
+    "segmentation_tasks": [
+        {
+        "task_id": $i,
+        "segmentation_family": "Cellpose2",
+        #if $task.entity_types_detected != "both":
+        "entity_types_detected": ["$task.entity_types_detected"],
+        #else:
+        "entity_types_detected": [
+            "nuclei",
+            "cell"
+        ],
+        #end if
+        "z_layers": [$task.z_layers],
+        "segmentation_properties": {
+            #if $task.segmentation_properties.model != "null":
+            "model": "$task.segmentation_properties.model",
+            #else:
+            "model": null,
+            #end if
+            "model_dimensions": "$task.segmentation_properties.model_dimensions",
+            #if $task.segmentation_properties.custom_weights:
+            "custom_weights": "$task.segmentation_properties.custom_weights",
+            #else:
+            "custom_weights": null,
+            #end if
+            "channel_map": {
+                "red": "$task.segmentation_properties.channel_map.red",
+                "green": "$task.segmentation_properties.channel_map.green",
+                "blue": "$task.segmentation_properties.channel_map.blue"
+            }
+        },
+        "task_input_data": [
+            #set $input_data_n = len($task.task_input_data.task_input) - 1
+            #for $j, $input_data in enumerate($task.task_input_data.task_input):
+            {
+                "image_channel": "$input_data.image_channel",
+                    #for $k, $preprocess_var in enumerate($input_data.image_preprocessing):
+                "image_preprocessing": [
+                    {
+                        "name": "$preprocess_var.preprocess_conditional.preprocess",
+                            #if $preprocess_var.preprocess_conditional.preprocess == "normalize":
+                        "parameters": {
+                                #if $preprocess_var.preprocess_conditional.normalize_conditional.normalization == "CLAHE":
+                            "clip_limit": $preprocess_var.preprocess_conditional.normalize_conditional.clip_limit,
+                            "filter_size": [
+                            $preprocess_var.preprocess_conditional.normalize_conditional.filter_size,
+                            $preprocess_var.preprocess_conditional.normalize_conditional.filter_size
+                            ],
+                            "type": "$preprocess_var.preprocess_conditional.normalize_conditional.normalization"
+
+                        }
+                            #end if
+                            #else if $preprocess_var.preprocess_conditional.preprocess == "blur":
+                        "parameters": {
+                            "type": "$preprocess_var.preprocess_conditional.blur_options",
+                            "size": $preprocess_var.preprocess_conditional.kernel_size
+                        }
+                            #else if $preprocess_var.preprocess_conditional.preprocess == "downsample":
+                        "parameters": {
+                            "scale": "$preprocess_var.preprocess_conditional.scale"
+                        }
+                            #end if
+                    }
+                ]
+                    #end for
+            }#if $j != $input_data_n#,#end if
+            #end for
+        ],
+        "segmentation_parameters": {
+            "nuclear_channel": "$task.segmentation_parameters.nuclear_channel",
+            "entity_fill_channel": "$task.segmentation_parameters.entity_fill_channel",
+            "diameter": $task.segmentation_parameters.diameter,
+            "flow_threshold": $task.segmentation_parameters.flow_threshold,
+            "cellprob_threshold": $task.segmentation_parameters.cellprob_threshold,
+            "minimum_mask_size": $task.segmentation_parameters.minimum_mask_size
+        },
+        "polygon_parameters": {
+            "simplification_tol": $task.polygon_parameters.simplification_tol,
+            "smoothing_radius": $task.polygon_parameters.smoothing_radius,
+            "minimum_final_area": $task.polygon_parameters.minimum_final_area
+        }
+        }
+    ]#if $j != $task_n#,#end if
+    #end for
+    "segmentation_task_fusion": {
+        "entity_fusion_strategy": "$segmentation_task_fusion.entity_fusion_strategy",
+        "fused_polygon_postprocessing_parameters": {
+            "min_distance_between_entities": $segmentation_task_fusion.min_distance_between_entities,
+            "min_final_area": $segmentation_task_fusion.min_final_area
+        }
+    },
+    "output_files": [
+        {
+            #if $vpt_config.output_files.entity_types_output != "both":
+            "entity_types_output": ["$vpt_config.output_files.entity_types_output"],
+            #else:
+            "entity_types_output": [
+                "nuclei",
+                "cell"
+            ],
+            #end if
+            "files": {
+                "run_on_tile_dir": "result_tiles/",
+                "mosaic_geometry_file": "cellpose2_mosaic_space.parquet",
+                "micron_geometry_file": "cellpose2_micron_space.parquet",
+                "cell_metadata_file": "cellpose2_cell_metadata.csv"
+            }
+        }
+    ]
+}
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param argument="--input_images" type="data" format="tiff" multiple="true" label="MEROSCOPE tiff images"/>
+        <param argument="--input_micron_to_mosaic" type="data" format="csv" label="Micron to mosaic mapping file"/>
+        <param argument="--detected_transcripts" type="data" format="csv" label="Detected transcripts"/>
+        <param argument="--tile_size" type="integer" min="0" value="4096" label="Number of pixels for the width and height of each tile"/>
+        <param argument="--tile_overlap" type="integer" min="0" max="100" value="10" label="Overlap between adjacent tiles" help="Default: 10% of tile size"/>
+        <param argument="--max_row_group_size" type="integer" min="1000" value="" optional="true" label="Maximum number of rows in row groups inside output parquet files"/>
+        <section name="vpt_config" title="Segmentation configuration file">
+            <section name="experiment_properties" title="Experiment properties" help="Specify the z-indexes and z-positions in the data. It is used to apply 2D segmentation to 3D data and calculate distances on the z-axis.">
+                <param argument="--z_positions_um" type="text" value="1.5, 3, 4.5, 6, 7.5, 9, 10.5" optional="false" label="z-layer positions in um">
+                    <expand macro="sanitize_digits"/>
+                </param>
+            </section>
+            <section name="segmentation_tasks" title="Segmentation tasks" help="A list of segmentation tasks to perform sequentially. The VPT only supports 9 tasks in a single segmentation algorithm. If more tasks are needed, users are encouraged to run vpt multiple times and combine the segmentation outputs post hoc.">
+                <repeat name="segmentation_task" min="1" max="9" title="Segmentation tasks">
+                    <param argument="--entity_types_detected" type="select" label="detect cell or nucleus?">
+                        <option value="cell">cell</option>
+                        <option value="nucleus">nucleus</option>
+                        <option value="both">both</option>
+                    </param>
+                    <param argument="--z_layers" type="text" value="" optional="true" label="comma-separated list of z-index images to segment." help="2D segmentation is applied to all z-layers in the experiment by default without needing to explicitly specify the behavior.">
+                        <expand macro="sanitize_digits"/>
+                    </param>
+                    <section name="segmentation_properties" title="Segmentation properties">
+                        <param argument="--model" type="select" label="Cellpose model">
+                            <option value="cyto2">cyto2</option>
+                            <option value="nuclei">nuclei</option>
+                            <option value="null">null</option>
+                        </param>
+                        <param argument="--model_dimensions" type="select" label="Model dimensions" help="2D applies the 2D Cellpose model to all z-planes specified in the z_layers list separately and the results are combined into a 3D output. 3D applies the native-3D Cellpose model to all z-planes specified in the z_layers list.">
+                            <option value="2D">2D</option>
+                            <option value="3D">3D</option>
+                        </param>
+                        <param argument="--custom_weights" type="data" format="data" optional="true" label="custom Cellpose weights file"/>
+                        <section name="channel_map" title="Channel map">
+                            <param name="red" type="text" value="" optional="true" label="red"/>
+                            <param name="green" type="text" value="" optional="true" label="green"/>
+                            <param name="blue" type="text" value="" optional="true" label="blue"/>
+                        </section>
+                    </section>
+                    <section name="segmentation_parameters" title="Segmentation parameters">
+                        <param name="nuclear_channel" type="text" value="" optional="true" label="nuclear channel"/>
+                        <param name="entity_fill_channel" type="text" value="" optional="true" label="entity fill channel"/>
+                        <param name="diameter" type="integer" min="0" value="30" label="diameter" help="Default 0 value will let Cellpose to automatically estimate the diameter. Too small diameter leads to fragmented cells and Too big one leads to over-merged cells"/>
+                        <param name="flow_threshold" type="float" min="0" max="1" value="0.4" label="flow threshold" help="Maximum allowed error of the flows for each mask. Increase if cellpose is not returning as many ROIs as you’d expect, and decrease if cellpose is returning too many ill-shaped ROIs"/>
+                        <param name="cellprob_threshold" type="float" min="-6" max="+6" value="0.0" label="cellprobe threshold" help="Decrease this threshold if cellpose is not returning as many ROIs as you’d expect. Similarly, increase this threshold if cellpose is returning too ROIs particularly from dim areas."/>
+                        <param name="minimum_mask_size" type="integer" min="0" value="15" label="Minimum number of pixels per mask" help="Can turn off with -1"/>
+                    </section>
+                    <section name="task_input_data" title="Task input data" help="A list of image channels and per-channel pre-processing steps. This allows the application of intensity normalization, down-sampling, and/or blurring before performing cell segmentation.">
+                        <repeat name="task_input" min="1" max="3" title="Task input data">
+                            <param name="image_channel" type="text" value="" label="image channel"/>
+                            <repeat name="image_preprocessing" min="1" max="3" title="Image preprocessing">
+                                <conditional name="preprocess_conditional" label="Select preprocessing steps">
+                                    <param name="preprocess" type="select" label="preprocess">
+                                        <option value="normalize">normalize</option>
+                                        <option value="blur">blur</option>
+                                        <option value="downsample">downsample</option>
+                                    </param>
+                                    <when value="normalize">
+                                        <conditional name="normalize_conditional" label="Select normalization method">
+                                            <param name="normalization" type="select" label="normalization">
+                                                <option value="default">default (min-max range normalization)</option>
+                                                <option value="CLAHE">CLAHE (Contrast Limited Adaptive Histogram Equalization)</option>
+                                            </param>
+                                            <when value="default"/>
+                                            <when value="CLAHE">
+                                                <param name="clip_limit" type="float" min="0" max="1" value="0.01" label="clip limit" help="higher values give more contrast"/>
+                                                <param name="filter_size" type="integer" min="1" value="" label="tile grid size" help="If not specified, 1/8 of image height and width is used"/>
+                                            </when>
+                                        </conditional>
+                                    </when>
+                                    <when value="blur">
+                                        <param name="blur_options" type="select" label="blur options">
+                                            <option value="average">average</option>
+                                            <option value="median">median</option>
+                                            <option value="gaussian">gaussian</option>
+                                        </param>
+                                        <param name="kernel_size" type="integer" min="0" value="5" label="kernel size in pixel"/>
+                                    </when>
+                                    <when value="downsample">
+                                        <param name="scale" type="integer" min="0" value="2" label="downsample" help="Reduces the size of the images during segmentation to decrease processing time" />
+                                    </when>
+                                </conditional>
+                            </repeat>
+                        </repeat>
+                    </section>
+                    <section name="polygon_parameters" title="Polygon parameters">
+                        <param name="simplification_tol" type="integer" min="0" label="simplification tolerance" help="The acceptable loss of precision when simplifying cell boundaries. Even a small amount of simplification (2 px) dramatically improves processing time" />
+                        <param name="smoothing_radius" type="integer" min="0" label="smoothing radius" help="The size of a smoothing operation comparable to morphologically closing and then opening the cell mask using the same structuring element" />
+                        <param name="minimum_final_area" type="integer" min="0" label="minimum final area" help="Minimum area of a polygon to retain the cell. Used to filter spurious detections." />
+                    </section>
+                </repeat>
+            </section>
+            <section name="segmentation_task_fusion" title="Segmentation task fusion" help="Specify how the geometries produced by each segmentation task should be combined">
+                <param name="entity_fusion_strategy" type="select" label="entity fusion strategy">
+                    <option value="harmonize">harmonize (recommended)</option>
+                    <option value="union">union</option>
+                    <option value="larger">larger</option>
+                </param>
+                <param name="min_distance_between_entities" type="integer" min="0" value="2" label="minimum distance between entities" help="When polygons are subtracted from one another, the space between the cells is zero. In order to provide some separation between cells, a minimum distance between these cell can be specified."/>
+                <param name="min_final_area" type="integer" min="0" value="0" label="minimum area" help="After polygon subtraction, cells smaller than this threshold will be removed"/>
+            </section>
+            <section name="output_files" title="Output files">
+                <param name="entity_types_output" type="select" label="output entity types">
+                    <option value="cell">cell</option>
+                    <option value="nucleus">nucleus</option>
+                    <option value="both">both</option>
+                </param>
+            </section>
+        </section>
+        <section name="qc_params" title="QC metrics parameters">
+            <param argument="--experiment-name" type="text" value="Analysis Timestamp" label="The name of the experiment to be used as the index in the output csv and segmentation report">
+                <sanitizer invalid_char="">
+                    <valid initial="string.letters,string.digits">
+                        <add value="_" />
+                    </valid>
+                </sanitizer>
+                <validator type="regex">[0-9a-zA-Z_]+</validator>
+            </param>
+            <param argument="--input-z-index" type="integer" min="0" value="2" label="The Z plane of the mosaic tiff images to use for the patch"/>
+            <param argument="--transcript-count-filter-threshold" type="integer" min="0" value="100" label="The cell transcript count threshold used for computing metrics and clustering"/>
+            <param argument="--volume-filter-threshold" type="integer" min="0" value="200" label="The cell volume threshold used for computing metrics and clustering"/>
+            <param argument="--red-stain-name" type="text" value="" optional="true" label="The name of the stain that will be used for the red channel in images"/>
+            <param argument="--green-stain-name" type="text" value="PolyT" optional="true" label="The name of the stain that will be used for the green channel in images"/>
+            <param argument="--blue-stain-name" type="text" value="DAPI" optional="true" label="The name of the stain that will be used for the blue channel in images"/>
+        </section>
+        <section name="advanced_output" title="Advanced output options">
+            <param name="log" type="boolean" truevalue="True" falsevalue="False" checked="true" label="Output log?"/>
+        </section>
+    </inputs>
+    <outputs>
+        <collection name="vpt_results" type="list" label="${tool.name} on ${on_string}: VPT Results">
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.csv$" format="csv" directory="output"/>
+        </collection>
+        <data name="vpt_qc" format="html" from_work_dir="output/metrics.html" label="${tool.name} on ${on_string}: VPT QC"/>
+        <collection name="vpt_config_out" type="list" label="${tool.name} on ${on_string}: VPT Config">
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.json$" format="json" directory="output"/>
+        </collection>
+        <data name="vpt_log" format="txt" from_work_dir="output/log" label="${tool.name} on ${on_string}: VPT log">
+            <filter>advanced_output['log']</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="input_images" location="https://zenodo.org/records/15255088/files/mosaic_Cellbound1_z0.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound1_z1.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound1_z2.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound1_z3.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound1_z4.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound1_z5.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound1_z6.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound2_z0.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound2_z1.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound2_z2.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound2_z3.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound2_z4.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound2_z5.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound2_z6.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound3_z0.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound3_z1.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound3_z2.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound3_z3.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound3_z4.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound3_z5.tif,https://zenodo.org/records/15255088/files/mosaic_Cellbound3_z6.tif,https://zenodo.org/records/15255088/files/mosaic_DAPI_z0.tif,https://zenodo.org/records/15255088/files/mosaic_DAPI_z1.tif,https://zenodo.org/records/15255088/files/mosaic_DAPI_z2.tif,https://zenodo.org/records/15255088/files/mosaic_DAPI_z3.tif,https://zenodo.org/records/15255088/files/mosaic_DAPI_z4.tif,https://zenodo.org/records/15255088/files/mosaic_DAPI_z5.tif,https://zenodo.org/records/15255088/files/mosaic_DAPI_z6.tif,https://zenodo.org/records/15255088/files/mosaic_PolyT_z0.tif,https://zenodo.org/records/15255088/files/mosaic_PolyT_z1.tif,https://zenodo.org/records/15255088/files/mosaic_PolyT_z2.tif,https://zenodo.org/records/15255088/files/mosaic_PolyT_z3.tif,https://zenodo.org/records/15255088/files/mosaic_PolyT_z4.tif,https://zenodo.org/records/15255088/files/mosaic_PolyT_z5.tif,https://zenodo.org/records/15255088/files/mosaic_PolyT_z6.tif"/>
+            <param name="input_micron_to_mosaic" location="https://zenodo.org/records/15255088/files/micron_to_mosaic_pixel_transform.csv"/>
+            <param name="detected_transcripts" location="https://zenodo.org/records/15255088/files/detected_transcripts.csv"/>
+            <section name="vpt_config">
+                <section name="segmentation_tasks">
+                    <repeat name="segmentation_task">
+                        <param name="entity_types_detected" value="cell"/>
+                        <param name="z_layers" value="3"/>
+                        <section name="segmentation_properties">
+                            <param name="model" value="cyto2"/>
+                            <param name="model_dimensions" value="2D"/>
+                            <section name="channel_map">
+                                <param name="red" value="Cellbound1"/>
+                                <param name="green" value="Cellbound3"/>
+                                <param name="blue" value="DAPI"/>
+                            </section>
+                        </section>
+                        <section name="segmentation_parameters">
+                            <param name="nuclear_channel" value="DAPI"/>
+                            <param name="entity_fill_channel" value="all"/>
+                            <param name="diameter" value="70"/>
+                            <param name="flow_threshold" value="0.95"/>
+                            <param name="cellprob_threshold" value="-5.5"/>
+                            <param name="minimum_mask_size" value="500"/>
+                        </section>
+                        <section name="task_input_data">
+                            <repeat name="task_input">
+                                <param name="image_channel" value="Cellbound1"/>
+                                <repeat name="image_preprocessing">
+                                    <conditional name="preprocess_conditional">
+                                        <param name="preprocess" value="normalize"/>
+                                        <conditional name="normalize_conditional">
+                                            <param name="normalization" value="CLAHE"/>
+                                            <param name="clip_limit" value="0.01"/>
+                                            <param name="filter_size" value="100"/>
+                                        </conditional>
+                                    </conditional>
+                                </repeat>
+                            </repeat>
+                            <repeat name="task_input">
+                                <param name="image_channel" value="Cellbound3"/>
+                                <repeat name="image_preprocessing">
+                                    <conditional name="preprocess_conditional">
+                                        <param name="preprocess" value="normalize"/>
+                                        <conditional name="normalize_conditional">
+                                            <param name="normalization" value="CLAHE"/>
+                                            <param name="clip_limit" value="0.01"/>
+                                            <param name="filter_size" value="100"/>
+                                        </conditional>
+                                    </conditional>
+                                </repeat>
+                            </repeat>
+                            <repeat name="task_input">
+                                <param name="image_channel" value="DAPI"/>
+                                <repeat name="image_preprocessing">
+                                    <conditional name="preprocess_conditional">
+                                        <param name="preprocess" value="normalize"/>
+                                        <conditional name="normalize_conditional">
+                                            <param name="normalization" value="CLAHE"/>
+                                            <param name="clip_limit" value="0.01"/>
+                                            <param name="filter_size" value="100"/>
+                                        </conditional>
+                                    </conditional>
+                                </repeat>
+                            </repeat>
+                        </section>
+                        <section name="polygon_parameters">
+                            <param name="simplification_tol" value="2"/>
+                            <param name="smoothing_radius" value="10"/>
+                            <param name="minimum_final_area" value="500"/>
+                        </section>
+                    </repeat>
+                </section>
+                <section name="segmentation_task_fusion">
+                    <param name="entity_fusion_strategy" value="harmonize"/>
+                    <param name="min_distance_between_entities" value="1"/>
+                    <param name="min_final_area" value="500"/>
+                </section>
+                <section name="output_files">
+                    <param name="entity_types_output" value="cell"/>
+                </section>
+            </section>
+            <section name="qc_params">
+                <param name="experiment_name" value="cyto2_1task"/>
+            </section>
+            <section name="advanced_output">
+                <param name="log" value="true"/>
+            </section>
+            <output_collection name="vpt_results" type="list">
+                <element name="cell_by_gene">
+                    <assert_contents>
+                        <has_text_matching expression="cell,AKAP11,CBX5,CCDC113"/>
+                        <has_text_matching expression="0,2,0,3,0,0,0,0,2,6"/>
+                        <has_text_matching expression="3,6,3,2,1,3,3,1,3,16,0,8,113"/>
+                    </assert_contents>
+                </element>
+                <element name="cell_metadata">
+                    <assert_contents>
+                        <has_text_matching expression="EntityID,fov,volume,center_x,center_y,min_x,min_y,max_x,max_y,anisotropy,transcript_count,perimeter_area_ratio,solidity"/>
+                        <has_text_matching expression=",752.8545332326954,315.6009656412046,5.501079773860617,310.16697322376024,"/>
+                        <has_text_matching expression=",416.5404389811227,68.71106429777639,9.672915687320215,64.49474819532641,"/>
+                    </assert_contents>
+                </element>
+                <element name="detected_transcripts">
+                    <assert_contents>
+                        <has_text_matching expression=",barcode_id,global_x,global_y,global_z,x,y,fov,gene,transcript_id,cell_id"/>
+                        <has_text_matching expression="86,10,285.00012,10.13364,0.0,816.0,153.0,0,AKAP11,ENST00000025301.3"/>
+                        <has_text_matching expression="229,10,274.95612,35.72964,0.0,723.0,390.0,0,AKAP11,ENST00000025301.3"/>
+                    </assert_contents>
+                </element>
+                <element name="metrics">
+                    <assert_contents>
+                        <has_text_matching expression=",Cell count,Cell volume"/>
+                        <has_text_matching expression="All cells,814,1572.4,1533.3,735.8,654.0,92.1,108.0,96.4,68.2,0.0"/>
+                        <has_text_matching expression="Cells after filtering,700,1694.1,1667.9,851.1,810.5,104.5,111.0,95.9,63.2,0.06"/>
+                    </assert_contents>
+                </element>
+                <element name="sum_signals">
+                    <assert_contents>
+                        <has_text_matching expression="Cellbound2_raw,Cellbound2_high_pass"/>
+                        <has_text_matching expression="813229843.0,4955524.234226357"/>
+                        <has_text_matching expression="587668405.0,22623235.07599704"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="vpt_qc">
+                <assert_contents>
+                    <has_text text="VPT Segmentation Report (cyto2_1task)"/>
+                    <has_text text="Cell count: &lt;b class=&quot;summary__value&quot;&gt;814&lt;/b&gt;&lt;/p&gt;"/>
+                    <has_text text="Transcripts per cell - median: &lt;b class=&quot;summary__value&quot;&gt;654.0&lt;/b&gt;&lt;/p&gt;"/>
+                </assert_contents>
+            </output>
+            <output_collection name="vpt_config_out" type="list">
+                <element name="segmentation_specification">
+                    <assert_contents>
+                        <has_text_matching expression="input/vpt_config_file.json"/>
+                        <has_text_matching expression="input/images/"/>
+                        <has_text_matching expression="input/micron_to_mosaic_pixel_transform.csv"/>
+                    </assert_contents>
+                </element>
+                <element name="vpt_config_file">
+                    <assert_contents>
+                        <has_text_matching expression="0,1,2,3,4,5,6"/>
+                        <has_text_matching expression="Cellpose2"/>
+                        <has_text_matching expression="cyto2"/>
+                        <has_text_matching expression="CLAHE"/>
+                        <has_text_matching expression="harmonize"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="vpt_log">
+                <assert_contents>
+                    <has_text_matching expression="vpt 1.3.0"/>
+                    <has_text_matching expression="vpt_plugin_cellpose2 1.0.1"/>
+                    <has_text_matching expression="run_segmentation finished"/>
+                    <has_text_matching expression="Partition transcripts finished"/>
+                    <has_text_matching expression="Sum signals finished"/>
+                    <has_text_matching expression="Generate segmentation metrics finished"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help>
+The Vizgen Post-processing Tool (VPT) is a scalable and reproducible tool which enables users to reprocess and refine the single-cell results of MERSCOPE experiments.
+
+Segmentation parameters for CellPose can be assigned with "Segmentation configuration".
+
+The segmentation parameters describes a series of steps to perform on the input data. Using the same segmentation algorithm on a series of experiments ensures that they are processed identically and reproducibly.
+
+The segmentation parameters has 3 main sections:
+
+1. **Experiment properties**:
+    - Holds descriptions of the way the data was collected. Specifically, it must contain a list of the z-indexes and z-positions in the data. This data is used to apply 2D segmentation to 3D data and calculate distances on the z-axis.
+2. **Segmentation tasks**:
+    - Holds a list of segmentation tasks to perform. These tasks will be performed sequentially. By running different segmentation tools in "tasks" and combining their output, it is possible to improve cell detection. For example, combining the results of CellPose with the `cyto2` model and the `nuclei` model can dramatically improve the segmentation F1 score over either method alone.
+3. **Segmentation task fusion**:
+    - Specifies how the geometries produced by each segmentation task should be combined. All `segmentation_task_fusion` options will produce a non-overlapping set of valid geometries.
+4. **Output files**:
+    - Specifies which entity types should be written to disk in the output folder and the file names they should receive.
+
+-----
+
+If you want to use a custom-trained model, set the CellPose model to null and provide the custom weights file.
+
+
+.. class:: infomark
+
+**Note:** VPT only supports **9** tasks in a single segmentation algorithm. If more tasks are needed, users are encouraged to run vpt multiple times and combine the segmentation outputs post hoc.
+
+.. class:: infomark
+
+**Note:** VPT tool on Galaxy only uses **CellPose** algorithm for cell segmentation.
+
+    </help>
+    <expand macro="citations" />
+</tool>
