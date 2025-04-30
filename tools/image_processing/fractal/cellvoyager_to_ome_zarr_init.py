@@ -1,7 +1,7 @@
 import argparse
 import json
-from fractal_tasks_core.tasks.cellvoyager_to_ome_zarr_init import cellvoyager_to_ome_zarr_init
 from fractal_tasks_core.tasks.cellvoyager_to_ome_zarr_compute import cellvoyager_to_ome_zarr_compute
+from fractal_tasks_core.tasks.cellvoyager_to_ome_zarr_init import cellvoyager_to_ome_zarr_init
 
 
 if __name__ == "__main__":
