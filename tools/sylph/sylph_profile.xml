@@ -3,76 +3,114 @@
     <macros>
        <import>macros.xml</import> 
     </macros>
-    <expand macro='requirements'/>
+    <expand macro='requirements'>
+        <requirement type="package" version="1.2.0">sylph-tax</requirement>
+    </expand>
     <command detect_errors='exit_code'><![CDATA[
 #import re
 ##SYMLINK SYLPH DB
 @DB_SELECTOR@
 ##Single input
-        #if $sketch.type == 'single':
-            @SINGLE_INPUT@
+        #if $sketch_reads.type_reads == 'single_fastq':
+            @SINGLE_INPUT_FASTQ@
 ##Single group
-        #else if $sketch.type == 'single_group':
-            @SINGLE_GROUP@
+        #else if $sketch_reads.type_reads == 'single_group_fastq':
+            @SINGLE_GROUP_FASTQ@
 ##Paired input
-        #else if $sketch.type == 'paired':
+        #else if $sketch_reads.type_reads == 'paired':
             @PAIRED@
 ##Paired  group
-        #else if $sketch.type == 'paired_group':
+        #else if $sketch_reads.type_reads == 'paired_group':
             @PAIRED_GROUP@
         #end if
-##SKETCHING
+##SKETCHING_READS
         sylph sketch
-        #if $sketch.type == 'single':
+        #if $sketch_reads.type_reads == 'single_fastq':
             $input
-        #else if $sketch.type == 'single_group':
+        #else if $sketch_reads.type_reads == 'single_group_fastq':
             -r $input
-        #else if $sketch.type == 'paired': 
+        #else if $sketch_reads.type_reads == 'paired': 
             -1 $read1
             -2 $read2
-        #else if $sketch.type == 'paired_group': 
+        #else if $sketch_reads.type_reads == 'paired_group': 
             -1 $read1
             -2 $read2
         #end if
         -t \${GALAXY_SLOTS:-4}
         -d sylph_sketches &&
+
+##Single fasta input
+    #if $database_select.select == 'custom' or $database_select.select == 'cached_and_custom':
+        #if $database_select.type_fasta == 'single_fasta':
+            @SINGLE_INPUT_FASTA@
+##Single fasta group
+        #else if $database_select.type_fasta == 'single_group_fasta':
+            @SINGLE_GROUP_FASTA@
+        #end if
+##SKETCHING_FASTA
+        sylph sketch
+        #if $database_select.type_fasta == 'single_fasta':
+            $input
+        #else if $database_select.type_fasta == 'single_group_fasta':
+            -r $input
+        #end if
+        -t \${GALAXY_SLOTS:-4}
+        -c $compression
+        #if str($database_select.grouped_genomes) == 'Yes':
+            -i
+        #end if
+        -o custom_database &&
+    #end if
+
 ##MAIN COMMAND
         sylph profile
-        database.syldb
+        #if str($estimate_unknown) == 'Yes':
+            --estimate-unknown
+        #end if
+        *.syldb
         sylph_sketches/*.sylsp
         #if $min_num_kmers:
             --min-number-kmers ${min_num_kmers}
         #end if
         -t \${GALAXY_SLOTS:-4}
-        -o '$output'
+        -o '$output_sylph_prof'
 
-        #if $outputs:
-            #if $database_select.select == 'cached':
-                && ln -s '$database_select.sylph_database.fields.path/database.tsv.gz' 'database.tsv.gz'
-            #else:
-                && ln -s '$database_select.metadata' 'database.tsv.gz'
-            #end if
-            && python '$__tool_directory__/sylph_to_taxprof.py' -s $output -m database.tsv.gz -o metaphlan_
-            #if 'krona' in $outputs:
-                && python '$__tool_directory__/sylphformatoutput.py' format_for_krona --metaphlan_output *.sylphmpa --krona_output krona.tsv
-                && mkdir krona_out && mv *krona.tsv krona_out
-            #end if
-            && mkdir metaphlan_out && mv *.sylphmpa metaphlan_out
-        #end if
+##SYLPH-TAX COMMAND
+    #if $database_select.select == 'cached'
+        && cp '$config' config.json
+        && export SYLPH_TAXONOMY_CONFIG=config.json
+        && mkdir -p sylph_taxprof_out
+        && sylph-tax taxprof
+            '$output_sylph_prof'
+            -o sylph_taxprof_out/'sylph_tax_out-'
+            --taxonomy-metadata $metadata_files
+        && sylph-tax merge
+            sylph_taxprof_out/*.sylphmpa --column $column -o output_tax_merge.tsv
+    #end if
     ]]></command>
+    <configfiles>
+        <configfile name="config"><![CDATA[
+#if $database_select.select == 'cached'
+{
+  "version": "$database_select.sylph_tax_metadata.fields.version",
+  "taxonomy_dir": "$database_select.sylph_tax_metadata.fields.path"
+}
+#end if
+]]></configfile>
+    </configfiles>
     <inputs>
-        <conditional name="sketch">
-            <param name="type" type="select" label="Select the type of reads used">
-                <option value="single">Individual single-end reads</option>
-                <option value="single_group">Group of single-ended reads</option>
+        <conditional name="sketch_reads">
+            <param name="type_reads" type="select" label="Select the type of reads used">
+                <option value="single_fastq">Individual single-end reads</option>
+                <option value="single_group_fastq">Group of single-ended reads</option>
                 <option value="paired">One set of paired-end reads</option>
                 <option value="paired_group">Group of paired-ended reads</option>
             </param>
         <!-- Only permitting fastq as tool input only allows fastq and fastq.gz as file ext -->
-            <when value="single">
+            <when value="single_fastq">
                 <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads"/>
             </when>
-            <when value="single_group">
+            <when value="single_group_fastq">
                 <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads" multiple="true"/>
             </when>            
             <when value="paired">
@@ -84,94 +122,194 @@
             </when>
         </conditional>
         <param name="min_num_kmers" type="integer" min="1" value="50" label="Minimum number of k-mers for Sylph to output a result." help="States the minimum number of k-mers needed for sylph to output a result.This is (approximately) the contig length divided by -c. With default settings, --min-number-kmers 10 can work with contigs ~2500 bp. For smaller contigs, consider -c 100."/>
-        <expand macro="output_format"/>
-        <expand macro="input_database"/>
+        <param name="estimate_unknown" type="boolean" checked="false" label="Estimating percentage of unknown reads in database" truevalue="Yes" falsevalue="No" help="Estimate the percentage of your reads that are present at the species level (--estimate-unknown)" />
+        <conditional name="database_select">
+            <param name="select" type="select" label="Choose the source for databases and metadata">
+                <option value="cached">Cached data</option>
+                <option value="custom">Custom</option>
+                <option value="cached_and_custom">Cached and custom databases</option>
+            </param>
+            <when value="cached">
+                <param label="Select a sylph database" name="sylph_database" type="select" multiple="true" optional="false">
+                    <options from_data_table="sylph_databases">
+                        <validator message="No Sylph databases are available" type="no_options" />
+                    </options>
+                </param>
+                <param label="sylph-tax metadata files" name="sylph_tax_metadata" type="select">
+                    <options from_data_table="sylph_tax_database">
+                        <validator message="No Sylph databases are available" type="no_options" />
+                    </options>
+                </param>
+                <param argument="--column" type="select" label="Select the column to use for sylph tax merge" help="">
+                    <option value="relative_abundance">Relative Abundance</option>
+                    <option value="sequence_abundance">Sequence Abundance</option>
+                    <option value="ANI">ANI</option>
+                    <option value="Coverage">Coverage</option>
+                </param>
+            </when>
+            <expand macro="input_database"/>
+        </conditional>
     </inputs>
     <outputs>
-        <data format="tabular" name="output" label="${tool.name} on ${on_string}"/>
-        <collection  name="metaphlan_out" type="list" label="${tool.name} on ${on_string}: MetaPhlAn-style output">
-            <filter> outputs and 'metaphlan' in outputs</filter>
-            <discover_datasets pattern="__name_and_ext__"  directory="metaphlan_out/" />
+        <data format="tabular" name="output_sylph_prof" label="${tool.name} on ${on_string}"/>
+        <collection name="sylphmpa_files" type="list" label="${tool.name} on ${on_string}: taxonomy files per sample">
+            <discover_datasets format="tabular" pattern="__name__" directory="sylph_taxprof_out" />
+            <filter>database_select['select'] == "cached"</filter>
         </collection>
-        <collection  name="krona_out" type="list" label="${tool.name} on ${on_string}: Krona-useable output">
-            <filter>outputs and 'krona' in outputs</filter>
-            <discover_datasets pattern="__name_and_ext__"  directory="krona_out/" />
-        </collection>
+        <data format="tabular" name="sylph_merge_tax_out" from_work_dir="output_tax_merge.tsv" label="${tool.name} on ${on_string}: Sylph-tax Report">
+            <filter>database_select['select'] == "cached"</filter>
+        </data>        
     </outputs>
     <tests>
+        <!--Test 1 Single-end Inputs Custom DB-->
+
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="single"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>               
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_fastq"/>
                 <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
             </conditional>
-            <output name="output" value="output_1.tabular"/>
+            <output name="output_sylph_prof" value="output_profile_1.tsv"/>
         </test>
 
-        <!--Test 2  Group of Single-end Inputs-->
+        <!--Test 2  Group of Single-end Inputs Custom DB-->
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="single_group"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>   
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
                 <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
             </conditional>
             <param name="min_num_kmers" value="49"/>
-            <output name="output" value="output_2.tabular" compare="sim_size"/>
+            <output name="output_sylph_prof" value="output_profile_2.tsv" compare="sim_size"/>
         </test>
 
-        <!-- Test 3 Paired-end reads -->
+        <!-- Test 3 Paired-end reads Custom DB -->
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="paired"/>
-                <param name="input_1" value="test R1.fq" ftype="fastq"/>
-                <param name="input_2" value="test R2.fq" ftype="fastqsanger"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>   
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired"/>
+                <param name="input_1" value="test_R1.fq" ftype="fastq"/>
+                <param name="input_2" value="test_R2.fq" ftype="fastqsanger"/>
             </conditional>
-            <output name="output" value="output_3.tabular"/>
+            <output name="output_sylph_prof" value="output_profile_3.tsv"/>
         </test>
 
-        <!-- Test 4 Collection of Paired-end Reads -->
+        <!-- Test 4 Collection of Paired-end Reads with custom db -->
         <test expect_num_outputs="1">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="paired_group"/>
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>   
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired_group"/>
                 <param name="input">
                     <collection type="paired" name="test">
-                        <element name="forward" ftype="fastq" value="test R1.fq"/>
-                        <element name="reverse" ftype="fastq" value="test R2.fq"/>
+                        <element name="forward" ftype="fastq" value="test_R1.fq"/>
+                        <element name="reverse" ftype="fastq" value="test_R2.fq"/>
                     </collection>
                 </param>
             </conditional>
-            <output name="output" value="output_4.tabular"/>
+            <param name="estimate_unknown" value="Yes"/>
+            <output name="output_sylph_prof" value="output_profile_4_6.tsv"/>
         </test>
 
-        <!-- Test 5 output format conversion -->
-        <test expect_num_outputs="3">
-            <param name="sylph_database" value="sylph_db"/>
-            <conditional name="sketch">
-                <param name="type" value="single"/>
-                <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
-            </conditional>
-            <param name="outputs" value="metaphlan,krona"/>
-            <!-- With test data, output will be empty for krona tool so only check against metaphlan converter, but keep num_outputs-->
-            <output_collection name="metaphlan_out" type="list">
-                <element name="metaphlan_single_1.fastq.gz" value="test.sylphmpa"/>
-            </output_collection>
-        </test>
-
-        <!-- Test 6 History Database -->
+        <!-- Test 5 Collection of Paired-end Reads with custom and cached db-->
         <test expect_num_outputs="1">
             <conditional name="database_select">
-                <param name="select" value="history"/>
-                <param name="sylph_database" value="sylph_db/database.syldb"/>
-                <param name="metadata" value="sylph_db/database.tsv.gz"/>
+                <param name="select" value="cached_and_custom"/>
+                <param name="sylph_database" value="sylph db"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" value="e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>   
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired_group"/>
+                <param name="input">
+                    <collection type="paired" name="test">
+                        <element name="forward" ftype="fastq" value="test_R1.fq"/>
+                        <element name="reverse" ftype="fastq" value="test_R2.fq"/>
+                    </collection>
+                </param>
             </conditional>
-            <conditional name="sketch">
-                <param name="type" value="paired"/>
-                <param name="input_1" value="test R1.fq" ftype="fastq"/>
-                <param name="input_2" value="test R2.fq" ftype="fastqsanger"/>
+            <param name="estimate_unknown" value="Yes"/>
+            <output name="output_sylph_prof" value="output_profile_5.tsv"/>
+        </test>
+        <!-- Test 6 Collection of Paired-end Reads cached db-->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>   
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired_group"/>
+                <param name="input">
+                    <collection type="paired" name="test">
+                        <element name="forward" ftype="fastq" value="test_R1.fq"/>
+                        <element name="reverse" ftype="fastq" value="test_R2.fq"/>
+                    </collection>
+                </param>
             </conditional>
-            <output name="output" value="output_3.tabular"/>
+            <param name="estimate_unknown" value="Yes"/>
+            <output name="output_sylph_prof" value="output_profile_4_6.tsv"/>
+        </test>
+        <!-- Test 7 single end input with cached db and metadata taxonomy-->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>               
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_fastq"/>
+                <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <output name="output_sylph_prof" value="output_profile_7.tsv"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_7.tsv"/>
+            <output_collection name="sylphmpa_files" type="list" count="1">
+                <expand macro="element_assert" name="sylph_tax_out-single_1.fastq.gz.sylphmpa" text="d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia"/>
+            </output_collection>
+        </test>
+        <!--Test 8  Group of Single-end Inputs with multiple cached db and multiple metadata taxonomy-->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db,sylph database OceanDNA-c200-v0.3.syldb"/>
+                <param name="column" value="ANI"/>
+            </conditional> 
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
+                <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <param name="min_num_kmers" value="49"/>
+            <output name="output_sylph_prof" value="output_profile_8.tsv"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_8.tsv"/>
+            <output_collection name="sylphmpa_files" type="list" count="2">
+                <expand macro="element_assert" name="sylph_tax_out-single_1.fastq.gz.sylphmpa" line="d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia flexneri|t__e.coli-o157.fasta.gz&#9;100.0&#9;100.0&#9;99.95&#9;0.047"/>
+                <expand macro="element_assert" name="sylph_tax_out-single_2.fastq.gz.sylphmpa" text="d__Bacteria|p__Proteobacteria|c__Gammaproteobacteria|o__Enterobacterales|f__Enterobacteriaceae|g__Escherichia|s__Escherichia flexneri|t__e.coli-o157.fasta.gz&#9;100.0&#9;100.0&#9;99.95&#9;0.047"/>
+            </output_collection>
         </test>
     </tests>
     <help><![CDATA[
