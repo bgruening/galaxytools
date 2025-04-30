@@ -17,7 +17,6 @@ if __name__ == "__main__":
 
     with open(args.allowed_channels) as f:
         allowed_channels = json.load(f)
-    
 
     result = cellvoyager_to_ome_zarr_init(
         zarr_urls=[],
@@ -38,8 +37,6 @@ if __name__ == "__main__":
                 init_args=item["init_args"],
             )
         )
-    
 
     with open(args.output_json, "w") as f:
         json.dump(result, f, indent=2)
-
