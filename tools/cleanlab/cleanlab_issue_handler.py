@@ -1,18 +1,21 @@
 import argparse
-import pandas as pd
+
 import numpy as np
-import os
-from sklearn.model_selection import cross_val_predict, StratifiedKFold, KFold
-from sklearn.linear_model import LinearRegression
-from sklearn.neighbors import NearestNeighbors
+import pandas as pd
 from xgboost import XGBClassifier
+
 from cleanlab import Datalab
 from cleanlab.regression.rank import get_label_quality_scores
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold, StratifiedKFold, cross_val_predict
+from sklearn.neighbors import NearestNeighbors
+
 
 # -------------------
 # Issue Handler
 # -------------------
 class IssueHandler:
+
     def __init__(self, dataset, task, n_splits=3, quality_threshold=0.2, knn_k=10):
         self.dataset = dataset
         self.task = task
@@ -30,11 +33,9 @@ class IssueHandler:
         X = self.dataset.drop('target', axis=1)
         y = self.dataset['target']
 
-        # ---------------------------
-        # ✅ Fix: Ensure compatibility with Galaxy
+        # Ensure compatibility with Galaxy!
         X = X.to_numpy() if hasattr(X, 'to_numpy') else np.asarray(X)
         y = y.to_numpy() if hasattr(y, 'to_numpy') else np.asarray(y)
-        # ---------------------------
 
         # Compute knn_graph
         nn = NearestNeighbors(n_neighbors=self.knn_k + 1)
@@ -47,9 +48,7 @@ class IssueHandler:
             self.pred_probs = cross_val_predict(model, X, y, cv=cv, method='predict_proba')
 
             lab = Datalab(self.dataset, label_name='target')
-            # this raises errors related to features and knn. for next version it's gonna be fixed.
-            # lab.find_issues(pred_probs=self.pred_probs, features=self.features, knn_graph=self.knn_graph)
-            lab.find_issues(pred_probs=self.pred_probs)  # this simple version gives 5 issue types.
+            lab.find_issues(pred_probs=self.pred_probs)  # simplified for compatibility. in next version, knn_graph and features are going to be used to acquire more issue types.
             self.issues = lab.get_issues()
             self.issue_summary = lab.get_issue_summary()
             print(self.issue_summary)
@@ -66,7 +65,14 @@ class IssueHandler:
 
         return self.dataset.copy(), self.issues.copy()
 
-    def clean_selected_issues(self, method='remove', label_issues=True, outliers=True, near_duplicates=True, non_iid=True):
+    def clean_selected_issues(
+        self,
+        method='remove',
+        label_issues=True,
+        outliers=True,
+        near_duplicates=True,
+        non_iid=True
+    ):
         if self.issues is None:
             raise RuntimeError("Must run report_issues() before cleaning.")
 
@@ -96,6 +102,7 @@ class IssueHandler:
         else:
             raise ValueError("Invalid method or unsupported combination.")
 
+
 # -------------------
 # Main CLI Entry
 # -------------------
@@ -106,7 +113,6 @@ def main():
     parser.add_argument("--method", default="remove", choices=["remove", "replace"], help="Cleaning method")
     parser.add_argument("--summary", action="store_true", help="Print and save issue summary only, no cleaning")
 
-    # Optional flags to exclude specific issue types
     parser.add_argument("--no-label-issues", action="store_true", help="Exclude label issues from cleaning")
     parser.add_argument("--no-outliers", action="store_true", help="Exclude outlier issues from cleaning")
     parser.add_argument("--no-near-duplicates", action="store_true", help="Exclude near-duplicate issues from cleaning")
@@ -114,20 +120,13 @@ def main():
 
     args = parser.parse_args()
 
-    # Load dataset
     df = pd.read_csv(args.csv)
     if 'target' not in df.columns:
         raise ValueError("Dataset must contain a 'target' column.")
 
-    # Get base filename
-    base_filename = os.path.basename(args.csv)
-    name_only = os.path.splitext(base_filename)[0]
-
-    # Run IssueHandler
     handler = IssueHandler(dataset=df, task=args.task)
     _, issues = handler.report_issues()
 
-    # Save summary to file
     if handler.issue_summary is not None:
         with open("summary.txt", "w") as f:
             f.write(str(handler.issue_summary))
@@ -136,7 +135,6 @@ def main():
     if args.summary:
         return
 
-    # Clean selected issues
     cleaned_df = handler.clean_selected_issues(
         method=args.method,
         label_issues=not args.no_label_issues,
@@ -145,15 +143,12 @@ def main():
         non_iid=not args.no_non_iid
     )
 
-    # Save cleaned dataset
-    cleaned_filename = "cleaned_data.csv"
-    cleaned_df.to_csv(cleaned_filename, index=False)
-    print(f"Cleaned dataset saved to: {cleaned_filename}")
+    cleaned_df.to_csv("cleaned_data.csv", index=False)
+    print("Cleaned dataset saved to: cleaned_data.csv")
+
 
 # -------------------
 # Entry point
 # -------------------
 if __name__ == "__main__":
     main()
-
-
