@@ -2,13 +2,14 @@ import argparse
 
 import numpy as np
 import pandas as pd
+
+from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import cross_val_predict, KFold, StratifiedKFold
+from sklearn.neighbors import NearestNeighbors
 from xgboost import XGBClassifier
 
 from cleanlab import Datalab
 from cleanlab.regression.rank import get_label_quality_scores
-from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import KFold, StratifiedKFold, cross_val_predict
-from sklearn.neighbors import NearestNeighbors
 
 
 # -------------------
