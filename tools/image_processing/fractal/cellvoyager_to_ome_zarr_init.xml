@@ -1,0 +1,152 @@
+<tool id="fractal_cellvoyager_to_ome_zarr" name="CellVoyager image to OME-Zarr" version="1.4.3" profile="24.2">
+    <description>Create OME-Zarr images from Cellvoyager images</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <command detect_errors="aggressive">
+    <![CDATA[
+        mkdir -p tmp/input_images tmp/zarr_output tmp/outjson && 
+
+        #for $i, $filename in enumerate($input_images):
+            ln -s '$filename' 'tmp/input_images/${filename.element_identifier}' &&
+        #end for
+
+        version=`python3 --version | awk '{print tolower($1) substr($2,1,4)}'` &&
+        path=`which python3` &&
+        base="\${path%/*/*}" &&
+        new_path="\$base/lib/\$version/site-packages/fractal_tasks_core/tasks" &&
+        init_execute="cellvoyager_to_ome_zarr_init.py" &&
+        cli_init="\$new_path/\$init_execute" &&
+       
+        python3 \$cli_init --args-json '${init_params}' --out-json ./outout.json &&
+		    
+        compute_execute="cellvoyager_to_ome_zarr_compute.py" &&
+        cli_compute="\$new_path/\$compute_execute" &&
+		
+        python3 '$__tool_directory__/split_add_params.py' --init_json ./outout.json --extra_params $compute_extra_params --outdir tmp/outjson &&
+        
+	
+        parallel -j \${GALAXY_SLOTS:-1} python3 \$cli_compute --args-json {} --out-json {.}_compute.json ::: tmp/outjson/entry_*.json  &&
+
+        ##maybe use the below for tests until Galaxy support the test of zarr ?
+        find tmp/zarr_output/*.zarr -type f -print0|xargs -0 md5sum |sort|md5sum > zarr_hash.txt &&
+		    
+        mv ./outout.json '$output_json' && 
+        cp -r tmp/zarr_output/* $zarr_plate.extra_files_path
+        ]]>
+    </command>
+
+    <configfiles>
+        <configfile name="init_params"> <![CDATA[
+            {
+                "zarr_urls": [],
+                "image_dirs": ["tmp/input_images"],
+                "zarr_dir": "tmp/zarr_output",
+                "allowed_channels": [
+                    #set $sep = ''
+                    #for $ch in $allowed_channels
+                    $sep{
+                    "label":         "$ch.label",
+                    "wavelength_id": "$ch.wavelength_id",
+                    "color":         "$ch.color",
+                    "window": {
+                        "start":      $ch.start,
+                        "end":        $ch.end
+                    }
+                    }
+                    #set $sep = ','
+                    #end for
+                ],
+                "num_levels": ${num_levels},
+                "coarsening_xy": ${coarsening_xy},
+                "image_extension": "${image_extension}",
+                "overwrite": ${overwrite}
+            }
+            ]]>
+        </configfile>
+        <configfile name="compute_extra_params"> <![CDATA[
+            {
+		"c": ${con_chunksize.c},
+		"z": ${con_chunksize.z},
+		"y": ${con_chunksize.y},
+		"x": ${con_chunksize.x}
+            }
+            ]]>
+        </configfile>
+    </configfiles>
+
+    <inputs>
+        <param name="input_images" type="data" multiple="true" format="@FORMATS@" label="Images" />
+        <!-- <param name="allowed_channels" type="data" format="json" label="Allowed Channels in JSON format" /> -->
+         <repeat name="allowed_channels" title="Allowed Channels">
+            <param name="label" type="text" label="Images" />
+            <param name="wavelength_id" type="text" label="Wavelength ID" />
+            <param name="color" type="text" label="Color" />
+            <param name="start" min="0" max="65535" type="integer" label="Visualization Start" />
+            <param name="end" min="0" max="65535" type="integer" label="Visualization End" />
+        </repeat>
+        <param name="num_levels" type="integer" value="5" min="1" max="20" label="Number of pyramid levels" help="Number of resolution-pyramid levels. If set to 5, there will be the full-resolution level and 4 levels of downsampled images."/>
+        <param name="coarsening_xy" type="integer" value="2" label="Coarsening XY" help="Linear coarsening factor between subsequent levels. If set to `2`, level 1 is 2x downsampled, level 2 is 4x downsampled etc."/>
+	<param name="image_extension" type="text" value="tif" label="Image extension" help="Filename extension of images (e.g. tif or png)"/>
+	<param name="overwrite" type="boolean" value="false" label="Overwrite" help="If True, overwrite the output" />
+	<conditional name="con_chunksize">
+	    <param name="chunk_sizes" type="select" label="Do you want to specify chunk sizes?">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+	    </param>
+            <when value="yes">
+	        <param name="c" type="integer" value="1" label="Channel"/>
+	        <param name="z" type="integer" value="10" label="Z"/>
+	        <param name="y" type="integer" value="2160" label="Y"/>
+            <param name="x" type="integer" value="2560" label="X"/>
+	    </when>
+	    <when value="no" />
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data name="zarr_plate" format="zarr" label="Zarr Plate" />
+	<data name="output_json" format="json" label="Parallelization list in JSON" />
+	<data name="zarr_hash" format="txt" hidden="true" from_work_dir="zarr_hash.txt"/>
+    </outputs>
+    <tests>
+        <test>
+          <param name="input_images" location="https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F001L01A01Z01C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F001L01A01Z02C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F002L01A01Z01C01.png,https://zenodo.org/records/8287221/files/20200812-CardiomyocyteDifferentiation14-Cycle1_B03_T0001F002L01A01Z02C01.png,https://zenodo.org/records/8287221/files/MeasurementData.mlf,https://zenodo.org/records/8287221/files/MeasurementDetail.mrf" />
+          <repeat name="allowed_channels">
+            <param name="label" value="DAPI" />
+            <param name="wavelength_id" value="A01_C01" />
+            <param name="color" value="00FFFF" />
+            <param name="start" value="0" />
+            <param name="end" value="700" />
+          </repeat>
+          <param name="num_levels" value="2"/>
+          <param name="coarsening_xy" value="2"/>
+	  <param name="image_extension" value="png"/>
+	  <conditional name="con_chunksize">
+              <param name="chunk_sizes" value="yes" />
+              <param name="c" value="1"/>
+              <param name="z" value="10"/>
+	      <param name="y" value="200"/>
+	      <param name="x" value="500"/>
+	  </conditional>
+          <output name="output_json">
+              <assert_contents>
+                  <has_json_property_with_text property="zarr_url" text="tmp/zarr_output/20200812-CardiomyocyteDifferentiation14-Cycle1.zarr/B/03/0" />
+              </assert_contents>
+          </output>
+	  <output name="zarr_hash" ftype="txt" >
+              <assert_contents>
+		  <has_text_matching expression="59e3da632ad95df9c31228af75442d5b" />
+	      </assert_contents>
+	  </output>
+          </test>
+      </tests>
+    <help>
+        <![CDATA[
+        **What it does**
+         This tool convert the CellVoyager images into OME_Zarr.
+        ]]>
+    </help>
+    <expand macro="citations" />
+</tool>
