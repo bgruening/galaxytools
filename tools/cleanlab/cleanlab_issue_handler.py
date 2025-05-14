@@ -4,7 +4,6 @@ import numpy as np
 import os
 from sklearn.model_selection import cross_val_predict, StratifiedKFold, KFold
 from sklearn.linear_model import LinearRegression
-from sklearn.neighbors import NearestNeighbors
 from xgboost import XGBClassifier
 from cleanlab import Datalab
 from cleanlab.regression.rank import get_label_quality_scores
@@ -20,36 +19,25 @@ class IssueHandler:
         self.quality_threshold = quality_threshold
         self.knn_k = knn_k
         self.issues = None
-        self.features = None
         self.knn_graph = None
         self.features = self.dataset.drop('target', axis=1).columns.tolist()
-        self.pred_probs = None
         self.issue_summary = None
 
     def report_issues(self):
         X = self.dataset.drop('target', axis=1)
         y = self.dataset['target']
 
-        # ---------------------------
-        # ✅ Fix: Ensure compatibility with Galaxy
+        # ✅ Ensure compatibility with Galaxy
         X = X.to_numpy() if hasattr(X, 'to_numpy') else np.asarray(X)
         y = y.to_numpy() if hasattr(y, 'to_numpy') else np.asarray(y)
-        # ---------------------------
-
-        # Compute knn_graph
-        nn = NearestNeighbors(n_neighbors=self.knn_k + 1)
-        nn.fit(X)
-        self.knn_graph = nn.kneighbors(return_distance=False)[:, 1:]
 
         if self.task == 'classification':
             model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42)
             cv = StratifiedKFold(n_splits=self.n_splits, shuffle=True, random_state=42)
-            self.pred_probs = cross_val_predict(model, X, y, cv=cv, method='predict_proba')
+            pred_probs = cross_val_predict(model, X, y, cv=cv, method='predict_proba')
 
             lab = Datalab(self.dataset, label_name='target')
-            # this raises errors related to features and knn. for next version it's gonna be fixed.
-            # lab.find_issues(pred_probs=self.pred_probs, features=self.features, knn_graph=self.knn_graph)
-            lab.find_issues(pred_probs=self.pred_probs)  # this simple version gives 5 issue types.
+            lab.find_issues(pred_probs=pred_probs)
             self.issues = lab.get_issues()
             self.issue_summary = lab.get_issue_summary()
             print(self.issue_summary)
@@ -101,12 +89,10 @@ class IssueHandler:
 # -------------------
 def main():
     parser = argparse.ArgumentParser(description="Cleanlab Issue Handler CLI")
-    parser.add_argument("--csv", required=True, help="Path to dataset CSV (must include a 'target' column)")
+    parser.add_argument("--input_file", required=True, help="Path to dataset CSV (must include a 'target' column)")
     parser.add_argument("--task", required=True, choices=["classification", "regression"], help="Type of ML task")
     parser.add_argument("--method", default="remove", choices=["remove", "replace"], help="Cleaning method")
     parser.add_argument("--summary", action="store_true", help="Print and save issue summary only, no cleaning")
-
-    # Optional flags to exclude specific issue types
     parser.add_argument("--no-label-issues", action="store_true", help="Exclude label issues from cleaning")
     parser.add_argument("--no-outliers", action="store_true", help="Exclude outlier issues from cleaning")
     parser.add_argument("--no-near-duplicates", action="store_true", help="Exclude near-duplicate issues from cleaning")
@@ -115,19 +101,19 @@ def main():
     args = parser.parse_args()
 
     # Load dataset
-    df = pd.read_csv(args.csv)
+    df = pd.read_csv(args.input_file)
     if 'target' not in df.columns:
         raise ValueError("Dataset must contain a 'target' column.")
 
     # Get base filename
-    base_filename = os.path.basename(args.csv)
+    base_filename = os.path.basename(args.input_file)
     name_only = os.path.splitext(base_filename)[0]
 
     # Run IssueHandler
     handler = IssueHandler(dataset=df, task=args.task)
     _, issues = handler.report_issues()
 
-    # Save summary to file
+    # Save summary
     if handler.issue_summary is not None:
         with open("summary.txt", "w") as f:
             f.write(str(handler.issue_summary))
@@ -145,7 +131,7 @@ def main():
         non_iid=not args.no_non_iid
     )
 
-    # Save cleaned dataset
+    # Save cleaned dataset (CSV format by default)
     cleaned_filename = "cleaned_data.csv"
     cleaned_df.to_csv(cleaned_filename, index=False)
     print(f"Cleaned dataset saved to: {cleaned_filename}")
@@ -155,5 +141,3 @@ def main():
 # -------------------
 if __name__ == "__main__":
     main()
-
-
