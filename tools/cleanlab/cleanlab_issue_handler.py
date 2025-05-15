@@ -2,10 +2,10 @@ import argparse
 import pandas as pd
 import numpy as np
 import os
+from cleanlab.datalab.datalab import Datalab
 from sklearn.model_selection import cross_val_predict, StratifiedKFold, KFold
 from sklearn.linear_model import LinearRegression
 from xgboost import XGBClassifier
-from cleanlab import Datalab
 from cleanlab.regression.rank import get_label_quality_scores
 
 # -------------------
