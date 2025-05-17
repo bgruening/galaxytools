@@ -1,16 +1,19 @@
 import argparse
-import pandas as pd
+
 import numpy as np
-import os
-from cleanlab.datalab.datalab import Datalab
-from sklearn.model_selection import cross_val_predict, StratifiedKFold, KFold
+import pandas as pd
 from sklearn.linear_model import LinearRegression
+from sklearn.model_selection import KFold, StratifiedKFold, cross_val_predict
 from xgboost import XGBClassifier
+
+from cleanlab.datalab.datalab import Datalab
 from cleanlab.regression.rank import get_label_quality_scores
 
 # -------------------
 # Issue Handler
 # -------------------
+
+
 class IssueHandler:
     def __init__(self, dataset, task, n_splits=3, quality_threshold=0.2, knn_k=10):
         self.dataset = dataset
@@ -27,7 +30,7 @@ class IssueHandler:
         X = self.dataset.drop('target', axis=1)
         y = self.dataset['target']
 
-        # ✅ Ensure compatibility with Galaxy
+        # Ensure compatibility with Galaxy
         X = X.to_numpy() if hasattr(X, 'to_numpy') else np.asarray(X)
         y = y.to_numpy() if hasattr(y, 'to_numpy') else np.asarray(y)
 
@@ -87,6 +90,8 @@ class IssueHandler:
 # -------------------
 # Main CLI Entry
 # -------------------
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cleanlab Issue Handler CLI")
     parser.add_argument("--input_file", required=True, help="Path to dataset CSV (must include a 'target' column)")
@@ -104,10 +109,6 @@ def main():
     df = pd.read_csv(args.input_file)
     if 'target' not in df.columns:
         raise ValueError("Dataset must contain a 'target' column.")
-
-    # Get base filename
-    base_filename = os.path.basename(args.input_file)
-    name_only = os.path.splitext(base_filename)[0]
 
     # Run IssueHandler
     handler = IssueHandler(dataset=df, task=args.task)
@@ -139,5 +140,7 @@ def main():
 # -------------------
 # Entry point
 # -------------------
+
+
 if __name__ == "__main__":
     main()
