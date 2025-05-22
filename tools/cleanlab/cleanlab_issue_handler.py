@@ -93,7 +93,7 @@ class IssueHandler:
 
 def main():
     parser = argparse.ArgumentParser(description="Cleanlab Issue Handler CLI")
-    parser.add_argument("--input_file", required=True, help="Path to dataset CSV (must include a 'target' column)")
+    parser.add_argument("--input_file", nargs=2, required=True, metavar=('FILE', 'EXT'), help="Input file path and its extension")
     parser.add_argument("--task", required=True, choices=["classification", "regression"], help="Type of ML task")
     parser.add_argument("--method", default="remove", choices=["remove", "replace"], help="Cleaning method")
     parser.add_argument("--summary", action="store_true", help="Print and save issue summary only, no cleaning")
@@ -104,10 +104,18 @@ def main():
 
     args = parser.parse_args()
 
-    # Load dataset
-    df = pd.read_csv(args.input_file)
-    if 'target' not in df.columns:
-        raise ValueError("Dataset must contain a 'target' column.")
+     # Load dataset based on file extension
+    file_path, file_ext = args.input_file
+    file_ext = file_ext.lower()
+
+    print(f"Loading dataset from: {file_path} with extension: {file_ext}")
+
+    if file_ext == "csv":
+        df = pd.read_csv(file_path)
+    elif file_ext in ["tsv", "tabular"]:
+        df = pd.read_csv(file_path, sep="\t")
+    else:
+        raise ValueError(f"Unsupported file format: {file_ext}")
 
     # Run IssueHandler
     handler = IssueHandler(dataset=df, task=args.task)
@@ -131,10 +139,18 @@ def main():
         non_iid=not args.no_non_iid
     )
 
-    # Save cleaned dataset (CSV format by default)
-    cleaned_filename = "cleaned_data.csv"
-    cleaned_df.to_csv(cleaned_filename, index=False)
-    print(f"Cleaned dataset saved to: {cleaned_filename}")
+    print(f"Cleaned dataset shape: {cleaned_df.shape}")
+    print(f"Original dataset shape: {df.shape}")
+
+    output_filename = "cleaned_data"
+    if file_ext == "csv":
+        cleaned_df.to_csv(output_filename, index=False)
+    elif file_ext in ["tsv", "tabular"]:
+        cleaned_df.to_csv(output_filename, sep="\t", index=False)
+    else:
+        raise ValueError(f"Unsupported output format: {file_ext}")
+
+    print(f"Cleaned dataset saved to: {output_filename}")
 
 # -------------------
 # Entry point
