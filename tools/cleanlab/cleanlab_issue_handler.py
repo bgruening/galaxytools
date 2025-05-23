@@ -5,7 +5,7 @@ import pandas as pd
 from cleanlab.datalab.datalab import Datalab
 from cleanlab.regression.rank import get_label_quality_scores
 from sklearn.linear_model import LinearRegression
-from sklearn.model_selection import cross_val_predict, KFold, StratifiedKFold
+from sklearn.model_selection import KFold, StratifiedKFold, cross_val_predict
 from xgboost import XGBClassifier
 
 # -------------------
@@ -107,6 +107,7 @@ class IssueHandler:
 # Main CLI Entry
 # -------------------
 
+
 def main():
     parser = argparse.ArgumentParser(description="Cleanlab Issue Handler CLI")
     parser.add_argument("--input_file", nargs=2, required=True, metavar=('FILE', 'EXT'), help="Input file path and its extension")
@@ -136,9 +137,9 @@ def main():
         raise ValueError(f"Unsupported file format: {file_ext}")
 
     # Run IssueHandler
-    handler = IssueHandler(dataset=df, 
-                           task=args.task, 
-                           target_column=args.target_column, 
+    handler = IssueHandler(dataset=df,
+                           task=args.task,
+                           target_column=args.target_column,
                            quality_threshold=args.quality_threshold)
     _, issues, summary = handler.report_issues()
 
