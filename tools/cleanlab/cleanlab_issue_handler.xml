@@ -11,34 +11,64 @@
         python '${__tool_directory__}/cleanlab_issue_handler.py'
         --input_file '$input_file' '$input_file.ext'
         --target_column '$target_column'
-        --task '$task'
-        --method '$method'
-        #if $summary_only:
+        --task "$task_block.task"
+        --method "$task_block.method"
+        #if $task_block.summary_only:
             --summary
         #end if
-        $label_issues
-        $outliers
-        $near_duplicates
-        $non_iid
+        #if str($task_block.task) == "classification":
+            #if $task_block.label_issues:
+                $task_block.label_issues
+            #end if
+            #if $task_block.outliers:
+                $task_block.outliers
+            #end if
+            #if $task_block.near_duplicates:
+                $task_block.near_duplicates
+            #end if
+            #if $task_block.non_iid:
+                $task_block.non_iid
+            #end if
+        #end if
+        #if str($task_block.task) == "regression":
+            --quality-threshold "$task_block.quality_threshold"
+        #end if
     ]]></command>
 
     <inputs>
         <param name="input_file" type="data" format="csv,tsv,tabular" label="Input data file (CSV, TSV, or tabular with 'target' column)"/>
         <param name="target_column" type="text" label="Target column name" value="target" help="Name of the target column in the input data file. Default is 'target'."/>
-        <param name="task" type="select" label="Task type">
-            <option value="classification">Classification</option>
-            <option value="regression">Regression</option>
-        </param>
-        <param name="method" type="select" label="Cleaning method">
-            <option value="remove">Remove problematic rows</option>
-            <option value="replace">Replace problematic labels (classification only)</option>
-        </param>
-        <param name="summary_only" type="boolean" label="Only report issues (do not clean data)" checked="true"/>
-        <param name="label_issues" type="boolean" truevalue="" falsevalue="--no-label-issues" label="Include label issues" checked="true"/>
-        <param name="outliers" type="boolean" truevalue="" falsevalue="--no-outliers" label="Include outlier issues" checked="false"/>
-        <param name="near_duplicates" type="boolean" truevalue="" falsevalue="--no-near-duplicates" label="Include near-duplicate issues" checked="false"/>
-        <param name="non_iid" type="boolean" truevalue="" falsevalue="--no-non-iid" label="Include non-IID issues" checked="false"/>
+        
+        <conditional name="task_block">
+            <param name="task" type="select" label="Task type">
+                <option value="classification">Classification</option>
+                <option value="regression">Regression</option>
+            </param>
+            
+            <when value="classification">
+                <param name="method" type="select" label="Cleaning method">
+                    <option value="remove">Remove problematic rows</option>
+                    <option value="replace">Replace problematic labels (classification only)</option>
+                </param>
+                <param name="summary_only" type="boolean" label="Only report issues (do not clean data)" checked="true"/>
+                <param name="label_issues" type="boolean" truevalue="" falsevalue="--no-label-issues" label="Include label issues" checked="true"/>
+                <param name="outliers" type="boolean" truevalue="" falsevalue="--no-outliers" label="Include outlier issues" checked="false"/>
+                <param name="near_duplicates" type="boolean" truevalue="" falsevalue="--no-near-duplicates" label="Include near-duplicate issues" checked="false"/>
+                <param name="non_iid" type="boolean" truevalue="" falsevalue="--no-non-iid" label="Include non-IID issues" checked="false"/>
+            </when>
+
+            <when value="regression">
+                <param name="method" type="select" label="Cleaning method">
+                    <option value="remove">Remove problematic rows</option>
+                    <!-- No "replace" option for regression -->
+                </param>
+                <param name="quality_threshold" type="float" label="Quality threshold" value="0.2" min="0.0" max="1.0" help="Threshold for low-quality labels. Default is 0.5."/>
+                <param name="summary_only" type="boolean" label="Only report issues (do not clean data)" checked="true"/>
+                <!-- No issue type parameters shown -->
+            </when>
+        </conditional>
     </inputs>
+
 
     <outputs>
         <data name="report_file" from_work_dir="summary.txt" format="txt" label="Issue Report"/>
@@ -54,171 +84,180 @@
     </outputs>
 
     <tests>
-        <!-- Test1: only summary -->
-        <test expect_num_outputs="1">
-            <param name="input_file" value="breast_cancer.csv" />
+    <!-- Test1: only summary -->
+    <test expect_num_outputs="1">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
+
+        <conditional name="task_block">
             <param name="task" value="classification" />
-            <param name="target_column" value="target" />
             <param name="method" value="remove" />
             <param name="summary_only" value="true" />
             <param name="label_issues" value="true" />
             <param name="outliers" value="true" />
             <param name="near_duplicates" value="true" />
             <param name="non_iid" value="true" />
+        </conditional>
 
-            <output name="report_file">
-                <assert_contents>
-                    <has_text_matching expression="issue_type\s+score\s+num_issues"/>
-                    <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                </assert_contents>
-            </output>
-        </test>
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="issue_type\s+score\s+num_issues"/>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+    </test>
 
-        <!-- Test2: summary and cleaned all -->
-        <test expect_num_outputs="2">
-            <param name="input_file" value="breast_cancer.csv" />
+    <!-- Test2: summary and cleaned all -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
+
+        <conditional name="task_block">
             <param name="task" value="classification" />
-            <param name="target_column" value="target" />
             <param name="method" value="remove" />
             <param name="summary_only" value="false" />
             <param name="label_issues" value="true" />
             <param name="outliers" value="true" />
             <param name="near_duplicates" value="true" />
             <param name="non_iid" value="true" />
+        </conditional>
 
-            <output name="report_file">
-                <assert_contents>
-                    <has_text_matching expression="issue_type\s+score\s+num_issues"/>
-                    <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                </assert_contents>
-            </output>
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="issue_type\s+score\s+num_issues"/>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
 
-            <output name="output_file">
-                <assert_contents>
-                    <has_text_matching expression=".*target.*"/>
-                    <has_text_matching expression="^.*,.+,.+"/>
-                </assert_contents>
-            </output>
-        </test>
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
 
-        <!-- Test3: summary and cleaned label issues only -->
-        <test expect_num_outputs="2">
-            <param name="input_file" value="breast_cancer.csv"/>
-            <param name="task" value="classification"/>
-            <param name="target_column" value="target"/>
-            <param name="method" value="remove"/>
-            <param name="summary_only" value="false"/>
-            <param name="label_issues" value="true"/>
-            <param name="outliers" value="false"/>
-            <param name="near_duplicates" value="false"/>
-            <param name="non_iid" value="false"/>
+    <!-- Test3: summary and cleaned label issues only -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
 
-            <output name="report_file">
-                <assert_contents>
-                    <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                </assert_contents>
-            </output>
-
-            <output name="output_file">
-                <assert_contents>
-                    <has_text_matching expression=".*target.*"/>
-                    <has_text_matching expression="^.*,.+,.+"/>
-                </assert_contents>
-            </output>
-        </test>
-
-        <!-- Test4: summary and cleaned outliers only -->
-        <test expect_num_outputs="2">
-            <param name="input_file" value="breast_cancer.csv"/>
-            <param name="task" value="classification"/>
-            <param name="target_column" value="target"/>
-            <param name="method" value="remove"/>
-            <param name="summary_only" value="false"/>
-            <param name="label_issues" value="false"/>
-            <param name="outliers" value="true"/>
-            <param name="near_duplicates" value="false"/>
-            <param name="non_iid" value="false"/>
-
-            <output name="report_file">
-                <assert_contents>
-                    <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                </assert_contents>
-            </output>
-
-            <output name="output_file">
-                <assert_contents>
-                    <has_text_matching expression=".*target.*"/>
-                    <has_text_matching expression="^.*,.+,.+"/>
-                </assert_contents>
-            </output>
-        </test>
-
-        <!-- Test5: summary and clean all for tsv -->
-        <test expect_num_outputs="2">
-            <param name="input_file" value="breast_cancer.tsv"/>
-            <param name="task" value="classification"/>
-            <param name="target_column" value="target"/>
-            <param name="method" value="remove"/>
-            <param name="summary_only" value="false"/>
-            <param name="label_issues" value="true"/>
-            <param name="outliers" value="true"/>
-            <param name="near_duplicates" value="true"/>
-            <param name="non_iid" value="true"/>
-
-            <output name="report_file">
-                <assert_contents>
-                    <has_text_matching expression="issue_type\s+score\s+num_issues"/>
-                    <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                    <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
-                </assert_contents>
-            </output>
-
-            <output name="output_file">
-                <assert_contents>
-                    <has_text_matching expression=".*target.*"/>
-                    <has_text_matching expression="^.*\t.+\t.+"/>
-                </assert_contents>
-            </output>
-        </test>
-
-        <!-- Test6: regression with summary and cleaned output -->
-        <test expect_num_outputs="2">
-            <param name="input_file" value="reg_1027_ESL.csv" />
-            <param name="task" value="regression" />
-            <param name="target_column" value="target" />
+        <conditional name="task_block">
+            <param name="task" value="classification" />
             <param name="method" value="remove" />
             <param name="summary_only" value="false" />
             <param name="label_issues" value="true" />
             <param name="outliers" value="false" />
             <param name="near_duplicates" value="false" />
             <param name="non_iid" value="false" />
+        </conditional>
 
-            <output name="report_file">
-                <assert_contents>
-                    <has_text text="Regression Issue Summary:"/>
-                    <has_text_matching expression="Num low quality:"/>
-                    <has_text_matching expression="Mean label quality:"/>
-                </assert_contents>
-            </output>
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
 
-            <output name="output_file">
-                <assert_contents>
-                    <has_text_matching expression=".*target.*"/>
-                    <has_text_matching expression="^.*,.+,.+"/>
-                </assert_contents>
-            </output>
-        </test>
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
 
-    </tests>
+    <!-- Test4: summary and cleaned outliers only -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
+
+        <conditional name="task_block">
+            <param name="task" value="classification" />
+            <param name="method" value="remove" />
+            <param name="summary_only" value="false" />
+            <param name="label_issues" value="false" />
+            <param name="outliers" value="true" />
+            <param name="near_duplicates" value="false" />
+            <param name="non_iid" value="false" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- Test5: summary and clean all for tsv -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.tsv" />
+        <param name="target_column" value="target" />
+
+        <conditional name="task_block">
+            <param name="task" value="classification" />
+            <param name="method" value="remove" />
+            <param name="summary_only" value="false" />
+            <param name="label_issues" value="true" />
+            <param name="outliers" value="true" />
+            <param name="near_duplicates" value="true" />
+            <param name="non_iid" value="true" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="issue_type\s+score\s+num_issues"/>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*\t.+\t.+"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- Test6: regression with summary and cleaned output -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="reg_1027_ESL.csv" />
+        <param name="target_column" value="target" />
+
+        <conditional name="task_block">
+            <param name="task" value="regression" />
+            <param name="method" value="remove" />
+            <param name="summary_only" value="false" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text text="Regression Issue Summary:"/>
+                <has_text_matching expression="Num low quality:"/>
+                <has_text_matching expression="Mean label quality:"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
+</tests>
 
     <help><![CDATA[
 **Cleanlab Issue Handler**

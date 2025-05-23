@@ -57,6 +57,7 @@ class IssueHandler:
                 'is_low_quality': is_low_quality
             })
             self.issue_summary = {
+                'quality_threshold': self.quality_threshold,
                 'num_low_quality': int(is_low_quality.sum()),
                 'mean_label_quality': float(np.mean(scores)),
                 'median_label_quality': float(np.median(scores)),
@@ -117,6 +118,7 @@ def main():
     parser.add_argument("--no-outliers", action="store_true", help="Exclude outlier issues from cleaning")
     parser.add_argument("--no-near-duplicates", action="store_true", help="Exclude near-duplicate issues from cleaning")
     parser.add_argument("--no-non-iid", action="store_true", help="Exclude non-i.i.d. issues from cleaning")
+    parser.add_argument('--quality-threshold', type=float, default=0.2, help='Threshold for low-quality labels (regression only)')
 
     args = parser.parse_args()
 
@@ -134,7 +136,10 @@ def main():
         raise ValueError(f"Unsupported file format: {file_ext}")
 
     # Run IssueHandler
-    handler = IssueHandler(dataset=df, task=args.task, target_column=args.target_column)
+    handler = IssueHandler(dataset=df, 
+                           task=args.task, 
+                           target_column=args.target_column, 
+                           quality_threshold=args.quality_threshold)
     _, issues, summary = handler.report_issues()
 
     # Save summary
