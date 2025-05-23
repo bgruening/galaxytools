@@ -14,15 +14,13 @@ from xgboost import XGBClassifier
 
 
 class IssueHandler:
-    def __init__(self, dataset, task, target_column, n_splits=3, quality_threshold=0.2, knn_k=10):
+    def __init__(self, dataset, task, target_column, n_splits=3, quality_threshold=0.2):
         self.dataset = dataset
         self.task = task
         self.target_column = target_column
         self.n_splits = n_splits
         self.quality_threshold = quality_threshold
-        self.knn_k = knn_k
         self.issues = None
-        self.knn_graph = None
         self.features = self.dataset.drop(target_column, axis=1).columns.tolist()
         self.issue_summary = None
         self.pred_probs = None
