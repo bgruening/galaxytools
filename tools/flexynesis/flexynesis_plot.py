@@ -77,8 +77,6 @@ def main():
                         help="Transformation method ('pca' or 'umap'). Default is 'pca'")
     parser.add_argument("--color_type", type=str, default='categorical', choices=['categorical', 'numerical'],
                         help="Type of the color scale ('categorical' or 'numerical'). Default is 'categorical'")
-    parser.add_argument("--title", type=str, required=False,
-                        help="Optional title for the plot")
     parser.add_argument("--output_dir", type=str, default='output',
                         help="Output directory. Default is 'output'")
     parser.add_argument("--output_name", type=str, default=None,
