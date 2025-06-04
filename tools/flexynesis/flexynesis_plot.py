@@ -5,7 +5,6 @@ import os
 import numpy as np
 import pandas as pd
 from pathlib import Path
-
 from flexynesis import plot_dim_reduced
 
 def load_matrix(matrix_path):
@@ -75,8 +74,8 @@ def main():
                        help="Output directory. Default is 'output'")
     parser.add_argument("--output_name", type=str, default=None,
                        help="Output filename")
-    parser.add_argument("--format", type=str, default='png', choices=['png', 'pdf', 'svg', 'jpg'],
-                       help="Output format for the plot. Default is 'png'")
+    parser.add_argument("--format", type=str, default='jpg', choices=['png', 'pdf', 'svg', 'jpg'],
+                       help="Output format for the plot. Default is 'jpg'")
     parser.add_argument("--dpi", type=int, default=300,
                        help="DPI for the output image. Default is 300")
 
