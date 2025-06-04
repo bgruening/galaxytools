@@ -34,20 +34,17 @@ def load_labels(labels_input):
 
         if file_ext == '.csv':
 
-            df = pd.read_csv(labels_input, index_col=0)
+            df = pd.read_csv(labels_input)
 
         elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
 
-            df = pd.read_csv(labels_input, sep='\t', index_col=0)
+            df = pd.read_csv(labels_input, sep='\t')
 
         # Check if this is the specific format with sample_id, known_label, predicted_label
         required_cols = ['sample_id', 'known_label', 'predicted_label']
         if all(col in df.columns for col in required_cols):
-            return {
-                'sample_ids': df['sample_id'].tolist(),
-                'known_labels': df['known_label'].tolist(),
-                'predicted_labels': df['predicted_label'].tolist()
-            }
+            df = df.drop_duplicates(subset='sample_id')
+            return df
         else:
 
             raise ValueError(f"Labels file {labels_input} does not contain required columns: {required_cols}")
@@ -106,7 +103,7 @@ def main():
 
         # Match samples to matrix
         matched_labels = match_samples_to_matrix(sample_names, label_data)
-        print(f"Successfully matched {len(matched_labels['known_labels'])} samples")
+        print(f"Successfully matched {len(matched_labels['known_label'])} samples")
 
         # Create output directory
         output_dir = Path(args.output_dir)
@@ -127,34 +124,28 @@ def main():
         title_known = f"{args.title} - Known Labels" if args.title else "Known Labels"
         fig_known = plot_dim_reduced(
             matrix=matrix,
-            labels=matched_labels['known_labels'],
+            labels=matched_labels['known_label'],
             method=args.method,
-            color_type=args.color_type,
-            title=title_known
+            color_type=args.color_type
         )
 
         output_path_known = output_dir / f"{output_name_base}_known.{args.format}"
         print(f"Saving known labels plot to: {output_path_known.absolute()}")
-        fig_known.savefig(output_path_known, dpi=args.dpi, bbox_inches='tight')
+        fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
 
         # Plot 2: Predicted labels
         title_predicted = f"{args.title} - Predicted Labels" if args.title else "Predicted Labels"
         fig_predicted = plot_dim_reduced(
             matrix=matrix,
-            labels=matched_labels['predicted_labels'],
+            labels=matched_labels['predicted_label'],
             method=args.method,
-            color_type=args.color_type,
-            title=title_predicted
+            color_type=args.color_type
         )
 
         output_path_predicted = output_dir / f"{output_name_base}_predicted.{args.format}"
         print(f"Saving predicted labels plot to: {output_path_predicted.absolute()}")
-        fig_predicted.savefig(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
+        fig_predicted.save(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
 
-        # Close figures to free memory
-        import matplotlib.pyplot as plt
-        plt.close(fig_known)
-        plt.close(fig_predicted)
         print("Both plots saved successfully!")
 
     except Exception as e:
