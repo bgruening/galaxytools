@@ -38,7 +38,7 @@ def write_yolo_yaml(output_dir,meta_json):
         f.write(f"test: test\n")
         f.write(f"\n")
         f.write(f"nc: {meta['training_params']['num_class']}\n")
-        f.write(f"names: {meta['ds_name']}\n")
+        f.write(f"names: ['{meta['ds_name']}']\n")
 
 def main():
     parser = argparse.ArgumentParser()

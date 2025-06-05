@@ -1,0 +1,152 @@
+<tool id="yolo_training" name="YOLO training" version="@VERSION@+galaxy0" profile="24.2">
+    <description>Split images into train,valid,test and train a model</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <requirements>
+	<container type="docker" >quay.io/sunyi000/ultralytics-galaxy:latest</container>
+    </requirements>
+    <command detect_errors="aggressive">
+    <![CDATA[
+      export YOLO_CONFIG_DIR='\$HOME/.config/ultralytics' &&
+
+      mkdir -p ./input_images ./input_yolo ./training ./runs ./models output_files && 
+
+      #for $i, $filename in enumerate($input_images):
+          ln -s '$filename' './input_images/${filename.element_identifier}' &&
+      #end for
+	
+      #for $s, $yolo in enumerate($input_yolo):
+          ln -s '$yolo' './input_yolo/${yolo.element_identifier}' &&
+      #end for
+
+      python '$__tool_directory__/preprocessing.py' -i './input_images' -y './input_yolo' -o ./training -p '$num_train' -m $input_json &&
+
+      python '$__tool_directory__/download_models.py' -m '$training_params.model_name' -f './models' -c '${model_urls}' &&
+
+      python '$__tool_directory__/yolov8.py' 
+		    --train --yaml_path='./training/yolo.yml' 
+		    --model_path='./models' 
+		    --model_name='$training_params.model_name' 
+		    --run_dir='./runs' 
+		    --image_size='$training_params.image_size'
+		    --epochs='$training_params.epochs'
+		    --scale='$training_params.scale'
+		    --degree='$training_params.degree'
+		    --hsv_v='$training_params.hsv_v'
+		    --hsv_s='$training_params.hsv_s'
+		    --hsv_h='$training_params.hsv_h'
+		    --init_lr='$training_params.init_lr'
+		    --weight_decay='$training_params.weight_decay'
+		    --confidence='$training_params.confidence'
+		    --iou='$training_params.iou'
+		    --max_det='$training_params.max_det'  
+
+      &&
+
+      cp ./runs/train*/*/best.pt output_files/best.pt &&
+      cp ./runs/train*/*/last.pt output_files/last.pt &&
+      cp ./runs/train*/results.csv output_files/results_metrics.csv &&
+      cp ./runs/train*/results.png output_files/results_plot.png 
+    ]]>
+    </command>
+    <configfiles>
+	 <inputs name="input_json"/>
+	 <configfile name="model_urls"><![CDATA[
+            {
+		 "yolo11n-seg": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n-seg.pt",
+		 "yolo11n": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.pt",
+		 "yolov8n": "https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n.pt",
+		 "sam_b": "https://github.com/ultralytics/assets/releases/download/v8.3.0/sam_b.pt",
+		 "sam_l": "https://github.com/ultralytics/assets/releases/download/v8.3.0/sam_l.pt",
+		 "sam2_t": "https://github.com/ultralytics/assets/releases/download/v8.3.0/sam2_t.pt",
+		 "sam2.1_t": "https://github.com/ultralytics/assets/releases/download/v8.3.0/sam2.1_t.pt"
+            }
+            ]]>
+	 </configfile>
+    </configfiles>
+    <inputs>
+        <param name="input_images" type="data" format="jpg,png,tiff" multiple="true"  label="Input images"/>
+        <param name="input_yolo" type="data" format="txt" multiple="true"  label="Input YOLO txt files" help="The YOLO text files, each text file must correspond to one input image(same name different extension)." />
+	<param name="ds_name" type="text" label="Name of dataset" help="The name for your dataset"/>
+
+	<section name="training_params" title="Training Parameters">
+            <param name="num_train" type="integer" value="70" label="How do you want to split your images for training?" help="Proportion of training images wrt valid and test images" />
+	    <param name="num_class" type="integer" label="Number of class names for images" />
+	    <param name="model_name" type="text">
+	        <option value="yolo11n-seg">YOLO11n-seg</option>
+		<option value="yolo11n">YOLO11n</option>
+		<option value="yolov8n">YOLOv8</option>
+		<option value="sam_b">SAM base</option>
+		<option value="sam_l">SAM large</option>
+		<option value="sam2_t">SAM2 tiny</option>
+		<option value="sam2.1_t">SAM2.1 tiny</option>
+	    </param>
+            <param name="epochs" type="integer" value="100" label="Number of epochs for taining." />
+	    <param name="image_size" type="integer" value="1000" label="Image size" help="Size of input image to be used only as integer of w,h. For training choose &lt;= 1000." />
+	    <param name="scale" type="float" value="0.5" label="Image scale" help="Image scale (+/- gain)" />
+	    <param name="degree" type="float" value="0.0" label="Image rotation" help="Image rotation (+/- deg)" />
+	    <param name="hsv_v" type="float" value="0.4" label="Image HSV-Value" help="Image HSV-Value augmentation (fraction)" />
+	    <param name="hsv_s" type="float" value="0.7" label="Image HSV-Saturation" help="Image HSV-Saturation augmentation (fraction)" />
+            <param name="hsv_h" type="float" value="0.015" label="Image HSV-Hue" help="Image HSV-Hue augmentation (fraction)" />
+	    <param name="init_lr" type="float" value="0.01" label="Learning rate" help="Initial learning rate for training" />
+            <param name="weight_decay" type="float" value="0.0005" label="Weight decay" />
+ 	    <param name="confidence" type="float" value="0.5" label="Confidence" help="Confidence value (0-1) for each detected bounding box" />
+	    <param name="iou" type="float" value="0.7" label="IoU" help="Intersection over Union threshold for NMS" />
+	    <param name="max_det" type="integer" value="300" label="Max. of detections" help="Maximum number of detections allowed per image. Limits the total number of objects the model can detect in a single inference, preventing excessive outputs in dense scenes." />
+        </section>
+    </inputs>
+    <outputs>
+	 <collection name="output_files" type="list" label="YOLO Training Results">
+		 <discover_datasets pattern="__name_and_ext__" directory="output_files"/>
+         </collection>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input_images" value="jpegs/0001.jpg,jpegs/0003.jpg,jpegs/0006.jpg,jpegs/0007.jpg,jpegs/0013.jpg,jpegs/0016.jpg,jpegs/0018.jpg,jpegs/0021.jpg" />
+	    <param name="input_yolo" value="0001.txt,0003.txt,0006.txt,0007.txt,0013.txt,0016.txt,0018.txt,0021.txt" />
+	    <param name="ds_name" value="tail" />
+            <section name="training_params">
+                <param name="num_train" value="60" />
+		<param name="num_class" value="1" />
+		<param name="model_name" value="yolo11n-seg" />
+                <param name="epochs" value="10" />
+                <param name="image_size" value="500" />
+                <param name="scale" value="0.8" />
+                <param name="degree" value="10.0" />
+                <param name="hsv_v" value="0.5"/>
+                <param name="init_lr" value="0.02" />
+                <param name="weight_decay" value="0.001" />
+	    </section>
+            <output_collection name="output_files" type="list">
+	        <element name="best" file="best.pt">
+	            <assert_contents>
+                       <has_size value="5960036"/>
+                    </assert_contents>
+	        </element>
+		<element name="last" file="last.pt">
+                    <assert_contents>
+                       <has_size value="5960036"/>
+                    </assert_contents>
+                </element>
+		<element name="results_metrics" file="results_metrics.csv">
+	            <assert_contents>
+                        <has_n_lines n="11"/>
+                    </assert_contents>
+                </element>
+		<element name="results_plot" file="results_plot.png">
+	            <assert_contents>
+                        <has_size value="366996"/>
+                    </assert_contents>
+                 </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+        **What it does**
+        This tool split the input images into train, valid, test then train a YOLO model.
+]]>
+    </help>
+    <expand macro="citations" />
+</tool>
