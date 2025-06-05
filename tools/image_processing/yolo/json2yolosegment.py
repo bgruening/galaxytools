@@ -5,31 +5,25 @@ import shutil
 
 def convert_json_to_yolo(input_json, save_dir, class_names_file):
 
-    # Read class names from the file
     with open(class_names_file, 'r') as f:
        class_names = [line.strip() for line in f.readlines()]
        
-    # Create a mapping from class names to indices
     class_to_index = {class_name: i for i, class_name in enumerate(class_names)}
 
     filename = os.path.basename(input_json)
-    
-    # Load JSON file
+   
     with open(input_json, 'r') as file:
-       data = json.load(file)
+        data=json.load(file)
              
     image_width = data.get('imageWidth')
     image_height = data.get('imageHeight')
     
-       # Proceed only if both width and height are available
     if image_width is None or image_height is None:
        print(f"Skipping {filename}: missing image dimensions.")
        return
 
-    # Extract bounding box annotations
     annotations = data.get('shapes', [])
 
-    # Define output file path
     base, _ = os.path.splitext(filename)
     output_file = f"{base}.txt"
     output_filepath=os.path.join(save_dir,output_file)

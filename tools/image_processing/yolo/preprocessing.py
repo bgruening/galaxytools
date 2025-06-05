@@ -1,19 +1,20 @@
 import os
 import shutil
 import argparse
+import json
 from sklearn.model_selection import train_test_split
 
 def get_basename(f):
     return os.path.splitext(os.path.basename(f))[0]
 
 def pair_files(images_dir, labels_dir):
-    images = sorted([f for f in os.listdir(images_dir) if os.path.isfile(os.path.join(images_dir, f))])
-    labels = sorted([f for f in os.listdir(labels_dir) if os.path.isfile(os.path.join(labels_dir, f))])
 
-    image_dict = {get_basename(f): f for f in images}
-    label_dict = {get_basename(f): f for f in labels}
+    img_files = [f for f in os.listdir(images_dir) ]
+    lbl_files = [f for f in os.listdir(labels_dir) ]
 
-    # Only keep files where both image and label exist
+    image_dict = {get_basename(f): f for f in img_files}
+    label_dict = {get_basename(f): f for f in lbl_files}
+
     keys = sorted(set(image_dict) & set(label_dict))
 
     return [(image_dict[k], label_dict[k]) for k in keys]
@@ -25,8 +26,8 @@ def copy_pairs(pairs, image_src, label_src, image_dst, label_dst):
         shutil.copy(os.path.join(image_src, img), os.path.join(image_dst, img))
         shutil.copy(os.path.join(label_src, lbl), os.path.join(label_dst, lbl))
 
-def write_yolo_yaml(output_dir,meta_json_path):
-    with open(meta_json_path, 'r') as f:
+def write_yolo_yaml(output_dir,meta_json):
+    with open(meta_json, 'r') as f:
         meta = json.load(f)
 
     yolo_yaml_path = os.path.join(output_dir, "yolo.yml")
@@ -35,13 +36,14 @@ def write_yolo_yaml(output_dir,meta_json_path):
         f.write(f"train: train\n")
         f.write(f"val: valid\n")
         f.write(f"test: test\n")
-        f.write(f"nc: {meta['num_class']}\n")
+        f.write(f"\n")
+        f.write(f"nc: {meta['training_params']['num_class']}\n")
         f.write(f"names: {meta['ds_name']}\n")
 
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("-i","--images", required=True)
-    parser.add_argument("-y","--yolo", required=True)
+    parser.add_argument("-y","--labels", required=True)
     parser.add_argument("-o","--output", required=True)
     parser.add_argument("-p","--train_percent", type=int, default=70)
     parser.add_argument("-m","--meta", required=True)
@@ -58,7 +60,7 @@ def main():
     copy_pairs(val_pairs, args.images, args.labels, os.path.join(args.output, "valid/images"), os.path.join(args.output, "valid/labels"))
     copy_pairs(test_pairs, args.images, args.labels, os.path.join(args.output, "test/images"), os.path.join(args.output, "test/labels"))
 
-     write_yolo_yaml(args.output,args.meta)
+    write_yolo_yaml(args.output,args.meta)
 
 if __name__ == "__main__":
     main()
