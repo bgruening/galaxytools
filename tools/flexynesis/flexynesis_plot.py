@@ -1,11 +1,15 @@
 #!/usr/bin/env python
+"""Generate plots using flexynesis
+This script generates dimensionality reduction plots and Kaplan-Meier survival curves
+from data processed by flexynesis."""
 
 import argparse
 import os
 from pathlib import Path
 
 import pandas as pd
-from flexynesis import plot_dim_reduced
+import numpy as np
+from flexynesis import plot_dim_reduced, plot_kaplan_meier_curves
 
 
 def load_matrix(matrix_path):
@@ -15,13 +19,9 @@ def load_matrix(matrix_path):
         file_ext = Path(matrix_path).suffix.lower()
 
         if file_ext == '.csv':
-
             df = pd.read_csv(matrix_path, index_col=0)
-
         elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
-
             df = pd.read_csv(matrix_path, sep='\t', index_col=0)
-
         else:
             raise ValueError(f"Unsupported file extension: {file_ext}")
 
@@ -38,49 +38,143 @@ def load_labels(labels_input):
         file_ext = Path(labels_input).suffix.lower()
 
         if file_ext == '.csv':
-
             df = pd.read_csv(labels_input)
-
         elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
-
             df = pd.read_csv(labels_input, sep='\t')
 
         # Check if this is the specific format with sample_id, known_label, predicted_label
-        required_cols = ['sample_id', 'known_label', 'predicted_label']
+        required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
         if all(col in df.columns for col in required_cols):
             df = df.drop_duplicates(subset='sample_id')
             return df
         else:
-
             raise ValueError(f"Labels file {labels_input} does not contain required columns: {required_cols}")
 
     except Exception as e:
         raise ValueError(f"Error loading labels from {labels_input}: {e}") from e
 
 
+def load_survival_data(survival_path):
+    """Load survival data from a file. First column should be sample_id"""
+    try:
+        # Determine file extension
+        file_ext = Path(survival_path).suffix.lower()
+
+        if file_ext == '.csv':
+            df = pd.read_csv(survival_path, index_col=0)
+        elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
+            df = pd.read_csv(survival_path, sep='\t', index_col=0)
+        else:
+            raise ValueError(f"Unsupported file extension: {file_ext}")
+        return df
+
+    except Exception as e:
+        raise ValueError(f"Error loading survival data from {survival_path}: {e}") from e
+
+
 def match_samples_to_matrix(sample_names, label_data):
     """Filter label data to match sample names in the matrix"""
-
     df_matched = label_data[label_data['sample_id'].isin(sample_names)]
-
     return df_matched
+
+
+def match_samples_to_survival(survival_data, label_data):
+    """merge survival data with labels based on sample_id"""
+
+    survival_data = survival_data.reset_index().rename(columns={'index': 'sample_id'})
+    merged_data = pd.merge(survival_data, label_data, on='sample_id', how='inner')
+
+    return merged_data
+
+
+def generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_base):
+    """Generate dimensionality reduction plots"""
+    print(f"Generating {args.method.upper()} plots for known and predicted labels...")
+
+    # Plot 1: Known labels
+    fig_known = plot_dim_reduced(
+        matrix=matrix,
+        labels=matched_labels['known_label'],
+        method=args.method,
+        color_type=args.color_type
+    )
+
+    output_path_known = output_dir / f"{output_name_base}_known.{args.format}"
+    print(f"Saving known labels plot to: {output_path_known.absolute()}")
+    fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+
+    # Plot 2: Predicted labels
+    fig_predicted = plot_dim_reduced(
+        matrix=matrix,
+        labels=matched_labels['predicted_label'],
+        method=args.method,
+        color_type=args.color_type
+    )
+
+    output_path_predicted = output_dir / f"{output_name_base}_predicted.{args.format}"
+    print(f"Saving predicted labels plot to: {output_path_predicted.absolute()}")
+    fig_predicted.save(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
+
+    print("Dimensionality reduction plots saved successfully!")
+
+
+def generate_km_plots(merged_survival_data, args, output_dir, output_name_base):
+    """Generate Kaplan-Meier plots"""
+    print("Generating Kaplan-Meier curves of risk subtypes...")
+
+    # Filter for survival category and class_label == '1:DECEASED'
+    df_deceased = merged_survival_data[(merged_survival_data['variable'] == 'OS_STATUS') & (merged_survival_data['class_label'] == '1:DECEASED')]
+
+    # Get risk scores
+    risk_scores = df_deceased['probability'].values
+
+    # Compute groups (e.g., median split)
+    quantiles = np.quantile(risk_scores, [0.5])
+    groups = np.digitize(risk_scores, quantiles)
+
+    fig_known = plot_kaplan_meier_curves(
+        durations=merged_survival_data['duration'],
+        events=merged_survival_data['event'],
+        categorical_variable=groups
+    )
+
+    output_path_known = output_dir / f"{output_name_base}_km_risk_subtypes.{args.format}"
+    print(f"Saving Kaplan-Meier plot to: {output_path_known.absolute()}")
+    fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+
+    print("Kaplan-Meier plot saved successfully!")
 
 
 def main():
     """Main function to parse arguments and generate plots"""
-    parser = argparse.ArgumentParser(description="Generate dimensionality reduction plots using flexynesis")
-    parser.add_argument("--matrix", type=str, required=True,
-                        help="Path to input data matrix file (CSV or tabular format)")
+    parser = argparse.ArgumentParser(description="Generate plots using flexynesis")
+
+    # Required arguments
     parser.add_argument("--labels", type=str, required=True,
                         help="Path to labels file generated by flexynesis")
+
+    # Plot type
+    parser.add_argument("--plot_type", type=str, required=True,
+                        choices=['dimred', 'kaplan_meier'],
+                        help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis")
+
+    # Arguments for dimensionality reduction
+    parser.add_argument("--matrix", type=str,
+                        help="Path to input data matrix file (CSV or tabular format). Required for dimred plots.")
     parser.add_argument("--method", type=str, default='pca', choices=['pca', 'umap'],
-                        help="Transformation method ('pca' or 'umap'). Default is 'pca'")
+                        help="Transformation method ('pca' or 'umap'). Default is 'pca'. Used for dimred plots.")
     parser.add_argument("--color_type", type=str, default='categorical', choices=['categorical', 'numerical'],
-                        help="Type of the color scale ('categorical' or 'numerical'). Default is 'categorical'")
+                        help="Type of the color scale ('categorical' or 'numerical'). Default is 'categorical'. Used for dimred plots.")
+
+    # Arguments for Kaplan-Meier
+    parser.add_argument("--survival_data", type=str,
+                        help="Path to survival data file with columns: duration and event. Required for kaplan_meier plots.")
+
+    # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',
                         help="Output directory. Default is 'output'")
     parser.add_argument("--output_name", type=str, default=None,
-                        help="Output filename")
+                        help="Output filename base")
     parser.add_argument("--format", type=str, default='jpg', choices=['png', 'pdf', 'svg', 'jpg'],
                         help="Output format for the plot. Default is 'jpg'")
     parser.add_argument("--dpi", type=int, default=300,
@@ -89,27 +183,28 @@ def main():
     args = parser.parse_args()
 
     try:
-        # check the inputs
-        if not os.path.isfile(args.matrix):
-            raise FileNotFoundError(f"Matrix file not found: {args.matrix}")
+        # Validate plot type requirements
+        if args.plot_type in ['dimred']:
+            if not args.matrix:
+                raise ValueError("--matrix is required when plot_type is 'dimred'")
+            if not os.path.isfile(args.matrix):
+                raise FileNotFoundError(f"Matrix file not found: {args.matrix}")
 
+        if args.plot_type in ['kaplan_meier']:
+            if not args.survival_data:
+                raise ValueError("--survival_data is required when plot_type is 'kaplan_meier'")
+            if not os.path.isfile(args.survival_data):
+                raise FileNotFoundError(f"Survival data file not found: {args.survival_data}")
+
+        # Validate other arguments
         if args.method not in ['pca', 'umap']:
             raise ValueError("Method must be 'pca' or 'umap'")
-
         if args.color_type not in ['categorical', 'numerical']:
             raise ValueError("Color type must be 'categorical' or 'numerical'")
 
-        # Load data
-        print(f"Loading matrix from: {args.matrix}")
-        matrix, sample_names = load_matrix(args.matrix)
-        print(f"Matrix shape: {matrix.shape}")
-
+        # Load labels
         print(f"Loading labels from: {args.labels}")
         label_data = load_labels(args.labels)
-
-        # Match samples to matrix
-        matched_labels = match_samples_to_matrix(sample_names, label_data)
-        print(f"Successfully matched {len(matched_labels['known_label'])} samples")
 
         # Create output directory
         output_dir = Path(args.output_dir)
@@ -120,37 +215,39 @@ def main():
         if args.output_name:
             output_name_base = args.output_name
         else:
-            matrix_name = Path(args.matrix).stem
-            output_name_base = f"{matrix_name}_{args.method}_{args.color_type}"
+            if args.plot_type == 'dimred':
+                matrix_name = Path(args.matrix).stem
+                output_name_base = f"{matrix_name}_{args.method}_{args.color_type}"
+            elif args.plot_type == 'kaplan_meier':
+                survival_name = Path(args.survival_data).stem
+                output_name_base = f"{survival_name}_km"
 
-        # Two plots - known and predicted labels
-        print(f"Generating {args.method.upper()} plots for known and predicted labels...")
+        # Generate plots based on type
+        if args.plot_type in ['dimred']:
+            # Load matrix data
+            print(f"Loading matrix from: {args.matrix}")
+            matrix, sample_names = load_matrix(args.matrix)
+            print(f"Matrix shape: {matrix.shape}")
 
-        # Plot 1: Known labels
-        fig_known = plot_dim_reduced(
-            matrix=matrix,
-            labels=matched_labels['known_label'],
-            method=args.method,
-            color_type=args.color_type
-        )
+            # Match samples to matrix
+            matched_labels = match_samples_to_matrix(sample_names, label_data)
+            print(f"Successfully matched {len(matched_labels)} samples for dimensionality reduction")
 
-        output_path_known = output_dir / f"{output_name_base}_known.{args.format}"
-        print(f"Saving known labels plot to: {output_path_known.absolute()}")
-        fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+            generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_base)
 
-        # Plot 2: Predicted labels
-        fig_predicted = plot_dim_reduced(
-            matrix=matrix,
-            labels=matched_labels['predicted_label'],
-            method=args.method,
-            color_type=args.color_type
-        )
+        if args.plot_type in ['kaplan_meier']:
+            # Load survival data
+            print(f"Loading survival data from: {args.survival_data}")
+            survival_data = load_survival_data(args.survival_data)
+            print(f"Survival data shape: {survival_data.shape}")
 
-        output_path_predicted = output_dir / f"{output_name_base}_predicted.{args.format}"
-        print(f"Saving predicted labels plot to: {output_path_predicted.absolute()}")
-        fig_predicted.save(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
+            # Match samples and merge survival data with labels
+            merged_survival_data = match_samples_to_survival(survival_data, label_data)
+            print(f"Successfully matched {len(merged_survival_data)} samples for survival analysis")
 
-        print("Both plots saved successfully!")
+            generate_km_plots(merged_survival_data, args, output_dir, output_name_base)
+
+        print("All plots generated successfully!")
 
     except (FileNotFoundError, ValueError, pd.errors.ParserError) as e:
         print(f"Error: {e}")
