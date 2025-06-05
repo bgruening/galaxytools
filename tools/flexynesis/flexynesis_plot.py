@@ -7,8 +7,8 @@ import argparse
 import os
 from pathlib import Path
 
-import pandas as pd
 import numpy as np
+import pandas as pd
 from flexynesis import plot_dim_reduced, plot_kaplan_meier_curves
 
 
