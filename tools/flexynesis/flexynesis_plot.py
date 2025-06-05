@@ -77,6 +77,37 @@ def match_samples_to_embeddings(sample_names, label_data):
     return df_matched
 
 
+def detect_color_type(labels_series):
+    """Auto-detect whether target variables should be treated as categorical or numerical"""
+    # Remove NaN
+    clean_labels = labels_series.dropna()
+
+    if clean_labels.empty:
+        return 'categorical'  # default output if no labels
+
+    # Check if all values can be converted to numbers
+    try:
+        numeric_labels = pd.to_numeric(clean_labels, errors='coerce')
+
+        # If conversion failed -> categorical
+        if numeric_labels.isna().any():
+            return 'categorical'
+
+        # Check number of unique values
+        unique_count = len(clean_labels.unique())
+        total_count = len(clean_labels)
+
+        # If few unique values relative to total -> categorical
+        # Threshold: if unique values < 10 OR unique/total < 0.1
+        if unique_count < 10 or (unique_count / total_count) < 0.1:
+            return 'categorical'
+        else:
+            return 'numerical'
+
+    except Exception:
+        return 'categorical'
+
+
 def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base):
     """Generate dimensionality reduction plots"""
 
@@ -101,7 +132,7 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
 
     # Generate plots for each valid target variable
     for var in valid_vars:
-        print(f"\nplotting variable: {var}")
+        print(f"\nPlotting variable: {var}")
 
         # Filter matched labels for current variable
         var_labels = matched_labels[matched_labels['variable'] == var].copy()
@@ -111,6 +142,12 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
             print(f"Warning: No data found for variable '{var}', skipping...")
             continue
 
+        # Auto-detect color type
+        known_color_type = detect_color_type(var_labels['known_label'])
+        predicted_color_type = detect_color_type(var_labels['predicted_label'])
+
+        print(f"  Auto-detected color types - Known: {known_color_type}, Predicted: {predicted_color_type}")
+
         try:
             # Plot 1: Known labels
             print(f"  Creating known labels plot for {var}...")
@@ -118,7 +155,7 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
                 matrix=embeddings,
                 labels=var_labels['known_label'],
                 method=args.method,
-                color_type=args.color_type
+                color_type=known_color_type
             )
 
             output_path_known = output_dir / f"{output_name_base}_{var}_known.{args.format}"
@@ -131,7 +168,7 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
                 matrix=embeddings,
                 labels=var_labels['predicted_label'],
                 method=args.method,
-                color_type=args.color_type
+                color_type=predicted_color_type
             )
 
             output_path_predicted = output_dir / f"{output_name_base}_{var}_predicted.{args.format}"
@@ -210,8 +247,6 @@ def main():
                         help="Path to input data embeddings file (CSV or tabular format). Required for dimred plots.")
     parser.add_argument("--method", type=str, default='pca', choices=['pca', 'umap'],
                         help="Transformation method ('pca' or 'umap'). Default is 'pca'. Used for dimred plots.")
-    parser.add_argument("--color_type", type=str, default='categorical', choices=['categorical', 'numerical'],
-                        help="Type of the color scale ('categorical' or 'numerical'). Default is 'categorical'. Used for dimred plots.")
     parser.add_argument("--target_variables", type=str, required=False,
                         help="Comma-separated list of target variables to plot.")
 
@@ -262,8 +297,6 @@ def main():
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
             raise ValueError("Method must be 'pca' or 'umap'")
-        if args.color_type not in ['categorical', 'numerical']:
-            raise ValueError("Color type must be 'categorical' or 'numerical'")
 
         # Create output directory
         output_dir = Path(args.output_dir)
@@ -276,7 +309,7 @@ def main():
         else:
             if args.plot_type == 'dimred':
                 embeddings_name = Path(args.embeddings).stem
-                output_name_base = f"{embeddings_name}_{args.method}_{args.color_type}"
+                output_name_base = f"{embeddings_name}_{args.method}"
             elif args.plot_type == 'kaplan_meier':
                 survival_name = Path(args.survival_data).stem
                 output_name_base = f"{survival_name}_km"
