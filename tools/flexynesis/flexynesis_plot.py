@@ -31,7 +31,7 @@ def load_matrix(matrix_path):
         raise ValueError(f"Error loading matrix from {matrix_path}: {e}") from e
 
 
-def load_labels(labels_input):
+def load_labels(labels_input, plot_type=None):
     """Load predicted labels from flexynesis"""
     try:
         # Determine file extension
@@ -45,7 +45,8 @@ def load_labels(labels_input):
         # Check if this is the specific format with sample_id, known_label, predicted_label
         required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
         if all(col in df.columns for col in required_cols):
-            df = df.drop_duplicates(subset='sample_id')
+            if plot_type == 'dimred':
+                df = df.drop_duplicates(subset='sample_id')
             return df
         else:
             raise ValueError(f"Labels file {labels_input} does not contain required columns: {required_cols}")
@@ -76,15 +77,6 @@ def match_samples_to_matrix(sample_names, label_data):
     """Filter label data to match sample names in the matrix"""
     df_matched = label_data[label_data['sample_id'].isin(sample_names)]
     return df_matched
-
-
-def match_samples_to_survival(survival_data, label_data):
-    """merge survival data with labels based on sample_id"""
-
-    survival_data = survival_data.reset_index().rename(columns={'index': 'sample_id'})
-    merged_data = pd.merge(survival_data, label_data, on='sample_id', how='inner')
-
-    return merged_data
 
 
 def generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_base):
@@ -118,12 +110,30 @@ def generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_
     print("Dimensionality reduction plots saved successfully!")
 
 
-def generate_km_plots(merged_survival_data, args, output_dir, output_name_base):
+def generate_km_plots(survival_data, label_data, args, output_dir, output_name_base):
     """Generate Kaplan-Meier plots"""
     print("Generating Kaplan-Meier curves of risk subtypes...")
 
+    survival_data = survival_data.reset_index().rename(columns={'index': 'sample_id'})
+
     # Filter for survival category and class_label == '1:DECEASED'
-    df_deceased = merged_survival_data[(merged_survival_data['variable'] == 'OS_STATUS') & (merged_survival_data['class_label'] == '1:DECEASED')]
+    label_data['class_label'] = label_data['class_label'].astype(str)
+    label_data['variable'] = label_data['variable'].astype(str)
+    # Convert args.event_value to string for consistent comparison
+    event_value_str = str(args.event_value)
+
+    label_data = label_data[(label_data['variable'] == args.event_col) & (label_data['class_label'] == event_value_str)]
+
+    # check survival data
+    for col in [args.duration_col, args.event_col]:
+        if col not in survival_data.columns:
+            raise ValueError(f"Column '{col}' not found in survival data")
+
+    # Merge survival data with labels
+    df_deceased = pd.merge(survival_data, label_data, on='sample_id', how='inner')
+
+    if df_deceased.empty:
+        raise ValueError("No matching samples found after merging survival and label data.")
 
     # Get risk scores
     risk_scores = df_deceased['probability'].values
@@ -131,11 +141,12 @@ def generate_km_plots(merged_survival_data, args, output_dir, output_name_base):
     # Compute groups (e.g., median split)
     quantiles = np.quantile(risk_scores, [0.5])
     groups = np.digitize(risk_scores, quantiles)
+    group_labels = ['low_risk' if g == 0 else 'high_risk' for g in groups]
 
     fig_known = plot_kaplan_meier_curves(
-        durations=merged_survival_data['duration'],
-        events=merged_survival_data['event'],
-        categorical_variable=groups
+        durations=df_deceased[args.duration_col],
+        events=df_deceased[args.event_col],
+        categorical_variable=group_labels
     )
 
     output_path_known = output_dir / f"{output_name_base}_km_risk_subtypes.{args.format}"
@@ -169,6 +180,12 @@ def main():
     # Arguments for Kaplan-Meier
     parser.add_argument("--survival_data", type=str,
                         help="Path to survival data file with columns: duration and event. Required for kaplan_meier plots.")
+    parser.add_argument("--duration_col", type=str, required=False,
+                        help="Column name for survival duration")
+    parser.add_argument("--event_col", type=str, required=False,
+                        help="Column name for survival event")
+    parser.add_argument("--event_value", type=str, required=False,
+                        help="Value in event column that represents an event (e.g., 'DECEASED')")
 
     # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',
@@ -195,16 +212,18 @@ def main():
                 raise ValueError("--survival_data is required when plot_type is 'kaplan_meier'")
             if not os.path.isfile(args.survival_data):
                 raise FileNotFoundError(f"Survival data file not found: {args.survival_data}")
+            if not args.duration_col:
+                raise ValueError("--duration_col is required for Kaplan-Meier plots")
+            if not args.event_col:
+                raise ValueError("--event_col is required for Kaplan-Meier plots")
+            if not args.event_value:
+                raise ValueError("--event_value is required for Kaplan-Meier plots")
 
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
             raise ValueError("Method must be 'pca' or 'umap'")
         if args.color_type not in ['categorical', 'numerical']:
             raise ValueError("Color type must be 'categorical' or 'numerical'")
-
-        # Load labels
-        print(f"Loading labels from: {args.labels}")
-        label_data = load_labels(args.labels)
 
         # Create output directory
         output_dir = Path(args.output_dir)
@@ -224,6 +243,9 @@ def main():
 
         # Generate plots based on type
         if args.plot_type in ['dimred']:
+            # Load labels
+            print(f"Loading labels from: {args.labels}")
+            label_data = load_labels(args.labels, plot_type='dimred')
             # Load matrix data
             print(f"Loading matrix from: {args.matrix}")
             matrix, sample_names = load_matrix(args.matrix)
@@ -236,16 +258,15 @@ def main():
             generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_base)
 
         if args.plot_type in ['kaplan_meier']:
+            # Load labels
+            print(f"Loading labels from: {args.labels}")
+            label_data = load_labels(args.labels)
             # Load survival data
             print(f"Loading survival data from: {args.survival_data}")
             survival_data = load_survival_data(args.survival_data)
             print(f"Survival data shape: {survival_data.shape}")
 
-            # Match samples and merge survival data with labels
-            merged_survival_data = match_samples_to_survival(survival_data, label_data)
-            print(f"Successfully matched {len(merged_survival_data)} samples for survival analysis")
-
-            generate_km_plots(merged_survival_data, args, output_dir, output_name_base)
+            generate_km_plots(survival_data, label_data, args, output_dir, output_name_base)
 
         print("All plots generated successfully!")
 
