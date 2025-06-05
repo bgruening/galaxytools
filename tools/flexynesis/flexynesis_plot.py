@@ -45,8 +45,6 @@ def load_labels(labels_input, plot_type=None):
         # Check if this is the specific format with sample_id, known_label, predicted_label
         required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
         if all(col in df.columns for col in required_cols):
-            if plot_type == 'dimred':
-                df = df.drop_duplicates(subset='sample_id')
             return df
         else:
             raise ValueError(f"Labels file {labels_input} does not contain required columns: {required_cols}")
@@ -81,33 +79,72 @@ def match_samples_to_embeddings(sample_names, label_data):
 
 def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base):
     """Generate dimensionality reduction plots"""
-    print(f"Generating {args.method.upper()} plots for known and predicted labels...")
 
-    # Plot 1: Known labels
-    fig_known = plot_dim_reduced(
-        embeddings=embeddings,
-        labels=matched_labels['known_label'],
-        method=args.method,
-        color_type=args.color_type
-    )
+    # Parse target variables
+    target_vars = [var.strip() for var in args.target_variables.split(',')]
 
-    output_path_known = output_dir / f"{output_name_base}_known.{args.format}"
-    print(f"Saving known labels plot to: {output_path_known.absolute()}")
-    fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+    print(f"Generating {args.method.upper()} plots for {len(target_vars)} target variable(s): {', '.join(target_vars)}")
 
-    # Plot 2: Predicted labels
-    fig_predicted = plot_dim_reduced(
-        embeddings=embeddings,
-        labels=matched_labels['predicted_label'],
-        method=args.method,
-        color_type=args.color_type
-    )
+    # Check variables
+    available_vars = matched_labels['variable'].unique()
+    missing_vars = [var for var in target_vars if var not in available_vars]
 
-    output_path_predicted = output_dir / f"{output_name_base}_predicted.{args.format}"
-    print(f"Saving predicted labels plot to: {output_path_predicted.absolute()}")
-    fig_predicted.save(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
+    if missing_vars:
+        print(f"Warning: The following target variables were not found in the data: {', '.join(missing_vars)}")
+        print(f"Available variables: {', '.join(available_vars)}")
 
-    print("Dimensionality reduction plots saved successfully!")
+    # Filter to only process available variables
+    valid_vars = [var for var in target_vars if var in available_vars]
+
+    if not valid_vars:
+        raise ValueError(f"None of the specified target variables were found in the data. Available: {', '.join(available_vars)}")
+
+    # Generate plots for each valid target variable
+    for var in valid_vars:
+        print(f"\nplotting variable: {var}")
+
+        # Filter matched labels for current variable
+        var_labels = matched_labels[matched_labels['variable'] == var].copy()
+        var_labels = var_labels.drop_duplicates(subset='sample_id')
+
+        if var_labels.empty:
+            print(f"Warning: No data found for variable '{var}', skipping...")
+            continue
+
+        try:
+            # Plot 1: Known labels
+            print(f"  Creating known labels plot for {var}...")
+            fig_known = plot_dim_reduced(
+                matrix=embeddings,
+                labels=var_labels['known_label'],
+                method=args.method,
+                color_type=args.color_type
+            )
+
+            output_path_known = output_dir / f"{output_name_base}_{var}_known.{args.format}"
+            print(f"  Saving known labels plot to: {output_path_known.name}")
+            fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+
+            # Plot 2: Predicted labels
+            print(f"  Creating predicted labels plot for {var}...")
+            fig_predicted = plot_dim_reduced(
+                matrix=embeddings,
+                labels=var_labels['predicted_label'],
+                method=args.method,
+                color_type=args.color_type
+            )
+
+            output_path_predicted = output_dir / f"{output_name_base}_{var}_predicted.{args.format}"
+            print(f"  Saving predicted labels plot to: {output_path_predicted.name}")
+            fig_predicted.save(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
+
+            print(f"  ✓ Successfully created plots for variable '{var}'")
+
+        except Exception as e:
+            print(f"  ✗ Error creating plots for variable '{var}': {e}")
+            continue
+
+    print(f"\nDimensionality reduction plots completed for {len(valid_vars)} variable(s)!")
 
 
 def generate_km_plots(survival_data, label_data, args, output_dir, output_name_base):
@@ -118,7 +155,6 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
 
     # Filter for survival category and class_label == '1:DECEASED'
     label_data['class_label'] = label_data['class_label'].astype(str)
-    label_data['variable'] = label_data['variable'].astype(str)
     # Convert args.event_value to string for consistent comparison
     event_value_str = str(args.event_value)
 
@@ -176,6 +212,8 @@ def main():
                         help="Transformation method ('pca' or 'umap'). Default is 'pca'. Used for dimred plots.")
     parser.add_argument("--color_type", type=str, default='categorical', choices=['categorical', 'numerical'],
                         help="Type of the color scale ('categorical' or 'numerical'). Default is 'categorical'. Used for dimred plots.")
+    parser.add_argument("--target_variables", type=str, required=False,
+                        help="Comma-separated list of target variables to plot.")
 
     # Arguments for Kaplan-Meier
     parser.add_argument("--survival_data", type=str,
@@ -206,6 +244,8 @@ def main():
                 raise ValueError("--embeddings is required when plot_type is 'dimred'")
             if not os.path.isfile(args.embeddings):
                 raise FileNotFoundError(f"embeddings file not found: {args.embeddings}")
+            if not args.target_variables:
+                raise ValueError("--target_variables is required for dimensionality reduction plots")
 
         if args.plot_type in ['kaplan_meier']:
             if not args.survival_data:
@@ -257,7 +297,7 @@ def main():
 
             generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base)
 
-        if args.plot_type in ['kaplan_meier']:
+        elif args.plot_type in ['kaplan_meier']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
             label_data = load_labels(args.labels)
