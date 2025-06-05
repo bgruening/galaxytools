@@ -12,23 +12,23 @@ import numpy as np
 from flexynesis import plot_dim_reduced, plot_kaplan_meier_curves
 
 
-def load_matrix(matrix_path):
-    """Load data matrix from a file"""
+def load_embeddings(embeddings_path):
+    """Load embeddings from a file"""
     try:
         # Determine file extension
-        file_ext = Path(matrix_path).suffix.lower()
+        file_ext = Path(embeddings_path).suffix.lower()
 
         if file_ext == '.csv':
-            df = pd.read_csv(matrix_path, index_col=0)
+            df = pd.read_csv(embeddings_path, index_col=0)
         elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
-            df = pd.read_csv(matrix_path, sep='\t', index_col=0)
+            df = pd.read_csv(embeddings_path, sep='\t', index_col=0)
         else:
             raise ValueError(f"Unsupported file extension: {file_ext}")
 
         return df, df.index.tolist()
 
     except Exception as e:
-        raise ValueError(f"Error loading matrix from {matrix_path}: {e}") from e
+        raise ValueError(f"Error loading embeddings from {embeddings_path}: {e}") from e
 
 
 def load_labels(labels_input, plot_type=None):
@@ -73,19 +73,19 @@ def load_survival_data(survival_path):
         raise ValueError(f"Error loading survival data from {survival_path}: {e}") from e
 
 
-def match_samples_to_matrix(sample_names, label_data):
-    """Filter label data to match sample names in the matrix"""
+def match_samples_to_embeddings(sample_names, label_data):
+    """Filter label data to match sample names in the embeddings"""
     df_matched = label_data[label_data['sample_id'].isin(sample_names)]
     return df_matched
 
 
-def generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_base):
+def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base):
     """Generate dimensionality reduction plots"""
     print(f"Generating {args.method.upper()} plots for known and predicted labels...")
 
     # Plot 1: Known labels
     fig_known = plot_dim_reduced(
-        matrix=matrix,
+        embeddings=embeddings,
         labels=matched_labels['known_label'],
         method=args.method,
         color_type=args.color_type
@@ -97,7 +97,7 @@ def generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_
 
     # Plot 2: Predicted labels
     fig_predicted = plot_dim_reduced(
-        matrix=matrix,
+        embeddings=embeddings,
         labels=matched_labels['predicted_label'],
         method=args.method,
         color_type=args.color_type
@@ -122,10 +122,10 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     # Convert args.event_value to string for consistent comparison
     event_value_str = str(args.event_value)
 
-    label_data = label_data[(label_data['variable'] == args.event_col) & (label_data['class_label'] == event_value_str)]
+    label_data = label_data[(label_data['variable'] == args.surv_event_var) & (label_data['class_label'] == event_value_str)]
 
     # check survival data
-    for col in [args.duration_col, args.event_col]:
+    for col in [args.surv_time_var, args.surv_event_var]:
         if col not in survival_data.columns:
             raise ValueError(f"Column '{col}' not found in survival data")
 
@@ -144,8 +144,8 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     group_labels = ['low_risk' if g == 0 else 'high_risk' for g in groups]
 
     fig_known = plot_kaplan_meier_curves(
-        durations=df_deceased[args.duration_col],
-        events=df_deceased[args.event_col],
+        durations=df_deceased[args.surv_time_var],
+        events=df_deceased[args.surv_event_var],
         categorical_variable=group_labels
     )
 
@@ -170,8 +170,8 @@ def main():
                         help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis")
 
     # Arguments for dimensionality reduction
-    parser.add_argument("--matrix", type=str,
-                        help="Path to input data matrix file (CSV or tabular format). Required for dimred plots.")
+    parser.add_argument("--embeddings", type=str,
+                        help="Path to input data embeddings file (CSV or tabular format). Required for dimred plots.")
     parser.add_argument("--method", type=str, default='pca', choices=['pca', 'umap'],
                         help="Transformation method ('pca' or 'umap'). Default is 'pca'. Used for dimred plots.")
     parser.add_argument("--color_type", type=str, default='categorical', choices=['categorical', 'numerical'],
@@ -180,9 +180,9 @@ def main():
     # Arguments for Kaplan-Meier
     parser.add_argument("--survival_data", type=str,
                         help="Path to survival data file with columns: duration and event. Required for kaplan_meier plots.")
-    parser.add_argument("--duration_col", type=str, required=False,
-                        help="Column name for survival duration")
-    parser.add_argument("--event_col", type=str, required=False,
+    parser.add_argument("--surv_time_var", type=str, required=False,
+                        help="Column name for survival time")
+    parser.add_argument("--surv_event_var", type=str, required=False,
                         help="Column name for survival event")
     parser.add_argument("--event_value", type=str, required=False,
                         help="Value in event column that represents an event (e.g., 'DECEASED')")
@@ -202,20 +202,20 @@ def main():
     try:
         # Validate plot type requirements
         if args.plot_type in ['dimred']:
-            if not args.matrix:
-                raise ValueError("--matrix is required when plot_type is 'dimred'")
-            if not os.path.isfile(args.matrix):
-                raise FileNotFoundError(f"Matrix file not found: {args.matrix}")
+            if not args.embeddings:
+                raise ValueError("--embeddings is required when plot_type is 'dimred'")
+            if not os.path.isfile(args.embeddings):
+                raise FileNotFoundError(f"embeddings file not found: {args.embeddings}")
 
         if args.plot_type in ['kaplan_meier']:
             if not args.survival_data:
                 raise ValueError("--survival_data is required when plot_type is 'kaplan_meier'")
             if not os.path.isfile(args.survival_data):
                 raise FileNotFoundError(f"Survival data file not found: {args.survival_data}")
-            if not args.duration_col:
-                raise ValueError("--duration_col is required for Kaplan-Meier plots")
-            if not args.event_col:
-                raise ValueError("--event_col is required for Kaplan-Meier plots")
+            if not args.surv_time_var:
+                raise ValueError("--surv_time_var is required for Kaplan-Meier plots")
+            if not args.surv_event_var:
+                raise ValueError("--surv_event_var is required for Kaplan-Meier plots")
             if not args.event_value:
                 raise ValueError("--event_value is required for Kaplan-Meier plots")
 
@@ -235,8 +235,8 @@ def main():
             output_name_base = args.output_name
         else:
             if args.plot_type == 'dimred':
-                matrix_name = Path(args.matrix).stem
-                output_name_base = f"{matrix_name}_{args.method}_{args.color_type}"
+                embeddings_name = Path(args.embeddings).stem
+                output_name_base = f"{embeddings_name}_{args.method}_{args.color_type}"
             elif args.plot_type == 'kaplan_meier':
                 survival_name = Path(args.survival_data).stem
                 output_name_base = f"{survival_name}_km"
@@ -246,16 +246,16 @@ def main():
             # Load labels
             print(f"Loading labels from: {args.labels}")
             label_data = load_labels(args.labels, plot_type='dimred')
-            # Load matrix data
-            print(f"Loading matrix from: {args.matrix}")
-            matrix, sample_names = load_matrix(args.matrix)
-            print(f"Matrix shape: {matrix.shape}")
+            # Load embeddings data
+            print(f"Loading embeddings from: {args.embeddings}")
+            embeddings, sample_names = load_embeddings(args.embeddings)
+            print(f"embeddings shape: {embeddings.shape}")
 
-            # Match samples to matrix
-            matched_labels = match_samples_to_matrix(sample_names, label_data)
+            # Match samples to embeddings
+            matched_labels = match_samples_to_embeddings(sample_names, label_data)
             print(f"Successfully matched {len(matched_labels)} samples for dimensionality reduction")
 
-            generate_dimred_plots(matrix, matched_labels, args, output_dir, output_name_base)
+            generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base)
 
         if args.plot_type in ['kaplan_meier']:
             # Load labels
