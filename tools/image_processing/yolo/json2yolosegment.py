@@ -1,6 +1,6 @@
+import argparse
 import json
 import os
-import argparse
 
 
 def convert_json_to_yolo(input_json, save_dir, class_names_file):
