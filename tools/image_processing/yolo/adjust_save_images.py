@@ -3,24 +3,15 @@ import argparse
 from skimage import exposure, img_as_ubyte
 from skimage.io import imread, imsave
 
+
 def apply_clahe(image):
     return exposure.equalize_adapthist(image, clip_limit=0.01)
 
-def count_total_tif_files(folder_path):
-    total_files = sum(
-        len([f for f in files if f.lower().endswith('.tif')])
-        for _, _, files in os.walk(folder_path) if files
-    )
-    return total_files
 
-def process_images(input_folder, results_folder,clahe,convert_8bit):
+def process_images(input_folder, results_folder, clahe, convert_8bit):
     # Create the main "results" directory
     results_folder = os.path.join(results_folder, 'jpegs')
     os.makedirs(results_folder, exist_ok=True)
-
-    # Count the total number of .tif files for the progress bar display
-    total_files = count_total_tif_files(input_folder)
-    # total_files = sum(len(files) for _, _, files in os.walk(input_folder) if files and any(f.endswith('.jpg') for f in files))
 
     for root, _, files in os.walk(input_folder):
         for file in files:
@@ -48,19 +39,16 @@ def process_images(input_folder, results_folder,clahe,convert_8bit):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Process .tif images with CLAHE and save as .jpg.",
-                epilog="Usage example: python adjust_save_images.py input_folder=/g/data/ output_folder=/g/results")
-    parser.add_argument("--input_folder", 
-                        type=str, 
+    parser = argparse.ArgumentParser(description="Process .tif images with CLAHE and/or save as .jpg.")
+    parser.add_argument("--input_folder",
+                        type=str,
                         help="Path to the input directory containing .tif files.")
-    parser.add_argument("--results_folder", 
-                        type=str, 
+    parser.add_argument("--results_folder",
+                        type=str,
                         help="Path to the output directory where processed images will be saved.")
-
     parser.add_argument("--clahe", action="store_true", help="Apply CLAHE to the images.")
     parser.add_argument("--convert8bit", action="store_true", help="Convert images to 8-bit before saving.")
 
     args = parser.parse_args()
 
-    process_images(args.input_folder, args.results_folder,args.clahe, args.convert8bit)
-
+    process_images(args.input_folder, args.results_folder, args.clahe, args.convert8bit)
