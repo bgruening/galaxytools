@@ -1,5 +1,6 @@
-import os
 import argparse
+import os
+
 from skimage import exposure, img_as_ubyte
 from skimage.io import imread, imsave
 

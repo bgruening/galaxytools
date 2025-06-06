@@ -1,7 +1,8 @@
-import os
-import shutil
 import argparse
 import json
+import os
+import shutil
+
 from sklearn.model_selection import train_test_split
 
 

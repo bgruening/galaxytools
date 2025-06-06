@@ -1,15 +1,16 @@
-import os
-from ultralytics import YOLO
-import shutil
 import argparse
-import numpy as np
+import os
 import pathlib
-from argparse import RawTextHelpFormatter
-from termcolor import colored
+import shutil
 import time
-import cv2
-from tifffile import imwrite
+from argparse import RawTextHelpFormatter
 from collections import defaultdict
+
+import cv2
+import numpy as np
+from termcolor import colored
+from tifffile import imwrite
+from ultralytics import YOLO
 
 
 #
