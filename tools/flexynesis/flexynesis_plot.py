@@ -193,9 +193,22 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     if survival_data.columns[0] != 'sample_id':
         survival_data = survival_data.rename(columns={survival_data.columns[0]: 'sample_id'})
 
+    # Convert survival event column to binary (0/1) based on event_value
+    # Check if the event column exists
+    if args.surv_event_var not in survival_data.columns:
+        raise ValueError(f"Column '{args.surv_event_var}' not found in survival data")
+
+    # Convert to string for comparison to handle mixed types
+    survival_data[args.surv_event_var] = survival_data[args.surv_event_var].astype(str)
+    event_value_str = str(args.event_value)
+
+    # Create binary event column (1 if matches event_value, 0 otherwise)
+    survival_data[f'{args.surv_event_var}_binary'] = (
+        survival_data[args.surv_event_var] == event_value_str
+    ).astype(int)
+
     # Filter for survival category and class_label == '1:DECEASED'
     label_data['class_label'] = label_data['class_label'].astype(str)
-    event_value_str = str(args.event_value)
 
     label_data = label_data[(label_data['variable'] == args.surv_event_var) &
                            (label_data['class_label'] == event_value_str)]
@@ -221,7 +234,7 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
 
     fig_known = plot_kaplan_meier_curves(
         durations=df_deceased[args.surv_time_var],
-        events=df_deceased[args.surv_event_var],
+        events=df_deceased[f'{args.surv_event_var}_binary'],
         categorical_variable=group_labels
     )
 
