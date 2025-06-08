@@ -210,8 +210,7 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     # Filter for survival category and class_label == '1:DECEASED'
     label_data['class_label'] = label_data['class_label'].astype(str)
 
-    label_data = label_data[(label_data['variable'] == args.surv_event_var) &
-                           (label_data['class_label'] == event_value_str)]
+    label_data = label_data[(label_data['variable'] == args.surv_event_var) & (label_data['class_label'] == event_value_str)]
 
     # check survival data
     for col in [args.surv_time_var, args.surv_event_var]:
