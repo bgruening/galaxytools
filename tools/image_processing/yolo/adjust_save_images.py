@@ -1,12 +1,8 @@
 import argparse
 import os
 
-from skimage import exposure, img_as_ubyte
+from skimage import img_as_ubyte
 from skimage.io import imread, imsave
-
-
-def apply_clahe(image):
-    return exposure.equalize_adapthist(image, clip_limit=0.01)
 
 
 def process_images(input_folder, results_folder):
