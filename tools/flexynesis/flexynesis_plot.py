@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 """Generate plots using flexynesis
-This script generates dimensionality reduction plots and Kaplan-Meier survival curves
-from data processed by flexynesis."""
+This script generates dimensionality reduction plots, Kaplan-Meier survival curves,
+and Cox proportional hazards models from data processed by flexynesis."""
 
 import argparse
 import os
+import torch
 from pathlib import Path
 
 import numpy as np
 import pandas as pd
-from flexynesis import plot_dim_reduced, plot_kaplan_meier_curves
+from flexynesis import plot_dim_reduced, plot_kaplan_meier_curves, get_important_features, build_cox_model, plot_hazard_ratios
 
 
 def load_embeddings(embeddings_path):
@@ -69,6 +70,34 @@ def load_survival_data(survival_path):
 
     except Exception as e:
         raise ValueError(f"Error loading survival data from {survival_path}: {e}") from e
+
+
+def load_omics(omics_path):
+    """Load omics data from a file. First column should be features"""
+    try:
+        # Determine file extension
+        file_ext = Path(omics_path).suffix.lower()
+
+        if file_ext == '.csv':
+            df = pd.read_csv(omics_path, index_col=0)
+        elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
+            df = pd.read_csv(omics_path, sep='\t', index_col=0)
+        else:
+            raise ValueError(f"Unsupported file extension: {file_ext}")
+        return df
+
+    except Exception as e:
+        raise ValueError(f"Error loading omics data from {omics_path}: {e}") from e
+
+
+def load_model(model_path):
+    """Load flexynesis model from pickle file"""
+    try:
+        with open(model_path, 'rb') as f:
+            model = torch.load(f, weights_only=False)
+        return model
+    except Exception as e:
+        raise ValueError(f"Error loading model from {model_path}: {e}") from e
 
 
 def match_samples_to_embeddings(sample_names, label_data):
@@ -244,6 +273,86 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     print("Kaplan-Meier plot saved successfully!")
 
 
+def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_test, args, output_dir, output_name_base):
+    """Generate Cox proportional hazards plots"""
+    print("Generating Cox proportional hazards analysis...")
+
+    # Parse clinical variables
+    clinical_vars = [var.strip() for var in args.clinical_variables.split(',')]
+
+    # Validate that survival variables are included
+    required_vars = [args.surv_time_var, args.surv_event_var]
+    for var in required_vars:
+        if var not in clinical_vars:
+            clinical_vars.append(var)
+
+    print(f"Using clinical variables: {', '.join(clinical_vars)}")
+
+    # filter datasets for clinical variables
+    if all(clinical_vars in clinical_train.columns for clinical_vars in clinical_vars and all(clinical_vars in clinical_test.columns for clinical_vars in clinical_vars)):
+        df_clin_train = clinical_train[clinical_vars]
+        df_clin_test = clinical_test[clinical_vars]
+    else:
+        raise ValueError(f"Not all clinical variables found in datasets. Available in train dataset: {clinical_train.columns.tolist()}, Available in test dataset: {clinical_test.columns.tolist()}")
+
+    # Combine
+    df_clin = pd.concat([df_clin_train, df_clin_test], axis=0)
+
+    # Get top survival markers
+    print(f"Extracting top {args.top_features} important features for {args.surv_event_var}...")
+    try:
+        imp = get_important_features(model, var=args.surv_event_var, top=args.top_features)['name'].unique().tolist()
+        print(f"Top features: {', '.join(imp)}")
+    except Exception as e:
+        raise ValueError(f"Error getting important features: {e}")
+
+    # Extract feature data from omics datasets
+    try:
+        omics_test = omics_test.loc[omics_test.index.isin(imp)]
+        omics_train = omics_train.loc[omics_train.index.isin(imp)]
+        df_imp = pd.concat([omics_train, omics_test], axis=0)
+        df_imp = df_imp.T  # Transpose to have samples as rows
+
+        print(f"Feature data shape: {df_imp.shape}")
+    except Exception as e:
+        raise ValueError(f"Error extracting feature subset: {e}")
+
+    # Combine markers with clinical variables
+    df = pd.concat([df_imp, df_clin], axis=1)
+    print(f"Combined data shape: {df.shape}")
+
+    # Remove samples without survival endpoints
+    initial_samples = len(df)
+    df = df[df[args.surv_event_var].notna()]
+    final_samples = len(df)
+    print(f"Removed {initial_samples - final_samples} samples without survival data")
+
+    if df.empty:
+        raise ValueError("No samples remain after filtering for survival data")
+
+    # Build Cox model
+    print(f"Building Cox model with time variable: {args.surv_time_var}, event variable: {args.surv_event_var}")
+    try:
+        coxm = build_cox_model(df, args.surv_time_var, args.surv_event_var)
+        print("Cox model built successfully")
+    except Exception as e:
+        raise ValueError(f"Error building Cox model: {e}")
+
+    # Generate hazard ratios plot
+    try:
+        print("Generating hazard ratios plot...")
+        fig = plot_hazard_ratios(coxm)
+
+        output_path = output_dir / f"{output_name_base}_hazard_ratios.{args.format}"
+        print(f"Saving hazard ratios plot to: {output_path.absolute()}")
+        fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
+
+        print("Cox proportional hazards analysis completed successfully!")
+
+    except Exception as e:
+        raise ValueError(f"Error generating hazard ratios plot: {e}")
+
+
 def main():
     """Main function to parse arguments and generate plots"""
     parser = argparse.ArgumentParser(description="Generate plots using flexynesis")
@@ -254,8 +363,8 @@ def main():
 
     # Plot type
     parser.add_argument("--plot_type", type=str, required=True,
-                        choices=['dimred', 'kaplan_meier'],
-                        help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis")
+                        choices=['dimred', 'kaplan_meier', 'cox'],
+                        help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards")
 
     # Arguments for dimensionality reduction
     parser.add_argument("--embeddings", type=str,
@@ -274,6 +383,22 @@ def main():
                         help="Column name for survival event")
     parser.add_argument("--event_value", type=str, required=False,
                         help="Value in event column that represents an event (e.g., 'DECEASED')")
+
+    # Arguments for Cox analysis
+    parser.add_argument("--model", type=str,
+                        help="Path to trained flexynesis model (pickle file). Required for cox plots.")
+    parser.add_argument("--clinical_train", type=str,
+                        help="Path to training dataset (pickle file). Required for cox plots.")
+    parser.add_argument("--clinical_test", type=str,
+                        help="Path to test dataset (pickle file). Required for cox plots.")
+    parser.add_argument("--omics_train", type=str, default=None,
+                        help="Path to training omics dataset. Optional for cox plots.")
+    parser.add_argument("--omics_test", type=str, default=None,
+                        help="Path to test omics dataset. Optional for cox plots.")
+    parser.add_argument("--clinical_variables", type=str,
+                        help="Comma-separated list of clinical variables to include in Cox model (e.g., 'AGE,SEX,HISTOLOGICAL_DIAGNOSIS,STUDY')")
+    parser.add_argument("--top_features", type=int, default=5,
+                        help="Number of top important features to include in Cox model. Default is 5")
 
     # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',
@@ -309,6 +434,34 @@ def main():
             if not args.event_value:
                 raise ValueError("--event_value is required for Kaplan-Meier plots")
 
+        if args.plot_type in ['cox']:
+            if not args.model:
+                raise ValueError("--model is required when plot_type is 'cox'")
+            if not os.path.isfile(args.model):
+                raise FileNotFoundError(f"Model file not found: {args.model}")
+            if not args.clinical_train:
+                raise ValueError("--clinical_train is required when plot_type is 'cox'")
+            if not os.path.isfile(args.clinical_train):
+                raise FileNotFoundError(f"Training dataset file not found: {args.clinical_train}")
+            if not args.clinical_test:
+                raise ValueError("--clinical_test is required when plot_type is 'cox'")
+            if not os.path.isfile(args.clinical_test):
+                raise FileNotFoundError(f"Test dataset file not found: {args.clinical_test}")
+            if not args.omics_train:
+                raise ValueError("--omics_train is required when plot_type is 'cox'")
+            if not os.path.isfile(args.omics_train):
+                raise FileNotFoundError(f"Training omics dataset file not found: {args.omics_train}")
+            if not args.omics_test:
+                raise ValueError("--omics_test is required when plot_type is 'cox'")
+            if not os.path.isfile(args.omics_test):
+                raise FileNotFoundError(f"Test omics dataset file not found: {args.omics_test}")
+            if not args.surv_time_var:
+                raise ValueError("--surv_time_var is required for Cox plots")
+            if not args.surv_event_var:
+                raise ValueError("--surv_event_var is required for Cox plots")
+            if not args.clinical_variables:
+                raise ValueError("--clinical_variables is required for Cox plots")
+
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
             raise ValueError("Method must be 'pca' or 'umap'")
@@ -328,6 +481,9 @@ def main():
             elif args.plot_type == 'kaplan_meier':
                 survival_name = Path(args.survival_data).stem
                 output_name_base = f"{survival_name}_km"
+            elif args.plot_type == 'cox':
+                model_name = Path(args.model).stem
+                output_name_base = f"{model_name}_cox"
 
         # Generate plots based on type
         if args.plot_type in ['dimred']:
@@ -355,6 +511,21 @@ def main():
             print(f"Survival data shape: {survival_data.shape}")
 
             generate_km_plots(survival_data, label_data, args, output_dir, output_name_base)
+
+        elif args.plot_type in ['cox']:
+            # Load model and datasets
+            print(f"Loading model from: {args.model}")
+            model = load_model(args.model)
+            print(f"Loading training dataset from: {args.clinical_train}")
+            clinical_train = load_omics(args.clinical_train)
+            print(f"Loading test dataset from: {args.clinical_test}")
+            clinical_test = load_omics(args.clinical_test)
+            print(f"Loading training omics dataset from: {args.omics_train}")
+            omics_train = load_omics(args.omics_train)
+            print(f"Loading test omics dataset from: {args.omics_test}")
+            omics_test = load_omics(args.omics_test)
+
+            generate_cox_plots(model, clinical_train, clinical_test, omics_test, omics_train, args, output_dir, output_name_base)
 
         print("All plots generated successfully!")
 
