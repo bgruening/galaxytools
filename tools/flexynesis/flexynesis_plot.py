@@ -340,7 +340,7 @@ def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_
     # Build Cox model
     print(f"Building Cox model with time variable: {args.surv_time_var}, event variable: {args.surv_event_var}")
     try:
-        coxm = build_cox_model(df, args.surv_time_var, args.surv_event_var)
+        coxm = build_cox_model(df, args.surv_time_var, args.surv_event_var, crossval=args.crossval, n_splits=args.n_splits, random_state=args.random_state)
         print("Cox model built successfully")
     except Exception as e:
         raise ValueError(f"Error building Cox model: {e}")
@@ -406,6 +406,12 @@ def main():
                         help="Comma-separated list of clinical variables to include in Cox model (e.g., 'AGE,SEX,HISTOLOGICAL_DIAGNOSIS,STUDY')")
     parser.add_argument("--top_features", type=int, default=5,
                         help="Number of top important features to include in Cox model. Default is 5")
+    parser.add_argument("--crossval", type=bool, default=False,
+                        help="If True, performs K-fold cross-validation and returns average C-index. Default is False")
+    parser.add_argument("--n_splits", type=int, default=5,
+                        help="Number of folds for cross-validation. Only used if --crossval is True")
+    parser.add_argument("--random_state", type=int, default=42,
+                        help="Random seed for reproducibility. Default is 42")
 
     # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',
@@ -476,6 +482,12 @@ def main():
                 raise ValueError("--surv_event_var is required for Cox plots")
             if not args.clinical_variables:
                 raise ValueError("--clinical_variables is required for Cox plots")
+            if not isinstance(args.crossval, bool):
+                raise ValueError("--crossval must be a boolean value")
+            if not isinstance(args.n_splits, int) or args.n_splits <= 0:
+                raise ValueError("--n_splits must be a positive integer")
+            if not isinstance(args.random_state, int):
+                raise ValueError("--random_state must be an integer")
 
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
