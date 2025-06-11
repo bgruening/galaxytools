@@ -482,6 +482,8 @@ def main():
                 raise ValueError("--surv_event_var is required for Cox plots")
             if not args.clinical_variables:
                 raise ValueError("--clinical_variables is required for Cox plots")
+            if not isinstance(args.top_features, int) or args.top_features <= 0:
+                raise ValueError("--top_features must be a positive integer")
             if not isinstance(args.crossval, bool):
                 raise ValueError("--crossval must be a boolean value")
             if not isinstance(args.n_splits, int) or args.n_splits <= 0:
