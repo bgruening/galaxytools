@@ -5,12 +5,12 @@ and Cox proportional hazards models from data processed by flexynesis."""
 
 import argparse
 import os
-import torch
 from pathlib import Path
 
+import torch
 import numpy as np
 import pandas as pd
-from flexynesis import plot_dim_reduced, plot_kaplan_meier_curves, get_important_features, build_cox_model, plot_hazard_ratios
+from flexynesis import build_cox_model, get_important_features, plot_dim_reduced, plot_hazard_ratios, plot_kaplan_meier_curves
 
 
 def load_embeddings(embeddings_path):
