@@ -7,12 +7,20 @@ import argparse
 import os
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 import seaborn as sns
 import torch
-from flexynesis import build_cox_model, get_important_features, plot_dim_reduced, plot_hazard_ratios, plot_kaplan_meier_curves, plot_scatter
+
+from flexynesis import (
+    build_cox_model,
+    get_important_features,
+    plot_dim_reduced,
+    plot_hazard_ratios,
+    plot_kaplan_meier_curves,
+    plot_scatter,
+)
 
 
 def load_embeddings(embeddings_path):
