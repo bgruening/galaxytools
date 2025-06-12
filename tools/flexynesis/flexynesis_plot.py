@@ -392,7 +392,7 @@ def generate_plot_scatter(labels, args, output_dir, output_name_base):
     print(f"Plotting scatter plot for target value: {args.target_value}")
     fig = plot_scatter(true_values, predicted_values)
 
-    output_path = output_dir / f"{output_name_base}_scatter.{args.format}"
+    output_path = output_dir / f"{output_name_base}.{args.format}"
     print(f"Saving scatter plot to: {output_path.absolute()}")
     fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
 
