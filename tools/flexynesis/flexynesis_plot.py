@@ -9,6 +9,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 import torch
 from flexynesis import build_cox_model, get_important_features, plot_dim_reduced, plot_hazard_ratios, plot_kaplan_meier_curves, plot_scatter
 
@@ -135,6 +137,27 @@ def detect_color_type(labels_series):
 
     except Exception:
         return 'categorical'
+
+
+def plot_label_concordance_heatmap(labels1, labels2, figsize=(12, 10)):
+    """
+    Plot a heatmap reflecting the concordance between two sets of labels using pandas crosstab.
+
+    Parameters:
+    - labels1: The first set of labels.
+    - labels2: The second set of labels.
+    """
+    # Compute the cross-tabulation
+    ct = pd.crosstab(pd.Series(labels1, name='Labels Set 1'), pd.Series(labels2, name='Labels Set 2'))
+    # Normalize the cross-tabulation matrix column-wise
+    ct_normalized = ct.div(ct.sum(axis=1), axis=0)
+
+    # Plot the heatmap
+    plt.figure(figsize=figsize)
+    sns.heatmap(ct_normalized, annot=True, cmap='viridis', linewidths=.5)  # col_cluster=False)
+    plt.title('Concordance between label groups')
+
+    return plt.gcf()
 
 
 def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base):
@@ -399,6 +422,30 @@ def generate_plot_scatter(labels, args, output_dir, output_name_base):
     print("Scatter plot generated successfully!")
 
 
+def generate_label_concordance_heatmap(labels, args, output_dir, output_name_base):
+    """Generate label concordance heatmap"""
+    print("Generating label concordance heatmap...")
+
+    # Filter labels for the target value
+    if args.target_value:
+        labels = labels[labels['variable'] == args.target_value]
+    if labels.empty:
+        raise ValueError(f"No data found for target value '{args.target_value}' in labels")
+
+    true_values = labels['known_label'].tolist()
+    predicted_values = labels['predicted_label'].tolist()
+
+    print("Plotting label concordance heatmap...")
+    fig = plot_label_concordance_heatmap(true_values, predicted_values)
+    plt.close(fig)
+
+    output_path = output_dir / f"{output_name_base}_heatmap.{args.format}"
+    print(f"Saving heatmap to: {output_path.absolute()}")
+    fig.savefig(output_path, dpi=args.dpi, bbox_inches='tight')
+
+    print("Label concordance heatmap generated successfully!")
+
+
 def main():
     """Main function to parse arguments and generate plots"""
     parser = argparse.ArgumentParser(description="Generate plots using flexynesis")
@@ -409,7 +456,7 @@ def main():
 
     # Plot type
     parser.add_argument("--plot_type", type=str, required=True,
-                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter'],
+                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap'],
                         help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards")
 
     # Arguments for dimensionality reduction
@@ -446,7 +493,7 @@ def main():
     parser.add_argument("--top_features", type=int, default=20,
                         help="Number of top important features to include in Cox model. Default is 5")
 
-    # Arguments for scatter plot
+    # Arguments for scatter plot and heatmap
     parser.add_argument("--target_value", type=str, default=None,
                         help="Target value for scatter plot.")
 
@@ -463,6 +510,12 @@ def main():
     args = parser.parse_args()
 
     try:
+        # validate plot type
+        if not args.plot_type:
+            raise ValueError("Please specify a plot type using --plot_type")
+        if args.plot_type not in ['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap']:
+            raise ValueError(f"Invalid plot type: {args.plot_type}. Must be one of: 'dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap'")
+
         # Validate plot type requirements
         if args.plot_type in ['dimred']:
             if not args.embeddings:
@@ -532,6 +585,14 @@ def main():
             if not os.path.isfile(args.labels):
                 raise FileNotFoundError(f"Labels file not found: {args.labels}")
 
+        if args.plot_type in ['concordance_heatmap']:
+            if not args.labels:
+                raise ValueError("--labels is required for concordance heatmap")
+            if not args.target_value:
+                raise ValueError("--target_value is required for concordance heatmap")
+            if not os.path.isfile(args.labels):
+                raise FileNotFoundError(f"Labels file not found: {args.labels}")
+
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
             raise ValueError("Method must be 'pca' or 'umap'")
@@ -557,6 +618,9 @@ def main():
             elif args.plot_type == 'scatter':
                 labels_name = Path(args.labels).stem
                 output_name_base = f"{labels_name}_scatter"
+            elif args.plot_type == 'concordance_heatmap':
+                labels_name = Path(args.labels).stem
+                output_name_base = f"{labels_name}_concordance"
 
         # Generate plots based on type
         if args.plot_type in ['dimred']:
@@ -606,6 +670,13 @@ def main():
             label_data = load_labels(args.labels)
 
             generate_plot_scatter(label_data, args, output_dir, output_name_base)
+
+        elif args.plot_type in ['concordance_heatmap']:
+            # Load labels
+            print(f"Loading labels from: {args.labels}")
+            label_data = load_labels(args.labels)
+
+            generate_label_concordance_heatmap(label_data, args, output_dir, output_name_base)
 
         print("All plots generated successfully!")
 
