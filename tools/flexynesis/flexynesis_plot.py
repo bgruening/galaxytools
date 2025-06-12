@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 import torch
-from flexynesis import build_cox_model, get_important_features, plot_dim_reduced, plot_hazard_ratios, plot_kaplan_meier_curves
+from flexynesis import build_cox_model, get_important_features, plot_dim_reduced, plot_hazard_ratios, plot_kaplan_meier_curves, plot_scatter
 
 
 def load_embeddings(embeddings_path):
@@ -374,6 +374,31 @@ def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_
         raise ValueError(f"Error generating hazard ratios plot: {e}")
 
 
+def generate_plot_scatter(labels, args, output_dir, output_name_base):
+    """Generate scatter plot of known vs predicted labels"""
+    print("Generating scatter plot of known vs predicted labels...")
+
+    # filter labels for the target value
+    if args.target_value:
+        labels = labels[labels['variable'] == args.target_value]
+    if labels.empty:
+        raise ValueError(f"No data found for target value '{args.target_value}' in labels")
+
+    true_values = pd.to_numeric(labels['known_label'], errors='coerce')
+    predicted_values = pd.to_numeric(labels['predicted_label'], errors='coerce')
+    if true_values.isna().all() or predicted_values.isna().all():
+        raise ValueError("No valid numeric values found for known or predicted labels")
+
+    print(f"Plotting scatter plot for target value: {args.target_value}")
+    fig = plot_scatter(true_values, predicted_values)
+
+    output_path = output_dir / f"{output_name_base}_scatter.{args.format}"
+    print(f"Saving scatter plot to: {output_path.absolute()}")
+    fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
+
+    print("Scatter plot generated successfully!")
+
+
 def main():
     """Main function to parse arguments and generate plots"""
     parser = argparse.ArgumentParser(description="Generate plots using flexynesis")
@@ -384,7 +409,7 @@ def main():
 
     # Plot type
     parser.add_argument("--plot_type", type=str, required=True,
-                        choices=['dimred', 'kaplan_meier', 'cox'],
+                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter'],
                         help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards")
 
     # Arguments for dimensionality reduction
@@ -420,6 +445,10 @@ def main():
                         help="Comma-separated list of clinical variables to include in Cox model (e.g., 'AGE,SEX,HISTOLOGICAL_DIAGNOSIS,STUDY')")
     parser.add_argument("--top_features", type=int, default=20,
                         help="Number of top important features to include in Cox model. Default is 5")
+
+    # Arguments for scatter plot
+    parser.add_argument("--target_value", type=str, default=None,
+                        help="Target value for scatter plot.")
 
     # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',
@@ -495,6 +524,14 @@ def main():
             if not args.event_value:
                 raise ValueError("--event_value is required for Kaplan-Meier plots")
 
+        if args.plot_type in ['scatter']:
+            if not args.labels:
+                raise ValueError("--labels is required for scatter plots")
+            if not args.target_value:
+                raise ValueError("--target_value is required for scatter plots")
+            if not os.path.isfile(args.labels):
+                raise FileNotFoundError(f"Labels file not found: {args.labels}")
+
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
             raise ValueError("Method must be 'pca' or 'umap'")
@@ -517,6 +554,9 @@ def main():
             elif args.plot_type == 'cox':
                 model_name = Path(args.model).stem
                 output_name_base = f"{model_name}_cox"
+            elif args.plot_type == 'scatter':
+                labels_name = Path(args.labels).stem
+                output_name_base = f"{labels_name}_scatter"
 
         # Generate plots based on type
         if args.plot_type in ['dimred']:
@@ -559,6 +599,13 @@ def main():
             omics_test = load_omics(args.omics_test)
 
             generate_cox_plots(model, clinical_train, clinical_test, omics_test, omics_train, args, output_dir, output_name_base)
+
+        elif args.plot_type in ['scatter']:
+            # Load labels
+            print(f"Loading labels from: {args.labels}")
+            label_data = load_labels(args.labels)
+
+            generate_plot_scatter(label_data, args, output_dir, output_name_base)
 
         print("All plots generated successfully!")
 
