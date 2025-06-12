@@ -7,8 +7,8 @@ import argparse
 import os
 from pathlib import Path
 
-import torch
 import numpy as np
+import torch
 import pandas as pd
 from flexynesis import build_cox_model, get_important_features, plot_dim_reduced, plot_hazard_ratios, plot_kaplan_meier_curves
 
