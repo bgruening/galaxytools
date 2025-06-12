@@ -9,8 +9,8 @@ from pathlib import Path
 
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import matplotlib.pyplot as plt
+import seaborn as sns
 import torch
 from flexynesis import build_cox_model, get_important_features, plot_dim_reduced, plot_hazard_ratios, plot_kaplan_meier_curves, plot_scatter
 
