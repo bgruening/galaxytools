@@ -460,7 +460,7 @@ if __name__ == '__main__':
                 img = np.copy(result.orig_img)
                 filename = pathlib.Path(result.path).stem
                 b_mask = np.zeros(img.shape[:2], np.uint8)
-                mask_save_as = str(pathlib.Path(os.path.join(args.save_dir, filename + "_mask.tif")).absolute())
+                mask_save_as = str(pathlib.Path(os.path.join(args.save_dir, filename + "_mask.tiff")).absolute())
                 # Define output file path for text file
                 output_filename = os.path.splitext(filename)[0] + ".txt"
                 txt_save_as = str(pathlib.Path(os.path.join(args.save_dir, filename + ".txt")).absolute())
