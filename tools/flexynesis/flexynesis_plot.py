@@ -340,6 +340,15 @@ def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_
     if df.empty:
         raise ValueError("No samples remain after filtering for survival data")
 
+    # Convert survival event column to binary (0/1) based on event_value
+    # Convert to string for comparison to handle mixed types
+    df[args.surv_event_var] = df[args.surv_event_var].astype(str)
+    event_value_str = str(args.event_value)
+
+    df[f'{args.surv_event_var}'] = (
+        df[args.surv_event_var] == event_value_str
+    ).astype(int)
+
     # Build Cox model
     print(f"Building Cox model with time variable: {args.surv_time_var}, event variable: {args.surv_event_var}")
     try:
@@ -483,6 +492,8 @@ def main():
                 raise ValueError("--clinical_variables is required for Cox plots")
             if not isinstance(args.top_features, int) or args.top_features <= 0:
                 raise ValueError("--top_features must be a positive integer")
+            if not args.event_value:
+                raise ValueError("--event_value is required for Kaplan-Meier plots")
 
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
