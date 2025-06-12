@@ -276,7 +276,7 @@ def trainModel(model_path, model_name, yaml_filepath, **kwargs):
                 translate=aug_translate, shear=aug_shear, scale=aug_scale,
                 perspective=aug_perspective, fliplr=aug_fliplr,
                 flipud=aug_flipud, mosaic=aug_mosaic, crop_fraction=aug_crop_fraction,
-                weight_decay=weight_decay, lr0=init_lr)
+                weight_decay=weight_decay, lr0=init_lr, seed=42)
     return model
 
 
