@@ -3,10 +3,10 @@ Segment text using DocLayout Yolo model
 """
 
 import argparse
+import json
 import os
 
 import cv2
-import json
 from doclayout_yolo import YOLOv10
 from geojson import Feature, FeatureCollection
 from shapely.geometry import box, mapping
