@@ -40,7 +40,6 @@ def extract_bb_crop(results, output_segmentation_coordiates):
 
     geojson_obj = FeatureCollection(features)
 
-    # Save to file
     with open(output_segmentation_coordiates, "w") as f:
         json.dump(geojson_obj, f)
 
@@ -54,6 +53,9 @@ if __name__ == "__main__":
         "-ii", "--input_image", required=True, help="Input image file"
     )
     arg_parser.add_argument(
+        "-ie", "--input_image_ext", required=True, help="Input image file extension"
+    )
+    arg_parser.add_argument(
         "-ic", "--input_confidence", required=True, help="Input confidence"
     )
     arg_parser.add_argument(
@@ -63,18 +65,18 @@ if __name__ == "__main__":
     arg_parser.add_argument(
         "-ogj", "--output_geojson", required=True, help="Output segmented coordinates"
     )
-    # get argument values
     args = vars(arg_parser.parse_args())
     model_path = args["yolo_model"]
     input_image_path = args["input_image"]
+    input_ext = args["input_image_ext"]
     confidence = args["input_confidence"]
     image_size = args["input_image_size"]
     output_image_path = args["output_image"]
     output_segmentation_coordiates = args["output_geojson"]
 
     model_link = "yolo_model.pt"
-    input_image = "input_image.png"
-    output_image = "output_image.png"
+    input_image = f"input_image.{input_ext}"
+    output_image = f"output_image.{input_ext}"
 
     os.symlink(model_path, model_link)
     os.symlink(input_image_path, input_image)
