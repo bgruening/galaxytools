@@ -406,27 +406,71 @@ def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_
 
 def generate_plot_scatter(labels, args, output_dir, output_name_base):
     """Generate scatter plot of known vs predicted labels"""
-    print("Generating scatter plot of known vs predicted labels...")
+    print("Generating scatter plots of known vs predicted labels...")
 
-    # filter labels for the target value
+    # Parse target values from comma-separated string
     if args.target_value:
-        labels = labels[labels['variable'] == args.target_value]
-    if labels.empty:
-        raise ValueError(f"No data found for target value '{args.target_value}' in labels")
+        target_values = [val.strip() for val in args.target_value.split(',')]
+    else:
+        # If no target values specified, use all unique variables
+        target_values = labels['variable'].unique().tolist()
 
-    true_values = pd.to_numeric(labels['known_label'], errors='coerce')
-    predicted_values = pd.to_numeric(labels['predicted_label'], errors='coerce')
-    if true_values.isna().all() or predicted_values.isna().all():
-        raise ValueError("No valid numeric values found for known or predicted labels")
+    print(f"Processing target values: {target_values}")
 
-    print(f"Plotting scatter plot for target value: {args.target_value}")
-    fig = plot_scatter(true_values, predicted_values)
+    successful_plots = 0
+    skipped_plots = 0
 
-    output_path = output_dir / f"{output_name_base}.{args.format}"
-    print(f"Saving scatter plot to: {output_path.absolute()}")
-    fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
+    for target_value in target_values:
+        print(f"\nProcessing target value: '{target_value}'")
 
-    print("Scatter plot generated successfully!")
+        # Filter labels for the current target value
+        target_labels = labels[labels['variable'] == target_value]
+
+        if target_labels.empty:
+            print(f"  Warning: No data found for target value '{target_value}' - skipping")
+            skipped_plots += 1
+            continue
+
+        # Check if labels are numeric and convert
+        true_values = pd.to_numeric(target_labels['known_label'], errors='coerce')
+        predicted_values = pd.to_numeric(target_labels['predicted_label'], errors='coerce')
+
+        if true_values.isna().all() or predicted_values.isna().all():
+            print(f"No valid numeric values found for known or predicted labels in '{target_value}'")
+            skipped_plots += 1
+            continue
+
+        try:
+            print(f"  Generating scatter plot for '{target_value}'...")
+            fig = plot_scatter(true_values, predicted_values)
+
+            # Create output filename with target value
+            safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
+            if len(target_values) > 1:
+                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
+            else:
+                output_filename = f"{output_name_base}.{args.format}"
+
+            output_path = output_dir / output_filename
+            print(f"  Saving scatter plot to: {output_path.absolute()}")
+            fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
+
+            successful_plots += 1
+            print(f"  Scatter plot for '{target_value}' generated successfully!")
+
+        except Exception as e:
+            print(f"  Error generating plot for '{target_value}': {str(e)}")
+            skipped_plots += 1
+
+    # Summary
+    print("  Summary:")
+    print(f"  Successfully generated: {successful_plots} plots")
+    print(f"  Skipped: {skipped_plots} plots")
+
+    if successful_plots == 0:
+        raise ValueError("No scatter plots could be generated. Check your data and target values.")
+
+    print("Scatter plot generation completed!")
 
 
 def generate_label_concordance_heatmap(labels, args, output_dir, output_name_base):
