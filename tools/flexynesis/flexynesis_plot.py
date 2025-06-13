@@ -475,24 +475,49 @@ def generate_plot_scatter(labels, args, output_dir, output_name_base):
 
 def generate_label_concordance_heatmap(labels, args, output_dir, output_name_base):
     """Generate label concordance heatmap"""
-    print("Generating label concordance heatmap...")
+    print("Generating label concordance heatmaps...")
 
-    # Filter labels for the target value
+    # Parse target values from comma-separated string
     if args.target_value:
-        labels = labels[labels['variable'] == args.target_value]
-    if labels.empty:
-        raise ValueError(f"No data found for target value '{args.target_value}' in labels")
+        target_values = [val.strip() for val in args.target_value.split(',')]
+    else:
+        # If no target values specified, use all unique variables
+        target_values = labels['variable'].unique().tolist()
 
-    true_values = labels['known_label'].tolist()
-    predicted_values = labels['predicted_label'].tolist()
+    print(f"Processing target values: {target_values}")
 
-    print("Plotting label concordance heatmap...")
-    fig = plot_label_concordance_heatmap(true_values, predicted_values)
-    plt.close(fig)
+    for target_value in target_values:
+        print(f"\nProcessing target value: '{target_value}'")
 
-    output_path = output_dir / f"{output_name_base}_heatmap.{args.format}"
-    print(f"Saving heatmap to: {output_path.absolute()}")
-    fig.savefig(output_path, dpi=args.dpi, bbox_inches='tight')
+        # Filter labels for the current target value
+        target_labels = labels[labels['variable'] == target_value]
+
+        if target_labels.empty:
+            print(f"  Warning: No data found for target value '{target_value}' - skipping")
+            continue
+
+        true_values = target_labels['known_label'].tolist()
+        predicted_values = target_labels['predicted_label'].tolist()
+
+        try:
+            print(f"  Generating heatmap for '{target_value}'...")
+            fig = plot_label_concordance_heatmap(true_values, predicted_values)
+            plt.close(fig)
+
+            # Create output filename with target value
+            safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
+            if len(target_values) > 1:
+                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
+            else:
+                output_filename = f"{output_name_base}.{args.format}"
+
+            output_path = output_dir / output_filename
+            print(f"  Saving heatmap to: {output_path.absolute()}")
+            fig.savefig(output_path, dpi=args.dpi, bbox_inches='tight')
+
+        except Exception as e:
+            print(f"  Error generating heatmap for '{target_value}': {str(e)}")
+            continue
 
     print("Label concordance heatmap generated successfully!")
 
