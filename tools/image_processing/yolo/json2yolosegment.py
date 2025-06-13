@@ -39,8 +39,8 @@ def convert_json_to_yolo(input_dir, save_dir, class_names_file):
                     print(f"No points found for annotation '{label}', skipping.")
                     continue
 
-                x = [point[0] / image_width for point in points]
-                y = [point[1] / image_height for point in points]
+                x = [point[0] / (image_width - 1) for point in points]
+                y = [point[1] / (image_height - 1) for point in points]
 
                 segmentation_points = ['{} {}'.format(x[i], y[i]) for i in range(len(x))]
                 segmentation_points_string = ' '.join(segmentation_points)
