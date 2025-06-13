@@ -1,0 +1,63 @@
+<tool id="lirasearch" name="Identify similar conformers" version="0.1.0">
+    <description>using LiraSearch spherical harmonic descriptors</description>
+    <requirements>
+        <container type="docker">sb17/shcoeffs_w_ignite:latest</container>
+    </requirements>
+    <command detect_errors="exit_code">
+        <![CDATA[
+            nohup /opt/ignite/bin/ignite.sh config/lira_ignite.xml &
+            export HOME=`pwd` &&
+            #if $is_test:
+                cp -r /opt/ignite/test-database/* /opt/ignite/storage &&
+            #end if
+            #if $ligand.ext == 'pdb':
+                ln -s $ligand ligand.pdb &&
+            #else
+                python /opt/ignite/scripts/convert_sdf_to_pdb.py $ligand ligand.pdb &&
+            #end if
+            python -m esp_dnn.predict -m ligand -i . -o . &&
+            esp-surface-generator ligand.pdb.pqr ligand.pdb.tmesh &&
+            sh-coeff-calculator . &&
+            micromamba run -n lirasearch python /opt/ignite/scripts/lira_search_sdf.py --in_file rid_coeffs.csv --out_file output --database /opt/ignite/storage/rid_coeffs.csv --ignite_address 127.0.0.1:10800 --num_results $num_results --out_folder search_results  &&
+            micromamba run -n lirasearch python /opt/ignite/scripts/lira_super.py --target ligand.pdb --folder search_results &&
+            cat search_results/*rotated.sdf >> $output_sdf
+            ]]>
+    </command>
+    <inputs>
+        <param name="ligand" type="data" format="pdb,sdf" label="Ligand file" />
+        <param name="num_results" type="integer" value="50" label="Number of results to return" />
+        <param name="is_test" type="hidden" value="false" hidden="true" />
+    </inputs>
+    <outputs>
+        <!-- <data name="output_csv" format="csv" label="Similarity scores" /> -->
+        <data name="output_sdf" format="sdf" label="SDF with LiraSearch query results" />
+    </outputs>
+    <tests>
+        <test>
+            <param name="ligand" value="ligand.pdb" ftype="pdb" />
+            <param name="num_results" type="integer" value="2" label="Number of results to return" />
+            <param name="is_test" value="true" />
+            <output name="output_sdf" value="lirasearch_output.sdf"/>
+        </test>
+        <test>
+            <param name="ligand" value="ligand.sdf"/>
+            <param name="num_results" type="integer" value="2" label="Number of results to return" />
+            <param name="is_test" value="true" />
+            <output name="output_sdf" value="lirasearch_output.sdf"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+.. class:: infomark
+
+**What this tool does**
+
+Identify similar conformers to an input ligand, based on predicting the electrostatic potential (ESP) using a deep neural network and computing spherical harmonic coefficients.
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1021/acs.jmedchem.9b01129</citation>
+    </citations>
+</tool>
+
