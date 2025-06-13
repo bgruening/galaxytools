@@ -1,5 +1,4 @@
 import argparse
-import json
 import os
 import shutil
 
@@ -31,9 +30,7 @@ def copy_pairs(pairs, image_src, label_src, image_dst, label_dst):
         shutil.copy(os.path.join(label_src, lbl), os.path.join(label_dst, lbl))
 
 
-def write_yolo_yaml(output_dir, meta_json):
-    with open(meta_json, 'r') as f:
-        meta = json.load(f)
+def write_yolo_yaml(output_dir):
 
     yolo_yaml_path = os.path.join(output_dir, "yolo.yml")
     with open(yolo_yaml_path, 'w') as f:
@@ -42,7 +39,6 @@ def write_yolo_yaml(output_dir, meta_json):
         f.write("val: valid\n")
         f.write("test: test\n")
         f.write("\n")
-        f.write(f"nc: {meta['training_params']['num_class']}\n")
         f.write("names: ['dataset']\n")
 
 
@@ -52,7 +48,6 @@ def main():
     parser.add_argument("-y", "--labels", required=True)
     parser.add_argument("-o", "--output", required=True)
     parser.add_argument("-p", "--train_percent", type=int, default=70)
-    parser.add_argument("-m", "--meta", required=True)
     args = parser.parse_args()
 
     all_pairs = pair_files(args.images, args.labels)
@@ -66,7 +61,7 @@ def main():
     copy_pairs(val_pairs, args.images, args.labels, os.path.join(args.output, "valid/images"), os.path.join(args.output, "valid/labels"))
     copy_pairs(test_pairs, args.images, args.labels, os.path.join(args.output, "test/images"), os.path.join(args.output, "test/labels"))
 
-    write_yolo_yaml(args.output, args.meta)
+    write_yolo_yaml(args.output)
 
 
 if __name__ == "__main__":
