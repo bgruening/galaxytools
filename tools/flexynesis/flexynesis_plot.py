@@ -19,6 +19,7 @@ from flexynesis import (
     plot_hazard_ratios,
     plot_kaplan_meier_curves,
     plot_pr_curves,
+    plot_roc_curves,
     plot_scatter
 )
 
@@ -675,6 +676,158 @@ def generate_pr_curves(labels, args, output_dir, output_name_base):
     print("Precision-recall curves generated successfully!")
 
 
+def generate_roc_curves(labels, args, output_dir, output_name_base):
+    """Generate ROC curves"""
+    print("Generating ROC curves...")
+
+    # Parse target values from comma-separated string
+    if args.target_value:
+        target_values = [val.strip() for val in args.target_value.split(',')]
+    else:
+        # If no target values specified, use all unique variables
+        target_values = labels['variable'].unique().tolist()
+
+    print(f"Processing target values: {target_values}")
+
+    for target_value in target_values:
+        print(f"\nProcessing target value: '{target_value}'")
+
+        # Filter labels for the current target value
+        target_labels = labels[labels['variable'] == target_value]
+
+        # Check if this is a regression problem (no class probabilities)
+        prob_columns = target_labels['class_label'].unique()
+        non_na_probs = target_labels['probability'].notna().sum()
+
+        print(f"  Class labels found: {list(prob_columns)}")
+        print(f"  Non-NaN probabilities: {non_na_probs}/{len(target_labels)}")
+
+        # If most probabilities are NaN, this is likely a regression problem
+        if non_na_probs < len(target_labels) * 0.1:  # Less than 10% valid probabilities
+            print("  Detected regression problem - precision-recall curves not applicable")
+            print(f"  Skipping '{target_value}' (use regression evaluation metrics instead)")
+            continue
+
+        # Debug: Check data quality
+        total_rows = len(target_labels)
+        missing_labels = target_labels['known_label'].isna().sum()
+        missing_probs = target_labels['probability'].isna().sum()
+        unique_samples = target_labels['sample_id'].nunique()
+        unique_classes = target_labels['class_label'].nunique()
+
+        print(f"  Data summary: {total_rows} total rows, {unique_samples} unique samples, {unique_classes} unique classes")
+        print(f"  Missing data: {missing_labels} missing known_label, {missing_probs} missing probability")
+
+        if missing_labels > 0:
+            print(f"  Warning: Found {missing_labels} missing known_label values")
+            missing_samples = target_labels[target_labels['known_label'].isna()]['sample_id'].unique()[:5]
+            print(f"  Sample IDs with missing known_label: {list(missing_samples)}")
+
+            # Remove rows with missing known_label
+            target_labels = target_labels.dropna(subset=['known_label'])
+            if target_labels.empty:
+                print(f"  Error: No valid known_label data remaining for '{target_value}' - skipping")
+                continue
+
+        # 1. Pivot to wide format
+        prob_df = target_labels.pivot(index='sample_id', columns='class_label', values='probability')
+
+        print(f"  After pivot: {prob_df.shape[0]} samples x {prob_df.shape[1]} classes")
+        print(f"  Class columns: {list(prob_df.columns)}")
+
+        # Check for NaN values in probability data
+        nan_counts = prob_df.isna().sum()
+        if nan_counts.any():
+            print(f"  NaN counts per class: {dict(nan_counts)}")
+            print(f"  Samples with any NaN: {prob_df.isna().any(axis=1).sum()}/{len(prob_df)}")
+
+            # Drop only rows where ALL probabilities are NaN
+            all_nan_rows = prob_df.isna().all(axis=1)
+            if all_nan_rows.any():
+                print(f"  Dropping {all_nan_rows.sum()} samples with all NaN probabilities")
+                prob_df = prob_df[~all_nan_rows]
+
+            remaining_nans = prob_df.isna().sum().sum()
+            if remaining_nans > 0:
+                print(f"  Warning: {remaining_nans} individual NaN values remain - filling with 0")
+                prob_df = prob_df.fillna(0)
+
+            if prob_df.empty:
+                print(f"  Error: No valid probability data remaining for '{target_value}' - skipping")
+                continue
+
+        # 2. Get true labels
+        true_labels_df = target_labels.drop_duplicates('sample_id')[['sample_id', 'known_label']].set_index('sample_id')
+
+        # 3. Align indices - only keep samples that exist in both datasets
+        common_indices = prob_df.index.intersection(true_labels_df.index)
+        if len(common_indices) == 0:
+            print(f"  Error: No common sample_ids between probability and true label data for '{target_value}' - skipping")
+            continue
+
+        print(f"  Found {len(common_indices)} samples with both probability and true label data")
+
+        # Filter both datasets to common indices
+        prob_df_aligned = prob_df.loc[common_indices]
+        y_true = true_labels_df.loc[common_indices]['known_label']
+
+        # 4. Final check for NaN values
+        if y_true.isna().any():
+            print(f"  Error: True labels still contain NaN after alignment for '{target_value}' - skipping")
+            continue
+
+        if prob_df_aligned.isna().any().any():
+            print(f"  Error: Probability data still contains NaN after alignment for '{target_value}' - skipping")
+            continue
+
+        # 5. Convert categorical labels to integer labels
+        # Create a mapping from class names to integers
+        class_names = list(prob_df_aligned.columns)
+        class_to_int = {class_name: i for i, class_name in enumerate(class_names)}
+
+        print(f"  Class mapping: {class_to_int}")
+
+        # Convert true labels to integers
+        y_true_np = y_true.map(class_to_int).to_numpy()
+        y_probs_np = prob_df_aligned.to_numpy()
+
+        print(f"  Data shape: y_true={y_true_np.shape}, y_probs={y_probs_np.shape}")
+        print(f"  Unique true labels (integers): {set(y_true_np)}")
+        print(f"  Class labels (columns): {class_names}")
+        print(f"  Label distribution: {dict(zip(*np.unique(y_true_np, return_counts=True)))}")
+
+        # Check for any unmapped labels (will be NaN)
+        if pd.isna(y_true_np).any():
+            print("  Error: Some true labels could not be mapped to class columns")
+            unmapped_labels = set(y_true[y_true.map(class_to_int).isna()])
+            print(f"  Unmapped labels: {unmapped_labels}")
+            print(f"  Available classes: {class_names}")
+            continue
+
+        try:
+            print(f"  Generating ROC curve for '{target_value}'...")
+            fig = plot_roc_curves(y_true_np, y_probs_np)
+
+            # Create output filename with target value
+            safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
+            if len(target_values) > 1:
+                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
+            else:
+                output_filename = f"{output_name_base}.{args.format}"
+
+            output_path = output_dir / output_filename
+            print(f"  Saving ROC curve to: {output_path.absolute()}")
+            fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
+
+        except Exception as e:
+            print(f"  Error generating ROC curve for '{target_value}': {str(e)}")
+            print(f"  Debug info - y_true type: {type(y_true_np)}, contains NaN: {pd.isna(y_true_np).any()}")
+            print(f"  Debug info - y_probs type: {type(y_probs_np)}, contains NaN: {pd.isna(y_probs_np).any()}")
+            continue
+
+    print("ROC curves generated successfully!")
+
+
 def main():
     """Main function to parse arguments and generate plots"""
     parser = argparse.ArgumentParser(description="Generate plots using flexynesis")
@@ -685,7 +838,7 @@ def main():
 
     # Plot type
     parser.add_argument("--plot_type", type=str, required=True,
-                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves'],
+                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves'],
                         help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards")
 
     # Arguments for dimensionality reduction
@@ -722,7 +875,7 @@ def main():
     parser.add_argument("--top_features", type=int, default=20,
                         help="Number of top important features to include in Cox model. Default is 5")
 
-    # Arguments for scatter plot, heatmap, and PR curves
+    # Arguments for scatter plot, heatmap, PR curves, and ROC curves
     parser.add_argument("--target_value", type=str, default=None,
                         help="Target value for scatter plot.")
 
@@ -742,8 +895,8 @@ def main():
         # validate plot type
         if not args.plot_type:
             raise ValueError("Please specify a plot type using --plot_type")
-        if args.plot_type not in ['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves']:
-            raise ValueError(f"Invalid plot type: {args.plot_type}. Must be one of: 'dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves'")
+        if args.plot_type not in ['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves']:
+            raise ValueError(f"Invalid plot type: {args.plot_type}. Must be one of: 'dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves'")
 
         # Validate plot type requirements
         if args.plot_type in ['dimred']:
@@ -810,7 +963,7 @@ def main():
             if not args.labels:
                 raise ValueError("--labels is required for scatter plots")
             if not args.target_value:
-                raise ValueError("--target_value is required for scatter plots")
+                print("--target_value is not specified, using all unique variables from labels")
             if not os.path.isfile(args.labels):
                 raise FileNotFoundError(f"Labels file not found: {args.labels}")
 
@@ -818,7 +971,23 @@ def main():
             if not args.labels:
                 raise ValueError("--labels is required for concordance heatmap")
             if not args.target_value:
-                raise ValueError("--target_value is required for concordance heatmap")
+                print("--target_value is not specified, using all unique variables from labels")
+            if not os.path.isfile(args.labels):
+                raise FileNotFoundError(f"Labels file not found: {args.labels}")
+
+        if args.plot_type in ['pr_curves']:
+            if not args.labels:
+                raise ValueError("--labels is required for precision-recall curves")
+            if not args.target_value:
+                print("--target_value is not specified, using all unique variables from labels")
+            if not os.path.isfile(args.labels):
+                raise FileNotFoundError(f"Labels file not found: {args.labels}")
+
+        if args.plot_type in ['roc_curves']:
+            if not args.labels:
+                raise ValueError("--labels is required for ROC curves")
+            if not args.target_value:
+                print("--target_value is not specified, using all unique variables from labels")
             if not os.path.isfile(args.labels):
                 raise FileNotFoundError(f"Labels file not found: {args.labels}")
 
@@ -853,6 +1022,9 @@ def main():
             elif args.plot_type == 'pr_curves':
                 labels_name = Path(args.labels).stem
                 output_name_base = f"{labels_name}_pr_curves"
+            elif args.plot_type == 'roc_curves':
+                labels_name = Path(args.labels).stem
+                output_name_base = f"{labels_name}_roc_curves"
 
         # Generate plots based on type
         if args.plot_type in ['dimred']:
@@ -916,6 +1088,13 @@ def main():
             label_data = load_labels(args.labels)
 
             generate_pr_curves(label_data, args, output_dir, output_name_base)
+
+        elif args.plot_type in ['roc_curves']:
+            # Load labels
+            print(f"Loading labels from: {args.labels}")
+            label_data = load_labels(args.labels)
+
+            generate_roc_curves(label_data, args, output_dir, output_name_base)
 
         print("All plots generated successfully!")
 
