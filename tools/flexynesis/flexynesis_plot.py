@@ -22,6 +22,7 @@ from flexynesis import (
     plot_roc_curves,
     plot_scatter
 )
+from scipy.stats import kruskal, mannwhitneyu
 
 
 def load_embeddings(embeddings_path):
@@ -166,6 +167,47 @@ def plot_label_concordance_heatmap(labels1, labels2, figsize=(12, 10)):
     sns.heatmap(ct_normalized, annot=True, cmap='viridis', linewidths=.5)  # col_cluster=False)
     plt.title('Concordance between label groups')
 
+    return plt.gcf()
+
+
+def plot_boxplot(categorical_x, numerical_y, title_x='Categories', title_y='Values', figsize=(10, 6), jittersize=4):
+    """
+    Create a boxplot with to visualize the distribution of predicted probabilities across different categories.
+    the x axis represents the true labels, and the y axis represents the predicted probabilities for specific categories.
+    """
+    df = pd.DataFrame({title_x: categorical_x, title_y: numerical_y})
+
+    # Compute p-value
+    groups = df[title_x].unique()
+    if len(groups) == 2:
+        group1 = df[df[title_x] == groups[0]][title_y]
+        group2 = df[df[title_x] == groups[1]][title_y]
+        stat, p = mannwhitneyu(group1, group2, alternative='two-sided')
+        test_name = "Mann-Whitney U"
+    else:
+        group_data = [df[df[title_x] == group][title_y] for group in groups]
+        stat, p = kruskal(*group_data)
+        test_name = "Kruskal-Wallis"
+
+    # Create a boxplot with jittered points
+    plt.figure(figsize=figsize)
+    sns.boxplot(x=title_x, y=title_y, hue=title_x, data=df, palette='Set2', legend=False, fill=False)
+    sns.stripplot(x=title_x, y=title_y, data=df, color='black', size=jittersize, jitter=True, dodge=True, alpha=0.4)
+
+    # Labels and p-value annotation
+    plt.xlabel(title_x)
+    plt.ylabel(title_y)
+    plt.text(
+        x=-0.4,
+        y=plt.ylim()[1],
+        s=f'{test_name} p = {p:.3e}',
+        verticalalignment='top',
+        horizontalalignment='left',
+        fontsize=12,
+        bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='gray')
+    )
+
+    plt.tight_layout()
     return plt.gcf()
 
 
@@ -828,6 +870,104 @@ def generate_roc_curves(labels, args, output_dir, output_name_base):
     print("ROC curves generated successfully!")
 
 
+def generate_box_plots(labels, args, output_dir, output_name_base):
+    """Generate box plots for model predictions"""
+
+    print("Generating box plots...")
+
+    # Parse target values from comma-separated string
+    if args.target_value:
+        target_values = [val.strip() for val in args.target_value.split(',')]
+    else:
+        # If no target values specified, use all unique variables
+        target_values = labels['variable'].unique().tolist()
+
+    print(f"Processing target values: {target_values}")
+
+    for target_value in target_values:
+        print(f"\nProcessing target value: '{target_value}'")
+
+        # Filter labels for the current target value
+        target_labels = labels[labels['variable'] == target_value]
+
+        if target_labels.empty:
+            print(f"  Warning: No data found for target value '{target_value}' - skipping")
+            continue
+
+        # Check if this is a classification problem (has probabilities)
+        prob_columns = target_labels['class_label'].unique()
+        non_na_probs = target_labels['probability'].notna().sum()
+
+        print(f"  Class labels found: {list(prob_columns)}")
+        print(f"  Non-NaN probabilities: {non_na_probs}/{len(target_labels)}")
+
+        # If most probabilities are NaN, this is likely a regression problem
+        if non_na_probs < len(target_labels) * 0.1:  # Less than 10% valid probabilities
+            print("  Detected regression problem - precision-recall curves not applicable")
+            print(f"  Skipping '{target_value}' (use regression evaluation metrics instead)")
+            continue
+
+        # Debug: Check data quality
+        total_rows = len(target_labels)
+        missing_labels = target_labels['known_label'].isna().sum()
+        missing_probs = target_labels['probability'].isna().sum()
+        unique_samples = target_labels['sample_id'].nunique()
+        unique_classes = target_labels['class_label'].nunique()
+
+        print(f"  Data summary: {total_rows} total rows, {unique_samples} unique samples, {unique_classes} unique classes")
+        print(f"  Missing data: {missing_labels} missing known_label, {missing_probs} missing probability")
+
+        if missing_labels > 0:
+            print(f"  Warning: Found {missing_labels} missing known_label values")
+            missing_samples = target_labels[target_labels['known_label'].isna()]['sample_id'].unique()[:5]
+            print(f"  Sample IDs with missing known_label: {list(missing_samples)}")
+
+            # Remove rows with missing known_label
+            target_labels = target_labels.dropna(subset=['known_label'])
+            if target_labels.empty:
+                print(f"  Error: No valid known_label data remaining for '{target_value}' - skipping")
+                continue
+
+        # Remove rows with missing data
+        clean_data = target_labels.dropna(subset=['known_label', 'probability'])
+
+        if clean_data.empty:
+            print("    No valid data after cleaning - skipping")
+            continue
+
+        # Get unique classes
+        classes = clean_data['class_label'].unique()
+
+        for class_label in classes:
+            print(f"    Generating box plot for class: {class_label}")
+
+            # Filter for current class
+            class_data = clean_data[clean_data['class_label'] == class_label]
+
+            try:
+                # Create the box plot
+                fig = plot_boxplot(
+                    categorical_x=class_data['known_label'],
+                    numerical_y=class_data['probability'],
+                    title_x='True Label',
+                    title_y=f'Predicted Probability ({class_label})',
+                )
+
+                # Save the plot
+                safe_class_name = str(class_label).replace('/', '_').replace('\\', '_').replace(' ', '_').replace(':', '_')
+                safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
+                output_filename = f"{output_name_base}_{safe_target_name}_{safe_class_name}.{args.format}"
+                output_path = output_dir / output_filename
+
+                print(f"      Saving box plot to: {output_path.absolute()}")
+                fig.savefig(output_path, dpi=args.dpi, bbox_inches='tight')
+                plt.close(fig)
+
+            except Exception as e:
+                print(f"      Error generating box plot for class '{class_label}': {str(e)}")
+                continue
+
+
 def main():
     """Main function to parse arguments and generate plots"""
     parser = argparse.ArgumentParser(description="Generate plots using flexynesis")
@@ -838,8 +978,8 @@ def main():
 
     # Plot type
     parser.add_argument("--plot_type", type=str, required=True,
-                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves'],
-                        help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards")
+                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves', 'box_plots'],
+                        help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards analysis, 'scatter' for scatter plots, 'concordance_heatmap' for label concordance heatmaps, 'pr_curves' for precision-recall curves, 'roc_curves' for ROC curves, or 'box_plots' for box plots.")
 
     # Arguments for dimensionality reduction
     parser.add_argument("--embeddings", type=str,
@@ -875,7 +1015,7 @@ def main():
     parser.add_argument("--top_features", type=int, default=20,
                         help="Number of top important features to include in Cox model. Default is 5")
 
-    # Arguments for scatter plot, heatmap, PR curves, and ROC curves
+    # Arguments for scatter plot, heatmap, PR curves, ROC curves, and box plots
     parser.add_argument("--target_value", type=str, default=None,
                         help="Target value for scatter plot.")
 
@@ -895,8 +1035,8 @@ def main():
         # validate plot type
         if not args.plot_type:
             raise ValueError("Please specify a plot type using --plot_type")
-        if args.plot_type not in ['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves']:
-            raise ValueError(f"Invalid plot type: {args.plot_type}. Must be one of: 'dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves'")
+        if args.plot_type not in ['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves', 'box_plots']:
+            raise ValueError(f"Invalid plot type: {args.plot_type}. Must be one of: 'dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves', 'box_plots'")
 
         # Validate plot type requirements
         if args.plot_type in ['dimred']:
@@ -991,6 +1131,14 @@ def main():
             if not os.path.isfile(args.labels):
                 raise FileNotFoundError(f"Labels file not found: {args.labels}")
 
+        if args.plot_type in ['box_plots']:
+            if not args.labels:
+                raise ValueError("--labels is required for box plots")
+            if not args.target_value:
+                print("--target_value is not specified, using all unique variables from labels")
+            if not os.path.isfile(args.labels):
+                raise FileNotFoundError(f"Labels file not found: {args.labels}")
+
         # Validate other arguments
         if args.method not in ['pca', 'umap']:
             raise ValueError("Method must be 'pca' or 'umap'")
@@ -1025,6 +1173,9 @@ def main():
             elif args.plot_type == 'roc_curves':
                 labels_name = Path(args.labels).stem
                 output_name_base = f"{labels_name}_roc_curves"
+            elif args.plot_type == 'box_plots':
+                labels_name = Path(args.labels).stem
+                output_name_base = f"{labels_name}_box_plots"
 
         # Generate plots based on type
         if args.plot_type in ['dimred']:
@@ -1095,6 +1246,13 @@ def main():
             label_data = load_labels(args.labels)
 
             generate_roc_curves(label_data, args, output_dir, output_name_base)
+
+        elif args.plot_type in ['box_plots']:
+            # Load labels
+            print(f"Loading labels from: {args.labels}")
+            label_data = load_labels(args.labels)
+
+            generate_box_plots(label_data, args, output_dir, output_name_base)
 
         print("All plots generated successfully!")
 
