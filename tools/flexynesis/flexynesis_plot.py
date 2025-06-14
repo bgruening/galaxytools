@@ -18,8 +18,8 @@ from flexynesis import (
     plot_dim_reduced,
     plot_hazard_ratios,
     plot_kaplan_meier_curves,
-    plot_scatter,
     plot_pr_curves,
+    plot_scatter
 )
 
 
