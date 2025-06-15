@@ -978,8 +978,8 @@ def main():
 
     # Plot type
     parser.add_argument("--plot_type", type=str, required=True,
-                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves', 'box_plots'],
-                        help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards analysis, 'scatter' for scatter plots, 'concordance_heatmap' for label concordance heatmaps, 'pr_curves' for precision-recall curves, 'roc_curves' for ROC curves, or 'box_plots' for box plots.")
+                        choices=['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curve', 'roc_curve', 'box_plot'],
+                        help="Type of plot to generate: 'dimred' for dimensionality reduction, 'kaplan_meier' for survival analysis, 'cox' for Cox proportional hazards analysis, 'scatter' for scatter plots, 'concordance_heatmap' for label concordance heatmaps, 'pr_curve' for precision-recall curves, 'roc_curve' for ROC curves, or 'box_plot' for box plots.")
 
     # Arguments for dimensionality reduction
     parser.add_argument("--embeddings", type=str,
@@ -1035,8 +1035,8 @@ def main():
         # validate plot type
         if not args.plot_type:
             raise ValueError("Please specify a plot type using --plot_type")
-        if args.plot_type not in ['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves', 'box_plots']:
-            raise ValueError(f"Invalid plot type: {args.plot_type}. Must be one of: 'dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curves', 'roc_curves', 'box_plots'")
+        if args.plot_type not in ['dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curve', 'roc_curve', 'box_plot']:
+            raise ValueError(f"Invalid plot type: {args.plot_type}. Must be one of: 'dimred', 'kaplan_meier', 'cox', 'scatter', 'concordance_heatmap', 'pr_curve', 'roc_curve', 'box_plot'")
 
         # Validate plot type requirements
         if args.plot_type in ['dimred']:
@@ -1115,7 +1115,7 @@ def main():
             if not os.path.isfile(args.labels):
                 raise FileNotFoundError(f"Labels file not found: {args.labels}")
 
-        if args.plot_type in ['pr_curves']:
+        if args.plot_type in ['pr_curve']:
             if not args.labels:
                 raise ValueError("--labels is required for precision-recall curves")
             if not args.target_value:
@@ -1123,7 +1123,7 @@ def main():
             if not os.path.isfile(args.labels):
                 raise FileNotFoundError(f"Labels file not found: {args.labels}")
 
-        if args.plot_type in ['roc_curves']:
+        if args.plot_type in ['roc_curve']:
             if not args.labels:
                 raise ValueError("--labels is required for ROC curves")
             if not args.target_value:
@@ -1131,7 +1131,7 @@ def main():
             if not os.path.isfile(args.labels):
                 raise FileNotFoundError(f"Labels file not found: {args.labels}")
 
-        if args.plot_type in ['box_plots']:
+        if args.plot_type in ['box_plot']:
             if not args.labels:
                 raise ValueError("--labels is required for box plots")
             if not args.target_value:
@@ -1167,15 +1167,15 @@ def main():
             elif args.plot_type == 'concordance_heatmap':
                 labels_name = Path(args.labels).stem
                 output_name_base = f"{labels_name}_concordance"
-            elif args.plot_type == 'pr_curves':
+            elif args.plot_type == 'pr_curve':
                 labels_name = Path(args.labels).stem
                 output_name_base = f"{labels_name}_pr_curves"
-            elif args.plot_type == 'roc_curves':
+            elif args.plot_type == 'roc_curve':
                 labels_name = Path(args.labels).stem
                 output_name_base = f"{labels_name}_roc_curves"
-            elif args.plot_type == 'box_plots':
+            elif args.plot_type == 'box_plot':
                 labels_name = Path(args.labels).stem
-                output_name_base = f"{labels_name}_box_plots"
+                output_name_base = f"{labels_name}_box_plot"
 
         # Generate plots based on type
         if args.plot_type in ['dimred']:
@@ -1233,21 +1233,21 @@ def main():
 
             generate_label_concordance_heatmap(label_data, args, output_dir, output_name_base)
 
-        elif args.plot_type in ['pr_curves']:
+        elif args.plot_type in ['pr_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
             label_data = load_labels(args.labels)
 
             generate_pr_curves(label_data, args, output_dir, output_name_base)
 
-        elif args.plot_type in ['roc_curves']:
+        elif args.plot_type in ['roc_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
             label_data = load_labels(args.labels)
 
             generate_roc_curves(label_data, args, output_dir, output_name_base)
 
-        elif args.plot_type in ['box_plots']:
+        elif args.plot_type in ['box_plot']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
             label_data = load_labels(args.labels)
