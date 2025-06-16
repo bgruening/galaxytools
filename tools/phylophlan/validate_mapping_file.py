@@ -1,5 +1,5 @@
-import sys
 import string
+import sys
 
 print("Validating --maas mapping file ...")
 allowed = set(string.ascii_letters + string.digits + '._-')
