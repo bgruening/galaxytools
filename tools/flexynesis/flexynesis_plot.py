@@ -44,7 +44,7 @@ def load_embeddings(embeddings_path):
         raise ValueError(f"Error loading embeddings from {embeddings_path}: {e}") from e
 
 
-def load_labels(labels_input, plot_type=None):
+def load_labels(labels_input):
     """Load predicted labels from flexynesis"""
     try:
         # Determine file extension
@@ -1181,7 +1181,7 @@ def main():
         if args.plot_type in ['dimred']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels, plot_type='dimred')
+            label_data = load_labels(args.labels)
             # Load embeddings data
             print(f"Loading embeddings from: {args.embeddings}")
             embeddings, sample_names = load_embeddings(args.embeddings)
