@@ -746,7 +746,7 @@ def generate_roc_curves(labels, args, output_dir, output_name_base):
 
         # If most probabilities are NaN, this is likely a regression problem
         if non_na_probs < len(target_labels) * 0.1:  # Less than 10% valid probabilities
-            print("  Detected regression problem - precision-recall curves not applicable")
+            print("  Detected regression problem - ROC curves not applicable")
             print(f"  Skipping '{target_value}' (use regression evaluation metrics instead)")
             continue
 

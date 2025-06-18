@@ -95,6 +95,106 @@
     <token name="@PLOT_CONFIG@"><![CDATA[
 label_data = load_labels('inputs/$plot_conditional.labels.element_identifier.$plot_conditional.labels.ext')
     ]]></token>
+    <token name="@PR_ROC_COMMON@"><![CDATA[
+@PLOT_CONFIG@
+
+# Check if this is a regression problem (no class probabilities)
+non_na_probs = label_data['probability'].notna().sum()
+
+print(f"  Non-NaN probabilities: {non_na_probs}/{len(label_data)}")
+
+# If most probabilities are NaN, this is likely a regression problem
+if non_na_probs < len(label_data) * 0.1:  # Less than 10% valid probabilities
+    raise ValueError("  Detected regression problem - precision-recall curves not applicable")
+
+# Debug: Check data quality
+total_rows = len(label_data)
+missing_labels = label_data['known_label'].isna().sum()
+missing_probs = label_data['probability'].isna().sum()
+unique_samples = label_data['sample_id'].nunique()
+unique_classes = label_data['class_label'].nunique()
+
+print(f"  Data summary: {total_rows} total rows, {unique_samples} unique samples, {unique_classes} unique classes")
+print(f"  Missing data: {missing_labels} missing known_label, {missing_probs} missing probability")
+
+if missing_labels > 0:
+    print(f"  Warning: Found {missing_labels} missing known_label values")
+    missing_samples = label_data[label_data['known_label'].isna()]['sample_id'].unique()[:5]
+    print(f"  Sample IDs with missing known_label: {list(missing_samples)}")
+
+    # Remove rows with missing known_label
+    label_data = label_data.dropna(subset=['known_label'])
+    if label_data.empty:
+        raise ValueError("Error: No valid known_label data remaining")
+
+# 1. Pivot to wide format
+prob_df = label_data.pivot(index='sample_id', columns='class_label', values='probability')
+
+print(f"  After pivot: {prob_df.shape[0]} samples x {prob_df.shape[1]} classes")
+print(f"  Class columns: {list(prob_df.columns)}")
+
+# Check for NaN values in probability data
+nan_counts = prob_df.isna().sum()
+if nan_counts.any():
+    print(f"  NaN counts per class: {dict(nan_counts)}")
+    print(f"  Samples with any NaN: {prob_df.isna().any(axis=1).sum()}/{len(prob_df)}")
+
+    # Drop only rows where ALL probabilities are NaN
+    all_nan_rows = prob_df.isna().all(axis=1)
+    if all_nan_rows.any():
+        print(f"  Dropping {all_nan_rows.sum()} samples with all NaN probabilities")
+        prob_df = prob_df[~all_nan_rows]
+
+    remaining_nans = prob_df.isna().sum().sum()
+    if remaining_nans > 0:
+        print(f"  Warning: {remaining_nans} individual NaN values remain - filling with 0")
+        prob_df = prob_df.fillna(0)
+
+    if prob_df.empty:
+        raise ValueError(f"  Error: No valid probability data remaining for")
+
+# 2. Get true labels
+true_labels_df = label_data.drop_duplicates('sample_id')[['sample_id', 'known_label']].set_index('sample_id')
+
+# 3. Align indices - only keep samples that exist in both datasets
+common_indices = prob_df.index.intersection(true_labels_df.index)
+if len(common_indices) == 0:
+    raise ValueError(f"  Error: No common sample_ids between probability and true label data")
+
+print(f"  Found {len(common_indices)} samples with both probability and true label data")
+
+# Filter both datasets to common indices
+prob_df_aligned = prob_df.loc[common_indices]
+y_true = true_labels_df.loc[common_indices]['known_label']
+
+# 4. Final check for NaN values
+if y_true.isna().any():
+    raise ValueError(f"  Error: True labels still contain NaN after alignment")
+
+if prob_df_aligned.isna().any().any():
+    raise ValueError(f"  Error: Probability data still contains NaN after alignment")
+
+# 5. Convert categorical labels to integer labels
+# Create a mapping from class names to integers
+class_names = list(prob_df_aligned.columns)
+class_to_int = {class_name: i for i, class_name in enumerate(class_names)}
+
+print(f"  Class mapping: {class_to_int}")
+
+# Convert true labels to integers
+y_true_np = y_true.map(class_to_int).to_numpy()
+y_probs_np = prob_df_aligned.to_numpy()
+
+print(f"  Data shape: y_true={y_true_np.shape}, y_probs={y_probs_np.shape}")
+print(f"  Unique true labels (integers): {set(y_true_np)}")
+print(f"  Class labels (columns): {class_names}")
+print(f"  Label distribution: {dict(zip(*np.unique(y_true_np, return_counts=True)))}")
+
+# Check for any unmapped labels (will be NaN)
+if pd.isna(y_true_np).any():
+    raise ValueError("  Error: Some true labels could not be mapped to class columns")
+
+    ]]></token>
     <xml name="citations">
         <citations>
             <citation type="doi">10.1101/2024.07.16.603606</citation>
