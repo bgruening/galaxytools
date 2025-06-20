@@ -4,158 +4,105 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements"/>
-    <required_files>
-        <include path="fetch_cbioportal_data.py" />
-    </required_files>
     <command detect_errors="exit_code"><![CDATA[
         @CHECK_NON_COMMERCIAL_USE@
-        mkdir -p output &&
-        python $__tool_directory__/fetch_cbioportal_data.py
-            --study_id '$study_id'
-            --data_types '$data_types'
-            --mapped_files '$mapped_files'
-            --split_ratio $split_ratio
-            --output_dir output
+        mkdir -p output/data output/meta &&
+        python $cbio_config &&
+        cat cbioportal_data.txt &&
+        mv $str($study_id)/data* output/data/ &&
+        mv $str($study_id)/meta* output/meta/ &&
+        mv $str($study_id)/*.htm output/cBioPortal_validation_report.html &&
+        cd output/data &&
+        for file in *; do if [[ -f \$file ]]; then mv "\$file" "\${file%.txt}.tabular"; fi; done
     ]]></command>
+    <configfiles>
+        <configfile name="cbio_config"><![CDATA[
+from flexynesis.utils import CBioPortalData
+from contextlib import redirect_stdout
+
+cbioportal = CBioPortalData(study_id='$study_id')
+cbioportal.get_cbioportal_data(study_id='$study_id')
+
+output_path = f"cbioportal_data.txt"
+with open(output_path, 'w') as f:
+    with redirect_stdout(f):
+        cbioportal.get_cbioportal_data('lgg_tcga')
+        ]]></configfile>
+    </configfiles>
     <inputs>
         <expand macro="commercial_use"/>
         <param name="study_id" type="text" optional="false" label="cBioPortal study ID" help="The ID of the study to fetch from cBioPortal (e.g., 'brca_tcga').">
             <expand macro="sanitizer"/>
         </param>
-        <param name="data_types" type="text" value="clin," optional="false" label="Data types" help="Comma-separated list of data types to fetch (e.g., 'clin,mut,gex, ...').">
-            <expand macro="sanitizer"/>
-        </param>
-        <param name="mapped_files" type="text" value="data_clinical_patient.txt," optional="false" label="Mapped files" help="Comma-separated list of .txt files to map to data types (e.g., 'data_clinical_sample.txt,data_mutations.txt,data_custom.txt, ...'). Must match the number and order of data types.">
-            <expand macro="sanitizer"/>
-        </param>
-        <param name="split_ratio" type="float" value="0.7" min="0.0" max="1.0" label="Training/Test split ratio" help="Proportion of data to use for training (e.g., 0.7 means 70% train, 30% test)."/>
     </inputs>
     <outputs>
-        <collection name="train_out" type="list" label="${tool.name} on ${study_id}: train datasets">
-            <discover_datasets pattern="__name_and_ext__" format="csv" directory="output/train"/>
+        <collection name="data" type="list" label="${tool.name} on ${study_id}: datasets">
+            <discover_datasets pattern="__name_and_ext__" format="tabular" directory="output/data"/>
         </collection>
-        <collection name="test_out" type="list" label="${tool.name} on ${study_id}: test datasets">
-            <discover_datasets pattern="__name_and_ext__" format="csv" directory="output/test"/>
+        <collection name="meta" type="list" label="${tool.name} on ${study_id}: metadata">
+            <discover_datasets pattern="__name_and_ext__" format="tabular" directory="output/meta"/>
         </collection>
+        <data name="report" format="html" label="${tool.name} on ${study_id}: cBioPortal validation report" from_work_dir="output/cBioPortal_validation_report.html"/>
     </outputs>
     <tests>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="non_commercial_use" value="True"/>
             <param name="study_id" value="lgg_tcga"/>
-            <param name="data_types" value="clin,mut"/>
-            <param name="mapped_files" value="data_clinical_patient.txt,data_mutations.txt"/>
-            <param name="split_ratio" value="0.7"/>
-            <output_collection name="train_out" type="list">
-                <element name="clin">
+            <output_collection name="data" type="list" count="17">
+                <element name="data_clinical_patient">
                     <assert_contents>
                         <has_text_matching expression="PATIENT_ID"/>
-                        <has_n_lines n="361"/>
+                        <has_n_lines n="520"/>
                     </assert_contents>
                 </element>
-                <element name="mut">
+                <element name="data_cna">
                     <assert_contents>
                         <has_text_matching expression="Hugo_Symbol"/>
-                        <has_n_lines n="5963"/>
+                        <has_n_lines n="24777"/>
                     </assert_contents>
                 </element>
             </output_collection>
-            <output_collection name="test_out" type="list" count="2">
-                <element name="clin">
+            <output_collection name="meta" type="list" count="18">
+                <element name="meta_clinical_patient">
                     <assert_contents>
-                        <has_text_matching expression="PATIENT_ID"/>
-                        <has_n_lines n="156"/>
+                        <has_text_matching expression="cancer_study_identifier: lgg_tcga"/>
+                        <has_n_lines n="4"/>
                     </assert_contents>
                 </element>
-                <element name="mut">
+                <element name="meta_cna">
                     <assert_contents>
-                        <has_text_matching expression="Hugo_Symbol"/>
-                        <has_n_lines n="5963"/>
-                    </assert_contents>
-                </element>
-            </output_collection>
-        </test>
-        <test expect_num_outputs="2">
-            <param name="non_commercial_use" value="True"/>
-            <param name="study_id" value="lgg_tcga"/>
-            <param name="data_types" value="clin,mut,cna"/>
-            <param name="mapped_files" value="data_clinical_patient.txt,data_mutations.txt,data_cna.txt"/>
-            <param name="split_ratio" value="0.8"/>
-            <output_collection name="train_out" type="list">
-                <element name="clin">
-                    <assert_contents>
-                        <has_text_matching expression="PATIENT_ID"/>
-                        <has_n_lines n="413"/>
-                    </assert_contents>
-                </element>
-                <element name="cna">
-                    <assert_contents>
-                        <has_text_matching expression="Hugo_Symbol"/>
-                        <has_n_lines n="24766"/>
-                    </assert_contents>
-                </element>
-                <element name="mut">
-                    <assert_contents>
-                        <has_text_matching expression="Hugo_Symbol"/>
-                        <has_n_lines n="5963"/>
+                        <has_text_matching expression="data_filename: data_cna.txt"/>
+                        <has_n_lines n="8"/>
                     </assert_contents>
                 </element>
             </output_collection>
-            <output_collection name="test_out" type="list" count="3">
-                <element name="clin">
-                    <assert_contents>
-                        <has_text_matching expression="PATIENT_ID"/>
-                        <has_n_lines n="104"/>
-                    </assert_contents>
-                </element>
-                <element name="cna">
-                    <assert_contents>
-                        <has_text_matching expression="Hugo_Symbol"/>
-                        <has_n_lines n="24766"/>
-                    </assert_contents>
-                </element>
-                <element name="mut">
-                    <assert_contents>
-                        <has_text_matching expression="Hugo_Symbol"/>
-                        <has_n_lines n="5963"/>
-                    </assert_contents>
-                </element>
-            </output_collection>
+            <output name="report">
+                <assert_contents>
+                    <has_text_matching expression="cBioPortal validation report"/>
+                </assert_contents>
+            </output>
         </test>
     </tests><help><![CDATA[
 @COMMON_HELP@
 
 **Flexynesis cBioPortal import**
 
-This tool fetches data from cBioPortal using the Flexynesis `CBioPortalData` class and prepares it for use with the Flexynesis Galaxy tool. It downloads a specified study, extracts the requested data types, splits them into training and test sets, and outputs them as CSV files compatible with Flexynesis.
+This tool fetches data from cBioPortal using the Flexynesis `CBioPortalData`.
 
 **Inputs**
 
 - **cBioPortal study ID**: The identifier of the study to fetch (e.g., `brca_tcga`, `lgg_tcga`). Find study IDs on the cBioPortal.
-- **Data types to fetch**: A comma-separated list of data types to include in the output.
-- **Mapped files**: A comma-separated list of `.txt` files to fetch. Must match the number and order of selected data types (e.g., `data_clinical_sample.txt,data_mutations.txt,data_custom.txt`).
-- **Training/Test split ratio**: The proportion of data for training (e.g., 0.7 means 70% train, 30% test).
 
 **Outputs**
 
-Two collections of training and test datasets including clinical and different omics modalities.
-
-These datasets can be used as inputs to the Flexynesis Galaxy tool for multi-omics integration.
+Two collections of data and metadata datasets including alongside an html report.
 
 .. class:: warningmark
 
-**Note:** Ensure the study ID is valid and the selected data types (or mapped files) are available in the study archive.
-
-.. class:: warningmark
-
-**Note:** Clinical data (`clin`) is mandatory for splitting.
-
-.. class:: warningmark
-
-**Note:** You can query the available omics data types in the cBioPortal study by using the **Search available cBioPortal data** module of `Flexynesis utils`_ tool.
+**Note:** Ensure the study ID is valid.
 
 .. _Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
 .. _copyright holders: https://github.com/BIMSBbioinfo/flexynesis
-.. _Flexynesis utils: https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu%2Frepos%2Fbgruening%2Fflexynesis_utils%2Fflexynesis_utils%2F0.2.19%2Bgalaxy0&version=latest
 ]]></help>
     <expand macro="creator">
         <person givenName="Polina" familyName="Polunina" email="polunina@informatik.uni-freiburg.de"/>
