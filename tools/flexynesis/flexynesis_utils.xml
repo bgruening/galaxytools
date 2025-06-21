@@ -1,0 +1,396 @@
+<tool id="flexynesis_utils" name="Flexynesis utils" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Utility functions for Flexynesis</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <required_files>
+        <include path="flexynesis_plot.py" />
+        <include path="flexynesis_utils.py" />
+    </required_files>
+    <command detect_errors="exit_code"><![CDATA[
+        @CHECK_NON_COMMERCIAL_USE@
+        mkdir -p inputs/ output/ &&
+        #if $utils_conditional.util != "compute_ami_ari" and $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
+            ln -s '$utils_conditional.X' 'inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext' &&
+        #end if
+        #if $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
+            ln -s '$utils_conditional.labels' 'inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext' &&
+        cat '$flexynesis_utils_config' &&
+        python '$flexynesis_utils_config'
+        #end if
+        #if $utils_conditional.util == "split_data":
+            ln -s '$utils_conditional.clin' inputs/clin.csv &&
+            #set $omics_names = []
+            #for $omics_file in $utils_conditional.omics:
+                ln -s '$omics_file' 'inputs/${omics_file.element_identifier}.${omics_file.ext}' &&
+                #silent $omics_names.append('inputs/' + str($omics_file.element_identifier) + '.' + str($omics_file.ext))
+            #end for
+
+            python '$__tool_directory__/flexynesis_utils.py'
+                --util split
+                --clin inputs/clin.csv
+                --omics '$(",".join($omics_names))'
+                --split $utils_conditional.split
+                --out output
+        #end if
+        #if $utils_conditional.util == "binarize":
+            ln -s '$utils_conditional.mutation' 'inputs/${utils_conditional.mutation.element_identifier}.${utils_conditional.mutation.ext}' &&
+            python '$__tool_directory__/flexynesis_utils.py'
+                --util binarize
+                --mutation 'inputs/${utils_conditional.mutation.element_identifier}.${utils_conditional.mutation.ext}'
+                --gene_idx $utils_conditional.gene_idx
+                --sample_idx $utils_conditional.sample_idx
+                --out output
+        #end if
+    ]]></command>
+    <configfiles>
+        <configfile name="flexynesis_utils_config"><![CDATA[
+import sys
+sys.path.append('$__tool_directory__/')
+
+import numpy as np
+import pandas as pd
+from flexynesis import (
+    louvain_clustering,
+    get_optimal_clusters,
+    compute_ami_ari,
+    k_means_clustering
+)
+
+from flexynesis_plot import (
+    load_omics
+)
+
+#if $utils_conditional.util == "louvain_clustering":
+label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
+X = load_omics('inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext')
+
+cluster_labels, G, partition = louvain_clustering(
+                                #if $utils_conditional.threshold != "":
+                                threshold=$utils_conditional.threshold,
+                                #end if
+                                #if $utils_conditional.k != "":
+                                k=$utils_conditional.k,
+                                #end if
+                                X=X)
+cluster_df = pd.DataFrame(data=cluster_labels, index=X.index, columns=['louvain_cluster'])
+label_data = label_data.merge(cluster_df[['louvain_cluster']], left_index=True, right_index=True, how='left')
+
+output_path = f"output/clustered_labels.csv"
+label_data.to_csv(output_path, index=True)
+
+#else if $utils_conditional.util == "get_optimal_clusters":
+label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
+X = load_omics('inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext')
+
+kmeans_cluster_labels, optimal_k, silhouette_scores = get_optimal_clusters(
+                                                        data=X,
+                                                        min_k=$utils_conditional.min_k,
+                                                        max_k=$utils_conditional.max_k)
+
+print(f"Optimal number of clusters: {optimal_k}\n")
+print(f"Silhouette scores: \n{silhouette_scores}")
+
+cluster_df = pd.DataFrame(data=kmeans_cluster_labels, index=X.index, columns=['optimal_kmeans_cluster'])
+label_data = label_data.merge(cluster_df[['optimal_kmeans_cluster']], left_index=True, right_index=True, how='left')
+
+output_path = f"output/optimal_clusters_labels.csv"
+label_data.to_csv(output_path, index=True)
+
+#else if $utils_conditional.util == "k_means_clustering":
+label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
+X = load_omics('inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext')
+
+cluster_labels, kmeans = k_means_clustering(
+                            data=X,
+                            k=$utils_conditional.k)
+
+print(f"{kmeans}")
+cluster_df = pd.DataFrame(data=cluster_labels, index=X.index, columns=['kmeans_cluster'])
+label_data = label_data.merge(cluster_df[['kmeans_cluster']], left_index=True, right_index=True, how='left')
+
+output_path = f"output/kmeans_labels.csv"
+label_data.to_csv(output_path, index=True)
+
+#else if $utils_conditional.util == "compute_ami_ari":
+label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
+
+true_label = label_data.columns[$utils_conditional.true_label-2]
+predicted_label = label_data.columns[$utils_conditional.predicted_label-2]
+
+true_labels = label_data[true_label]
+predicted_labels = label_data[predicted_label]
+
+ami_ari = compute_ami_ari(labels1=true_labels, labels2=predicted_labels)
+
+print(f"AMI: {ami_ari['ami']}")
+print(f"ARI: {ami_ari['ari']}")
+
+output_path = f"output/ami_ari.txt"
+with open(output_path, 'w') as f:
+    f.write(f"AMI: {ami_ari['ami']}\n")
+    f.write(f"ARI: {ami_ari['ari']}\n")
+
+#end if
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="commercial_use_param"/>
+        <conditional name="utils_conditional">
+            <param name="util" type="select" label="Flexynesis utils">
+                <option value="louvain_clustering">Louvain Clustering</option>
+                <option value="get_optimal_clusters">Get Optimal Clusters</option>
+                <option value="k_means_clustering">K-Means Clustering</option>
+                <option value="compute_ami_ari">Compute AMI and ARI</option>
+                <option value="split_data">Split data to train and test</option>
+                <option value="binarize">Binarize mutation data</option>
+            </param>
+            <when value="louvain_clustering">
+                <param argument="--X" type="data" format="tabular,csv" label="Matrix" help="Input matrix, (samples, features)"/>
+                <expand macro="plots_common_input"/>
+                <param argument="--threshold" type="float" min="0" optional="true" label="Distance threshold to create an edge between two nodes"/>
+                <param argument="--k" type="integer" min="0" optional="true" label="Number of nearest neighbors to connect for each node"/>
+            </when>
+            <when value="get_optimal_clusters">
+                <param argument="--X" type="data" format="tabular,csv" label="Matrix" help="Input matrix, (samples, features)"/>
+                <expand macro="plots_common_input"/>
+                <param argument="--min_k" type="integer" min="0" value="2" optional="false" label="Minimum number of clusters to try"/>
+                <param argument="--max_k" type="integer" min="0" value="10" optional="false" label="Maximum number of clusters to try"/>
+            </when>
+            <when value="k_means_clustering">
+                <param argument="--X" type="data" format="tabular,csv" label="Matrix" help="Input matrix, (samples, features)"/>
+                <expand macro="plots_common_input"/>
+                <param argument="--k" type="integer" min="0" optional="true" label="The number of clusters to form"/>
+            </when>
+            <when value="compute_ami_ari">
+                <expand macro="plots_common_input"/>
+                    <param name="true_label" type="data_column" data_ref="labels" label="Column name in the labels file to use for the true labels"/>
+                    <param name="predicted_label" type="data_column" data_ref="labels" label="Column name in the labels file to use for the predicted labels"/>
+            </when>
+            <when value="split_data">
+                <param argument="--clin" type="data" format="csv" optional="false" label="Clinical data" help="Samples in rows"/>
+                <param argument="--omics" type="data" format="tabular,csv" optional="false" multiple="true" label="Omics data" help="samples in columns"/>
+                <param argument="--split" type="float" min="0" max="1" value="0.7" label="Training/Test split ratio" help="Proportion of data to use for training (e.g., 0.7 means 70% train, 30% test)"/>
+            </when>
+            <when value="binarize">
+                <param argument="--mutation" type="data" format="tabular,csv" label="Mutation data" help="Mutation data with both genes and samples in rows"/>
+                <param argument="--gene_idx" type="data_column" data_ref="mutation" label="Column in the mutation file with genes"/>
+                <param argument="--sample_idx" type="data_column" data_ref="mutation" label="Column in the mutation file with samples"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="util_out" auto_format="true" from_work_dir="output/*" label="${tool.name} on ${on_string}: ${utils_conditional.util}">
+            <filter>utils_conditional['util'] != "split_data"</filter>
+        </data>
+        <collection name="train_out" type="list" label="${tool.name} on ${on_string}: train datasets">
+            <discover_datasets pattern="__name_and_ext__" format="csv" directory="output/train"/>
+            <filter>utils_conditional['util'] == "split_data"</filter>
+        </collection>
+        <collection name="test_out" type="list" label="${tool.name} on ${on_string}: test datasets">
+            <discover_datasets pattern="__name_and_ext__" format="csv" directory="output/test"/>
+            <filter>utils_conditional['util'] == "split_data"</filter>
+        </collection>
+    </outputs>
+    <tests>
+        <!-- test 1: Louvain clustering -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="louvain_clustering"/>
+                <param name="X" value="embeddings.csv"/>
+                <param name="labels" value="labels_pr.csv"/>
+                <param name="k" value="15"/>
+            </conditional>
+            <output name="util_out">
+                <assert_contents>
+                    <has_text text="sample_id,variable,class_label,probability,known_label,predicted_label,split,louvain_cluster"/>
+                    <has_text text="MB-4818,CLAUDIN_SUBTYPE,LumA,0.8582904,LumB,LumA,test,3.0"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test 2: Get optimal clusters -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="get_optimal_clusters"/>
+                <param name="X" value="embeddings.csv"/>
+                <param name="labels" value="labels_pr.csv"/>
+                <param name="min_k" value="2"/>
+                <param name="max_k" value="10"/>
+            </conditional>
+            <assert_stdout>
+                <has_text text="Optimal number of clusters: 2"/>
+                <has_text text="Silhouette scores: "/>
+            </assert_stdout>
+            <output name="util_out">
+                <assert_contents>
+                    <has_text text="sample_id,variable,class_label,probability,known_label,predicted_label,split,optimal_kmeans_cluster"/>
+                    <has_text text="MB-4818,CLAUDIN_SUBTYPE,LumA,0.8582904,LumB,LumA,test,0.0"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test 3: K-Means clustering -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="k_means_clustering"/>
+                <param name="X" value="embeddings.csv"/>
+                <param name="labels" value="labels_pr.csv"/>
+                <param name="k" value="2"/>
+            </conditional>
+            <assert_stdout>
+                <has_text text="KMeans(n_clusters=2, random_state=42)"/>
+            </assert_stdout>
+            <output name="util_out">
+                <assert_contents>
+                    <has_text text="sample_id,variable,class_label,probability,known_label,predicted_label,split,kmeans_cluster"/>
+                    <has_text text="MB-4818,CLAUDIN_SUBTYPE,LumA,0.8582904,LumB,LumA,test,0.0"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test 4: Compute AMI and ARI -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="compute_ami_ari"/>
+                <param name="labels" value="labels.csv"/>
+                <param name="true_label" value="5"/>
+                <param name="predicted_label" value="6"/>
+            </conditional>
+            <assert_stdout>
+                <has_text_matching expression="AMI: 0.5108[0-9]+"/>
+                <has_text_matching expression="ARI: 0.5258[0-9]+"/>
+            </assert_stdout>
+            <output name="util_out">
+                <assert_contents>
+                    <has_text_matching expression="AMI: 0.5108[0-9]+"/>
+                    <has_text_matching expression="ARI: 0.5258[0-9]+"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test 5: Split data to train and test -->
+        <test expect_num_outputs="2">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="split_data"/>
+                <param name="clin" value="train/clin"/>
+                <param name="omics" value="train/cnv,train/gex"/>
+                <param name="split" value="0.7"/>
+            </conditional>
+            <output_collection name="train_out" type="list" count="3">
+                <element name="clin">
+                    <assert_contents>
+                        <has_text_matching expression="sample"/>
+                        <has_n_lines n="645"/>
+                    </assert_contents>
+                </element>
+                <element name="cnv">
+                    <assert_contents>
+                        <has_text_matching expression="gene"/>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="gex">
+                    <assert_contents>
+                        <has_text_matching expression="gene"/>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="test_out" type="list" count="3">
+                <element name="clin">
+                    <assert_contents>
+                        <has_text_matching expression="sample"/>
+                        <has_n_lines n="277"/>
+                    </assert_contents>
+                </element>
+                <element name="cnv">
+                    <assert_contents>
+                        <has_text_matching expression="gene"/>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="gex">
+                    <assert_contents>
+                        <has_text_matching expression="gene"/>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 6: Binarize mutation data -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="binarize"/>
+                <param name="mutation" value="mut.tabular"/>
+                <param name="gene_idx" value="1"/>
+                <param name="sample_idx" value="17"/>
+            </conditional>
+            <output name="util_out">
+                <assert_contents>
+                    <has_n_lines n="1611"/>
+                    <has_text text="Hugo_Symbol"/>
+                    <has_text text="AADACL2,0.0,0.0"/>
+                    <has_text text="ABCB1,0.0,0.0,0.0,1.0"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+@COMMON_HELP@
+
+Flexynesis Utils provides a collection of clustering and evaluation utilities for multi-omics data analysis. This tool offers four main functionalities:
+
+1. **Louvain Clustering**: Community detection clustering algorithm that partitions data into clusters based on network modularity optimization
+2. **Get Optimal Clusters**: Determines the optimal number of clusters using K-means clustering with silhouette score evaluation
+3. **K-Means Clustering**: Standard K-means clustering algorithm for partitioning data into k clusters
+4. **Compute AMI and ARI**: Calculates Adjusted Mutual Information (AMI) and Adjusted Rand Index (ARI) to evaluate clustering performance
+5. **Split data to train and test**: Splits multi-omics data into training and testing sets based on a specified ratio
+6. **Binarize mutation data**: Converts mutation data into a binary format, indicating presence or absence of mutations for each gene in each sample
+
+**Louvain Clustering**
+    Uses the Louvain algorithm for community detection in networks. This method builds a graph from the input data and finds communities (clusters) by optimizing modularity.
+
+    Outputs Original labels file with added 'louvain_cluster' column
+
+**Get Optimal Clusters**
+    Performs K-means clustering for a range of k values and determines the optimal number of clusters using silhouette analysis.
+
+    Outputs Original labels file with added 'optimal_kmeans_cluster' column
+    Console output shows the optimal k value and silhouette scores for each k.
+
+**K-Means Clustering**
+    Standard K-means clustering algorithm that partitions data into k clusters by minimizing within-cluster sum of squares.
+
+    Outputs Original labels file with added 'kmeans_cluster' column
+
+**Compute AMI and ARI**
+    Evaluates clustering performance by comparing true labels with predicted labels using two standard metrics:
+    - *AMI (Adjusted Mutual Information)*: Measures mutual information between clusterings, adjusted for chance
+    - *ARI (Adjusted Rand Index)*: Measures similarity between clusterings, adjusted for chance
+
+    Outputs Text file containing AMI and ARI scores
+    Both metrics range from 0 to 1, where 1 indicates perfect agreement
+
+**Search cBioPortal**
+    Fetches available data files from cBioPortal for a specified study ID. This allows users to explore and retrieve data from cBioPortal studies.
+    Outputs a text file listing available data files for the specified study ID
+
+**Split data to train and test**
+    Splits multi-omics data into training and testing sets based on a specified ratio. This is useful for preparing datasets for machine learning tasks.
+    You can use `Flexynesis cBioPortal import` to fetch data from cBioPortal and then use this tool to split the data into training and testing sets.
+
+**Binarize mutation data**
+    Converts mutation data into a binary format, indicating presence or absence of mutations for each gene in each sample. This is useful for preparing mutation data for analysis.
+    The output will be a tabular file with genes as rows and samples as columns, where each cell indicates whether a mutation is present (1) or absent (0).
+
+
+.. _Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
+.. _copyright holders: https://github.com/BIMSBbioinfo/flexynesis
+    ]]></help>
+    <expand macro="creator"/>
+    <expand macro="citations"/>
+</tool>
