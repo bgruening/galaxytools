@@ -22,10 +22,13 @@ def read_data(data_input, index=False):
         raise ValueError(f"Error loading data from {data_input}: {e}") from e
 
 
-def binarize_mutations(df, gene_idx=0, sample_idx=1):
+def binarize_mutations(df, gene_idx=1, sample_idx=2):
     """
     Binarize mutation data by creating a matrix of gene x sample with 1/0 values.
     """
+    # galaxy index is 1-based, convert to zero-based
+    gene_idx -= 1
+    sample_idx -= 1
     # check idx
     if gene_idx >= len(df.columns) or sample_idx >= len(df.columns):
         raise ValueError(f"Column indices out of bounds. DataFrame has {len(df.columns)} columns, "

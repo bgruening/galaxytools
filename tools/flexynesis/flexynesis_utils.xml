@@ -11,10 +11,10 @@
     <command detect_errors="exit_code"><![CDATA[
         @CHECK_NON_COMMERCIAL_USE@
         mkdir -p inputs/ output/ &&
-        #if $utils_conditional.util != "compute_ami_ari" and $utils_conditional.util != "split_data":
+        #if $utils_conditional.util != "compute_ami_ari" and $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
             ln -s '$utils_conditional.X' 'inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext' &&
         #end if
-        #if $utils_conditional.util != "split_data":
+        #if $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
             ln -s '$utils_conditional.labels' 'inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext' &&
         cat $flexynesis_utils_config &&
         python $flexynesis_utils_config
@@ -28,9 +28,19 @@
             #end for
 
             python $__tool_directory__/flexynesis_utils.py
+                --util split
                 --clin inputs/clin.csv
                 --omics '$(",".join($omics_names))'
                 --split $utils_conditional.split
+                --out output
+        #end if
+        #if $utils_conditional.util == "binarize":
+            ln -s '$utils_conditional.mutation' 'inputs/${utils_conditional.mutation.element_identifier}.${utils_conditional.mutation.ext}' &&
+            python $__tool_directory__/flexynesis_utils.py
+                --util binarize
+                --mutation 'inputs/${utils_conditional.mutation.element_identifier}.${utils_conditional.mutation.ext}'
+                --gene_idx $utils_conditional.gene_idx
+                --sample_idx $utils_conditional.sample_idx
                 --out output
         #end if
     ]]></command>
@@ -134,6 +144,7 @@ with open(output_path, 'w') as f:
                 <option value="k_means_clustering">K-Means Clustering</option>
                 <option value="compute_ami_ari">Compute AMI and ARI</option>
                 <option value="split_data">Split data to train and test</option>
+                <option value="binarize">Binarize mutation data</option>
             </param>
             <when value="louvain_clustering">
                 <param argument="--X" type="data" format="tabular,csv" label="Matrix" help="Input matrix, (samples, features)"/>
@@ -161,6 +172,11 @@ with open(output_path, 'w') as f:
                 <param argument="--clin" type="data" format="csv" optional="false" label="Clinical data" help="Samples in rows"/>
                 <param argument="--omics" type="data" format="tabular,csv" optional="false" multiple="true" label="Omics data" help="samples in columns"/>
                 <param argument="--split" type="float" min="0" max="1" value="0.7" label="Training/Test split ratio" help="Proportion of data to use for training (e.g., 0.7 means 70% train, 30% test)"/>
+            </when>
+            <when value="binarize">
+                <param argument="--mutation" type="data" format="tabular,csv" label="Mutation data" help="Mutation data with both genes and samples in rows"/>
+                <param argument="--gene_idx" type="data_column" data_ref="mutation" label="Column in the mutation file with genes"/>
+                <param argument="--sample_idx" type="data_column" data_ref="mutation" label="Column in the mutation file with samples"/>
             </when>
         </conditional>
     </inputs>
@@ -299,6 +315,23 @@ with open(output_path, 'w') as f:
                 </element>
             </output_collection>
         </test>
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="binarize"/>
+                <param name="mutation" value="mut.tabular"/>
+                <param name="gene_idx" value="1"/>
+                <param name="sample_idx" value="17"/>
+            </conditional>
+            <output name="util_out">
+                <assert_contents>
+                    <has_n_lines n="1611"/>
+                    <has_text text="Hugo_Symbol"/>
+                    <has_text text="AADACL2,0.0,0.0"/>
+                    <has_text text="ABCB1,0.0,0.0,0.0,1.0"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help><![CDATA[
 @COMMON_HELP@
@@ -310,6 +343,7 @@ Flexynesis Utils provides a collection of clustering and evaluation utilities fo
 3. **K-Means Clustering**: Standard K-means clustering algorithm for partitioning data into k clusters
 4. **Compute AMI and ARI**: Calculates Adjusted Mutual Information (AMI) and Adjusted Rand Index (ARI) to evaluate clustering performance
 5. **Split data to train and test**: Splits multi-omics data into training and testing sets based on a specified ratio
+6. **Binarize mutation data**: Converts mutation data into a binary format, indicating presence or absence of mutations for each gene in each sample
 
 **Louvain Clustering**
     Uses the Louvain algorithm for community detection in networks. This method builds a graph from the input data and finds communities (clusters) by optimizing modularity.
@@ -342,6 +376,10 @@ Flexynesis Utils provides a collection of clustering and evaluation utilities fo
 **Split data to train and test**
     Splits multi-omics data into training and testing sets based on a specified ratio. This is useful for preparing datasets for machine learning tasks.
     You can use `Flexynesis cBioPortal import`_ to fetch data from cBioPortal and then use this tool to split the data into training and testing sets.
+
+**Binarize mutation data**
+    Converts mutation data into a binary format, indicating presence or absence of mutations for each gene in each sample. This is useful for preparing mutation data for analysis.
+    The output will be a tabular file with genes as rows and samples as columns, where each cell indicates whether a mutation is present (1) or absent (0).
 
 
 .. _Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
