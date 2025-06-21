@@ -7,6 +7,56 @@ import sys
 from pathlib import Path
 
 
+def read_data(data_input, index=False):
+    """Load CSV or TSV data file."""
+    try:
+        file_ext = Path(data_input).suffix.lower()
+        sep = ',' if file_ext == '.csv' else '\t'
+        index_col = 0 if index else None
+
+        if file_ext in ['.csv', '.tsv', '.txt', '.tab', '.tabular']:
+            return pd.read_csv(data_input, sep=sep, index_col=index_col)
+        else:
+            raise ValueError(f"Unsupported file extension: {file_ext}")
+    except Exception as e:
+        raise ValueError(f"Error loading data from {data_input}: {e}") from e
+
+
+def binarize_mutations(df, gene_idx=0, sample_idx=1):
+    """
+    Binarize mutation data by creating a matrix of gene x sample with 1/0 values.
+    """
+    # check idx
+    if gene_idx >= len(df.columns) or sample_idx >= len(df.columns):
+        raise ValueError(f"Column indices out of bounds. DataFrame has {len(df.columns)} columns, "
+                         f"but requested indices are {gene_idx} and {sample_idx}")
+    if gene_idx == sample_idx:
+        raise ValueError("Gene and sample column indices must be different")
+
+    # Get column names by index
+    gene_col = df.columns[gene_idx]
+    print(f"Using gene column: {gene_col} (index {gene_idx})")
+    sample_col = df.columns[sample_idx]
+    print(f"Using sample column: {sample_col} (index {sample_idx})")
+
+    # Check if columns contain data
+    if df[gene_col].isna().all():
+        raise ValueError(f"Gene column (index {gene_idx}) contains only NaN values.")
+    if df[sample_col].isna().all():
+        raise ValueError(f"Sample column (index {sample_idx}) contains only NaN values.")
+
+    # Group by gene and sample, count mutations
+    mutation_counts = df.groupby([gene_col, sample_col]).size().reset_index(name='count')
+
+    # Create pivot table
+    mutation_matrix = mutation_counts.pivot(index=gene_col, columns=sample_col, values='count').fillna(0)
+
+    # Binarize: convert any count > 0 to 1
+    mutation_matrix[mutation_matrix > 0] = 1
+
+    return mutation_matrix
+
+
 def make_data_dict(clin_path, omics_paths):
     """Read clinical and omics data files into a dictionary."""
     data = {}
@@ -14,13 +64,7 @@ def make_data_dict(clin_path, omics_paths):
     # Read clinical data
     print(f"Reading clinical data from {clin_path}")
     try:
-        file_ext = Path(clin_path).suffix.lower()
-        if file_ext == '.csv':
-            clin = pd.read_csv(clin_path, index_col=0)
-        elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
-            clin = pd.read_csv(clin_path, sep='\t', index_col=0)
-        else:
-            raise ValueError(f"Unsupported clinical file format: {file_ext}")
+        clin = read_data(clin_path, index=True)
 
         if clin.empty:
             raise ValueError(f"Clinical file {clin_path} is empty")
@@ -34,13 +78,7 @@ def make_data_dict(clin_path, omics_paths):
     for path in omics_paths:
         try:
             name = os.path.splitext(os.path.basename(path))[0]
-            file_ext = Path(path).suffix.lower()
-            if file_ext == '.csv':
-                df = pd.read_csv(path, index_col=0)
-            elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
-                df = pd.read_csv(path, sep='\t', index_col=0)
-            else:
-                raise ValueError(f"Unsupported omics file format: {file_ext}")
+            df = read_data(path, index=True)
             if df.empty:
                 print(f"Warning: Omics file {path} is empty, skipping")
                 continue
@@ -122,43 +160,89 @@ def split_and_save_data(data, ratio=0.7, output_dir='.'):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Flexynesis splitting pipeline')
-    parser.add_argument('--clin', required=True,
+    parser = argparse.ArgumentParser(description='Flexynesis extra utilities')
+
+    parser.add_argument("--util", type=str, required=True,
+                        choices=['split', 'binarize'],
+                        help="Utility function: 'split' for spiting data to train and test, 'binarize' for creating a binarized matrix from a mutation data")
+
+    # Arguments for split
+    parser.add_argument('--clin', required=False,
                         help='Path to clinical data CSV file (samples in rows)')
-    parser.add_argument('--omics', required=True,
+    parser.add_argument('--omics', required=False,
                         help='Comma-separated list of omics CSV files (samples in columns)')
     parser.add_argument('--split', type=float, default=0.7,
                         help='Train split ratio (default: 0.7)')
+
+    # Arguments for binarize
+    parser.add_argument('--mutations', type=str, required=False,
+                        help='Path to mutation data CSV file (samples in rows, genes in columns)')
+    parser.add_argument('--gene_idx', type=int, default=0,
+                        help='Column index for genes in mutation data (default: 0)')
+    parser.add_argument('--sample_idx', type=int, default=1,
+                        help='Column index for samples in mutation data (default: 1)')
+
+    # common arguments
     parser.add_argument('--out', default='.',
                         help='Output directory (default: current directory)')
 
     args = parser.parse_args()
 
     try:
-        # Validate inputs
-        if not os.path.isfile(args.clin):
-            raise FileNotFoundError(f"Clinical file not found: {args.clin}")
+        # validate utility function
+        if not args.util:
+            raise ValueError("Utility function must be specified")
+        if args.util not in ['split', 'binarize']:
+            raise ValueError(f"Invalid utility function: {args.util}")
 
-        # Parse omics files
-        omics_files = [f.strip() for f in args.omics.split(',') if f.strip()]
-        if not omics_files:
-            raise ValueError("At least one omics file must be provided")
+        if args.util == 'split':
+            # Validate inputs
+            if not args.clin:
+                raise ValueError("Clinical data file must be provided")
+            if not args.omics:
+                raise ValueError("At least one omics file must be provided")
+            if not os.path.isfile(args.clin):
+                raise FileNotFoundError(f"Clinical file not found: {args.clin}")
+            # Validate split ratio
+            if not 0 < args.split < 1:
+                raise ValueError(f"Split ratio must be between 0 and 1, got {args.split}")
 
-        # Check omics files exist
-        for f in omics_files:
-            if not os.path.isfile(f):
-                raise FileNotFoundError(f"Omics file not found: {f}")
-
-        # Validate split ratio
-        if not 0 < args.split < 1:
-            raise ValueError(f"Split ratio must be between 0 and 1, got {args.split}")
+        elif args.util == 'binarize':
+            # Validate mutation data file
+            if not args.mutations:
+                raise ValueError("Mutation data file must be provided")
+            if not os.path.isfile(args.mutations):
+                raise FileNotFoundError(f"Mutation data file not found: {args.mutations}")
+            # Validate gene and sample indices
+            if args.gene_idx < 0 or args.sample_idx < 0:
+                raise ValueError("Gene and sample indices must be non-negative integers")
 
         # Create output directory if it doesn't exist
         if not os.path.exists(args.out):
             os.makedirs(args.out)
 
-        data = make_data_dict(args.clin, omics_files)
-        split_and_save_data(data, ratio=args.split, output_dir=args.out)
+        if args.util == 'split':
+            # Parse omics files
+            omics_files = [f.strip() for f in args.omics.split(',') if f.strip()]
+            if not omics_files:
+                raise ValueError("At least one omics file must be provided")
+            # Check omics files exist
+            for f in omics_files:
+                if not os.path.isfile(f):
+                    raise FileNotFoundError(f"Omics file not found: {f}")
+            data = make_data_dict(args.clin, omics_files)
+            split_and_save_data(data, ratio=args.split, output_dir=args.out)
+
+        elif args.util == 'binarize':
+            mutations_df = read_data(args.mutations, index=False)
+            if mutations_df.empty:
+                raise ValueError("Mutation data file is empty")
+
+            binarized_matrix = binarize_mutations(mutations_df, gene_idx=args.gene_idx, sample_idx=args.sample_idx)
+            # Save binarized matrix
+            output_file = os.path.join(args.out, 'binarized_mutations.csv')
+            binarized_matrix.to_csv(output_file)
+            print(f"Binarized mutation matrix saved to {output_file}")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
