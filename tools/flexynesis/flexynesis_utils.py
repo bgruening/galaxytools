@@ -1,10 +1,11 @@
 #!/usr/bin/env python
 
-import os
 import argparse
-import pandas as pd
+import os
 import sys
 from pathlib import Path
+
+import pandas as pd
 
 
 def read_data(data_input, index=False):
