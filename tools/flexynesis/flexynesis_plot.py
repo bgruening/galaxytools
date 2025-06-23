@@ -428,7 +428,10 @@ def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_
     try:
         coxm = build_cox_model(df,
                                duration_col=args.surv_time_var,
-                               event_col=args.surv_event_var)
+                               event_col=args.surv_event_var,
+                               crossval=args.crossval,
+                               n_splits=args.n_splits,
+                               random_state=args.random_state)
         print("Cox model built successfully")
     except Exception as e:
         raise ValueError(f"Error building Cox model: {e}")
@@ -1014,6 +1017,12 @@ def main():
                         help="Comma-separated list of clinical variables to include in Cox model (e.g., 'AGE,SEX,HISTOLOGICAL_DIAGNOSIS,STUDY')")
     parser.add_argument("--top_features", type=int, default=20,
                         help="Number of top important features to include in Cox model. Default is 5")
+    parser.add_argument("--crossval", action='store_true',
+                        help="If True, performs K-fold cross-validation and returns average C-index. Default is False")
+    parser.add_argument("--n_splits", type=int, default=5,
+                        help="Number of folds for cross-validation. Default is 5")
+    parser.add_argument("--random_state", type=int, default=42,
+                        help="Random seed for reproducibility. Default is 42")
 
     # Arguments for scatter plot, heatmap, PR curves, ROC curves, and box plots
     parser.add_argument("--target_value", type=str, default=None,
@@ -1098,6 +1107,12 @@ def main():
                 raise ValueError("--top_features must be a positive integer")
             if not args.event_value:
                 raise ValueError("--event_value is required for Kaplan-Meier plots")
+            if not args.crossval:
+                args.crossval = False
+            if not isinstance(args.n_splits, int) or args.n_splits <= 0:
+                raise ValueError("--n_splits must be a positive integer")
+            if not isinstance(args.random_state, int):
+                raise ValueError("--random_state must be an integer")
 
         if args.plot_type in ['scatter']:
             if not args.labels:
