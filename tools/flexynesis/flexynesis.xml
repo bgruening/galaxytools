@@ -5,6 +5,9 @@
     </macros>
     <expand macro="edam"/>
     <expand macro="requirements"/>
+    <required_files>
+        <include path="flexynesis_plot.py" />
+    </required_files>
     <command detect_errors="exit_code"><![CDATA[
         @CHECK_NON_COMMERCIAL_USE@
         mkdir -p input/test input/train output &&
@@ -15,7 +18,7 @@
             #set $name = str($assay_main.replace(" ", "_"))
             ln -s '$train_omics_main' input/train/${name}.csv &&
             ln -s '$test_omics_main' input/test/${name}.csv &&
-            #set $data_names = [$name]      
+            #set $data_names = [$name]
         #else
             ln -s '$train_omics_main' input/train/main.csv &&
             ln -s '$test_omics_main' input/test/main.csv &&
@@ -47,52 +50,179 @@
                 #end if
             #end if
         #end for
-        flexynesis  
-                    --data_path 'input'
-                    --outdir 'output'
-                    --model_class $model_class
-                    #if str($model_class) == 'GNN':
-                        --gnn_conv_type $gnn_conv_type
-                        --string_organism $string_organism
-                        --string_node_name $string_node_name
+        flexynesis
+            --data_path input
+            --outdir output
+            --model_class $model_class
+            #if str($model_class) == 'GNN':
+                --gnn_conv_type $gnn_conv_type
+                --string_organism $string_organism
+                --string_node_name $string_node_name
+            #end if
+            #if str($training_type.model) == 's_train':
+                #if str($target_variables) != '':
+                    --target_variables $target_variables
+                #end if
+                #if str($surv_event_var) != '':
+                    --surv_event_var $surv_event_var
+                    --surv_time_var $surv_time_var
+                #end if
+            #end if
+            #if str($training_type.model) == 'cm_train':
+                --input_layers $str(",".join($input_layers))
+                --output_layers $str(",".join($output_layers))
+            #end if
+            --fusion_type $fusion_type
+            --hpo_iter $hpo_iter
+            --val_size $val_size
+            --finetuning_samples $finetuning_samples
+            --variance_threshold $variance_threshold
+            --correlation_threshold $correlation_threshold
+            --subsample $subsample
+            --features_min $features_min
+            --features_top_percentile $features_top_percentile
+            --data_types $str(",".join($data_names))
+            --early_stop_patience $early_stop_patience
+            --hpo_patience $hpo_patience
+            $log_transform
+            $use_loss_weighting
+            $use_cv
+            $evaluate_baseline_performance
+            --feature_importance_method $feature_importance_method
+            \${GALAXY_FLEXYNESIS_EXTRA_ARGUMENTS}
+        #if str($plot.plot_embeddings_conditional.plot_embeddings) == 'yes':
+                && python $__tool_directory__/flexynesis_plot.py
+                    --plot_type dimred
+                    --embeddings output/job.embeddings_test.csv
+                    --labels output/job.predicted_labels.csv
+                    --method $plot.plot_embeddings_conditional.method
+                    --target_variables $target_variables
+                    --output_dir plots
+                    --format $plot.plot_embeddings_conditional.format
+                    --dpi $plot.plot_embeddings_conditional.dpi
+        #end if
+        #if str($plot.plot_km_conditional.plot_km) == 'yes':
+            #if str($surv_event_var) == '' or str($surv_time_var) == '':
+                && echo "Survival event and time variables must be specified for Kaplan-Meier plots."
+                && exit 1
+            #else
+                && python $__tool_directory__/flexynesis_plot.py
+                    --plot_type kaplan_meier
+                    --labels output/job.predicted_labels.csv
+                    --survival_data input/test/clin.csv
+                    --surv_event_var $surv_event_var
+                    --surv_time_var $surv_time_var
+                    --event_value $plot.plot_km_conditional.event_value
+                    --output_dir plots
+                    --format $plot.plot_km_conditional.format
+                    --dpi $plot.plot_km_conditional.dpi
+            #end if
+        #end if
+        #if str($plot.plot_cox_conditional.plot_cox) == 'yes':
+            #if str($surv_event_var) == '' or str($surv_time_var) == '':
+                && echo "Survival event and time variables must be specified for cox plots."
+                && exit 1
+            #else
+                && python $__tool_directory__/flexynesis_plot.py
+                    --plot_type cox
+                    --model output/job.final_model.pth
+                    --clinical_train input/train/clin.csv
+                    --clinical_test input/test/clin.csv
+                    #if str($plot.plot_cox_conditional.omics_name) != '':
+                        #set $name = str($plot.plot_cox_conditional.omics_name.replace(" ", "_"))
+                        --omics_train input/train/${name}.csv
+                        --omics_test input/test/${name}.csv
+                    #else
+                        --omics_train input/train/main.csv
+                        --omics_test input/test/main.csv
                     #end if
-                    #if str($training_type.model) == 's_train':
-                        #if str($target_variables) != '':
-                            --target_variables $target_variables
-                        #end if
-                        #if str($surv_event_var) != '':
-                            --surv_event_var $surv_event_var
-                            --surv_time_var $surv_time_var
-                        #end if
+                    --surv_time_var $surv_time_var
+                    --surv_event_var $surv_event_var
+                    #if str($plot.plot_cox_conditional.clinical_variables) != '':
+                        --clinical_variables $str($plot.plot_cox_conditional.clinical_variables)
                     #end if
-                    #if str($training_type.model) == 'cm_train':
-                        --input_layers $str(",".join($input_layers))
-                        --output_layers $str(",".join($output_layers))
+                    --top_features $plot.plot_cox_conditional.top_features
+                    --event_value $plot.plot_cox_conditional.event_value
+                    #if str($plot.plot_cox_conditional.crossval_conditional.crossval) == 'yes':
+                        --crossval
                     #end if
-                    --fusion_type $fusion_type
-                    --hpo_iter $hpo_iter
-                    --val_size $val_size
-                    --finetuning_samples $finetuning_samples
-                    --variance_threshold $variance_threshold
-                    --correlation_threshold $correlation_threshold
-                    --subsample $subsample
-                    --features_min $features_min
-                    --features_top_percentile $features_top_percentile
-                    --data_types $str(",".join($data_names))
-                    --early_stop_patience $early_stop_patience
-                    --hpo_patience $hpo_patience
-                    $log_transform
-                    $use_loss_weighting
-                    $use_cv
-                    $evaluate_baseline_performance
-                    --feature_importance_method $feature_importance_method
-                    $disable_marker_finding
-                    \${GALAXY_FLEXYNESIS_EXTRA_ARGUMENTS}
+                   #if str($plot.plot_cox_conditional.crossval_conditional.crossval) == 'yes':
+                        --n_splits $plot.plot_cox_conditional.crossval_conditional.n_splits
+                    #end if
+                    --random_state 42
+                    --output_dir plots
+                    --format $plot.plot_cox_conditional.format
+                    --dpi $plot.plot_cox_conditional.dpi
+            #end if
+        #end if
+        #if str($plot.plot_scatter_conditional.plot_scatter) == 'yes':
+            && python $__tool_directory__/flexynesis_plot.py
+                --plot_type scatter
+                --labels output/job.predicted_labels.csv
+                #if str($surv_event_var) != '':
+                    --target_value $target_variables,$surv_event_var
+                #else
+                    --target_value $target_variables
+                #end if
+                --output_dir plots
+                --format $plot.plot_scatter_conditional.format
+                --dpi $plot.plot_scatter_conditional.dpi
+        #end if
+        #if str($plot.plot_concordance_conditional.plot_concordance) == 'yes':
+            && python $__tool_directory__/flexynesis_plot.py
+                --plot_type concordance_heatmap
+                --labels output/job.predicted_labels.csv
+                #if str($surv_event_var) != '':
+                    --target_value $target_variables,$surv_event_var
+                #else
+                    --target_value $target_variables
+                #end if
+                --output_dir plots
+                --format $plot.plot_concordance_conditional.format
+                --dpi $plot.plot_concordance_conditional.dpi
+        #end if
+        #if str($plot.plot_pr_curves_conditional.plot_pr_curves) == 'yes':
+            && python $__tool_directory__/flexynesis_plot.py
+                --plot_type pr_curve
+                --labels output/job.predicted_labels.csv
+                #if str($surv_event_var) != '':
+                    --target_value $target_variables,$surv_event_var
+                #else
+                    --target_value $target_variables
+                #end if
+                --output_dir plots
+                --format $plot.plot_pr_curves_conditional.format
+                --dpi $plot.plot_pr_curves_conditional.dpi
+        #end if
+        #if str($plot.plot_roc_curves_conditional.plot_roc_curves) == 'yes':
+            && python $__tool_directory__/flexynesis_plot.py
+                --plot_type roc_curve
+                --labels output/job.predicted_labels.csv
+                #if str($surv_event_var) != '':
+                    --target_value $target_variables,$surv_event_var
+                #else
+                    --target_value $target_variables
+                #end if
+                --output_dir plots
+                --format $plot.plot_roc_curves_conditional.format
+                --dpi $plot.plot_roc_curves_conditional.dpi
+        #end if
+        #if str($plot.plot_boxplot_conditional.plot_boxplot) == 'yes':
+            && python $__tool_directory__/flexynesis_plot.py
+                --plot_type box_plot
+                --labels output/job.predicted_labels.csv
+                #if str($surv_event_var) != '':
+                    --target_value $target_variables,$surv_event_var
+                #else
+                    --target_value $target_variables
+                #end if
+                --output_dir plots
+                --format $plot.plot_boxplot_conditional.format
+                --dpi $plot.plot_boxplot_conditional.dpi
+        #end if
     ]]></command>
     <inputs>
-        <param name="non_commercial_use" label="I certify that I am not using this tool for commercial purposes." type="boolean" truevalue="NON_COMMERCIAL_USE" falsevalue="COMMERCIAL_USE" checked="False">
-            <validator type="expression" message="This tool is only available for non-commercial use.">value == True</validator>
-        </param>
+        <expand macro="commercial_use_param"/>
         <conditional name="training_type">
             <param name="model" type="select" label="Type of Analysis" >
                 <option value="s_train">Supervised training</option>
@@ -139,19 +269,13 @@
                     <when value="XGBoost"/>
                 </conditional>
                 <param argument="--target_variables" type="text" label="Target variables" help="Which variables in 'clin.csv' to use for predictions, comma-separated if multiple.">
-                    <sanitizer invalid_char="">
-                        <valid initial="string.printable"></valid>
-                    </sanitizer>
+                    <expand macro="sanitizer_printable"/>
                 </param>
                 <param argument="--surv_event_var" type="text" label="Survival event" help="Which column in 'clin.csv' to use as event/status indicator for survival modeling.">
-                    <sanitizer invalid_char="">
-                        <valid initial="string.printable"></valid>
-                    </sanitizer>
+                    <expand macro="sanitizer_printable"/>
                 </param>
                 <param argument="--surv_time_var" type="text" label="Survival time" help="Which column in 'clin.csv' to use as time/duration indicator for survival modeling.">
-                    <sanitizer invalid_char="">
-                        <valid initial="string.printable"></valid>
-                    </sanitizer>
+                    <expand macro="sanitizer_printable"/>
                 </param>
                 <expand macro="advanced"/>
             </when>
@@ -182,16 +306,138 @@
                     <option value="CrossModalPred">CrossModalPred</option>
                 </param>
                 <expand macro="advanced"/>
-            </when>               
+            </when>
         </conditional>
+        <section name="plot" title="Visualization">
+            <conditional name="plot_embeddings_conditional">
+                <param name="plot_embeddings" type="select" label="Generate embeddings plot?" help="Generate PCA or UMAP plot of the test dataset">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <param name="method" type="select" label="Transformation method">
+                        <option value="pca" selected="true">PCA</option>
+                        <option value="umap">UMAP</option>
+                    </param>
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+            <conditional name="plot_km_conditional">
+                <param name="plot_km" type="select" label="Generate kaplan meier curves plot?" help="Generate KM curves plot of risk subtype based on predicted events probabilities">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <param name="event_value" type="text" label="Event value" optional="false" help="The value in the event column that indicates an event (e.g. death) has occurred.">
+                        <expand macro="sanitizer_printable"/>
+                    </param>
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+            <conditional name="plot_cox_conditional">
+                <param name="plot_cox" type="select" label="Generate hazard ratio plot?" help="Performs Cox regression on data based on top features and selected clinical covariates.">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <param name="omics_name" type="text" label="Omics layer to use for cox input" optional="false" help="If not specified, the first omics layer will be used.">
+                        <expand macro="sanitizer_printable"/>
+                    </param>
+                    <param name="clinical_variables" type="text" label="Clinical covariates" optional="true" help="Comma-separated list of clinical covariates to include in the Cox model (e.g SEX, AGE, ...).">
+                        <expand macro="sanitizer_printable"/>
+                    </param>
+                    <param argument="--top_features" type="integer" min="1" value="20" label="Number of top important features to include in Cox model"/>
+                    <param name="event_value" type="text" label="Event value" optional="false" help="The value in the event column that indicates an event (e.g. death) has occurred.">
+                        <expand macro="sanitizer_printable"/>
+                    </param>
+                    <conditional name="crossval_conditional">
+                        <param name="crossval" type="select" label="Performs K-fold cross-validation?">
+                            <option value="yes">Yes</option>
+                            <option value="no" selected="true">No</option>
+                        </param>
+                        <when value="yes">
+                            <param name="n_splits" type="integer" min="2" value="5" label="Number of folds for cross-validation"/>
+                        </when>
+                        <when value="no"/>
+                    </conditional>
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+            <conditional name="plot_scatter_conditional">
+                <param name="plot_scatter" type="select" label="Generate scatter plot?" help="Generates a scatter plot of numeric true and predicted labels for all available targets.">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+            <conditional name="plot_concordance_conditional">
+                <param name="plot_concordance" type="select" label="Generate concordance heatmap plot?" help="Generates a plot showing the concordance between true and predicted labels for all targets.">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+            <conditional name="plot_pr_curves_conditional">
+                <param name="plot_pr_curves" type="select" label="Generate precision-recall curves plot?" help="Generates precision-recall curves for all available targets.">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+            <conditional name="plot_roc_curves_conditional">
+                <param name="plot_roc_curves" type="select" label="Generate ROC curves plot?" help="Generates ROC curves for all available targets.">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+            <conditional name="plot_boxplot_conditional">
+                <param name="plot_boxplot" type="select" label="Generate boxplot?" help="Generates a boxplot for all available targets.">
+                    <option value="yes">Yes</option>
+                    <option value="no" selected="true">No</option>
+                </param>
+                <when value="no">
+                </when>
+                <when value="yes">
+                    <expand macro="plots_common_param"/>
+                </when>
+            </conditional>
+        </section>
     </inputs>
     <outputs>
         <collection name="results" type="list" label="${tool.name} on ${on_string}: results">
             <discover_datasets pattern="(?P&lt;name&gt;.+)\.csv$" format="csv" directory="output"/>
         </collection>
+        <collection name="plots" type="list" label="${tool.name} on ${on_string}: embeddings plots">
+            <discover_datasets pattern="__name_and_ext__" directory="plots"/>
+            <filter>plot['plot_embeddings_conditional']['plot_embeddings'] == 'yes' or plot['plot_km_conditional']['plot_km'] == 'yes' or plot['plot_cox_conditional']['plot_cox'] == 'yes' or plot['plot_scatter_conditional']['plot_scatter'] == 'yes' or plot['plot_concordance_conditional']['plot_concordance'] == 'yes' or plot['plot_pr_curves_conditional']['plot_pr_curves'] == 'yes' or plot['plot_roc_curves_conditional']['plot_roc_curves'] == 'yes' or plot['plot_boxplot_conditional']['plot_boxplot'] == 'yes'</filter>
+        </collection>
     </outputs>
     <tests>
-        <test>
+        <!-- test 1: Supervised training with GEX and CNV data, DirectPred model, Erlotinib target -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="s_train"/>
@@ -263,7 +509,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 2: Supervised training with GEX data, DirectPred model, Erlotinib target -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="s_train"/>
@@ -325,7 +572,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 3: Supervised training with GEX and CNV data, DirectPred model, Irinotecan target -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="s_train"/>
@@ -397,7 +645,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 4: Un-supervised training with GEX and CNV data, supervised_vae model -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="us_train"/>
@@ -439,7 +688,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 5: Cross-modality training with GEX and CNV data, CrossModalPred model -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="cm_train"/>
@@ -493,7 +743,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 6: Supervised training with GEX and CNV data, GNN model, Erlotinib target -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="s_train"/>
@@ -568,7 +819,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 7: test 4 + checking whitespace in assay name -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="us_train"/>
@@ -610,7 +862,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 8: Supervised training with GEX and CNV data, XGBoost model, Erlotinib target -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="s_train"/>
@@ -642,7 +895,8 @@
                 </element>
             </output_collection>
         </test>
-        <test>
+        <!-- test 9: test 1 + checking IntegratedGradients method -->
+        <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="s_train"/>
@@ -708,20 +962,312 @@
                 </element>
             </output_collection>
         </test>
+        <!-- test 10: dimred plot -->
+        <test expect_num_outputs="2">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="csv"/>
+                <param name="test_clin" value="test/clin" ftype="csv"/>
+                <param name="train_omics_main" value="train/gex" ftype="csv"/>
+                <param name="test_omics_main" value="test/gex" ftype="csv"/>
+                <param name="assay_main" value="bar"/>
+                <repeat name="omics">
+                    <param name="train_omics" value="train/cnv" ftype="csv"/>
+                    <param name="test_omics" value="test/cnv" ftype="csv"/>
+                    <param name="assay" value="foo"/>
+                </repeat>
+                <conditional name="model_class">
+                    <param name="model_class" value="DirectPred"/>
+                </conditional>
+                <param name="target_variables" value="Erlotinib"/>
+                <section name="advanced">
+                    <param name="hpo_iter" value="1"/>
+                </section>
+            </conditional>
+            <section name="plot">
+                <conditional name="plot_embeddings_conditional">
+                    <param name="plot_embeddings" value="yes"/>
+                    <param name="method" value="pca"/>
+                    <param name="format" value="jpg"/>
+                    <param name="dpi" value="300"/>
+                </conditional>
+            </section>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.GradientShap">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib,0,,bar,A2M,"/>
+                        <has_text_matching expression="Erlotinib,0,,bar,ABCC4,"/>
+                        <has_text_matching expression="GradientShap"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.IntegratedGradients">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib,0,,bar,A2M,"/>
+                        <has_text_matching expression="Erlotinib,0,,bar,ABCC4,"/>
+                        <has_text_matching expression="IntegratedGradients"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.omics_foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704,Erlotinib,"/>
+                        <has_text_matching expression="target_dataset:KMRC-20,Erlotinib,"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,mse,"/>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,r2,"/>
+                        <has_text_matching expression="DirectPred,Erlotinib,numerical,pearson_corr,"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="plots" type="list">
+                <element name="job.embeddings_test_pca_Erlotinib_known">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="962,732" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="10"/>
+                        <has_image_width width="1941" delta="10"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_test_pca_Erlotinib_predicted">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="959.5,732.5" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="10"/>
+                        <has_image_width width="1941" delta="10"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 11: km plot -->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+                <section name="plot">
+                    <conditional name="plot_km_conditional">
+                        <param name="plot_km" value="yes"/>
+                        <param name="event_value" value="1:DECEASED"/>
+                        <param name="format" value="jpg"/>
+                        <param name="dpi" value="300"/>
+                    </conditional>
+                </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="clin_km_km_risk_subtypes">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="971,732" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="10"/>
+                        <has_image_width width="1941" delta="10"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 12: cox plot -->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+                <section name="plot">
+                    <conditional name="plot_cox_conditional">
+                        <param name="plot_cox" value="yes"/>
+                        <param name="omics_name" value="bar"/>
+                        <param name="clinical_variables" value="Crizotinib,   Erlotinib"/>
+                        <param name="top_features" value="10"/>
+                        <param name="event_value" value="1:DECEASED"/>
+                        <param name="format" value="jpg"/>
+                        <param name="dpi" value="300"/>
+                    </conditional>
+                </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="job.final_model_cox_hazard_ratios">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="972,737" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="10"/>
+                        <has_image_width width="1941" delta="10"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 13: scatter plot -->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+                <section name="plot">
+                    <conditional name="plot_scatter_conditional">
+                        <param name="plot_scatter" value="yes"/>
+                        <param name="format" value="jpg"/>
+                        <param name="dpi" value="300"/>
+                    </conditional>
+                </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="job.predicted_labels_scatter_Erlotinib">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="969,735" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="10"/>
+                        <has_image_width width="1940" delta="10"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 14: concordance plot -->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+                <section name="plot">
+                    <conditional name="plot_concordance_conditional">
+                        <param name="plot_concordance" value="yes"/>
+                        <param name="format" value="jpg"/>
+                        <param name="dpi" value="300"/>
+                    </conditional>
+                </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="job.predicted_labels_concordance_Erlotinib">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="1547,1620" eps="30"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="3060" delta="50"/>
+                        <has_image_width width="3192" delta="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels_concordance_OS_STATUS">
+                    <assert_contents>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="2558" delta="50"/>
+                        <has_image_width width="2794" delta="50"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 15: pr curve plot -->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+                <section name="plot">
+                    <conditional name="plot_pr_curves_conditional">
+                        <param name="plot_pr_curves" value="yes"/>
+                        <param name="format" value="jpg"/>
+                        <param name="dpi" value="300"/>
+                    </conditional>
+                </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="job.predicted_labels_pr_curves_OS_STATUS">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="975,732" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="20"/>
+                        <has_image_width width="1941" delta="20"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 16: roc curve plot -->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+                <section name="plot">
+                    <conditional name="plot_roc_curves_conditional">
+                        <param name="plot_roc_curves" value="yes"/>
+                        <param name="format" value="jpg"/>
+                        <param name="dpi" value="300"/>
+                    </conditional>
+                </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="job.predicted_labels_roc_curves_OS_STATUS">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="970,730" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="20"/>
+                        <has_image_width width="1941" delta="20"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 17: boxplot plot -->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+            <section name="plot">
+                <conditional name="plot_boxplot_conditional">
+                    <param name="plot_boxplot" value="yes"/>
+                    <param name="format" value="jpg"/>
+                    <param name="dpi" value="300"/>
+                </conditional>
+            </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="job.predicted_labels_box_plot_OS_STATUS_0_LIVING">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="1485,882" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1783" delta="20"/>
+                        <has_image_width width="2967" delta="20"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels_box_plot_OS_STATUS_1_DECEASED">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="1485,882" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1765" delta="20"/>
+                        <has_image_width width="2967" delta="20"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 18: cox plot with multiple clinical variables + crossvar-->
+        <test expect_num_outputs="2">
+            <expand macro="common_test">
+                <section name="plot">
+                    <conditional name="plot_cox_conditional">
+                        <param name="plot_cox" value="yes"/>
+                        <param name="omics_name" value="bar"/>
+                        <param name="clinical_variables" value="Crizotinib,   Erlotinib"/>
+                        <param name="top_features" value="10"/>
+                        <param name="event_value" value="1:DECEASED"/>
+                        <conditional name="crossval_conditional">
+                            <param name="crossval" value="yes"/>
+                            <param name="n_splits" value="5"/>
+                        </conditional>
+                        <param name="format" value="jpg"/>
+                        <param name="dpi" value="300"/>
+                    </conditional>
+                </section>
+            </expand>
+            <output_collection name="plots" type="list">
+                <element name="job.final_model_cox_hazard_ratios">
+                    <assert_contents>
+                        <has_image_center_of_mass center_of_mass="972,737" eps="20"/>
+                        <has_image_channels channels="3"/>
+                        <has_image_height height="1461" delta="10"/>
+                        <has_image_width width="1941" delta="10"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
     </tests>
-    <help>
-.. class:: warningmark
-
-**WARNING: This tool is only available for NON-COMMERCIAL use. Permission is only granted for academic, research, and educational purposes. Before using, be sure to review, agree, and comply with the license.**
-
-Flexynesis is a deep-learning based multi-omics bulk sequencing data integration suite with a focus on (pre-)clinical endpoint prediction.
-The package includes multiple types of deep learning architectures such as simple fully connected networks, supervised variational autoencoders, graph convolutional networks, multi-triplet networks different options of data layer fusion, and automates feature selection and hyperparameter optimisation.
-
-For more information, please check the Documentation_ :
-
-For commercial use, please review the license_ and contact the `copyright holders`_ .
-
------
+    <help><![CDATA[
+@COMMON_HELP@
 
 .. image:: https://raw.githubusercontent.com/BIMSBbioinfo/flexynesis/c4634d97f84e51f569dcfdab2caf42c9be453ef6/img/graphical_abstract.jpg
     :width: 600
@@ -732,27 +1278,27 @@ For commercial use, please review the license_ and contact the `copyright holder
 
 **clin.csv**
 
-clin.csv contains the sample metadata. The first column contains unique sample identifiers. The other columns contain sample-associated clinical variables. NA values are allowed in the clinical variables. 
+clin.csv contains the sample metadata. The first column contains unique sample identifiers. The other columns contain sample-associated clinical variables. NA values are allowed in the clinical variables.
 
 The format might look like so:
 
-========    === === === 
+========    === === ===
 ,           v1  v2  ...
 --------    --- --- ---
 sample1     a   b   ...
 --------    --- --- ---
 sample2     c   d   ...
 --------    --- --- ---
-sample3     e   f   ...          
+sample3     e   f   ...
 --------    --- --- ---
-...         ... ... ...          
+...         ... ... ...
 ========    === === ===
 
 .
 
 **omics.csv**
 
-The first column of the feature tables must be unique feature identifiers (e.g. gene names). The column names must be sample identifiers that should overlap with those in the clin.csv. They don't have to be completely identical or in the same order. Samples from the clin.csv that are not represented in the omics table will be dropped. 
+The first column of the feature tables must be unique feature identifiers (e.g. gene names). The column names must be sample identifiers that should overlap with those in the clin.csv. They don't have to be completely identical or in the same order. Samples from the clin.csv that are not represented in the omics table will be dropped.
 
 The format might look like so:
 
@@ -774,7 +1320,7 @@ gene3   2       3       4       ...
 
 **Concordance between train/test splits:**
 
-The corresponding omics files in train/test splits must contain overlapping feature names (they don't have to be identical or in the same order). The clin.csv files in train/test must contain matching clinical variables. 
+The corresponding omics files in train/test splits must contain overlapping feature names (they don't have to be identical or in the same order). The clin.csv files in train/test must contain matching clinical variables.
 
 -----
 
@@ -783,10 +1329,10 @@ The corresponding omics files in train/test splits must contain overlapping feat
 **Minimum requirements**
 
 * clin.csv and omics.csv files for training and testing
-* Selection of a tool/model 
+* Selection of a tool/model
 * One target variable which can be numerical or categorical for regression/classification tasks.
 
-Flexynesis supports both single-task and multi-task training. We can provide one or more target variables and optionally survival variables as input and Flexynesis will build the appropriate model architecture. If the selected variable is numerical, a Multi-Layered-Perceptron (MLP) with MSE loss will be used. If a categorical variable is provided, an MLP with cross-entropy-loss will be utilized. If survival variables are provided, an MLP with Cox-Proportional-Hazards loss will be attached to the model. 
+Flexynesis supports both single-task and multi-task training. We can provide one or more target variables and optionally survival variables as input and Flexynesis will build the appropriate model architecture. If the selected variable is numerical, a Multi-Layered-Perceptron (MLP) with MSE loss will be used. If a categorical variable is provided, an MLP with cross-entropy-loss will be utilized. If survival variables are provided, an MLP with Cox-Proportional-Hazards loss will be attached to the model.
 
 **Regression:**
 
@@ -802,15 +1348,15 @@ If your target variable is categorical, Flexynesis will build a classification m
 
 
 If your target variable is survival data, Flexynesis will build a survival analysis model.
-For survival analysis, two separate variables are required, where the first variable is a numeric event variable (consisting of 0's or 1's, where 1 means an event such as disease progression or death has occurred). The second variable is also a numeric time variable, which indicates how much time it took since last patient follow-up. 
+For survival analysis, two separate variables are required, where the first variable is a numeric event variable (consisting of 0's or 1's, where 1 means an event such as disease progression or death has occurred). The second variable is also a numeric time variable, which indicates how much time it took since last patient follow-up.
 
 .. class:: infomark
 
-**Note:** Flexynesis can be trained with multiple target variables, which can be a mixture of regression/classification/survival tasks. 
+**Note:** Flexynesis can be trained with multiple target variables, which can be a mixture of regression/classification/survival tasks.
 
 .. class:: infomark
 
-**Note:** For the supervised tasks, the user can easily switch between different model architectures. 
+**Note:** For the supervised tasks, the user can easily switch between different model architectures.
 
 .. class:: infomark
 
@@ -828,13 +1374,13 @@ For survival analysis, two separate variables are required, where the first vari
 
 **Unsupervised Training**
 
-In the absence of any target variables or survival variables, you can use a VAE architecture to carry out unsupervised training. 
+In the absence of any target variables or survival variables, you can use a VAE architecture to carry out unsupervised training.
 
 -----
 
 **Cross-modality Training**
 
-We have implemented a special case of VAEs where the input data layers and output data layers can be set to different data modalities. The purpose of a cross-modality encoder is to learn embeddings that can translate from one data modality to another. Crossmodality encoder we implemented supports both single/multiple input layers and also one or more target/survival variables can be added to the model. 
+We have implemented a special case of VAEs where the input data layers and output data layers can be set to different data modalities. The purpose of a cross-modality encoder is to learn embeddings that can translate from one data modality to another. Crossmodality encoder we implemented supports both single/multiple input layers and also one or more target/survival variables can be added to the model.
 
 .. class:: infomark
 
@@ -844,14 +1390,13 @@ We have implemented a special case of VAEs where the input data layers and outpu
 
 .. class:: infomark
 
-**Modality fusion:** 
+**Modality fusion:**
 
-Flexynesis currently supports two main ways of fusing different omics data modalities: 1. Early fusion: The input data matrices are initially concatenated and pushed through the networks 2. Intermediate fusion: The input data matrices are initially pushed through the networks to obtain a modality-specific embedding space, which then gets concatenated to serve as input for the supervisor MLPs. 
+Flexynesis currently supports two main ways of fusing different omics data modalities: 1. Early fusion: The input data matrices are initially concatenated and pushed through the networks 2. Intermediate fusion: The input data matrices are initially pushed through the networks to obtain a modality-specific embedding space, which then gets concatenated to serve as input for the supervisor MLPs.
 
-.. _license: https://github.com/BIMSBbioinfo/flexynesis/blob/main/LICENSE
 .. _Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
 .. _copyright holders: https://github.com/BIMSBbioinfo/flexynesis
-    </help>
-
-    <expand macro="citations" />
+    ]]></help>
+    <expand macro="creator"/>
+    <expand macro="citations"/>
 </tool>
