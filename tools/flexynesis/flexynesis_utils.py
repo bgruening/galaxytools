@@ -156,8 +156,8 @@ def split_and_save_data(data, ratio=0.7, output_dir='.'):
     # Save train and test data
     for key in data.keys():
         try:
-            train_data[key].to_csv(os.path.join(output_dir, 'train', f'{key}.csv'))
-            test_data[key].to_csv(os.path.join(output_dir, 'test', f'{key}.csv'))
+            train_data[key].to_csv(os.path.join(output_dir, 'train', f'{key}.tabular'), sep='\t')
+            test_data[key].to_csv(os.path.join(output_dir, 'test', f'{key}.tabular'), sep='\t')
         except Exception as e:
             print(f"Error saving {key}: {e}")
             continue
