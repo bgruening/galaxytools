@@ -214,21 +214,25 @@ def plot_boxplot(categorical_x, numerical_y, title_x='Categories', title_y='Valu
 def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base):
     """Generate dimensionality reduction plots"""
 
-    # Parse target variables
-    target_vars = [var.strip() for var in args.target_variables.split(',')]
+    # Parse target values from comma-separated string
+    if args.target_value:
+        target_values = [val.strip() for val in args.target_value.split(',')]
+    else:
+        # If no target values specified, use all unique variables
+        target_values = matched_labels['variable'].unique().tolist()
 
-    print(f"Generating {args.method.upper()} plots for {len(target_vars)} target variable(s): {', '.join(target_vars)}")
+    print(f"Generating {args.method.upper()} plots for {len(target_values)} target variable(s): {', '.join(target_values)}")
 
     # Check variables
     available_vars = matched_labels['variable'].unique()
-    missing_vars = [var for var in target_vars if var not in available_vars]
+    missing_vars = [var for var in target_values if var not in available_vars]
 
     if missing_vars:
         print(f"Warning: The following target variables were not found in the data: {', '.join(missing_vars)}")
         print(f"Available variables: {', '.join(available_vars)}")
 
     # Filter to only process available variables
-    valid_vars = [var for var in target_vars if var in available_vars]
+    valid_vars = [var for var in target_values if var in available_vars]
 
     if not valid_vars:
         raise ValueError(f"None of the specified target variables were found in the data. Available: {', '.join(available_vars)}")
@@ -989,8 +993,6 @@ def main():
                         help="Path to input data embeddings file (CSV or tabular format). Required for dimred plots.")
     parser.add_argument("--method", type=str, default='pca', choices=['pca', 'umap'],
                         help="Transformation method ('pca' or 'umap'). Default is 'pca'. Used for dimred plots.")
-    parser.add_argument("--target_variables", type=str, required=False,
-                        help="Comma-separated list of target variables to plot.")
 
     # Arguments for Kaplan-Meier
     parser.add_argument("--survival_data", type=str,
@@ -1024,7 +1026,7 @@ def main():
     parser.add_argument("--random_state", type=int, default=42,
                         help="Random seed for reproducibility. Default is 42")
 
-    # Arguments for scatter plot, heatmap, PR curves, ROC curves, and box plots
+    # Arguments for dimred, scatter plot, heatmap, PR curves, ROC curves, and box plots
     parser.add_argument("--target_value", type=str, default=None,
                         help="Target value for scatter plot.")
 
@@ -1057,8 +1059,6 @@ def main():
                 raise ValueError("--labels is required for dimensionality reduction plots")
             if not args.method:
                 raise ValueError("--method is required for dimensionality reduction plots")
-            if not args.target_variables:
-                raise ValueError("--target_variables is required for dimensionality reduction plots")
 
         if args.plot_type in ['kaplan_meier']:
             if not args.survival_data:
