@@ -156,8 +156,8 @@ def split_and_save_data(data, ratio=0.7, output_dir='.'):
     # Save train and test data
     for key in data.keys():
         try:
-            train_data[key].to_csv(os.path.join(output_dir, 'train', f'{key}.csv'))
-            test_data[key].to_csv(os.path.join(output_dir, 'test', f'{key}.csv'))
+            train_data[key].to_csv(os.path.join(output_dir, 'train', f'{key}.tabular'), sep='\t')
+            test_data[key].to_csv(os.path.join(output_dir, 'test', f'{key}.tabular'), sep='\t')
         except Exception as e:
             print(f"Error saving {key}: {e}")
             continue
@@ -244,8 +244,8 @@ def main():
 
             binarized_matrix = binarize_mutations(mutations_df, gene_idx=args.gene_idx, sample_idx=args.sample_idx)
             # Save binarized matrix
-            output_file = os.path.join(args.out, 'binarized_mutations.csv')
-            binarized_matrix.to_csv(output_file)
+            output_file = os.path.join(args.out, 'binarized_mutations.tabular')
+            binarized_matrix.to_csv(output_file, sep='\t')
             print(f"Binarized mutation matrix saved to {output_file}")
 
     except Exception as e:
