@@ -175,6 +175,15 @@ parser.add_argument("--crop_fraction",
 #
 # Functions
 #
+
+def safe_rmtree(path):
+    try:
+        shutil.rmtree(path)
+    except OSError:
+        time.sleep(1)
+        shutil.rmtree(path, ignore_errors=True)
+
+
 # Train a new model on the dataset mentioned in yaml file
 def trainModel(model_path, model_name, yaml_filepath, **kwargs):
     if "imgsz" in kwargs:
@@ -264,7 +273,7 @@ def trainModel(model_path, model_name, yaml_filepath, **kwargs):
 
     train_save_path = os.path.expanduser('~/runs/' + args.mode + '/train/')
     if os.path.isdir(train_save_path):
-        shutil.rmtree(train_save_path)
+        safe_rmtree(train_save_path)
     # Load a pretrained YOLO model (recommended for training)
     if args.model_format == 'pt':
         model = YOLO(os.path.join(model_path, model_name + "." + args.model_format))
@@ -285,7 +294,7 @@ def validateModel(model):
     # Remove prediction save path if already exists
     val_save_path = os.path.expanduser('~/runs/' + args.mode + '/val/')
     if os.path.isdir(val_save_path):
-        shutil.rmtree(val_save_path)
+        safe_rmtree(val_save_path)
     # Validate the model
     metrics = model.val()  # no args needed, dataset & settings remembered
     metrics.box.map    # map50-95
@@ -327,7 +336,7 @@ def predict(model, source_datapath, **kwargs):
         # Remove prediction save path if already exists
         pred_save_path = os.path.expanduser('~/runs/' + args.mode + '/predict/')
         if os.path.isdir(pred_save_path):
-            shutil.rmtree(pred_save_path)
+            safe_rmtree(pred_save_path)
     if "foldername" in kwargs:
         save_folder_name = kwargs['foldername']
     # infer on a local image or directory containing images/videos
