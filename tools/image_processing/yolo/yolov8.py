@@ -175,6 +175,15 @@ parser.add_argument("--crop_fraction",
 #
 # Functions
 #
+
+def safe_rmtree(path):
+    try:
+        shutil.rmtree(path)
+    except OSError:
+        time.sleep(1)
+        shutil.rmtree(path, ignore_errors=True)
+
+
 # Train a new model on the dataset mentioned in yaml file
 def trainModel(model_path, model_name, yaml_filepath, **kwargs):
     if "imgsz" in kwargs:
@@ -264,7 +273,7 @@ def trainModel(model_path, model_name, yaml_filepath, **kwargs):
 
     train_save_path = os.path.expanduser('~/runs/' + args.mode + '/train/')
     if os.path.isdir(train_save_path):
-        shutil.rmtree(train_save_path)
+        safe_rmtree(train_save_path)
     # Load a pretrained YOLO model (recommended for training)
     if args.model_format == 'pt':
         model = YOLO(os.path.join(model_path, model_name + "." + args.model_format))
@@ -285,7 +294,7 @@ def validateModel(model):
     # Remove prediction save path if already exists
     val_save_path = os.path.expanduser('~/runs/' + args.mode + '/val/')
     if os.path.isdir(val_save_path):
-        shutil.rmtree(val_save_path)
+        safe_rmtree(val_save_path)
     # Validate the model
     metrics = model.val()  # no args needed, dataset & settings remembered
     metrics.box.map    # map50-95
@@ -327,7 +336,7 @@ def predict(model, source_datapath, **kwargs):
         # Remove prediction save path if already exists
         pred_save_path = os.path.expanduser('~/runs/' + args.mode + '/predict/')
         if os.path.isdir(pred_save_path):
-            shutil.rmtree(pred_save_path)
+            safe_rmtree(pred_save_path)
     if "foldername" in kwargs:
         save_folder_name = kwargs['foldername']
     # infer on a local image or directory containing images/videos
@@ -412,6 +421,25 @@ if __name__ == '__main__':
         if (args.mode == "detect"):
             # Save bounding boxes
             save_yolo_bounding_boxes_to_txt(predictions, args.save_dir)
+
+            # Loop over each result
+            for result in predictions:
+                img = np.copy(result.orig_img)
+                image_filename = pathlib.Path(result.path).stem
+                overlay_path = os.path.join(args.save_dir, f"{image_filename}_overlay.jpg")
+
+                for box, cls, conf in zip(result.boxes.xyxy, result.boxes.cls, result.boxes.conf):
+                    x1, y1, x2, y2 = map(int, box.tolist())
+                    class_num = int(cls.item())
+                    confidence = conf.item()
+                    label = f"{class_names[class_num]} {confidence:.2f}" if class_names else f"{class_num} {confidence:.2f}"
+
+                    cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 255, 0), thickness=2)
+                    cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5, (0, 255, 0), thickness=1)
+
+                cv2.imwrite(overlay_path, img)
+                print(colored(f"Overlay image saved at: {overlay_path}", 'cyan'))
         elif (args.mode == "track"):
             results = model.track(source=datapath_for_prediction,
                                   tracker=args.tracker_file,
@@ -451,44 +479,42 @@ if __name__ == '__main__':
             # Read class names from the file
             with open(args.class_names_file, 'r') as f:
                 class_names = [line.strip() for line in f.readlines()]
-            # Create a mapping from class names to indices
             class_to_index = {class_name: i for i, class_name in enumerate(class_names)}
 
             # Save polygon coordinates
             for result in predictions:
-                # Create binary mask
                 img = np.copy(result.orig_img)
                 filename = pathlib.Path(result.path).stem
                 b_mask = np.zeros(img.shape[:2], np.uint8)
                 mask_save_as = str(pathlib.Path(os.path.join(args.save_dir, filename + "_mask.tiff")).absolute())
-                # Define output file path for text file
-                output_filename = os.path.splitext(filename)[0] + ".txt"
                 txt_save_as = str(pathlib.Path(os.path.join(args.save_dir, filename + ".txt")).absolute())
 
                 for c, ci in enumerate(result):
-                    #  Extract contour result
-                    contour = ci.masks.xy.pop()
-                    #  Changing the type
-                    contour = contour.astype(np.int32)
-                    #  Reshaping
-                    contour = contour.reshape(-1, 1, 2)
-                    # Draw contour onto mask
-                    _ = cv2.drawContours(b_mask, [contour], -1, (255, 255, 255), cv2.FILLED)
+                    if ci.masks is not None and ci.masks.xy:
+                        #  Extract contour
+                        contour = ci.masks.xy.pop()
+                        contour = contour.astype(np.int32).reshape(-1, 1, 2)
+                        _ = cv2.drawContours(b_mask, [contour], -1, (255, 255, 255), cv2.FILLED)
 
-                    # Normalized polygon points
-                    points = ci.masks.xyn.pop()
-                    obj_class = int(ci.boxes.cls.to("cpu").numpy().item())
-                    confidence = result.boxes.conf.to("cpu").numpy()[c]
+                        # Normalized polygon points
+                        points = ci.masks.xyn.pop()
+                        obj_class = int(ci.boxes.cls.to("cpu").numpy().item())
+                        confidence = result.boxes.conf.to("cpu").numpy()[c]
 
-                    with open(txt_save_as, 'a') as f:
-                        segmentation_points = ['{} {}'.format(points[i][0], points[i][1]) for i in range(len(points))]
-                        segmentation_points_string = ' '.join(segmentation_points)
-                        line = '{} {} {}\n'.format(obj_class, segmentation_points_string, confidence)
-                        f.write(line)
+                        with open(txt_save_as, 'a') as f:
+                            segmentation_points = ['{} {}'.format(points[i][0], points[i][1]) for i in range(len(points))]
+                            segmentation_points_string = ' '.join(segmentation_points)
+                            line = '{} {} {}\n'.format(obj_class, segmentation_points_string, confidence)
+                            f.write(line)
+                    else:
+                        print(colored(f"⚠️ No mask found for object {c} in '{filename}'. Skipping.", "yellow"))
 
-                imwrite(mask_save_as, b_mask, imagej=True)  # save image
-                print(colored(f"Saved cropped image as : \n '{mask_save_as}' \n", 'magenta'))
+                # Overlay mask onto original image
+                colored_mask = cv2.merge([b_mask, np.zeros_like(b_mask), np.zeros_like(b_mask)])
+                blended = cv2.addWeighted(img, 1.0, colored_mask, 0.5, 0)
+                overlay_path = os.path.join(args.save_dir, filename + "_overlay.jpg")
+                cv2.imwrite(overlay_path, blended)
+
+                imwrite(mask_save_as, b_mask, imagej=True)
+                print(colored(f"Saved binary mask as : \n '{mask_save_as}' \n", 'magenta'))
                 print(colored(f"Polygon coordinates saved as : \n '{txt_save_as}' \n", 'cyan'))
-
-        else:
-            raise Exception(("Currently only 'detect' and 'segment' modes are available"))
