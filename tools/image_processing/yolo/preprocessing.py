@@ -1,6 +1,5 @@
 import argparse
 import os
-import shutil
 
 from sklearn.model_selection import train_test_split
 
@@ -22,12 +21,21 @@ def pair_files(images_dir, labels_dir):
     return [(image_dict[k], label_dict[k]) for k in keys]
 
 
+def copy_file(src, dst):
+    with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
+        while True:
+            chunk = fsrc.read(8192)
+            if not chunk:
+                break
+            fdst.write(chunk)
+
+
 def copy_pairs(pairs, image_src, label_src, image_dst, label_dst):
     os.makedirs(image_dst, exist_ok=True)
     os.makedirs(label_dst, exist_ok=True)
     for img, lbl in pairs:
-        shutil.copy(os.path.join(image_src, img), os.path.join(image_dst, img))
-        shutil.copy(os.path.join(label_src, lbl), os.path.join(label_dst, lbl))
+        copy_file(os.path.join(image_src, img), os.path.join(image_dst, img))
+        copy_file(os.path.join(label_src, lbl), os.path.join(label_dst, lbl))
 
 
 def write_yolo_yaml(output_dir):
