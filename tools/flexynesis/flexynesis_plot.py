@@ -54,13 +54,18 @@ def load_labels(labels_input):
             df = pd.read_csv(labels_input)
         elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
             df = pd.read_csv(labels_input, sep='\t')
+        else:
+            # Handle unsupported file extensions
+            raise ValueError(f"Unsupported file extension: {file_ext}")
 
         # Check if this is the specific format with sample_id, known_label, predicted_label
         required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
         if all(col in df.columns for col in required_cols):
-            return df
+            print("Detected flexynesis labels format")
+            return df, "flexynesis"
         else:
-            raise ValueError(f"Labels file {labels_input} does not contain required columns: {required_cols}")
+            print("Labels are not in flexynesis format (Custom labels)")
+            return df, "custom"
 
     except Exception as e:
         raise ValueError(f"Error loading labels from {labels_input}: {e}") from e
@@ -1196,7 +1201,7 @@ def main():
         if args.plot_type in ['dimred']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            label_data, label_type = load_labels(args.labels)
             # Load embeddings data
             print(f"Loading embeddings from: {args.embeddings}")
             embeddings, sample_names = load_embeddings(args.embeddings)
@@ -1211,7 +1216,7 @@ def main():
         elif args.plot_type in ['kaplan_meier']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            label_data, label_type = load_labels(args.labels)
             # Load survival data
             print(f"Loading survival data from: {args.survival_data}")
             survival_data = load_survival_data(args.survival_data)
@@ -1237,35 +1242,35 @@ def main():
         elif args.plot_type in ['scatter']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            label_data, label_type = load_labels(args.labels)
 
             generate_plot_scatter(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['concordance_heatmap']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            label_data, label_type = load_labels(args.labels)
 
             generate_label_concordance_heatmap(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['pr_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            label_data, label_type = load_labels(args.labels)
 
             generate_pr_curves(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['roc_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            label_data, label_type = load_labels(args.labels)
 
             generate_roc_curves(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['box_plot']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            label_data, label_type = load_labels(args.labels)
 
             generate_box_plots(label_data, args, output_dir, output_name_base)
 
