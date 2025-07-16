@@ -54,18 +54,15 @@ def load_labels(labels_input):
             df = pd.read_csv(labels_input)
         elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
             df = pd.read_csv(labels_input, sep='\t')
-        else:
-            # Handle unsupported file extensions
-            raise ValueError(f"Unsupported file extension: {file_ext}")
 
         # Check if this is the specific format with sample_id, known_label, predicted_label
         required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
         if all(col in df.columns for col in required_cols):
             print("Detected flexynesis labels format")
-            return df, "flexynesis"
         else:
             print("Labels are not in flexynesis format (Custom labels)")
-            return df, "custom"
+
+        return df
 
     except Exception as e:
         raise ValueError(f"Error loading labels from {labels_input}: {e}") from e
@@ -119,7 +116,12 @@ def load_model(model_path):
 
 def match_samples_to_embeddings(sample_names, label_data):
     """Filter label data to match sample names in the embeddings"""
-    df_matched = label_data[label_data['sample_id'].isin(sample_names)]
+    first_column = label_data.columns[0]
+    df_matched = label_data[label_data[first_column].isin(sample_names)]
+
+    if df_matched.empty:
+        raise ValueError("No matching samples found between embeddings and labels")
+
     return df_matched
 
 
@@ -219,81 +221,117 @@ def plot_boxplot(categorical_x, numerical_y, title_x='Categories', title_y='Valu
 def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base):
     """Generate dimensionality reduction plots"""
 
-    # Parse target values from comma-separated string
-    if args.target_value:
-        target_values = [val.strip() for val in args.target_value.split(',')]
+    # Check if this is the specific format with sample_id, known_label, predicted_label
+    required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+    if all(col in matched_labels.columns for col in required_cols):
+        print("Detected flexynesis labels format")
+        # Parse target values from comma-separated string
+        if args.target_value:
+            target_values = [val.strip() for val in args.target_value.split(',')]
+        else:
+            # If no target values specified, use all unique variables
+            target_values = matched_labels['variable'].unique().tolist()
+
+        print(f"Generating {args.method.upper()} plots for {len(target_values)} target variable(s): {', '.join(target_values)}")
+
+        # Check variables
+        available_vars = matched_labels['variable'].unique()
+        missing_vars = [var for var in target_values if var not in available_vars]
+
+        if missing_vars:
+            print(f"Warning: The following target variables were not found in the data: {', '.join(missing_vars)}")
+            print(f"Available variables: {', '.join(available_vars)}")
+
+        # Filter to only process available variables
+        valid_vars = [var for var in target_values if var in available_vars]
+
+        if not valid_vars:
+            raise ValueError(f"None of the specified target variables were found in the data. Available: {', '.join(available_vars)}")
+
+        # Generate plots for each valid target variable
+        for var in valid_vars:
+            print(f"\nPlotting variable: {var}")
+
+            # Filter matched labels for current variable
+            var_labels = matched_labels[matched_labels['variable'] == var].copy()
+            var_labels = var_labels.drop_duplicates(subset='sample_id')
+
+            if var_labels.empty:
+                print(f"Warning: No data found for variable '{var}', skipping...")
+                continue
+
+            # Auto-detect color type
+            known_color_type = detect_color_type(var_labels['known_label'])
+            predicted_color_type = detect_color_type(var_labels['predicted_label'])
+
+            print(f"  Auto-detected color types - Known: {known_color_type}, Predicted: {predicted_color_type}")
+
+            try:
+                # Plot 1: Known labels
+                print(f"  Creating known labels plot for {var}...")
+                fig_known = plot_dim_reduced(
+                    matrix=embeddings,
+                    labels=var_labels['known_label'],
+                    method=args.method,
+                    color_type=known_color_type
+                )
+
+                output_path_known = output_dir / f"{output_name_base}_{var}_known.{args.format}"
+                print(f"  Saving known labels plot to: {output_path_known.name}")
+                fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+
+                # Plot 2: Predicted labels
+                print(f"  Creating predicted labels plot for {var}...")
+                fig_predicted = plot_dim_reduced(
+                    matrix=embeddings,
+                    labels=var_labels['predicted_label'],
+                    method=args.method,
+                    color_type=predicted_color_type
+                )
+
+                output_path_predicted = output_dir / f"{output_name_base}_{var}_predicted.{args.format}"
+                print(f"  Saving predicted labels plot to: {output_path_predicted.name}")
+                fig_predicted.save(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
+
+                print(f"  ✓ Successfully created plots for variable '{var}'")
+
+            except Exception as e:
+                print(f"  ✗ Error creating plots for variable '{var}': {e}")
+                continue
+
+        print(f"\nDimensionality reduction plots completed for {len(valid_vars)} variable(s)!")
+
     else:
-        # If no target values specified, use all unique variables
-        target_values = matched_labels['variable'].unique().tolist()
+        print("Labels are not in flexynesis format (Custom labels)")
+        print(f"Generating {args.method.upper()} plots")
 
-    print(f"Generating {args.method.upper()} plots for {len(target_values)} target variable(s): {', '.join(target_values)}")
+        # check if the color argument is provided
+        if args.color is None:
+            raise ValueError("No color argument provided. Please specify a color variable.")
 
-    # Check variables
-    available_vars = matched_labels['variable'].unique()
-    missing_vars = [var for var in target_values if var not in available_vars]
-
-    if missing_vars:
-        print(f"Warning: The following target variables were not found in the data: {', '.join(missing_vars)}")
-        print(f"Available variables: {', '.join(available_vars)}")
-
-    # Filter to only process available variables
-    valid_vars = [var for var in target_values if var in available_vars]
-
-    if not valid_vars:
-        raise ValueError(f"None of the specified target variables were found in the data. Available: {', '.join(available_vars)}")
-
-    # Generate plots for each valid target variable
-    for var in valid_vars:
-        print(f"\nPlotting variable: {var}")
-
-        # Filter matched labels for current variable
-        var_labels = matched_labels[matched_labels['variable'] == var].copy()
-        var_labels = var_labels.drop_duplicates(subset='sample_id')
-
-        if var_labels.empty:
-            print(f"Warning: No data found for variable '{var}', skipping...")
-            continue
+        # check if the color variable exists in matched_labels
+        if args.color not in matched_labels.columns:
+            raise ValueError(f"Color variable '{args.color}' not found in matched labels. Available columns: {matched_labels.columns.tolist()}")
 
         # Auto-detect color type
-        known_color_type = detect_color_type(var_labels['known_label'])
-        predicted_color_type = detect_color_type(var_labels['predicted_label'])
+        color_type = detect_color_type(matched_labels[args.color])
 
-        print(f"  Auto-detected color types - Known: {known_color_type}, Predicted: {predicted_color_type}")
+        print(f"  Auto-detected color types - Known: {color_type}")
 
-        try:
-            # Plot 1: Known labels
-            print(f"  Creating known labels plot for {var}...")
-            fig_known = plot_dim_reduced(
-                matrix=embeddings,
-                labels=var_labels['known_label'],
-                method=args.method,
-                color_type=known_color_type
-            )
+        # Plot: Known labels
+        print(f"  Creating known labels plot for {args.color}...")
+        fig_known = plot_dim_reduced(
+            matrix=embeddings,
+            labels=matched_labels[args.color],
+            method=args.method,
+            color_type=color_type
+        )
 
-            output_path_known = output_dir / f"{output_name_base}_{var}_known.{args.format}"
-            print(f"  Saving known labels plot to: {output_path_known.name}")
-            fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+        output_path_known = output_dir / f"{output_name_base}_{args.color}_known.{args.format}"
+        print(f"  Saving known labels plot to: {output_path_known.name}")
+        fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
 
-            # Plot 2: Predicted labels
-            print(f"  Creating predicted labels plot for {var}...")
-            fig_predicted = plot_dim_reduced(
-                matrix=embeddings,
-                labels=var_labels['predicted_label'],
-                method=args.method,
-                color_type=predicted_color_type
-            )
-
-            output_path_predicted = output_dir / f"{output_name_base}_{var}_predicted.{args.format}"
-            print(f"  Saving predicted labels plot to: {output_path_predicted.name}")
-            fig_predicted.save(output_path_predicted, dpi=args.dpi, bbox_inches='tight')
-
-            print(f"  ✓ Successfully created plots for variable '{var}'")
-
-        except Exception as e:
-            print(f"  ✗ Error creating plots for variable '{var}': {e}")
-            continue
-
-    print(f"\nDimensionality reduction plots completed for {len(valid_vars)} variable(s)!")
+        print(f"  ✓ Successfully created plots for variable '{args.color}'")
 
 
 def generate_km_plots(survival_data, label_data, args, output_dir, output_name_base):
@@ -1035,6 +1073,10 @@ def main():
     parser.add_argument("--target_value", type=str, default=None,
                         help="Target value for scatter plot.")
 
+    # Arguments for dimred
+    parser.add_argument("--color", type=str, default=None,
+                        help="User-defined color for the plot.")
+
     # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',
                         help="Output directory. Default is 'output'")
@@ -1201,7 +1243,7 @@ def main():
         if args.plot_type in ['dimred']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data, label_type = load_labels(args.labels)
+            label_data = load_labels(args.labels)
             # Load embeddings data
             print(f"Loading embeddings from: {args.embeddings}")
             embeddings, sample_names = load_embeddings(args.embeddings)
@@ -1216,7 +1258,7 @@ def main():
         elif args.plot_type in ['kaplan_meier']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data, label_type = load_labels(args.labels)
+            label_data = load_labels(args.labels)
             # Load survival data
             print(f"Loading survival data from: {args.survival_data}")
             survival_data = load_survival_data(args.survival_data)
@@ -1242,35 +1284,35 @@ def main():
         elif args.plot_type in ['scatter']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data, label_type = load_labels(args.labels)
+            label_data = load_labels(args.labels)
 
             generate_plot_scatter(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['concordance_heatmap']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data, label_type = load_labels(args.labels)
+            label_data = load_labels(args.labels)
 
             generate_label_concordance_heatmap(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['pr_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data, label_type = load_labels(args.labels)
+            label_data = load_labels(args.labels)
 
             generate_pr_curves(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['roc_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data, label_type = load_labels(args.labels)
+            label_data = load_labels(args.labels)
 
             generate_roc_curves(label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['box_plot']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data, label_type = load_labels(args.labels)
+            label_data = load_labels(args.labels)
 
             generate_box_plots(label_data, args, output_dir, output_name_base)
 
