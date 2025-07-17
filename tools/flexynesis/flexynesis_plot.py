@@ -116,12 +116,15 @@ def load_model(model_path):
 
 def match_samples_to_embeddings(sample_names, label_data):
     """Filter label data to match sample names in the embeddings"""
+    # Create a DataFrame from sample_names to preserve order
+    sample_df = pd.DataFrame({'sample_id': sample_names})
+
+    # left_join
     first_column = label_data.columns[0]
-    df_matched = label_data[label_data[first_column].isin(sample_names)]
+    df_matched = sample_df.merge(label_data, left_on='sample_id', right_on=first_column, how='left')
 
-    if df_matched.empty:
-        raise ValueError("No matching samples found between embeddings and labels")
-
+    # remove sample_id to keep the initial structure
+    df_matched = df_matched.drop('sample_id', axis=1)
     return df_matched
 
 
