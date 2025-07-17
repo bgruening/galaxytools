@@ -57,6 +57,7 @@ def load_labels(labels_input):
 
         # Check if this is the specific format with sample_id, known_label, predicted_label
         required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+        print(f"available columns: {df.columns.tolist()}")
         if all(col in df.columns for col in required_cols):
             print("Detected flexynesis labels format")
         else:
@@ -117,14 +118,14 @@ def load_model(model_path):
 def match_samples_to_embeddings(sample_names, label_data):
     """Filter label data to match sample names in the embeddings"""
     # Create a DataFrame from sample_names to preserve order
-    sample_df = pd.DataFrame({'sample_id': sample_names})
+    sample_df = pd.DataFrame({'sample_names': sample_names})
 
     # left_join
     first_column = label_data.columns[0]
-    df_matched = sample_df.merge(label_data, left_on='sample_id', right_on=first_column, how='left')
+    df_matched = sample_df.merge(label_data, left_on='sample_names', right_on=first_column, how='left')
 
-    # remove sample_id to keep the initial structure
-    df_matched = df_matched.drop('sample_id', axis=1)
+    # remove sample_names to keep the initial structure
+    df_matched = df_matched.drop('sample_names', axis=1)
     return df_matched
 
 
@@ -1255,7 +1256,8 @@ def main():
             # Match samples to embeddings
             matched_labels = match_samples_to_embeddings(sample_names, label_data)
             print(f"Successfully matched {len(matched_labels)} samples for dimensionality reduction")
-
+            print(f"Matched labels shape: {matched_labels.shape}")
+            print(f"Columns in matched labels: {matched_labels.columns.tolist()}")
             generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_name_base)
 
         elif args.plot_type in ['kaplan_meier']:
