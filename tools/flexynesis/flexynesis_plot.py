@@ -11,10 +11,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-import torch
 from flexynesis import (
     build_cox_model,
-    get_important_features,
     plot_dim_reduced,
     plot_hazard_ratios,
     plot_kaplan_meier_curves,
@@ -103,16 +101,6 @@ def load_omics(omics_path):
 
     except Exception as e:
         raise ValueError(f"Error loading omics data from {omics_path}: {e}") from e
-
-
-def load_model(model_path):
-    """Load flexynesis model from pickle file"""
-    try:
-        with open(model_path, 'rb') as f:
-            model = torch.load(f, weights_only=False)
-        return model
-    except Exception as e:
-        raise ValueError(f"Error loading model from {model_path}: {e}") from e
 
 
 def match_samples_to_embeddings(sample_names, label_data):
@@ -347,29 +335,11 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     if survival_data.columns[0] != 'sample_id':
         survival_data = survival_data.rename(columns={survival_data.columns[0]: 'sample_id'})
 
-    # Convert survival event column to binary (0/1) based on event_value
     # Check if the event column exists
     if args.surv_event_var not in survival_data.columns:
         raise ValueError(f"Column '{args.surv_event_var}' not found in survival data")
 
-    # Convert to string for comparison to handle mixed types
-    survival_data[args.surv_event_var] = survival_data[args.surv_event_var].astype(str)
-    event_value_str = str(args.event_value)
-
-    # Create binary event column (1 if matches event_value, 0 otherwise)
-    survival_data[f'{args.surv_event_var}_binary'] = (
-        survival_data[args.surv_event_var] == event_value_str
-    ).astype(int)
-
-    # Filter for survival category and class_label == '1:DECEASED'
-    label_data['class_label'] = label_data['class_label'].astype(str)
-
-    label_data = label_data[(label_data['variable'] == args.surv_event_var) & (label_data['class_label'] == event_value_str)]
-
-    # check survival data
-    for col in [args.surv_time_var, args.surv_event_var]:
-        if col not in survival_data.columns:
-            raise ValueError(f"Column '{col}' not found in survival data")
+    label_data = label_data[(label_data['variable'] == args.surv_event_var)]
 
     # Merge survival data with labels
     df_deceased = pd.merge(survival_data, label_data, on='sample_id', how='inner')
@@ -387,7 +357,7 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
 
     fig_known = plot_kaplan_meier_curves(
         durations=df_deceased[args.surv_time_var],
-        events=df_deceased[f'{args.surv_event_var}_binary'],
+        events=df_deceased[args.surv_event_var],
         categorical_variable=group_labels
     )
 
@@ -398,7 +368,7 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     print("Kaplan-Meier plot saved successfully!")
 
 
-def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_test, args, output_dir, output_name_base):
+def generate_cox_plots(important_features, clinical_train, clinical_test, omics_train, omics_test, args, output_dir, output_name_base):
     """Generate Cox proportional hazards plots"""
     print("Generating Cox proportional hazards analysis...")
 
@@ -429,10 +399,18 @@ def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_
     # Get top survival markers
     print(f"Extracting top {args.top_features} important features for {args.surv_event_var}...")
     try:
-        imp = get_important_features(model,
-                                     var=args.surv_event_var,
-                                     top=args.top_features
-                                     )['name'].unique().tolist()
+        print(f"Loading {args.top_features} important features from: {args.important_features}")
+        imp_features = load_labels(args.important_features)
+        imp_features = imp_features[imp_features['target_variable'] == args.surv_event_var]
+        if imp_features.empty:
+            raise ValueError(f"No important features found for target variable '{args.surv_event_var}' in {args.important_features}")
+        imp_features = imp_features.sort_values(by='importance', ascending=False)
+
+        if len(imp_features) < args.top_features:
+            raise ValueError(f"Requested top {args.top_features} features, but only {len(imp_features)} available in {args.important_features}")
+
+        imp = imp_features['name'].unique().tolist()[0:args.top_features]
+
         print(f"Top features: {', '.join(imp)}")
     except Exception as e:
         raise ValueError(f"Error getting important features: {e}")
@@ -464,15 +442,6 @@ def generate_cox_plots(model, clinical_train, clinical_test, omics_train, omics_
 
     if df.empty:
         raise ValueError("No samples remain after filtering for survival data")
-
-    # Convert survival event column to binary (0/1) based on event_value
-    # Convert to string for comparison to handle mixed types
-    df[args.surv_event_var] = df[args.surv_event_var].astype(str)
-    event_value_str = str(args.event_value)
-
-    df[f'{args.surv_event_var}'] = (
-        df[args.surv_event_var] == event_value_str
-    ).astype(int)
 
     # Build Cox model
     print(f"Building Cox model with time variable: {args.surv_time_var}, event variable: {args.surv_event_var}")
@@ -1048,12 +1017,10 @@ def main():
                         help="Column name for survival time")
     parser.add_argument("--surv_event_var", type=str, required=False,
                         help="Column name for survival event")
-    parser.add_argument("--event_value", type=str, required=False,
-                        help="Value in event column that represents an event (e.g., 'DECEASED')")
 
     # Arguments for Cox analysis
-    parser.add_argument("--model", type=str,
-                        help="Path to trained flexynesis model (pickle file). Required for cox plots.")
+    parser.add_argument("--important_features", type=str,
+                        help="Path to calculated feature importance file. Required for cox plots.")
     parser.add_argument("--clinical_train", type=str,
                         help="Path to training dataset (pickle file). Required for cox plots.")
     parser.add_argument("--clinical_test", type=str,
@@ -1124,14 +1091,12 @@ def main():
                 raise ValueError("--surv_time_var is required for Kaplan-Meier plots")
             if not args.surv_event_var:
                 raise ValueError("--surv_event_var is required for Kaplan-Meier plots")
-            if not args.event_value:
-                raise ValueError("--event_value is required for Kaplan-Meier plots")
 
         if args.plot_type in ['cox']:
-            if not args.model:
-                raise ValueError("--model is required when plot_type is 'cox'")
-            if not os.path.isfile(args.model):
-                raise FileNotFoundError(f"Model file not found: {args.model}")
+            if not args.important_features:
+                raise ValueError("--important_features is required when plot_type is 'cox'")
+            if not os.path.isfile(args.important_features):
+                raise FileNotFoundError(f"Important features file not found: {args.important_features}")
             if not args.clinical_train:
                 raise ValueError("--clinical_train is required when plot_type is 'cox'")
             if not os.path.isfile(args.clinical_train):
@@ -1156,8 +1121,6 @@ def main():
                 raise ValueError("--clinical_variables is required for Cox plots")
             if not isinstance(args.top_features, int) or args.top_features <= 0:
                 raise ValueError("--top_features must be a positive integer")
-            if not args.event_value:
-                raise ValueError("--event_value is required for Kaplan-Meier plots")
             if not args.crossval:
                 args.crossval = False
             if not isinstance(args.n_splits, int) or args.n_splits <= 0:
@@ -1272,9 +1235,9 @@ def main():
             generate_km_plots(survival_data, label_data, args, output_dir, output_name_base)
 
         elif args.plot_type in ['cox']:
-            # Load model and datasets
-            print(f"Loading model from: {args.model}")
-            model = load_model(args.model)
+            # Load important_features and datasets
+            print(f"Loading important features from: {args.important_features}")
+            important_features = load_labels(args.important_features)
             print(f"Loading training dataset from: {args.clinical_train}")
             clinical_train = load_omics(args.clinical_train)
             print(f"Loading test dataset from: {args.clinical_test}")
@@ -1284,7 +1247,7 @@ def main():
             print(f"Loading test omics dataset from: {args.omics_test}")
             omics_test = load_omics(args.omics_test)
 
-            generate_cox_plots(model, clinical_train, clinical_test, omics_test, omics_train, args, output_dir, output_name_base)
+            generate_cox_plots(important_features, clinical_train, clinical_test, omics_test, omics_train, args, output_dir, output_name_base)
 
         elif args.plot_type in ['scatter']:
             # Load labels

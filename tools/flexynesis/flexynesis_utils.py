@@ -163,14 +163,30 @@ def split_and_save_data(data, ratio=0.7, output_dir='.'):
             continue
 
 
+def validate_survival(df, column_name):
+    """Validate that survival column in the DataFrame contains numeric integers."""
+    if column_name not in df.columns:
+        raise ValueError(f"Column '{column_name}' not found in DataFrame.")
+
+    try:
+        numeric_col = pd.to_numeric(df[column_name], errors='raise')
+    except Exception as e:
+        raise ValueError(f"Non-numeric values found in column '{column_name}': {e}")
+
+    if not (numeric_col.dropna() == numeric_col.dropna().astype(int)).all():
+        raise ValueError(f"Column '{column_name}' contains non-integer numeric values.")
+
+    print("All values are numeric integers.")
+
+
 def main():
     parser = argparse.ArgumentParser(description='Flexynesis extra utilities')
 
     parser.add_argument("--util", type=str, required=True,
-                        choices=['split', 'binarize'],
-                        help="Utility function: 'split' for spiting data to train and test, 'binarize' for creating a binarized matrix from a mutation data")
+                        choices=['split', 'binarize', 'validate_survival'],
+                        help="Utility function: 'split' for spiting data to train and test, 'binarize' for creating a binarized matrix from a mutation data, 'validate_survival' for validating survival data.")
 
-    # Arguments for split
+    # Arguments for split (clin also for validate_survival)
     parser.add_argument('--clin', required=False,
                         help='Path to clinical data CSV file (samples in rows)')
     parser.add_argument('--omics', required=False,
@@ -186,7 +202,11 @@ def main():
     parser.add_argument('--sample_idx', type=int, default=1,
                         help='Column index for samples in mutation data (default: 1)')
 
-    # common arguments
+    # Arguments for validate_survival
+    parser.add_argument('--surv_event_var', type=str, required=False,
+                        help='Column name for survival event variable (e.g., death)')
+
+    # common arguments (binarize and split)
     parser.add_argument('--out', default='.',
                         help='Output directory (default: current directory)')
 
@@ -196,7 +216,7 @@ def main():
         # validate utility function
         if not args.util:
             raise ValueError("Utility function must be specified")
-        if args.util not in ['split', 'binarize']:
+        if args.util not in ['split', 'binarize', 'validate_survival']:
             raise ValueError(f"Invalid utility function: {args.util}")
 
         if args.util == 'split':
@@ -220,6 +240,16 @@ def main():
             # Validate gene and sample indices
             if args.gene_idx < 0 or args.sample_idx < 0:
                 raise ValueError("Gene and sample indices must be non-negative integers")
+
+        elif args.util == 'validate_survival':
+            # Validate clinical data file
+            if not args.clin:
+                raise ValueError("Clinical data file must be provided")
+            if not os.path.isfile(args.clin):
+                raise FileNotFoundError(f"Clinical file not found: {args.clin}")
+            # Validate survival event variable
+            if not args.surv_event_var:
+                raise ValueError("Survival event variable must be specified")
 
         # Create output directory if it doesn't exist
         if not os.path.exists(args.out):
@@ -247,6 +277,15 @@ def main():
             output_file = os.path.join(args.out, 'binarized_mutations.tabular')
             binarized_matrix.to_csv(output_file, sep='\t')
             print(f"Binarized mutation matrix saved to {output_file}")
+
+        elif args.util == 'validate_survival':
+            clin_df = read_data(args.clin, index=False)
+            if clin_df.empty:
+                raise ValueError("Clinical data file is empty")
+
+            # Validate survival event variable
+            validate_survival(clin_df, args.surv_event_var)
+            print(f"Survival event variable '{args.surv_event_var}' validated successfully.")
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
