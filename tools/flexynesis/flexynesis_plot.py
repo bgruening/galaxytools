@@ -513,10 +513,7 @@ def generate_plot_scatter(labels, args, output_dir, output_name_base):
 
             # Create output filename with target value
             safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
-            if len(target_values) > 1:
-                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
-            else:
-                output_filename = f"{output_name_base}.{args.format}"
+            output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
 
             output_path = output_dir / output_filename
             print(f"  Saving scatter plot to: {output_path.absolute()}")
@@ -573,10 +570,7 @@ def generate_label_concordance_heatmap(labels, args, output_dir, output_name_bas
 
             # Create output filename with target value
             safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
-            if len(target_values) > 1:
-                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
-            else:
-                output_filename = f"{output_name_base}.{args.format}"
+            output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
 
             output_path = output_dir / output_filename
             print(f"  Saving heatmap to: {output_path.absolute()}")
@@ -723,10 +717,7 @@ def generate_pr_curves(labels, args, output_dir, output_name_base):
 
             # Create output filename with target value
             safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
-            if len(target_values) > 1:
-                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
-            else:
-                output_filename = f"{output_name_base}.{args.format}"
+            output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
 
             output_path = output_dir / output_filename
             print(f"  Saving precision-recall curve to: {output_path.absolute()}")
@@ -875,10 +866,7 @@ def generate_roc_curves(labels, args, output_dir, output_name_base):
 
             # Create output filename with target value
             safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
-            if len(target_values) > 1:
-                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
-            else:
-                output_filename = f"{output_name_base}.{args.format}"
+            output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
 
             output_path = output_dir / output_filename
             print(f"  Saving ROC curve to: {output_path.absolute()}")
@@ -1188,7 +1176,7 @@ def main():
                 survival_name = Path(args.survival_data).stem
                 output_name_base = f"{survival_name}_km"
             elif args.plot_type == 'cox':
-                model_name = Path(args.model).stem
+                model_name = Path(args.important_features).stem
                 output_name_base = f"{model_name}_cox"
             elif args.plot_type == 'scatter':
                 labels_name = Path(args.labels).stem
