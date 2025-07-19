@@ -67,24 +67,6 @@ def load_labels(labels_input):
         raise ValueError(f"Error loading labels from {labels_input}: {e}") from e
 
 
-def load_survival_data(survival_path):
-    """Load survival data from a file. First column should be sample_id"""
-    try:
-        # Determine file extension
-        file_ext = Path(survival_path).suffix.lower()
-
-        if file_ext == '.csv':
-            df = pd.read_csv(survival_path, index_col=0)
-        elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
-            df = pd.read_csv(survival_path, sep='\t', index_col=0)
-        else:
-            raise ValueError(f"Unsupported file extension: {file_ext}")
-        return df
-
-    except Exception as e:
-        raise ValueError(f"Error loading survival data from {survival_path}: {e}") from e
-
-
 def load_omics(omics_path):
     """Load omics data from a file. First column should be features"""
     try:
@@ -339,8 +321,6 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     """Generate Kaplan-Meier plots"""
     print("Generating Kaplan-Meier curves of risk subtypes...")
 
-    # Reset index and rename the index column to sample_id
-    survival_data = survival_data.reset_index()
     if survival_data.columns[0] != 'sample_id':
         survival_data = survival_data.rename(columns={survival_data.columns[0]: 'sample_id'})
 
@@ -1224,7 +1204,7 @@ def main():
             label_data = load_labels(args.labels)
             # Load survival data
             print(f"Loading survival data from: {args.survival_data}")
-            survival_data = load_survival_data(args.survival_data)
+            survival_data = load_labels(args.survival_data)
             print(f"Survival data shape: {survival_data.shape}")
 
             generate_km_plots(survival_data, label_data, args, output_dir, output_name_base)
