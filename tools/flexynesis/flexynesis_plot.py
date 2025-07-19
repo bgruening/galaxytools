@@ -85,14 +85,14 @@ def load_omics(omics_path):
         raise ValueError(f"Error loading omics data from {omics_path}: {e}") from e
 
 
-def match_samples_to_embeddings(sample_names, label_data):
+def match_samples_to_embeddings(sample_names, labels):
     """Filter label data to match sample names in the embeddings"""
     # Create a DataFrame from sample_names to preserve order
     sample_df = pd.DataFrame({'sample_names': sample_names})
 
     # left_join
-    first_column = label_data.columns[0]
-    df_matched = sample_df.merge(label_data, left_on='sample_names', right_on=first_column, how='left')
+    first_column = labels.columns[0]
+    df_matched = sample_df.merge(labels, left_on='sample_names', right_on=first_column, how='left')
 
     # remove sample_names to keep the initial structure
     df_matched = df_matched.drop('sample_names', axis=1)
@@ -199,9 +199,12 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
     required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
     is_flexynesis_format = all(col in matched_labels.columns for col in required_cols)
 
-    if is_flexynesis_format and not args.color:
-        print("Detected flexynesis labels format")
-        print(f"Generating {args.method.upper()} plots for known and predicted labels...")
+    if not args.color:
+        if is_flexynesis_format:
+            print("Detected flexynesis labels format")
+            print(f"Generating {args.method.upper()} plots for known and predicted labels...")
+        else:
+            print("Labels are not in flexynesis format (Custom labels), please specify a color variable with --color")
 
         # Parse target values from comma-separated string
         if args.target_value:
@@ -280,18 +283,6 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
         print(f"\nDimensionality reduction plots completed for {len(valid_vars)} variable(s)!")
 
     else:
-        # Handle both flexynesis format with color argument AND custom labels
-        if is_flexynesis_format and args.color:
-            print("Detected flexynesis labels format")
-            print(f"Generating {args.method.upper()} plots for {args.color}...")
-        else:
-            print("Labels are not in flexynesis format (Custom labels)")
-            print(f"Generating {args.method.upper()} plots for {args.color}...")
-
-        # check if the color argument is provided
-        if args.color is None:
-            raise ValueError("No color argument provided. Please specify a color variable.")
-
         # check if the color variable exists in matched_labels
         if args.color not in matched_labels.columns:
             raise ValueError(f"Color variable '{args.color}' not found in matched labels. Available columns: {matched_labels.columns.tolist()}")
@@ -317,8 +308,16 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
         print(f"  ✓ Successfully created plot for variable '{args.color}'")
 
 
-def generate_km_plots(survival_data, label_data, args, output_dir, output_name_base):
+def generate_km_plots(survival_data, labels, args, output_dir, output_name_base):
     """Generate Kaplan-Meier plots"""
+
+    # Check if this is the specific format with sample_id, known_label, predicted_label
+    required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+    is_flexynesis_format = all(col in labels.columns for col in required_cols)
+
+    if not is_flexynesis_format:
+        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
+
     print("Generating Kaplan-Meier curves of risk subtypes...")
 
     if survival_data.columns[0] != 'sample_id':
@@ -328,10 +327,10 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
     if args.surv_event_var not in survival_data.columns:
         raise ValueError(f"Column '{args.surv_event_var}' not found in survival data")
 
-    label_data = label_data[(label_data['variable'] == args.surv_event_var)]
+    labels = labels[(labels['variable'] == args.surv_event_var)]
 
     # Merge survival data with labels
-    df_deceased = pd.merge(survival_data, label_data, on='sample_id', how='inner')
+    df_deceased = pd.merge(survival_data, labels, on='sample_id', how='inner')
 
     if df_deceased.empty:
         raise ValueError("No matching samples found after merging survival and label data.")
@@ -360,6 +359,13 @@ def generate_km_plots(survival_data, label_data, args, output_dir, output_name_b
 def generate_cox_plots(important_features, clinical_train, clinical_test, omics_train, omics_test, args, output_dir, output_name_base):
     """Generate Cox proportional hazards plots"""
     print("Generating Cox proportional hazards analysis...")
+
+    # Check if this is the specific format with target_variable, importance
+    required_cols = ['target_variable', 'importance']
+    is_flexynesis_format = all(col in important_features.columns for col in required_cols)
+
+    if not is_flexynesis_format:
+        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid important_features file with the required columns, {required_cols}.")
 
     # Parse clinical variables
     clinical_vars = [var.strip() for var in args.clinical_variables.split(',')]
@@ -464,6 +470,13 @@ def generate_plot_scatter(labels, args, output_dir, output_name_base):
     """Generate scatter plot of known vs predicted labels"""
     print("Generating scatter plots of known vs predicted labels...")
 
+    # Check if this is the specific format with sample_id, known_label, predicted_label
+    required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+    is_flexynesis_format = all(col in labels.columns for col in required_cols)
+
+    if not is_flexynesis_format:
+        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
+
     # Parse target values from comma-separated string
     if args.target_value:
         target_values = [val.strip() for val in args.target_value.split(',')]
@@ -530,6 +543,13 @@ def generate_label_concordance_heatmap(labels, args, output_dir, output_name_bas
     """Generate label concordance heatmap"""
     print("Generating label concordance heatmaps...")
 
+    # Check if this is the specific format with sample_id, known_label, predicted_label
+    required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+    is_flexynesis_format = all(col in labels.columns for col in required_cols)
+
+    if not is_flexynesis_format:
+        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
+
     # Parse target values from comma-separated string
     if args.target_value:
         target_values = [val.strip() for val in args.target_value.split(',')]
@@ -575,6 +595,13 @@ def generate_label_concordance_heatmap(labels, args, output_dir, output_name_bas
 def generate_pr_curves(labels, args, output_dir, output_name_base):
     """Generate precision-recall curves"""
     print("Generating precision-recall curves...")
+
+    # Check if this is the specific format with sample_id, known_label, predicted_label
+    required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+    is_flexynesis_format = all(col in labels.columns for col in required_cols)
+
+    if not is_flexynesis_format:
+        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
 
     # Parse target values from comma-separated string
     if args.target_value:
@@ -725,6 +752,13 @@ def generate_roc_curves(labels, args, output_dir, output_name_base):
     """Generate ROC curves"""
     print("Generating ROC curves...")
 
+    # Check if this is the specific format with sample_id, known_label, predicted_label
+    required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+    is_flexynesis_format = all(col in labels.columns for col in required_cols)
+
+    if not is_flexynesis_format:
+        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
+
     # Parse target values from comma-separated string
     if args.target_value:
         target_values = [val.strip() for val in args.target_value.split(',')]
@@ -872,6 +906,13 @@ def generate_roc_curves(labels, args, output_dir, output_name_base):
 
 def generate_box_plots(labels, args, output_dir, output_name_base):
     """Generate box plots for model predictions"""
+
+    # Check if this is the specific format with sample_id, known_label, predicted_label
+    required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
+    is_flexynesis_format = all(col in labels.columns for col in required_cols)
+
+    if not is_flexynesis_format:
+        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
 
     print("Generating box plots...")
 
@@ -1185,14 +1226,14 @@ def main():
         if args.plot_type in ['dimred']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            labels = load_labels(args.labels)
             # Load embeddings data
             print(f"Loading embeddings from: {args.embeddings}")
             embeddings, sample_names = load_embeddings(args.embeddings)
             print(f"embeddings shape: {embeddings.shape}")
 
             # Match samples to embeddings
-            matched_labels = match_samples_to_embeddings(sample_names, label_data)
+            matched_labels = match_samples_to_embeddings(sample_names, labels)
             print(f"Successfully matched {len(matched_labels)} samples for dimensionality reduction")
             print(f"Matched labels shape: {matched_labels.shape}")
             print(f"Columns in matched labels: {matched_labels.columns.tolist()}")
@@ -1201,13 +1242,13 @@ def main():
         elif args.plot_type in ['kaplan_meier']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            labels = load_labels(args.labels)
             # Load survival data
             print(f"Loading survival data from: {args.survival_data}")
             survival_data = load_labels(args.survival_data)
             print(f"Survival data shape: {survival_data.shape}")
 
-            generate_km_plots(survival_data, label_data, args, output_dir, output_name_base)
+            generate_km_plots(survival_data, labels, args, output_dir, output_name_base)
 
         elif args.plot_type in ['cox']:
             # Load important_features and datasets
@@ -1227,37 +1268,37 @@ def main():
         elif args.plot_type in ['scatter']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            labels = load_labels(args.labels)
 
-            generate_plot_scatter(label_data, args, output_dir, output_name_base)
+            generate_plot_scatter(labels, args, output_dir, output_name_base)
 
         elif args.plot_type in ['concordance_heatmap']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            labels = load_labels(args.labels)
 
-            generate_label_concordance_heatmap(label_data, args, output_dir, output_name_base)
+            generate_label_concordance_heatmap(labels, args, output_dir, output_name_base)
 
         elif args.plot_type in ['pr_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            labels = load_labels(args.labels)
 
-            generate_pr_curves(label_data, args, output_dir, output_name_base)
+            generate_pr_curves(labels, args, output_dir, output_name_base)
 
         elif args.plot_type in ['roc_curve']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            labels = load_labels(args.labels)
 
-            generate_roc_curves(label_data, args, output_dir, output_name_base)
+            generate_roc_curves(labels, args, output_dir, output_name_base)
 
         elif args.plot_type in ['box_plot']:
             # Load labels
             print(f"Loading labels from: {args.labels}")
-            label_data = load_labels(args.labels)
+            labels = load_labels(args.labels)
 
-            generate_box_plots(label_data, args, output_dir, output_name_base)
+            generate_box_plots(labels, args, output_dir, output_name_base)
 
         print("All plots generated successfully!")
 
