@@ -215,8 +215,12 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
 
     # Check if this is the specific format with sample_id, known_label, predicted_label
     required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
-    if all(col in matched_labels.columns for col in required_cols):
+    is_flexynesis_format = all(col in matched_labels.columns for col in required_cols)
+
+    if is_flexynesis_format and not args.color:
         print("Detected flexynesis labels format")
+        print(f"Generating {args.method.upper()} plots for known and predicted labels...")
+
         # Parse target values from comma-separated string
         if args.target_value:
             target_values = [val.strip() for val in args.target_value.split(',')]
@@ -294,8 +298,13 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
         print(f"\nDimensionality reduction plots completed for {len(valid_vars)} variable(s)!")
 
     else:
-        print("Labels are not in flexynesis format (Custom labels)")
-        print(f"Generating {args.method.upper()} plots")
+        # Handle both flexynesis format with color argument AND custom labels
+        if is_flexynesis_format and args.color:
+            print("Detected flexynesis labels format")
+            print(f"Generating {args.method.upper()} plots for {args.color}...")
+        else:
+            print("Labels are not in flexynesis format (Custom labels)")
+            print(f"Generating {args.method.upper()} plots for {args.color}...")
 
         # check if the color argument is provided
         if args.color is None:
@@ -308,22 +317,22 @@ def generate_dimred_plots(embeddings, matched_labels, args, output_dir, output_n
         # Auto-detect color type
         color_type = detect_color_type(matched_labels[args.color])
 
-        print(f"  Auto-detected color types - Known: {color_type}")
+        print(f"  Auto-detected color type: {color_type}")
 
-        # Plot: Known labels
-        print(f"  Creating known labels plot for {args.color}...")
-        fig_known = plot_dim_reduced(
+        # Plot: Specified color column
+        print(f"  Creating plot for {args.color}...")
+        fig = plot_dim_reduced(
             matrix=embeddings,
             labels=matched_labels[args.color],
             method=args.method,
             color_type=color_type
         )
 
-        output_path_known = output_dir / f"{output_name_base}_{args.color}_known.{args.format}"
-        print(f"  Saving known labels plot to: {output_path_known.name}")
-        fig_known.save(output_path_known, dpi=args.dpi, bbox_inches='tight')
+        output_path = output_dir / f"{output_name_base}_{args.color}.{args.format}"
+        print(f"  Saving plot to: {output_path.name}")
+        fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
 
-        print(f"  ✓ Successfully created plots for variable '{args.color}'")
+        print(f"  ✓ Successfully created plot for variable '{args.color}'")
 
 
 def generate_km_plots(survival_data, label_data, args, output_dir, output_name_base):
@@ -997,6 +1006,8 @@ def main():
                         help="Path to input data embeddings file (CSV or tabular format). Required for dimred plots.")
     parser.add_argument("--method", type=str, default='pca', choices=['pca', 'umap'],
                         help="Transformation method ('pca' or 'umap'). Default is 'pca'. Used for dimred plots.")
+    parser.add_argument("--color", type=str, default=None,
+                        help="User-defined color for the plot.")
 
     # Arguments for Kaplan-Meier
     parser.add_argument("--survival_data", type=str,
@@ -1031,10 +1042,6 @@ def main():
     # Arguments for dimred, scatter plot, heatmap, PR curves, ROC curves, and box plots
     parser.add_argument("--target_value", type=str, default=None,
                         help="Target value for scatter plot.")
-
-    # Arguments for dimred
-    parser.add_argument("--color", type=str, default=None,
-                        help="User-defined color for the plot.")
 
     # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',

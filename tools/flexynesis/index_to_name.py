@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import sys
+from pathlib import Path
 
 import pandas as pd
 
@@ -9,7 +10,18 @@ def get_column_names(file_path, indices):
     """
     Get column names based on multiple indices from a tabular file.
     """
-    data = pd.read_csv(file_path, sep=",")
+    try:
+        file_ext = Path(file_path).suffix.lower()
+        sep = ',' if file_ext == '.csv' else '\t'
+
+        if file_ext in ['.csv', '.tsv', '.txt', '.tab', '.tabular']:
+            data = pd.read_csv(file_path, sep=sep)
+        else:
+            raise ValueError(f"Unsupported file extension: {file_ext}")
+
+    except Exception as e:
+        raise ValueError(f"Error loading data from {file_path}: {e}") from e
+
     column_names = []
 
     for index in indices:
