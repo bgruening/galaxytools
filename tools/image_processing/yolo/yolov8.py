@@ -51,12 +51,12 @@ parser.add_argument("--run_dir",
                     ),
                     type=str)
 parser.add_argument("--foldername",
-                    help=("Folder to save overlaid images."
-                          "For example: FOLDERNAME=batch."
-                          "This should not exist as a new folder named `batch`"
-                          " will be created in RUN_DIR."
-                          " If it exists already then, a new folder named `batch1`"
-                          " will be created automatically as it does not overwrite"
+                    help=("Folder to save overlaid images.\n"
+                          "For example: FOLDERNAME=batch.\n"
+                          "This should not exist as a new folder named `batch`\n"
+                          " will be created in RUN_DIR.\n"
+                          " If it exists already then, a new folder named `batch1`\n"
+                          " will be created automatically as it does not overwrite\n"
                           ),
                     type=str)
 
@@ -375,7 +375,7 @@ if __name__ == '__main__':
         t = time.time()
         train_save_path = os.path.expanduser('~/runs/' + args.mode + '/')
         if os.path.isfile(os.path.join(train_save_path,
-                                       "train", "weights", "best.pt")):
+                                       "train", "weights", "best.pt")) and (args.model_name == 'sam'):
             model = YOLO(os.path.join(train_save_path,
                                       "train", "weights", "best.pt"))
         else:
@@ -401,6 +401,25 @@ if __name__ == '__main__':
         if (args.mode == "detect"):
             # Save bounding boxes
             save_yolo_bounding_boxes_to_txt(predictions, args.save_dir)
+
+            # Loop over each result
+            for result in predictions:
+                img = np.copy(result.orig_img)
+                image_filename = pathlib.Path(result.path).stem
+                overlay_path = os.path.join(args.save_dir, f"{image_filename}_overlay.jpg")
+
+                for box, cls, conf in zip(result.boxes.xyxy, result.boxes.cls, result.boxes.conf):
+                    x1, y1, x2, y2 = map(int, box.tolist())
+                    class_num = int(cls.item())
+                    confidence = conf.item()
+                    label = f"{class_names[class_num]} {confidence:.2f}" if class_names else f"{class_num} {confidence:.2f}"
+
+                    cv2.rectangle(img, (x1, y1), (x2, y2), color=(0, 255, 0), thickness=2)
+                    cv2.putText(img, label, (x1, y1 - 10), cv2.FONT_HERSHEY_SIMPLEX,
+                                0.5, (0, 255, 0), thickness=1)
+
+                cv2.imwrite(overlay_path, img)
+                print(colored(f"Overlay image saved at: {overlay_path}", 'cyan'))
         elif (args.mode == "track"):
             results = model.track(source=datapath_for_prediction,
                                   tracker=args.tracker_file,
