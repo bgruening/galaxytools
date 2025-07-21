@@ -324,6 +324,7 @@ def generate_km_plots(survival_data, labels, args, output_dir, output_name_base)
 
     # Merge survival data with labels
     df_deceased = pd.merge(survival_data, labels, on='sample_id', how='inner')
+    df_deceased = df_deceased.dropna(subset=[args.surv_time_var, args.surv_event_var])
 
     if df_deceased.empty:
         raise ValueError("No matching samples found after merging survival and label data.")
@@ -361,7 +362,9 @@ def generate_cox_plots(important_features, clinical_train, clinical_test, omics_
         raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid important_features file with the required columns, {required_cols}.")
 
     # Parse clinical variables
-    clinical_vars = [var.strip() for var in args.clinical_variables.split(',')]
+    clinical_vars = []
+    if args.clinical_variables:
+        clinical_vars = [var.strip() for var in args.clinical_variables.split(',')]
 
     # Validate that survival variables are included
     required_vars = [args.surv_time_var, args.surv_event_var]
@@ -1133,7 +1136,7 @@ def main():
             if not args.surv_event_var:
                 raise ValueError("--surv_event_var is required for Cox plots")
             if not args.clinical_variables:
-                raise ValueError("--clinical_variables is required for Cox plots")
+                print("--clinical_variables is not set for Cox plots")
             if not isinstance(args.top_features, int) or args.top_features <= 0:
                 raise ValueError("--top_features must be a positive integer")
             if not args.crossval:
