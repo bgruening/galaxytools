@@ -474,69 +474,96 @@ def generate_plot_scatter(labels, args, output_dir, output_name_base):
     required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
     is_flexynesis_format = all(col in labels.columns for col in required_cols)
 
+    if is_flexynesis_format:
+        # Parse target values from comma-separated string
+        if args.target_value:
+            target_values = [val.strip() for val in args.target_value.split(',')]
+        else:
+            # If no target values specified, use all unique variables
+            target_values = labels['variable'].unique().tolist()
+
+        print(f"Processing target values: {target_values}")
+
+        successful_plots = 0
+        skipped_plots = 0
+
+        for target_value in target_values:
+            print(f"\nProcessing target value: '{target_value}'")
+
+            # Filter labels for the current target value
+            target_labels = labels[labels['variable'] == target_value]
+
+            if target_labels.empty:
+                print(f"  Warning: No data found for target value '{target_value}' - skipping")
+                skipped_plots += 1
+                continue
+
+            # Check if labels are numeric and convert
+            true_values = pd.to_numeric(target_labels['known_label'], errors='coerce')
+            predicted_values = pd.to_numeric(target_labels['predicted_label'], errors='coerce')
+
+            if true_values.isna().all() or predicted_values.isna().all():
+                print(f"No valid numeric values found for known or predicted labels in '{target_value}'")
+                skipped_plots += 1
+                continue
+
+            try:
+                print(f"  Generating scatter plot for '{target_value}'...")
+                fig = plot_scatter(true_values, predicted_values)
+
+                # Create output filename with target value
+                safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
+                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
+
+                output_path = output_dir / output_filename
+                print(f"  Saving scatter plot to: {output_path.absolute()}")
+                fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
+
+                successful_plots += 1
+                print(f"  Scatter plot for '{target_value}' generated successfully!")
+
+            except Exception as e:
+                print(f"  Error generating plot for '{target_value}': {str(e)}")
+                skipped_plots += 1
+
+        # Summary
+        print("  Summary:")
+        print(f"  Successfully generated: {successful_plots} plots")
+        print(f"  Skipped: {skipped_plots} plots")
+
+        if successful_plots == 0:
+            raise ValueError("No scatter plots could be generated. Check your data and target values.")
+
+        print("Scatter plot generation completed!")
+
     if not is_flexynesis_format:
-        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
+        print("Labels are not in flexynesis format (Custom labels)")
 
-    # Parse target values from comma-separated string
-    if args.target_value:
-        target_values = [val.strip() for val in args.target_value.split(',')]
-    else:
-        # If no target values specified, use all unique variables
-        target_values = labels['variable'].unique().tolist()
-
-    print(f"Processing target values: {target_values}")
-
-    successful_plots = 0
-    skipped_plots = 0
-
-    for target_value in target_values:
-        print(f"\nProcessing target value: '{target_value}'")
-
-        # Filter labels for the current target value
-        target_labels = labels[labels['variable'] == target_value]
-
-        if target_labels.empty:
-            print(f"  Warning: No data found for target value '{target_value}' - skipping")
-            skipped_plots += 1
-            continue
+        if not args.true_label or not args.predicted_label:
+            raise ValueError("For custom labels, please specify --true_label and --predicted_label arguments.")
 
         # Check if labels are numeric and convert
-        true_values = pd.to_numeric(target_labels['known_label'], errors='coerce')
-        predicted_values = pd.to_numeric(target_labels['predicted_label'], errors='coerce')
+        true_values = pd.to_numeric(labels[args.true_label], errors='coerce')
+        predicted_values = pd.to_numeric(labels[args.predicted_label], errors='coerce')
 
         if true_values.isna().all() or predicted_values.isna().all():
-            print(f"No valid numeric values found for known or predicted labels in '{target_value}'")
-            skipped_plots += 1
-            continue
+            print("No valid numeric values found for known or predicted labels")
 
         try:
-            print(f"  Generating scatter plot for '{target_value}'...")
+            print("  Generating scatter plot...")
             fig = plot_scatter(true_values, predicted_values)
 
             # Create output filename with target value
-            safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
-            output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
+            output_filename = f"{output_name_base}.{args.format}"
 
             output_path = output_dir / output_filename
             print(f"  Saving scatter plot to: {output_path.absolute()}")
             fig.save(output_path, dpi=args.dpi, bbox_inches='tight')
 
-            successful_plots += 1
-            print(f"  Scatter plot for '{target_value}' generated successfully!")
-
         except Exception as e:
-            print(f"  Error generating plot for '{target_value}': {str(e)}")
-            skipped_plots += 1
+            print(f"  Error generating plot: {str(e)}")
 
-    # Summary
-    print("  Summary:")
-    print(f"  Successfully generated: {successful_plots} plots")
-    print(f"  Skipped: {skipped_plots} plots")
-
-    if successful_plots == 0:
-        raise ValueError("No scatter plots could be generated. Check your data and target values.")
-
-    print("Scatter plot generation completed!")
+        print("Scatter plot generation completed!")
 
 
 def generate_label_concordance_heatmap(labels, args, output_dir, output_name_base):
@@ -547,49 +574,73 @@ def generate_label_concordance_heatmap(labels, args, output_dir, output_name_bas
     required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
     is_flexynesis_format = all(col in labels.columns for col in required_cols)
 
+    if is_flexynesis_format:
+        # Parse target values from comma-separated string
+        if args.target_value:
+            target_values = [val.strip() for val in args.target_value.split(',')]
+        else:
+            # If no target values specified, use all unique variables
+            target_values = labels['variable'].unique().tolist()
+
+        print(f"Processing target values: {target_values}")
+
+        for target_value in target_values:
+            print(f"\nProcessing target value: '{target_value}'")
+
+            # Filter labels for the current target value
+            target_labels = labels[labels['variable'] == target_value]
+
+            if target_labels.empty:
+                print(f"  Warning: No data found for target value '{target_value}' - skipping")
+                continue
+
+            true_values = target_labels['known_label'].tolist()
+            predicted_values = target_labels['predicted_label'].tolist()
+
+            try:
+                print(f"  Generating heatmap for '{target_value}'...")
+                fig = plot_label_concordance_heatmap(true_values, predicted_values)
+                plt.close(fig)
+
+                # Create output filename with target value
+                safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
+                output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
+
+                output_path = output_dir / output_filename
+                print(f"  Saving heatmap to: {output_path.absolute()}")
+                fig.savefig(output_path, dpi=args.dpi, bbox_inches='tight')
+
+            except Exception as e:
+                print(f"  Error generating heatmap for '{target_value}': {str(e)}")
+                continue
+
+        print("Label concordance heatmap generated successfully!")
+
     if not is_flexynesis_format:
-        raise ValueError(f"Labels are not in flexynesis format (Custom labels). Please provide a valid label file with the required columns, {required_cols}.")
+        print("Labels are not in flexynesis format (Custom labels)")
 
-    # Parse target values from comma-separated string
-    if args.target_value:
-        target_values = [val.strip() for val in args.target_value.split(',')]
-    else:
-        # If no target values specified, use all unique variables
-        target_values = labels['variable'].unique().tolist()
+        if not args.true_label or not args.predicted_label:
+            raise ValueError("For custom labels, please specify --true_label and --predicted_label arguments.")
 
-    print(f"Processing target values: {target_values}")
-
-    for target_value in target_values:
-        print(f"\nProcessing target value: '{target_value}'")
-
-        # Filter labels for the current target value
-        target_labels = labels[labels['variable'] == target_value]
-
-        if target_labels.empty:
-            print(f"  Warning: No data found for target value '{target_value}' - skipping")
-            continue
-
-        true_values = target_labels['known_label'].tolist()
-        predicted_values = target_labels['predicted_label'].tolist()
+        true_values = labels[args.true_label].tolist()
+        predicted_values = labels[args.predicted_label].tolist()
 
         try:
-            print(f"  Generating heatmap for '{target_value}'...")
+            print("  Generating heatmap for...")
             fig = plot_label_concordance_heatmap(true_values, predicted_values)
             plt.close(fig)
 
             # Create output filename with target value
-            safe_target_name = target_value.replace('/', '_').replace('\\', '_').replace(' ', '_')
-            output_filename = f"{output_name_base}_{safe_target_name}.{args.format}"
+            output_filename = f"{output_name_base}.{args.format}"
 
             output_path = output_dir / output_filename
             print(f"  Saving heatmap to: {output_path.absolute()}")
             fig.savefig(output_path, dpi=args.dpi, bbox_inches='tight')
 
         except Exception as e:
-            print(f"  Error generating heatmap for '{target_value}': {str(e)}")
-            continue
+            print(f"  Error generating heatmap': {str(e)}")
 
-    print("Label concordance heatmap generated successfully!")
+        print("Label concordance heatmap generated successfully!")
 
 
 def generate_pr_curves(labels, args, output_dir, output_name_base):
@@ -1066,6 +1117,11 @@ def main():
     parser.add_argument("--target_value", type=str, default=None,
                         help="Target value for scatter plot.")
 
+    # Arguments for scatter plots and concordance heatmaps
+    parser.add_argument("--true_label", type=str, default=None,
+                        help="Column name for true labels in scatter plots and concordance heatmaps.")
+    parser.add_argument("--predicted_label", type=str, default=None,
+                        help="Column name for predicted labels in scatter plots and concordance heatmaps.")
     # Common arguments
     parser.add_argument("--output_dir", type=str, default='output',
                         help="Output directory. Default is 'output'")
