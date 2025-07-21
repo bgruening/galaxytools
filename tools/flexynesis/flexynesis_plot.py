@@ -354,7 +354,7 @@ def generate_cox_plots(important_features, clinical_train, clinical_test, omics_
     print("Generating Cox proportional hazards analysis...")
 
     # Check if this is the specific format with target_variable, importance
-    required_cols = ['target_variable', 'importance']
+    required_cols = ['target_variable', 'layer', 'importance']
     is_flexynesis_format = all(col in important_features.columns for col in required_cols)
 
     if not is_flexynesis_format:
@@ -390,6 +390,10 @@ def generate_cox_plots(important_features, clinical_train, clinical_test, omics_
         print(f"Loading {args.top_features} important features from: {args.important_features}")
         imp_features = load_labels(args.important_features)
         imp_features = imp_features[imp_features['target_variable'] == args.surv_event_var]
+        if args.layer not in imp_features['layer'].unique():
+            print(f"Available class labels: {imp_features['layer'].unique()}")
+            raise ValueError(f"Class label '{args.layer}' not found in important features data: {args.important_features}")
+        imp_features = imp_features[imp_features['layer'] == args.layer]
         if imp_features.empty:
             raise ValueError(f"No important features found for target variable '{args.surv_event_var}' in {args.important_features}")
         imp_features = imp_features.sort_values(by='importance', ascending=False)
@@ -1052,6 +1056,8 @@ def main():
                         help="Number of folds for cross-validation. Default is 5")
     parser.add_argument("--random_state", type=int, default=42,
                         help="Random seed for reproducibility. Default is 42")
+    parser.add_argument("--layer", type=str, default=None,
+                        help="Class label for filtering important features.")
 
     # Arguments for dimred, scatter plot, heatmap, PR curves, ROC curves, and box plots
     parser.add_argument("--target_value", type=str, default=None,
@@ -1136,6 +1142,8 @@ def main():
                 raise ValueError("--n_splits must be a positive integer")
             if not isinstance(args.random_state, int):
                 raise ValueError("--random_state must be an integer")
+            if not args.layer:
+                print("--layer is not specified, using all classes from labels")
 
         if args.plot_type in ['scatter']:
             if not args.labels:
