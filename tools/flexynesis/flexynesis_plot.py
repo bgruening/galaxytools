@@ -53,14 +53,7 @@ def load_labels(labels_input):
         elif file_ext in ['.tsv', '.txt', '.tab', '.tabular']:
             df = pd.read_csv(labels_input, sep='\t')
 
-        # Check if this is the specific format with sample_id, known_label, predicted_label
-        required_cols = ['sample_id', 'variable', 'class_label', 'probability', 'known_label', 'predicted_label']
         print(f"available columns: {df.columns.tolist()}")
-        if all(col in df.columns for col in required_cols):
-            print("Detected flexynesis labels format")
-        else:
-            print("Labels are not in flexynesis format (Custom labels)")
-
         return df
 
     except Exception as e:
