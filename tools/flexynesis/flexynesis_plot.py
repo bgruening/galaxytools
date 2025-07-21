@@ -330,7 +330,7 @@ def generate_km_plots(survival_data, labels, args, output_dir, output_name_base)
         raise ValueError("No matching samples found after merging survival and label data.")
 
     # Get risk scores
-    risk_scores = df_deceased['probability'].values
+    risk_scores = df_deceased['predicted_label'].values
 
     # Compute groups (e.g., median split)
     quantiles = np.quantile(risk_scores, [0.5])
