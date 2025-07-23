@@ -8,12 +8,16 @@ import pandas as pd
 def tabular_to_csv(tabular_file, csv_file):
     """Convert tabular (TSV) to CSV"""
     data = pd.read_csv(tabular_file, sep="\t")
+    if data.columns[0] == '' or data.columns[0].startswith('Unnamed:'):
+        data.columns = ['ID'] + list(data.columns[1:])
     data.to_csv(csv_file, index=False)
 
 
 def csv_to_tabular(csv_file, tabular_file):
     """Convert CSV to tabular (TSV)"""
     data = pd.read_csv(csv_file)
+    if data.columns[0] == '' or data.columns[0].startswith('Unnamed:'):
+        data.columns = ['ID'] + list(data.columns[1:])
     data.to_csv(tabular_file, sep="\t", index=False)
 
 

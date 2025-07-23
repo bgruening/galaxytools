@@ -163,14 +163,54 @@ def split_and_save_data(data, ratio=0.7, output_dir='.'):
             continue
 
 
+def validate_numeric_column(df, column_names, require_integer=False):
+    """ Validate that a column(s) in the DataFrame contains numeric values. """
+    if isinstance(column_names, str):
+        # Handle comma-separated string: "col1,col2,col3"
+        if ',' in column_names:
+            column_names = [col.strip() for col in column_names.split(',')]
+        else:
+            # Single column name
+            column_names = [column_names]
+
+    # Validate each column
+    for column_name in column_names:
+        if column_name not in df.columns:
+            raise ValueError(f"Column '{column_name}' not found in DataFrame.")
+
+        try:
+            numeric_col = pd.to_numeric(df[column_name], errors='raise')
+        except Exception as e:
+            raise ValueError(f"Non-numeric values found in column '{column_name}': {e}")
+
+        if require_integer:
+            # Check if all non-null values are equivalent to integers
+            non_null_values = numeric_col.dropna()
+            if not (non_null_values == non_null_values.round()).all():
+                raise ValueError(f"Column '{column_name}' contains non-integer numeric values.")
+            print(f"Column '{column_name}': All values are integers or integer-equivalent floats.")
+        else:
+            print(f"Column '{column_name}': All values are numeric (integers and floats accepted).")
+
+
+def validate_survival(df, column_names):
+    """Validate survival column(s) (integer)."""
+    validate_numeric_column(df, column_names, require_integer=True)
+
+
+def validate_covariate(df, column_names):
+    """Validate covariate column(s) (numeric)."""
+    validate_numeric_column(df, column_names, require_integer=False)
+
+
 def main():
     parser = argparse.ArgumentParser(description='Flexynesis extra utilities')
 
     parser.add_argument("--util", type=str, required=True,
-                        choices=['split', 'binarize'],
-                        help="Utility function: 'split' for spiting data to train and test, 'binarize' for creating a binarized matrix from a mutation data")
+                        choices=['split', 'binarize', 'validate_survival', 'validate_covariate'],
+                        help="Utility function: 'split' for spiting data to train and test, 'binarize' for creating a binarized matrix from a mutation data, 'validate_survival' for validating survival data.")
 
-    # Arguments for split
+    # Arguments for split (clin also for validate_survival and validate_covariate)
     parser.add_argument('--clin', required=False,
                         help='Path to clinical data CSV file (samples in rows)')
     parser.add_argument('--omics', required=False,
@@ -186,7 +226,11 @@ def main():
     parser.add_argument('--sample_idx', type=int, default=1,
                         help='Column index for samples in mutation data (default: 1)')
 
-    # common arguments
+    # Arguments for validate_survival and validate_covariate
+    parser.add_argument('--clin_variable', type=str, required=False,
+                        help='Column name for clinical variable (e.g., death, SEX, ...)')
+
+    # common arguments (binarize and split)
     parser.add_argument('--out', default='.',
                         help='Output directory (default: current directory)')
 
@@ -196,7 +240,7 @@ def main():
         # validate utility function
         if not args.util:
             raise ValueError("Utility function must be specified")
-        if args.util not in ['split', 'binarize']:
+        if args.util not in ['split', 'binarize', 'validate_survival', 'validate_covariate']:
             raise ValueError(f"Invalid utility function: {args.util}")
 
         if args.util == 'split':
@@ -220,6 +264,16 @@ def main():
             # Validate gene and sample indices
             if args.gene_idx < 0 or args.sample_idx < 0:
                 raise ValueError("Gene and sample indices must be non-negative integers")
+
+        elif args.util == 'validate_survival' or args.util == 'validate_covariate':
+            # Validate clinical data file
+            if not args.clin:
+                raise ValueError("Clinical data file must be provided")
+            if not os.path.isfile(args.clin):
+                raise FileNotFoundError(f"Clinical file not found: {args.clin}")
+            # Validate survival event variable
+            if not args.clin_variable:
+                raise ValueError("Survival event variable must be specified")
 
         # Create output directory if it doesn't exist
         if not os.path.exists(args.out):
@@ -247,6 +301,22 @@ def main():
             output_file = os.path.join(args.out, 'binarized_mutations.tabular')
             binarized_matrix.to_csv(output_file, sep='\t')
             print(f"Binarized mutation matrix saved to {output_file}")
+
+        elif args.util == 'validate_survival':
+            clin_df = read_data(args.clin, index=False)
+            if clin_df.empty:
+                raise ValueError("Clinical data file is empty")
+
+            # Validate survival event variable
+            validate_survival(clin_df, args.clin_variable)
+
+        elif args.util == 'validate_covariate':
+            clin_df = read_data(args.clin, index=False)
+            if clin_df.empty:
+                raise ValueError("Clinical data file is empty")
+
+            # Validate clinical variable
+            validate_covariate(clin_df, args.clin_variable)
 
     except Exception as e:
         print(f"Error: {e}", file=sys.stderr)
