@@ -4,10 +4,10 @@ import argparse
 import os
 import sys
 
+import torch
+
 from safetensors import safe_open
 from safetensors.torch import save_file
-
-import torch
 
 
 def convert_pt_to_safetensors(input_path, output_path):
