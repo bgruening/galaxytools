@@ -2,6 +2,7 @@ import json
 import os
 import sys
 
+import yaml
 from openai import OpenAI
 
 context_files = json.loads(sys.argv[1])
@@ -9,8 +10,15 @@ question = sys.argv[2]
 model = sys.argv[3]
 model_type = sys.argv[4]
 
-litellm_api_key = os.environ.get("LITELLM_API_KEY")
-litellm_base_url = os.environ.get("LITELLM_BASE_URL")
+litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
+if not litellm_config_file:
+    print("LITELLM_CONFIG_FILE environment variable is not set.")
+    sys.exit(1)
+with open(litellm_config_file, "r") as f:
+    config = yaml.safe_load(f)
+
+litellm_api_key = config.get("LITELLM_API_KEY")
+litellm_base_url = config.get("LITELLM_BASE_URL")
 
 if not litellm_api_key:
     print(
