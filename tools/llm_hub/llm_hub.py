@@ -1,9 +1,11 @@
 import json
 import os
+import random
 import sys
+import time
 
 import yaml
-from openai import OpenAI
+from openai import InternalServerError, OpenAI
 
 context_files = json.loads(sys.argv[1])
 question = sys.argv[2]
@@ -122,7 +124,21 @@ if context_files:
 else:
     messages = [{"role": "user", "content": content_text}]
 
-response = client.chat.completions.create(model=model, messages=messages)
 
-with open("output.md", "w") as f:
-    f.write(response.choices[0].message.content or "")
+max_retries = config.get("MAX_RETRIES", 3)
+max_delay = config.get("MAX_DELAY", 900)
+for attempt in range(max_retries):
+    try:
+        response = client.chat.completions.create(model=model, messages=messages)
+        with open("output.md", "w") as f:
+            f.write(response.choices[0].message.content or "")
+        break
+    except InternalServerError as e:
+        if attempt == max_retries - 1:
+            print("Max retries reached. Exiting.")
+            sys.exit(1)
+        sleep_time = min(2**attempt + random.uniform(0, 1), max_delay)
+        print(
+            f"InternalServerError encountered ({e}). Retrying in {sleep_time:.2f} seconds..."
+        )
+        time.sleep(sleep_time)
