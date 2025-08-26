@@ -55,7 +55,7 @@ def get_image_mime_type(image_path):
     mime_type, _ = mimetypes.guess_type(image_path)
     if mime_type and mime_type.startswith("image/"):
         return mime_type
-    if image_path.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
+    if image_path.lower().endswith((".png", ".jpg", ".jpeg", ".gif", ".tiff")):
         ext = image_path.lower().split(".")[-1]
         if ext == "jpg":
             ext = "jpeg"
