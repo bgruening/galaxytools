@@ -14,17 +14,22 @@
 #import json
 #import os
 #import re
+
 #set LINK_LIST = []
-#for $input in $context
-    #set file_name = os.path.splitext($input.element_identifier)[0]
-    #set ext = $input.ext if $input.ext in ['html', 'json', 'txt', 'jpg', 'jpeg', 'png', 'gif', 'tiff', 'bmp'] else 'txt'
-    #set LINK = re.sub('[^\w\-]', '_', $file_name)+'.'+$ext
-    ln -s '$input' '$LINK' &&
-    #set type = 'image' if $input.ext in ['jpg', 'jpeg', 'png', 'gif', 'tiff', 'bmp'] else 'text'
-    $LINK_LIST.append([$LINK, $type])
+#for $input_type, $param in [('text', 'text_context'), ('image', 'image_context')]
+    #set context = $getVar($param, None)
+    #if $model_type in [$input_type, 'multimodal'] and $context
+        #for $input in ($context if isinstance($context, list) else [$context])
+            #set file_name = re.sub('[^\w\-]', '_', os.path.splitext($input.element_identifier)[0])
+            #set link_name = '%s_%s.%s' % ($input.hid, $file_name, $input.ext)
+            ln -s '$input' '$link_name' &&
+            $LINK_LIST.append(($link_name, $input_type))
+        #end for
+    #end if
 #end for
 #set context_files = json.dumps($LINK_LIST)
-#if str($input_type.input_type_selector) == 'image'
+
+#if $model_type == 'image'
     #set prompt = ''
 #end if
 
@@ -32,11 +37,11 @@ python '$__tool_directory__/llm_hub.py'
 '$context_files'
 '$prompt'
 '$model.fields.value'
-'$input_type_selector'
+'$model_type'
     ]]></command>
     <inputs>
-        <conditional name="input_type">
-            <param name="input_type_selector" type="select" label="Choose the model" help="Multimodal models are capable to have image and text as input.">
+        <conditional name="model_condition">
+            <param name="model_type" type="select" label="Choose the model" help="Multimodal models are capable to have image and text as input.">
                 <option value="multimodal" selected="true">Multimodal models</option>
                 <option value="text">Text models</option>
                 <option value="image">Image models</option>
@@ -48,7 +53,8 @@ python '$__tool_directory__/llm_hub.py'
                     </options>
                     <validator message="No model annotation is available for LLM Hub" type="no_options"/>
                 </param>
-                <param name="context" type="data" multiple="true" optional="true" format="html,json,txt,jpg,png,gif,tiff,bmp" label="Context" max="500"/>
+                <param name="text_context" type="data" multiple="true" optional="true" format="html,json,txt" label="Text Context"/>
+                <param name="image_context" type="data" optional="true" format="jpg,png,gif,tiff,bmp" label="Image Context"/>
                 <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want the LLM to perform." area="true">
                     <validator type="empty_field"/>
                 </param>
@@ -60,7 +66,7 @@ python '$__tool_directory__/llm_hub.py'
                     </options>
                     <validator message="No model annotation is available for LLM Hub" type="no_options"/>
                 </param>
-                <param name="context" type="data" multiple="true" optional="true" format="html,json,txt" label="Context" max="500"/>
+                <param name="text_context" type="data" multiple="true" optional="true" format="html,json,txt" label="Text Context"/>
                 <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want the LLM to perform." area="true">
                     <validator type="empty_field"/>
                 </param>
@@ -72,19 +78,19 @@ python '$__tool_directory__/llm_hub.py'
                     </options>
                     <validator message="No model annotation is available for LLM Hub" type="no_options"/>
                 </param>
-                <param name="context" type="data" optional="false" format="jpg,png,gif,tiff,bmp" label="Context"/>
+                <param name="image_context" type="data" optional="false" format="jpg,png,gif,tiff,bmp" label="Image Context"/>
             </when>
         </conditional>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} on ${on_string}" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" label="${tool.name}(${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
     </outputs>
     <tests>
         <test expect_failure="true" expect_exit_code="1">
-            <conditional name="input_type">
-                <param name="input_type_selector" value="text"/>
+            <conditional name="model_condition">
+                <param name="model_type" value="text"/>
                 <param name="model" value="unknown"/>
-                <param name="context" value="test.txt" ftype="txt"/>
+                <param name="text_context" value="test.txt" ftype="txt"/>
                 <param name="prompt" value="What is this?"/>
             </conditional>
             <assert_stdout>
@@ -114,9 +120,13 @@ Usage
 1. **Select a Model**: Choose the LLM model that best fits your needs. 
 Available models depend on what's configured in the LiteLLM proxy by your Galaxy administrators.
 
-2. **Upload Context Data**: You can upload files in formats such as TXT, HTML, JSON, JPG, PNG, GIF, TIFF, or BMP.
-This context data serves as additional input for the prompt you wish to execute.
-Vision-capable (multimodal and image) models can process image files.
+2. **Upload Context Data**: You can upload context data in different ways depending on the model type:
+
+   - **Text models**: Upload multiple text files (TXT, HTML, JSON) as context
+   - **Image models**: Upload a single image file (JPG, PNG, GIF, TIFF, BMP) as context  
+   - **Multimodal models**: Upload multiple text files and/or a single image file as context
+
+   Vision-capable (multimodal and image) models can process image files, but only one image file is supported per request.
 
 3. **Provide a Prompt**: Specify the task or question you want the LLM to address.
 The more specific the prompt, the more tailored the response will be.
