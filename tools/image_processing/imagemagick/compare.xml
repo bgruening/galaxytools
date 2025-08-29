@@ -1,0 +1,212 @@
+<tool id="imagemagick_image_compare" name="Compare two images" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.1">
+    <description>with ImageMagick</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <stdio>
+        <exit_code range="1:1" level="warning" description="The images are different" />
+    </stdio>
+    <command>
+<![CDATA[
+        ln -s '${input1}' "1.${input1.element_identifier}.${input1.ext}" &&
+        ln -s '${input2}' "2.${input2.element_identifier}.${input2.ext}" &&
+
+        #if $difference.diff_type == "compare":
+            magick compare
+                -metric $difference.compare_metric.metric
+                #if  $difference.color!='default':
+                    -highlight-color $color
+                #end if
+                #if str($difference.compare_metric.metric) == 'AE' :
+                    #if  $difference.compare_metric.fuzz :
+                        -fuzz ${difference.compare_metric.fuzz}%
+                    #end if
+                #else if str($difference.compare_metric.metric) == 'RMSE' :
+                    -dissimilarity-threshold $difference.compare_metric.dissimilarity
+                #end if
+                -verbose
+                #if $input_stats:
+                    -identify
+                #end if
+                "1.${input1.element_identifier}.${input1.ext}"
+                "2.${input2.element_identifier}.${input2.ext}"
+                outfile.png
+                2> out.log 
+                #if $input_stats:
+                    1> stats_input.log
+                #end if
+
+        #else if  $difference.diff_type == "composite":
+            magick composite
+                -compose difference 
+                -verbose
+                #if $input_stats:
+                    -identify
+                #end if
+                "1.${input1.element_identifier}.${input1.ext}"
+                "2.${input2.element_identifier}.${input2.ext}"
+                outfile.png
+                #if $input_stats:
+                    1> stats_input.log 
+                #end if
+
+            #if $difference.normalize:
+                &&
+                magick 
+                    outfile.png
+                    -auto-level
+                    outfile_normalised.png
+            #end if
+        #end if
+]]>
+    </command>
+    <inputs>
+        <param name="input1" format="jpg,png,bmp,gif,svg,eps,tiff" type="data" label="First image to compare" />
+        <param name="input2" format="jpg,png,bmp,gif,svg,eps,tiff" type="data" label="Second image to compare" />
+        <param name="input_stats" type="boolean" value="false" label="Output Statistics about input images." />
+        <conditional name="difference">
+            <param name="diff_type" type="select" value="compare" label="What method should be use to compare the images?">
+                <option value="composite" selected="true">Composite: Overlap the images</option>
+                <option value="compare" >Compare: Annotate the differences</option>
+            </param>
+            <when value="compare">
+                <conditional name="compare_metric">
+                    <param name="metric" type="select" label="Comparison metric">
+                        <option value="AE">absolute error count, number of different pixels (-fuzz affected)</option>
+                        <option value="DPC">discrete phase correlation</option>
+                        <option value="DSSIM">structural dissimilarity index</option>
+                        <option value="FUZZ">mean color distance</option>
+                        <option value="MAE"  >mean absolute error (normalized), average channel error distance</option>
+                        <option value="MEPP">mean error per pixel (normalized mean error, normalized peak error)</option>
+                        <option value="MSE">mean error squared, average of the channel error squared</option>
+                        <option value="NCC">normalized cross correlation</option>
+                        <option value="PAE">peak absolute (normalized peak absolute)</option>
+                        <option value="PHASE">phase correlation</option>
+                        <option value="PSNR">peak signal to noise ration</option>
+                        <option value="RMSE" selected="true">root mean squared (normalized root mean squared)</option>
+                        <option value="SSIM">structural similarity index</option>
+                    </param>
+                    <when value="AE">
+                        <param name="fuzz" type="integer"  label="Fuzz in %"  optional="true"  help="Two images are considered similar if their difference according to the specified metric and fuzz value is 0, with the exception of the normalized cross correlation metric (NCC), where two images are considered similar when their normalized cross correlation is 1." /> 
+                    </when>
+                    <when value="MAE" />
+                    <when value="DPC" />
+                    <when value="DSSIM" />
+                    <when value="FUZZ" />
+                    <when value="MEPP" />
+                    <when value="MEPP" />
+                    <when value="MSE" />
+                    <when value="NCC" />
+                    <when value="PAE" />
+                    <when value="PHASE" />
+                    <when value="PSNR" />
+                    <when value="RMSE">
+                        <param name="dissimilarity" type="float"  label="Dissimilarity threshold" value="0.2" help="Maximum RMSE for subimage match (default 0.2)" /> 
+                    </when>
+                    <when value="SSIM" />
+                </conditional>
+                <expand macro="color" />
+            </when>
+            <when value="composite">
+                <param name="normalize" type="boolean" value="false" label="Output normalized image" help= "Useful if the contrast is too low to see the differences."/>
+            </when>
+        </conditional>
+
+    </inputs>
+    <outputs>
+        <data name="output" format="png" from_work_dir="outfile.png"/>
+        <data name="log" format="txt" from_work_dir="out.log" label="${tool.name} on ${on_string}: Comparison Statistics">
+            <filter> difference['diff_type'] == 'compare' </filter>
+        </data>
+        <data name="output_norm" format="png" from_work_dir="outfile_normalised.png" label="${tool.name} on ${on_string}: Normalized" >
+            <filter> difference['diff_type'] == 'composite' and difference['normalize']</filter>
+        </data>
+        <data name="output_stats" format="txt" from_work_dir="stats_input.log" label="${tool.name} on ${on_string}: Input Statistics" >
+            <filter> input_stats </filter>
+        </data>
+
+    </outputs>
+    <tests>
+        <test expect_num_outputs="2"> 
+            <param name="input1" value="donald.jpg" />
+            <param name="input2" value="donald-palette.jpg" />
+            <conditional name="difference">
+                <param name="diff_type" value="compare" />
+                <conditional name="compare_metric">
+                    <param name="metric" value="RMSE" />
+                </conditional>
+            </conditional>
+            <output name="output" file="result_image_compare01.png" compare="sim_size" delta="500" />
+            <output name="log" file="result_image_compare01.log" compare="contains"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input1" value="donald.jpg" />
+            <param name="input2" value="donald-palette.jpg" />
+            <conditional name="difference">
+                <param name="diff_type" value="compare" />
+                <conditional name="compare_metric">
+                    <param name="metric" value="MAE" />
+                </conditional>
+                <param name="color" value="white" />
+            </conditional>
+            <output name="output" file="result_image_compare02.png" compare="sim_size" delta="500" />
+            <output name="log" file="result_image_compare02.log" compare="contains"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input1" value="donald.jpg" />
+            <param name="input2" value="donald-palette.jpg" />
+            <conditional name="difference">
+                <param name="diff_type" value="compare" />
+                <conditional name="compare_metric">
+                    <param name="metric" value="AE" />
+                    <param name="fuzz" value="3"/>
+                </conditional>
+            </conditional>
+            <output name="output" file="result_image_compare03.png" compare="sim_size" delta="500" />
+            <output name="log" file="result_image_compare03.log" compare="contains"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input1" value="donald.jpg" />
+            <param name="input2" value="donald-palette.jpg" />
+            <conditional name="difference">
+                <param name="diff_type" value="composite" />
+                <param name="normalize" value="true" />
+            </conditional>
+            <output name="output" file="result_image_composite01.png" compare="sim_size" delta="500" />
+            <output name="output_norm" file="result_image_composite01_norm.png"  compare="sim_size" delta="500"/>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="input1" value="donald.jpg" />
+            <param name="input2" value="donald-palette.jpg" />
+            <param name="input_stats" value="true" />
+            <conditional name="difference">
+                <param name="diff_type" value="composite" />
+            </conditional>
+            <output name="output" file="result_image_composite01.png" compare="sim_size" delta="500" />
+            <output name="output_stats" file="result_image_composite01_stats.txt" compare="contains"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+**What it does**
+
+This tool compares two images and provides a diff by pixels.
+
+Modes : 
+- Compare: mathematically and visually annotate the difference between an image and its reconstruction. 
+- Composite: overlap one image over another and highlight differences
+
+Metric parameter in compare mode:
+
+Output to STDERR a measure of the differences between images according to the type given metric.
+Control the 'AE', or absolute count of pixels that are different, with the -fuzz factor (ignore pixels which only changed by a small amount). Use 'PAE' to find the size of the -fuzz factor needed to make all pixels 'similar', while 'MAE' determines the factor needed for about half the pixels to be similar.
+The MEPP metric returns three different metrics ('MAE', 'MAE' normalized, and 'PAE' normalized) from a single comparison run.
+The SSIM and DSSIM metrics respect these defines: -define compare:ssim-radius, -define compare:ssim-sigma, -define compare:ssim-k1, and -define compare:ssim-k2.
+
+
+]]>
+    </help>
+    <expand macro="citations" />
+</tool>
