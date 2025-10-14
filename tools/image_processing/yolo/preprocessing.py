@@ -38,7 +38,7 @@ def copy_pairs(pairs, image_src, label_src, image_dst, label_dst):
         copy_file(os.path.join(label_src, lbl), os.path.join(label_dst, lbl))
 
 
-def write_yolo_yaml(output_dir):
+def write_yolo_yaml(output_dir, class_names):
 
     yolo_yaml_path = os.path.join(output_dir, "yolo.yml")
     with open(yolo_yaml_path, 'w') as f:
@@ -47,7 +47,8 @@ def write_yolo_yaml(output_dir):
         f.write("val: valid\n")
         f.write("test: test\n")
         f.write("\n")
-        f.write("names: ['dataset']\n")
+        names_str = ", ".join([f"'{n}'" for n in class_names])
+        f.write(f"names: [{names_str}]\n")
 
 
 def main():
@@ -55,6 +56,7 @@ def main():
     parser.add_argument("-i", "--images", required=True)
     parser.add_argument("-y", "--labels", required=True)
     parser.add_argument("-o", "--output", required=True)
+    parser.add_argument("-c", "--classes") # text file containing a class name per line
     parser.add_argument("-p", "--train_percent", type=int, default=70)
     args = parser.parse_args()
 
