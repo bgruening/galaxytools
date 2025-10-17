@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from flexynesis import (
+from flexynesis.utils import (
     build_cox_model,
     plot_dim_reduced,
     plot_hazard_ratios,
