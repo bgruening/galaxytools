@@ -1,0 +1,175 @@
+<tool id="3dtrees_detailview" name="3Dtrees: DetailView" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>
+        species prediction on segmented point cloud.
+    </description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_detailview:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="exit_code">
+        ln -s '$input' input.laz &amp;&amp;
+        python3 -u /app/run.py 
+        --dataset-path input.laz 
+        --output-dir .
+        --tree-id-col '$tree_id_col'
+        --n-aug '$n_aug'
+        --projection-backend '$projection_backend'
+        --output-type both
+
+    </command>
+    <inputs>
+        <param argument="--prediction-data" name="input" type="data" format="laz" label="Input Point Cloud" help="Input LAS/LAZ point cloud file with segmented trees"/>
+        <param argument="--tree-id-col" name="tree_id_col" type="text" value="PredInstance" label="Tree ID Column" help="Column name in the LAS file that contains tree instance IDs"/>
+        <param argument="--n-aug" name="n_aug" type="integer" value="10" min="1" max="50" label="Number of Augmentations" help="Number of augmentation iterations for prediction (higher = more accurate but slower)"/>
+        <param argument="--projection-backend" name="projection_backend" type="select" label="Projection Backend" help="Backend for point cloud projection">
+            <option value="numpy"/>
+            <option value="torch" selected="true"/>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="predictions_csv" format="csv" label="Species Predictions" from_work_dir="predictions.csv">
+            <actions>
+                <action name="column_names" type="metadata" default="filename,species_id,species_prob,tree_H,species"/>
+            </actions>
+        </data>
+        <data name="predictions_probs_csv" format="csv" label="Species PredictionProbabilities" from_work_dir="predictions_probs.csv">
+            <actions>
+                <action name="column_names" type="metadata" default="File,..."/>
+            </actions>
+        </data>
+        <data name="predictions_laz" format="laz" label="Classified Point Cloud" from_work_dir="pc_with_species.laz"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="3">
+            <param name="input" value="mikro_segmented.laz"/>
+            <param name="tree_id_col" value="PredInstance"/>
+            <param name="n_aug" value="1"/>
+            <param name="projection_backend" value="torch"/>
+            <output name="predictions_csv">
+                <assert_contents>
+                    <has_n_columns n="5" sep=","/>
+                </assert_contents>
+            </output>
+            <output name="predictions_probs_csv">
+                <assert_contents>
+                    <has_n_columns n="34" sep=","/>
+                </assert_contents>
+            </output>
+            <output name="predictions_laz">
+                <assert_contents>
+                    <has_size value="450000" delta="50000"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help>
+        **What it does**
+
+This tool performs tree species classification on segmented 3D point clouds using the DetailView deep learning model. The model uses multiple projection views (side, top, bottom, and detail views) of individual trees to classify them into one of 33 tree species.
+
+**Input Requirements**
+
+- Input must be a LAS/LAZ file with segmented individual trees
+- Each tree must have a unique identifier in a specified column
+- Point clouds should contain at least 50 points per tree
+- Trees with fewer points will be skipped
+
+**Parameters**
+
+- **Tree ID Column**: Name of the column in the LAS file containing tree instance IDs (default: PredInstance)
+- **Number of Augmentations**: Number of random augmentations to average predictions over (default: 10)
+  - Higher values = more accurate but slower
+  - Recommended: 10-20 for production
+- **Projection Backend**: 
+  - NumPy: Original implementation, matches published results
+  - PyTorch: Faster alternative with minimal accuracy difference
+
+**Outputs**
+
+1. **Species Predictions (CSV)**: Main results file containing:
+   - filename: Tree identifier
+   - species_id: Numeric species code
+   - species_prob: Confidence score (0-1)
+   - tree_H: Tree height in meters
+   - species: Species name (Latin binomial)
+
+2. **Species Probabilities (CSV)**: Detailed probability matrix with probability for each species for each tree
+
+3. **Classified Point Cloud (LAZ)**: Original point cloud with two additional attributes per point:
+   - species_id: Species classification
+   - species_prob: Classification confidence
+
+**Supported Species**
+
+   The model can classify 33 tree species:
+   
+   - Abies alba
+   - Acer campestre
+   - Acer pseudoplatanus
+   - Acer saccharum
+   - Betula pendula
+   - Carpinus betulus
+   - Corylus avellana
+   - Crataegus monogyna
+   - Eucalyptus miniata
+   - Euonymus europaeus
+   - Fagus sylvatica
+   - Fraxinus angustifolia
+   - Fraxinus excelsior
+   - Larix decidua
+   - Picea abies
+   - Picea glauca
+   - Pinus contorta
+   - Pinus nigra
+   - Pinus pinaster
+   - Pinus radiata
+   - Pinus resinosa
+   - Pinus sylvestris
+   - Populus deltoides
+   - Populus tremuloides
+   - Prunus avium
+   - Pseudotsuga menziesii
+   - Quercus faginea
+   - Quercus ilex
+   - Quercus petraea
+   - Quercus robur
+   - Quercus rubra
+   - Tilia cordata
+   - Ulmus laevis
+   
+   
+**Citation**
+
+When using this tool, please cite:
+
+Puliti et al. (2024) Benchmarking tree species classification from proximally-sensed laser scanning data: 
+introducing the FOR-species20K dataset. ArXiv. https://www.arxiv.org/abs/2408.06507
+
+**Model Information**
+
+- Model: DenseNet201 ensemble with multi-view fusion
+- Training dataset: FOR-species20K
+- DOI: 10.5281/zenodo.14204431
+    </help>
+    <creator>
+        <person name="Julian Frey" email="julian.frey@wwd.uni-freiburg.de" url="https://orcid.org/0000-0001-7895-702X"/>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="doi">
+            10.5281/zenodo.14204431
+        </citation>
+        <citation type="bibtex">
+            @misc{detailview2024,
+  title = {DetailView: Tree species classification for 3D4EcoTec},
+  author = {Schindler, Zoe and Frey, Julian},
+  year = {2024},
+  doi = {10.5281/zenodo.14204431}
+}
+        </citation>
+    </citations>
+</tool>
