@@ -7,10 +7,9 @@ from openai import AuthenticationError, OpenAI
 context_files = json.loads(sys.argv[1])
 question = sys.argv[2]
 model = sys.argv[3]
-with open(sys.argv[4], "r") as f:
-    openai_api_key = f.read().strip()
+openai_api_key = os.getenv("OPENAI_API_KEY")
 if not openai_api_key:
-    print("OpenAI API key is not provided in user preferences!")
+    print("OpenAI API key is not provided in credentials!")
     sys.exit(1)
 
 client = OpenAI(api_key=openai_api_key)
