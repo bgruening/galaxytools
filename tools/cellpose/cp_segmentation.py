@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import skimage.io
 import torch
-from cellpose import models, plot, transforms
+from cellpose import models, plot
 
 # Apply PyTorch guidelines for reproducibility
 torch.backends.cudnn.benchmark = True
@@ -41,7 +41,6 @@ def main(inputs, img_path, output_dir):
     gpu = params['use_gpu']
     model_type = params['model_type']
     chan = params['chan']
-    chan_first = params['chan_first']
 
     options = params['options']
 
