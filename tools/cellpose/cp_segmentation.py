@@ -51,7 +51,7 @@ def main(inputs, img_path, output_dir):
     print(f"Image shape: {img.shape}")
 
     model = models.Cellpose(gpu=gpu, model_type=model_type)
-    masks, flows, styles, diams = model.eval(img, channels=chan, **options)
+    masks, flows, styles, diams = model.eval(img, channels=channels, **options)
 
     # save masks to tiff
     with warnings.catch_warnings():
