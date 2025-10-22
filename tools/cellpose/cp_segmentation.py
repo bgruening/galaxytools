@@ -44,6 +44,8 @@ def main(inputs, img_path, output_dir):
 
     options = params['options']
 
+    channels = [chan]
+
     img = skimage.io.imread(img_path)
 
     print(f"Image shape: {img.shape}")
