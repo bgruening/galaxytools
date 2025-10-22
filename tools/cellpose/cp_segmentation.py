@@ -40,18 +40,15 @@ def main(inputs, img_path, output_dir):
 
     gpu = params['use_gpu']
     model_type = params['model_type']
-    chan = params['chan']
 
     options = params['options']
-
-    channels = [chan]
 
     img = skimage.io.imread(img_path)
 
     print(f"Image shape: {img.shape}")
 
     model = models.Cellpose(gpu=gpu, model_type=model_type)
-    masks, flows, styles, diams = model.eval(img, channels=channels, **options)
+    masks, flows, styles, diams = model.eval(img, channels=None, **options)
 
     # save masks to tiff
     with warnings.catch_warnings():
