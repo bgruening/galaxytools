@@ -16,17 +16,17 @@ def main(args):
 
         tRNAscan-SE $organism $mode $showPrimSecondOpt $disablePseudo $showCodons -Q -y -q -b -o $tabular_output $inputfile;
     """
-    cmd = """tRNAscan-SE -Q -y -q -b %s""" % " ".join(args[:-1])
+    cmd = f"tRNAscan-SE -Q -y -q --brief {' '.join(args[:-1])}"
     child = subprocess.Popen(
-        cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE
+        cmd.split(), stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
     )
     stdout, stderr = child.communicate()
     return_code = child.returncode
     if return_code:
         sys.stdout.write(stdout)
         sys.stderr.write(stderr)
-        sys.stderr.write("Return error code %i from command:\n" % return_code)
-        sys.stderr.write("%s\n" % cmd)
+        sys.stderr.write(f"Return error code {return_code} from command:\n")
+        sys.stderr.write(f"{cmd}\n")
     else:
         sys.stdout.write(stdout)
         sys.stdout.write(stderr)
@@ -50,32 +50,18 @@ def main(args):
             end = int(cols[3])
             aa = cols[4]
             codon = cols[5]
-            rec = sequence_recs[iid]
+            rec = sequence_recs.get(iid)
             if start > end:
                 new_rec = rec[end:start]
                 new_rec.seq = new_rec.seq.reverse_complement()
-                new_rec.description = "%s %s %s %s %s" % (
-                    rec.description,
-                    aa,
-                    codon,
-                    start,
-                    end,
-                )
-                new_rec.id = rec.id
-                new_rec.name = rec.name
                 tRNAs.append(new_rec)
             else:
                 new_rec = rec[start:end]
-                new_rec.id = rec.id
-                new_rec.name = rec.name
-                new_rec.description = "%s %s %s %s %s" % (
-                    rec.description,
-                    aa,
-                    codon,
-                    start,
-                    end,
-                )
-                tRNAs.append(new_rec)
+
+            new_rec.id = rec.id
+            new_rec.name = rec.name
+            new_rec.description = f"{rec.description} {aa} {codon} {start} {end}"
+            tRNAs.append(new_rec)
 
     SeqIO.write(tRNAs, open(outfile, "w+"), "fasta")
 
