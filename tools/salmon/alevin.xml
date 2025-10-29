@@ -5,63 +5,55 @@
     </macros>
     <expand macro="xrefs"/>
     <expand macro="requirements"/>
+    <expand macro="version_command"/>
     <command detect_errors="exit_code"><![CDATA[
-        mkdir ./index
-        && mkdir ./output
-        #if $refTranscriptSource.TranscriptSource != "indexed":
-            && salmon index -i ./index
-                --kmerLen '${refTranscriptSource.s_index.kmer}'
-                --gencode
-                --transcripts '${refTranscriptSource.s_index.fasta}'
-            #set $index_path = './index'
-        #else
-            #set $index_path = $refTranscriptSource.index.fields.path
-        #end if
+        ## salmon uses one thread to much
+        ## https://github.com/COMBINE-lab/salmon/issues/993
+        SLOTS=\$(( \${GALAXY_SLOTS:-4} > 1 ? \${GALAXY_SLOTS:-4} - 1 : 1 ));
+
+        #set TRANSCRIPTSOURCE_CONDITIONAL = $refTranscriptSource
+        @indexing@
+
         #if $pairstraight.readselect == 'paired':
-            #if $pairstraight.file1.is_of_type("fastq.gz"):
-                && cp '${pairstraight.file1}' ./mate1.fastq.gz
-                && gunzip ./mate1.fastq.gz
-                && cp '${pairstraight.file2}' ./mate2.fastq.gz
-                && gunzip ./mate2.fastq.gz
-            #else if $pairstraight.file1.is_of_type("fastq.bz2"):
-                && cp '${pairstraight.file1}' ./mate1.fastq.bz2
-                && bzip2 -d ./mate1.fastq.bz2
-                && cp '${pairstraight.file2}' ./mate2.fastq.bz2
-                && bzip2 -d ./mate2.fastq.bz2
+            #if $pairstraight.mates.forward.is_of_type("fastq.gz"):
+                gunzip -c '${pairstraight.mates.forward}' > ./mate1.fastq &&
+                gunzip -c '${pairstraight.mates.reverse}' > ./mate2.fastq &&
+            #else if $pairstraight.mates.forward.is_of_type("fastq.bz2"):
+                bunzip2 -c '${pairstraight.mates.forward}' > ./mate1.fastq &&
+                bunzip2 -c '${pairstraight.mates.reverse}' > ./mate2.fastq &&
             #else:
-                && ln -s '${pairstraight.file1}' ./mate1.fastq
-                && ln -s '${pairstraight.file2}' ./mate2.fastq
+                ln -s '${pairstraight.mates.forward}' ./mate1.fastq &&
+                ln -s '${pairstraight.mates.reverse}' ./mate2.fastq &&
             #end if
         #else:
             #if $pairstraight.unmatedreads.is_of_type("fastq.gz"):
-                && cp '${pairstraight.unmatedreads}' ./unmate.fastq.gz
-                && gunzip ./unmate.fastq.gz
+                gunzip -c '${pairstraight.unmatedreads}' > ./unmate.fastq &&
             #else if $pairstraight.unmatedreads.is_of_type("fastq.bz2"):
-                && cp '${pairstraight.unmatedreads}' ./unmate.fastq.bz2
-                && bzip2 -d unmate.fastq.bz2
+                bunzip2 -c '${pairstraight.unmatedreads}' > ./unmate.fastq &&
             #else:
-                && ln -s '${pairstraight.unmatedreads}' ./unmate.fastq
+                ln -s '${pairstraight.unmatedreads}' ./unmate.fastq &&
             #end if
         #end if
 
-        && ln -s '${tgmap}' ./alevinmap.tsv
-        && salmon alevin -l
+        ln -s '${tgmap}' ./alevinmap.tsv &&
+        salmon --no-version-check alevin
+        --libType
         #if $pairstraight.readselect == 'paired':
             #if $pairstraight.libtype.strandedness == 'A'
                 A
             #else
                 ${pairstraight.libtype.orientation}${pairstraight.libtype.strandedness}
             #end if
-            -i $index_path
-            -1 ./mate1.fastq
-            -2 ./mate2.fastq
+            --index $index_path
+            --mates1 ./mate1.fastq
+            --mates2 ./mate2.fastq
         #else:
             '${pairstraight.libtype.strandedness}'
-            -i $index_path
-            -r zcat ./unmate.fastq
+            --index $index_path
+            --unmatedReads ./unmate.fastq
         #end if
         -o ./output
-        -p "\${GALAXY_SLOTS:-4}"
+        -p "\$SLOTS"
         ${protocol_cond.protocol}
         #if $protocol_cond.protocol == '--indropV2'
             --w1 '${protocol_cond.w1}'
@@ -113,7 +105,7 @@
         #end if
         #if 'dumpUmiGraph' in $output_files:
             && python '$__tool_directory__/vpolo_convert.py' -u
-            && sh '$__tool_directory__/umiout.sh'
+            && bash '$__tool_directory__/umiout.sh'
         #end if
         ## those gzip file include binary datasets
         ## #if $optional.numCellBootstraps:
@@ -133,27 +125,26 @@
                 <option value="unmated">Single-end</option>
             </param>
             <when value="paired">
-                <param name="file1" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" label="Mate pair 1" help="CB+UMI raw sequence file(s)"/>
-                <param name="file2" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" label="Mate pair 2" help="Read-sequence file(s)"/>
+                <param name="mates" format="fasta,fastqsanger,fastqsanger.gz,fastqsanger.bz2" type="data_collection" collection_type="paired" label="CB+UMI raw sequence file(s)" help="(--mates1,--mates2)" />
                 <expand macro="stranded_pe"/>
             </when>
             <when value="unmated">
-                <param name="unmatedreads" type="data" format="fastq,fastq.gz,fastqsanger.gz,fastq.bz2" label="Unmated reads files"/>
+                <param argument="--unmatedReads" name="unmatedreads" type="data" format="fastqsanger,fastqsanger.gz,fastqsanger.bz2" label="Unmated reads files"/>
                 <expand macro="stranded_se"/>
             </when>
         </conditional>
         <conditional name="protocol_cond">
             <param name="protocol" type="select" label="Type of single-cell protocol" help="In cases where single-cell protocol supports variable length cellbarcodes, alevin adds nucleotide padding to make the lengths uniform. Furthermore, the padding scheme ensures that there are no collisions added in the process.">
-                <option value="--dropseq">DropSeq Single Cell protocol</option>
-                <option value="--chromium">10x chromium v2 Single Cell protocol</option>
-                <option value="--chromiumV3">10x chromium v3 Single Cell protocol</option>
-                <option value="--gemcode">Gemcode v1 Single Cell protocol</option>
-                <option value="--celseq">CEL-Seq Single Cell protocol</option>
-                <option value="--celseq2">CEL-Seq2 Single Cell protocol</option>
-                <option value="--sciseq3">Sci-RNA-seq3 protocol</option>
-                <option value="--indropV2">InDrop v2 protocol</option>
-                <option value="--splitSeqV1">SplitSeqV1 protocol</option>
-                <option value="--splitSeqV2">SplitSeqV2 protocol</option>
+                <option value="--dropseq">DropSeq Single Cell (--dropseq)</option>
+                <option value="--chromium">10x chromium v2 Single Cell (--chromium)</option>
+                <option value="--chromiumV3">10x chromium v3 Single Cell (--chromiumV3)</option>
+                <option value="--gemcode">Gemcode v1 Single Cell (--gemcode)</option>
+                <option value="--celseq">CEL-Seq Single Cell (--celseq)</option>
+                <option value="--celseq2">CEL-Seq2 Single Cell (--celseq2)</option>
+                <option value="--sciseq3">Sci-RNA-seq3 (--sciseq3)</option>
+                <option value="--indropV2">InDrop v2 (--indropV2)</option>
+                <option value="--splitSeqV1">SplitSeqV1 (--splitSeqV1)</option>
+                <option value="--splitSeqV2">SplitSeqV2 (--splitSeqV2)</option>
             </param>
             <when value="--dropseq"/>
             <when value="--chromium"/>
@@ -173,7 +164,7 @@
             <when value="--splitSeqV1"/>
             <when value="--splitSeqV2"/>
         </conditional>
-        <param name="tgmap" type="data" format="tsv,tabular" label="Transcript to gene map file" help="Tsv with no header, containing two columns mapping each transcript present in the reference to the corresponding gene (the first column is a transcript and the second is the corresponding gene)."/>
+        <param argument="--tgMap" name="tgmap" type="data" format="tsv,tabular" label="Transcript to gene map file" help="Tsv with no header, containing two columns mapping each transcript present in the reference to the corresponding gene (the first column is a transcript and the second is the corresponding gene)."/>
         <param name="output_files" type="select" multiple="true" display="checkboxes" label="Extra output files">
             <option value="salmon_log">Salmon Quant log file</option>
             <option value="fragment_length">Observed fragment length distribution</option>
@@ -255,10 +246,16 @@
             </conditional>
             <conditional name="pairstraight">
                 <param name="readselect" value="paired"/>
-                <param name="file1" value="fastqs/moreminifastq1.fastq.gz"/>
-                <param name="file2" value="fastqs/moreminifastq2.fastq.gz"/>
-                <param name="orientation" value="I"/>
-                <param name="strandedness" value="SR"/>
+                <param name="mates">
+                    <collection type="paired" name="mates">
+                        <element name="forward" value="fastqs/moreminifastq1.fastq.gz"/>
+                        <element name="reverse" value="fastqs/moreminifastq2.fastq.gz"/>
+                    </collection>
+                </param>
+                <conditional name="libtype">
+                    <param name="orientation" value="I"/>
+                    <param name="strandedness" value="SR"/>
+                </conditional>
             </conditional>
             <conditional name="protocol_cond">
                 <param name="protocol" value="--chromium"/>
@@ -274,7 +271,7 @@
                 <assert_contents>
                     <has_text text="MatrixMarket" />
                     <has_n_columns n="5" />
-                    <has_n_lines n="105" />
+                    <has_n_lines n="101" />
                 </assert_contents>
             </output>
         </test>
@@ -287,10 +284,16 @@
             </conditional>
             <conditional name="pairstraight">
                 <param name="readselect" value="paired"/>
-                <param name="file1" value="fastqs/moreminifastq1.fastq.gz"/>
-                <param name="file2" value="fastqs/moreminifastq2.fastq.gz"/>
-                <param name="orientation" value="I"/>
-                <param name="strandedness" value="SR"/>
+                <param name="mates">
+                    <collection type="paired" name="mates">
+                        <element name="forward" value="fastqs/moreminifastq1.fastq.gz"/>
+                        <element name="reverse" value="fastqs/moreminifastq2.fastq.gz"/>
+                    </collection>
+                </param>
+                <conditional name="libtype">
+                    <param name="orientation" value="I"/>
+                    <param name="strandedness" value="SR"/>
+                </conditional>
             </conditional>
             <conditional name="protocol_cond">
                 <param name="protocol" value="--chromium"/>
@@ -307,10 +310,11 @@
                 <assert_contents>
                     <has_text text="MatrixMarket" />
                     <has_n_columns n="5" />
-                    <has_n_lines n="105" />
+                    <has_n_lines n="101" />
                 </assert_contents>
             </output>
         </test>
+        <!-- https://github.com/COMBINE-lab/salmon/issues/992
         <test expect_num_outputs="8">
             <conditional name="refTranscriptSource">
                 <param name="TranscriptSource" value="history"/>
@@ -320,13 +324,19 @@
             </conditional>
             <conditional name="pairstraight">
                 <param name="readselect" value="paired"/>
-                <param name="file1" value="fastqs/moreminifastq1.fastq.gz"/>
-                <param name="file2" value="fastqs/moreminifastq2.fastq.gz"/>
-                <param name="orientation" value="I"/>
-                <param name="strandedness" value="SR"/>
+                <param name="mates">
+                    <collection type="paired" name="mates">
+                        <element name="forward" value="fastqs/moreminifastq1.fastq.gz"/>
+                        <element name="reverse" value="fastqs/moreminifastq2.fastq.gz"/>
+                    </collection>
+                </param>
+                <conditional name="libtype">
+                    <param name="orientation" value="I"/>
+                    <param name="strandedness" value="SR"/>
+                </conditional>
             </conditional>
             <conditional name="protocol_cond">
-                <param name="protocol" value="-\-indropV2"/>
+                <param name="protocol" value="\-\-indropV2"/>
                 <param name="w1" value="ATCAT"/>
             </conditional>
             <param name="tgmap" value="minitxp.tsv"/>
@@ -343,7 +353,7 @@
                     <has_n_lines n="105" />
                 </assert_contents>
             </output>
-        </test>
+        </test> -->
         <test expect_num_outputs="14">
             <conditional name="refTranscriptSource">
                 <param name="TranscriptSource" value="history"/>
@@ -353,10 +363,16 @@
             </conditional>
             <conditional name="pairstraight">
                 <param name="readselect" value="paired"/>
-                <param name="file1" value="fastqs/moreminifastq1.fastq.gz"/>
-                <param name="file2" value="fastqs/moreminifastq2.fastq.gz"/>
-                <param name="orientation" value="I"/>
-                <param name="strandedness" value="SR"/>
+                <param name="mates">
+                    <collection type="paired" name="mates">
+                        <element name="forward" value="fastqs/moreminifastq1.fastq.gz"/>
+                        <element name="reverse" value="fastqs/moreminifastq2.fastq.gz"/>
+                    </collection>
+                </param>
+                <conditional name="libtype">
+                    <param name="orientation" value="I"/>
+                    <param name="strandedness" value="SR"/>
+                </conditional>
             </conditional>
             <conditional name="protocol_cond">
                 <param name="protocol" value="--chromium"/>
@@ -370,7 +386,7 @@
                 <assert_contents>
                     <has_text text="MatrixMarket" />
                     <has_n_columns n="5" />
-                    <has_n_lines n="17" />
+                    <has_n_lines n="16" />
                 </assert_contents>
             </output>
             <output name="salmon_quant_log" ftype="txt">
