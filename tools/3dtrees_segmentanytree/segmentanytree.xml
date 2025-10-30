@@ -1,0 +1,122 @@
+<tool id="3dtrees_segmentanytree" name="3Dtrees: SegmentAnyTree" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>
+        Forest instance segmentation.
+    </description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.1.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">
+            ghcr.io/3dtrees-earth/3dtrees_sat:@TOOL_VERSION@
+        </container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        export NUMBA_CACHE_DIR=\$TMPDIR &&
+        #if $input.ext == "zip":
+            ln -s '$input' input.zip &&
+            python3.8 -u /src/run.py 
+            --dataset-path input.zip 
+            --output-dir . 
+            --log_file '$log_file' &&
+            mv processed_files.zip '$output'
+            #if $log_file:
+            && mv resource_usage.log '$resource_usage'
+            #end if
+        #else:
+            ln -s '$input' input.laz &&
+            python3.8 -u /src/run.py 
+            --dataset-path input.laz 
+            --output-dir . 
+            --log_file '$log_file' &&
+            mv segmented_pc.laz '$output'
+            #if $log_file:
+            && mv resource_usage.log '$resource_usage'
+            #end if
+        #end if
+    ]]>
+    </command>
+    <inputs>
+        <param argument="--input" type="data" format="zip,laz" label="Input Dataset" help="ZIP file containing point cloud data with required folder structure / single LAZ/LAS point cloud file."/>
+        <param argument="--log_file" type="boolean" label="Resource log" help="If set to true, it returns a log file containing the CPU, RAM and GPU usage statistics"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="zip" label="Processed Files">
+            <change_format>
+                <when input="input.ext" value="laz" format="laz"/>
+            </change_format>
+        </data>
+        <data name="resource_usage" format="txt" label="Resource Usage">
+            <filter>log_file</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="2">
+            <param name="input" value="prepared_files_mikro.zip"/>
+            <param name="log_file" value="true"/>
+            <output name="resource_usage">
+                <assert_contents>
+                    <has_line line="timestamp,cpu_percent,cpu_cores_used,cpu_cores_total,mem_used_mb,mem_total_mb,gpu_mem_used_mb,gpu_mem_total_mb" n="1"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <has_text text="Loading checkpoint from /src/SegmentAnyTree/model_file/PointGroup-PAPER.pt"/>
+                <has_text text="Segmentation complete"/>
+            </assert_stdout>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="input" value="mikro.laz"/>
+            <param name="log_file" value="false"/>
+            <assert_stderr>
+                <has_text text="RuntimeError: Found no NVIDIA driver"/>
+            </assert_stderr>
+            <assert_stdout>
+                <has_text text="Loading checkpoint from /src/SegmentAnyTree/model_file/PointGroup-PAPER.pt"/>
+            </assert_stdout>
+        </test>
+    </tests>
+    <help format="markdown">
+**What it does**
+
+This tool performs deep learning-based tree segmentation on LiDAR point clouds using the **SegmentAnyTree** algorithm (Wielgosz et al., 2024). It is sensor- and platform-agnostic, working across airborne (ALS/ULS), terrestrial (TLS), and mobile (MLS) laser scanning data.
+
+-----
+
+
+**Input**
+- A **ZIP file** containing the following directory structure:
+
+    00_original/
+        input.laz
+    01_subsampled/
+        input_subsampled.laz
+    02_input_SAT/
+        tile_1.laz
+        tile_2.laz
+        ...
+
+- A single **LAZ/LAS file** containing a point cloud
+
+-----
+
+**Output**
+
+The output depends on the input type:
+- **ZIP input** → ZIP output containing the complete processed folder structure.
+- **LAZ input** → Single LAZ output file `segmented_pc.laz` containing the segmented point cloud with tree instance IDs.
+
+We recommend using the [3DTrees: Tile and Merge](https://usegalaxy.eu/?tool_id=toolshed.g2.bx.psu.edu%2Frepos%2Fbgruening%2F3dtrees_tile_merge%2F3dtrees_tile_merge%2F1.0.1%2Bgalaxy0&amp;version=latest) tool to preprocess and remap the segmented point cloud back to original resolution.
+
+    </help>
+    <creator>
+        <person name="Marc Wielgosz" email="maciej.wielgosz@nibio.no" url="https://maciej.wielgosz.info/"/>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="doi">10.1016/j.rse.2024.114367</citation>
+        <citation type="bibtex">
+            @misc{3dtrees_segmentanytree, title = {3Dtrees: SegmentAnyTree}, author = {3Dtrees-Project}, year = {2025}}
+        </citation>
+    </citations>
+</tool>
