@@ -4,8 +4,8 @@ import base64
 import json
 import os
 import sys
-from dataclasses import dataclass
 from collections.abc import Iterable, Sequence
+from dataclasses import dataclass
 from typing import ClassVar, TypeAlias, cast
 
 from openai import AuthenticationError, OpenAI
@@ -24,7 +24,6 @@ from openai.types.chat.chat_completion_message_param import ChatCompletionMessag
 from openai.types.chat.chat_completion_user_message_param import (
     ChatCompletionUserMessageParam,
 )
-
 
 MessageContentItem: TypeAlias = ChatCompletionContentPartParam
 ContextFile: TypeAlias = tuple[str, str]
