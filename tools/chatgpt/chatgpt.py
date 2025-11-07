@@ -5,7 +5,8 @@ import json
 import os
 import sys
 from dataclasses import dataclass
-from typing import ClassVar, Iterable, List, Sequence, Tuple, cast
+from collections.abc import Iterable, Sequence
+from typing import ClassVar, TypeAlias, cast
 
 from openai import AuthenticationError, OpenAI
 from openai.types.chat import ChatCompletion
@@ -25,8 +26,8 @@ from openai.types.chat.chat_completion_user_message_param import (
 )
 
 
-MessageContentItem = ChatCompletionContentPartParam
-ContextFile = Tuple[str, str]
+MessageContentItem: TypeAlias = ChatCompletionContentPartParam
+ContextFile: TypeAlias = tuple[str, str]
 
 
 @dataclass(frozen=True)
@@ -44,9 +45,9 @@ class MessageBuilder:
 
     _MAX_IMAGE_BYTES: ClassVar[int] = 20 * 1024 * 1024
 
-    def build(self) -> List[MessageContentItem]:
+    def build(self) -> list[MessageContentItem]:
         """Construct the completion request payload."""
-        message: List[MessageContentItem] = [{"type": "text", "text": self.question}]
+        message: list[MessageContentItem] = [{"type": "text", "text": self.question}]
 
         for path, file_type in self.context_files:
             if file_type == "image":
@@ -90,7 +91,7 @@ class MessageBuilder:
         )
 
 
-def parse_context_files(raw: str) -> List[ContextFile]:
+def parse_context_files(raw: str) -> list[ContextFile]:
     """Parse and validate the JSON encoded context file descriptors."""
     try:
         decoded = json.loads(raw)
@@ -100,7 +101,7 @@ def parse_context_files(raw: str) -> List[ContextFile]:
     if not isinstance(decoded, list):
         raise ValueError("Context files payload must be a list.")
 
-    parsed: List[ContextFile] = []
+    parsed: list[ContextFile] = []
     for entry in decoded:
         if (
             isinstance(entry, list)
@@ -119,7 +120,7 @@ def parse_context_files(raw: str) -> List[ContextFile]:
 
 def build_messages(
     question: str, context_files: Sequence[ContextFile]
-) -> List[MessageContentItem]:
+) -> list[MessageContentItem]:
     """Helper to hide the dataclass implementation detail from callers."""
     return MessageBuilder(question=question, context_files=context_files).build()
 
@@ -129,11 +130,9 @@ def call_chat_completion(
 ) -> ChatCompletion:
     """Request a chat completion using the given client."""
     user_message = ChatCompletionUserMessageParam(role="user", content=list(messages))
-    payload: List[ChatCompletionMessageParam] = [
+    payload: list[ChatCompletionMessageParam] = [
         cast(ChatCompletionMessageParam, user_message)
     ]
-    # Some models (e.g. the GPT-4.1 family) reject non-default temperature values,
-    # so rely on the API default rather than forcing a custom value here.
     return client.chat.completions.create(
         model=model,
         messages=payload,
@@ -153,6 +152,7 @@ def main(argv: Sequence[str]) -> int:
 
     question = argv[2]
     model = argv[3]
+    question = question.replace("__cn__", "\n")
 
     openai_api_key = os.getenv("OPENAI_API_KEY")
     if not openai_api_key:
@@ -190,8 +190,10 @@ def main(argv: Sequence[str]) -> int:
         )
         return 1
 
-    print("Output has been saved!")
-    with open("output.txt", "w", encoding="utf-8") as file_handle:
+    print(
+        f"Successfully generated response for:\n{question[:100]}{'...' if len(question) > 100 else ''}"
+    )
+    with open("output.md", "w", encoding="utf-8") as file_handle:
         file_handle.write(content)
     return 0
 
