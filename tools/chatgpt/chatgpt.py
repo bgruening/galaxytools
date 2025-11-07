@@ -6,7 +6,7 @@ import os
 import sys
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from typing import ClassVar, TypeAlias, cast
+from typing import cast, ClassVar, TypeAlias
 
 from openai import AuthenticationError, OpenAI
 from openai.types.chat import ChatCompletion
