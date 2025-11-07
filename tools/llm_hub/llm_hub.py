@@ -121,7 +121,7 @@ max_delay = config.get("MAX_DELAY", 900)
 for attempt in range(max_retries):
     try:
         api_params = {"model": model, "messages": messages}
-        if temperature:
+        if temperature is not None:
             api_params["temperature"] = temperature
 
         response = client.chat.completions.create(**api_params)
