@@ -2,7 +2,7 @@
     <description>Run GPU-bwa mem mapper</description>
     <macros>
         <token name="@TOOL_VERSION@">4.6.0-1</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
         <token name="@PROFILE@">24.2</token>
     </macros>
     <creator>
@@ -26,16 +26,44 @@
         #if $alignonly:
             #set $pbrun_command = $pbrun_command + ' --align-only'
         #end if
-        ln -sf '$fastq_input.fastq_input1' input1.fastq &&
-        #if $fastq_input.fastq_input_selector == 'paired':
-            ln -sf '$fastq_input.fastq_input2' input2.fastq &&
-            $pbrun_command --in-fq input1.fastq input2.fastq --out-bam 'output_mapping.bam'
+
+        #if $fastq_input.fastq_input_selector == 'single':
+            #if $fastq_input.fastq_input1.is_of_type("fastq", "fastqsanger")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq &&
+                #set $input1 = "input1.fq"
+            #elif $fastq_input.fastq_input1.is_of_type("fastq.gz", "fastqsanger.gz")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq.gz &&
+                #set $input1 = "input1.fq.gz"
+            #end if
+            $pbrun_command --in-se-fq $input1 --out-bam 'output_mapping.bam'
+        #elif $fastq_input.fastq_input_selector == 'paired':
+            #if $fastq_input.fastq_input2.is_of_type("fastq", "fastqsanger")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq &&
+                ln -s '$fastq_input.fastq_input2' ./input2.fq &&
+                #set $input1 = "input1.fq"
+                #set $input2 = "input2.fq"
+            #elif $fastq_input.fastq_input2.is_of_type("fastq.gz", "fastqsanger.gz")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq.gz &&
+                ln -s '$fastq_input.fastq_input2' ./input2.fq.gz &&
+                #set $input1 = "input1.fq.gz"
+                #set $input2 = "input2.fq.gz"
+            #end if
+            $pbrun_command --in-fq $input1 $input2 --out-bam 'output_mapping.bam'
         #elif $fastq_input.fastq_input_selector == 'paired_collection':
-            ln -sf '$fastq_input.fastq_input1.forward' input1_forward.fastq &&
-            ln -sf '$fastq_input.fastq_input1.reverse' input1_reverse.fastq &&
-            $pbrun_command --in-fq input1_forward.fastq input1_reverse.fastq --out-bam 'output_mapping.bam'
-        #else:
-            $pbrun_command --in-se-fq input1.fastq --out-bam 'output_mapping.bam'
+            #set input_1 = $fastq_input.fastq_input_pc.forward
+            #set input_2 = $fastq_input.fastq_input_pc.reverse
+            #if input_1.is_of_type("fastq", "fastqsanger")
+                ln -s '$input_1' ./input1_forward.fq &&
+                ln -s '$input_2' ./input1_reverse.fq &&
+                #set $input1_forward = "input1_forward.fq"
+                #set $input1_reverse = "input1_reverse.fq"
+            #elif input_1.is_of_type("fastq.gz", "fastqsanger.gz")
+                ln -s '$input_1' ./input1_forward.fq.gz &&
+                ln -s '$input_2' ./input1_reverse.fq.gz &&
+                #set $input1_forward = "input1_forward.fq.gz"
+                #set $input1_reverse = "input1_reverse.fq.gz"
+            #end if
+            $pbrun_command --in-fq $input1_forward $input1_reverse --out-bam 'output_mapping.bam'
         #end if
     ]]>
     </command>
@@ -61,14 +89,14 @@
                 <option value="paired_collection">Paired Collection</option>
             </param>
             <when value="single">
-                <param name="fastq_input1" type="data" format="fastqsanger,fasta" label="Select fastq dataset" help="Specify dataset with single reads"/>
+                <param name="fastq_input1" type="data" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" label="Select fastq dataset" help="Specify dataset with single reads"/>
             </when>
             <when value="paired">
-                <param name="fastq_input1" type="data" format="fastqsanger,fastq" label="Select first set of reads" help="Specify dataset with forward reads"/>
-                <param name="fastq_input2" type="data" format="fastqsanger,fastq" label="Select second set of reads" help="Specify dataset with reverse reads"/>
+                <param name="fastq_input1" type="data" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" label="Select first set of reads" help="Specify dataset with forward reads"/>
+                <param name="fastq_input2" type="data" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" label="Select second set of reads" help="Specify dataset with reverse reads"/>
             </when>
             <when value="paired_collection">
-                <param name="fastq_input1" format="fastqsanger,fastq" type="data_collection" collection_type="paired" label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
+                <param name="fastq_input_pc" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" type="data_collection" collection_type="paired" label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
             </when>
         </conditional>
         <param name="nomarkdups" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Do not perform the Mark Duplicates step" help="Set this parameter to return BAM after sorting."/>
@@ -109,6 +137,17 @@
                 <param name="ref_file" value="bwa-mem-mt-genome"/>
             </conditional>
             <conditional name="fastq_input">
+                <param name="fastq_input_selector" value="single"/>
+                <param name="fastq_input1" ftype="fastqsanger.gz" value="bwa-mem-fastq1.fq.gz"/>
+            </conditional>
+            <output name="output_mapping" ftype="bam" file="fq2bam-fasta1_zipped.bam" compare="sim_size" />
+        </test>
+        <test>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="cached" />
+                <param name="ref_file" value="bwa-mem-mt-genome"/>
+            </conditional>
+            <conditional name="fastq_input">
                 <param name="fastq_input_selector" value="paired"/>
                 <param name="fastq_input1" ftype="fastqsanger" value="fq2bam-fasta1.fq"/>
                 <param name="fastq_input2" ftype="fastqsanger" value="fq2bam-fasta2.fq"/>
@@ -123,10 +162,10 @@
             </conditional>
             <conditional name="fastq_input">
                 <param name="fastq_input_selector" value="paired_collection"/>
-                <param name="fastq_input1">
+                <param name="fastq_input_pc">
                     <collection type="paired">
-                        <element name="forward" value="fq2bam-fasta1.fq" />
-                        <element name="reverse" value="fq2bam-fasta2.fq" />
+                        <element name="forward" ftype="fastqsanger" value="fq2bam-fasta1.fq" />
+                        <element name="reverse" ftype="fastqsanger" value="fq2bam-fasta2.fq" />
                     </collection>
                 </param>
             </conditional>
