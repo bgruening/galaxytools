@@ -11,6 +11,8 @@ context_files = json.loads(sys.argv[1])
 question = sys.argv[2]
 model = sys.argv[3]
 model_type = sys.argv[4]
+temperature_arg = sys.argv[5]
+temperature = float(temperature_arg) if temperature_arg else None
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -118,7 +120,11 @@ max_retries = config.get("MAX_RETRIES", 3)
 max_delay = config.get("MAX_DELAY", 900)
 for attempt in range(max_retries):
     try:
-        response = client.chat.completions.create(model=model, messages=messages)
+        api_params = {"model": model, "messages": messages}
+        if temperature is not None:
+            api_params["temperature"] = temperature
+
+        response = client.chat.completions.create(**api_params)
         with open("output.md", "w") as f:
             f.write(response.choices[0].message.content or "")
         break
