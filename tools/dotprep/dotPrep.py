@@ -6,9 +6,10 @@
 import argparse
 import gzip
 import time
-import numpy as np
 import operator
 import re
+
+import numpy as np
 
 
 def run(args):
