@@ -5,8 +5,8 @@
 
 import argparse
 import gzip
-import time
 import operator
+import time
 import re
 
 import numpy as np
