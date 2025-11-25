@@ -1,0 +1,138 @@
+<tool id="3dtrees_detailview" name="3Dtrees: DetailView" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>
+        species prediction on segmented point cloud.
+    </description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.1</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_detailview:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        ln -s '$input' input.laz &&
+        python3 -u /app/run.py 
+        --dataset-path input.laz 
+        --output-dir .
+        --tree-id-col '$tree_id_col'
+        --n-aug '$n_aug'
+        --projection-backend '$projection_backend'
+        --model-path '$model_path'
+        --output-type both
+    ]]>
+    </command>
+    <inputs>
+        <param argument="--prediction-data" name="input" type="data" format="laz" label="Input Point Cloud" help="Input LAS/LAZ point cloud file with segmented trees"/>
+        <param argument="--tree-id-col" type="text" value="PredInstance" label="Tree ID Dimension" help="Dimension name in the LAS file that contains tree instance IDs"/>
+        <param argument="--n-aug" type="integer" value="10" min="1" max="50" label="Number of Augmentations" help="Number of augmentation iterations for prediction (higher = more accurate but slower)"/>
+        <param argument="--projection-backend" type="select" label="Projection Backend" help="Backend for point cloud projection">
+            <option value="numpy"/>
+            <option value="torch" selected="true"/>
+        </param>
+        <param argument="--model-path" type="select" label="Model Region" help="Select the trained model based on geographic region">
+            <option value="/app/model_europe_v1" selected="true">Europe</option>
+            <option value="/app/model_global_v1">Global</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="predictions_csv" format="csv" label="Species Predictions" from_work_dir="predictions.csv"/>
+        <data name="predictions_probs_csv" format="csv" label="Species PredictionProbabilities" from_work_dir="predictions_probs.csv"/>
+        <data name="predictions_laz" format="laz" label="Classified Point Cloud" from_work_dir="pc_with_species.laz"/>
+    </outputs>
+    <tests>
+        <test expect_failure="true">
+            <param name="input" value="mikro_segmented.laz"/>
+            <param name="tree_id_col" value="PredInstance"/>
+            <param name="n_aug" value="10"/>
+            <param name="projection_backend" value="torch"/>
+            <param name="model_path" value="/app/model_europe_v1"/>
+            <assert_stderr>
+                <has_n_lines n="25"/>
+                <has_text text="RuntimeError: Attempting to deserialize object on a CUDA device but torch.cuda.is_available() is False. If you are running on a CPU-only machine, please use torch.load with map_location=torch.device('cpu') to map your storages to the CPU."/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+**What it does**
+
+This tool performs tree species classification on segmented 3D point clouds using the DetailView deep learning model. The model uses multiple projection views (side, top, bottom, and detail views) of individual trees to classify them into one of 33 tree species.
+
+**Input Requirements**
+
+- Input must be a LAS/LAZ file with segmented individual trees
+- Each tree must have a unique identifier in a specified column
+- Point clouds should contain at least 50 points per tree
+- Trees with fewer points will be skipped
+
+**Parameters**
+- **Tree ID Column**: Name of the column in the LAS file containing tree instance IDs (default: PredInstance)
+- **Number of Augmentations**: Number of random augmentations to average predictions over (default: 10)
+  - Higher values = more accurate but slower
+- **Projection Backend**: 
+  - NumPy: Original implementation
+  - PyTorch: Faster alternative
+- **Model Region**: Select the trained model based on your data's geographic origin
+  - Europe: Model trained on European tree species data
+  - Global: Model trained on global tree species data
+
+**Outputs**
+- **predictions.csv**
+  - filename: Tree identifier
+  - species_id: Numeric species code
+  - species_prob: Probability of the species classification
+  - tree_H: Tree height [m]
+  - species: Species name
+- **predictions_probs.csv**
+  - Detailed probability matrix with probability for each species for each tree
+- **pc_with_species.laz**
+  - species_id: Species classification
+  - species_prob: Classification confidence
+
+**Supported Species**
+The model can classify 33 tree species:
+- [Abies alba](https://en.wikipedia.org/wiki/Abies_alba)
+- [Acer campestre](https://en.wikipedia.org/wiki/Acer_campestre)
+- [Acer pseudoplatanus](https://en.wikipedia.org/wiki/Acer_pseudoplatanus)
+- [Acer saccharum](https://en.wikipedia.org/wiki/Acer_saccharum)
+- [Betula pendula](https://en.wikipedia.org/wiki/Betula_pendula)
+- [Carpinus betulus](https://en.wikipedia.org/wiki/Carpinus_betulus)
+- [Corylus avellana](https://en.wikipedia.org/wiki/Corylus_avellana)
+- [Crataegus monogyna](https://en.wikipedia.org/wiki/Crataegus_monogyna)
+- [Eucalyptus miniata](https://en.wikipedia.org/wiki/Eucalyptus_miniata)
+- [Euonymus europaeus](https://en.wikipedia.org/wiki/Euonymus_europaeus)
+- [Fagus sylvatica](https://en.wikipedia.org/wiki/Fagus_sylvatica)
+- [Fraxinus angustifolia](https://en.wikipedia.org/wiki/Fraxinus_angustifolia)
+- [Fraxinus excelsior](https://en.wikipedia.org/wiki/Fraxinus_excelsior)
+- [Larix decidua](https://en.wikipedia.org/wiki/Larix_decidua)
+- [Picea abies](https://en.wikipedia.org/wiki/Picea_abies)
+- [Picea glauca](https://en.wikipedia.org/wiki/Picea_glauca)
+- [Pinus contorta](https://en.wikipedia.org/wiki/Pinus_contorta)
+- [Pinus nigra](https://en.wikipedia.org/wiki/Pinus_nigra)
+- [Pinus pinaster](https://en.wikipedia.org/wiki/Pinus_pinaster)
+- [Pinus radiata](https://en.wikipedia.org/wiki/Pinus_radiata)
+- [Pinus resinosa](https://en.wikipedia.org/wiki/Pinus_resinosa)
+- [Pinus sylvestris](https://en.wikipedia.org/wiki/Pinus_sylvestris)
+- [Populus deltoides](https://en.wikipedia.org/wiki/Populus_deltoides)
+- [Populus tremuloides](https://en.wikipedia.org/wiki/Populus_tremuloides)
+- [Prunus avium](https://en.wikipedia.org/wiki/Prunus_avium)
+- [Pseudotsuga menziesii](https://en.wikipedia.org/wiki/Pseudotsuga_menziesii)
+- [Quercus faginea](https://en.wikipedia.org/wiki/Quercus_faginea)
+- [Quercus ilex](https://en.wikipedia.org/wiki/Quercus_ilex)
+- [Quercus petraea](https://en.wikipedia.org/wiki/Quercus_petraea)
+- [Quercus robur](https://en.wikipedia.org/wiki/Quercus_robur)
+- [Quercus rubra](https://en.wikipedia.org/wiki/Quercus_rubra)
+- [Tilia cordata](https://en.wikipedia.org/wiki/Tilia_cordata)
+- [Ulmus laevis](https://en.wikipedia.org/wiki/Ulmus_laevis)
+   
+    </help>
+    <creator>
+        <person name="Julian Frey" email="julian.frey@wwd.uni-freiburg.de" url="https://orcid.org/0000-0001-7895-702X"/>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="doi">
+            10.5281/zenodo.14204431
+        </citation>
+    </citations>
+</tool>
