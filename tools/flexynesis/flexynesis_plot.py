@@ -442,12 +442,12 @@ def generate_cox_plots(important_features, clinical_train, clinical_test, omics_
     print(f"Building Cox model with time variable: {args.surv_time_var}, event variable: {args.surv_event_var}")
     try:
         coxm, metrics = build_cox_model(df,
-                               duration_col=args.surv_time_var,
-                               event_col=args.surv_event_var,
-                               n_splits=args.n_splits,
-                               random_state=args.random_state,
-                               low_variance_threshold=args.low_variance_threshold,
-                               return_metrics=True)
+                                        duration_col=args.surv_time_var,
+                                        event_col=args.surv_event_var,
+                                        n_splits=args.n_splits,
+                                        random_state=args.random_state,
+                                        low_variance_threshold=args.low_variance_threshold,
+                                        return_metrics=True)
         print("Cox model built successfully")
         print("Cox model metrics:")
         print(metrics)
