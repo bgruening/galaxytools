@@ -441,13 +441,16 @@ def generate_cox_plots(important_features, clinical_train, clinical_test, omics_
     # Build Cox model
     print(f"Building Cox model with time variable: {args.surv_time_var}, event variable: {args.surv_event_var}")
     try:
-        coxm = build_cox_model(df,
+        coxm, metrics = build_cox_model(df,
                                duration_col=args.surv_time_var,
                                event_col=args.surv_event_var,
-                               crossval=args.crossval,
                                n_splits=args.n_splits,
-                               random_state=args.random_state)
+                               random_state=args.random_state,
+                               low_variance_threshold=args.low_variance_threshold,
+                               return_metrics=True)
         print("Cox model built successfully")
+        print("Cox model metrics:")
+        print(metrics)
     except Exception as e:
         raise ValueError(f"Error building Cox model: {e}")
 
@@ -1104,14 +1107,14 @@ def main():
                         help="Comma-separated list of clinical variables to include in Cox model (e.g., 'AGE,SEX,HISTOLOGICAL_DIAGNOSIS,STUDY')")
     parser.add_argument("--top_features", type=int, default=20,
                         help="Number of top important features to include in Cox model. Default is 5")
-    parser.add_argument("--crossval", action='store_true',
-                        help="If True, performs K-fold cross-validation and returns average C-index. Default is False")
     parser.add_argument("--n_splits", type=int, default=5,
                         help="Number of folds for cross-validation. Default is 5")
     parser.add_argument("--random_state", type=int, default=42,
                         help="Random seed for reproducibility. Default is 42")
     parser.add_argument("--layer", type=str, default=None,
                         help="Class label for filtering important features.")
+    parser.add_argument("--low_variance_threshold", type=float, default=0.01,
+                        help="Threshold for low variance feature filtering. Default is 0.1")
 
     # Arguments for dimred, scatter plot, heatmap, PR curves, ROC curves, and box plots
     parser.add_argument("--target_value", type=str, default=None,
@@ -1195,8 +1198,6 @@ def main():
                 print("--clinical_variables is not set for Cox plots")
             if not isinstance(args.top_features, int) or args.top_features <= 0:
                 raise ValueError("--top_features must be a positive integer")
-            if not args.crossval:
-                args.crossval = False
             if not isinstance(args.n_splits, int) or args.n_splits <= 0:
                 raise ValueError("--n_splits must be a positive integer")
             if not isinstance(args.random_state, int):
