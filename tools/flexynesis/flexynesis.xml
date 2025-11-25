@@ -112,9 +112,13 @@
             --outdir output
             --model_class $model_class
             #if str($model_class) == 'GNN':
-                --gnn_conv_type $gnn_conv_type
-                --string_organism $string_organism
-                --string_node_name $string_node_name
+                --gnn_conv_type $string_condi.gnn_conv_type
+                #if str($string_condi.use_string) == 'no':
+                    --user_graph '$string_condi.user_graph'
+                #else
+                    --string_organism $string_condi.string_organism
+                    --string_node_name $string_condi.string_node_name
+                #end if
             #end if
             #if str($training_type.model) == 's_train':
                 #if str($target_variables) != 'None':
@@ -327,16 +331,27 @@
                             <option value="GCN">GCN</option>
                             <option value="SAGE">SAGE</option>
                         </param>
-                        <param argument="--string_organism" type="select" label="STRING DB organism">
-                            <option value="9606">Homo sapiens</option>
-                            <option value="10090">Mus musculus</option>
-                            <option value="10116">Rattus norvegicus</option>
-                            <option value="9544">Macaca mulatta</option>
-                        </param>
-                        <param argument="--string_node_name" type="select" label="String node name" >
-                            <option value="gene_name">Gene name</option>
-                            <option value="gene_id">Gene id</option>
-                        </param>
+                        <conditional name="string_condi">
+                            <param name="use_string" type="select" label="Use STRING database?">
+                                <option value="yes">Yes</option>
+                                <option value="no">No, use network from history</option>
+                            </param>
+                            <when value="yes">
+                                <param argument="--string_organism" type="select" label="STRING DB organism">
+                                    <option value="9606">Homo sapiens</option>
+                                    <option value="10090">Mus musculus</option>
+                                    <option value="10116">Rattus norvegicus</option>
+                                    <option value="9544">Macaca mulatta</option>
+                                </param>
+                                <param argument="--string_node_name" type="select" label="String node name" >
+                                    <option value="gene_name">Gene name</option>
+                                    <option value="gene_id">Gene id</option>
+                                </param>
+                            </when>
+                            <when value="no">
+                                <param argument="--user_graph" type="data" format="tabular" optional="false" label="Gene Gene interaction file" help="Must have at least 3 columns: GeneA, GeneB, Score" />
+                            </when>
+                        </conditional>
                     </when>
                     <when value="MultiTripletNetwork"/>
                     <when value="RandomForest"/>
@@ -836,8 +851,11 @@
                 <conditional name="model_class">
                     <param name="model_class" value="GNN"/>
                     <param name="gnn_conv_type" value="GC"/>
-                    <param name="string_organism" value="9606"/>
-                    <param name="string_node_name" value="gene_name"/>
+                    <conditional name="string_condi">
+                        <param name="use_string" value="yes"/>
+                        <param name="string_organism" value="9606"/>
+                        <param name="string_node_name" value="gene_name"/>
+                    </conditional>
                 </conditional>
                 <param name="target_variables" value="3"/>
                 <section name="advanced">
@@ -1432,6 +1450,85 @@
                         <has_text_matching expression="DirectPred\tCrizotinib\tnumerical\tr2\t"/>
                         <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tpearson_corr\t"/>
                         <has_text_matching expression="DirectPred\tCrizotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 20: Supervised training with GEX and CNV data, GNN model, Erlotinib target + user graph-->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <repeat name="omics">
+                    <param name="train_omics" value="train/cnv" ftype="tabular"/>
+                    <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                    <param name="assay" value="foo"/>
+                </repeat>
+                <conditional name="model_class">
+                    <param name="model_class" value="GNN"/>
+                    <param name="gnn_conv_type" value="GC"/>
+                    <conditional name="string_condi">
+                        <param name="use_string" value="no"/>
+                        <param name="user_graph" value="graph.tabular"/>
+                    </conditional>
+                </conditional>
+                <param name="target_variables" value="3"/>
+                <section name="advanced">
+                    <param name="hpo_iter" value="1"/>
+                </section>
+            </conditional>
+            <param name="safetensors_out_bool" value="False"/>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.GradientShap">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tA2M\t"/>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tABCC4\t"/>
+                        <has_text_matching expression="GradientShap"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.IntegratedGradients">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tA2M\t"/>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tABCC4\t"/>
+                        <has_text_matching expression="IntegratedGradients"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704\tErlotinib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="GNN\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="GNN\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="GNN\tErlotinib\tnumerical\tpearson_corr\t"/>
                     </assert_contents>
                 </element>
             </output_collection>
