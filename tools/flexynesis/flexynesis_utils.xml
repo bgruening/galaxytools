@@ -12,12 +12,15 @@
         @CHECK_NON_COMMERCIAL_USE@
         mkdir -p inputs/ output/ &&
         #if $utils_conditional.util != "compute_ami_ari" and $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
-            ln -s '$utils_conditional.X' 'inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext' &&
+            ## flexynesis coexpression recognizes .tsv instead of .tabular, so we create a symlink with the appropriate extension
+            ln -s '$utils_conditional.X' 'inputs/${utils_conditional.X.element_identifier}.tsv' &&
         #end if
         #if $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
-            ln -s '$utils_conditional.labels' 'inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext' &&
-        cat '$flexynesis_utils_config' &&
-        python '$flexynesis_utils_config'
+            #if $utils_conditional.util != "coexpression":
+                ln -s '$utils_conditional.labels' 'inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext' &&
+            #end if
+            cat '$flexynesis_utils_config' &&
+            python '$flexynesis_utils_config'
         #end if
         #if $utils_conditional.util == "split_data":
             ln -s '$utils_conditional.clin' inputs/clin.tabular &&
@@ -64,7 +67,7 @@ from flexynesis_plot import (
 
 #if $utils_conditional.util == "louvain_clustering":
 label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
-X = load_omics('inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext')
+X = load_omics('inputs/${utils_conditional.X.element_identifier}.tsv')
 
 cluster_labels, G, partition = louvain_clustering(
                                 #if $utils_conditional.threshold != "":
@@ -82,7 +85,7 @@ label_data.to_csv(output_path, sep="\t", index=True)
 
 #else if $utils_conditional.util == "get_optimal_clusters":
 label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
-X = load_omics('inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext')
+X = load_omics('inputs/${utils_conditional.X.element_identifier}.tsv')
 
 kmeans_cluster_labels, optimal_k, silhouette_scores = get_optimal_clusters(
                                                         data=X,
@@ -100,7 +103,7 @@ label_data.to_csv(output_path, sep="\t", index=True)
 
 #else if $utils_conditional.util == "k_means_clustering":
 label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
-X = load_omics('inputs/$utils_conditional.X.element_identifier.$utils_conditional.X.ext')
+X = load_omics('inputs/${utils_conditional.X.element_identifier}.tsv')
 
 cluster_labels, kmeans = k_means_clustering(
                             data=X,
@@ -132,6 +135,16 @@ with open(output_path, 'w') as f:
     f.write(f"AMI: {ami_ari['ami']}\n")
     f.write(f"ARI: {ami_ari['ari']}\n")
 
+#else if $utils_conditional.util == "coexpression":
+from flexynesis.generate_coexpression_network import generate_coexpression_network
+
+generate_coexpression_network(
+    input_file='inputs/${utils_conditional.X.element_identifier}.tsv',
+    output_file='output/network.tsv',
+    method='$utils_conditional.method',
+    min_correlation=$utils_conditional.min_correlation,
+    top_k=$utils_conditional.top_k
+)
 #end if
         ]]></configfile>
     </configfiles>
@@ -145,6 +158,7 @@ with open(output_path, 'w') as f:
                 <option value="compute_ami_ari">Compute AMI and ARI</option>
                 <option value="split_data">Split data to train and test</option>
                 <option value="binarize">Binarize mutation data</option>
+                <option value="coexpression">Generate Coexpression Network (can be used instead of STRING network in GNN)</option>
             </param>
             <when value="louvain_clustering">
                 <param argument="--X" type="data" format="tabular" label="Matrix" help="Input matrix, (samples, features)"/>
@@ -177,6 +191,15 @@ with open(output_path, 'w') as f:
                 <param argument="--mutation" type="data" format="tabular" label="Mutation data" help="Mutation data with both genes and samples in rows"/>
                 <param argument="--gene_idx" type="data_column" data_ref="mutation" label="Column in the mutation file with genes"/>
                 <param argument="--sample_idx" type="data_column" data_ref="mutation" label="Column in the mutation file with samples"/>
+            </when>
+            <when value="coexpression">
+                <param argument="--X" type="data" format="tabular" label="Expression matrix" help="Expression matrix, (features, samples)"/>
+                <param name="method" type="select" label="Method">
+                    <option value="spearman">Spearman</option>
+                    <option value="pearson">Pearson</option>
+                </param>
+                <param argument="--min_correlation" type="float" min="0" max="1" value="0.3" label="Minimum absolute correlation threshold"/>
+                <param argument="--top_k" type="integer" min="0" value="10" label="Keep top K neighbors per gene"/>
             </when>
         </conditional>
     </inputs>
@@ -335,6 +358,29 @@ with open(output_path, 'w') as f:
                     <has_text text="Hugo_Symbol"/>
                     <has_text_matching expression="AADACL2\t0.0\t0.0"/>
                     <has_text_matching expression="ABCB1\t0.0\t0.0\t0.0\t1.0"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test 7: coexpression -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="coexpression"/>
+                <param name="X" value="train/gex"/>
+                <param name="method" value="pearson"/>
+                <param name="min_correlation" value="0.01"/>
+                <param name="top_k" value="1"/>
+            </conditional>
+            <assert_stdout>
+                <has_text text="generate_coexpression_network"/>
+                <has_text text="min_correlation=0.01"/>
+                <has_text text="top_k=1"/>
+            </assert_stdout>
+            <output name="util_out">
+                <assert_contents>
+                    <has_n_lines n="18"/>
+                    <has_text_matching expression="GeneA\tGeneB\tScore"/>
+                    <has_text_matching expression="A1CF\tAADAC\t0.646"/>
                 </assert_contents>
             </output>
         </test>
