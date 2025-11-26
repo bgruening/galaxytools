@@ -447,6 +447,7 @@ def generate_cox_plots(important_features, clinical_train, clinical_test, omics_
                                         n_splits=args.n_splits,
                                         random_state=args.random_state,
                                         low_variance_threshold=args.low_variance_threshold,
+                                        cox_penalizer=args.cox_penalizer,
                                         return_metrics=True)
         print("Cox model built successfully")
         print("Cox model metrics:")
@@ -1115,6 +1116,8 @@ def main():
                         help="Class label for filtering important features.")
     parser.add_argument("--low_variance_threshold", type=float, default=0.01,
                         help="Threshold for low variance feature filtering. Default is 0.1")
+    parser.add_argument("--cox_penalizer", type=float, default=0.05,
+                        help="Penalizer parameter for Cox model. Default is 0.1")
 
     # Arguments for dimred, scatter plot, heatmap, PR curves, ROC curves, and box plots
     parser.add_argument("--target_value", type=str, default=None,
