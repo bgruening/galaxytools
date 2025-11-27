@@ -512,7 +512,7 @@ def generate_cox_plots(
                 f"Requested top {args.top_features} features, but only {len(imp_features)} available in {args.important_features}"
             )
 
-        imp = imp_features["name"].unique().tolist()[0 : args.top_features]
+        imp = imp_features["name"].unique().tolist()[0: args.top_features]
 
         print(f"Top features: {', '.join(imp)}")
     except Exception as e:
