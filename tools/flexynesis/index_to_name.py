@@ -12,9 +12,9 @@ def get_column_names(file_path, indices):
     """
     try:
         file_ext = Path(file_path).suffix.lower()
-        sep = ',' if file_ext == '.csv' else '\t'
+        sep = "," if file_ext == ".csv" else "\t"
 
-        if file_ext in ['.csv', '.tsv', '.txt', '.tab', '.tabular']:
+        if file_ext in [".csv", ".tsv", ".txt", ".tab", ".tabular"]:
             data = pd.read_csv(file_path, sep=sep)
         else:
             raise ValueError(f"Unsupported file extension: {file_ext}")
@@ -27,7 +27,9 @@ def get_column_names(file_path, indices):
     for index in indices:
         zero_based_index = index - 1  # Convert to zero-based index
         if zero_based_index < 0 or zero_based_index >= len(data.columns):
-            print(f"Error: Index {index} is out of range. File has {len(data.columns)} columns (1-{len(data.columns)}).")
+            print(
+                f"Error: Index {index} is out of range. File has {len(data.columns)} columns (1-{len(data.columns)})."
+            )
             return None
         column_names.append(data.columns[zero_based_index].strip())
 
@@ -41,11 +43,11 @@ if __name__ == "__main__":
 
     # Parse comma-separated indices
     try:
-        indices = [int(i.strip()) for i in indices_str.split(',')]
+        indices = [int(i.strip()) for i in indices_str.split(",")]
     except ValueError:
         print("Error: All indices must be integers.")
         sys.exit(1)
 
     result = get_column_names(file_path, indices)
     if result is not None:
-        print(','.join(result))
+        print(",".join(result))
