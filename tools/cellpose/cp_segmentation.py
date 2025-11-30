@@ -40,15 +40,13 @@ def main(inputs, img_path, output_dir):
 
     gpu = params['use_gpu']
     model_type = params['model_type']
-
     options = params['options']
-
     img = skimage.io.imread(img_path)
 
     print(f"Image shape: {img.shape}")
 
     model = models.Cellpose(gpu=gpu, model_type=model_type)
-    masks, flows, styles, diams = model.eval(img, channels=None, **options)
+    masks, flows, styles, diams = model.eval(img, channels=[0, 0], **options)
 
     # save masks to tiff
     with warnings.catch_warnings():
@@ -64,7 +62,7 @@ def main(inputs, img_path, output_dir):
         flowi = flows[0]
         fig = plt.figure(figsize=(12, 3))
         # can save images (set save_dir=None if not)
-        plot.show_segmentation(fig, img, maski, flowi, channels=None)
+        plot.show_segmentation(fig, img, maski, flowi, channels=[0, 0])
         fig.savefig(os.path.join(output_dir, 'segm_show.png'), dpi=300)
         plt.close(fig)
 
