@@ -60,7 +60,7 @@ def main(inputs, img_path, output_dir):
 
         maski = masks
         flowi = flows[0]
-        fig = plt.figure(figsize=(12, 3))
+        fig = plt.figure(figsize=(8, 2))
         # can save images (set save_dir=None if not)
         plot.show_segmentation(fig, img, maski, flowi, channels=[0, 0])
         fig.savefig(os.path.join(output_dir, 'segm_show.png'), dpi=300)
