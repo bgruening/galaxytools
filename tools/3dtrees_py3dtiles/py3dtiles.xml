@@ -1,0 +1,131 @@
+<tool id="3dtrees_py3dtiles" name="3Dtrees: Py3DTiles Converter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.1">
+    <description>Convert LAZ point clouds to Cesium 3D Tiles with custom attribute support</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_py3dtiles:latest</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        export NUMBA_CACHE_DIR=\$TMPDIR &&
+        ln -s '$input' input.laz &&
+        python /src/run.py
+        --input input.laz
+        --output-dir src/tiles_output
+        #if $extra_fields
+            --extra-fields '$extra_fields'
+        #end if
+        #if $srs_out
+            --srs-out '$srs_out'
+        #end if
+        #if $overwrite
+            --overwrite
+        #end if
+        ]]>
+    </command>
+    <inputs>
+        <param name="input" type="data" format="laz" label="Point Cloud Dataset" help="LAS/LAZ point cloud file to convert to 3D Tiles"/>
+        <param name="extra_fields" type="text" optional="true" label="Extra Fields" help="Comma-separated list of extra fields to include in tiles (e.g., 'PredInstance' for segmentation visualization). Leave empty to include only standard fields."/>
+        <param name="srs_out" type="text" value="4978" label="Output CRS (EPSG code)" help="Output coordinate reference system. Default is 4978 (ECEF) for proper Cesium visualization. Leave empty to preserve original CRS."/>
+        <param name="overwrite" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Overwrite existing output" help="Clear output directory before conversion if it already contains files"/>
+    </inputs>
+    <outputs>
+        <!-- Root level: tileset.json metadata -->
+        <data name="tileset_json" format="json" label="tileset" from_work_dir="src/tiles_output/tileset.json"/>
+        <!-- Root level: preview.pnts thumbnail -->
+        <data name="preview_pnts" format="pnts" label="preview" from_work_dir="src/tiles_output/preview.pnts"/>
+        <!-- Points subdirectory: all r*.pnts tile files -->
+        <collection name="points_tiles" type="list" label="points">
+            <discover_datasets pattern="(?P&lt;designation&gt;r.*)\.pnts" directory="src/tiles_output" recurse="true" visible="false" format="pnts"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test>
+            <param name="input" value="mikro.laz"/>
+            <param name="srs_out" value="4978"/>
+            <output name="tileset_json" ftype="json" compare="contains">
+                <assert_contents>
+                    <has_text text="root"/>
+                    <has_text text="boundingVolume"/>
+                    <has_text text="asset"/>
+                    <has_text text="version"/>
+                    <has_text text="geometricError"/>
+                    <has_text text="preview.pnts"/>
+                    <has_text text="points/"/>
+                    <has_n_lines n="1"/>
+                </assert_contents>
+            </output>
+            <output_collection name="points_tiles" type="list" count="9"/>
+        </test>
+    </tests>
+    <help>
+
+**What it does**
+
+This tool converts LAS/LAZ point cloud files to Cesium 3D Tiles format using py3dtiles. Unlike other tiling tools (e.g., gocesiumtiler), py3dtiles supports custom attributes, which is essential for visualizing segmentation results and other point cloud classifications.
+
+The tool automatically:
+
+1. Detects the coordinate reference system (CRS) from the input file
+2. Transforms coordinates to ECEF (EPSG:4978) for proper Cesium visualization if CRS is available
+3. Preserves custom attributes like segmentation IDs when specified
+4. Generates an optimized octree structure for efficient web visualization
+5. Post-processes tileset structure to fix potential URI path issues
+
+-----
+
+**Input**
+
+- **Point Cloud Dataset**: LAS or LAZ format point cloud file
+- **Extra Fields**: Optional comma-separated list of extra point attributes to include (e.g., "PredInstance" for instance segmentation)
+- **Output CRS**: EPSG code for output coordinates (default: 4978 for ECEF). Leave empty to keep original coordinates.
+- **Overwrite**: Clear output directory before conversion
+
+-----
+
+**Output**
+
+- **3D Tileset Metadata**: The main tileset.json file that describes the tile structure
+- **3D Tile Files**: Collection of binary tile files (.pnts format) containing the point cloud data
+
+The output can be directly hosted on a web server and visualized using CesiumJS.
+
+-----
+
+**Use Cases**
+
+1. **Standard Visualization**: Convert standardized point clouds to 3D Tiles for web-based viewing
+2. **Segmentation Visualization**: Include custom attributes like "PredInstance" to visualize tree segmentation results
+3. **Custom Attributes**: Preserve any extra point attributes (e.g., quality scores, classifications) for specialized visualization
+
+-----
+
+**Technical Details**
+
+- **Coordinate Transformation**: Files with CRS metadata are automatically transformed to ECEF (EPSG:4978) for proper Cesium camera controls
+- **Files without CRS**: Coordinates are preserved as-is, assuming they're already in a suitable local/relative system
+- **Custom Attributes**: Full support for extra dimensional attributes via py3dtiles
+- **Format**: Generates Cesium 3D Tiles v1.0 with PNTS (Point Cloud) tiles
+
+-----
+
+**Comparison with gocesiumtiler**
+
+While gocesiumtiler is faster, py3dtiles is chosen for this workflow because:
+
+- Supports custom point attributes (essential for segmentation visualization)
+- Includes bug fixes for specific use cases
+- Better handling of coordinate transformations with pyproj
+
+    </help>
+    <creator>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="bibtex">@misc{py3dtiles title = {Py3DTiles: Python library for 3D Tiles}, author = {py3dtiles Contributors}, year = {2024}, url = {https://gitlab.com/py3dtiles/py3dtiles}}</citation>
+        <citation type="bibtex">
+            @misc{3dtrees_py3dtiles, title = {3Dtrees: Py3DTiles}, author = {3Dtrees-Project}, year = {2025}}
+        </citation>
+    </citations>
+</tool>
