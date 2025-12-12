@@ -6,7 +6,7 @@ This tool leverages OpenAI's ChatGPT API to generate responses based on user-pro
 Users can upload context data in various formats and ask questions or execute prompts related to that data.
 The tool then uploads the data to a OpenAI server and processes them using the selected ChatGPT model, returning an AI-generated response tailored to the context provided.
 
-To utilize this tool, users need to input their OpenAI API key in the user preferences. To obtain an API key, visit https://platform.openai.com/account/api-keys.
+To utilize this tool, users need to input their OpenAI API key in the credentials section. To obtain an API key, visit https://platform.openai.com/account/api-keys.
 
 Make sure to setup the payment method in your OpenAI account to use the API key in here: https://platform.openai.com/settings/organization/billing/
 
