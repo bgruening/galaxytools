@@ -1,0 +1,129 @@
+<tool id="3dtrees_tile_merge" name="3Dtrees: Tile and Merge" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>Subsampling, tiling, merging and matching of point clouds</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.1</token>
+        <token name="@VERSION_SUFFIX@">1</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_tile_merge:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        python -u /src/run.py 
+        --dataset-path '$input' 
+        --output-dir .
+        --task '$operation.task'
+        --number-of-threads \${GALAXY_SLOTS:-4}
+        #if $operation.task == 'tile':
+            --tile-size '$operation.tile_size'
+            --overlap '$operation.overlap'
+            --tiling-threshold '$operation.tiling_threshold'
+            --points-threshold '$operation.points_threshold'
+            --subsampling-resolution '$operation.subsampling_resolution'
+        #end if
+        #if $operation.task == 'merge':
+            --buffer '$operation.buffer'
+            --min-cluster-size '$operation.min_cluster_size'
+            --initial-radius '$operation.initial_radius'
+            --max-radius '$operation.max_radius'
+            --radius-step '$operation.radius_step'
+            && mv final_pc.laz segmented.laz
+        #end if
+            ]]>
+    </command>
+    <inputs>
+        <param name="input" type="data" format="zip,laz" label="Input Point Cloud or ZIP file" help="Input LAS/LAZ point cloud file or ZIP file containing prepared files"/>
+        <conditional name="operation">
+            <param name="task" type="select" label="Task">
+                <option value="tile">Tile</option>
+                <option value="merge">Merge</option>
+            </param>
+            <when value="tile">
+                <param argument="--tile-size" type="integer" min="1" max="10000" value="50" label="Tile Size" help="Size of tiles in meters"/>
+                <param argument="--overlap" type="integer" min="1" max="10000" value="20" label="Overlap" help="Overlap between tiles in meters"/>
+                <param argument="--tiling-threshold" type="float" min="0.1" max="100" value="3" label="Tiling Threshold (GB)" help="File size threshold in GB above which tiling will be applied"/>
+                <param argument="--points-threshold" type="integer" min="1" max="100000" value="1000" label="Points Threshold" help="Minimum number of points required per tile - tiles with fewer points will be deleted"/>
+                <param argument="--subsampling-resolution" type="integer" min="1" max="100" value="10" label="Subsampling Resolution (cm)" help="Voxel size for subsampling in centimeters (default: 10cm)"/>
+            </when>
+            <when value="merge">
+                <param argument="--buffer" type="float" min="0.1" max="10" value="0.2" label="Buffer Distance (m)" help="Buffer distance for whole-tree assignment (default: 0.2m)"/>
+                <param argument="--min-cluster-size" type="integer" min="1" max="10000" value="300" label="Minimum Cluster Size" help="Minimum number of points for a cluster to be considered valid (default: 300)"/>
+                <param argument="--initial-radius" type="float" min="0.1" max="10" value="1.0" label="Initial Search Radius (m)" help="Initial radius for point reassignment search (default: 1.0m)"/>
+                <param argument="--max-radius" type="float" min="0.1" max="10" value="5.0" label="Maximum Search Radius (m)" help="Maximum radius for point reassignment search (default: 5.0m)"/>
+                <param argument="--radius-step" type="float" min="0.1" max="10" value="1.0" label="Radius Step (m)" help="Radius increment step for point reassignment (default: 1.0m)"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output_tile" format="zip" label="Prepared Files" from_work_dir="prepared_files.zip">
+            <filter>operation['task'] == "tile"</filter>
+        </data>
+        <data name="output_merge" format="laz" label="segmented" from_work_dir="segmented.laz">
+            <filter>operation['task'] == "merge"</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="mikro.laz"/>
+            <conditional name="operation">
+                <param name="task" value="tile"/>
+                <param name="tile_size" value="50"/>
+                <param name="overlap" value="20"/>
+                <param name="tiling_threshold" value="3"/>
+                <param name="points_threshold" value="1000"/>
+                <param name="subsampling_resolution" value="10"/>
+            </conditional>
+            <output name="output_tile">
+                <assert_contents>
+                    <has_archive_member path="00_original/input.laz"/>
+                    <has_archive_member path="01_subsampled/input_subsampled.laz"/>
+                    <has_archive_member path="02_input_SAT/.*\.laz"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="processed_files_mikro.zip"/>
+            <conditional name="operation">
+                <param name="task" value="merge"/>
+            </conditional>
+            <output name="output_merge">
+                <assert_contents>
+                    <has_size value="200000" delta="100000"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown">
+        **What it does**
+        This tool processes 3D point cloud data for tree segmentation by either:
+        - Tiling: Subsampling the input point cloud and creating tiles for processing
+        - Merging: Merging processed tiles back into the original point cloud resolution
+        
+        **Tile Parameters**
+        - Tile Size: Size of tiles in meters (default: 50)
+        - Overlap: Overlap between tiles in meters (default: 20)
+        - Tiling Threshold: File size threshold in GB - files larger than this will be tiled (default: 3 GB)
+        - Points Threshold: Minimum number of points per tile - tiles with fewer points are deleted (default: 1000)
+        - Subsampling Resolution: Voxel size for subsampling in centimeters (default: 10 cm)
+        
+        **Merge Parameters**
+        - Buffer Distance: Buffer distance for whole-tree assignment in meters (default: 0.2m)
+        - Minimum Cluster Size: Minimum points for a valid cluster (default: 300)
+        - Initial Search Radius: Starting radius for point reassignment in meters (default: 1.0m)
+        - Maximum Search Radius: Maximum radius for point reassignment in meters (default: 5.0m)
+        - Radius Step: Radius increment for expanding search in meters (default: 1.0m)
+        
+        **Processing**
+        The tiling step uses parallel processing to subsample the point cloud efficiently across multiple threads.
+        Spatial chunks are aligned to the voxel grid to ensure no duplicate points at boundaries.
+        The merge step identifies whole trees within tiles, reassigns small clusters to nearby trees, and remaps predictions to the original resolution.
+    </help>
+    <creator>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" identifier="0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="bibtex">
+            @misc{3dtrees_tile_merge, title = {3D Trees Tile and Merge Tool}, author = {3D Trees Project}, year = {2025}}
+        </citation>
+    </citations>
+</tool>

@@ -6,7 +6,6 @@ from ij.process import ImageProcessor
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-10]
 input_file = sys.argv[-9]
 scale_when_converting = sys.argv[-8] == "yes"
 weighted_rgb_conversions = sys.argv[-7] == "yes"
@@ -35,7 +34,7 @@ if bit_depth == 24:
     if weighted_rgb_conversions:
         options.append("weighted")
 # Perform conversion - must happen even if no options are set.
-IJ.run(input_image_plus_copy, "Conversions...", "%s" % " ".join(options))
+IJ.run(input_image_plus_copy, "Conversions...", " %s" % " ".join(options))
 if output_type in ["List", "Count"]:
     # W're  generating a tabular file for the output.
     # Set the Find Maxima options.

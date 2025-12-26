@@ -121,7 +121,6 @@ def save(result, output, show_detailed_info, calculate_largest_shortest_path, se
 
 # Fiji Jython interpreter implements Python 2.5 which does not
 # provide support for argparse.
-error_log = sys.argv[-8]
 input = sys.argv[-7]
 black_background = sys.argv[-6] == "yes"
 prune_cycle_method = sys.argv[-5]

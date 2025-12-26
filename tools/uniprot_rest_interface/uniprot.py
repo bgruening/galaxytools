@@ -292,5 +292,8 @@ if __name__ == "__main__":
             sleep(5)
 
     if not isinstance(results, str):
-        results = "\n".join(results)
+        if args.format in ["fasta", "txt"]:
+            results = "".join(results)
+        else:
+            results = "\n".join(results)
     args.out.write(f"{results}\n")

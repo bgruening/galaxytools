@@ -1,0 +1,68 @@
+<tool id="lirasearch" name="Identify similar conformers" version="@TOOL_VERSION@" profile="20.01">
+    <description>using LiraSearch spherical harmonic descriptors</description>
+    <macros>
+        <token name="@TOOL_VERSION@">0.1.0</token>
+    </macros>
+    <requirements>
+        <container type="docker">sb17/lirasearch:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="exit_code">
+        <![CDATA[
+            export HOME=`pwd` &&
+            #if $ligand.ext == 'pdb':
+                ln -s $ligand ligand.pdb &&
+            #else
+                python /opt/scripts/convert_sdf_to_pdb.py $ligand ligand.pdb &&
+            #end if
+            python -m esp_dnn.predict -m ligand -i . -o . &&
+            esp-surface-generator ligand.pdb.pqr ligand.pdb.tmesh &&
+            sh-coeff-calculator . &&
+            micromamba run -n lirasearch python /opt/scripts/lira_search_sdf.py --in_file rid_coeffs.csv --out_file output --out_keys keys.txt --database ${database_select.fields.path}/rid_coeffs.csv --num_results $num_results &&
+	    mkdir search_results && rocksdb_to_sdf ${database_select.fields.path} keys.txt search_results &&
+	    micromamba run -n lirasearch python /opt/scripts/lira_super.py --target ligand.pdb --folder search_results &&
+            cat search_results/*rotated.sdf >> '$output_sdf'
+            ]]>
+    </command>
+    <inputs>
+        <param name="ligand" type="data" format="pdb,sdf" label="Ligand file" help="Query for searching database" />
+        <param name="database_select" type="select" label="Select database to search">
+	    <options from_data_table="lirasearch">
+                <filter type="sort_by" column="2" />
+                <validator type="no_options" message="No databases are available!" />
+	    </options>
+        </param>
+        <param name="num_results" type="integer" value="50" label="Number of results to return" />
+    </inputs>
+    <outputs>
+        <data name="output_sdf" format="sdf" label="SDF with LiraSearch query results" />
+    </outputs>
+    <tests>
+        <test>
+	    <param name="ligand" value="ligand.pdb" ftype="pdb" />
+	    <param name="database_select" value="test"/>
+            <param name="num_results" value="2" />
+            <output name="output_sdf" value="lirasearch_output.sdf"/>
+        </test>
+        <test>
+            <param name="ligand" value="ligand.sdf"/>
+	    <param name="database_select" value="test"/>
+            <param name="num_results" value="2" />
+            <output name="output_sdf" value="lirasearch_output.sdf"/>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+
+.. class:: infomark
+
+**What this tool does**
+
+Identify similar conformers to an input ligand, based on predicting the electrostatic potential (ESP) using a deep neural network and computing spherical harmonic coefficients.
+]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1101/2022.01.19.476747</citation>
+        <citation type="doi">10.1021/acs.jmedchem.9b01129</citation>
+    </citations>
+</tool>
+

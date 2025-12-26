@@ -1,0 +1,194 @@
+<tool id="yolo_predict" name="Perform YOLO image labeling" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>with ultralytics</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="creator" />
+    <expand macro="edam" />
+    <expand macro="requirements" />
+    <command detect_errors="aggressive">
+    <![CDATA[
+      export YOLO_CONFIG_DIR="\$HOME/.config/ultralytics" &&
+
+      mkdir -p ./input_images ./runs ./models ./results && 
+      
+      #for $filename in $input_images:
+          ln -s '$filename' './input_images/${filename.element_identifier}.${filename.ext}' &&
+      #end for
+
+      cp '$class_name' './models/class_name.txt' &&
+
+      cp '$model' './models/model.pt' &&
+	    
+      python '$__tool_directory__/yolov8.py' 
+	    --test_path='./input_images' 
+	    --model_path='./models' 
+	    --model_name='model' 
+	    --run_dir='./runs' 
+	    --save_dir='./results'
+	    --image_size='$image_size'
+	    --mode='$mode'
+	    --foldername='overlaid_images'
+	    --class_names_file='$class_name'
+	    --num_classes=`wc -l < ./models/class_name.txt`
+	    --confidence='$confidence'
+	    --iou='$iou'
+	    --max_det='$max_det' 
+	    --headless
+    ]]>
+    </command>
+    <inputs>
+        <param name="input_images" type="data" format="jpg,png" multiple="true"  label="Input images"/>
+	<param name="class_name" type="data" format="txt" label="YOLO class name file" />
+	<param name="model" type="data" format="data" label="Model file" />
+	<param name="mode" type="select" label="Prediction mode">
+          <option value="segment">segment</option>
+          <option value="detect">detect</option>
+	</param>
+	<param name="image_size" type="integer" value="1000" min="16" label="Image size" help="All input images will be re-sized to squares with sides of this length (in pixels). This value governs the trade-offs of speed (smaller values) vs accuracy (larger values)." />
+ 	<param name="confidence" type="float" value="0.5" min="0.0" max="1.0" label="Confidence" help="Confidence value (0-1) for each detected bounding box." />
+	<param name="iou" type="float" value="0.7" min="0.1" max="1.0" label="IoU" help="Intersection over Union threshold for non-maximum suppression." />
+	<param name="max_det" type="integer" value="300" min="100" max="1000" label="Max. number of detections" help="Maximum number of detections allowed per image. Limits the total number of objects the model can detect in a single inference, preventing excessive outputs in dense scenes." />
+    </inputs>
+    <outputs>
+        <collection name="txt_results" format="txt" type="list" label="YOLO bounding box and annotation (text)">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt$" directory="results" />
+        </collection>
+        <collection name="mask_results" format="tiff" type="list" label="YOLO segmentation masks (TIFF)">
+            <filter>mode == 'segment'</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)_mask\.tiff$" directory="results" />
+        </collection>
+        <collection name="overlay_results" format="jpg" type="list" label="YOLO annotated images">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.jpg$" directory="runs/overlaid_images" />
+        </collection>
+    </outputs>
+    <tests>
+    <test expect_num_outputs="3">
+            <param name="input_images" value="pred-test01.jpg" />
+            <param name="model" location="https://zenodo.org/records/15611468/files/best.pt" />
+            <param name="image_size" value="512" />
+            <param name="confidence" value="0.003" />
+            <param name="iou" value="0.7" />
+            <param name="max_det" value="100" />
+            <param name="mode" value="segment" />
+            <param name="class_name" value="class_name.txt" />
+
+            <output_collection name="txt_results" type="list" count="1">
+                <element name="pred-test01.jpg">
+                    <assert_contents>
+                        <has_n_lines n="100"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+
+            <output_collection name="mask_results" type="list" count="1">
+                <element name="pred-test01.jpg">
+                    <assert_contents>
+                        <has_image_width width="512"/>
+                        <has_image_height height="1024"/>
+                        <has_image_channels channels="1"/>
+                    </assert_contents>
+                </element>
+	    </output_collection>
+            <output_collection name="overlay_results" type="list" count="1">
+	        <element name="pred-test01.jpg">
+		    <assert_contents>
+                        <has_image_width width="512"/>
+                        <has_image_height height="1024"/>
+                        <has_image_channels channels="3"/>
+                    </assert_contents>
+		</element>
+            </output_collection>
+
+        </test>    
+        <!--new version's test-->
+	<!-- SEGMENT MODE TEST -->
+
+        <test expect_num_outputs="3">
+            <param name="input_images" value="bus.jpg" />
+            <param name="class_name" value="yolo-test-classes.txt" />
+            <param name="model" location="https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n-seg.pt" />
+            <param name="mode" value="segment" />
+            <param name="image_size" value="640" />
+            <param name="confidence" value="0.25" />
+            <param name="iou" value="0.45" />
+            <param name="max_det" value="300" />
+            <output_collection name="txt_results" type="list" count="1">
+                <element name="bus.jpg" file="bus.txt" compare="sim_size" />
+            </output_collection>
+            <output_collection name="mask_results" type="list" count="1">
+                <element name="bus.jpg" file="bus_mask.tiff" compare="sim_size" />
+            </output_collection>
+            <output_collection name="overlay_results" type="list" count="1">
+                <element name="bus.jpg" file="bus_seg.jpg" compare="sim_size" />
+            </output_collection>
+        </test>
+
+	<!-- DETECT MODE TEST -->
+	
+        <test expect_num_outputs="2">
+            <param name="input_images" value="bus.jpg" />
+            <param name="class_name" value="yolo-test-classes.txt" />
+            <param name="model" location="https://github.com/ultralytics/assets/releases/download/v8.3.0/yolov8n-seg.pt" />
+            <param name="mode" value="detect" />
+            <param name="image_size" value="640" />
+            <param name="confidence" value="0.25" />
+            <param name="iou" value="0.45" />
+            <param name="max_det" value="300" />
+            <output_collection name="txt_results" type="list" count="1">
+                <element name="bus.jpg" file="bus_detect.txt" compare="sim_size" />
+            </output_collection>
+            <output_collection name="overlay_results" type="list" count="1">
+                <element name="bus.jpg" file="bus_seg.jpg" compare="sim_size" />
+            </output_collection>
+	</test>
+
+    </tests>
+
+    <help><![CDATA[
+    **Overview**
+
+    This Galaxy tool performs object detection or instance segmentation on input images using a **pre-trained YOLOv8 model** from the **Ultralytics** framework.
+
+    ---
+
+    **Prediction Mode**
+
+    Choose from two available options using the **mode** parameter:
+
+	    - **detect** – Use this if your pre-trained/trained model is a detection model. It outputs bounding boxes coordinates, class IDs, and confidence scores and overlay images with bounding boxes.
+
+	    - **segment** – Use this if your pre-trained/trained model is a segmentation model. It outputs text file containing polygons coordinates, class IDs and confidence score and overlaid images with bounding boxes and mask images.
+
+    ⚠️ **Important:** The selected mode must match the type of the model you upload. For example, if you are using a segmentation model (`*-seg.pt`), you must select `segment` mode. Using a mismatched mode and model will lead to errors or empty results.
+
+    ---
+
+    **Inputs**
+
+    - **Input Images** (`jpg`, `png`): One or more images to analyze.
+    - **YOLO Class Name File** (`.txt`): A plain text file listing all class names used during training (one per line).
+    - **Model File** (`.pt`): A YOLOv8-compatible pre-trained model file.
+    - **Prediction Mode** (`detect` or `segment`): Choose based on the model type as described above.
+    - **Image Size** (default: `1000`): Input images will be resized to square dimensions. Larger sizes yield better accuracy but require more memory.
+    - **Confidence Threshold** (default: `0.5`): Minimum confidence to include a detection.
+    - **IoU Threshold** (default: `0.7`): Intersection-over-Union threshold for non-maximum suppression.
+    - **Max Detections** (default: `300`): Maximum number of objects detected per image.
+
+    ---
+
+    **Outputs**
+
+    - **YOLO Annotations (.txt)**:
+    - One file per input image.
+    - Contains bounding boxes/polygons coordinates,predicted class ID, confidence scores.
+
+    - **Segmentation Masks (.tiff)** (for `segment` mode only): 
+    - Binary images showing detected object areas.
+
+    - **Images with annotations(.jpg)**:
+    - Overlaid images with bounding boxes and/or segmentation overlay.
+
+    ]]></help>
+    <expand macro="citations" />
+</tool>

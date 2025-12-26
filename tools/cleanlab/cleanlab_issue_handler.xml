@@ -1,0 +1,310 @@
+<tool id="cleanlab_issue_handler" name="Cleanlab Issue Handler" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+    <description>Detect and optionally clean data issues using Cleanlab</description>
+    <macros>
+        <token name="@TOOL_VERSION@">2.7.1</token>
+        <token name="@VERSION_SUFFIX@">1.0</token>
+    </macros>
+
+    <requirements>
+        <requirement type="package" version="2.7.1">cleanlab</requirement>
+        <requirement type="package" version="3.6.0">datasets</requirement>
+        <requirement type="package" version="3.0.0">xgboost</requirement>
+    </requirements>
+
+    <command detect_errors="exit_code"><![CDATA[
+        python '${__tool_directory__}/cleanlab_issue_handler.py'
+        --input_file '$input_file' '$input_file.ext'
+        --target_column '$target_column'
+        --task "$task_block.task"
+        --method "$task_block.method"
+        #if $summary_only:
+            --summary
+        #end if
+        #if str($task_block.task) == "classification":
+            $task_block.label_issues
+            $task_block.outliers
+            $task_block.near_duplicates
+            $task_block.non_iid
+        #elif str($task_block.task) == "regression":
+            --quality-threshold "$task_block.quality_threshold"
+        #end if
+    ]]></command>
+
+    <inputs>
+        <param name="input_file" type="data" format="csv,tsv,tabular" label="Input data file"/>
+        <param name="target_column" type="text" optional="false" label="Target column name" value="target" help="Name of the target column in the input data file. Default is 'target'."/>
+        <param name="summary_only" type="boolean" label="Only generate summary report?" checked="false"/>
+        
+        <conditional name="task_block">
+            <param name="task" type="select" label="Task type">
+                <option value="classification">Classification</option>
+                <option value="regression">Regression</option>
+            </param>
+            
+            <when value="classification">
+                <param name="method" type="select" label="Cleaning method">
+                    <option value="remove">Remove problematic rows</option>
+                    <option value="replace">Replace problematic labels (classification only)</option>
+                </param>
+                <param name="label_issues" type="boolean" truevalue="" falsevalue="--no-label-issues" label="Remove/Replace label issues" checked="true"/>
+                <param name="outliers" type="boolean" truevalue="" falsevalue="--no-outliers" label="Remove/Replace outlier issues" checked="true"/>
+                <param name="near_duplicates" type="boolean" truevalue="" falsevalue="--no-near-duplicates" label="Remove/Replace near-duplicate issues" checked="true"/>
+                <param name="non_iid" type="boolean" truevalue="" falsevalue="--no-non-iid" label="Remove/Replace non-IID issues" checked="true"/>
+            </when>
+
+            <when value="regression">
+                <param name="method" type="select" label="Cleaning method">
+                    <option value="remove">Remove problematic rows</option>
+                    <!-- No "replace" option for regression -->
+                </param>
+                <param name="quality_threshold" type="float" label="Quality threshold" value="0.2" min="0.0" max="1.0" help="Threshold for low-quality labels. Default is 0.2."/>
+                <!-- No issue type parameters shown -->
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data name="report_file" from_work_dir="summary.txt" format="txt" label="Issue Report"/>
+
+        <data name="output_file" from_work_dir="cleaned_data" format_source="input_file" label="cleaned_${input_file.name}">
+            <filter>not summary_only</filter>
+        </data>
+    </outputs>
+
+    <tests>
+    <!-- Test1: only summary -->
+    <test expect_num_outputs="1">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
+        <param name="summary_only" value="true" />
+
+        <conditional name="task_block">
+            <param name="task" value="classification" />
+            <param name="method" value="remove" />
+            <param name="label_issues" value="true" />
+            <param name="outliers" value="true" />
+            <param name="near_duplicates" value="true" />
+            <param name="non_iid" value="true" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="issue_type\s+score\s+num_issues"/>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- Test2: summary and cleaned all -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
+        <param name="summary_only" value="false" />
+
+        <conditional name="task_block">
+            <param name="task" value="classification" />
+            <param name="method" value="remove" />
+            <param name="label_issues" value="true" />
+            <param name="outliers" value="true" />
+            <param name="near_duplicates" value="true" />
+            <param name="non_iid" value="true" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="issue_type\s+score\s+num_issues"/>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- Test3: summary and cleaned label issues only -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
+        <param name="summary_only" value="false" />
+
+        <conditional name="task_block">
+            <param name="task" value="classification" />
+            <param name="method" value="remove" />
+            <param name="label_issues" value="true" />
+            <param name="outliers" value="false" />
+            <param name="near_duplicates" value="false" />
+            <param name="non_iid" value="false" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- Test4: summary and cleaned outliers only -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.csv" />
+        <param name="target_column" value="target" />
+        <param name="summary_only" value="false" />
+
+        <conditional name="task_block">
+            <param name="task" value="classification" />
+            <param name="method" value="remove" />
+            <param name="label_issues" value="false" />
+            <param name="outliers" value="true" />
+            <param name="near_duplicates" value="false" />
+            <param name="non_iid" value="false" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- Test5: summary and clean all for tsv -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="breast_cancer.tsv" />
+        <param name="target_column" value="target" />
+        <param name="summary_only" value="false" />
+
+        <conditional name="task_block">
+            <param name="task" value="classification" />
+            <param name="method" value="remove" />
+            <param name="label_issues" value="true" />
+            <param name="outliers" value="true" />
+            <param name="near_duplicates" value="true" />
+            <param name="non_iid" value="true" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text_matching expression="issue_type\s+score\s+num_issues"/>
+                <has_text_matching expression="label\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="outlier\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+                <has_text_matching expression="non_iid\s+(0(\.\d+)?|1(\.0+)?)\s+\d+"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*\t.+\t.+"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- Test6: regression with summary and cleaned output -->
+    <test expect_num_outputs="2">
+        <param name="input_file" value="reg_1027_ESL.csv" />
+        <param name="target_column" value="target" />
+        <param name="summary_only" value="false" />
+
+        <conditional name="task_block">
+            <param name="task" value="regression" />
+            <param name="method" value="remove" />
+        </conditional>
+
+        <output name="report_file">
+            <assert_contents>
+                <has_text text="Regression Issue Summary:"/>
+                <has_text_matching expression="Num low quality:"/>
+                <has_text_matching expression="Mean label quality:"/>
+            </assert_contents>
+        </output>
+
+        <output name="output_file">
+            <assert_contents>
+                <has_text_matching expression=".*target.*"/>
+                <has_text_matching expression="^.*,.+,.+"/>
+            </assert_contents>
+        </output>
+    </test>
+</tests>
+
+    <help><![CDATA[
+**Cleanlab Issue Handler**
+
+This Galaxy tool identifies and optionally removes or corrects data issues in supervised learning datasets using the [Cleanlab](https://cleanlab.io/) Python library. It supports **classification** and **regression** tasks and helps improve dataset quality by detecting label errors, outliers, near-duplicate entries, and non-IID samples.
+
+The tool internally fits a cross-validated model (e.g., via XGBoost) to estimate label quality and identify problematic samples. These issues can be summarized in a report, and optionally addressed via removal or correction (depending on task and selected method).
+
+--------------------
+
+**Detected Issue Types (with technical examples)**
+
+- **Label Issues**  
+  These are samples whose label in the dataset is likely incorrect.
+  **Example:** In a medical classification dataset, a patient's record is labeled as "benign," but its feature pattern is highly similar to correctly labeled "malignant" cases.
+
+
+- **Outliers**  
+  Points that are statistically distant from the rest of the dataset.  
+  **Example**: An entry with unusually high or low feature values (e.g., several standard deviations away from the mean).
+
+- **Near-Duplicates**  
+  Highly similar or repeated samples.  
+  **Example**: Two rows with nearly identical features and labels — possibly a duplication or copy artifact.
+
+- **Non-IID Samples** *(classification only)*  
+  Samples that violate the assumption of independent and identically distributed data.
+  **Example**: A subset from a different population source (e.g., a different hospital or device) introducing distributional shift.
+
+--------------------
+
+**Parameters**
+
+- **Input file**: Tabular file (CSV/TSV) with a `target` column.
+- **Task type**: `classification` or `regression`.
+- **Method**: `remove` (delete problematic rows) or `replace` (correct labels — classification only).
+- **Only report issues**: If checked, input data is unchanged; only a summary report is produced.
+- **Issue types**: Choose which issues to detect and handle.
+- **Quality threshold** *(regression only)*: A float between 0.0 and 1.0 that determines how aggressively the tool flags low-quality labels in regression. Labels with quality scores below this threshold will be removed.
+
+--------------------
+
+**Outputs**
+
+- **summary.txt**: Report listing each issue type, confidence score, and number of affected rows.
+- **cleaned_data**: Cleaned dataset (CSV/TSV), only produced if "Only report issues" is unchecked.
+
+    ]]></help>
+
+    <citations>
+        <citation type="bibtex">
+@inproceedings{northcutt2021confident,
+  title={Confident learning: Estimating uncertainty in dataset labels},
+  author={Northcutt, Curtis G and Jiang, Lu and Chuang, Alex},
+  booktitle={Journal of Artificial Intelligence Research},
+  year={2021},
+  volume={70},
+  pages={1373--1411}
+}
+        </citation>
+    </citations>
+</tool>
