@@ -1,0 +1,636 @@
+<tool id="cleaverna" name="CleaveRNA" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Advanced machine learning-based computational tool for scoring candidate cleavage sites of DNAzyme</description>
+
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir -p outputs &&
+        #if $mode_selection.mode == "training":
+            #if $mode_selection.training_source.training_type == "HPBC_model":
+                echo "LA,RA,CS,Tem,CA" > HPBC_default_params.csv && \
+                echo "9,9,\"AU,GU,AC,GC\",37,GGCUAGCUACAACGA" >> HPBC_default_params.csv && \
+                cleaverna \
+                --model_name "${mode_selection.training_source.model_name}" \
+                --target_files_training '${__tool_directory__}/data/HPV.fasta' '${__tool_directory__}/data/BCL-1.fasta' '${__tool_directory__}/data/BCL-2.fasta' '${__tool_directory__}/data/BCL-3.fasta' '${__tool_directory__}/data/BCL-4.fasta' '${__tool_directory__}/data/BCL-5.fasta' \
+                --params hpbc_default_params.csv \
+                --prediction_mode default \
+                --output_dir outputs && \
+                cp HPBC_default_params.csv outputs/HPBC_default_params.csv
+            #elif $mode_selection.training_source.training_type == "SARS_model":
+                echo "LA,RA,CS,Tem,CA" > SARS_default_params.csv && \
+                echo "16,8,\"AU,GU\",23,GGCUAGCUACAACGA" >> SARS_default_params.csv && \
+                cleaverna \
+                --model_name "${mode_selection.training_source.model_name}" \
+                --target_files_training '${__tool_directory__}/data/1.fasta' '${__tool_directory__}/data/2.fasta' '${__tool_directory__}/data/3.fasta' '${__tool_directory__}/data/4.fasta' '${__tool_directory__}/data/5.fasta' '${__tool_directory__}/data/6.fasta' '${__tool_directory__}/data/7.fasta' '${__tool_directory__}/data/8.fasta' '${__tool_directory__}/data/9.fasta' '${__tool_directory__}/data/10.fasta' '${__tool_directory__}/data/11.fasta' '${__tool_directory__}/data/12.fasta' '${__tool_directory__}/data/13.fasta' '${__tool_directory__}/data/14.fasta' '${__tool_directory__}/data/15.fasta' '${__tool_directory__}/data/16.fasta' '${__tool_directory__}/data/17.fasta' '${__tool_directory__}/data/18.fasta' '${__tool_directory__}/data/19.fasta' '${__tool_directory__}/data/20.fasta' \
+                --params SARS_default_params.csv \
+                --prediction_mode default \
+                --output_dir outputs && \
+                cp SARS_default_params.csv outputs/SARS_default_params.csv
+            #else:
+                #if $mode_selection.training_source.params_source.input_type == "individual":
+                    echo "LA,RA,CS,Tem,CA" > temp_params.csv &&
+                    #set $cs_list = ','.join($mode_selection.training_source.params_source.CS)
+                    echo "${mode_selection.training_source.params_source.LA},${mode_selection.training_source.params_source.RA},\"${cs_list}\",${mode_selection.training_source.params_source.Tem},${mode_selection.training_source.params_source.CA}" >> temp_params.csv &&
+                #end if
+                cleaverna \
+                --model_name "${mode_selection.training_source.model_name}" \
+                --target_files_training '$mode_selection.training_source.training_files' \
+                #if $mode_selection.training_source.params_source.input_type == "individual":
+                    --params temp_params.csv \
+                #else:
+                    --params '$mode_selection.training_source.params_source.params_file' \
+                #end if
+                --prediction_mode default \
+                --output_dir outputs && \
+                            # Also copy the used params file to outputs/parameters.cfg for test output
+                            cp temp_params.csv outputs/temp_params.csv
+            #end if
+        #end if
+        
+        #if $mode_selection.mode == "prediction":
+            ## Create parameters file based on feature generation mode
+            #if $mode_selection.prediction_mode_config.prediction_mode == "target_check":
+                #if $mode_selection.prediction_mode_config.prediction_params.param_mode == "parameter_selection":
+                    ## Generate custom parameter file from user-defined rows
+                    echo "Row_Name,LA,RA,CS,Start_End_Index,Tem,CA" > prediction_params.csv &&
+                    #for $row in $mode_selection.prediction_mode_config.prediction_params.parameter_rows:
+                        #set $cs_list = ','.join($row.CS)
+                        #set $start_end_index = $row.target_sequence_name + ":" + str($row.start_index) + "-" + str($row.end_index)
+                        echo "${row.row_name},${row.LA},${row.RA},\"${cs_list}\",${start_end_index},${row.Tem},${row.CA}" >> prediction_params.csv &&
+                    #end for
+                #else:
+                    ## User uploaded parameter file for target check mode
+                    cp '$mode_selection.prediction_mode_config.prediction_params.params_file' prediction_params.csv &&
+                #end if
+            #elif $mode_selection.prediction_mode_config.prediction_mode == "target_screen":
+                ## Target screen mode - check if using row-based configuration or uploaded file
+                #if $mode_selection.prediction_mode_config.prediction_params.param_mode == "parameter_selection":
+                    echo "Row_Name,LA,RA,CS,CS_Index,Tem,CA" > prediction_params.csv &&
+                    #for $row in $mode_selection.prediction_mode_config.prediction_params.parameter_rows:
+                        #set $cs_list = ','.join($row.CS)
+                        echo "${row.row_name},${row.LA},${row.RA},\"${cs_list}\",${row.CS_Index},${row.Tem},${row.CA}" >> prediction_params.csv &&
+                    #end for
+                #else:
+                    ## User uploaded parameter file for target screen mode
+                    cp '$mode_selection.prediction_mode_config.prediction_params.params_file' prediction_params.csv &&
+                #end if
+            #elif $mode_selection.prediction_mode_config.prediction_mode == "specific_query":
+                ## Specific query mode - handle DNAzyme sequences and cleavage site information
+                #if $mode_selection.prediction_mode_config.prediction_params.param_mode == "parameter_selection":
+                    echo "DNAzyme_Name,LA_seq,RA_seq,CS,CS_Index_query,Tem,CA" > prediction_params.csv &&
+                    #for $row in $mode_selection.prediction_mode_config.prediction_params.dnazyme_rows:
+                        #set $cs_list = ','.join($row.CS)
+                        echo "${row.row_name},${row.LA_seq},${row.RA_seq},\"${cs_list}\",${row.CS_Index_query},${row.Tem},${row.CA}" >> prediction_params.csv &&
+                    #end for
+                #else:
+                    ## User uploaded parameter file for specific query mode
+                    cp '$mode_selection.prediction_mode_config.prediction_params.params_file' prediction_params.csv &&
+                #end if
+            #else:
+                ## Default and other modes - use standard parameter configuration
+                #if $mode_selection.prediction_mode_config.prediction_params.param_mode == "parameter_selection":
+                    #set $cs_list = ','.join($mode_selection.prediction_mode_config.prediction_params.CS)
+                    echo "LA,RA,CS,Tem,CA" > prediction_params.csv &&
+                    echo "${mode_selection.prediction_mode_config.prediction_params.LA},${mode_selection.prediction_mode_config.prediction_params.RA},\"${cs_list}\",${mode_selection.prediction_mode_config.prediction_params.Tem},${mode_selection.prediction_mode_config.prediction_params.CA}" >> prediction_params.csv &&
+                #else:
+                    cp '$mode_selection.prediction_mode_config.prediction_params.params_file' prediction_params.csv &&
+                #end if
+            #end if
+            
+                cleaverna \
+                --model_name "${mode_selection.model_name}" \
+                --target_files_prediction '$mode_selection.target_files' \
+                --prediction_mode <expand macro=prediction_prediction_mode> \
+                --params prediction_params.csv \
+                ## Training configuration for prediction mode
+                #if $mode_selection.training_config.training_source.training_type == "HPBC_default":
+                    --training_file '${__tool_directory__}/data/HPBC_user_merged_num.csv' \
+                    --training_scores '${__tool_directory__}/data/HPBC_training_scores.csv' \
+                #elif $mode_selection.training_config.training_source.training_type == "SARS_default":
+                    --training_file '${__tool_directory__}/data/SARS_user_merged_num.csv' \
+                    --training_scores '${__tool_directory__}/data/SARS_training_scores.csv' \
+                #elif $mode_selection.training_config.training_source.training_type == "custom_upload":
+                    --training_file '$mode_selection.training_config.training_source.training_file' \
+                    --training_scores '$mode_selection.training_config.training_source.training_scores' \
+                #end if
+            
+                --output_dir outputs
+        #end if
+        && ls -la outputs/
+    ]]></command>
+
+    <inputs>
+        <conditional name="mode_selection">
+            <param name="mode" type="select" label="Select Analysis Mode" display="radio">
+                <option value="training">🤖 Training Mode - Build Custom Models for prediction of RNA Cleavage</option>
+                <option value="prediction" selected="true">🧬 Prediction Mode - Predict the efficient cleavage sites</option>
+            </param>
+            <when value="training">
+                <conditional name="training_source">
+                    <param name="training_type" type="select" label="Training data source">
+                        <option value="HPBC_model">HPBC model (uses default parameters and bundled FASTA files)</option>
+                        <option value="SARS_model">SARS model (uses default parameters and bundled FASTA files)</option>
+                        <option value="custom_files">Upload custom FASTA files</option>
+                    </param>
+                    <when value="HPBC_model">
+                        <param name="model_name" type="text" value="HPBC" label="Model name"
+                               help="Enter a name for your model. Suggestion: HPBC">
+                            <validator type="empty_field" message="Model name is required"/>
+                            <validator type="regex" message="Model name must contain only letters, numbers, and underscores">^[a-zA-Z0-9_]+$</validator>
+                        </param>
+                        <param name="hpbc_info" type="hidden" value="HPBC model uses default parameters: LA=9, RA=9, CS=AU,GU,AC,GC, Tem=37, CA=GGCUAGCUACAACGA"/>
+                        <param name="LA" type="text" value="9" label="Left Arm (LA) - Default" help="Fixed default value for HPBC model (cannot be changed)"/>
+                        <param name="RA" type="text" value="9" label="Right Arm (RA) - Default" help="Fixed default value for HPBC model (cannot be changed)"/>
+                        <param name="CS" type="text" value="AU,GU,AC,GC" label="Cleavage Sites (CS) - Default" help="Fixed default value for HPBC model (cannot be changed)"/>
+                        <param name="Tem" type="text" value="37" label="Temperature (Tem) - Default" help="Fixed default value for HPBC model (cannot be changed)"/>
+                        <param name="CA" type="text" value="GGCUAGCUACAACGA" label="Catalytic Core (CA) - Default" help="Fixed default value for HPBC model (cannot be changed)"/>
+                    </when>
+                    <when value="SARS_model">
+                        <param name="model_name" type="text" value="SARS" label="Model name"
+                               help="Enter a name for your model. Suggestion: SARS">
+                            <validator type="empty_field" message="Model name is required"/>
+                            <validator type="regex" message="Model name must contain only letters, numbers, and underscores">^[a-zA-Z0-9_]+$</validator>
+                        </param>
+                        <!-- Uses bundled SARS_param.csv and FASTA files: 1.fasta through 20.fasta -->
+                        <!-- Default parameters: LA=16, RA=8, CS="AU,GU", Tem=23, CA="GGCUAGCUACAACGA" -->
+                        <param name="sars_info" type="hidden" value="SARS model uses default parameters: LA=16, RA=8, CS=AU,GU, Tem=23, CA=GGCUAGCUACAACGA"/>
+                        <param name="LA" type="text" value="16" label="Left Arm (LA) - Default" help="Fixed default value for SARS model (cannot be changed)"/>
+                        <param name="RA" type="text" value="8" label="Right Arm (RA) - Default" help="Fixed default value for SARS model (cannot be changed)"/>
+                        <param name="CS" type="text" value="AU,GU" label="Cleavage Sites (CS) - Default" help="Fixed default value for SARS model (cannot be changed)"/>
+                        <param name="Tem" type="text" value="23" label="Temperature (Tem) - Default" help="Fixed default value for SARS model (cannot be changed)"/>
+                        <param name="CA" type="text" value="GGCUAGCUACAACGA" label="Catalytic Core (CA) - Default" help="Fixed default value for SARS model (cannot be changed)"/>
+                    </when>
+                    <when value="custom_files">
+                           <param argument="model_name" type="text" value="" label="Model Name" 
+                               help="Enter a name for your model. Suggestion: use a descriptive name (e.g. MyCustomModel)">
+                            <validator type="empty_field" message="Model name is required"/>
+                            <validator type="regex" message="Model name must contain only letters, numbers, and underscores">^[a-zA-Z0-9_]+$</validator>
+                           </param>
+                           <param argument="training_target_files" type="data" format="fasta" multiple="true"
+                               label="Training RNA sequence files" 
+                               help="Specify one or more RNA sequence files in FASTA format for training."/>
+                        <conditional name="params_source">
+                            <param name="input_type" type="select" label="Parameter input method">
+                                <option value="individual" selected="true">Enter individual parameters</option>
+                                <option value="file">Upload CSV file</option>
+                            </param>
+                            <when value="individual">
+                                <param name="LA" type="integer" min="1" max="50" value="15" label="LA - Left arm length" help="The length of the left binding arm of DNAzyme (1-50 nucleotides)">
+                                    <validator type="in_range" min="1" max="50" message="Left arm length must be between 1 and 50"/>
+                                </param>
+                                <param name="RA" type="integer" min="1" max="50" value="15" label="RA - Right arm length" help="The length of the right binding arm of DNAzyme (1-50 nucleotides)">
+                                    <validator type="in_range" min="1" max="50" message="Right arm length must be between 1 and 50"/>
+                                </param>
+                                <param name="CS" type="select" label="CS - Cleavage site" help="Select the cleavage site for the DNAzyme">
+                                    <option value="AG">AG</option>
+                                    <option value="AU" selected="true">AU</option>
+                                    <option value="CA">CA</option>
+                                    <option value="CC">CC</option>
+                                    <option value="CG">CG</option>
+                                    <option value="CU">CU</option>
+                                    <option value="GA">GA</option>
+                                    <option value="GC" selected="true">GC</option>
+                                    <option value="GG">GG</option>
+                                    <option value="GU" selected="true">GU</option>
+                                    <option value="UA">UA</option>
+                                    <option value="UC">UC</option>
+                                    <option value="UG">UG</option>
+                                    <option value="UU">UU</option>
+                                    <validator type="no_options" message="At least one cleavage site must be selected"/>
+                                </param>
+                                <param name="Tem" type="integer" min="10" max="99" value="37" label="Tem - Temperature" help="The temperature of the DNAzyme reaction in Celsius (10-99°C)">
+                                    <validator type="in_range" min="10" max="99" message="Temperature must be between 10 and 99°C"/>
+                                </param>
+                                <param name="CA" type="text" value="GGCUAGCUACAACGA" 
+                                       label="CA - Catalytic core sequence" 
+                                       help="The sequence of catalytic core in DNAzyme (only ACGU nucleotides allowed)">
+                                    <validator type="regex" message="Only ACGU nucleotides are allowed">^[ACGU]+$</validator>
+                                    <validator type="empty_field" message="Catalytic core sequence is required"/>
+                                </param>
+                            </when>
+                            <when value="file">
+                                <param name="params_file" type="data" format="csv,tabular" 
+                                       label="Parameters file" 
+                                       help="Parameters file with columns: LA, RA, CS, Tem, CA"/>
+                            </when>
+                        </conditional>
+                    </when>
+                </conditional>
+                </when>
+                
+            <when value="prediction">
+                <!-- Target RNA sequence files -->
+                <param argument="target_files" type="data" format="fasta" label="Target RNA sequence files" help="Specify one or more RNA sequence files in FASTA format for analysis." multiple="true"/>
+                <!-- Training Configuration Section -->
+                <section name="training_config" title="🎯 Training Data Configuration" expanded="true">
+                    <conditional name="training_source">
+                        <param name="training_type" type="select" label="📊 Select Training Dataset" 
+                               help="Choose your training data source for machine learning model">
+                            <option value="HPBC_default" selected="true">🧬 HPBC Pre-trained Dataset (Recommended)</option>
+                            <option value="SARS_default">🦠 SARS-CoV-2 Pre-trained Dataset</option>
+                            <option value="custom_upload">📁 Upload Custom Training Data</option>
+                        </param>
+                        
+                        <when value="HPBC_default">
+                            <!-- HPBC Default Configuration -->
+                            <param name="hpbc_info" type="hidden" value="Using HPBC pre-trained model optimized for general RNA cleavage prediction"/>
+                            
+                            <conditional name="hpbc_display">
+                                <param name="show_files" type="select" label="📋 Show training file details" 
+                                       help="Display information about the training files being used">
+                                    <option value="true" selected="true">Yes - Show file details</option>
+                                    <option value="false">No - Hide file details</option>
+                                </param>
+                                <when value="true">
+                                    <param name="training_dataset_info" type="text" value="HPBC_user_merged_num.csv" 
+                                           label="📈 Training Dataset File" 
+                                           help="Feature matrix file containing preprocessed training data"/>
+                                    <param name="scores_dataset_info" type="text" value="HPBC_trauining_scores.csv" 
+                                           label="🎯 Target Scores File" 
+                                           help="Ground truth labels for training the machine learning model"/>
+                                </when>
+                                <when value="false"/>
+                            </conditional>
+                        </when>
+                        
+                        <when value="SARS_default">
+                            <!-- SARS Default Configuration -->
+                            <param name="sars_info" type="hidden" value="Using SARS-CoV-2 specialized model for viral RNA analysis"/>
+                            
+                            <conditional name="sars_display">
+                                <param name="show_files" type="select" label="📋 Show training file details" 
+                                       help="Display information about the training files being used">
+                                    <option value="true" selected="true">Yes - Show file details</option>
+                                    <option value="false">No - Hide file details</option>
+                                </param>
+                                <when value="true">
+                                    <param name="training_dataset_info" type="text" value="SARS_user_merged_num.csv" 
+                                           label="📈 Training Dataset File" 
+                                           help="Feature matrix file containing SARS-CoV-2 specific training data"/>
+                                    <param name="scores_dataset_info" type="text" value="SARS_training_scores.csv" 
+                                           label="🎯 Target Scores File" 
+                                           help="SARS-CoV-2 specific ground truth labels"/>
+                                </when>
+                                <when value="false"/>
+                            </conditional>
+                        </when>
+                        
+                        <when value="custom_upload">
+                            <!-- Custom Upload Configuration -->
+                            <param name="custom_info" type="hidden" value="Custom training mode for specialized datasets"/>
+                            
+                            <param name="training_file" type="data" format="csv,tabular" 
+                                   label="📊 Upload Training Dataset"
+                                   help="Please run the tool in training mode to generate the training_file"/>
+                            
+                            <param name="training_scores" type="data" format="csv,tabular" 
+                                   label="🎯 Upload CSV File With Related Training Data Set Scores"
+                                   help="CSV file containing three columns: one of them is id2 (example AU-110-111), the other is Dz_seq (the sequence of Dz with U), and the other is the related classification score (0 or 1)."/>
+                            
+                            <param name="validation_info" type="text" value="⚠️ Both training dataset and target scores files are required. Ensure they have matching row counts." 
+                                   label="📝 Validation Notes" help="Training file and scores file must have the same number of samples"/>
+                        </when>
+                    </conditional>
+                </section>
+                
+                <param argument="model_name" type="text" value="test_prediction" label="Prediction model name"
+                       help="Model identifier and output file prefix">
+                    <validator type="empty_field" message="Model name is required"/>
+                    <validator type="regex" message="Model name must contain only letters, numbers, and underscores">^[a-zA-Z0-9_]+$</validator>
+                </param>
+                       
+                <conditional name="prediction_mode_config">
+                    <param argument="prediction_mode" type="select" label="🎯 Feature Generation Mode"
+                           help="Select the type of feature generation analysis to perform">
+                        <option value="default" selected="true">Default - Feature generation for candidate cleavage sites on target sequence</option>
+                        <option value="target_check">Target Check - Feature generation for cleavage sites on defined regions on target sequence</option>
+                        <option value="target_screen">Target Screen - Feature generation for defined cleavage sites</option>
+                        <option value="specific_query">Specific Query - Feature generation for defined DNAzyme sequences</option>
+                    </param>
+                    
+                    <!-- Default Mode Configuration -->
+                    <when value="default">
+                        <section name="default_config" title="⚙️ Default Mode Parameters" expanded="true">
+                            <conditional name="prediction_params">
+                                <param name="param_mode" type="select" label="Parameter source"
+                                       help="Choose how to provide DNAzyme parameters for feature generation">
+                                    <option value="parameter_selection" selected="true">Parameter Selection</option>
+                                    <option value="upload_parameter_file">Upload Parameter File (CSV format)</option>
+                                </param>
+                                
+                                <when value="parameter_selection">
+                                    <param name="LA" type="integer" min="1" max="50" value="15" label="🔗 LA - Left Arm Length" help="Length of the left binding arm of DNAzyme (1-50 nucleotides)">
+                                        <validator type="in_range" min="1" max="50" message="Left arm length must be between 1 and 50"/>
+                                    </param>
+                                    <param name="RA" type="integer" min="1" max="50" value="15" label="🔗 RA - Right Arm Length" help="Length of the right binding arm of DNAzyme (1-50 nucleotides)">
+                                        <validator type="in_range" min="1" max="50" message="Right arm length must be between 1 and 50"/>
+                                    </param>
+                                    <expand macro="cleavage_sites_param" />
+                                    <param name="Tem" type="integer" min="10" max="99" value="37" label="🌡️ Tem - Temperature (°C)" help="Reaction temperature in Celsius (10-99°C)">
+                                        <validator type="in_range" min="10" max="99" message="Temperature must be between 10 and 99°C"/>
+                                    </param>
+                                    <param name="CA" type="text" value="GGCUAGCUACAACGA" 
+                                           label="🧬 CA - Catalytic Core Sequence" 
+                                           help="Catalytic core sequence of DNAzyme (only ACGU nucleotides allowed)">
+                                        <validator type="regex" message="Only ACGU nucleotides are allowed">^[ACGU]+$</validator>
+                                        <validator type="empty_field" message="Catalytic core sequence is required"/>
+                                    </param>
+                                </when>
+                                
+                                <when value="upload_parameter_file">
+                                    <param name="params_file" type="data" format="csv" 
+                                           label="📄 Parameter file (CSV)" 
+                                           help="Upload a CSV file with columns: LA,RA,CS,Tem,CA (with header row)"/>
+                                </when>
+                            </conditional>
+                        </section>
+                    </when>
+                    
+                    <!-- Target Check Mode Configuration -->
+                    <when value="target_check">
+                        <section name="target_check_config" title="🎯 Target Check Mode Parameters" expanded="true">
+                            <conditional name="prediction_params">
+                                <param name="param_mode" type="select" label="Parameter source"
+                                       help="Choose how to provide DNAzyme parameters for target check analysis">
+                                    <option value="parameter_selection" selected="true">Parameter Selection (Define Custom Regions)</option>
+                                    <option value="upload_parameter_file">Upload Parameter File (CSV format)</option>
+                                </param>
+                                
+                                <when value="parameter_selection">
+                                    <param name="info_text" type="text" 
+                                           value="ℹ️ Define DNAzyme parameters for specific regions in your target sequences" 
+                                           label="Target Check Configuration Guide" 
+                                           help="Each row represents a parameter set for a specific region on defined target sequence"/>
+                                    
+                                    <repeat name="parameter_rows" title="🧬 Target Check Parameter Row" min="1" default="1"
+                                            help="Add parameter rows for different target regions">
+                                        
+                                        <param name="LA" type="integer" min="1" max="50" value="15" label="🔗 LA - Left Arm Length" help="Length of the left binding arm of DNAzyme (1-50 nucleotides)">
+                                            <validator type="in_range" min="1" max="50" message="Left arm length must be between 1 and 50"/>
+                                        </param>
+                                        
+                                        <param name="RA" type="integer" min="1" max="50" value="15" label="🔗 RA - Right Arm Length" help="Length of the right binding arm of DNAzyme (1-50 nucleotides)">
+                                            <validator type="in_range" min="1" max="50" message="Right arm length must be between 1 and 50"/>
+                                        </param>
+                                        
+                                        <expand macro="cleavage_sites_param" />
+                                        
+                                        <param name="target_sequence_name" type="text" value="" 
+                                               label="🧬 Target Sequence File Name" 
+                                               help="Name of the target sequence file (e.g., 'target_1.fasta', 'HPV_sequence.fasta')">
+                                            <validator type="empty_field" message="Target sequence name is required"/>
+                                        </param>
+                                        
+                                        <param name="start_index" type="integer" min="1" value="1" label="🎯 Start Position" help="Starting nucleotide position in the target sequence (1-based indexing)">
+                                            <validator type="expression" message="Start position must be positive">value > 0</validator>
+                                        </param>
+                                        
+                                        <param name="end_index" type="integer" min="1" value="100" label="🎯 End Position" help="Ending nucleotide position in the target sequence (must be ≥ start position)">
+                                            <validator type="expression" message="End position must be positive">value > 0</validator>
+                                        </param>
+                                        
+                                        <param name="Tem" type="integer" min="10" max="99" value="37" label="🌡️ Tem - Temperature (°C)" help="Reaction temperature in Celsius (10-99°C)">
+                                            <validator type="in_range" min="10" max="99" message="Temperature must be between 10 and 99°C"/>
+                                        </param>
+                                        
+                                        <param name="CA" type="text" value="GGCUAGCUACAACGA" 
+                                               label="🧬 CA - Catalytic Core Sequence" 
+                                               help="Catalytic core sequence of DNAzyme (only ACGU nucleotides allowed)">
+                                            <validator type="regex" message="Only ACGU nucleotides are allowed">^[ACGU]+$</validator>
+                                            <validator type="empty_field" message="Catalytic core sequence is required"/>
+                                        </param>
+                                    </repeat>
+                                    
+                                    <param name="output_info" type="text" 
+                                           value="📋 Output format: LA,RA,CS,Start_End_Index,Tem,CA (Start_End_Index format: target_file.fasta:start-end)" 
+                                           label="Target Check Output Format"/>
+                                </when>
+                                
+                                <when value="upload_parameter_file">
+                                    <param name="params_file" type="data" format="csv" 
+                                           label="📄 Parameter file (CSV)" 
+                                           help="Upload a CSV file with format: LA,RA,CS,Start_End_Index,Tem,CA"/>
+                                </when>
+                            </conditional>
+                        </section>
+                    </when>
+                    
+                    <!-- Target Screen Mode Configuration -->
+                    <when value="target_screen">
+                        <section name="target_screen_config" title="🎯 Target Screen Mode Parameters" expanded="true">
+                            <conditional name="prediction_params">
+                                <param name="param_mode" type="select" label="Parameter source"
+                                       help="Choose how to provide DNAzyme parameters for target screen analysis">
+                                    <option value="parameter_selection" selected="true">Parameter Selection (Define Custom Cleavage Sites)</option>
+                                    <option value="upload_parameter_file">Upload Parameter File (CSV format)</option>
+                                </param>
+                                
+                                <when value="parameter_selection">
+                                    <param name="screen_info_text" type="text" 
+                                           value="ℹ️ Define DNAzyme parameters for specific cleavage sites on target sequences" 
+                                           label="Target Screen Configuration Guide" 
+                                           help="Each row represents a parameter set for a specific cleavage site with custom CS_Index positions"/>
+                                    
+                                    <repeat name="parameter_rows" title="🧬 Target Screen Parameter Row" min="1" default="1"
+                                            help="Add parameter rows for different custom cleavage sites">
+                                        <param name="LA" type="integer" min="1" max="50" value="15" label="🔗 LA - Left Arm Length" help="Length of the left binding arm of DNAzyme (1-50 nucleotides)">
+                                            <validator type="in_range" min="1" max="50" message="Left arm length must be between 1 and 50"/>
+                                        </param>
+                                        
+                                        <param name="RA" type="integer" min="1" max="50" value="15" label="🔗 RA - Right Arm Length" help="Length of the right binding arm of DNAzyme (1-50 nucleotides)">
+                                            <validator type="in_range" min="1" max="50" message="Right arm length must be between 1 and 50"/>
+                                        </param>
+                                        
+                                        <expand macro="cleavage_sites_param" />
+                                        
+                                        <param name="CS_Index" type="text" value="" 
+                                               label="🎯 CS_Index - Cleavage Site Index" 
+                                               help="Format: target_file.fasta:position1-position2 (e.g., 'target_1.fasta:17-18' for dinucleotide cleavage at positions 17-18). Must match one of your uploaded target files.">
+                                            <validator type="empty_field" message="CS_Index is required"/>
+                                            <validator type="regex" message="Format must be: filename.fasta:number-number">^[a-zA-Z0-9_.-]+\.fasta:[0-9]+-[0-9]+$</validator>
+                                        </param>
+                                        
+                                        <param name="Tem" type="integer" min="10" max="99" value="37" label="🌡️ Tem - Temperature (°C)" help="Reaction temperature in Celsius (10-99°C)">
+                                            <validator type="in_range" min="10" max="99" message="Temperature must be between 10 and 99°C"/>
+                                        </param>
+                                        
+                                        <param name="CA" type="text" value="GGCUAGCUACAACGA" 
+                                               label="🧬 CA - Catalytic Core Sequence" 
+                                               help="Catalytic core sequence of DNAzyme (only ACGU nucleotides allowed)">
+                                            <validator type="regex" message="Only ACGU nucleotides are allowed">^[ACGU]+$</validator>
+                                            <validator type="empty_field" message="Catalytic core sequence is required"/>
+                                        </param>
+                                    </repeat>
+                                    
+                                    <param name="output_info" type="text" 
+                                           value="📋 Output format: Row_Name,LA,RA,CS,CS_Index,Tem,CA (CS_Index format: target_file.fasta:position1-position2)" 
+                                           label="Target Screen Output Format"/>
+                                </when>
+                                
+                                <when value="upload_parameter_file">
+                                    <param name="params_file" type="data" format="csv" 
+                                           label="📄 Parameter file (CSV)" 
+                                           help="Upload a CSV file with format: LA,RA,CS,CS_Index,Tem,CA"/>
+                                </when>
+                            </conditional>
+                        </section>
+                    </when>
+                    
+                    <!-- Specific Query Mode Configuration -->
+                    <when value="specific_query">
+                        <section name="specific_query_config" title="🧬 Specific Query Mode Parameters" expanded="true">
+                            <conditional name="prediction_params">
+                                <param name="param_mode" type="select" label="Parameter source"
+                                       help="Choose how to provide DNAzyme parameters for specific query analysis">
+                                    <option value="parameter_selection" selected="true">Parameter Selection (Define Custom DNAzymes)</option>
+                                    <option value="upload_parameter_file">Upload Parameter File (CSV format)</option>
+                                </param>
+                                
+                                <when value="parameter_selection">
+                                    <param name="query_info_text" type="text" 
+                                           value="ℹ️ Define custom DNAzyme sequences with specific cleavage sites" 
+                                           label="Specific Query Configuration Guide" 
+                                           help="Each row represents a DNAzyme with left arm (LA_seq), right arm (RA_seq), and cleavage position"/>
+                                    
+                                    <repeat name="dnazyme_rows" title="🎯 DNAzyme Parameter Row" min="1" default="1"
+                                            help="Add DNAzyme rows for different custom sequences">
+                                        
+                                        <!-- DNAzyme Name column removed as requested -->
+                                        
+                                        <param name="LA_seq" type="text" value="" 
+                                               label="🔗 LA_seq - Left Arm Sequence" 
+                                               help="RNA sequence of the left binding arm of DNAzyme (only ACGU nucleotides allowed)">
+                                            <validator type="empty_field" message="Left arm sequence is required"/>
+                                            <validator type="regex" message="Only ACGU nucleotides are allowed">^[ACGU]+$</validator>
+                                        </param>
+                                        
+                                        <param name="RA_seq" type="text" value="" 
+                                               label="🔗 RA_seq - Right Arm Sequence" 
+                                               help="RNA sequence of the right binding arm of DNAzyme (only ACGU nucleotides allowed)">
+                                            <validator type="empty_field" message="Right arm sequence is required"/>
+                                            <validator type="regex" message="Only ACGU nucleotides are allowed">^[ACGU]+$</validator>
+                                        </param>
+                                        
+                                        <expand macro="cleavage_sites_param" />
+                                        
+                                        <param name="CS_Index_query" type="text" value="" 
+                                               label="🎯 CS_Index_query - Target Cleavage Position" 
+                                               help="Format: target_file.fasta:position1-position2 (e.g., 'target_1.fasta:17-18' for dinucleotide cleavage at positions 17-18)">
+                                            <validator type="empty_field" message="CS_Index_query is required"/>
+                                            <validator type="regex" message="Format must be: filename.fasta:number-number">^[a-zA-Z0-9_.-]+\.fasta:[0-9]+-[0-9]+$</validator>
+                                        </param>
+                                        
+                                        <param name="Tem" type="integer" value="37" min="10" max="99" 
+                                               label="🌡️ Tem - Temperature (°C)" 
+                                               help="Reaction temperature in Celsius (10-99°C)">
+                                            <validator type="in_range" min="10" max="99" message="Temperature must be between 10 and 99°C"/>
+                                        </param>
+                                        
+                                        <param name="CA" type="text" value="GGCUAGCUACAACGA" 
+                                               label="🧬 CA - Catalytic Core Sequence" 
+                                               help="Catalytic core sequence of DNAzyme (only ACGU nucleotides allowed)">
+                                            <validator type="regex" message="Only ACGU nucleotides are allowed">^[ACGU]+$</validator>
+                                            <validator type="empty_field" message="Catalytic core sequence is required"/>
+                                        </param>
+                                    </repeat>
+                                    
+                                    <param name="output_info" type="text" 
+                                           value="📋 Output format: LA_seq,RA_seq,CS,CS_Index_query,Tem,CA" 
+                                           label="Specific Query Output Format (no DNAzyme_Name column)"/>
+                                </when>
+                                
+                                <when value="upload_parameter_file">
+                                    <param name="params_file" type="data" format="csv" 
+                                           label="📄 Parameter file (CSV)" 
+                                           help="Upload a CSV file with format: DNAzyme_Name,LA_seq,RA_seq,CS,CS_Index_query,Tem,CA"/>
+                                </when>
+                            </conditional>
+                        </section>
+                    </when>
+                </conditional>
+            </when>
+        
+                </conditional>
+            </inputs>
+            <!-- Move these params outside of <inputs> and into the correct section if needed, or remove if redundant. -->
+            <!--
+            <param name="include_config" type="boolean" checked="false" label="Parameters configuration file (parameters.cfg)" help="Keep the configuration file used for this run."/>
+            <param name="include_metrics" type="boolean" checked="false" label="ML performance metrics (ML_metrics.csv)" help="Keep the machine learning metrics file from prediction mode, if produced."/>
+            <param name="include_training_data" type="boolean" checked="false" label="ML training data (ML_train.csv)" help="Keep the full training data matrix from prediction mode, if produced."/>
+            <param name="include_classification" type="boolean" checked="false" label="Balanced classification results (balanced_classification.csv)" help="Keep the balanced classification results from prediction mode, if produced."/>
+            -->
+    
+    <outputs>
+        <!-- Training mode: only user_merged_features and parameters_config are produced -->
+        <data name="user_merged_features" format="csv" from_work_dir="outputs/*_user_merged_num.csv" label="Training features">
+            <filter>mode_selection['mode'] == 'training'</filter>
+        </data>
+        <data name="parameters_config_train" format="txt" from_work_dir="outputs/parameters.cfg" label="Parameters configuration file (train)">
+            <filter>mode_selection['mode'] == 'training'</filter>
+        </data>
+        <!-- Prediction mode: all other outputs -->
+        <data name="ml_metrics" format="csv" from_work_dir="outputs/*_ML_metrics.csv" label="ML Metrics">
+            <filter>mode_selection['mode'] == 'prediction'</filter>
+        </data>
+        <data name="ml_train" format="csv" from_work_dir="outputs/*_ML_train.csv" label="ML Train">
+            <filter>mode_selection['mode'] == 'prediction'</filter>
+        </data>
+        <data name="ml_train_feature_set" format="csv" from_work_dir="outputs/*_ML_train_feature_set.csv" label="ML Train Feature Set">
+            <filter>mode_selection['mode'] == 'prediction'</filter>
+        </data>
+        <data name="balanced_classification" format="csv" from_work_dir="outputs/*_balanced_classification.csv" label="Balanced Classification">
+            <filter>mode_selection['mode'] == 'prediction'</filter>
+        </data>
+        <data name="cleavage_predictions" format="csv" from_work_dir="outputs/*_CleaveRNA_output.csv" label="Cleavage predictions">
+            <filter>mode_selection['mode'] == 'prediction'</filter>
+        </data>
+        <data name="parameters_config_pred" format="txt" from_work_dir="outputs/parameters.cfg" label="Parameters configuration file (predict)">
+            <filter>mode_selection['mode'] == 'prediction'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Updated test: Training mode with all required fields -->
+        <test expect_num_outputs="2">
+            <conditional name="mode_selection">
+                <param name="mode" value="training"/>
+                <conditional name="training_source">
+                    <param name="training_type" value="HPBC_model"/>
+                    <param name="model_name" value="HPBC_test_model"/>
+                </conditional>
+            </conditional>
+            <output name="user_merged_features" file="HPBC_generated_train_dataset.csv"/>
+            <output name="parameters_config_train" file="HPBC_param.csv"/>
+        </test>
+    </tests>
+    <help>
+        This tool performs DNAzyme cleavage site prediction on RNA sequences using machine learning models. It supports both training and prediction modes with customizable parameters for DNAzyme design and target sequence analysis.
+
+        **Training Mode:**
+        - Input RNA sequences in FASTA format.
+        - Generate training feature matrices based on specified DNAzyme parameters.
+        - Output training features for model development.
+
+        **Prediction Mode:**
+        - Input RNA sequences in FASTA format.
+        - Choose from multiple analysis modes: Default, Target Check, Target Screen, and Specific Query.
+        - Customize DNAzyme parameters or upload parameter files for feature generation.
+        - Output cleavage site predictions along with machine learning metrics.
+
+        For detailed instructions and parameter descriptions, please refer to the tool documentation.
+    </help>
+    <citations>
+        <citation type="bibtex">
+            @unpublished{cleaverna2024,
+                author = {Reyhaneh Tavakoli and contributors},
+                title = {CleaveRNA: Advanced machine learning-based computational tool for scoring candidate DNAzyme cleavage sites},
+                year = {2026},
+                url = {https://github.com/reyhaneh-tavakoli/CleaveRNA}
+            }
+        </citation>
+    </citations>
+</tool>
