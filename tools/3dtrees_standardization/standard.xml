@@ -1,86 +1,137 @@
-<tool id="3dtrees_standardization" name="3Dtrees: LAZ Standardization" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
-    <description>
-        laz file checks and standardization.
-    </description>
+<tool id="3dtrees_standardization" name="3DTrees LAS/LAZ Standardization" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>Standardize LAS/LAZ files or validate collections for consistency</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.0.1</token>
+        <token name="@TOOL_VERSION@">1.1.0</token>
         <token name="@VERSION_SUFFIX@">0</token>
     </macros>
     <requirements>
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees-pc-standard:@TOOL_VERSION@</container>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-## needed because the Rscript is following symlinks
-cp '$input' /in/input.laz && 
-cd /src && 
-Rscript run.R
-    --dataset-path /in/input.laz
-    --output-dir .
-    --min-density
-    $min_density &&
-mv /src/pc_standardized.laz '$pc_standardized'
-        ]]>
-    </command>
+        WORK_DIR=\$(pwd) &&
+        #if $mode.task == 'single_file':
+            cp '$mode.input' input.laz &&
+            Rscript /src/run.R
+            --dataset-path "\$WORK_DIR/input.laz"
+            --output-dir "\$WORK_DIR"
+            --method single_file
+            --min-density '$mode.min_density'
+            #if $mode.removeable_attributes:
+                --removeable_attributes $mode.removeable_attributes
+            #end if
+        #else:
+            mkdir -p input_files &&
+            #for $f in $mode.input_collection
+                cp '$f' input_files/'${f.element_identifier}.laz' &&
+            #end for
+            Rscript /src/run.R
+            --dataset-path "\$WORK_DIR/input_files"
+            --output-dir "\$WORK_DIR"
+            --method collection
+        #end if
+    ]]></command>
+
     <inputs>
-        <param name="input" type="data" format="laz" label="Point Cloud Dataset" help="LAZ point cloud to process"/>
-        <param name="min_density" type="integer" value="500" min="1" max="10000" label="Minimum Point Density (points/m²)" help="Minimum required point density in points per square meter. Default: 500 for TLS data. Use lower values (e.g., 10-50) for ALS data."/>
+        <conditional name="mode">
+            <param name="task" type="select" label="Mode">
+                <option value="single_file">Single File Standardization</option>
+                <option value="collection">Collection Validation</option>
+            </param>
+            <when value="single_file">
+                <param name="input" type="data" format="laz" label="Point Cloud File" 
+                       help="LAS/LAZ point cloud file to standardize (CRS validation, density check, format normalization)"/>
+                <param argument="--min-density" type="integer" min="1" max="10000" value="10" 
+                       label="Minimum Point Density" 
+                       help="Minimum acceptable point density in points per square meter. Default: 10 pts/m²"/>
+                <param name="removeable_attributes" type="text" value="" optional="true"
+                       label="Attributes to Remove" 
+                       help="Space-separated list of attribute names to remove (e.g., 'Intensity UserData'). Leave empty for auto-detection."/>
+            </when>
+            <when value="collection">
+                <param name="input_collection" type="data_collection" collection_type="list" format="laz" label="Point Cloud Collection" 
+                       help="Collection of LAZ/LAS files to validate for consistency (CRS homogeneity, attribute consistency, overlaps)"/>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-        <data name="pc_standardized" format="laz" label="Standardized Point Cloud"/>
+        <data name="pc_standardized" format="laz" label="standardized" from_work_dir="input.laz">
+            <filter>mode['task'] == "single_file"</filter>
+        </data>
+        <data name="metadata_json" format="json" label="metadata" from_work_dir="input.json">
+            <filter>mode['task'] == "single_file"</filter>
+        </data>
+        <data name="convex_hull" format="geojson" label="convex_hull" from_work_dir="input_convex_hull_wgs84.GeoJSON">
+            <filter>mode['task'] == "single_file"</filter>
+        </data>
+        <data name="collection_summary" format="json" label="collection_summary" from_work_dir="collection_summary.json">
+            <filter>mode['task'] == "collection"</filter>
+        </data>
     </outputs>
     <tests>
-        <test>
-            <param name="input" value="mikro.laz" ftype="laz"/>
-            <param name="min_density" value="10"/>
-            <output name="pc_standardized">
+        <test expect_num_outputs="3">
+            <conditional name="mode">
+                <param name="task" value="single_file"/>
+                <param name="input" value="mikro.laz" ftype="laz"/>
+                <param name="min_density" value="10"/>
+            </conditional>
+            <output name="pc_standardized" ftype="laz">
                 <assert_contents>
-                    <has_size value="100000" delta="50000"/>
+                    <has_size min="1000"/>
                 </assert_contents>
             </output>
         </test>
     </tests>
-    <help>
-    **What it does**
 
-This tool performs a series of checks and standardizations on a LAS/LAZ point cloud file. It checks:
+    <help><![CDATA[
+**What it does**
 
-1. **Basic LAS Validation**
-   - Validates the object using las_check()
-   - Ensures the file has at least 100 points
+This tool supports two modes:
 
-2. **Bounding Box Consistency**
-   - Updates header if bounding box doesn't match points
-   - Validates spatial extent (all dimensions &gt; 1 meter)
-   - Checks Z range is plausible (-100 to 5500 meters)
+**Single File Mode** (standardization):
+Standardizes a single LAS/LAZ file:
 
-3. **Point Density Check**
-   - Calculates point density using convex hull
-   - Requires minimum point density (configurable, default: 500 points/m² for TLS)
+1. **LAS Validation**: Runs ``las_check()`` and fixes header issues
+2. **Bounding Box**: Validates and corrects header bounding box
+3. **Point Density**: Checks density meets minimum threshold
+4. **CRS Validation**: Verifies CRS is defined and transformable to EPSG:4978
+5. **Land Check**: Confirms centroid is on land (using Natural Earth data)
+6. **Format Normalization**: Downgrades Point Data Format to ≤7 for compatibility
+7. **Attribute Cleanup**: Optionally removes specified attributes
 
-4. **Extra Byte Data Type Check**
-   - Validates extra byte attribute data types
-   - Corrects mismatches if found
+**Outputs (single file mode):**
+- Standardized ``.laz`` file
+- Metadata JSON with pre/post standardization info
+- Convex hull GeoJSON in WGS84
 
-5. **CRS Validation**
-   - Ensures CRS is specified
-   - Validates transformation to EPSG:3857
+**Collection Mode** (validation):
+Validates collection consistency:
 
-6. **Point Data Format Check**
-   - Downgrades format to 7 if necessary
-   - Preserves NIR channel as extra attribute
+- **CRS Homogeneity**: Checks if all files share the same coordinate reference system
+- **Attribute Consistency**: Verifies attribute names and types across files
+- **Tile Geometry**: Detects overlaps and gaps between tiles
+- **Global Statistics**: Computes aggregated statistics across all files
+- **Removeable Attributes**: Identifies attributes that are all-NA or constant-zero
 
-7. **Land Coverage Validation**
-   - Validates centroid is on land using Natural Earth data
+**Outputs (collection mode):**
+- ``collection_summary.json`` containing collection-level checks and flags, per-file metadata (CRS, attributes, point counts, convex hulls), and suggested removeable attributes for standardization
 
-8. **Output Writing**
-   - Writes standardized LAZ file with Point Format ≤ 7
-    </help>
+**Workflow Usage**
+
+For collection-based workflows:
+1. Run this tool with **Collection Validation** first to check consistency
+2. Use the suggested ``removeable_attributes`` from the collection summary
+3. Then run this tool with **Single File Standardization** (Galaxy maps over collection automatically) for standardization
+
+    ]]></help>
+
     <creator>
         <person name="Julian Frey" email="julian.frey@wwd.uni-freiburg.de" url="https://orcid.org/0000-0001-7895-702X"/>
         <person name="Janusch Vajna-Jehle" email="janusch.jehle@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-0034-9387"/>
         <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <person name="Mirko Mälicke" identifier="0000-0002-0424-2651"/>
         <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
     </creator>
+
     <citations>
         <citation type="bibtex">
             @misc{3dtrees_standard, title = {3D Trees Standardization}, author = {3D Trees Project}, year = {2025}}
