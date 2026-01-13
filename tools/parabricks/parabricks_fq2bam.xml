@@ -1,0 +1,212 @@
+<tool id="parabricks_fq2bam" name="Parabricks fq2bam" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Run GPU-bwa mem mapper</description>
+    <macros>
+        <token name="@TOOL_VERSION@">4.6.0-2</token>
+        <token name="@VERSION_SUFFIX@">2</token>
+        <token name="@PROFILE@">24.2</token>
+    </macros>
+    <creator>
+        <organization name="European Galaxy Team" url="https://galaxyproject.org/eu/"/>
+        <person givenName="Anup" familyName="Kumar" email="kumara@informatik.uni-freiburg.de"/>
+    </creator>
+    <requirements>
+        <container type="docker">nvcr.io/nvidia/clara/clara-parabricks:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="aggressive">
+    <![CDATA[
+        #if $reference_source.reference_source_selector == 'cached':
+            #set $pbrun_command = 'pbrun fq2bam --preserve-file-symlinks --bwa-normalized-queue-capacity "${GALAXY_SLOTS:-1}" --num-gpus 1 --gpuwrite --gpusort --ref ' + $reference_source.ref_file.fields.path
+        #end if
+        #if $nomarkdups:
+            #set $pbrun_command = $pbrun_command + ' --no-markdups'
+        #end if
+        #if $bqsr:
+            #set $pbrun_command = $pbrun_command + ' --standalone-bqsr'
+        #end if
+        #if $alignonly:
+            #set $pbrun_command = $pbrun_command + ' --align-only'
+        #end if
+
+        #if $fastq_input.fastq_input_selector == 'single':
+            #if $fastq_input.fastq_input1.is_of_type("fastq", "fastqsanger")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq &&
+                #set $input1 = "input1.fq"
+            #elif $fastq_input.fastq_input1.is_of_type("fastq.gz", "fastqsanger.gz")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq.gz &&
+                #set $input1 = "input1.fq.gz"
+            #end if
+            $pbrun_command --in-se-fq $input1 --out-bam 'output_mapping.bam'
+        #elif $fastq_input.fastq_input_selector == 'paired':
+            #if $fastq_input.fastq_input2.is_of_type("fastq", "fastqsanger")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq &&
+                ln -s '$fastq_input.fastq_input2' ./input2.fq &&
+                #set $input1 = "input1.fq"
+                #set $input2 = "input2.fq"
+            #elif $fastq_input.fastq_input2.is_of_type("fastq.gz", "fastqsanger.gz")
+                ln -s '$fastq_input.fastq_input1' ./input1.fq.gz &&
+                ln -s '$fastq_input.fastq_input2' ./input2.fq.gz &&
+                #set $input1 = "input1.fq.gz"
+                #set $input2 = "input2.fq.gz"
+            #end if
+            $pbrun_command --in-fq $input1 $input2 --out-bam 'output_mapping.bam'
+        #elif $fastq_input.fastq_input_selector == 'paired_collection':
+            #set input_1 = $fastq_input.fastq_input_pc.forward
+            #set input_2 = $fastq_input.fastq_input_pc.reverse
+            #if input_1.is_of_type("fastq", "fastqsanger")
+                ln -s '$input_1' ./input1_forward.fq &&
+                ln -s '$input_2' ./input1_reverse.fq &&
+                #set $input1_forward = "input1_forward.fq"
+                #set $input1_reverse = "input1_reverse.fq"
+            #elif input_1.is_of_type("fastq.gz", "fastqsanger.gz")
+                ln -s '$input_1' ./input1_forward.fq.gz &&
+                ln -s '$input_2' ./input1_reverse.fq.gz &&
+                #set $input1_forward = "input1_forward.fq.gz"
+                #set $input1_reverse = "input1_reverse.fq.gz"
+            #end if
+            $pbrun_command --in-fq $input1_forward $input1_reverse --out-bam 'output_mapping.bam'
+        #end if
+    ]]>
+    </command>
+    <inputs>
+        <conditional name="reference_source">
+            <param name="reference_source_selector" type="select" label="Choose a built-in index" help="Built-ins were indexed using default options. If you would like to perform self-mapping select `history` here, then choose your input file as reference (currently not supported).">
+                <option value="cached">Use a built-in genome index</option>
+            </param>
+            <when value="cached">
+                <param name="ref_file" type="select" label="Using reference genome" help="Select genome from the list">
+                    <options from_data_table="bwa_mem_indexes">
+                        <filter type="sort_by" column="2" />
+                        <validator type="no_options" message="No reference genomes are available" />
+                    </options>
+                    <validator type="no_options" message="A built-in reference genome is not available for the build associated with the selected input file"/>
+                </param>
+            </when>
+        </conditional>
+        <conditional name="fastq_input">
+            <param name="fastq_input_selector" type="select" label="Single or Paired-end reads" help="Select between paired and single end data">
+                <option value="single">Single</option>
+                <option value="paired">Paired</option>
+                <option value="paired_collection">Paired Collection</option>
+            </param>
+            <when value="single">
+                <param name="fastq_input1" type="data" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" label="Select fastq dataset" help="Specify dataset with single reads"/>
+            </when>
+            <when value="paired">
+                <param name="fastq_input1" type="data" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" label="Select first set of reads" help="Specify dataset with forward reads"/>
+                <param name="fastq_input2" type="data" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" label="Select second set of reads" help="Specify dataset with reverse reads"/>
+            </when>
+            <when value="paired_collection">
+                <param name="fastq_input_pc" format="fastqsanger,fastq,fastqsanger.gz,fastq.gz" type="data_collection" collection_type="paired" label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
+            </when>
+        </conditional>
+        <param name="nomarkdups" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Do not perform the Mark Duplicates step" help="Set this parameter to return BAM after sorting."/>
+        <param name="bqsr" type="boolean" truevalue="true" falsevalue="false" checked="true" label="Run standalone Base Quality Score Recalibration (BQSR)" help="Set this parameter to run standalone BQSR."/>
+        <param name="alignonly" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Generate output BAM after bwa-mem." help="Set this parameter to generate output BAM after bwa-mem. The output will not be co-ordinate sorted or duplicates will not be marked."/>
+    </inputs>
+    <outputs>
+        <data format="bam" name="output_mapping" from_work_dir="output_mapping.bam" label="${tool.name} on ${on_string} (mapped reads in BAM format)">
+            <actions>
+                <conditional name="reference_source.reference_source_selector">
+                    <when value="cached">
+                        <action type="metadata" name="dbkey">
+                            <option type="from_data_table" name="all_fasta" column="1" offset="0">
+                                <filter type="param_value" column="0" value="#" compare="startswith" keep="False"/>
+                                <filter type="param_value" ref="reference_source.ref_file" column="0"/>
+                            </option>
+                        </action>
+                    </when>
+                </conditional>
+            </actions>
+        </data>
+    </outputs>
+    <tests>
+        <test>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="cached" />
+                <param name="ref_file" value="bwa-mem-mt-genome"/>
+            </conditional>
+            <conditional name="fastq_input">
+                <param name="fastq_input_selector" value="single"/>
+                <param name="fastq_input1" ftype="fastqsanger" value="fq2bam-fasta1.fq"/>
+            </conditional>
+            <output name="output_mapping" ftype="bam" file="parabricks-fq2bam-single.bam" compare="sim_size" />
+        </test>
+        <test>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="cached" />
+                <param name="ref_file" value="bwa-mem-mt-genome"/>
+            </conditional>
+            <conditional name="fastq_input">
+                <param name="fastq_input_selector" value="single"/>
+                <param name="fastq_input1" ftype="fastqsanger.gz" value="bwa-mem-fastq1.fq.gz"/>
+            </conditional>
+            <output name="output_mapping" ftype="bam" file="fq2bam-fasta1_zipped.bam" compare="sim_size" />
+        </test>
+        <test>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="cached" />
+                <param name="ref_file" value="bwa-mem-mt-genome"/>
+            </conditional>
+            <conditional name="fastq_input">
+                <param name="fastq_input_selector" value="paired"/>
+                <param name="fastq_input1" ftype="fastqsanger" value="fq2bam-fasta1.fq"/>
+                <param name="fastq_input2" ftype="fastqsanger" value="fq2bam-fasta2.fq"/>
+            </conditional>
+            <param name="nomarkdups" value="true"/>
+            <output name="output_mapping" ftype="bam" file="parabricks-fq2bam-paired.bam" compare="sim_size" />
+        </test>
+        <test>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="cached" />
+                <param name="ref_file" value="bwa-mem-mt-genome"/>
+            </conditional>
+            <conditional name="fastq_input">
+                <param name="fastq_input_selector" value="paired_collection"/>
+                <param name="fastq_input_pc">
+                    <collection type="paired">
+                        <element name="forward" ftype="fastqsanger" value="fq2bam-fasta1.fq" />
+                        <element name="reverse" ftype="fastqsanger" value="fq2bam-fasta2.fq" />
+                    </collection>
+                </param>
+            </conditional>
+            <param name="bqsr" value="false"/>
+            <output name="output_mapping" ftype="bam" file="parabricks-fq2bam-paired.bam" compare="sim_size" />
+        </test>
+        <test>
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="cached" />
+                <param name="ref_file" value="bwa-mem-mt-genome"/>
+            </conditional>
+            <conditional name="fastq_input">
+                <param name="fastq_input_selector" value="single"/>
+                <param name="fastq_input1" ftype="fastqsanger" value="fq2bam_sample_1.fq"/>
+            </conditional>
+            <param name="bqsr" value="true"/>
+            <param name="nomarkdups" value="true"/>
+            <param name="alignonly" value="true"/>
+            <output name="output_mapping" ftype="bam" file="parabricks_fq2bam_alignonly.bam" compare="sim_size" />
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+            **What it does**
+
+            Parabricks is a tool for high-performance genomic data analysis, particularly designed for mapping reads to a reference genome. It leverages GPU acceleration to significantly speed up the alignment process.
+
+            **Input files**
+                - Single end or paired-end  FASTQ files
+                
+            **Output files**
+                - Mapped reads in BAM format (coordinate sorted)
+        ]]>
+    </help>
+    <citations>
+        <citation type="bibtex">
+            @ARTICLE{nvidia-clara,
+                Author = {NVIDIA},
+                title = {{Clara Parabricks}},
+                url = {https://www.nvidia.com/en-us/clara/genomics/}
+            }
+        </citation>
+    </citations>
+</tool>

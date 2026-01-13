@@ -7,15 +7,22 @@
     <expand macro="requirements"/>
     <required_files>
         <include path="flexynesis_plot.py" />
+        <include path="flexynesis_utils.py" />
+        <include path="convert.py" />
+        <include path="index_to_name.py" />
     </required_files>
+    <environment_variables>
+        <!-- we will disable the progress bar which is printed to stderr -->
+        <environment_variable name="TQDM_DISABLE">1</environment_variable>
+    </environment_variables>
     <command detect_errors="exit_code"><![CDATA[
         @CHECK_NON_COMMERCIAL_USE@
         mkdir -p input/test input/train output &&
         ln -s '$train_clin' input/train/clin.tabular &&
-        python $__tool_directory__/convert.py input/train/clin.tabular input/train/clin.csv &&
+        python '$__tool_directory__/convert.py' input/train/clin.tabular input/train/clin.csv &&
 
         ln -s '$test_clin' input/test/clin.tabular &&
-        python $__tool_directory__/convert.py input/test/clin.tabular input/test/clin.csv &&
+        python '$__tool_directory__/convert.py' input/test/clin.tabular input/test/clin.csv &&
 
         #if str($assay_main) != '':
             #set $name = str($assay_main.replace(" ", "_"))
@@ -46,54 +53,65 @@
             #if str($element.train_omics) != 'None' and str($element.test_omics) != 'None':
                 #if str($element.assay) != '':
                     #set $i = str($element.assay.replace(" ", "_"))
-                #end if
-                ln -s '${element.train_omics}' input/train/omics_${i}.tabular &&
-                python '$__tool_directory__/convert.py' input/train/omics_${i}.tabular input/train/omics_${i}.csv &&
+                    ln -s '${element.train_omics}' input/train/${i}.tabular &&
+                    python '$__tool_directory__/convert.py' input/train/${i}.tabular input/train/${i}.csv &&
 
-                ln -s '${element.test_omics}' input/test/omics_${i}.tabular &&
-                python '$__tool_directory__/convert.py' input/test/omics_${i}.tabular input/test/omics_${i}.csv &&
+                    ln -s '${element.test_omics}' input/test/${i}.tabular &&
+                    python '$__tool_directory__/convert.py' input/test/${i}.tabular input/test/${i}.csv &&
 
-                $data_names.append("omics_" + str($i))
-                #if str($training_type.model) == 'cm_train':
-                    #if str($element.layer) == 'input':
-                        $input_layers.append("omics_" + str($i))
-                    #else
-                        $output_layers.append("omics_" + str($i))
+                    $data_names.append(str($i))
+                    #if str($training_type.model) == 'cm_train':
+                        #if str($element.layer) == 'input':
+                            $input_layers.append(str($i))
+                        #else
+                            $output_layers.append(str($i))
+                        #end if
+                    #end if
+                #else
+                    ln -s '${element.train_omics}' input/train/omics_${i}.tabular &&
+                    python '$__tool_directory__/convert.py' input/train/omics_${i}.tabular input/train/omics_${i}.csv &&
+
+                    ln -s '${element.test_omics}' input/test/omics_${i}.tabular &&
+                    python '$__tool_directory__/convert.py' input/test/omics_${i}.tabular input/test/omics_${i}.csv &&
+
+                    $data_names.append("omics_" + str($i))
+                    #if str($training_type.model) == 'cm_train':
+                        #if str($element.layer) == 'input':
+                            $input_layers.append("omics_" + str($i))
+                        #else
+                            $output_layers.append("omics_" + str($i))
+                        #end if
                     #end if
                 #end if
             #end if
         #end for
-        ## set target variables
         #if str($training_type.model) == 's_train':
-            #if len($targets) > 0:
-                target_variables="" &&
-                #for $i, $element in enumerate($targets)
-                    target_name=`$__tool_directory__/index_to_name.py input/train/clin.csv $element.target_variables` &&
-                    #if $i == 0:
-                        target_variables="\$target_name" &&
-                    #else:
-                        target_variables="\$target_variables,\$target_name" &&
-                    #end if
-                #end for
-                echo "Target variables: \$target_variables" &&
+            ## set target variables
+            #if str($target_variables) != 'None':
+                targets=`'$__tool_directory__/index_to_name.py' input/train/clin.csv $target_variables` &&
+                echo "Target variables: \$targets" &&
             #end if
             ## set survival variables
             #if str($surv_event_var) != 'None' and str($surv_time_var) != 'None':
-                surv_event_var=`$__tool_directory__/index_to_name.py input/train/clin.csv $surv_event_var` &&
-                echo "Survival event variable: \$surv_event_var" &&
-                surv_time_var=`$__tool_directory__/index_to_name.py input/train/clin.csv $surv_time_var` &&
-                echo "Survival time variable: \$surv_time_var" &&
+                survival_event=`'$__tool_directory__/index_to_name.py' input/train/clin.csv $surv_event_var` &&
+                ## check if survival variable is numerical
+                echo "Survival event variable: \$survival_event" &&
+                python '$__tool_directory__/flexynesis_utils.py' --util validate_survival --clin input/train/clin.csv --clin_variable \$survival_event &&
+                survival_time=`$__tool_directory__/index_to_name.py input/train/clin.csv $surv_time_var` &&
+                echo "Survival time variable: \$survival_time" &&
             #end if
-            ## set target value for plots
-            #if str($surv_event_var) != 'None' and str($surv_time_var) != 'None' and len($targets) > 0:
-                target_value="\$target_variables,\$surv_event_var" &&
-                echo "Target value for plots: \$target_value" &&
-            #else if str($surv_event_var) == 'None' and str($surv_time_var) == 'None' and len($targets) > 0:
-                target_value="\$target_variables" &&
-                echo "Target value for plots: \$target_value" &&
-            #else if str($surv_event_var) != 'None' and str($surv_time_var) != 'None' and len($targets) == 0:
-                target_value="\$surv_event_var" &&
-                echo "Target value for plots: \$target_value" &&
+            #if str($model_class) == 'DirectPred' or str($model_class) == 'GNN' or str($model_class) == 'MultiTripletNetwork':
+                #if str($plot.plot_parent_condi.plot_boolean) == 'yes':
+                    ## set clinical variables for Cox model
+                    #if str($plot.plot_parent_condi.plot_cox_conditional.plot_cox) == 'yes':
+                        #if str($plot.plot_parent_condi.plot_cox_conditional.clinical_variables) != 'None':
+                            covars=`'$__tool_directory__/index_to_name.py' input/train/clin.csv $plot.plot_parent_condi.plot_cox_conditional.clinical_variables` &&
+                            ## check if covariates is numerical
+                            echo "Clinical variables for Cox model: \$covars" &&
+                            python '$__tool_directory__/flexynesis_utils.py' --util validate_covariate --clin input/train/clin.csv --clin_variable \$covars &&
+                        #end if
+                    #end if
+                #end if
             #end if
         #end if
 
@@ -103,16 +121,20 @@
             --model_class $model_class
             #if str($model_class) == 'GNN':
                 --gnn_conv_type $gnn_conv_type
-                --string_organism $string_organism
-                --string_node_name $string_node_name
+                #if str($string_condi.use_string) == 'no':
+                    --user_graph '$string_condi.user_graph'
+                #else
+                    --string_organism $string_condi.string_organism
+                    --string_node_name $string_condi.string_node_name
+                #end if
             #end if
             #if str($training_type.model) == 's_train':
-                #if len($targets) > 0:
-                    --target_variables \$target_variables
+                #if str($target_variables) != 'None':
+                    --target_variables \$targets
                 #end if
                 #if str($surv_event_var) != 'None' and str($surv_time_var) != 'None':
-                    --surv_event_var \$surv_event_var
-                    --surv_time_var \$surv_time_var
+                    --surv_event_var \$survival_event
+                    --surv_time_var \$survival_time
                 #end if
             #end if
             #if str($training_type.model) == 'cm_train':
@@ -136,149 +158,170 @@
             $use_cv
             $evaluate_baseline_performance
             --feature_importance_method $feature_importance_method
+            #if str($training_type.model) == 's_train':
+                #if str($training_type.model_class.model_class) in ("DirectPred", "GNN", "MultiTripletNetwork"):
+                    #if str($training_type.model_class.safetensors_out_bool) == 'True':
+                        --safetensors
+                    #end if
+                #end if
+            #elif str($training_type.model) == 'us_train' or str($training_type.model) == 'cm_train':
+                #if str($training_type.safetensors_out_bool) == 'True':
+                    --safetensors
+                #end if
+            #end if
+            --threads "\${GALAXY_SLOTS:-4}"
             \${GALAXY_FLEXYNESIS_EXTRA_ARGUMENTS}
 
         ## convert flexynesis output files to tabular format
         && for file in output/*.csv; do
             if [ -f "\$file" ]; then
                 basename="\${file%.csv}";
-                python $__tool_directory__/convert.py "\$file" "\${basename}.tabular";
+                python '$__tool_directory__/convert.py' "\$file" "\${basename}.tabular";
                 echo "Converted \$file to \${basename}.tabular";
             fi
         done
-        #if str($plot.plot_embeddings_conditional.plot_embeddings) == 'yes':
-                && python $__tool_directory__/flexynesis_plot.py
-                    --plot_type dimred
-                    --embeddings output/job.embeddings_test.tabular
-                    --labels output/job.predicted_labels.tabular
-                    --method $plot.plot_embeddings_conditional.method
-                    #if str($training_type.model) == 's_train':
-                        #if len($targets) > 0 or (str($surv_event_var) != 'None' and str($surv_time_var) != 'None'):
-                            --target_value \$target_value
+        #if str($training_type.model) == 's_train':
+            #if str($model_class) == 'DirectPred' or str($model_class) == 'GNN' or str($model_class) == 'MultiTripletNetwork':
+                #if str($plot.plot_parent_condi.plot_boolean) == 'yes':
+                    #if str($plot.plot_parent_condi.plot_embeddings_conditional.plot_embeddings) == 'yes':
+                            && python '$__tool_directory__/flexynesis_plot.py'
+                                --plot_type dimred
+                                --embeddings output/job.embeddings_test.tabular
+                                --labels output/job.predicted_labels.tabular
+                                --method $plot.plot_parent_condi.plot_embeddings_conditional.method
+                                #if str($training_type.model) == 's_train':
+                                    #if str($target_variables) != 'None':
+                                        --target_value \$targets
+                                    #end if
+                                #end if
+                                --output_dir plots
+                                --format $plot.plot_parent_condi.plot_embeddings_conditional.format
+                                --dpi $plot.plot_parent_condi.plot_embeddings_conditional.dpi
+                    #end if
+                    #if str($plot.plot_parent_condi.plot_km_conditional.plot_km) == 'yes':
+                        #if str($surv_event_var) == '' or str($surv_time_var) == '':
+                            && echo "Survival event and time variables must be specified for Kaplan-Meier plots."
+                            && exit 1
+                        #else
+                            && python '$__tool_directory__/flexynesis_plot.py'
+                                --plot_type kaplan_meier
+                                --labels output/job.predicted_labels.tabular
+                                --survival_data input/test/clin.csv
+                                --surv_event_var \$survival_event
+                                --surv_time_var \$survival_time
+                                --output_dir plots
+                                --format $plot.plot_parent_condi.plot_km_conditional.format
+                                --dpi $plot.plot_parent_condi.plot_km_conditional.dpi
                         #end if
                     #end if
-                    --output_dir plots
-                    --format $plot.plot_embeddings_conditional.format
-                    --dpi $plot.plot_embeddings_conditional.dpi
-        #end if
-        #if str($plot.plot_km_conditional.plot_km) == 'yes':
-            #if str($surv_event_var) == '' or str($surv_time_var) == '':
-                && echo "Survival event and time variables must be specified for Kaplan-Meier plots."
-                && exit 1
-            #else
-                && python $__tool_directory__/flexynesis_plot.py
-                    --plot_type kaplan_meier
-                    --labels output/job.predicted_labels.tabular
-                    --survival_data input/test/clin.csv
-                    --surv_event_var \$surv_event_var
-                    --surv_time_var \$surv_time_var
-                    --event_value $plot.plot_km_conditional.event_value
-                    --output_dir plots
-                    --format $plot.plot_km_conditional.format
-                    --dpi $plot.plot_km_conditional.dpi
+                    #if str($plot.plot_parent_condi.plot_cox_conditional.plot_cox) == 'yes':
+                        #if str($surv_event_var) == '' or str($surv_time_var) == '':
+                            && echo "Survival event and time variables must be specified for cox plots."
+                            && exit 1
+                        #else
+                            && python '$__tool_directory__/flexynesis_plot.py'
+                                --plot_type cox
+                                #if str($feature_importance_method) == 'GradientShap':
+                                    --important_features output/job.feature_importance.GradientShap.tabular
+                                #else if str($feature_importance_method) == 'IntegratedGradients':
+                                    --important_features output/job.feature_importance.IntegratedGradients.tabular
+                                #else
+                                    --important_features output/job.feature_importance.IntegratedGradients.tabular
+                                #end if
+                                --clinical_train input/train/clin.csv
+                                --clinical_test input/test/clin.csv
+                                #if str($plot.plot_parent_condi.plot_cox_conditional.omics_name) != '':
+                                    #set $omics_name = str($plot.plot_parent_condi.plot_cox_conditional.omics_name.replace(" ", "_"))
+                                    --omics_train input/train/${omics_name}.csv
+                                    --omics_test input/test/${omics_name}.csv
+                                    --layer ${omics_name}
+                                #else
+                                    --omics_train input/train/${data_names}.csv
+                                    --omics_test input/test/${data_names}.csv
+                                    --layer ${data_names}
+                                #end if
+                                --surv_time_var \$survival_time
+                                --surv_event_var \$survival_event
+                                #if str($plot.plot_parent_condi.plot_cox_conditional.clinical_variables) != 'None':
+                                    --clinical_variables \$covars
+                                #end if
+                                --top_features $plot.plot_parent_condi.plot_cox_conditional.top_features
+                                --n_splits $plot.plot_parent_condi.plot_cox_conditional.n_splits
+                                --low_variance_threshold $plot.plot_parent_condi.plot_cox_conditional.low_variance_threshold
+                                --cox_penalizer $plot.plot_parent_condi.plot_cox_conditional.cox_penalizer
+                                --random_state 42
+                                --output_dir plots
+                                --format $plot.plot_parent_condi.plot_cox_conditional.format
+                                --dpi $plot.plot_parent_condi.plot_cox_conditional.dpi
+                        #end if
+                    #end if
+                    #if str($plot.plot_parent_condi.plot_scatter_conditional.plot_scatter) == 'yes':
+                        && python '$__tool_directory__/flexynesis_plot.py'
+                            --plot_type scatter
+                            --labels output/job.predicted_labels.tabular
+                            #if str($training_type.model) == 's_train':
+                                #if str($target_variables) != 'None':
+                                    --target_value \$targets
+                                #end if
+                            #end if
+                            --output_dir plots
+                            --format $plot.plot_parent_condi.plot_scatter_conditional.format
+                            --dpi $plot.plot_parent_condi.plot_scatter_conditional.dpi
+                    #end if
+                    #if str($plot.plot_parent_condi.plot_concordance_conditional.plot_concordance) == 'yes':
+                        && python '$__tool_directory__/flexynesis_plot.py'
+                            --plot_type concordance_heatmap
+                            --labels output/job.predicted_labels.tabular
+                            #if str($training_type.model) == 's_train':
+                                #if str($target_variables) != 'None':
+                                    --target_value \$targets
+                                #end if
+                            #end if
+                            --output_dir plots
+                            --format $plot.plot_parent_condi.plot_concordance_conditional.format
+                            --dpi $plot.plot_parent_condi.plot_concordance_conditional.dpi
+                    #end if
+                    #if str($plot.plot_parent_condi.plot_pr_curves_conditional.plot_pr_curves) == 'yes':
+                        && python '$__tool_directory__/flexynesis_plot.py'
+                            --plot_type pr_curve
+                            --labels output/job.predicted_labels.tabular
+                            #if str($training_type.model) == 's_train':
+                                #if str($target_variables) != 'None':
+                                    --target_value \$targets
+                                #end if
+                            #end if
+                            --output_dir plots
+                            --format $plot.plot_parent_condi.plot_pr_curves_conditional.format
+                            --dpi $plot.plot_parent_condi.plot_pr_curves_conditional.dpi
+                    #end if
+                    #if str($plot.plot_parent_condi.plot_roc_curves_conditional.plot_roc_curves) == 'yes':
+                        && python '$__tool_directory__/flexynesis_plot.py'
+                            --plot_type roc_curve
+                            --labels output/job.predicted_labels.tabular
+                            #if str($training_type.model) == 's_train':
+                                #if str($target_variables) != 'None':
+                                    --target_value \$targets
+                                #end if
+                            #end if
+                            --output_dir plots
+                            --format $plot.plot_parent_condi.plot_roc_curves_conditional.format
+                            --dpi $plot.plot_parent_condi.plot_roc_curves_conditional.dpi
+                    #end if
+                    #if str($plot.plot_parent_condi.plot_boxplot_conditional.plot_boxplot) == 'yes':
+                        && python '$__tool_directory__/flexynesis_plot.py'
+                            --plot_type box_plot
+                            --labels output/job.predicted_labels.tabular
+                            #if str($training_type.model) == 's_train':
+                                #if str($target_variables) != 'None':
+                                    --target_value \$targets
+                                #end if
+                            #end if
+                            --output_dir plots
+                            --format $plot.plot_parent_condi.plot_boxplot_conditional.format
+                            --dpi $plot.plot_parent_condi.plot_boxplot_conditional.dpi
+                    #end if
+                #end if
             #end if
-        #end if
-        #if str($plot.plot_cox_conditional.plot_cox) == 'yes':
-            #if str($surv_event_var) == '' or str($surv_time_var) == '':
-                && echo "Survival event and time variables must be specified for cox plots."
-                && exit 1
-            #else
-                && python $__tool_directory__/flexynesis_plot.py
-                    --plot_type cox
-                    --model output/job.final_model.pth
-                    --clinical_train input/train/clin.csv
-                    --clinical_test input/test/clin.csv
-                    #if str($plot.plot_cox_conditional.omics_name) != '':
-                        #set $name = str($plot.plot_cox_conditional.omics_name.replace(" ", "_"))
-                        --omics_train input/train/${name}.csv
-                        --omics_test input/test/${name}.csv
-                    #else
-                        --omics_train input/train/main.csv
-                        --omics_test input/test/main.csv
-                    #end if
-                    --surv_time_var \$surv_time_var
-                    --surv_event_var \$surv_event_var
-                    #if str($plot.plot_cox_conditional.clinical_variables) != '':
-                        --clinical_variables $str($plot.plot_cox_conditional.clinical_variables)
-                    #end if
-                    --top_features $plot.plot_cox_conditional.top_features
-                    --event_value $plot.plot_cox_conditional.event_value
-                    #if str($plot.plot_cox_conditional.crossval_conditional.crossval) == 'yes':
-                        --crossval
-                    #end if
-                   #if str($plot.plot_cox_conditional.crossval_conditional.crossval) == 'yes':
-                        --n_splits $plot.plot_cox_conditional.crossval_conditional.n_splits
-                    #end if
-                    --random_state 42
-                    --output_dir plots
-                    --format $plot.plot_cox_conditional.format
-                    --dpi $plot.plot_cox_conditional.dpi
-            #end if
-        #end if
-        #if str($plot.plot_scatter_conditional.plot_scatter) == 'yes':
-            && python $__tool_directory__/flexynesis_plot.py
-                --plot_type scatter
-                --labels output/job.predicted_labels.tabular
-                #if str($training_type.model) == 's_train':
-                    #if len($targets) > 0 or (str($surv_event_var) != 'None' and str($surv_time_var) != 'None'):
-                        --target_value \$target_value
-                    #end if
-                #end if
-                --output_dir plots
-                --format $plot.plot_scatter_conditional.format
-                --dpi $plot.plot_scatter_conditional.dpi
-        #end if
-        #if str($plot.plot_concordance_conditional.plot_concordance) == 'yes':
-            && python $__tool_directory__/flexynesis_plot.py
-                --plot_type concordance_heatmap
-                --labels output/job.predicted_labels.tabular
-                #if str($training_type.model) == 's_train':
-                    #if len($targets) > 0 or (str($surv_event_var) != 'None' and str($surv_time_var) != 'None'):
-                        --target_value \$target_value
-                    #end if
-                #end if
-                --output_dir plots
-                --format $plot.plot_concordance_conditional.format
-                --dpi $plot.plot_concordance_conditional.dpi
-        #end if
-        #if str($plot.plot_pr_curves_conditional.plot_pr_curves) == 'yes':
-            && python $__tool_directory__/flexynesis_plot.py
-                --plot_type pr_curve
-                --labels output/job.predicted_labels.tabular
-                #if str($training_type.model) == 's_train':
-                    #if len($targets) > 0 or (str($surv_event_var) != 'None' and str($surv_time_var) != 'None'):
-                        --target_value \$target_value
-                    #end if
-                #end if
-                --output_dir plots
-                --format $plot.plot_pr_curves_conditional.format
-                --dpi $plot.plot_pr_curves_conditional.dpi
-        #end if
-        #if str($plot.plot_roc_curves_conditional.plot_roc_curves) == 'yes':
-            && python $__tool_directory__/flexynesis_plot.py
-                --plot_type roc_curve
-                --labels output/job.predicted_labels.tabular
-                #if str($training_type.model) == 's_train':
-                    #if len($targets) > 0 or (str($surv_event_var) != 'None' and str($surv_time_var) != 'None'):
-                        --target_value \$target_value
-                    #end if
-                #end if
-                --output_dir plots
-                --format $plot.plot_roc_curves_conditional.format
-                --dpi $plot.plot_roc_curves_conditional.dpi
-        #end if
-        #if str($plot.plot_boxplot_conditional.plot_boxplot) == 'yes':
-            && python $__tool_directory__/flexynesis_plot.py
-                --plot_type box_plot
-                --labels output/job.predicted_labels.tabular
-                #if str($training_type.model) == 's_train':
-                    #if len($targets) > 0 or (str($surv_event_var) != 'None' and str($surv_time_var) != 'None'):
-                        --target_value \$target_value
-                    #end if
-                #end if
-                --output_dir plots
-                --format $plot.plot_boxplot_conditional.format
-                --dpi $plot.plot_boxplot_conditional.dpi
         #end if
     ]]></command>
     <inputs>
@@ -304,36 +347,65 @@
                         <option value="RandomSurvivalForest">RandomSurvivalForest</option>
                         <option value="XGBoost">XGBoost</option>
                     </param>
-                    <when value="DirectPred"/>
+                    <when value="DirectPred">
+                        <expand macro="flexynesis_common_params">
+                            <expand macro="plot_input_section"/>
+                            <expand macro="safetensors_param"/>
+                        </expand>
+                    </when>
                     <when value="GNN">
                         <param argument="--gnn_conv_type" type="select" label="Which graph convolution type to use.">
                             <option value="GC">GC</option>
                             <option value="GCN">GCN</option>
                             <option value="SAGE">SAGE</option>
                         </param>
-                        <param argument="--string_organism" type="select" label="STRING DB organism">
-                            <option value="9606">Homo sapiens</option>
-                            <option value="10090">Mus musculus</option>
-                            <option value="10116">Rattus norvegicus</option>
-                            <option value="9544">Macaca mulatta</option>
-                        </param>
-                        <param argument="--string_node_name" type="select" label="String node name" >
-                            <option value="gene_name">Gene name</option>
-                            <option value="gene_id">Gene id</option>
-                        </param>
+                        <conditional name="string_condi">
+                            <param name="use_string" type="select" label="Use STRING database?">
+                                <option value="yes">Yes</option>
+                                <!-- this param will be enabled when the issue is fixed here: https://github.com/BIMSBbioinfo/flexynesis/pull/127 -->
+                                <!-- <option value="no">No, use network from history</option> -->
+                            </param>
+                            <when value="yes">
+                                <param argument="--string_organism" type="select" label="STRING DB organism">
+                                    <option value="9606">Homo sapiens</option>
+                                    <option value="10090">Mus musculus</option>
+                                    <option value="10116">Rattus norvegicus</option>
+                                    <option value="9544">Macaca mulatta</option>
+                                </param>
+                                <param argument="--string_node_name" type="select" label="String node name" >
+                                    <option value="gene_name">Gene name</option>
+                                    <option value="gene_id">Gene id</option>
+                                </param>
+                            </when>
+                            <!-- this param will be enabled when the issue is fixed here: https://github.com/BIMSBbioinfo/flexynesis/pull/127 -->
+                            <!-- <when value="no">
+                                <param argument="- -user_graph" type="data" format="tabular" optional="false" label="Gene Gene interaction file" help="Must have at least 3 columns: GeneA, GeneB, Score. This file can be generated with the coexpression method of Flexynesis utils tool." />
+                            </when> -->
+                        </conditional>
+                        <expand macro="flexynesis_common_params">
+                            <expand macro="plot_input_section"/>
+                            <expand macro="safetensors_param"/>
+                        </expand>
                     </when>
-                    <when value="MultiTripletNetwork"/>
-                    <when value="RandomForest"/>
-                    <when value="SVM"/>
-                    <when value="RandomSurvivalForest"/>
-                    <when value="XGBoost"/>
+                    <when value="MultiTripletNetwork">
+                        <expand macro="flexynesis_common_params">
+                            <expand macro="plot_input_section"/>
+                            <expand macro="safetensors_param"/>
+                        </expand>
+                    </when>
+                    <when value="RandomForest">
+                        <expand macro="flexynesis_common_params"/>
+                    </when>
+                    <when value="SVM">
+                        <expand macro="flexynesis_common_params"/>
+                    </when>
+                    <when value="RandomSurvivalForest">
+                        <expand macro="flexynesis_common_params"/>
+                    </when>
+                    <when value="XGBoost">
+                        <expand macro="flexynesis_common_params"/>
+                    </when>
                 </conditional>
-                <repeat name="targets" min="0" title="Target variables">
-                    <param argument="--target_variables" type="data_column" data_ref="train_clin" optional="false" label="Column name in the train clinical data to use for predictions, multiple targets are allowed"/>
-                </repeat>
-                <param argument="--surv_event_var" type="data_column" data_ref="train_clin" optional="true" label="Column name in the train clinical data to use as survival event"/>
-                <param argument="--surv_time_var" type="data_column" data_ref="train_clin" optional="true" label="Column name in the train clinical data to use as survival time"/>
-                <expand macro="advanced"/>
             </when>
             <when value="us_train">
                 <expand macro="main_inputs"/>
@@ -344,6 +416,7 @@
                     <option value="supervised_vae">supervised_vae</option>
                 </param>
                 <expand macro="advanced"/>
+                <expand macro="safetensors_param"/>
             </when>
             <when value="cm_train">
                 <expand macro="main_inputs"/>
@@ -362,138 +435,25 @@
                     <option value="CrossModalPred">CrossModalPred</option>
                 </param>
                 <expand macro="advanced"/>
+                <expand macro="safetensors_param"/>
             </when>
         </conditional>
-        <section name="plot" title="Visualization">
-            <conditional name="plot_embeddings_conditional">
-                <param name="plot_embeddings" type="select" label="Generate embeddings plot?" help="Generate PCA or UMAP plot of the test dataset">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <param name="method" type="select" label="Transformation method">
-                        <option value="pca" selected="true">PCA</option>
-                        <option value="umap">UMAP</option>
-                    </param>
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-            <conditional name="plot_km_conditional">
-                <param name="plot_km" type="select" label="Generate kaplan meier curves plot?" help="Generate KM curves plot of risk subtype based on predicted events probabilities">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <param name="event_value" type="text" label="Event value" optional="false" help="The value in the event column that indicates an event (e.g. death) has occurred.">
-                        <expand macro="sanitizer_printable"/>
-                    </param>
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-            <conditional name="plot_cox_conditional">
-                <param name="plot_cox" type="select" label="Generate hazard ratio plot?" help="Performs Cox regression on data based on top features and selected clinical covariates.">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <param name="omics_name" type="text" label="Omics layer to use for cox input" optional="false" help="If not specified, the first omics layer will be used.">
-                        <expand macro="sanitizer_printable"/>
-                    </param>
-                    <param name="clinical_variables" type="text" label="Clinical covariates" optional="true" help="Comma-separated list of clinical covariates to include in the Cox model (e.g SEX, AGE, ...).">
-                        <expand macro="sanitizer_printable"/>
-                    </param>
-                    <param argument="--top_features" type="integer" min="1" value="20" label="Number of top important features to include in Cox model"/>
-                    <param name="event_value" type="text" label="Event value" optional="false" help="The value in the event column that indicates an event (e.g. death) has occurred.">
-                        <expand macro="sanitizer_printable"/>
-                    </param>
-                    <conditional name="crossval_conditional">
-                        <param name="crossval" type="select" label="Performs K-fold cross-validation?">
-                            <option value="yes">Yes</option>
-                            <option value="no" selected="true">No</option>
-                        </param>
-                        <when value="yes">
-                            <param name="n_splits" type="integer" min="2" value="5" label="Number of folds for cross-validation"/>
-                        </when>
-                        <when value="no"/>
-                    </conditional>
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-            <conditional name="plot_scatter_conditional">
-                <param name="plot_scatter" type="select" label="Generate scatter plot?" help="Generates a scatter plot of numeric true and predicted labels for all available targets.">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-            <conditional name="plot_concordance_conditional">
-                <param name="plot_concordance" type="select" label="Generate concordance heatmap plot?" help="Generates a plot showing the concordance between true and predicted labels for all targets.">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-            <conditional name="plot_pr_curves_conditional">
-                <param name="plot_pr_curves" type="select" label="Generate precision-recall curves plot?" help="Generates precision-recall curves for all available targets.">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-            <conditional name="plot_roc_curves_conditional">
-                <param name="plot_roc_curves" type="select" label="Generate ROC curves plot?" help="Generates ROC curves for all available targets.">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-            <conditional name="plot_boxplot_conditional">
-                <param name="plot_boxplot" type="select" label="Generate boxplot?" help="Generates a boxplot for all available targets.">
-                    <option value="yes">Yes</option>
-                    <option value="no" selected="true">No</option>
-                </param>
-                <when value="no">
-                </when>
-                <when value="yes">
-                    <expand macro="plots_common_param"/>
-                </when>
-            </conditional>
-        </section>
     </inputs>
     <outputs>
         <collection name="results" type="list" label="${tool.name} on ${on_string}: results">
             <discover_datasets pattern="(?P&lt;name&gt;.+)\.tabular$" format="tabular" directory="output"/>
         </collection>
-        <collection name="plots" type="list" label="${tool.name} on ${on_string}: embeddings plots">
+        <data name="model" format="safetensors" from_work_dir="output/job.final_model.safetensors" label="${tool.name} on ${on_string}: trained_model">
+            <filter>(training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork") and training_type['model_class']['safetensors_out_bool'] == True) or ((training_type['model'] == 'us_train' or training_type['model'] == 'cm_train') and training_type['safetensors_out_bool'] == True)</filter>
+        </data>
+        <collection name="plots" type="list" label="${tool.name} on ${on_string}: plots">
             <discover_datasets pattern="__name_and_ext__" directory="plots"/>
-            <filter>plot['plot_embeddings_conditional']['plot_embeddings'] == 'yes' or plot['plot_km_conditional']['plot_km'] == 'yes' or plot['plot_cox_conditional']['plot_cox'] == 'yes' or plot['plot_scatter_conditional']['plot_scatter'] == 'yes' or plot['plot_concordance_conditional']['plot_concordance'] == 'yes' or plot['plot_pr_curves_conditional']['plot_pr_curves'] == 'yes' or plot['plot_roc_curves_conditional']['plot_roc_curves'] == 'yes' or plot['plot_boxplot_conditional']['plot_boxplot'] == 'yes'</filter>
+            <filter>training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork") and training_type['model_class']['plot']['plot_parent_condi']['plot_boolean'] == 'yes'</filter>
         </collection>
     </outputs>
     <tests>
         <!-- test 1: Supervised training with GEX and CNV data, DirectPred model, Erlotinib target -->
-        <test expect_num_outputs="1">
+        <test expect_num_outputs="2">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="s_train"/>
@@ -509,13 +469,11 @@
                 </repeat>
                 <conditional name="model_class">
                     <param name="model_class" value="DirectPred"/>
-                </conditional>
-                <repeat name="targets">
                     <param name="target_variables" value="3"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                </section>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                </conditional>
             </conditional>
             <output_collection name="results" type="list">
                 <element name="job.embeddings_test">
@@ -547,7 +505,7 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
@@ -566,6 +524,11 @@
                     </assert_contents>
                 </element>
             </output_collection>
+            <output name="model" ftype="safetensors">
+                <assert_contents>
+                    <has_size value="107104"/>
+                </assert_contents>
+            </output>
         </test>
         <!-- test 2: Supervised training with GEX data, DirectPred model, Erlotinib target -->
         <test expect_num_outputs="1">
@@ -579,13 +542,12 @@
                 <param name="assay_main" value="bar"/>
                 <conditional name="model_class">
                     <param name="model_class" value="DirectPred"/>
-                </conditional>
-                <repeat name="targets">
                     <param name="target_variables" value="3"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                </section>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
             </conditional>
             <output_collection name="results" type="list">
                 <element name="job.embeddings_test">
@@ -649,13 +611,12 @@
                 </repeat>
                 <conditional name="model_class">
                     <param name="model_class" value="DirectPred"/>
-                </conditional>
-                <repeat name="targets">
                     <param name="target_variables" value="4"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                </section>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
             </conditional>
             <output_collection name="results" type="list">
                 <element name="job.embeddings_test">
@@ -687,7 +648,7 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
@@ -708,7 +669,7 @@
             </output_collection>
         </test>
         <!-- test 4: Un-supervised training with GEX and CNV data, supervised_vae model -->
-        <test expect_num_outputs="1">
+        <test expect_num_outputs="2">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="us_train"/>
@@ -743,15 +704,20 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
             </output_collection>
+            <output name="model" ftype="safetensors">
+                <assert_contents>
+                    <has_size value="198076"/>
+                </assert_contents>
+            </output>
         </test>
         <!-- test 5: Cross-modality training with GEX and CNV data, CrossModalPred model -->
-        <test expect_num_outputs="1">
+        <test expect_num_outputs="2">
             <param name="non_commercial_use" value="True"/>
             <conditional name="training_type">
                 <param name="model" value="cm_train"/>
@@ -788,22 +754,27 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.test_decoded.omics_foo">
+                <element name="job.test_decoded.foo">
                     <assert_contents>
                         <has_n_lines n="23"/>
                     </assert_contents>
                 </element>
-                <element name="job.train_decoded.omics_foo">
+                <element name="job.train_decoded.foo">
                     <assert_contents>
                         <has_n_lines n="23"/>
                     </assert_contents>
                 </element>
             </output_collection>
+            <output name="model" ftype="safetensors">
+                <assert_contents>
+                    <has_size value="194476"/>
+                </assert_contents>
+            </output>
         </test>
         <!-- test 6: Supervised training with GEX and CNV data, GNN model, Erlotinib target -->
         <test expect_num_outputs="1">
@@ -823,15 +794,17 @@
                 <conditional name="model_class">
                     <param name="model_class" value="GNN"/>
                     <param name="gnn_conv_type" value="GC"/>
-                    <param name="string_organism" value="9606"/>
-                    <param name="string_node_name" value="gene_name"/>
-                </conditional>
-                <repeat name="targets">
+                    <conditional name="string_condi">
+                        <param name="use_string" value="yes"/>
+                        <param name="string_organism" value="9606"/>
+                        <param name="string_node_name" value="gene_name"/>
+                    </conditional>
                     <param name="target_variables" value="3"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                </section>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
             </conditional>
             <output_collection name="results" type="list">
                 <element name="job.embeddings_test">
@@ -863,7 +836,7 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
@@ -902,6 +875,7 @@
                 <section name="advanced">
                     <param name="hpo_iter" value="1"/>
                 </section>
+                <param name="safetensors_out_bool" value="False"/>
             </conditional>
             <output_collection name="results" type="list">
                 <element name="job.embeddings_test">
@@ -919,7 +893,7 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_f_oo">
+                <element name="job.feature_logs.f_oo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
@@ -943,13 +917,11 @@
                 </repeat>
                 <conditional name="model_class">
                     <param name="model_class" value="XGBoost"/>
-                </conditional>
-                <repeat name="targets">
                     <param name="target_variables" value="3"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                </section>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                </conditional>
             </conditional>
             <output_collection name="results" type="list">
                 <element name="job.stats">
@@ -978,15 +950,14 @@
                 </repeat>
                 <conditional name="model_class">
                     <param name="model_class" value="DirectPred"/>
-                </conditional>
-                <repeat name="targets">
                     <param name="target_variables" value="3"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                    <param name="feature_importance_method" value="IntegratedGradients"/>
-                    <param name="val_size" value="0.2"/>
-                </section>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                        <param name="feature_importance_method" value="IntegratedGradients"/>
+                        <param name="val_size" value="0.2"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
             </conditional>
             <output_collection name="results" type="list">
                 <element name="job.embeddings_test">
@@ -1010,7 +981,7 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
@@ -1047,22 +1018,24 @@
                 </repeat>
                 <conditional name="model_class">
                     <param name="model_class" value="DirectPred"/>
-                </conditional>
-                <repeat name="targets">
                     <param name="target_variables" value="3"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                </section>
-            </conditional>
-            <section name="plot">
-                <conditional name="plot_embeddings_conditional">
-                    <param name="plot_embeddings" value="yes"/>
-                    <param name="method" value="pca"/>
-                    <param name="format" value="jpg"/>
-                    <param name="dpi" value="300"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <section name="plot">
+                        <conditional name="plot_parent_condi">
+                            <param name="plot_boolean" value="yes"/>
+                            <conditional name="plot_embeddings_conditional">
+                                <param name="plot_embeddings" value="yes"/>
+                                <param name="method" value="pca"/>
+                                <param name="format" value="jpg"/>
+                                <param name="dpi" value="300"/>
+                            </conditional>
+                        </conditional>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
                 </conditional>
-            </section>
+            </conditional>
             <output_collection name="results" type="list">
                 <element name="job.embeddings_test">
                     <assert_contents>
@@ -1093,7 +1066,7 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
@@ -1135,11 +1108,13 @@
         <test expect_num_outputs="2">
             <expand macro="common_test">
                 <section name="plot">
-                    <conditional name="plot_km_conditional">
-                        <param name="plot_km" value="yes"/>
-                        <param name="event_value" value="1:DECEASED"/>
-                        <param name="format" value="jpg"/>
-                        <param name="dpi" value="300"/>
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_km_conditional">
+                            <param name="plot_km" value="yes"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
+                        </conditional>
                     </conditional>
                 </section>
             </expand>
@@ -1158,24 +1133,31 @@
         <test expect_num_outputs="2">
             <expand macro="common_test">
                 <section name="plot">
-                    <conditional name="plot_cox_conditional">
-                        <param name="plot_cox" value="yes"/>
-                        <param name="omics_name" value="bar"/>
-                        <param name="clinical_variables" value="Crizotinib,   Erlotinib"/>
-                        <param name="top_features" value="10"/>
-                        <param name="event_value" value="1:DECEASED"/>
-                        <param name="format" value="jpg"/>
-                        <param name="dpi" value="300"/>
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_cox_conditional">
+                            <param name="plot_cox" value="yes"/>
+                            <param name="omics_name" value="bar"/>
+                            <param name="clinical_variables" value="2,3"/>
+                            <param name="top_features" value="10"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
+                        </conditional>
                     </conditional>
                 </section>
             </expand>
+            <assert_stdout>
+                <has_text_matching expression="Cox model metrics"/>
+                <has_text_matching expression="cv_cindex_mean"/>
+                <has_text_matching expression="cv_auc_mean"/>
+            </assert_stdout>
             <output_collection name="plots" type="list">
-                <element name="job.final_model_cox_hazard_ratios">
+                <element name="job.feature_importance.IntegratedGradients_cox_hazard_ratios">
                     <assert_contents>
-                        <has_image_center_of_mass center_of_mass="972,737" eps="20"/>
+                        <has_image_center_of_mass center_of_mass="972,737" eps="40"/>
                         <has_image_channels channels="3"/>
-                        <has_image_height height="1461" delta="10"/>
-                        <has_image_width width="1941" delta="10"/>
+                        <has_image_height height="1500" delta="20"/>
+                        <has_image_width width="1980" delta="20"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -1184,10 +1166,13 @@
         <test expect_num_outputs="2">
             <expand macro="common_test">
                 <section name="plot">
-                    <conditional name="plot_scatter_conditional">
-                        <param name="plot_scatter" value="yes"/>
-                        <param name="format" value="jpg"/>
-                        <param name="dpi" value="300"/>
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_scatter_conditional">
+                            <param name="plot_scatter" value="yes"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
+                        </conditional>
                     </conditional>
                 </section>
             </expand>
@@ -1206,44 +1191,43 @@
         <test expect_num_outputs="2">
             <expand macro="common_test">
                 <section name="plot">
-                    <conditional name="plot_concordance_conditional">
-                        <param name="plot_concordance" value="yes"/>
-                        <param name="format" value="jpg"/>
-                        <param name="dpi" value="300"/>
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_concordance_conditional">
+                            <param name="plot_concordance" value="yes"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
+                        </conditional>
                     </conditional>
                 </section>
             </expand>
             <output_collection name="plots" type="list">
                 <element name="job.predicted_labels_concordance_Erlotinib">
                     <assert_contents>
-                        <has_image_center_of_mass center_of_mass="1547,1620" eps="30"/>
+                        <has_image_center_of_mass center_of_mass="1547,1590" eps="30"/>
                         <has_image_channels channels="3"/>
-                        <has_image_height height="3060" delta="50"/>
+                        <has_image_height height="3000" delta="50"/>
                         <has_image_width width="3192" delta="50"/>
-                    </assert_contents>
-                </element>
-                <element name="job.predicted_labels_concordance_OS_STATUS">
-                    <assert_contents>
-                        <has_image_channels channels="3"/>
-                        <has_image_height height="2558" delta="50"/>
-                        <has_image_width width="2794" delta="50"/>
                     </assert_contents>
                 </element>
             </output_collection>
         </test>
         <!-- test 15: pr curve plot -->
         <test expect_num_outputs="2">
-            <expand macro="common_test">
+            <expand macro="common_test_class">
                 <section name="plot">
-                    <conditional name="plot_pr_curves_conditional">
-                        <param name="plot_pr_curves" value="yes"/>
-                        <param name="format" value="jpg"/>
-                        <param name="dpi" value="300"/>
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_pr_curves_conditional">
+                            <param name="plot_pr_curves" value="yes"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
+                        </conditional>
                     </conditional>
                 </section>
             </expand>
             <output_collection name="plots" type="list">
-                <element name="job.predicted_labels_pr_curves_OS_STATUS">
+                <element name="job.predicted_labels_pr_curves_class">
                     <assert_contents>
                         <has_image_center_of_mass center_of_mass="975,732" eps="20"/>
                         <has_image_channels channels="3"/>
@@ -1255,17 +1239,20 @@
         </test>
         <!-- test 16: roc curve plot -->
         <test expect_num_outputs="2">
-            <expand macro="common_test">
+            <expand macro="common_test_class">
                 <section name="plot">
-                    <conditional name="plot_roc_curves_conditional">
-                        <param name="plot_roc_curves" value="yes"/>
-                        <param name="format" value="jpg"/>
-                        <param name="dpi" value="300"/>
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_roc_curves_conditional">
+                            <param name="plot_roc_curves" value="yes"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
+                        </conditional>
                     </conditional>
                 </section>
             </expand>
             <output_collection name="plots" type="list">
-                <element name="job.predicted_labels_roc_curves_OS_STATUS">
+                <element name="job.predicted_labels_roc_curves_class">
                     <assert_contents>
                         <has_image_center_of_mass center_of_mass="970,730" eps="20"/>
                         <has_image_channels channels="3"/>
@@ -1277,17 +1264,20 @@
         </test>
         <!-- test 17: boxplot plot -->
         <test expect_num_outputs="2">
-            <expand macro="common_test">
-            <section name="plot">
-                <conditional name="plot_boxplot_conditional">
-                    <param name="plot_boxplot" value="yes"/>
-                    <param name="format" value="jpg"/>
-                    <param name="dpi" value="300"/>
-                </conditional>
-            </section>
+            <expand macro="common_test_class">
+                <section name="plot">
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_boxplot_conditional">
+                            <param name="plot_boxplot" value="yes"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
+                        </conditional>
+                    </conditional>
+                </section>
             </expand>
             <output_collection name="plots" type="list">
-                <element name="job.predicted_labels_box_plot_OS_STATUS_0_LIVING">
+                <element name="job.predicted_labels_box_plot_class_buz">
                     <assert_contents>
                         <has_image_center_of_mass center_of_mass="1485,882" eps="20"/>
                         <has_image_channels channels="3"/>
@@ -1295,7 +1285,7 @@
                         <has_image_width width="2967" delta="20"/>
                     </assert_contents>
                 </element>
-                <element name="job.predicted_labels_box_plot_OS_STATUS_1_DECEASED">
+                <element name="job.predicted_labels_box_plot_class_qux">
                     <assert_contents>
                         <has_image_center_of_mass center_of_mass="1485,882" eps="20"/>
                         <has_image_channels channels="3"/>
@@ -1309,28 +1299,32 @@
         <test expect_num_outputs="2">
             <expand macro="common_test">
                 <section name="plot">
-                    <conditional name="plot_cox_conditional">
-                        <param name="plot_cox" value="yes"/>
-                        <param name="omics_name" value="bar"/>
-                        <param name="clinical_variables" value="Crizotinib,   Erlotinib"/>
-                        <param name="top_features" value="10"/>
-                        <param name="event_value" value="1:DECEASED"/>
-                        <conditional name="crossval_conditional">
-                            <param name="crossval" value="yes"/>
+                    <conditional name="plot_parent_condi">
+                        <param name="plot_boolean" value="yes"/>
+                        <conditional name="plot_cox_conditional">
+                            <param name="plot_cox" value="yes"/>
+                            <param name="omics_name" value="bar"/>
+                            <param name="clinical_variables" value="2,3"/>
+                            <param name="top_features" value="10"/>
                             <param name="n_splits" value="5"/>
+                            <param name="format" value="jpg"/>
+                            <param name="dpi" value="300"/>
                         </conditional>
-                        <param name="format" value="jpg"/>
-                        <param name="dpi" value="300"/>
                     </conditional>
                 </section>
             </expand>
+            <assert_stdout>
+                <has_text_matching expression="Cox model metrics"/>
+                <has_text_matching expression="cv_cindex_mean"/>
+                <has_text_matching expression="cv_auc_mean"/>
+            </assert_stdout>
             <output_collection name="plots" type="list">
-                <element name="job.final_model_cox_hazard_ratios">
+                <element name="job.feature_importance.IntegratedGradients_cox_hazard_ratios">
                     <assert_contents>
-                        <has_image_center_of_mass center_of_mass="972,737" eps="20"/>
+                        <has_image_center_of_mass center_of_mass="972,737" eps="40"/>
                         <has_image_channels channels="3"/>
-                        <has_image_height height="1461" delta="10"/>
-                        <has_image_width width="1941" delta="10"/>
+                        <has_image_height height="1500" delta="20"/>
+                        <has_image_width width="1980" delta="20"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -1352,16 +1346,12 @@
                 </repeat>
                 <conditional name="model_class">
                     <param name="model_class" value="DirectPred"/>
+                    <param name="target_variables" value="3,2"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
                 </conditional>
-                <repeat name="targets">
-                    <param name="target_variables" value="3"/>
-                </repeat>
-                <repeat name="targets">
-                    <param name="target_variables" value="2"/>
-                </repeat>
-                <section name="advanced">
-                    <param name="hpo_iter" value="1"/>
-                </section>
             </conditional>
             <assert_stdout>
                 <has_text_matching expression="Target variables: Erlotinib,Crizotinib"/>
@@ -1400,7 +1390,7 @@
                         <has_n_lines n="25"/>
                     </assert_contents>
                 </element>
-                <element name="job.feature_logs.omics_foo">
+                <element name="job.feature_logs.foo">
                     <assert_contents>
                         <has_n_lines n="25"/>
                     </assert_contents>
@@ -1421,6 +1411,124 @@
                         <has_text_matching expression="DirectPred\tCrizotinib\tnumerical\tr2\t"/>
                         <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tpearson_corr\t"/>
                         <has_text_matching expression="DirectPred\tCrizotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- this test will be enabled when the issue is fixed here: https://github.com/BIMSBbioinfo/flexynesis/pull/127 -->
+        <!-- test 20: Supervised training with GEX and CNV data, GNN model, Erlotinib target + user graph-->
+        <!-- <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <repeat name="omics">
+                    <param name="train_omics" value="train/cnv" ftype="tabular"/>
+                    <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                    <param name="assay" value="foo"/>
+                </repeat>
+                <conditional name="model_class">
+                    <param name="model_class" value="GNN"/>
+                    <param name="gnn_conv_type" value="GC"/>
+                    <conditional name="string_condi">
+                        <param name="use_string" value="no"/>
+                        <param name="user_graph" value="graph.tabular"/>
+                    </conditional>
+                    <param name="target_variables" value="3"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
+            </conditional>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.GradientShap">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tA2M\t"/>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tABCC4\t"/>
+                        <has_text_matching expression="GradientShap"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.IntegratedGradients">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tA2M\t"/>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tABCC4\t"/>
+                        <has_text_matching expression="IntegratedGradients"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704\tErlotinib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="GNN\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="GNN\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="GNN\tErlotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test> -->
+        <!-- test 21: Supervised training with GEX and CNV data, SVM model, Erlotinib target -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <repeat name="omics">
+                    <param name="train_omics" value="train/cnv" ftype="tabular"/>
+                    <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                    <param name="assay" value="foo"/>
+                </repeat>
+                <conditional name="model_class">
+                    <param name="model_class" value="SVM"/>
+                    <param name="target_variables" value="3"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                </conditional>
+            </conditional>
+            <output_collection name="results" type="list">
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="target_dataset:AMO1\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="SVMRegressor\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="SVMRegressor\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="SVMRegressor\tErlotinib\tnumerical\tpearson_corr\t"/>
                     </assert_contents>
                 </element>
             </output_collection>
