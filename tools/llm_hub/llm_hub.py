@@ -5,7 +5,7 @@ import sys
 import time
 
 import yaml
-from openai import InternalServerError, OpenAI
+from openai import InternalServerError, OpenAI, RateLimitError
 
 context_files = json.loads(sys.argv[1])
 question = sys.argv[2]
@@ -128,11 +128,9 @@ for attempt in range(max_retries):
         with open("output.md", "w") as f:
             f.write(response.choices[0].message.content or "")
         break
-    except InternalServerError as e:
+    except (InternalServerError, RateLimitError) as e:
         if attempt == max_retries - 1:
             sys.exit("Max retries reached. Exiting.")
         sleep_time = min(2**attempt + random.uniform(0, 1), max_delay)
-        print(
-            f"InternalServerError encountered ({e}). Retrying in {sleep_time:.2f} seconds..."
-        )
+        print(f"Error encountered ({e}). Retrying in {sleep_time:.2f} seconds...")
         time.sleep(sleep_time)
