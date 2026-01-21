@@ -1,0 +1,104 @@
+## NOTE! you must run 'ducttape' every time you reload a session, because ducttape creates starts and stops which are NO LONGER READ WHEN READING A GFF.
+
+1) Run gag.console.py
+2) readgff, readfasta, readtrinotate
+3) settbl2asnexecutable, addtemplatefile
+4) removeseq scaffold04061 -- this seq contains N's but has no features on it.
+5) trimregion scaffold02211 5499 5499 -- this seq contains a terminal N 
+6) removeallgenesegments BDOR_001261 BDOR_005278 -- these genes contain other genes (??)
+7) removeallgenesegments BDOR_004239 -- abutting intervals.
+8) invalidateregion scaffold00001 714210 714404 -- tail end of a CDS that is all N's...
+9) invalidateregion scaffold00097 602817 603018 -- (same)
+10) convert NCBI beginendgap file into list of problem gene ids -- command (bash):
+
+    grep BDOR beginendgap | sed 's/.*BDOR/BDOR/' | sort | uniq > beginendgap.gene_ids
+
+11) cat beginendgap.gene_ids | checkgeneforinvalidbeginorend
+11a) checkgeneforinvalidbeginorend BDOR_004239 -- apparently it has a trailing X?
+
+12) convert NCBI contaminationscreen file into table of seq ids, starts and stops -- command (bash):
+
+    grep cleaned contaminationscreen | awk '{print $1"\t"$3}' | sed 's/lcl|//; s/\.\./\t/g' > contaminationscreen.seq_id_start_stop.tsv
+    
+... then open file in nano to fix the line that looks like this:
+
+    scaffold00520   62191   62229,62956     62995
+
+... and make it look like this:
+
+    scaffold00520   62191   62229
+    scaffold00520   62956   62995
+
+13) cat contaminationscreen.seq_id_start_stop.tsv | trimregion
+
+14) ducttape -- this does 'rename maker mrnas', 'remove first cds segment if shorter than 3', 'create starts and stops' and 'remove mrnas with cds shorter than 150'. ## note: must run this AFTER invalidate region! because create start stops.
+
+15) preptbl2asn, runtbl2asn. cross fingers.
+
+16) sift through gag.val to get names of mRNAs which have weird phase-y issues. There are 13143 of them:
+
+    grep InternalStop gag.val | sed 's/.*PBARC|BDOR/BDOR/; s/\]//' > mRNAs_with_InternalStop_ERRORS.txt
+
+17) cat mRNAs_with_InternalStop_ERRORS.txt | ducttapeseqframes
+
+18) preptbl2asn, runtbl2asn. cross fingers.
+
+19) get more features to remove -- ShortIntron, StartCodon, NoStop, InternalStop:
+
+    grep ShortIntron gag.val | sed 's/.*BDOR/BDOR/; s/]//' | sort | uniq > short_intron_features_to_remove.mrna_ids
+    grep StartCodon gag.val | sed 's/.*BDOR/BDOR/; s/]//' | sort | uniq > start_codon_features_to_remove.mrna_ids
+    grep NoStop gag.val | sed 's/.*BDOR/BDOR/; s/]//' | sort | uniq > no_stop_features_to_remove.mrna_ids
+    grep InternalStop gag.val | sed 's/.*BDOR/BDOR/; s/]//' | sort | uniq > internal_stop_features_to_remove.mrna_ids
+
+20) remove those features:
+
+    cat internal_stop_features_to_remove.mrna_ids | removemrna
+    cat no_stop_features_to_remove.mrna_ids | removemrna
+    cat short_intron_features_to_remove.mrna_ids | removemrna
+    cat start_codon_features_to_remove.mrna_ids | removemrna
+
+21) ducttape again (to create starts and stops)
+
+    ducttape
+
+22) preptbl2asn, runtbl2asn. cross fingers.
+
+23) we have FeatureBeginsOrEndsInGap errors, but no referenced mrna or gene id. so ... from visual inspection, the following command are necessary:
+
+    invalidateregion scaffold00233 258492 258492
+
+24) there was another FeatureBegins error but I inspected it and it doesn't go into the gap, so wtf?
+
+25) preptbl2asn, runtbl2asn. cross fingers.
+
+##Check .tbl and .sqn files for presence of gene_ids 'ECE2' and 'TCPG' -- they came up in error report as containing other genes, but I can't find them in any of the input files, so wtf? EDIT: they are in there; must ask somebody smarter what to do about them. See error #7 from Larissa's email.
+
+26) next grep -A 1 DISC_BAD_GENE_STRAND discrep.orig ... then grep BDOR then sed 's/.*BDOR/BDOR/' | sort | uniq > DISC_BAD_GENE_STRAND_ERRORS.gene_ids ... then grep '[02468]$' gives you the even ones (they come in sequential pairs so this gives you one per pair). next up is
+
+    cat DISC_BAD_GENE_STRAND_ERRORS.even_gene_ids | removeallgenesegments
+
+27) next up is EST_DUP_GENES_OPPOSITE_STRANDS ... go copy the relevant lines from discrep.orig, then extract the gene ids and use the same trick to get the even ones, let's call it DUP_GENES.even_gene_ids ... so next
+
+    cat DUP_GENES.even_gene_ids | removeallgenesegments
+
+28) next up there is one gene with a gene name but a bad product name (?), the error is SHOW_HYPOTHETICAL_CDS_HAVING_GENE_NAME ... it is on BDOR_002139, so
+
+    removeallgenesegments BDOR_002139
+
+29) more genes containing other genes:
+
+    removeallgenesegments BDOR_004800 BDOR_012445
+
+30) ducttape again ...
+
+31) still get errors. a couple gaps and about 20 internal stops.
+
+32) so as far as teh gap errors go:
+
+    invalidateregion scaffold00013 2155941 2155942
+    
+33) and then the internal stops
+
+    cat more_internal_stops.mrna_ids | removemrna
+
+34) try again...
