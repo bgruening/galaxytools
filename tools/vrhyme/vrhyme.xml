@@ -6,7 +6,14 @@
     <expand macro="biotools"/>
     <expand macro="requirements"/>
     <command detect_errors="exit_code"><![CDATA[
-    mkdir -p "Raw_reads" &&
+    #def makeNameUnique($name, $ext, $tracker={})
+        #set $reduced_name = $name.removesuffix($ext)
+        #set $copy_number = $tracker.setdefault($reduced_name, 0)
+        #set $tracker[$reduced_name] += 1
+        #set $new_name = $reduced_name + ('_' + str($copy_number) if $copy_number else '') + $ext
+$new_name#slurp
+    #end def
+    mkdir -p "Raw_reads" && mkdir -p "bam_inputs" &&
         #if $input_types.input.selector == 'single_read'
             ln -s '${input_types.input.single_read}' 'Raw_reads/single_reads.fastq.gz' &&
         #elif $input_types.input.selector == 'single_read_collection'
@@ -22,6 +29,14 @@
                 ln -s '${pair.forward}' 'Raw_reads/${pair.element_identifier}_1.fastq.gz' &&
                 ln -s '${pair.reverse}' 'Raw_reads/${pair.element_identifier}_2.fastq.gz' &&
             #end for
+        #elif $input_types.input.selector == 'BAM_input'
+            #for $item in $input_types.input.BAM_inputs:
+                ln -s '${item}' 'bam_inputs/${makeNameUnique(item.element_identifier, ".bam")}' &&
+            #end for
+        #elif $input_types.input.selector == 'SAM_input'
+            #for $item in $input_types.input.SAM_inputs:
+                ln -s '${item}' 'bam_inputs/${makeNameUnique(item.element_identifier, ".sam")} &&
+            #end for
         #end if
         vRhyme 
             -i '$input_fasta'
@@ -34,9 +49,9 @@
                 -p '$optional_proteins'
             #end if
             #if $input_types.input.selector == 'SAM_input'
-                -s '${input_types.input.SAM_inputs}'
+                -s bam_inputs/*.sam
             #elif $input_types.input.selector == 'BAM_input'
-                -b '${input_types.input.BAM_inputs}' 
+                -b bam_inputs/*.bam
             #elif $input_types.input.selector == 'cov_table'
                 -c '${input_types.input.cov_tables}'
             #elif $input_types.input.selector == 'single_read'
@@ -92,10 +107,10 @@
                     <option value="paired_collection">Paired Collection</option>
                 </param>
                 <when value="BAM_input">
-                    <param name="BAM_inputs" type="data" format="bam" label="BAM sequence alignment files" help="BAM (.bam) sequence alignment files, sorted or unsorted."/>
+                    <param name="BAM_inputs" type="data" format="bam" multiple="true" label="BAM sequence alignment files" help="BAM (.bam) sequence alignment files, sorted or unsorted.&lt;br&gt;Note: When using BAM files created with Bowtie2, the input nucleotide scaffolds must not contain spaces anywhere in the sequence headers."/>
                 </when>
                 <when value="SAM_input">
-                    <param name="SAM_inputs" type="data" format="sam" label="SAM sequence alignment files" help="SAM (.sam) sequence alignment files."/>
+                    <param name="SAM_inputs" type="data" format="sam" multiple="true" label="SAM sequence alignment files" help="SAM (.sam) sequence alignment files."/>
                 </when>
                 <when value="cov_table">
                     <param name="cov_tables" type="data" format="tabular" label="Coverage Table (TSV)" help="Coverage table generated from vRhyme or from cov_table_convert.py."/>
@@ -622,20 +637,126 @@
                     <has_n_columns n="3"/>
                     <has_text text="scaffold"/>
                 </assert_contents>
-            </output>              
-            <output name="dereplication" ftype="fasta">  
+            </output>
+            <output name="dereplication" ftype="fasta">
                 <assert_contents>
                     <has_n_lines n="26" delta="5"/>
                     <has_size value="111100" delta="1000"/>
                     <has_text text="virus_1__0:13792"/>
                 </assert_contents>
-            </output>            
-            <output name="dereplication_identical" ftype="tabular">  
+            </output>
+            <output name="dereplication_identical" ftype="tabular">
                 <assert_contents>
                     <has_n_columns n="2"/>
                     <has_text text="parent"/>
                 </assert_contents>
-            </output> 
+            </output>
+        </test>
+        <test expect_num_outputs="14">
+            <param name="input_fasta" value="example_scaffolds_replication.fasta"/>
+            <section name="input_types">
+                <conditional name="input">
+                    <param name="selector" value="BAM_input"/>
+                    <param name="BAM_inputs" value="Test_simulated.bam,Test_simulated.bam"/>
+                </conditional>
+            </section>
+            <section name="dereplication_options">
+                <conditional name="dereplication">
+                    <param name="customize_dereplication" value="customize"/>
+                    <param name="dereplication_method" value="longest"/>
+                </conditional>
+            </section>
+            <output name="circular" ftype="tabular">
+                <assert_contents>
+                    <has_text text="mismatches"/>
+                    <has_n_columns n="5"/>
+                </assert_contents>
+            </output>
+            <output name="best_bins_summery" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="4"/>
+                    <has_text text="redundancy"/>
+                </assert_contents>
+            </output>
+            <output name="best_bins_membership" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                </assert_contents>
+            </output>
+            <output name="machine" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="9"/>
+                    <has_text text="query"/>
+                </assert_contents>
+            </output>
+            <output name="logfile" ftype="txt">
+                <assert_contents>
+                    <has_text text="Command"/>
+                    <has_n_lines n="54" delta="5"/>
+                </assert_contents>
+            </output>
+            <output name="bin_scoring" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="6"/>
+                    <has_text text="iteration"/>
+                </assert_contents>
+            </output>
+            <output name="genes" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="1206" delta="5"/>
+                    <has_size value="88520" delta="1000"/>
+                    <has_text text="virus_1__13792:29888_1"/>
+                </assert_contents>
+            </output>
+            <output name="proteins" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="577" delta="5"/>
+                    <has_size value="39217" delta="1000"/>
+                </assert_contents>
+            </output>
+            <output_collection name="best_bins_fasta"  type="list" count="1">
+                <element name="1" ftype="fasta">
+                    <assert_contents>
+                        <has_n_lines n="14" delta="5"/>
+                        <has_size value="75400" delta="1000"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="best_bins_genes"  type="list" count="1" >
+                <element name="1" ftype="fasta">
+                    <assert_contents>
+                        <has_n_lines n="220" delta="5"/>
+                        <has_size value="86400" delta="1000"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="best_bins_proteins"  type="list" count="1" >
+                <element name="1" ftype="fasta">
+                    <assert_contents>
+                        <has_n_lines n="220" delta="5"/>
+                        <has_size value="39000" delta="1000"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="coverage_file" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="5"/>
+                    <has_text text="scaffold"/>
+                </assert_contents>
+            </output>
+            <output name="dereplication" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="26" delta="5"/>
+                    <has_size value="111100" delta="1000"/>
+                    <has_text text="virus_1__0:13792"/>
+                </assert_contents>
+            </output>
+            <output name="dereplication_identical" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="parent"/>
+                </assert_contents>
+            </output>
         </test>
         <test expect_num_outputs="11">
             <param name="input_fasta" value="example_scaffolds.fasta"/>
