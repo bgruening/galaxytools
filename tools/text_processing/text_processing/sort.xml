@@ -5,7 +5,7 @@
     </macros>
     <expand macro="creator"/>
     <expand macro="requirements">
-        <requirement type="package" version="4.8">sed</requirement>
+        <requirement type="package" version="4.9">sed</requirement>
     </expand>
     <version_command>sort --version | head -n 1</version_command>
     <command>
@@ -16,10 +16,18 @@
                 sed -u '${header}'q &&
             #end if
 
-            sort $unique $ignore_case --stable -t '	'
+            sort $unique --stable -t '	'
 
             #for $key in $sortkeys:
-                -k '${key.column}${key.order}${key.style},${key.column}'
+                #if $key.start_charpos and $key.end_charpos:
+                    -k ${key.column}.${key.start_charpos}${key.ignore_leading_blanks},${key.column}.${key.end_charpos}${key.ignore_leading_blanks}${key.order}${key.style}${key.ignore_case}
+                #elif $key.start_charpos:
+                    -k ${key.column}.${key.start_charpos}${key.ignore_leading_blanks},${key.column}${key.order}${key.style}${key.ignore_case}
+                #elif $key.end_charpos:
+                    -k ${key.column}${key.ignore_leading_blanks},${key.column}.${key.end_charpos}${key.ignore_leading_blanks}${key.order}${key.style}${key.ignore_case}
+                #else:
+                    -k ${key.column}${key.ignore_leading_blanks},${key.column}${key.order}${key.style}${key.ignore_case}
+                #end if
             #end for
 
         ) < '${infile}' > '${outfile}'
@@ -28,17 +36,19 @@
     <inputs>
         <param format="tabular" name="infile" type="data" label="Sort Query" />
         <param name="header" type="integer" value="0"
-            label="Number of header lines" help="These will be ignored during sort.">
+            label="Number of header lines" help="Header lines will be copied to the output unchanged without operating on them.">
             <validator type="in_range" message="Negative values are not allowed." min="0"/>
         </param>
-
+        
         <repeat name="sortkeys" title="Column selections" min="1">
-            <param name="column" label="on column" type="data_column" data_ref="infile" accept_default="true" />
+            <param name="column" label="Sort on column" type="data_column" data_ref="infile" accept_default="true" />
+            <param name="start_charpos" label="considering its characters from" type="integer" min="1" optional="true" help="Leave empty (or set to 1) to use the column value starting from its first character." />
+            <param name="end_charpos" label="to and including" type="integer" min="1" optional="true" help="Leave empty to use the column value up to and including its last character." />
             <param name="order" type="select" display="radio" label="in">
                 <option value="">Ascending order</option>
                 <option value="r">Descending order</option>
             </param>
-            <param name="style" type="select" display="radio" label="Flavor">
+            <param name="style" type="select" display="radio" label="using sort flavor">
                 <option value="n">Fast numeric sort (-n)</option>
                 <option value="g">General numeric sort ( scientific notation -g)</option>
                 <option value="V">Natural/Version sort (-V) </option>
@@ -46,18 +56,20 @@
                 <option value="h">Human-readable numbers (-h)</option>
                 <option value="R">Random order (-R)</option>
             </param>
+            <param name="ignore_case" type="boolean" checked="false" truevalue="f" falsevalue=""
+                   label="ignoring case" help="Turn lowercase symbols to upper case before comparing values in this column. (-f)" />
+            <param name="ignore_leading_blanks" type="boolean" checked="false" truevalue="b" falsevalue=""
+                   label="ignoring leading blanks" help="This option can be useful with Alphabetical and Natural sort (which treat spaces as actual characters) or to prevent unwanted offsets if you specified a range of character positions to consider." />
         </repeat>
 
         <param name="unique" type="boolean" checked="false" truevalue="--unique" falsevalue=""
             label="Output unique values" help="Print only unique values, based on sorted key columns. See help section for details. (--unique)" />
-        <param name="ignore_case" type="boolean" checked="false" truevalue="-i" falsevalue=""
-            label="Ignore case" help="Sort and Join key column values regardless of upper/lower case letters. (-i)" />
     </inputs>
     <outputs>
         <data name="outfile" format_source="infile" metadata_source="infile"/>
     </outputs>
     <tests>
-        <test>
+        <test expect_num_outputs="1">
             <param name="infile" value="sort1.bed"/>
             <param name="header" value="3"/>
             <repeat name="sortkeys">
@@ -72,7 +84,7 @@
             </repeat>
             <output name="outfile" file="sort_result1.bed"/>
         </test>
-        <test>
+        <test expect_num_outputs="1">
             <param name="infile" value="sort1.bed"/>
             <param name="header" value="3"/>
             <repeat name="sortkeys">
@@ -87,7 +99,7 @@
             </repeat>
             <output name="outfile" file="sort_result2.bed"/>
         </test>
-        <test>
+        <test expect_num_outputs="1">
             <param name="infile" value="sort2.bed"/>
             <repeat name="sortkeys">
                 <param name="column" value="5"/>
@@ -95,6 +107,80 @@
                 <param name="order" value=""/>
             </repeat>
             <output name="outfile" file="sort_result3.bed"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="infile" value="sort3.tabular"/>
+            <param name="header" value="0"/>
+            <param name="unique" value="false"/>
+            <repeat name="sortkeys">
+                <param name="column" value="2"/>
+                <param name="start_charpos" value="7"/>
+                <param name="order" value=""/>
+                <param name="style" value="n"/>
+            </repeat>
+            <repeat name="sortkeys">
+                <param name="column" value="2"/>
+                <param name="start_charpos" value="4"/>
+                <param name="end_charpos" value="5"/>
+                <param name="order" value=""/>
+                <param name="style" value="n"/>
+            </repeat>
+            <repeat name="sortkeys">
+                <param name="column" value="2"/>
+                <param name="start_charpos" value="1"/>
+                <param name="end_charpos" value="2"/>
+                <param name="order" value="r"/>
+                <param name="style" value="n"/>
+            </repeat>
+            <output name="outfile" file="sorted3.tabular" ftype="tabular" />
+        </test>
+        <!-- Test ignore_case param -->
+        <test expect_num_outputs="1">
+            <param name="infile" value="sort4.tabular"/>
+            <param name="header" value="1"/>
+            <param name="unique" value="false"/>
+            <repeat name="sortkeys">
+                <param name="column" value="1"/>
+                <param name="order" value=""/>
+                <param name="style" value=""/>
+                <param name="ignore_case" value="true"/>
+            </repeat>
+            <repeat name="sortkeys">
+                <param name="column" value="3"/>
+                <param name="order" value="r"/>
+                <param name="style" value="n"/>
+            </repeat>
+            <output name="outfile" file="sorted4_partial.tabular" ftype="tabular" />
+        </test>
+        <!-- Test ignore_leading_blanks param -->
+        <test expect_num_outputs="1">
+            <param name="infile" value="sort4.tabular"/>
+            <param name="header" value="1"/>
+            <param name="unique" value="false"/>
+            <repeat name="sortkeys">
+                <param name="column" value="1"/>
+                <param name="start_charpos" value="1"/>
+                <param name="end_charpos" value="4"/>
+                <param name="order" value=""/>
+                <param name="style" value=""/>
+                <param name="ignore_case" value="true"/>
+                <param name="ignore_leading_blanks" value="true"/>
+            </repeat>
+            <repeat name="sortkeys">
+                <param name="column" value="1"/>
+                <param name="start_charpos" value="5"/>
+                <param name="order" value=""/>
+                <param name="style" value=""/>
+                <param name="ignore_case" value="true"/>
+                <param name="ignore_leading_blanks" value="true"/>
+            </repeat>
+            <repeat name="sortkeys">
+                <param name="column" value="3"/>
+                <param name="order" value="r"/>
+                <param name="style" value="n"/>
+                <param name="ignore_leading_blanks" value="true"/>
+            </repeat>
+            <output name="outfile" file="sorted4.tabular" ftype="tabular" />
         </test>
     </tests>
     <help>
@@ -171,6 +257,37 @@ Given the following list::
 
 If you're planning to use the file with another tool that expected sorted files (such as *join*), you should use the **Alphabetical sort**,  not the **Natural Sort**. Natural sort order is easier for humans, but is unnatural for computer programs.
 
+-----
+
+**Example - Sorting based on parts of column values**
+
+The above column of chromosomes, with their constant prefix, could have been sorted in natural order also with the **Fast numeric sort** and **considering its characters from** character 4 only.
+
+In general, sorting based on just a range of characters in a column can be useful for sorting values with internal structure, in a single tool run.
+
+Consider, for example, the following column of dates, which is unfortunately not ISO-8601 formatted::
+
+    10/24/2025
+    09/18/1974
+    12/16/1998
+    03/04/2007
+
+You could modify these values with other tools first, but you can achieve correct chronological sort order with a single run of the sort tool like this:
+
+- Do a **Fast numeric sort** on the column **considering its characters from** character 7 (the start of the year).
+- Resolve ties (using another column selection section) with another **Fast numeric sort** on the same column **considering its characters from** character 1 **to and including** character 2 (the month representation).
+- Resolve remaining ties with a third **Fast numeric sort** on again the same column **considering its characters from** character 4 **to and including** character 5 (the day representation).
+
+This will result in the ascending chronological order::
+
+    09/18/1974
+    11/17/1998
+    11/18/1998
+    12/16/1998
+    03/04/2007
+    10/24/2025
+
+Before relying on in-column character ranges, make extra sure that all values are formatted consistently (in the above example, that all dates use two digits for days and months and the same overall date format).
 ]]>
   </help>
   <expand macro="citations" />
