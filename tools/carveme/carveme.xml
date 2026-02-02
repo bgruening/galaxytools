@@ -1,0 +1,179 @@
+<tool id="carveme" name="CarveMe" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.1">
+    <description>reconstruct genome-scale metabolic models</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.6.6</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <xml name="biotools">
+            <xrefs>
+                <xref type="bio.tools">CarveMe</xref>
+            </xrefs>
+        </xml>
+    </macros>
+    <requirements>
+        <requirement type='package' version="@TOOL_VERSION@">carveme</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+    mkdir carve_tmp &&
+    ln -s '$genome' carve_tmp/input_genome.fasta &&
+    carve carve_tmp/input_genome.fasta
+    $input_format
+    $output_format
+    $universe
+    #if str($advanced.mediadb.use_mediadb) == "yes"
+        --mediadb '$advanced.mediadb.mediadb_file'
+        #if $advanced.mediadb.gapfill
+            --gapfill $advanced.mediadb.gapfill
+        #end if
+        #if $advanced.mediadb.init
+            --init $advanced.mediadb.init
+        #end if
+    #end if
+    #if $advanced.soft
+        --soft '$advanced.soft'
+    #end if
+    #if $advanced.hard
+        --hard '$advanced.hard'
+    #end if
+    #if $advanced.reference
+        --reference '$advanced.reference'
+    #end if
+    #if $advanced.universe_file
+        --universe-file '$advanced.universe_file'
+    #end if
+    --diamond-args '--more-sensitive --top 10 --quiet --tmpdir carve_tmp'
+    --solver scip
+    --output '$model'
+    ]]></command>
+    <inputs>
+    <param name="genome" label="Genome file" type="data" format="fasta" optional="false" multiple="false"/>
+    <param name="input_format"
+        label="Genome file format"
+        type="select"
+        optional="false"
+        multiple="false">
+        <option value="" selected="true">Protein FASTA</option>
+        <option value="--dna">DNA FASTA</option>
+    </param>
+    <param name="output_format"
+       label="Output format:"
+       type="select"
+       optional="false"
+       multiple="false">
+        <option value="" selected="true">SBML</option>
+        <option value="--fc2">SBML-fbc2</option>
+        <option value="--cobra">Cobra (legacy)</option>
+    </param>
+    <param name="universe"
+        label="Pre-built universe model"
+        type="select"
+        optional="false"
+        multiple="false">
+        <option value="" selected="true">Bacteria</option>
+        <option value="--universe grampos">Gram Positive</option>
+        <option value="--universe gramneg">Gram Negative</option>
+        <option value="--universe cyanobacteria">Cyanobacteria</option>
+        <option value="--universe archaea">Archaea</option>
+    </param>
+    <section name="advanced" title="Advanced options" expanded="false">
+        <conditional name="mediadb">
+            <param name="use_mediadb" type="select" label="Use selected medium for gapfilling or to initialize the model?">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no">
+            </when>
+            <when value="yes">
+                <param name="mediadb_file" type="data" format="tabular" label="Media database file"
+                    help="Tabular file with medium and compounds (see example below)."/>
+                <param argument="--gapfill" label="Medium ID for gapfilling" type="text" optional="true"/>
+                <param argument="--init" label="Medium ID to initialize the model" type="text" optional="true"/>
+            </when>
+        </conditional>
+        <param argument="--soft" label="Soft constraints file" type="data" format="tabular" optional="true"/>
+        <param argument="--hard" label="Hard constraints file" type="data" format="tabular" optional="true"/>
+        <param argument="--reference" label="Manually curated model of a close reference species" type="data" format="sbml" optional="true"/>
+        <param argument="--universe_file" label="Customized universe file (SBML format)"  type="data" format="sbml" optional="true"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="model" format="sbml"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="genome" value="test.faa"/>
+            <output name="model" ftype="sbml">
+                <assert_contents>
+                    <has_text text='compartment="C_c"'/>
+                    <has_text text='compartment="C_e"'/>
+                    <has_text text="R_EX_o2_e"/>
+                    <has_text text="R_EX_co2_e"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help>
+
+CarveMe reconstructs genome-scale metabolic models of prokaryotes using an annotated genome to 'carve' a universal model.
+
+Genome file:
+ - An annotation input is required as a protein or DNA FASTA file.
+
+Universe:
+ - The default universe is 'bacteria', but alternative, more specific, universes are available for Gram-Positive/Negative, Cyanobacteria and Archaea.
+ - Customized universes might be uploaded by the user (e.g. for yeast reconstructions).
+
+Selected media:
+ - Provided a media database, it can be used to enforce growth in a specific medium (**gapfilling**), or to initialize the model. 
+ - The media database file must be in a tabular format (.tsv) containing identifiers for each medium and the respective compounds: 
+ 
+          +---------+------------+
+          |  medium |  compounds |
+          +=========+============+
+          |   LB    |   glc      |
+          +---------+------------+  
+          |   LB    |   pro__L   |
+          +---------+------------+
+          |   LB    |   ile__L   |
+          +---------+------------+
+          |   ...   |    ...     |
+          +---------+------------+
+          |   M9    |   o2       |
+          +---------+------------+
+          |   M9    |   pi       |
+          +---------+------------+
+          |   M9    |   so4      |
+          +---------+------------+
+
+Constraints:
+ - Reaction directionalities can be enforced with soft constraints in a tabular file (.tsv) **without a header**:
+
+          +---------+--------+  
+          | R_XXX1  |   -1   |
+          +---------+--------+
+          | R_XXX2  |    0   |
+          +---------+--------+
+
+      Columns: reaction identifier, directionality (1:forward, -1:backward, 0:blocked)
+          
+ 
+ - Reaction bounds can be enforced using a tabular file (.tsv) **without a header**:
+
+          +---------+---------+---------+
+          | R_XXX1  |   -10   |    10   |
+          +---------+---------+---------+
+          | R_XXX2  |    0    |    10   |
+          +---------+---------+---------+
+    
+      Columns: reaction identifier, lower bound, upper bound
+    
+
+
+Note: Different solvers may result in slightly different models. 
+Here, the reconstructions rely on the open source solver SCIP. 
+For local installations, CPLEX or Gurobi are faster alternatives.
+
+    </help>
+    <citations>
+        <citation type="doi">10.1093/nar/gky537</citation>
+    </citations>    
+</tool>
