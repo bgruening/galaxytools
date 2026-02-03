@@ -1,0 +1,158 @@
+<tool id="3dtrees_potree" name="3Dtrees: Potree Converter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>Convert LAS/LAZ point clouds to Potree octree format for web visualization</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_potree:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir -p data &&
+        #for $f in $input
+            ln -s '$f' data/'${f.element_identifier}.laz' &&
+        #end for
+        python /src/run.py
+        --source data
+        --outdir output
+        --encoding '$encoding'
+        --method '$method'
+        #if $attributes
+            --attributes '$attributes'
+        #end if
+        $keep_chunks
+        $no_chunking
+        $no_indexing
+        #if $generate_page
+            --generate-page '$generate_page'
+        #end if
+        2>&1
+        ]]>
+    </command>
+    <inputs>
+        <param name="input" type="data" format="laz" multiple="true" label="Point Cloud Files" help="Input LAS/LAZ files to convert to Potree format" />
+        <param argument="--encoding" type="select" label="Encoding" help="Compression encoding for output">
+            <option value="BROTLI" selected="true">Brotli</option>
+            <option value="UNCOMPRESSED">Uncompressed</option>
+        </param>
+        <param argument="--method" type="select" label="Sampling Method" help="Point sampling method for octree generation">
+            <option value="poisson" selected="true">Poisson</option>
+            <option value="poisson_average">Poisson Average</option>
+            <option value="random">Random</option>
+        </param>
+        <param argument="--attributes" type="text" optional="true" label="Attributes" help="Comma-separated list of attributes to include in output (e.g., 'rgb,intensity,classification'). Leave empty to use defaults." >
+             <validator type="regex" message="Only letters and commas are allowed">^[a-zA-Z,]+$</validator>
+        </param>
+        <param argument="--keep-chunks" type="boolean" truevalue="--keep-chunks" falsevalue="" checked="false" label="Keep Chunks" help="Skip deleting temporary chunks during conversion" />
+        <param argument="--no-chunking" type="boolean" truevalue="--no-chunking" falsevalue="" checked="false" label="No Chunking" help="Disable chunking phase" />
+        <param argument="--no-indexing" type="boolean" truevalue="--no-indexing" falsevalue="" checked="false" label="No Indexing" help="Disable indexing phase" />
+        <param name="generate_page" type="text" optional="true" label="Generate Page" help="Generate a ready-to-use web page with the given name (e.g., 'viewer'). Leave empty to skip page generation.">
+            <validator type="regex" message="Only letters are allowed">^[a-zA-Z,]</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <!-- Collection output - discovers files in output directory -->
+        <collection name="potree_output" type="list" label="Potree Output">
+            <discover_datasets pattern="(?P&lt;designation&gt;metadata)\.json$" directory="output" format="json" recurse="true"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;hierarchy)\.bin$" directory="output" format="binary" recurse="true"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;octree)\.bin$" directory="output" format="binary" recurse="true"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;log)\.txt$" directory="output" format="txt" recurse="true"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.html$" directory="output" format="html"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="mikro.laz" ftype="laz"/>
+            <param name="generate_page" value="test"/>
+            <output_collection name="potree_output" type="list" count="5">
+                <element name="metadata" ftype="json">
+                    <assert_contents>
+                        <has_json_property_with_value property="points" value="12917" />
+                    </assert_contents>
+                </element>
+                <element name="hierarchy" ftype="binary">
+                    <assert_contents>
+                        <has_size value="2500" delta="500"/>
+                    </assert_contents>
+                </element>
+                <element name="octree" ftype="binary">
+                    <assert_contents>
+                        <has_size value="135000" delta="50000"/>
+                    </assert_contents>
+                </element>
+                <element name="log" ftype="txt">
+                    <assert_contents>
+                        <has_text text="counting mikro.laz"/>
+                    </assert_contents>
+                </element>
+                <element name="test" ftype="html">
+                    <assert_contents>
+                        <has_text text='Potree.loadPointCloud("./pointclouds/test/metadata.json", "test"'/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help>
+
+**What it does**
+
+This tool converts LAS/LAZ point cloud files to the Potree octree format for efficient web-based visualization using the Potree viewer.
+
+**Key features:**
+
+1. **Octree Level-of-Detail (LOD)**: Creates an efficient hierarchical structure for progressive rendering
+2. **Multiple compression options**: Supports BROTLI compression for smaller file sizes
+3. **Flexible sampling methods**: Choose between Poisson, Poisson Average, or Random sampling
+4. **Web-ready output**: Generates files that can be directly served for Potree viewer visualization
+5. **Optional web page generation**: Can generate a ready-to-use HTML viewer page
+
+-----
+
+**Input**
+
+- **Point Cloud Files**: Input LAS/LAZ files to convert
+- **Encoding**: Compression type (BROTLI for compression, UNCOMPRESSED for raw data, DEFAULT)
+- **Sampling Method**: Algorithm for point sampling during octree generation (Poisson, Poisson Average, Random)
+- **Attributes**: Optional comma-separated list of point attributes to include in output
+- **Keep Chunks**: Preserve temporary chunk files after conversion
+- **No Chunking**: Disable the chunking phase
+- **No Indexing**: Disable the indexing phase
+- **Generate Page**: Create a web viewer page with the specified name
+
+-----
+
+**Output**
+
+The tool produces a collection containing:
+
+- **metadata** (JSON): Metadata file describing the octree structure and point cloud properties
+- **hierarchy** (binary): Binary file containing the octree hierarchy
+- **octree** (binary): Binary file containing the point data
+- **log** (text): Conversion log file
+
+When **Generate Page** is specified (e.g., "viewer"):
+
+- **{name}** (HTML): Ready-to-use HTML page for visualizing the point cloud
+
+Note: The libs/ folder required for the web viewer is not included in outputs. 
+For production use, get the Potree libraries from: https://github.com/potree/potree/tree/develop/libs
+
+-----
+
+**Workflow Integration**
+
+This tool converts point cloud data to an optimized web visualization format using PotreeConverter's octree algorithm.
+The output can be served via a web server and visualized using the Potree viewer.
+
+    </help>
+    <creator>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="bibtex">@misc{potreeconverter, title = {PotreeConverter: Create multi-resolution octree structure}, author = {Markus Schütz}, year = {2024}, url = {https://github.com/potree/PotreeConverter}}</citation>
+        <citation type="bibtex">
+            @misc{3dtrees_potree, title = {3Dtrees: Potree Converter}, author = {3Dtrees-Project}, year = {2025}}
+        </citation>
+    </citations>
+</tool>
