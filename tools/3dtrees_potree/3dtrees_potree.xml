@@ -2,7 +2,7 @@
     <description>Convert LAS/LAZ point clouds to Potree octree format for web visualization</description>
     <macros>
         <token name="@TOOL_VERSION@">1.0.0</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
     <requirements>
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees_potree:@TOOL_VERSION@</container>
@@ -23,14 +23,23 @@
         $keep_chunks
         $no_chunking
         $no_indexing
+        $generate_page
         #if $generate_page
-            --generate-page '$generate_page'
+            &&
+
+            ## Setup HTML with extra files for Galaxy viewing
+            cp output/potree-vis.html '$viewer_html' &&
+            mkdir -p '$viewer_html.files_path' &&
+            cp -r /opt/PotreeConverter/resources/page_template/libs '$viewer_html.files_path/' &&
+            cp -r output/pointclouds '$viewer_html.files_path/' &&
+            chmod -R a+rX '$viewer_html.files_path'
         #end if
         2>&1
         ]]>
     </command>
     <inputs>
         <param name="input" type="data" format="laz" multiple="true" label="Point Cloud Files" help="Input LAS/LAZ files to convert to Potree format" />
+        <param argument="--generate-page" type="boolean" truevalue="-p potree-vis" falsevalue="" checked="false" label="Generate interactive Viewer" help="Generate a ready-to-use HTML viewer page for in-Galaxy visualization" />
         <param argument="--encoding" type="select" label="Encoding" help="Compression encoding for output">
             <option value="BROTLI" selected="true">Brotli</option>
             <option value="UNCOMPRESSED">Uncompressed</option>
@@ -46,25 +55,32 @@
         <param argument="--keep-chunks" type="boolean" truevalue="--keep-chunks" falsevalue="" checked="false" label="Keep Chunks" help="Skip deleting temporary chunks during conversion" />
         <param argument="--no-chunking" type="boolean" truevalue="--no-chunking" falsevalue="" checked="false" label="No Chunking" help="Disable chunking phase" />
         <param argument="--no-indexing" type="boolean" truevalue="--no-indexing" falsevalue="" checked="false" label="No Indexing" help="Disable indexing phase" />
-        <param name="generate_page" type="text" optional="true" label="Generate Page" help="Generate a ready-to-use web page with the given name (e.g., 'viewer'). Leave empty to skip page generation.">
-            <validator type="regex" message="Only letters are allowed">^[a-zA-Z,]</validator>
-        </param>
     </inputs>
     <outputs>
+        <!-- HTML viewer for in-Galaxy viewing (when generate_page is specified) -->
+        <data name="viewer_html" format="html" label="Potree Visualization">
+            <filter>generate_page</filter>
+        </data>
         <!-- Collection output - discovers files in output directory -->
         <collection name="potree_output" type="list" label="Potree Output">
             <discover_datasets pattern="(?P&lt;designation&gt;metadata)\.json$" directory="output" format="json" recurse="true"/>
             <discover_datasets pattern="(?P&lt;designation&gt;hierarchy)\.bin$" directory="output" format="binary" recurse="true"/>
             <discover_datasets pattern="(?P&lt;designation&gt;octree)\.bin$" directory="output" format="binary" recurse="true"/>
             <discover_datasets pattern="(?P&lt;designation&gt;log)\.txt$" directory="output" format="txt" recurse="true"/>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.html$" directory="output" format="html"/>
         </collection>
     </outputs>
     <tests>
-        <test expect_num_outputs="1">
+        <test expect_num_outputs="2">
             <param name="input" value="mikro.laz" ftype="laz"/>
-            <param name="generate_page" value="test"/>
-            <output_collection name="potree_output" type="list" count="5">
+            <param name="generate_page" value="true"/>
+            <!-- HTML viewer for Galaxy -->
+            <output name="viewer_html" ftype="html">
+                <assert_contents>
+                    <has_text text='Potree.loadPointCloud("./pointclouds/potree-vis/metadata.json", "potree-vis"'/>
+                </assert_contents>
+            </output>
+            <!-- Collection output for octree data -->
+            <output_collection name="potree_output" type="list" count="4">
                 <element name="metadata" ftype="json">
                     <assert_contents>
                         <has_json_property_with_value property="points" value="12917" />
@@ -83,11 +99,6 @@
                 <element name="log" ftype="txt">
                     <assert_contents>
                         <has_text text="counting mikro.laz"/>
-                    </assert_contents>
-                </element>
-                <element name="test" ftype="html">
-                    <assert_contents>
-                        <has_text text='Potree.loadPointCloud("./pointclouds/test/metadata.json", "test"'/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -133,17 +144,19 @@ The tool produces a collection containing:
 
 When **Generate Page** is specified (e.g., "viewer"):
 
-- **{name}** (HTML): Ready-to-use HTML page for visualizing the point cloud
+- **{name} Potree Viewer** (HTML): Interactive viewer that can be viewed directly in Galaxy
+  - Note: This tool is meant for visualization - other tools (eg. measurements, camera) may not work properly
+  - Includes libs/ and pointclouds/ as extra files
 
-Note: The libs/ folder required for the web viewer is not included in outputs. 
-For production use, get the Potree libraries from: https://github.com/potree/potree/tree/develop/libs
+- **{name} Potree Viewer Package (Download)** (ZIP): Self-contained package for local use
+  - Download, extract, and open files in PotreeViewer.
 
 -----
 
 **Workflow Integration**
 
 This tool converts point cloud data to an optimized web visualization format using PotreeConverter's octree algorithm.
-The output can be served via a web server and visualized using the Potree viewer.
+The output can be downloaded and visualized using the Potree viewer.
 
     </help>
     <creator>
