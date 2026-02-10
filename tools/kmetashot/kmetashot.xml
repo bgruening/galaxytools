@@ -2,108 +2,131 @@
     <description>an alignment-free taxonomic classifier based on k-mer/minimizer counting</description>
     <macros>
         <token name="@TOOL_VERSION@">2.0</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
         <token name="@PROFILE@">25.0</token>
     </macros>
+    <xrefs>
+        <xref type="bio.tools">kmetashot</xref>
+    </xrefs>
     <requirements>
         <requirement type="package" version="@TOOL_VERSION@">kmetashot</requirement>
     </requirements>
     <command detect_errors="exit_code">
-        <![CDATA[
-            #import re
+    <![CDATA[
 
-            mkdir -p output bins &&
+        mkdir -p output bins &&
 
-            #for $file in $bins_dir:
-                ln -s '$file' 'bins/$file.element_identifier' &&
+        #if $fasta_input.input_type == "mags":
+            #for $file in $fasta_input.bins_dir:
+                ln -s '$file' 'bins/$file.element_identifier.$file.extension' &&
             #end for
+        #else:
+            ln -s '$fasta_input.contigs_file' 'bins/$fasta_input.contigs_file.element_identifier.$fasta_input.contigs_file.extension' &&
+        #end if
 
-            kMetaShot_classifier_NV.py 
+        kMetaShot_classifier_NV.py
+        #if $fasta_input.input_type == "mags":
             -b bins
-            -o output
-            -r '$reference.fields.path'
-            -p "\${GALAXY_SLOTS:-10}"
+        #else:
+            -b 'bins/$fasta_input.contigs_file.element_identifier.$fasta_input.contigs_file.extension'
+        #end if
+            -o output 
+            -r '$reference.fields.path' 
+            -p \${GALAXY_SLOTS:-4}
             -a ${ass2ref}
-
-        ]]>
+    ]]>
     </command>
     <inputs>
-        <param argument="--bins_dir" type="data" multiple="true" format="fasta,fasta.gz" label="Bin(s)/MAG(s) fasta file"/>
-        <param argument="--reference" type="select" label="Select reference">
+        <conditional name="fasta_input">
+            <param name="input_type"
+                type="select"
+                label="Input type">
+                <option value="mags">Bin(s)/MAG(s)</option>
+                <option value="contigs">Contigs/long reads FASTA(s)</option>
+            </param>
+
+            <when value="mags">
+                <param name="bins_dir"
+                    type="data"
+                    multiple="true"
+                    format="fasta,fasta.gz"
+                    label="Bin(s)/MAG(s) FASTA file(s)"
+                    help="Collection of FASTA files. kMetaShot will analyze each fasta file as one bin/MAG"/>
+            </when>
+
+            <when value="contigs">
+                <param name="contigs_file"
+                    type="data"
+                    format="fasta,fasta.gz"
+                    label="Contigs fasta file"
+                    help="FASTA file containing contigs or long reads (Better if >= 1kbp). KMetaShot will analyze each contig individually."/>
+            </when>
+        </conditional> 
+        <param argument="reference" type="select" label="Select a reference database.">
             <options from_data_table="kmetashot">
                 <filter type="sort_by" column="2"/>
             </options>
             <validator type="no_options" message="No reference data for kMetaShot is installed. Please contact the Galaxy adminstrators to request one be installed."/>
         </param>
-        <param argument="--ass2ref" type="float" min="0.0" value="0.0" max="1.0" label="Set ass2ref parameter" help="Ass2ref is a ratio between the number of MAG minimizers and the reference minimizers related to the assigned strain"/>
+        <param argument="ass2ref" type="float" min="0.0"
+               value="0.0" max="1.0"
+               label="Set ass2ref parameter"
+               help="Ass2ref is a ratio between the number of MAG minimizers and the reference minimizers. It is a reliability index for strain classification only. Strain and Species classification for MAGs with ass2ref \&lt;= user set threshold are zeroed"/>
     </inputs>
     <outputs>
-        <collection name="result" type="list" label="${tool.name} on ${on_string}: RESULTS">
-            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.csv" format="tabular" directory="output"/>
-        </collection>
+        <data name="result_ass2ref_0"
+            format="csv"
+            label="${tool.name} on ${on_string}: Taxonomic Classification"
+            from_work_dir="output/kMetaShot_classification_resume.csv" />
+        <data name="result_ass2ref_not_0"
+              format="csv"
+              label="${tool.name} on ${on_string} with ass2ref ${ass2ref}: Taxonomic Classification"
+              from_work_dir="output/kMetaShot_classification_resume_a2r*.csv">
+            <filter>ass2ref != 0.0</filter>
+        </data>
     </outputs>
-    <tests>
-        <test expect_exit_code="1" expect_failure="true">
-            <param name="bins_dir" value="all_contig.fasta.gz" ftype="fasta.gz"/>
+    <!-- <tests>
+
+         The tool needs a 20 gb ref. DB and at leatst 40gb memory, so tests
+        need to be done locally
+        <test expect_num_outputs="2">
+            <conditional name="fasta_input">
+                <param name="input_type" value="contigs"/>
+                <param name="contigs_file" value="all_contig.fasta.gz" ftype="fasta.gz"/>
+            </conditional>
             <param name="ass2ref" value="0.2"/>
-            <assert_command>
-                <has_text text="kMetaShot_classifier_NV.py -b bins"/>
-                <has_text text="-o output"/>
-                <has_text text="-a 0.2"/>
-            </assert_command>
-         </test>
-        <!-- Since this tool need his ref data to work there is no way to test this tool really because of this there is only this test to see of the tool is starting or not 
-        <test expect_num_outputs="1">
-            <param name="bins_dir" value="all_contig.fasta.gz" ftype="fasta.gz"/>
-	    <param name="ass2ref" value="0.2"/>
-	    <param name="reference" value="25-05-22"/>
-        <output_collection name="result" type="list" count="2"/> 
-            <assert_command>
-                <has_text text="kMetaShot_classifier_NV.py -b bins"/>
-                <has_text text="-o output"/>
-                <has_text text="-a 0.2"/>
-            </assert_command>
+            <param name="reference" value="25-05-22"/>
+            <output name="result_ass2ref_0" file="kMetaShot_classification_resume.csv" compare="sim_size"/>
+            <output name="result_ass2ref_not_0" file="kMetaShot_classification_resume_a2r20.csv" compare="sim_size"/>
         </test>
         <test expect_num_outputs="1">
-            <param name="bins_dir" value="all_contig.fasta.gz" ftype="fasta.gz"/>
-	    <param name="ass2ref" value="0.3"/>
-	    <param name="reference" value="25-05-22"/>
-        <output_collection name="result" type="list" count="2"/> 
-            <assert_command>
-                <has_text text="kMetaShot_classifier_NV.py -b bins"/>
-                <has_text text="-o output"/>
-                <has_text text="-a 0.3"/>
-            </assert_command>
+            <conditional name="fasta_input">
+                <param name="input_type" value="contigs"/>
+                <param name="contigs_file" value="all_contig.fasta.gz" ftype="fasta.gz"/>
+            </conditional>
+            <param name="ass2ref" value="0.0"/>
+            <param name="reference" value="25-05-22"/>
+            <output name="result_ass2ref_0" file="kMetaShot_classification_resume.csv" compare="sim_size"/>
         </test>
-        <test expect_num_outputs="1">
-            <param name="bins_dir" value="all_contig.fasta.gz" ftype="fasta.gz"/>
-	    <param name="ass2ref" value="0.0"/>
-	    <param name="reference" value="25-05-22"/>
-        <output_collection name="result" type="list" count="1"/> 
-            <assert_command>
-                <has_text text="kMetaShot_classifier_NV.py -b bins"/>
-                <has_text text="-o output"/>
-                <has_text text="-a 0.0"/>
-            </assert_command>
-        </test>
-    -->
-    </tests>
+    </tests> -->
     <help>
         <![CDATA[
         
-            This tool is a taxonomic classifier which used a new algorithm which is alignment free.
-            The data from the input files will be transformed into bites and each base is represented by 2 bites.
-
-            A = 00
-            C = 01
-            G = 10
-            T = 11
-
-            Therefore the reference which was build for this can used this transformed data and match them to create a classification for the bin(s)/MAG(s).
+            This tool is an alignment free taxonomic classifier for MAGs and/or contigs/long reads. It is suggested to use contigs mode classification for sequences longer than 1kbp.
 
             **Input**
 
-            Fasta file(s) in fasta format or/and fasta.gz format (.fa, .fasta, .fna, .fa.gz, .fasta.gz, .fna.gz are allowed extensions)
+            ***Bin(s)/MAG(s) classification***
+
+            Select 'Bin(s)/MAG(s)' and create a file collection with one or more fasta/fasta.gz files (.fa, .fasta, .fna, .fa.gz, .fasta.gz, .fna.gz are allowed extensions)
+
+            ***Contigs/long reads FASTA(s) classification***
+
+            In this way each sequence in the FASTA file can be classified by kMetaShot. Select 'Contigs/long reads FASTA' file (.fa, .fasta, .fna, .fa.gz, .fasta.gz, .fna.gz are allowed extensions). It is possible to create collection of FASTA files and classify them as contigs/long reads.
+
+            ***Ass2ref***
+
+            Classification filter based on ass2ref parameter ranging between 0 and 1. Default 0. Ass2ref is a ratio between the number of MAG minimizers and the reference minimizers related to the assigned strain.
 
             **Reference**
 
@@ -111,7 +134,7 @@
 
             **Output**
 
-            The Output is a collection with csv file(s) which contained the classification for the inputted bin(s)/MAG(s) 
+            The Output is a csv file(s) which contained the classification for the inputted bin(s)/MAG(s). In case ass2ref=0 you have only one output. In case ass2ref>0 you have two output, one for ass2ref=0 and one for ass2ref>0.
 
         ]]>
     </help>  
