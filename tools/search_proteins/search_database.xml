@@ -1,0 +1,110 @@
+<tool id="search_protein_search_database" name="Search Protein Database" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Search FAISS database with embedded queries and align with MMseqs2</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir results &&
+        mkdir -p results/intermediate_files &&       
+        ln -s '$query_embeddings_npy' results/intermediate_files/query_embeddings.npy &&
+        ln -s '$query_embeddings_names' results/intermediate_files/query_embeddings.names.txt &&
+        python /app/search_database.py
+            --database '$database.fields.path'
+            --output results/
+            --query_sequences '$query_sequences'
+            --num_threads \${GALAXY_SLOTS:-8}
+            #if $outfmt:
+                --outfmt '$outfmt'
+            #end if
+    ]]></command>
+    <inputs>
+        <param name="query_sequences" type="data" format="fasta" label="Original query sequences (FASTA)" help="Same FASTA file used in the embedding step, needed for MMseqs2 alignment" />
+        <param name="query_embeddings_npy" type="data" format="npy" label="Query embeddings (npy)" help="Output from the Embed Query tool" />
+        <param name="query_embeddings_names" type="data" format="txt" label="Query embedding names" help="Output from the Embed Query tool" />
+        <param name="database" type="select" label="FAISS Database" help="Select FAISS database">
+            <options from_data_table="faiss_protein_databases">
+                <filter type="sort_by" column="3"/>
+                <filter type="static_value" column="version" value="@TOOL_VERSION@"/>
+            </options>
+        </param>
+        <param name="outfmt" type="select" optional="true" label="MMseqs2 output format" help="Format for MMseqs2 alignment output">
+            <option value="0" selected="true">Tabular with header (0)</option>
+            <option value="1">Tabular without header (1)</option>
+            <option value="2">BLAST tabular (2)</option>
+            <option value="3">BLAST tabular with comments (3)</option>
+            <option value="4">SAM (4)</option>
+            <option value="5">Taxonomic classification (5)</option>
+        </param>
+    </inputs>
+    
+    <outputs>
+        <data name="matches_fasta" from_work_dir="results/matches.fasta" format="fasta" label="${tool.name} on ${on_string}: Matched proteins (FASTA)"/>
+        <data name="matches_mmseqs2" from_work_dir="results/matches.mmseqs2" format="tabular" label="${tool.name} on ${on_string}: MMseqs2 alignments"/>
+        <data name="all_results" from_work_dir="results/intermediate_files/all_results.fasta" format="fasta" label="${tool.name} on ${on_string}: All similar proteins (FASTA)"/>
+    </outputs>
+    
+    <tests>
+        <test expect_exit_code="0">
+            <param name="query_sequences" value="queries.fasta"/>
+            <param name="query_embeddings_npy" value="query_embeddings.npy"/>
+            <param name="query_embeddings_names" value="query_embeddings.names.txt"/>
+            <param name="database" value="faiss-demo-db-20260203"/>
+            <param name="outfmt" value="0"/>
+            <assert_stdout>
+                <has_text text="No results, exiting"/>
+            </assert_stdout>
+        </test>
+    </tests>
+    
+    <help><![CDATA[
+**What it does**
+
+This tool searches a pre-built FAISS database using embedded query sequences and performs alignment 
+with MMseqs2. It is the second step in the protein search pipeline.
+
+**Pipeline Overview**
+
+1. **Embed queries** - Convert protein sequences into embeddings (previous step)
+2. **Search database** - Find similar sequences using FAISS and align with MMseqs2
+
+**Inputs**
+
+- **FAISS Database**: Pre-built database containing embedded protein sequences
+- **Original query sequences**: The same FASTA file used for embedding (required for MMseqs2 alignment)
+- **Query embeddings (npy)**: Output from the Embed Query tool
+- **Query embedding names**: Text file with sequence names from the Embed Query tool
+
+**Parameters**
+
+- **MMseqs2 output format**: Choose the alignment output format
+  - Format 0 (default): Tabular with header
+  - Format 1: Tabular without header  
+  - Format 2: BLAST tabular format
+  - Format 3: BLAST tabular with comments
+  - Format 4: SAM format
+  - Format 5: Taxonomic classification
+
+**Outputs**
+
+- **matches.fasta**: Main output containing all matched protein sequences
+- **matches.mmseqs2**: Alignment results from MMseqs2
+- **all_results.fasta**: All proteins with similarity to query sequences
+
+The intermediate files directory also contains:
+- query_results_intermediate.fasta
+- query_results.tsv  
+- unique_centroids.fasta
+- matches.top_hit
+
+**Algorithm**
+
+1. Uses FAISS for fast similarity search in embedding space
+2. Retrieves candidate proteins based on embedding similarity
+3. Performs sequence alignment with MMseqs2 for validation
+4. Returns matched proteins with alignment statistics
+
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>
