@@ -9,11 +9,6 @@
     <command detect_errors="exit_code"><![CDATA[
         gfastats
         '$input_file'
-        #if $mode_condition.selector == 'statistics'
-            #if $mode_condition.statistics_condition.selector == 'assembly'
-                $mode_condition.statistics_condition.expected_genomesize
-            #end if
-        #end if
         #if $target_condition.target_option == 'true'
             $target_condition.target_sequence
             #if $target_condition.include_bed
@@ -24,17 +19,13 @@
             #end if
         #end if
         #if $mode_condition.selector == 'manipulation'
+            $mode_condition.remove_terminal_gaps
             #if $mode_condition.swiss_army_knife
                 -k $mode_condition.swiss_army_knife
             #end if
             #if $mode_condition.sort
                 --sort $mode_condition.sort
             #end if
-            #if $mode_condition.homopolymer_compress
-                --homopolymer-compress $mode_condition.homopolymer_compress
-            #end if
-            $mode_condition.discover_paths
-            $mode_condition.remove_terminal_gaps
             -o dataset.$mode_condition.output_condition.out_format
             #if $mode_condition.output_condition.out_format in ['fasta','fasta.gz']
                 #if $mode_condition.output_condition.line_length
@@ -43,8 +34,12 @@
             #end if
             #if $mode_condition.output_condition.out_format in ['gfa','gfa.gz']
                 $mode_condition.output_condition.no_sequence
+                $mode_condition.discover_paths
                 #if $mode_condition.output_condition.terminal_overlaps_condition.terminal_overlaps_select == 'yes':
                 --discover-terminal-overlaps $mode_condition.output_condition.terminal_overlaps_condition.terminal_overlaps_length
+                #end if
+                #if $mode_condition.homopolymer_compress
+                --homopolymer-compress $mode_condition.homopolymer_compress
                 #end if
             #end if
         #else if $mode_condition.selector == "statistics"
@@ -53,6 +48,7 @@
             #else if $mode_condition.statistics_condition.selector == 'coordinates'
                 --out-coord $mode_condition.statistics_condition.out_coord
             #else if $mode_condition.statistics_condition.selector == 'assembly'
+                $mode_condition.statistics_condition.expected_genomesize
                 --nstar-report
             #else
                 --segment-report
@@ -63,9 +59,19 @@
             $mode_condition.tabular > '$stats'
         #else
             --agp-to-path $mode_condition.agp_to_path
-            $mode_condition.discover_paths
-            $mode_condition.no_sequence
-            -o dataset.gfa
+            -o dataset.$mode_condition.output_condition.out_format
+            #if $mode_condition.output_condition.out_format in ['fasta','fasta.gz']
+                #if $mode_condition.output_condition.line_length
+                    --line-length $mode_condition.output_condition.line_length
+                #end if
+            #end if
+            #if $mode_condition.output_condition.out_format in ['gfa','gfa.gz']
+                $mode_condition.discover_paths
+                $mode_condition.output_condition.no_sequence
+                #if $mode_condition.output_condition.terminal_overlaps_condition.terminal_overlaps_select == 'yes':
+                --discover-terminal-overlaps $mode_condition.output_condition.terminal_overlaps_condition.terminal_overlaps_length
+                #end if
+            #end if
         #end if
         --threads \${GALAXY_SLOTS:-8}
         #if $mode_condition.selector == 'manipulation' or $mode_condition.selector == 'scaffolding'
@@ -119,9 +125,9 @@
                     <param argument="--out-format" type="select" 
                         label="Output format" help="Outputs selected sequences.">
                             <option value="fasta">FASTA</option>
-                            <option value="fasta.gz">FASTA.gz</option>
+                            <option value="fasta.gz" selected="true">FASTA.gz</option>
                             <option value="fastq">FASTQ</option>
-                            <option value="fastq.gz" selected="true">FASTQ.gz</option>
+                            <option value="fastq.gz">FASTQ.gz</option>
                             <option value="gfa">GFA</option>
                             <option value="gfa.gz">GFA.gz</option>
                     </param>
@@ -134,16 +140,12 @@
                     <when value="fastq"/>
                     <when value="fastq.gz"/>
                     <when value="gfa">
-                        <expand macro="terminal_overlaps_macro"/>
-                        <expand macro="no_sequence_macro"/>
+                        <expand macro="gfa_params_macro"/>
                     </when>
                     <when value="gfa.gz">
-                        <expand macro="terminal_overlaps_macro"/>
-                        <expand macro="no_sequence_macro"/>
+                        <expand macro="gfa_params_macro"/>
                     </when>
 		        </conditional>
-                <param argument="--discover-paths" type="boolean" truevalue="--discover-paths" falsevalue="" checked="false" label="Generates the initial set of paths" help="In the graph space, an assembly 
-                    is a collection of segments and edges/gaps between these segments. A path defines a potential walk through the segments and edges/gaps that corresponds to a hypothesis of the actual linear sequence." />
                 <param argument="--sort" type="select" label="Sort sequences" help="Specify how to sort the sequences. Ascending/descending uses the sequence/path header.">
                     <option value="" selected="true">Disabled</option>
                     <option value="ascending">Ascending</option>
@@ -196,9 +198,30 @@
             </when>
             <when value="scaffolding">
                 <param argument="--agp-to-path" type="data" format="agp" label="Input AGP file" help="Integrate the AGP information into the assembly graph as paths. The scaffolding information is converted into paths through the graph" />
-                <param argument="--discover-paths" type="boolean" truevalue="--discover-paths" falsevalue="" checked="false" label="Generates the initial set of paths" help="In the graph space an assembly 
-                    is a collection of segment and edges/gaps between these segments. A path defines a potential walk through the segments and edges/gaps that corresponds to a hypothesis of the actual linear sequence" />
-                <expand macro="no_sequence_macro"/>
+                <conditional name="output_condition">
+                    <param argument="--out-format" type="select" label="Output format" help="Outputs selected sequences.">
+                        <option value="fasta">FASTA</option>
+                        <option value="fasta.gz" >FASTA.gz</option>
+                        <option value="fastq">FASTQ</option>
+                        <option value="fastq.gz">FASTQ.gz</option>
+                        <option value="gfa" selected="true">GFA</option>
+                        <option value="gfa.gz">GFA.gz</option>
+                    </param>
+                    <when value="fasta">
+                        <expand macro="length_macro"/>
+                    </when>
+                    <when value="fasta.gz">
+                        <expand macro="length_macro"/>
+                    </when>
+                    <when value="fastq"/>
+                    <when value="fastq.gz"/>
+                    <when value="gfa">
+                        <expand macro="gfa_params_macro"/>
+                    </when>
+                    <when value="gfa.gz">
+                        <expand macro="gfa_params_macro"/>
+                    </when>
+                </conditional>
             </when>
         </conditional>
     </inputs>
@@ -365,7 +388,11 @@
             <conditional name="mode_condition">
                 <param name="selector" value="scaffolding"/>
                 <param name="agp_to_path" value="dataset_05.agp"/>
-                <param name="discover_paths" value="true"/>
+                <conditional name="output_condition">
+                    <param name="out_format" value="gfa"/>
+                    <param name="discover_paths" value="true"/>
+                    <param name="no_sequence" value="false"/>
+                </conditional>
             </conditional>
             <output name="output" value="test_10.gfa" ftype="gfa1"/>
         </test>
@@ -401,8 +428,11 @@
             <conditional name="mode_condition">
                 <param name="selector" value="scaffolding"/>
                 <param name="agp_to_path" value="dataset_05.agp"/>
-                <param name="discover_paths" value="true"/>
-                <param name="no_sequence" value="true"/>
+                <conditional name="output_condition">
+                    <param name="out_format" value="gfa"/>
+                    <param name="discover_paths" value="true"/>
+                    <param name="no_sequence" value="true"/>
+                </conditional>
             </conditional>
             <output name="output" value="test_13.gfa" ftype="gfa1"/>
         </test>
