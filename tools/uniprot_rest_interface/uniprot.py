@@ -196,6 +196,7 @@ if __name__ == "__main__":
         help="output file (default: stdout)",
     )
     mapping.add_argument("--format", default="tab", help="output format")
+    mapping.add_argument("--fields", default="", help="Fields")
 
     retrieve = subparsers.add_parser("retrieve")
     retrieve.add_argument(
@@ -284,6 +285,8 @@ if __name__ == "__main__":
         if check_id_mapping_results_ready(job_id):
             link = get_id_mapping_results_link(job_id)
             link = f"{link}?format={args.format}"
+            if args.fields:
+                link += f"&fields={args.fields}"
             print(link)
             results.extend(get_id_mapping_results_search(link, first))
             first = False
