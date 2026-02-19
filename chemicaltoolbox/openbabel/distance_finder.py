@@ -93,8 +93,6 @@ def execute(ligands_sdf, points_file, outfile):
 
 
 def main():
-    global work_dir
-
     parser = argparse.ArgumentParser(
         description="XChem distances - measure distances to particular points"
     )
