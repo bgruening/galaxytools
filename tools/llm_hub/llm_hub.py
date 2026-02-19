@@ -13,6 +13,7 @@ model = sys.argv[3]
 model_type = sys.argv[4]
 temperature_arg = sys.argv[5]
 temperature = float(temperature_arg) if temperature_arg else None
+provider = sys.argv[6]
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -20,8 +21,15 @@ if not litellm_config_file:
 with open(litellm_config_file, "r") as f:
     config = yaml.safe_load(f)
 
-litellm_api_key = config.get("LITELLM_API_KEY")
-litellm_base_url = config.get("LITELLM_BASE_URL")
+servers = config.get("servers", {})
+if servers and provider not in servers:
+    sys.exit(f"Provider '{provider}' not found in configuration.")
+
+# Select the source: specific provider config if servers exist, otherwise global config (backward compatibility)
+source = servers[provider] if servers else config
+
+litellm_api_key = source.get("LITELLM_API_KEY")
+litellm_base_url = source.get("LITELLM_BASE_URL")
 
 if not litellm_api_key:
     sys.exit(

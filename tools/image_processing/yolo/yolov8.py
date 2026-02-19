@@ -119,7 +119,6 @@ parser.add_argument("--max_det",
                           "preventing excessive outputs in dense scenes.\n\n"
                           ),
                     default=300, type=int)
-
 # For tracking
 parser.add_argument("--tracker_file",
                     help=("Path to the configuration file of the tracker used. \n"),
@@ -359,6 +358,7 @@ def save_yolo_bounding_boxes_to_txt(predictions, save_dir):
 # Main code
 if __name__ == '__main__':
     args = parser.parse_args()
+
     os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
     # Train/load model
