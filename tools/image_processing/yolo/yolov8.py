@@ -18,9 +18,9 @@ from ultralytics import YOLO
 parser = argparse.ArgumentParser(
     description='train/predict dataset with YOLOv8',
     epilog="""USAGE EXAMPLE:\n\n~~~~Prediction~~~~\n\
-        python yolov8.py --test_path=/g/group/user/data --model_path=/g/cba/models --model_name=yolov8n --save_dir=/g/group/user/results --iou=0.7 --confidence=0.5 --image_size=320 --run_dir=/g/group/user/runs --foldername=batch --headless --num_classes=1 max_det=1 --class_names_file=/g/group/user/class_names.txt\n\
+        python yolov8.py --test_path=/g/group/user/data --model_path=/g/cba/models --model_name=yolov8n --save_dir=/g/group/user/results --iou=0.7 --confidence=0.5 --image_size=320 --run_dir=/g/group/user/runs --foldername=batch --headless --num_classes=1 max_det=1 \n\
         \n~~~~Training~~~~ \n\
-        python yolov8.py --train --yaml_path=/g/group/user/example.yaml  --model_path=/g/cba/models --model_name=yolov8n --run_dir=/g/group/user/runs/ --image_size=320 --epochs=150 --scale=0.3 --hsv_v=0.5 --model_format=pt --degrees=180 --class_names_file=/g/group/user/class_names.txt""", formatter_class=RawTextHelpFormatter)
+        python yolov8.py --train --yaml_path=/g/group/user/example.yaml  --model_path=/g/cba/models --model_name=yolov8n --run_dir=/g/group/user/runs/ --image_size=320 --epochs=150 --scale=0.3 --hsv_v=0.5 --model_format=pt --degrees=180 """, formatter_class=RawTextHelpFormatter)
 parser.add_argument("--dir_path",
                     help=(
                         "Path to the training data directory."
@@ -76,9 +76,6 @@ parser.add_argument("--model_path",
 parser.add_argument("--model_format",
                     help="Format of the YOLO model i.e pt, yaml etc.",
                     default='pt', type=str)
-parser.add_argument("--class_names_file",
-                    help="Path to the text file containing class names.",
-                    type=str)
 # For training the model and prediction
 parser.add_argument("--mode",
                     help=(
@@ -299,7 +296,7 @@ def predict(model, source_datapath, **kwargs):
         iou_value = 0.5
 
     if "num_classes" in kwargs:
-        class_array = list(range(kwargs['num_classes']))
+        class_array = list(model.names.keys())
     else:
         class_array = [0, 1]
 
@@ -373,14 +370,7 @@ if __name__ == '__main__':
         validateModel(model)
     else:
         t = time.time()
-        train_save_path = os.path.expanduser('~/runs/' + args.mode + '/')
-        if os.path.isfile(os.path.join(train_save_path,
-                                       "train", "weights", "best.pt")) and (args.model_name == 'sam'):
-            model = YOLO(os.path.join(train_save_path,
-                                      "train", "weights", "best.pt"))
-        else:
-            model = YOLO(os.path.join(args.model_path,
-                         args.model_name + ".pt"))
+        model = YOLO(os.path.join(args.model_path, args.model_name + ".pt"))
         model.info(verbose=True)
         elapsed = time.time() - t
         print(colored(f"\nYOLO model loaded in : '{elapsed}' sec \n", 'white', 'on_yellow'))
@@ -487,12 +477,6 @@ if __name__ == '__main__':
                 print(colored(f"TYX mask stack saved as : '{mask_save_as}'", 'magenta'))
             print(colored(f"Tracking results saved in : '{args.save_dir}' \n", 'green'))
         elif (args.mode == "segment"):
-            # Read class names from the file
-            with open(args.class_names_file, 'r') as f:
-                class_names = [line.strip() for line in f.readlines()]
-            # Create a mapping from class names to indices
-            class_to_index = {class_name: i for i, class_name in enumerate(class_names)}
-
             # Save polygon coordinates
             for result in predictions:
                 # Create binary mask
