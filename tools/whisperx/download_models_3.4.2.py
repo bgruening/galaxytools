@@ -108,7 +108,13 @@ def download_asr_models(model_dir, token):
                 repo_id,
                 cache_dir=cache_dir,
                 token=token,
-                allow_patterns=["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"],
+                allow_patterns=[
+                    "config.json",
+                    "preprocessor_config.json",
+                    "model.bin",
+                    "tokenizer.json",
+                    "vocabulary.*",
+                ],
             )
             print(f"Downloaded: {model_name}")
         except Exception as e:
@@ -134,9 +140,19 @@ def download_pyannote_model(model_dir, token):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Download WhisperX models (lightweight, no torch required)")
-    parser.add_argument("--model-dir", default="whisperx_models", help="Directory to store downloaded models")
-    parser.add_argument("--hf-token", default=os.getenv("HF_AUTH_TOKEN"), help="HuggingFace token for gated models")
+    parser = argparse.ArgumentParser(
+        description="Download WhisperX models (lightweight, no torch required)"
+    )
+    parser.add_argument(
+        "--model-dir",
+        default="whisperx_models",
+        help="Directory to store downloaded models",
+    )
+    parser.add_argument(
+        "--hf-token",
+        default=os.getenv("HF_AUTH_TOKEN"),
+        help="HuggingFace token for gated models",
+    )
     args = parser.parse_args()
 
     model_dir = args.model_dir
