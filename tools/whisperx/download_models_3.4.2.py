@@ -1,10 +1,9 @@
-import gc
+import argparse
 import os
+import urllib.request
+from pathlib import Path
 
-import torchaudio
-from pyannote.audio import Pipeline
-from transformers import Wav2Vec2ForCTC, Wav2Vec2Processor
-from whisperx import asr
+import huggingface_hub
 
 DEFAULT_ALIGN_MODELS_TORCH = {
     "en": "WAV2VEC2_ASR_BASE_960H",
@@ -49,35 +48,8 @@ DEFAULT_ALIGN_MODELS_HF = {
     "ka": "xsway/wav2vec2-large-xlsr-georgian",
     "lv": "jimregan/wav2vec2-large-xlsr-latvian-cv",
     "tl": "Khalsuu/filipino-wav2vec2-l-xls-r-300m-official",
+    "sv": "KBLab/wav2vec2-large-voxrex-swedish",
 }
-
-model_dir = "whisperx_models"
-for model_name in DEFAULT_ALIGN_MODELS_TORCH.values():
-    try:
-        model = getattr(torchaudio.pipelines, model_name).get_model(
-            dl_kwargs={"model_dir": model_dir + "/torch/hub/checkpoints"}
-        )
-        del model
-        print(f"Loaded model: {model_name}")
-    except Exception as e:
-        print(e)
-    gc.collect()
-
-for model_name in DEFAULT_ALIGN_MODELS_HF.values():
-    try:
-        model_a = Wav2Vec2Processor.from_pretrained(
-            model_name, cache_dir=model_dir + "/huggingface/hub"
-        )
-        model_b = Wav2Vec2ForCTC.from_pretrained(
-            model_name, cache_dir=model_dir + "/huggingface/hub"
-        )
-        print(f"Loaded model: {model_name}")
-        del model_a
-        del model_b
-    except Exception as e:
-        print(e)
-    gc.collect()
-
 
 _MODELS = {
     "tiny": "Systran/faster-whisper-tiny",
@@ -88,23 +60,93 @@ _MODELS = {
     "turbo": "mobiuslabsgmbh/faster-whisper-large-v3-turbo",
 }
 
-for model_name in _MODELS.keys():
-    try:
-        model = asr.load_model(
-            model_name,
-            "cpu",
-            compute_type="int8",
-            download_root=model_dir + "/faster-whisper",
-        )
-        print(f"Downloaded model: {model_name}")
-    except Exception as e:
-        print(f"Failed to download model {model_name}: {e}")
-    gc.collect()
+TORCHAUDIO_MODEL_FILES = {
+    "WAV2VEC2_ASR_BASE_960H": "wav2vec2_fairseq_base_ls960_asr_ls960.pth",
+    "VOXPOPULI_ASR_BASE_10K_FR": "wav2vec2_voxpopuli_base_10k_asr_fr.pt",
+    "VOXPOPULI_ASR_BASE_10K_DE": "wav2vec2_voxpopuli_base_10k_asr_de.pt",
+    "VOXPOPULI_ASR_BASE_10K_ES": "wav2vec2_voxpopuli_base_10k_asr_es.pt",
+    "VOXPOPULI_ASR_BASE_10K_IT": "wav2vec2_voxpopuli_base_10k_asr_it.pt",
+}
+
+TORCHAUDIO_BASE_URL = "https://download.pytorch.org/torchaudio/models/"
 
 
-# py-annotate
-Pipeline.from_pretrained(
+def download_torchaudio_models(model_dir):
+    checkpoints_dir = Path(model_dir) / "hub" / "checkpoints"
+    checkpoints_dir.mkdir(parents=True, exist_ok=True)
+    for pipeline_name, filename in TORCHAUDIO_MODEL_FILES.items():
+        dest = checkpoints_dir / filename
+        if dest.exists():
+            print(f"Already exists, skipping: {filename}")
+            continue
+        url = TORCHAUDIO_BASE_URL + filename
+        print(f"Downloading {pipeline_name} from {url} ...")
+        try:
+            urllib.request.urlretrieve(url, dest)
+            print(f"Downloaded: {filename}")
+        except Exception as e:
+            print(f"Failed to download {pipeline_name}: {e}")
+
+
+def download_hf_alignment_models(model_dir, token):
+    cache_dir = str(Path(model_dir) / "hub")
+    for lang, repo_id in DEFAULT_ALIGN_MODELS_HF.items():
+        print(f"Downloading HF alignment model [{lang}]: {repo_id} ...")
+        try:
+            huggingface_hub.snapshot_download(repo_id, cache_dir=cache_dir, token=token)
+            print(f"Downloaded: {repo_id}")
+        except Exception as e:
+            print(f"Failed to download {repo_id}: {e}")
+
+
+def download_asr_models(model_dir, token):
+    cache_dir = str(Path(model_dir) / "hub")
+    for model_name, repo_id in _MODELS.items():
+        print(f"Downloading ASR model [{model_name}]: {repo_id} ...")
+        try:
+            huggingface_hub.snapshot_download(
+                repo_id,
+                cache_dir=cache_dir,
+                token=token,
+                allow_patterns=["config.json", "preprocessor_config.json", "model.bin", "tokenizer.json", "vocabulary.*"],
+            )
+            print(f"Downloaded: {model_name}")
+        except Exception as e:
+            print(f"Failed to download {model_name}: {e}")
+
+
+PYANNOTE_REPOS = [
     "pyannote/speaker-diarization-3.1",
-    cache_dir=model_dir + "/torch/pyannote",
-    use_auth_token=os.getenv("HF_AUTH_TOKEN"),
-)
+    "pyannote/segmentation-3.0",
+    "pyannote/wespeaker-voxceleb-resnet34-LM",
+]
+
+
+def download_pyannote_model(model_dir, token):
+    cache_dir = str(Path(model_dir) / "hub")
+    for repo_id in PYANNOTE_REPOS:
+        print(f"Downloading {repo_id} ...")
+        try:
+            huggingface_hub.snapshot_download(repo_id, cache_dir=cache_dir, token=token)
+            print(f"Downloaded: {repo_id}")
+        except Exception as e:
+            print(f"Failed to download {repo_id}: {e}")
+
+
+def main():
+    parser = argparse.ArgumentParser(description="Download WhisperX models (lightweight, no torch required)")
+    parser.add_argument("--model-dir", default="whisperx_models", help="Directory to store downloaded models")
+    parser.add_argument("--hf-token", default=os.getenv("HF_AUTH_TOKEN"), help="HuggingFace token for gated models")
+    args = parser.parse_args()
+
+    model_dir = args.model_dir
+    token = args.hf_token
+
+    download_torchaudio_models(model_dir)
+    download_hf_alignment_models(model_dir, token)
+    download_asr_models(model_dir, token)
+    download_pyannote_model(model_dir, token)
+
+
+if __name__ == "__main__":
+    main()
