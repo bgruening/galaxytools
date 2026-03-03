@@ -1,0 +1,394 @@
+<tool id="webatlas_router" name="Webatlas Process files" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5" profile="@PROFILE_VERSION@">
+    <description>TODO description</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $input_type_selector == 'h5ad':
+            ln -s '$input_h5ad' input.h5ad &&
+            /usr/local/bin/process_h5ad.py --path input.h5ad --stem $stem
+            @H5AD_TO_ZARR_COMMAND_BLOCK@
+            zip -r $stem-anndata.zarr.zip $stem-anndata.zarr &&
+            mv $stem-anndata.zarr.zip $output_zarr
+        #elif $input_type_selector == 'spaceranger':
+            mkdir unpacked_spaceranger &&
+            unzip $input_spaceranger -d unpacked_spaceranger &&
+            /usr/local/bin/process_spaceranger.py --path unpacked_spaceranger --stem $stem
+            #if not $load_clusters:
+                --load_clusters=False
+            #end if
+            #if not $load_embeddings:
+                --load_embeddings=False
+            #end if
+            #if $load_raw:
+                --load_raw
+            #end if
+            #if $save_h5ad:
+                --save_h5ad
+            #end if
+            @H5AD_TO_ZARR_COMMAND_BLOCK@
+            #if $save_h5ad:
+                mv tmp-'$stem'.h5ad $output_h5ad &&
+            #end if
+            zip -r $stem-anndata.zarr.zip $stem-anndata.zarr &&
+            mv $stem-anndata.zarr.zip $output_zarr
+        #elif $input_type_selector == 'xenium':
+            mkdir unpacked_xenium &&
+            unzip $input_xenium -d unpacked_xenium &&
+            /usr/local/bin/process_xenium.py --path unpacked_xenium --stem $stem
+            #if not $spatial_as_pixel:
+                --spatial_as_pixel=False
+            #end if
+            #if $resolution:
+                --resolution $resolution
+            #end if
+            #if $save_h5ad:
+                --save_h5ad
+            #end if
+            @H5AD_TO_ZARR_COMMAND_BLOCK@
+            #if $save_h5ad:
+                mv tmp-'$stem'.h5ad $output_h5ad &&
+            #end if
+            zip -r $stem-anndata.zarr.zip $stem-anndata.zarr &&
+            mv $stem-anndata.zarr.zip $output_zarr
+        #elif $input_type_selector == 'merscope':
+            mkdir unpacked_merscope &&
+            unzip $input_merscope -d unpacked_merscope &&
+            /usr/local/bin/process_merscope.py --path unpacked_merscope --stem $stem --filter_prefix $filter_prefix
+            #if $save_h5ad:
+                --save_h5ad
+            #end if
+            @H5AD_TO_ZARR_COMMAND_BLOCK@
+            #if $save_h5ad:
+                mv tmp-'$stem'.h5ad $output_h5ad &&
+            #end if
+            zip -r $stem-anndata.zarr.zip $stem-anndata.zarr &&
+            mv $stem-anndata.zarr.zip $output_zarr
+        ## #elif $input_type_selector == 'molecules':
+        ##     /usr/local/bin/process_molecules.py --path $input_molecules --stem $stem --has_header $has_header --gene_col_name $gene_col_name --x_col_name $x_col_name --y_col_name $y_col_name --delimiter $delimiter --x_scale $x_scale --y_scale $y_scale --x_offset $x_offset --y_offset $y_offset --gene_col_idx $gene_col_idx --x_col_idx $x_col_idx --y_col_idx $y_col_idx --filter_col_name $filter_col_name --filter_col_idx $filter_col_idx --filter_col_value $filter_col_value &&
+        ##     mv '$stem'*.json $output_json
+        #end if
+    ]]></command>
+    <inputs>
+        <conditional name="input_type">
+            <param name="input_type_selector" type="select" label="Choose the type of input data" help="">
+                <option value="h5ad">AnnData (h5ad file)</option>
+                <option value="spaceranger">SpaceRanger output</option>
+                <option value="xenium">Xenium output</option>
+                <option value="merscope">MERSCOPE output</option>
+                <!-- Currently there is no usecase for this option. It can be implemented on request -->
+                <!-- <option value="molecules">Molecules data in csv/tsv file</option> -->
+            </param>
+            <when value="h5ad">
+                <param name="input_h5ad" type="data" format="h5ad" label="h5ad file"/>
+                <expand macro="stem"/>
+                <expand macro="h5ad_to_zarr_parameters"/>
+            </when>
+            <when value="spaceranger">
+                <param name="input_spaceranger" type="data" format="zip" label="Compressed SpaceRanger output"/>
+                <expand macro="stem"/>
+                <param name="load_clusters" type="boolean" label="Include cluster files" optional="true" checked="true" help="If cluster files should be included in the AnnData object."/>
+                <param name="load_embeddings" type="boolean" label="Include embeddings" optional="true" checked="true" help="If embedding coordinates files should be included in the AnnData object."/>
+                <param name="load_raw" type="boolean" label="Use raw matrix count file" optional="true" checked="false" help="If the raw matrix count file should be loaded instead of the filtered matrix."/>
+                <expand macro="h5ad_to_zarr_parameters"/>
+                <expand macro="save_h5ad"/>
+            </when>
+            <when value="xenium">
+                <param name="input_xenium" type="data" format="zip" label="Compressed Xenium output"/>
+                <expand macro="stem"/>
+                <param name="spatial_as_pixel" type="boolean" label="Convert spatial coordinates to pixels" checked="true"/>
+                <param name="resolution" type="float" label="Pixel resolution" optional="true" value="0.2125" help="Default value: 0.2125"/>
+                <expand macro="h5ad_to_zarr_parameters"/>
+                <expand macro="save_h5ad"/>
+            </when>
+            <when value="merscope">
+                <param name="input_merscope" type="data" format="zip" label="Compressed MERSCOPE output"/>
+                <expand macro="stem"/>
+                <param name="filter_prefix" type="text" value="Blank-" label="Filter prefix" optional="true" help="Prefix to filter out of the data. Default value: Blank-"/>
+                <expand macro="h5ad_to_zarr_parameters"/>
+                <expand macro="save_h5ad"/>
+            </when>
+            <!-- <when value="molecules">
+                <param name="input_molecules" type="data" format="csv,tsv" label="Molecules file"/>
+                <expand macro="stem"/>
+                <param name="has_header" type="boolean" label="Does the input file contain a header row?" optional="true" checked="true"/>
+                <param name="gene_col_name" type="text" label="Column header name where gene names are stored." optional="true" value="Name" help="Default value: Name"/>
+                <param name="x_col_name" type="text" label="Column header name where 'X' coordinates are stored." optional="true" value="x_int" help="Default value: x_int"/>
+                <param name="y_col_name" type="text" label="Column header name where 'Y' coordinates are stored." optional="true" value="y_int" help="Default value: y_int"/>
+                <param name="delimiter" type="text" label="Input file delimiter." optional="true" value="\t" help="Default value: \t"/>
+                <param name="x_scale" type="float" label="Scale to multiply 'X' coordinates by." optional="true" value="1.0" help="Default value: 1.0"/>
+                <param name="y_scale" type="float" label="Scale to multiply 'Y' coordinates by." optional="true" value="1.0" help="Default value: 1.0"/>
+                <param name="x_offset" type="float" label="Offset to add to 'X' coordinates." optional="true" value="0.0" help="Default value: 0.0"/>
+                <param name="y_offset" type="float" label="Offset to add to 'Y' coordinates." optional="true" value="0.0" help="Default value: 0.0"/>
+                <param name="gene_col_idx" type="integer" label="Column index where gene names are stored if header is not present." optional="true"/>
+                <param name="x_col_idx" type="integer" label="Column index where 'X' coordinates are stored if header is not present." optional="true"/>
+                <param name="y_col_idx" type="integer" label="Column index where 'Y' coordinates are stored if header is not present." optional="true"/>
+                <param name="filter_col_name" type="text" label="Column header name storing values to filter data." optional="true"/>
+                <param name="filter_col_idx" type="integer" label="Column index storing values to filter data if header is not present." optional="true"/>
+                <param name="filter_col_value" type="text" label="Value expected in filter column. If a row has a different value it will not be written to the output file." optional="true"/>
+            </when> -->
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output_h5ad" format="h5ad" label="${tool.name} on ${on_string}: h5ad output">
+            <filter>'h5ad' not in input_type['input_type_selector'] and 'molecules' not in input_type['input_type_selector'] and input_type['save_h5ad']
+            </filter>
+        </data>
+        <data name="output_zarr" format="zarr.zip" label="${tool.name} on ${on_string}: compressed zarr output">
+            <filter>input_type['input_type_selector'] == 'h5ad' or input_type['input_type_selector'] == 'spaceranger' or input_type['input_type_selector'] == 'xenium' or input_type['input_type_selector'] == 'merscope'
+            </filter>
+        </data>
+        <!-- <data name="output_json" format="json" label="${tool.name} on ${on_string}">
+            <filter>input_type['input_type_selector'] == 'molecules'</filter>
+        </data> -->
+    </outputs>
+    <tests>
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="h5ad"/>
+            <param name="input_h5ad" value="input.h5ad"/>
+            <param name="stem" value="h5ad"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="false"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="78759191" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="h5ad"/>
+            <param name="input_h5ad" value="input.h5ad"/>
+            <param name="stem" value="h5ad"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="true"/>
+                <param name="obs_subset_column" value="in_tissue"/>
+                <param name="obs_subset_values" value="1"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="false"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="78759191" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="h5ad"/>
+            <param name="input_h5ad" value="input.h5ad"/>
+            <param name="stem" value="h5ad"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="true"/>
+                <param name="var_subset_column" value="gene_ids"/>
+                <param name="var_subset_values" value="A1CF,MSN"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="18225797" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="h5ad"/>
+            <param name="input_h5ad" value="input.h5ad"/>
+            <param name="stem" value="h5ad"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="true"/>
+                <param name="obs_subset_column" value="in_tissue"/>
+                <param name="obs_subset_values" value="1"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="true"/>
+                <param name="var_subset_column" value="gene_ids"/>
+                <param name="var_subset_values" value="A1CF,MSN"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="true"/>
+                <param name="batch_size" value="11000"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="18225797" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="spaceranger"/>
+            <param name="input_spaceranger" value="spaceranger.zip"/>
+            <param name="stem" value="visium-breast-cancer"/>
+            <param name="load_clusters" value="true"/>
+            <param name="load_embeddings" value="true"/>
+            <param name="load_raw" value="false"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <param name="save_h5ad" value="false"/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="false"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="78828151" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="2">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="spaceranger"/>
+            <param name="input_spaceranger" value="spaceranger.zip"/>
+            <param name="stem" value="visium-breast-cancer"/>
+            <param name="load_clusters" value="true"/>
+            <param name="load_embeddings" value="true"/>
+            <param name="load_raw" value="false"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <param name="save_h5ad" value="true"/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="false"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="78828151" delta="100"/>
+            </assert_contents>
+        </output>
+        <output name="output_h5ad">
+            <assert_contents>
+                <has_size value="288444650" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <!-- <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="xenium"/>
+            <param name="input_xenium" value="xenium.zip"/>
+            <param name="stem" value="xenium-breast-cancer"/>
+            <param name="spatial_as_pixel" value="true"/>
+            <param name="resolution" value="0.2125"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <param name="save_h5ad" value="false"/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="false"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="100" delta="20"/>
+            </assert_contents>
+        </output>
+    </test> -->
+    
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="merscope"/>
+            <param name="input_merscope" value="merscope.zip"/>
+            <param name="stem" value="merscope"/>
+            <param name="filter_prefix" value="Blank-"/>
+            <param name="chunk_size" value="10"/>
+            <param name="compute_embeddings" value="false"/>
+            <param name="var_index" value=""/>
+            <param name="save_h5ad" value="false"/>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+            <conditional name="var_subset_conditional">
+                <param name="var_subset" value="false"/>
+            </conditional>
+            <conditional name="batch_processing_conditional">
+                <param name="batch_processing" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_size value="217344" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**What it does**
+
+TODO: Fill in help in reStructuredText format (https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html)
+
+Usage
+.....
+
+
+**Input**
+
+
+**Output**
+
+
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
