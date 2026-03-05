@@ -140,5 +140,9 @@ for attempt in range(max_retries):
         if attempt == max_retries - 1:
             sys.exit("Max retries reached. Exiting.")
         sleep_time = min(2**attempt + random.uniform(0, 1), max_delay)
+        if isinstance(e, RateLimitError) and hasattr(e, "response") and e.response is not None:
+            retry_after = e.response.headers.get("retry-after")
+            if retry_after:
+                sleep_time = min(float(retry_after), max_delay)
         print(f"Error encountered ({e}). Retrying in {sleep_time:.2f} seconds...")
         time.sleep(sleep_time)
