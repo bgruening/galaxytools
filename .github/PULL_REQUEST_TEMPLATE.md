@@ -5,7 +5,14 @@ FOR CONTRIBUTOR:
 * [ ] This PR updates an existing tool or tool collection
 * [ ] This PR does something else (explain below)
 
-There are two labels that allow to ignore specific (false positive) tool linter errors:
-
-* `skip-version-check`: Use it if only a subset of the tools has been updated in a suite.
-* `skip-url-check`: Use it if github CI sees 403 errors, but the URLs work.
+> [!WARNING]
+> **Linter Error Exceptions**
+>
+> Two labels are available to ignore specific *(false-positive)* tool linter errors.
+> These labels can be added when creating the pull request or afterwards from the PR labels panel.
+>
+> - 🚫 `skip-version-check`  
+>   Use when only a subset of tools within a suite has been updated.
+>
+> - 🚫 `skip-url-check`  
+>   Use when GitHub CI reports `403` errors but the URLs work.
