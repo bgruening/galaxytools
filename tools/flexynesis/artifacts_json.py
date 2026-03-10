@@ -9,8 +9,9 @@ Supports conversion of sklearn objects:
 """
 
 import json
+
 import numpy as np
-from sklearn.preprocessing import StandardScaler, LabelEncoder, OrdinalEncoder
+from sklearn.preprocessing import LabelEncoder, OrdinalEncoder, StandardScaler
 
 
 def artifacts_to_json(artifacts, output_path):
