@@ -26,29 +26,29 @@ def artifacts_to_json(artifacts, output_path):
         >>> artifacts_to_json(artifacts, 'model.artifacts.json')
     """
     json_artifacts = {
-        'schema_version': artifacts.get('schema_version', 1),
-        'data_types': artifacts.get('data_types', []),
-        'original_modalities': artifacts.get('original_modalities', []),
-        'target_variables': artifacts.get('target_variables', []),
-        'covariate_vars': artifacts.get('covariate_vars', []),
-        'join_key': artifacts.get('join_key', None),
-        'string_organism': artifacts.get('string_organism', None),
-        'string_node_name': artifacts.get('string_node_name', None),
-        'feature_lists': {},
-        'transforms': {},
-        'label_encoders': {}
+        "schema_version": artifacts.get("schema_version", 1),
+        "data_types": artifacts.get("data_types", []),
+        "original_modalities": artifacts.get("original_modalities", []),
+        "target_variables": artifacts.get("target_variables", []),
+        "covariate_vars": artifacts.get("covariate_vars", []),
+        "join_key": artifacts.get("join_key", None),
+        "string_organism": artifacts.get("string_organism", None),
+        "string_node_name": artifacts.get("string_node_name", None),
+        "feature_lists": {},
+        "transforms": {},
+        "label_encoders": {},
     }
 
     # Convert feature lists (already JSON-compatible)
-    feature_lists = artifacts.get('feature_lists', {})
+    feature_lists = artifacts.get("feature_lists", {})
     for modality, features in feature_lists.items():
-        json_artifacts['feature_lists'][modality] = list(features)
+        json_artifacts["feature_lists"][modality] = list(features)
 
     # Convert StandardScaler objects to JSON-compatible dicts
-    transforms = artifacts.get('transforms', {})
+    transforms = artifacts.get("transforms", {})
     for modality, scaler in transforms.items():
         if scaler is None:
-            json_artifacts['transforms'][modality] = None
+            json_artifacts["transforms"][modality] = None
             continue
 
         # Type guard: only StandardScaler is supported
@@ -60,82 +60,84 @@ def artifacts_to_json(artifacts, output_path):
 
         # Extract parameters from StandardScaler
         scaler_dict = {
-            'type': 'StandardScaler',
-            'with_mean': scaler.with_mean,
-            'with_std': scaler.with_std,
+            "type": "StandardScaler",
+            "with_mean": scaler.with_mean,
+            "with_std": scaler.with_std,
         }
 
         # Convert numpy arrays to lists
-        if hasattr(scaler, 'mean_'):
-            scaler_dict['mean'] = scaler.mean_.tolist()
-        if hasattr(scaler, 'scale_'):
-            scaler_dict['scale'] = scaler.scale_.tolist()
-        if hasattr(scaler, 'var_'):
-            scaler_dict['var'] = scaler.var_.tolist()
-        if hasattr(scaler, 'n_features_in_'):
-            scaler_dict['n_features_in'] = int(scaler.n_features_in_)
-        if hasattr(scaler, 'feature_names_in_'):
-            scaler_dict['feature_names_in'] = scaler.feature_names_in_.tolist()
-        if hasattr(scaler, 'n_samples_seen_'):
+        if hasattr(scaler, "mean_"):
+            scaler_dict["mean"] = scaler.mean_.tolist()
+        if hasattr(scaler, "scale_"):
+            scaler_dict["scale"] = scaler.scale_.tolist()
+        if hasattr(scaler, "var_"):
+            scaler_dict["var"] = scaler.var_.tolist()
+        if hasattr(scaler, "n_features_in_"):
+            scaler_dict["n_features_in"] = int(scaler.n_features_in_)
+        if hasattr(scaler, "feature_names_in_"):
+            scaler_dict["feature_names_in"] = scaler.feature_names_in_.tolist()
+        if hasattr(scaler, "n_samples_seen_"):
             # n_samples_seen_ can be int or array depending on sklearn version
             n_samples = scaler.n_samples_seen_
             if isinstance(n_samples, np.ndarray):
-                scaler_dict['n_samples_seen'] = n_samples.tolist()
+                scaler_dict["n_samples_seen"] = n_samples.tolist()
             else:
-                scaler_dict['n_samples_seen'] = int(n_samples)
+                scaler_dict["n_samples_seen"] = int(n_samples)
 
-        json_artifacts['transforms'][modality] = scaler_dict
+        json_artifacts["transforms"][modality] = scaler_dict
 
     # Convert LabelEncoder/OrdinalEncoder objects to JSON-compatible dicts
-    label_encoders = artifacts.get('label_encoders', {})
+    label_encoders = artifacts.get("label_encoders", {})
     for variable, encoder in label_encoders.items():
         if encoder is None:
-            json_artifacts['label_encoders'][variable] = None
+            json_artifacts["label_encoders"][variable] = None
             continue
 
         # Handle LabelEncoder
         if isinstance(encoder, LabelEncoder):
             encoder_dict = {
-                'type': 'LabelEncoder',
-                'classes': encoder.classes_.tolist()
+                "type": "LabelEncoder",
+                "classes": encoder.classes_.tolist(),
             }
         # Handle OrdinalEncoder
         elif isinstance(encoder, OrdinalEncoder):
             encoder_dict = {
-                'type': 'OrdinalEncoder',
-                'categories': [cat.tolist() for cat in encoder.categories_],
+                "type": "OrdinalEncoder",
+                "categories": [cat.tolist() for cat in encoder.categories_],
             }
-            if hasattr(encoder, 'handle_unknown'):
-                encoder_dict['handle_unknown'] = encoder.handle_unknown
-            if hasattr(encoder, 'unknown_value'):
-                encoder_dict['unknown_value'] = encoder.unknown_value
-            if hasattr(encoder, 'encoded_missing_value'):
+            if hasattr(encoder, "handle_unknown"):
+                encoder_dict["handle_unknown"] = encoder.handle_unknown
+            if hasattr(encoder, "unknown_value"):
+                encoder_dict["unknown_value"] = encoder.unknown_value
+            if hasattr(encoder, "encoded_missing_value"):
                 # Handle np.nan which is not JSON-serializable
                 val = encoder.encoded_missing_value
                 if isinstance(val, float) and np.isnan(val):
-                    encoder_dict['encoded_missing_value'] = '__NaN__'
+                    encoder_dict["encoded_missing_value"] = "__NaN__"
                 else:
-                    encoder_dict['encoded_missing_value'] = val
-            if hasattr(encoder, 'n_features_in_'):
-                encoder_dict['n_features_in'] = int(encoder.n_features_in_)
-            if hasattr(encoder, 'feature_names_in_'):
-                encoder_dict['feature_names_in'] = encoder.feature_names_in_.tolist()
-            if hasattr(encoder, '_missing_indices'):
+                    encoder_dict["encoded_missing_value"] = val
+            if hasattr(encoder, "n_features_in_"):
+                encoder_dict["n_features_in"] = int(encoder.n_features_in_)
+            if hasattr(encoder, "feature_names_in_"):
+                encoder_dict["feature_names_in"] = encoder.feature_names_in_.tolist()
+            if hasattr(encoder, "_missing_indices"):
                 # Convert dict keys to strings for JSON compatibility
                 missing_indices = encoder._missing_indices
                 if isinstance(missing_indices, dict):
-                    encoder_dict['_missing_indices'] = {str(k): v for k, v in missing_indices.items()}
+                    encoder_dict["_missing_indices"] = {
+                        str(k): v for k, v in missing_indices.items()
+                    }
                 else:
-                    encoder_dict['_missing_indices'] = missing_indices
-            if hasattr(encoder, '_infrequent_enabled'):
-                encoder_dict['_infrequent_enabled'] = encoder._infrequent_enabled
+                    encoder_dict["_missing_indices"] = missing_indices
+            if hasattr(encoder, "_infrequent_enabled"):
+                encoder_dict["_infrequent_enabled"] = encoder._infrequent_enabled
         else:
             raise ValueError(f"Unknown encoder type: {type(encoder).__name__}")
 
-        json_artifacts['label_encoders'][variable] = encoder_dict
+        json_artifacts["label_encoders"][variable] = encoder_dict
 
     # Save to JSON file
-    with open(output_path, 'w') as f:
+    with open(output_path, "w") as f:
         json.dump(json_artifacts, f, indent=2)
 
     print(f"[INFO] Saved artifacts to JSON: {output_path}")
@@ -158,109 +160,111 @@ def json_to_artifacts(json_path):
         >>> scaled_data = scaler.transform(test_data)
     """
     # Load JSON
-    with open(json_path, 'r') as f:
+    with open(json_path, "r") as f:
         json_artifacts = json.load(f)
 
     artifacts = {
-        'schema_version': json_artifacts.get('schema_version', 1),
-        'data_types': json_artifacts.get('data_types', []),
-        'original_modalities': json_artifacts.get('original_modalities', []),
-        'target_variables': json_artifacts.get('target_variables', []),
-        'covariate_vars': json_artifacts.get('covariate_vars', []),
-        'join_key': json_artifacts.get('join_key', None),
-        'string_organism': json_artifacts.get('string_organism', None),
-        'string_node_name': json_artifacts.get('string_node_name', None),
-        'feature_lists': {},
-        'transforms': {},
-        'label_encoders': {}
+        "schema_version": json_artifacts.get("schema_version", 1),
+        "data_types": json_artifacts.get("data_types", []),
+        "original_modalities": json_artifacts.get("original_modalities", []),
+        "target_variables": json_artifacts.get("target_variables", []),
+        "covariate_vars": json_artifacts.get("covariate_vars", []),
+        "join_key": json_artifacts.get("join_key", None),
+        "string_organism": json_artifacts.get("string_organism", None),
+        "string_node_name": json_artifacts.get("string_node_name", None),
+        "feature_lists": {},
+        "transforms": {},
+        "label_encoders": {},
     }
 
     # Feature lists are already in correct format
-    artifacts['feature_lists'] = json_artifacts.get('feature_lists', {})
+    artifacts["feature_lists"] = json_artifacts.get("feature_lists", {})
 
     # Reconstruct StandardScaler objects
-    transforms_json = json_artifacts.get('transforms', {})
+    transforms_json = json_artifacts.get("transforms", {})
     for modality, scaler_dict in transforms_json.items():
         if scaler_dict is None:
-            artifacts['transforms'][modality] = None
+            artifacts["transforms"][modality] = None
             continue
 
-        if scaler_dict.get('type') != 'StandardScaler':
+        if scaler_dict.get("type") != "StandardScaler":
             raise ValueError(f"Unknown scaler type: {scaler_dict.get('type')}")
 
         # Create StandardScaler and set its attributes
         scaler = StandardScaler(
-            with_mean=scaler_dict.get('with_mean', True),
-            with_std=scaler_dict.get('with_std', True)
+            with_mean=scaler_dict.get("with_mean", True),
+            with_std=scaler_dict.get("with_std", True),
         )
 
         # Restore fitted attributes
-        if 'mean' in scaler_dict:
-            scaler.mean_ = np.array(scaler_dict['mean'])
-        if 'scale' in scaler_dict:
-            scaler.scale_ = np.array(scaler_dict['scale'])
-        if 'var' in scaler_dict:
-            scaler.var_ = np.array(scaler_dict['var'])
-        if 'n_features_in' in scaler_dict:
-            scaler.n_features_in_ = scaler_dict['n_features_in']
-        if 'feature_names_in' in scaler_dict:
-            scaler.feature_names_in_ = np.array(scaler_dict['feature_names_in'])
-        if 'n_samples_seen' in scaler_dict:
+        if "mean" in scaler_dict:
+            scaler.mean_ = np.array(scaler_dict["mean"])
+        if "scale" in scaler_dict:
+            scaler.scale_ = np.array(scaler_dict["scale"])
+        if "var" in scaler_dict:
+            scaler.var_ = np.array(scaler_dict["var"])
+        if "n_features_in" in scaler_dict:
+            scaler.n_features_in_ = scaler_dict["n_features_in"]
+        if "feature_names_in" in scaler_dict:
+            scaler.feature_names_in_ = np.array(scaler_dict["feature_names_in"])
+        if "n_samples_seen" in scaler_dict:
             # Restore as array or scalar depending on what was stored
-            n_samples = scaler_dict['n_samples_seen']
+            n_samples = scaler_dict["n_samples_seen"]
             if isinstance(n_samples, list):
                 scaler.n_samples_seen_ = np.array(n_samples)
             else:
                 scaler.n_samples_seen_ = n_samples
 
-        artifacts['transforms'][modality] = scaler
+        artifacts["transforms"][modality] = scaler
 
     # Reconstruct LabelEncoder/OrdinalEncoder objects
-    encoders_json = json_artifacts.get('label_encoders', {})
+    encoders_json = json_artifacts.get("label_encoders", {})
     for variable, encoder_dict in encoders_json.items():
         if encoder_dict is None:
-            artifacts['label_encoders'][variable] = None
+            artifacts["label_encoders"][variable] = None
             continue
 
-        encoder_type = encoder_dict.get('type')
+        encoder_type = encoder_dict.get("type")
 
         # Reconstruct LabelEncoder
-        if encoder_type == 'LabelEncoder':
+        if encoder_type == "LabelEncoder":
             encoder = LabelEncoder()
-            encoder.classes_ = np.array(encoder_dict['classes'])
+            encoder.classes_ = np.array(encoder_dict["classes"])
 
         # Reconstruct OrdinalEncoder
-        elif encoder_type == 'OrdinalEncoder':
+        elif encoder_type == "OrdinalEncoder":
             # Handle special __NaN__ marker for np.nan
-            encoded_missing = encoder_dict.get('encoded_missing_value', np.nan)
-            if encoded_missing == '__NaN__':
+            encoded_missing = encoder_dict.get("encoded_missing_value", np.nan)
+            if encoded_missing == "__NaN__":
                 encoded_missing = np.nan
 
             encoder = OrdinalEncoder(
-                handle_unknown=encoder_dict.get('handle_unknown', 'error'),
-                unknown_value=encoder_dict.get('unknown_value', None),
-                encoded_missing_value=encoded_missing
+                handle_unknown=encoder_dict.get("handle_unknown", "error"),
+                unknown_value=encoder_dict.get("unknown_value", None),
+                encoded_missing_value=encoded_missing,
             )
             # Restore fitted attributes
-            encoder.categories_ = [np.array(cat) for cat in encoder_dict['categories']]
-            if 'n_features_in' in encoder_dict:
-                encoder.n_features_in_ = encoder_dict['n_features_in']
-            if 'feature_names_in' in encoder_dict:
-                encoder.feature_names_in_ = np.array(encoder_dict['feature_names_in'])
-            if '_missing_indices' in encoder_dict:
+            encoder.categories_ = [np.array(cat) for cat in encoder_dict["categories"]]
+            if "n_features_in" in encoder_dict:
+                encoder.n_features_in_ = encoder_dict["n_features_in"]
+            if "feature_names_in" in encoder_dict:
+                encoder.feature_names_in_ = np.array(encoder_dict["feature_names_in"])
+            if "_missing_indices" in encoder_dict:
                 # Convert string keys back to integers if needed
-                missing_indices = encoder_dict['_missing_indices']
+                missing_indices = encoder_dict["_missing_indices"]
                 if isinstance(missing_indices, dict):
-                    encoder._missing_indices = {int(k): v for k, v in missing_indices.items()}
+                    encoder._missing_indices = {
+                        int(k): v for k, v in missing_indices.items()
+                    }
                 else:
                     encoder._missing_indices = missing_indices
-            if '_infrequent_enabled' in encoder_dict:
-                encoder._infrequent_enabled = encoder_dict['_infrequent_enabled']
+            if "_infrequent_enabled" in encoder_dict:
+                encoder._infrequent_enabled = encoder_dict["_infrequent_enabled"]
 
         else:
             raise ValueError(f"Unknown encoder type: {encoder_type}")
 
-        artifacts['label_encoders'][variable] = encoder
+        artifacts["label_encoders"][variable] = encoder
 
     print(f"[INFO] Loaded artifacts from JSON: {json_path}")
     return artifacts
@@ -278,6 +282,7 @@ def convert_joblib_to_json(joblib_path, json_path):
         >>> convert_joblib_to_json('model.artifacts.joblib', 'model.artifacts.json')
     """
     import joblib
+
     artifacts = joblib.load(joblib_path)
     artifacts_to_json(artifacts, json_path)
     print(f"[INFO] Converted {joblib_path} → {json_path}")
@@ -295,22 +300,25 @@ def convert_json_to_joblib(json_path, joblib_path):
         >>> convert_json_to_joblib('model.artifacts.json', 'model.artifacts.joblib')
     """
     import joblib
+
     artifacts = json_to_artifacts(json_path)
     joblib.dump(artifacts, joblib_path)
     print(f"[INFO] Converted {json_path} → {joblib_path}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     import argparse
     import os
 
     parser = argparse.ArgumentParser(
-        description='Convert flexynesis artifacts between joblib and JSON formats'
+        description="Convert flexynesis artifacts between joblib and JSON formats"
     )
-    parser.add_argument('--input', '-i', type=str, required=True,
-                        help='Input file (.joblib or .json)')
-    parser.add_argument('--output', '-o', type=str, required=True,
-                        help='Output file (.json or .joblib)')
+    parser.add_argument(
+        "--input", "-i", type=str, required=True, help="Input file (.joblib or .json)"
+    )
+    parser.add_argument(
+        "--output", "-o", type=str, required=True, help="Output file (.json or .joblib)"
+    )
 
     args = parser.parse_args()
 
@@ -318,10 +326,10 @@ if __name__ == '__main__':
     input_ext = os.path.splitext(args.input)[1].lower()
     output_ext = os.path.splitext(args.output)[1].lower()
 
-    if input_ext in ['.joblib', '.pkl'] and output_ext == '.json':
+    if input_ext in [".joblib", ".pkl"] and output_ext == ".json":
         # joblib → JSON
         convert_joblib_to_json(args.input, args.output)
-    elif input_ext == '.json' and output_ext in ['.joblib', '.pkl']:
+    elif input_ext == ".json" and output_ext in [".joblib", ".pkl"]:
         # JSON → joblib
         convert_json_to_joblib(args.input, args.output)
     else:
