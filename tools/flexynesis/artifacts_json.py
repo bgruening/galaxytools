@@ -51,6 +51,13 @@ def artifacts_to_json(artifacts, output_path):
             json_artifacts['transforms'][modality] = None
             continue
 
+        # Type guard: only StandardScaler is supported
+        if not isinstance(scaler, StandardScaler):
+            raise ValueError(
+                f"Unsupported scaler type for modality '{modality}': {type(scaler).__name__}. "
+                "Only StandardScaler is supported."
+            )
+
         # Extract parameters from StandardScaler
         scaler_dict = {
             'type': 'StandardScaler',
@@ -70,7 +77,12 @@ def artifacts_to_json(artifacts, output_path):
         if hasattr(scaler, 'feature_names_in_'):
             scaler_dict['feature_names_in'] = scaler.feature_names_in_.tolist()
         if hasattr(scaler, 'n_samples_seen_'):
-            scaler_dict['n_samples_seen'] = int(scaler.n_samples_seen_)
+            # n_samples_seen_ can be int or array depending on sklearn version
+            n_samples = scaler.n_samples_seen_
+            if isinstance(n_samples, np.ndarray):
+                scaler_dict['n_samples_seen'] = n_samples.tolist()
+            else:
+                scaler_dict['n_samples_seen'] = int(n_samples)
 
         json_artifacts['transforms'][modality] = scaler_dict
 
@@ -98,18 +110,28 @@ def artifacts_to_json(artifacts, output_path):
             if hasattr(encoder, 'unknown_value'):
                 encoder_dict['unknown_value'] = encoder.unknown_value
             if hasattr(encoder, 'encoded_missing_value'):
-                encoder_dict['encoded_missing_value'] = encoder.encoded_missing_value
+                # Handle np.nan which is not JSON-serializable
+                val = encoder.encoded_missing_value
+                if isinstance(val, float) and np.isnan(val):
+                    encoder_dict['encoded_missing_value'] = '__NaN__'
+                else:
+                    encoder_dict['encoded_missing_value'] = val
             if hasattr(encoder, 'n_features_in_'):
                 encoder_dict['n_features_in'] = int(encoder.n_features_in_)
             if hasattr(encoder, 'feature_names_in_'):
                 encoder_dict['feature_names_in'] = encoder.feature_names_in_.tolist()
             if hasattr(encoder, '_missing_indices'):
-                encoder_dict['_missing_indices'] = encoder._missing_indices
+                # Convert dict keys to strings for JSON compatibility
+                missing_indices = encoder._missing_indices
+                if isinstance(missing_indices, dict):
+                    encoder_dict['_missing_indices'] = {str(k): v for k, v in missing_indices.items()}
+                else:
+                    encoder_dict['_missing_indices'] = missing_indices
             if hasattr(encoder, '_infrequent_enabled'):
                 encoder_dict['_infrequent_enabled'] = encoder._infrequent_enabled
         else:
             raise ValueError(f"Unknown encoder type: {type(encoder).__name__}")
-        
+
         json_artifacts['label_encoders'][variable] = encoder_dict
 
     # Save to JSON file
@@ -184,7 +206,12 @@ def json_to_artifacts(json_path):
         if 'feature_names_in' in scaler_dict:
             scaler.feature_names_in_ = np.array(scaler_dict['feature_names_in'])
         if 'n_samples_seen' in scaler_dict:
-            scaler.n_samples_seen_ = scaler_dict['n_samples_seen']
+            # Restore as array or scalar depending on what was stored
+            n_samples = scaler_dict['n_samples_seen']
+            if isinstance(n_samples, list):
+                scaler.n_samples_seen_ = np.array(n_samples)
+            else:
+                scaler.n_samples_seen_ = n_samples
 
         artifacts['transforms'][modality] = scaler
 
@@ -196,18 +223,23 @@ def json_to_artifacts(json_path):
             continue
 
         encoder_type = encoder_dict.get('type')
-        
+
         # Reconstruct LabelEncoder
         if encoder_type == 'LabelEncoder':
             encoder = LabelEncoder()
             encoder.classes_ = np.array(encoder_dict['classes'])
-        
+
         # Reconstruct OrdinalEncoder
         elif encoder_type == 'OrdinalEncoder':
+            # Handle special __NaN__ marker for np.nan
+            encoded_missing = encoder_dict.get('encoded_missing_value', np.nan)
+            if encoded_missing == '__NaN__':
+                encoded_missing = np.nan
+
             encoder = OrdinalEncoder(
                 handle_unknown=encoder_dict.get('handle_unknown', 'error'),
                 unknown_value=encoder_dict.get('unknown_value', None),
-                encoded_missing_value=encoder_dict.get('encoded_missing_value', np.nan)
+                encoded_missing_value=encoded_missing
             )
             # Restore fitted attributes
             encoder.categories_ = [np.array(cat) for cat in encoder_dict['categories']]
@@ -216,10 +248,15 @@ def json_to_artifacts(json_path):
             if 'feature_names_in' in encoder_dict:
                 encoder.feature_names_in_ = np.array(encoder_dict['feature_names_in'])
             if '_missing_indices' in encoder_dict:
-                encoder._missing_indices = encoder_dict['_missing_indices']
+                # Convert string keys back to integers if needed
+                missing_indices = encoder_dict['_missing_indices']
+                if isinstance(missing_indices, dict):
+                    encoder._missing_indices = {int(k): v for k, v in missing_indices.items()}
+                else:
+                    encoder._missing_indices = missing_indices
             if '_infrequent_enabled' in encoder_dict:
                 encoder._infrequent_enabled = encoder_dict['_infrequent_enabled']
-        
+
         else:
             raise ValueError(f"Unknown encoder type: {encoder_type}")
 
