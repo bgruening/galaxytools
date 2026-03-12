@@ -49,12 +49,28 @@
         python3 '$__tool_directory__/convert_joblib_json.py' --convert json_joblib -i '$artifacts' -o input/artifacts.joblib &&
         python3 '$__tool_directory__/convert_safetensors_pth.py' --safetensors "$model" --config "$config" --artifacts "$artifacts" --output "input/model.pth" &&
 
+        ## Extract target variables from config.json
+        target_vars=\$(python -c "import json; config=json.load(open('$config')); print(','.join(config.get('target_variables', [])) if config.get('target_variables') else '')") &&
+        echo "Target variables from config: \$target_vars" &&
+
+        ## Extract survival variables from config.json
+        surv_event=\$(python -c "import json; config=json.load(open('$config')); print(config.get('surv_event_var', ''))") &&
+        surv_time=\$(python -c "import json; config=json.load(open('$config')); print(config.get('surv_time_var', ''))") &&
+        echo "Survival event variable from config: \$surv_event" &&
+        echo "Survival time variable from config: \$surv_time" &&
+
         flexynesis
             --pretrained_model input/model.pth
             --artifacts input/artifacts.joblib
             --data_path_test input/test
             --outdir output
-            --prefix infered &&
+            --prefix infered
+            --target_variables \$target_vars
+            --surv_event_var \$surv_event
+            --surv_time_var \$surv_time
+            --threads "\${GALAXY_SLOTS:-4}"
+            \${GALAXY_FLEXYNESIS_EXTRA_ARGUMENTS}
+            &&
 
         ## convert flexynesis output files to tabular format
         for file in output/*.csv; do
@@ -103,6 +119,18 @@
                         <has_n_lines n="50"/>
                     </assert_contents>
                 </element>
+                <element name="infered.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="infered.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
             </output_collection>
         </test>
     </tests>
@@ -121,7 +149,19 @@ Use this tool when you have:
 
 1. A trained model from a previous Flexynesis training run
 2. The corresponding artifacts file from that training run
-3. New samples you want to classify/predict using the trained model
+3. The model configuration file from that training run
+4. New samples you want to classify/predict using the trained model
+
+-----
+
+**Automatic parameter extraction**
+
+The tool automatically extracts the following parameters from the model configuration file:
+
+- **Target variables**: Variable(s) the model was trained to predict
+- **Survival variables**: Event and time variables if the model was trained for survival analysis
+
+This ensures that inference runs with the same settings as training, generating both embeddings and predictions.
 
 -----
 
