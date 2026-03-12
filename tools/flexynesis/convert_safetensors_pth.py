@@ -1,113 +1,180 @@
-#!/usr/bin/env python
-
-import argparse
+import json
+import torch
+import numpy as np
+from safetensors.torch import load_file
 import os
 import sys
 
-import torch
-from safetensors import safe_open
-from safetensors.torch import save_file
+
+class MinimalDataset:
+    """
+    Minimal dataset-like object that provides the attributes
+    that Flexynesis model constructors expect.
+    """
+    def __init__(self, config, artifacts):
+        # From config.json
+        self.layers = config.get("layers", [])
+        input_dims = config.get("input_dims", [])
+        target_vars = config.get("target_variables", [])
+
+        # Create features dict from artifacts: {layer_name: [feature1, feature2, ...]}
+        self.features = artifacts["feature_lists"]
+
+        # Create dat dict: {layer_name: tensor_placeholder}
+        # Models check dat.keys() to get layer names
+        self.dat = {layer: None for layer in self.layers}
+
+        # Variable types: Variables in label_encoders are categorical,
+        # variables not in label_encoders are numerical (regression)
+        self.variable_types = {}
+        
+        # Annotations (ann): minimal placeholder DataFrame-like
+        # Models may check np.unique(self.ann[var]) for number of classes
+        self.ann = {}
+
+        # Get class categories from label encoders in artifacts
+        if "label_encoders" in artifacts:
+            for var, encoder_info in artifacts["label_encoders"].items():
+                if "categories" in encoder_info and len(encoder_info["categories"]) > 0:
+                    # Categories are stored as [[class1, class2, ...]]
+                    categories = encoder_info["categories"][0]
+                    self.ann[var] = categories
+                    self.variable_types[var] = 'categorical'
+
+        # For variables not in label_encoders, they are numerical (regression)
+        for var in target_vars:
+            if var not in self.variable_types:
+                self.variable_types[var] = 'numerical'
+                # For numerical variables, ann should be empty or a dummy array
+                # We'll use a single dummy value to indicate 1 output dimension
+                self.ann[var] = np.array([0.0])
 
 
-def convert_pt_to_safetensors(input_path, output_path):
-    """Convert PyTorch model to SafeTensors format."""
-    print(f"Loading PyTorch model from: {input_path}")
+def reconstruct_model(safetensors_path, config_path, artifacts_path):
+    """
+    Reconstruct a full Flexynesis model from saved components.
 
-    try:
-        # Load the PyTorch model
-        state_dict = torch.load(input_path)
+    Args:
+        safetensors_path: Path to .safetensors file with state_dict
+        config_path: Path to config.json with model architecture
+        artifacts_path: Path to artifacts.json (required)
 
-        print(f"Converting {len(state_dict)} tensors to SafeTensors format...")
+    Returns:
+        model: Fully reconstructed model instance
+    """
 
-        # Save as SafeTensors
-        save_file(state_dict, output_path)
-        print(f"Successfully converted to SafeTensors: {output_path}")
+    # 1. Load config
+    print(f"[1/5] Loading config from {config_path}")
+    with open(config_path, 'r') as f:
+        config = json.load(f)
 
-    except Exception as e:
-        print(f"Error converting PyTorch to SafeTensors: {e}")
-        sys.exit(1)
+    model_class_name = config.get("model_class")
 
+    print(f"      Model class: {model_class_name}")
+    print(f"      Input dims: {config.get('input_dims')}")
+    print(f"      Layers: {config.get('layers')}")
 
-def convert_safetensors_to_pt(input_path, output_path):
-    """Convert SafeTensors to PyTorch format."""
-    print(f"Loading SafeTensors model from: {input_path}")
+    # 2. Load artifacts
+    print(f"[2/5] Loading artifacts from {artifacts_path}")
+    if not os.path.exists(artifacts_path):
+        raise FileNotFoundError(f"Artifacts file not found: {artifacts_path}")
+    with open(artifacts_path, 'r') as f:
+        artifacts = json.load(f)
 
-    try:
-        state_dict = {}
+    # 3. Import Flexynesis model class
+    print(f"[3/5] Importing Flexynesis model: {model_class_name}")
 
-        # Load SafeTensors
-        with safe_open(input_path, framework="pt", device="cpu") as f:
-            for key in f.keys():
-                state_dict[key] = f.get_tensor(key)
-
-        print(f"Converting {len(state_dict)} tensors to PyTorch format...")
-
-        # Save as PyTorch
-        torch.save(state_dict, output_path)
-        print(f"Successfully converted to PyTorch: {output_path}")
-
-    except Exception as e:
-        print(f"Error converting SafeTensors to PyTorch: {e}")
-        sys.exit(1)
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Convert between PyTorch and SafeTensors",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  python converter.py --convert pt_safe -i model.pt -o model.safetensors
-  python converter.py --convert safe_pt -i model.safetensors -o model.pt
-        """
-    )
-
-    parser.add_argument(
-        "--convert",
-        required=True,
-        choices=["pt_safe", "safe_pt"],
-        help=(
-            "Conversion direction: 'pt_safe' (PyTorch to SafeTensors) "
-            "or 'safe_pt' (SafeTensors to PyTorch)"
+    # Only Flexynesis models are supported
+    if model_class_name == "DirectPred":
+        from flexynesis.models.direct_pred import DirectPred
+        ModelClass = DirectPred
+    elif model_class_name == "GNN":
+        from flexynesis.models.gnn_early import GNN
+        ModelClass = GNN
+    elif model_class_name == "supervised_vae":
+        from flexynesis.models.supervised_vae import supervised_vae
+        ModelClass = supervised_vae
+    elif model_class_name == "CrossModalPred":
+        from flexynesis.models.crossmodal_pred import CrossModalPred
+        ModelClass = CrossModalPred
+    elif model_class_name == "MultiTripletNetwork":
+        from flexynesis.models.triplet_encoder import MultiTripletNetwork
+        ModelClass = MultiTripletNetwork
+    else:
+        raise ValueError(
+            f"Unknown Flexynesis model: {model_class_name}\n"
+            f"Supported models: DirectPred, GNN, supervised_vae, CrossModalPred, MultiTripletNetwork"
         )
+
+    print(f"      Successfully imported {ModelClass.__name__}")
+
+    # 4. Create minimal dataset object
+    print(f"[4/5] Creating minimal dataset object")
+    dataset = MinimalDataset(config, artifacts)
+
+    # 5. Instantiate model with config
+    print(f"[5/5] Instantiating model and loading weights")
+
+    # Extract model config (hyperparameters)
+    model_config = config.get("config", {})
+
+    # Convert string numbers to proper types if needed
+    for key in ["latent_dim", "supervisor_hidden_dim", "batch_size"]:
+        if key in model_config and isinstance(model_config[key], str):
+            model_config[key] = int(model_config[key])
+
+    # Instantiate model
+    model = ModelClass(
+        config=model_config,
+        dataset=dataset,
+        target_variables=config.get("target_variables", []),
+        batch_variables=None,
+        surv_event_var=config.get("surv_event_var"),
+        surv_time_var=config.get("surv_time_var"),
+        use_loss_weighting=True,
+        device_type=config.get("device_type", "cpu")
     )
 
-    parser.add_argument(
-        "-i", "--input",
-        required=True,
-        help="Input model file path"
-    )
+    # 6. Load state dict
+    print(f"      Loading weights from SafeTensors: {safetensors_path}")
+    state_dict = load_file(safetensors_path)
 
-    parser.add_argument(
-        "-o", "--output",
-        required=True,
-        help="Output model file path"
-    )
+    model.load_state_dict(state_dict)
+    model.eval()
 
-    args = parser.parse_args()
+    print(f"\n✓ Model reconstructed successfully!")
+    print(f"  Model type: {type(model).__name__}")
+    print(f"  Has .transform(): {hasattr(model, 'transform')}")
+    print(f"  Has .predict(): {hasattr(model, 'predict')}")
 
-    # Validate input file exists
-    if not os.path.exists(args.input):
-        print(f"Error: Input file does not exist: {args.input}")
-        sys.exit(1)
-
-    # Create output directory if it doesn't exist
-    output_dir = os.path.dirname(args.output)
-    if output_dir and not os.path.exists(output_dir):
-        os.makedirs(output_dir)
-        print(f"Created output directory: {output_dir}")
-
-    # Perform conversion
-    if args.convert == "pt_safe":
-
-        convert_pt_to_safetensors(args.input, args.output)
-
-    elif args.convert == "safe_pt":
-
-        convert_safetensors_to_pt(args.input, args.output)
-
-    print("Conversion completed successfully!")
+    return model
 
 
 if __name__ == "__main__":
-    main()
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Reconstruct a full Flexynesis model from safetensors + config"
+    )
+    parser.add_argument("--safetensors", required=True,
+                        help="Path to .safetensors file (state_dict)")
+    parser.add_argument("--config", required=True,
+                        help="Path to config.json")
+    parser.add_argument("--artifacts", required=True,
+                        help="Path to artifacts.json")
+    parser.add_argument("--output", default="full_model.pth",
+                        help="Output path for reconstructed model")
+
+    args = parser.parse_args()
+
+    # Reconstruct
+    model = reconstruct_model(
+        safetensors_path=args.safetensors,
+        config_path=args.config,
+        artifacts_path=args.artifacts
+    )
+
+    # Save
+    print(f"\nSaving full model to: {args.output}")
+    torch.save(model, args.output)
+    print(f"Done! Safetensors succesfully converted to Pytorch")
