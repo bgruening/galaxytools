@@ -321,7 +321,7 @@ if __name__ == "__main__":
         help=(
             "Conversion direction: 'joblib_json' (joblib to JSON) "
             "or 'json_joblib' (JSON to joblib)"
-        )
+        ),
     )
     parser.add_argument(
         "--input", "-i", type=str, required=True, help="Input file path"
@@ -343,4 +343,3 @@ if __name__ == "__main__":
     elif args.convert == "json_joblib":
         # JSON → joblib
         convert_json_to_joblib(args.input, args.output)
-

@@ -11,6 +11,7 @@ class MinimalDataset:
     Minimal dataset-like object that provides the attributes
     that Flexynesis model constructors expect.
     """
+
     def __init__(self, config, artifacts):
         # From config.json
         self.layers = config.get("layers", [])
@@ -40,12 +41,12 @@ class MinimalDataset:
                     # Categories are stored as [[class1, class2, ...]]
                     categories = encoder_info["categories"][0]
                     self.ann[var] = categories
-                    self.variable_types[var] = 'categorical'
+                    self.variable_types[var] = "categorical"
 
         # For variables not in label_encoders, they are numerical (regression)
         for var in target_vars:
             if var not in self.variable_types:
-                self.variable_types[var] = 'numerical'
+                self.variable_types[var] = "numerical"
                 # For numerical variables, ann should be empty or a dummy array
                 # We'll use a single dummy value to indicate 1 output dimension
                 self.ann[var] = np.array([0.0])
@@ -61,7 +62,9 @@ def _infer_layers_and_input_dims(config, artifacts):
     """
     feature_lists = artifacts.get("feature_lists") or {}
     if not feature_lists:
-        raise ValueError("artifacts.json is missing required key 'feature_lists' or it is empty")
+        raise ValueError(
+            "artifacts.json is missing required key 'feature_lists' or it is empty"
+        )
 
     layers = config.get("layers")
     if not layers:
@@ -122,7 +125,7 @@ def reconstruct_model(safetensors_path, config_path, artifacts_path):
 
     # 1. Load config
     print(f"[1/5] Loading config from {config_path}")
-    with open(config_path, 'r') as f:
+    with open(config_path, "r") as f:
         config = json.load(f)
 
     model_class_name = config.get("model_class")
@@ -135,7 +138,7 @@ def reconstruct_model(safetensors_path, config_path, artifacts_path):
     print(f"[2/5] Loading artifacts from {artifacts_path}")
     if not os.path.exists(artifacts_path):
         raise FileNotFoundError(f"Artifacts file not found: {artifacts_path}")
-    with open(artifacts_path, 'r') as f:
+    with open(artifacts_path, "r") as f:
         artifacts = json.load(f)
 
     # Handle model configs (e.g. unsupervised_vae) that omit layer metadata.
@@ -147,18 +150,23 @@ def reconstruct_model(safetensors_path, config_path, artifacts_path):
     # Only Flexynesis models are supported
     if model_class_name == "DirectPred":
         from flexynesis.models.direct_pred import DirectPred
+
         ModelClass = DirectPred
     elif model_class_name == "GNN":
         from flexynesis.models.gnn_early import GNN
+
         ModelClass = GNN
     elif model_class_name == "supervised_vae":
         from flexynesis.models.supervised_vae import supervised_vae
+
         ModelClass = supervised_vae
     elif model_class_name == "CrossModalPred":
         from flexynesis.models.crossmodal_pred import CrossModalPred
+
         ModelClass = CrossModalPred
     elif model_class_name == "MultiTripletNetwork":
         from flexynesis.models.triplet_encoder import MultiTripletNetwork
+
         ModelClass = MultiTripletNetwork
     else:
         raise ValueError(
@@ -192,7 +200,7 @@ def reconstruct_model(safetensors_path, config_path, artifacts_path):
         surv_event_var=config.get("surv_event_var"),
         surv_time_var=config.get("surv_time_var"),
         use_loss_weighting=True,
-        device_type=config.get("device_type", "cpu")
+        device_type=config.get("device_type", "cpu"),
     )
 
     # 6. Load state dict
@@ -216,14 +224,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(
         description="Reconstruct a full Flexynesis model from safetensors + config"
     )
-    parser.add_argument("--safetensors", required=True,
-                        help="Path to .safetensors file (state_dict)")
-    parser.add_argument("--config", required=True,
-                        help="Path to config.json")
-    parser.add_argument("--artifacts", required=True,
-                        help="Path to artifacts.json")
-    parser.add_argument("--output", default="full_model.pth",
-                        help="Output path for reconstructed model")
+    parser.add_argument(
+        "--safetensors", required=True, help="Path to .safetensors file (state_dict)"
+    )
+    parser.add_argument("--config", required=True, help="Path to config.json")
+    parser.add_argument("--artifacts", required=True, help="Path to artifacts.json")
+    parser.add_argument(
+        "--output", default="full_model.pth", help="Output path for reconstructed model"
+    )
 
     args = parser.parse_args()
 
@@ -231,7 +239,7 @@ if __name__ == "__main__":
     model = reconstruct_model(
         safetensors_path=args.safetensors,
         config_path=args.config,
-        artifacts_path=args.artifacts
+        artifacts_path=args.artifacts,
     )
 
     # Save
