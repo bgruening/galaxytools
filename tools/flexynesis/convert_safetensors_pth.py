@@ -14,7 +14,6 @@ class MinimalDataset:
     def __init__(self, config, artifacts):
         # From config.json
         self.layers = config.get("layers", [])
-        input_dims = config.get("input_dims", [])
         target_vars = config.get("target_variables", [])
 
         # Create features dict from artifacts: {layer_name: [feature1, feature2, ...]}
@@ -27,7 +26,7 @@ class MinimalDataset:
         # Variable types: Variables in label_encoders are categorical,
         # variables not in label_encoders are numerical (regression)
         self.variable_types = {}
-        
+
         # Annotations (ann): minimal placeholder DataFrame-like
         # Models may check np.unique(self.ann[var]) for number of classes
         self.ann = {}
@@ -35,6 +34,8 @@ class MinimalDataset:
         # Get class categories from label encoders in artifacts
         if "label_encoders" in artifacts:
             for var, encoder_info in artifacts["label_encoders"].items():
+                if encoder_info is None:
+                    continue
                 if "categories" in encoder_info and len(encoder_info["categories"]) > 0:
                     # Categories are stored as [[class1, class2, ...]]
                     categories = encoder_info["categories"][0]
@@ -48,6 +49,62 @@ class MinimalDataset:
                 # For numerical variables, ann should be empty or a dummy array
                 # We'll use a single dummy value to indicate 1 output dimension
                 self.ann[var] = np.array([0.0])
+
+
+def _infer_layers_and_input_dims(config, artifacts):
+    """
+    Fill missing layer metadata in config using artifacts.
+
+    Some unsupervised exports omit `layers` and `input_dims` from config.
+    In that case, reconstruct them from artifacts so model modules can be
+    instantiated with the same shape as the checkpoint.
+    """
+    feature_lists = artifacts.get("feature_lists") or {}
+    if not feature_lists:
+        raise ValueError("artifacts.json is missing required key 'feature_lists' or it is empty")
+
+    layers = config.get("layers")
+    if not layers:
+        # Prefer original_modalities when present, then data_types, then feature_lists keys.
+        for candidate in (
+            artifacts.get("original_modalities"),
+            artifacts.get("data_types"),
+            list(feature_lists.keys()),
+        ):
+            if candidate:
+                layers = list(candidate)
+                break
+        config["layers"] = layers
+        print(f"      Inferred layers from artifacts: {layers}")
+
+    if not layers:
+        raise ValueError("Unable to infer model layers from config/artifacts")
+
+    # Keep only layers that exist in feature_lists to avoid mismatched names.
+    valid_layers = [layer for layer in layers if layer in feature_lists]
+    if not valid_layers:
+        raise ValueError(
+            "None of the inferred/config layers exist in artifacts['feature_lists']"
+        )
+    if valid_layers != layers:
+        print(
+            "      Warning: Some layers were missing in artifacts['feature_lists']; "
+            f"using {valid_layers}"
+        )
+        config["layers"] = valid_layers
+        layers = valid_layers
+
+    input_dims = config.get("input_dims")
+    if not input_dims:
+        input_dims = [len(feature_lists[layer]) for layer in layers]
+        config["input_dims"] = input_dims
+        print(f"      Inferred input_dims from feature_lists: {input_dims}")
+
+    if len(input_dims) != len(layers):
+        raise ValueError(
+            "Length mismatch between layers and input_dims: "
+            f"layers={len(layers)}, input_dims={len(input_dims)}"
+        )
 
 
 def reconstruct_model(safetensors_path, config_path, artifacts_path):
@@ -80,6 +137,9 @@ def reconstruct_model(safetensors_path, config_path, artifacts_path):
         raise FileNotFoundError(f"Artifacts file not found: {artifacts_path}")
     with open(artifacts_path, 'r') as f:
         artifacts = json.load(f)
+
+    # Handle model configs (e.g. unsupervised_vae) that omit layer metadata.
+    _infer_layers_and_input_dims(config, artifacts)
 
     # 3. Import Flexynesis model class
     print(f"[3/5] Importing Flexynesis model: {model_class_name}")
