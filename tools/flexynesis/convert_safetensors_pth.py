@@ -1,9 +1,9 @@
 import json
-import torch
-import numpy as np
-from safetensors.torch import load_file
 import os
-import sys
+
+import numpy as np
+import torch
+from safetensors.torch import load_file
 
 
 class MinimalDataset:
@@ -177,11 +177,11 @@ def reconstruct_model(safetensors_path, config_path, artifacts_path):
     print(f"      Successfully imported {ModelClass.__name__}")
 
     # 4. Create minimal dataset object
-    print(f"[4/5] Creating minimal dataset object")
+    print("[4/5] Creating minimal dataset object")
     dataset = MinimalDataset(config, artifacts)
 
     # 5. Instantiate model with config
-    print(f"[5/5] Instantiating model and loading weights")
+    print("[5/5] Instantiating model and loading weights")
 
     # Extract model config (hyperparameters)
     model_config = config.get("config", {})
@@ -210,7 +210,7 @@ def reconstruct_model(safetensors_path, config_path, artifacts_path):
     model.load_state_dict(state_dict)
     model.eval()
 
-    print(f"\n✓ Model reconstructed successfully!")
+    print("\n✓ Model reconstructed successfully!")
     print(f"  Model type: {type(model).__name__}")
     print(f"  Has .transform(): {hasattr(model, 'transform')}")
     print(f"  Has .predict(): {hasattr(model, 'predict')}")
@@ -245,4 +245,4 @@ if __name__ == "__main__":
     # Save
     print(f"\nSaving full model to: {args.output}")
     torch.save(model, args.output)
-    print(f"Done! Safetensors succesfully converted to Pytorch")
+    print("Done! Safetensors succesfully converted to Pytorch")
