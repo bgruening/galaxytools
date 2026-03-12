@@ -312,30 +312,35 @@ if __name__ == "__main__":
     import os
 
     parser = argparse.ArgumentParser(
-        description="Convert flexynesis artifacts between joblib and JSON formats"
+        description="Convert flexynesis artifacts between joblib and JSON formats",
     )
     parser.add_argument(
-        "--input", "-i", type=str, required=True, help="Input file (.joblib or .json)"
+        "--convert",
+        required=True,
+        choices=["joblib_json", "json_joblib"],
+        help=(
+            "Conversion direction: 'joblib_json' (joblib to JSON) "
+            "or 'json_joblib' (JSON to joblib)"
+        )
     )
     parser.add_argument(
-        "--output", "-o", type=str, required=True, help="Output file (.json or .joblib)"
+        "--input", "-i", type=str, required=True, help="Input file path"
+    )
+    parser.add_argument(
+        "--output", "-o", type=str, required=True, help="Output file path"
     )
 
     args = parser.parse_args()
 
-    # Detect conversion direction based on file extensions
-    input_ext = os.path.splitext(args.input)[1].lower()
-    output_ext = os.path.splitext(args.output)[1].lower()
+    # Validate input file exists
+    if not os.path.exists(args.input):
+        print(f"[ERROR] Input file does not exist: {args.input}")
+        exit(1)
 
-    if input_ext in [".joblib", ".pkl"] and output_ext == ".json":
+    if args.convert == "joblib_json":
         # joblib → JSON
         convert_joblib_to_json(args.input, args.output)
-    elif input_ext == ".json" and output_ext in [".joblib", ".pkl"]:
+    elif args.convert == "json_joblib":
         # JSON → joblib
         convert_json_to_joblib(args.input, args.output)
-    else:
-        print(f"[ERROR] Invalid conversion: {input_ext} → {output_ext}")
-        print("[INFO] Supported conversions:")
-        print("  - .joblib/.pkl → .json")
-        print("  - .json → .joblib/.pkl")
-        parser.print_help()
+
