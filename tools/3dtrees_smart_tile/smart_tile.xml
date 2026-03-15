@@ -1,7 +1,7 @@
 <tool id="3dtrees_smart_tile" name="3DTrees: SmartTile" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
     <description>Subsampling, tiling, merging and matching of (multiple) point clouds</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.0.1</token>
+        <token name="@TOOL_VERSION@">1.1.0</token>
         <token name="@VERSION_SUFFIX@">0</token>
     </macros>
     <requirements>
@@ -31,9 +31,10 @@
                 #end if
                 --resolution-1 '$operation.resolution_1'
                 --resolution-2 '$operation.resolution_2'
-                --skip-dimension-reduction '$operation.skip_dimension_reduction'
+                $operation.skip_dimension_reduction
+                --chunk-size '$operation.chunk_size'
                 --num-spatial-chunks \${GALAXY_SLOTS:-4}
-                --workers '$operation.workers'
+                --workers \${GALAXY_SLOTS:-4}
                 --threads \${GALAXY_SLOTS:-4}
 
         #elif $operation.task == 'merge':
@@ -60,19 +61,44 @@
                 --task merge
                 --subsampled-segmented-folder input_segmented
                 --subsampled-target-folder input_res1
+                --tile_bounds_json '$operation.tile_bounds_json'
                 #if $operation.input_original:
                     --original-input-dir input_original
                 #end if
                 --output-tiles-folder output_dir/output_tiles
+                --output-merged-laz output_dir/merged.laz
                 --buffer '$operation.buffer'
                 --overlap-threshold '$operation.overlap_threshold'
                 --max-centroid-distance '$operation.max_centroid_distance'
-                --correspondence-tolerance '$operation.correspondence_tolerance'
                 --max-volume-for-merge '$operation.max_volume_for_merge'
                 --min-cluster-size '$operation.min_cluster_size'
                 --border-zone-width '$operation.border_zone_width'
+                --instance-dimension '$operation.instance_dimension'
                 $operation.disable_matching
-                --workers 2
+                $operation.transfer_original_dims_to_merged
+                --threedtrees-dims '$operation.threedtrees_dims'
+                --threedtrees-suffix '$operation.threedtrees_suffix'
+                --workers \${GALAXY_SLOTS:-2}
+
+        #elif $operation.task == 'remap':
+            ## Separate folders: originals with dims in output_originals, merged file in output_merged
+            ln -s '$operation.merged_file' merged_input.laz &&
+            mkdir -p input_original output_originals output_merged &&
+            #for $f in $operation.original_files:
+                ln -s '$f' input_original/'${f.element_identifier}.laz' &&
+            #end for
+            python -u /src/run.py
+                --task remap
+                --merged-laz merged_input.laz
+                --original-input-dir input_original
+                --output-dir output_originals
+                --workers \${GALAXY_SLOTS:-2}
+                $operation.transfer_original_dims_to_merged
+                --threedtrees-dims '$operation.threedtrees_dims'
+                --threedtrees-suffix '$operation.threedtrees_suffix'
+                #if $operation.transfer_original_dims_to_merged:
+                    --output-merged-with-originals output_merged/merged_with_originals.laz
+                #end if
         #end if
     ]]></command>
     <inputs>
@@ -80,30 +106,51 @@
             <param name="task" type="select" label="Task">
                 <option value="tile">Tile</option>
                 <option value="merge">Merge</option>
+                <option value="remap">Remap</option>
             </param>
             <when value="tile">
                 <param name="input_files" type="data" format="laz,las" multiple="true" label="Input LAZ/LAS files" help="Collection of point cloud files to tile and subsample"/>
                 <param argument="--tile-length" type="integer" min="1" max="10000" value="300" label="Tile Length" help="Size of tiles in meters (default: 300m)"/>
                 <param argument="--tile-buffer" type="integer" min="1" max="10000" value="20" label="Tile Buffer" help="Overlap/buffer between tiles in meters (default: 20m)"/>
                 <param argument="--tiling-threshold" type="float" min="0.1" max="50000" value="10000" optional="true" label="Tiling Threshold (MB)" help="File size threshold in MB. If input folder has single file below this size, skip tiling (optional)"/>
-                <param argument="--resolution-1" type="float" min="0.001" max="1.0" value="0.01" label="Resolution 1 (m)" help="First subsampling resolution in meters (default: 0.02 = 2cm)"/>
+                <param argument="--resolution-1" type="float" min="0.001" max="1.0" value="0.01" label="Resolution 1 (m)" help="First subsampling resolution in meters (default: 0.01 = 1cm)"/>
                 <param argument="--resolution-2" type="float" min="0.001" max="1.0" value="0.1" label="Resolution 2 (m)" help="Second subsampling resolution in meters (default: 0.1 = 10cm)"/>
-                <param argument="--skip-dimension-reduction" type="boolean" truevalue="--skip-dimension-reduction" falsevalue="" checked="true" label="Skip Dimension Reduction" help="Keep all point dimensions instead of reducing to XYZ-only. Set to False only for raw pre-segmentation data (default: True)"/>
+                <param argument="--skip-dimension-reduction" type="boolean" truevalue="--skip-dimension-reduction True" falsevalue="--skip-dimension-reduction False" checked="false" label="Skip Dimension Reduction" help="Keep all point dimensions instead of reducing to XYZ-only. Uncheck for raw pre-segmentation data (default: reduce to XYZ)."/>
+                <param argument="--chunk-size" type="integer" min="100000" max="200000000" value="20000000" label="Chunk size (points)" help="Points per chunk when reading LAZ/LAS in tiling phase 1. Smaller values reduce peak RAM and increase overhead (default: 20,000,000)."/>
                 <param argument="--workers" type="hidden" min="1" max="10" value="2" label="Workers" help="Number of workers for parallel processing (default: 2)"/>
             </when>
             <when value="merge">
                 <param name="input_segmented" type="data" format="laz" multiple="true" label="Segmented files (e.g.10cm)" help="Collection of subsampled LAZ files with predictions (PredInstance/PredSemantic dimensions)"/>
                 <param name="input_res1" type="data" format="laz" multiple="true" label="Subsampled target files (e.g. 1cm)" help="Collection of subsampled LAZ files at target resolution (for remapping)"/>
                 <param name="input_original" type="data" format="laz,las" multiple="true" optional="true" label="Original input files (optional)" help="Optional collection of original input LAZ files for final remap to original resolution"/>
-                <param argument="--buffer" type="float" min="0" max="100" value="30.0" label="Buffer Distance (m)" help="Buffer distance for filtering in meters (default: 10.0m)"/>
+                <param name="tile_bounds_json" type="data" format="json" label="Tile bounds JSON (tile_bounds_tindex.json from tile task)" help="Grid definition from the Tile task (required). Merge uses the same tile grid as tiling for robust matching."/>
+                <param argument="--buffer" type="float" min="0" max="100" value="10.0" label="Buffer Distance (m)" help="Buffer distance for filtering in meters (default: 10.0m)"/>
                 <param argument="--overlap-threshold" type="float" min="0" max="1" value="0.3" label="Overlap Threshold" help="Overlap ratio threshold for instance matching (0.3 = 30%)"/>
                 <param argument="--max-centroid-distance" type="float" min="0" max="100" value="3.0" label="Max Centroid Distance (m)" help="Maximum centroid distance to merge instances in meters (default: 3.0m)"/>
                 <param argument="--max-volume-for-merge" type="float" min="0" max="100" value="4.0" label="Max Volume for Merge (m³)" help="Max convex hull volume for small instance merging in m³ (default: 4.0m³)"/>
                 <param argument="--min-cluster-size" type="integer" min="1" max="10000" value="300" label="Minimum Cluster Size" help="Minimum cluster size in points for reassignment (default: 300)"/>
                 <param argument="--border-zone-width" type="float" min="0" max="100" value="10.0" label="Border Zone Width (m)" help="Width of border zone beyond buffer for instance matching in meters (default: 10.0m)"/>
-                <param argument="--correspondence-tolerance" type="float" min="0" max="1" value="0.05" label="Correspondence Tolerance (m)" help="Max distance for point correspondence in meters - should be small ~5cm (default: 0.05m)"/>
                 <param argument="--disable-matching" type="boolean" truevalue="--disable-matching" falsevalue="" checked="false" label="Disable Matching" help="Disable cross-tile instance matching (default: False)"/>
+                <param argument="--instance-dimension" type="text" value="PredInstance" label="Instance dimension" help="Name of the instance ID dimension in segmented files. Default: PredInstance (SegmentAnything-style). Use treeID for other segmentation tools."/>
+                <param argument="--transfer-original-dims-to-merged" type="boolean" truevalue="" falsevalue="--no-transfer-original-dims-to-merged" checked="true" label="Transfer original attributes to merged point cloud" help="Add dimensions from original files (e.g. Intensity, RGB) to the merged LAZ. When disabled, merged output keeps only merge dimensions. Applies to single-file merge path."/>
+                <param argument="--threedtrees-dims" type="hidden" value="PredInstance,PredSemantic" label="Added 3DT dimensions" help="Comma-separated list of dimension names produced by 3DTrees to transfer to original files. Renamed to 3DT_{name}_{suffix} format.">
+                    <validator type="regex" message="Only letters and commas are allowed">^[a-zA-Z,]+$</validator>
+                </param>
+                <param argument="--threedtrees-suffix" type="hidden" value="SAT" label="3DTrees suffix" help="Suffix for 3DTrees dimension branding (e.g. SAT → 3DT_PredInstance_SAT) for SegmentAnyTree.">
+                    <validator type="regex" message="Only letters and commas are allowed">^[a-zA-Z,]+$</validator>
+                </param>
                 <param argument="--workers" type="hidden" min="1" max="10" value="2" label="Workers" help="Number of workers for parallel processing (default: 2)"/>
+            </when>
+            <when value="remap">
+                <param name="merged_file" type="data" format="laz" label="Merged LAZ file" help="Single merged LAZ file with new dimensions (e.g. from Merge task). All dimensions from this file will be added to the original files by nearest-neighbor (no instance dimension required)."/>
+                <param name="original_files" type="data" format="laz,las" multiple="true" label="Original LAZ/LAS files" help="Original point cloud files. Output will have the same files with all dimensions from the merged file added."/>
+                <param argument="--transfer-original-dims-to-merged" type="boolean" truevalue="" falsevalue="--no-transfer-original-dims-to-merged" checked="true" label="Transfer original attributes to merged point cloud" help="Write a merged LAZ with dimensions from original files added (merged_with_originals.laz). When disabled, this output is skipped."/>
+                <param argument="--threedtrees-dims" type="hidden" value="PredInstance,PredSemantic" label="3DTrees dimensions" help="Comma-separated list of dimension names produced by 3DTrees to transfer to original files. Renamed to 3DT_{name}_{suffix} format.">
+                    <validator type="regex" message="Only letters and commas are allowed">^[a-zA-Z,]+$</validator>
+                </param>
+                <param argument="--threedtrees-suffix" type="hidden" value="SAT" label="3DTrees suffix" help="Suffix for 3DTrees dimension branding (e.g. SAT → 3DT_PredInstance_SAT).">
+                    <validator type="regex" message="Only letters and commas are allowed">^[a-zA-Z,]+$</validator>
+                </param>
             </when>
         </conditional>
     </inputs>
@@ -120,19 +167,30 @@
         <data name="output_png" format="png" label="${tool.name}: Tiling preview" from_work_dir="output_dir/overview_copc_tiles.png">
             <filter>operation['task'] == "tile"</filter>
         </data>
+        <data name="tile_bounds_json" format="json" label="${tool.name}: Tile bounds JSON" from_work_dir="output_dir/tile_bounds_tindex.json">
+            <filter>operation['task'] == "tile"</filter>
+        </data>
 
         <!-- Merge task outputs: collection of per-tile files + optional merged file -->
         <collection name="output_merge_tiles" type="list" label="${tool.name}: Original with added dimensions">
             <filter>operation['task'] == "merge"</filter>
             <discover_datasets pattern="__name_and_ext__" directory="output_dir/original_with_predictions" format="laz"/>
         </collection>
-        <data name="output_merged_laz" format="laz" label="${tool.name}: Merged LAZ file" from_work_dir="merged.laz">
+        <data name="output_merged_laz" format="laz" label="${tool.name}: Merged LAZ file" from_work_dir="output_dir/merged.laz">
             <filter>operation['task'] == "merge"</filter>
         </data>
-        
+
+        <!-- Remap task output: original files with dimensions from merged file -->
+        <collection name="output_originals_with_dims" type="list" label="${tool.name}: Original files with dimensions from merged file">
+            <filter>operation['task'] == "remap"</filter>
+            <discover_datasets pattern="__name_and_ext__" directory="output_originals" format="laz" recurse="false"/>
+        </collection>
+        <data name="output_merged_with_originals" format="laz" label="${tool.name}: Merged LAZ with original dimensions" from_work_dir="output_merged/merged_with_originals.laz">
+            <filter>operation['task'] == "remap"</filter>
+        </data>
     </outputs>
     <tests>
-        <test expect_num_outputs="3">
+        <test expect_num_outputs="4">
             <conditional name="operation">
                 <param name="task" value="tile"/>
                 <param name="input_files" value="mikro.laz"/>
@@ -147,94 +205,100 @@
                     <has_image_center_of_mass center_of_mass="1813, 1768" eps="100"/>
                 </assert_contents>
             </output>
+            <output name="tile_bounds_json">
+                <assert_contents>
+                    <has_json_property_with_value property="tile_length" value="300" />
+                    <has_json_property_with_value property="tile_buffer" value="20" />
+                    <has_json_property_with_value property="geo_extent" value='{"minx": 416948.12, "miny": 5347395.89, "maxx": 416965.14, "maxy": 5347410.67}' />
+                </assert_contents>
+            </output>
         </test>
         <test expect_num_outputs="2">
             <conditional name="operation">
                 <param name="task" value="merge"/>
                 <param name="input_segmented" value="mikro_segmented.laz"/>
                 <param name="input_res1" value="mikro_res1.laz"/>
-                <param name="input_original" value="mikro.laz"/>      
+                <param name="input_original" value="mikro.laz"/>
+                <param name="tile_bounds_json" value="tile_bounds_tindex.json"/>
             </conditional>
             <output_collection name="output_merge_tiles" type="list" count="1"/>
             <output name="output_merged_laz">
                 <assert_contents>
-                    <has_size value="47500" delta="1000"/>
+                    <has_size value="163000" delta="120000"/>
                 </assert_contents>
             </output>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="operation">
+                <param name="task" value="remap"/>
+                <param name="merged_file" value="mikro_segmented.laz"/>
+                <param name="original_files" value="mikro.laz"/>
+            </conditional>
+            <output_collection name="output_originals_with_dims" type="list" count="1"/>
+            <output name="output_merged_with_originals">
+                <assert_contents>
+                    <has_size value="220000" delta="10000"/>
+                </assert_contents>
+            </output>
+            
         </test>
     </tests>
     <help format="markdown">
         **What it does**
 
-        This tool processes 3D point cloud data for tree segmentation with four task modes:
+        This tool processes 3D point cloud data for tree segmentation with three task modes:
 
         1. **Tile**: Subsample input point clouds and create overlapping tiles for processing
-        3. **Merge**: Remaps predictions to target resolution and merge tiles with instance matching
+        2. **Merge**: Remaps predictions to target resolution and merge tiles with instance matching (requires Tile bounds JSON from Tile task)
+        3. **Remap**: One merged LAZ file and the original files folder; outputs original files with **all dimensions from the merged file** added (no hardcoded dimension names)
 
         **Tile Task**
 
-        Processes input LAZ/LAS files through tiling and subsampling pipeline:
-        - Converts to COPC format
+        Processes input LAZ/LAS files through tiling and subsampling (laspy + PDAL):
         - Creates overlapping tiles
-        - Generates two subsampled resolutions (default: 2cm and 10cm)
+        - Generates two subsampled resolutions (default: 1cm and 10cm)
 
         *Parameters:*
-        - Tile Length: Size of tiles in meters (default: 100m)
-        - Tile Buffer: Overlap between tiles in meters (default: 5m)
+        - Tile Length: Size of tiles in meters (default: 300m in form; tool default 100m)
+        - Tile Buffer: Overlap between tiles in meters (default: 20m)
         - Tiling Threshold: File size threshold in MB - files below this skip tiling (optional)
-        - Resolution 1: First subsampling resolution in meters (default: 0.02 = 2cm)
+        - Resolution 1: First subsampling resolution in meters (default: 0.01 = 1cm)
         - Resolution 2: Second subsampling resolution in meters (default: 0.1 = 10cm)
-        - Skip Dimension Reduction: Keep all point dimensions (default: True)
+        - Skip Dimension Reduction: Keep all point dimensions; uncheck to reduce to XYZ only
 
         *Outputs:* Collection of tiled and subsampled LAZ files organized in subdirectories
-
-        **Remap Task**
-
-        Remaps predictions from source files to target resolution files using KDTree nearest neighbor matching.
-        Files are matched by spatial bounds.
-
-        *Parameters:*
-        - Source files: LAZ files with predictions (e.g., segmented 10cm files)
-        - Target files: LAZ files at target resolution (e.g., 2cm subsampled files)
-        - Tolerance: Bounds matching tolerance in meters (default: 5.0m)
-
-        *Outputs:* Collection of remapped LAZ files with predictions transferred to target resolution
 
         **Merge Task**
 
         Complete merge workflow:
-        1. Remaps 10cm predictions to target resolution (default: 2cm)
+        1. Remaps segmented (e.g. 10cm) predictions to target resolution (e.g. 1cm)
         2. Merges overlapping tiles with cross-tile instance matching
-        3. Optionally remaps to original input resolution
+        3. Optionally remaps to original input resolution when original files are provided
+
+        **Tile bounds JSON is required** for the merge task (use the Tile bounds JSON output from the Tile task).
 
         *Parameters:*
-        - Input: Collection of 10cm subsampled LAZ files with predictions (PredInstance/PredSemantic)
-        - Target Resolution: Resolution for remapping (default: 2cm)
+        - Instance dimension: Name of the instance ID dimension in segmented LAZ files (default: **PredInstance**; use **treeID** for other segmentation tools). Merge uses this for cross-tile matching and remap.
+        - Tile bounds JSON: Required. Grid definition from the Tile task.
+        - Input: Collection of 10cm subsampled LAZ files with predictions
+        - Target: Subsampled files at target resolution (e.g. 2cm)
         - Buffer: Buffer distance for filtering in meters (default: 10.0m)
         - Overlap Threshold: Ratio for instance matching, 0-1 (default: 0.3 = 30%)
         - Max Centroid Distance: Max distance to merge instances (default: 3.0m)
-        - Correspondence Tolerance: Point matching tolerance (default: 0.05m = 5cm)
         - Max Volume for Merge: Max volume for small instance merging (default: 4.0m³)
         - Min Cluster Size: Minimum points per cluster (default: 300)
         - Border Zone Width: Width of border zone for matching (default: 10.0m)
-        - Retile Buffer: Buffer expansion during retiling (fixed: 2.0m)
 
         *Outputs:*
-        - Collection of per-tile segmented LAZ files
-        - Single merged LAZ file (if not skipped)
+        - Collection of per-tile segmented LAZ files (when original input files are provided)
+        - Single merged LAZ file
 
-        **Remap and Merge Task**
+        **Remap task**
 
-        Combined remap + merge workflow:
-        1. Remaps predictions from source to target files
-        2. Merges tiles with instance matching
-        3. Optionally remaps to original input resolution
+        Takes one merged LAZ file and the original files (folder/collection). Outputs: (1) original-resolution files with **all dimensions from the merged file** added; (2) a single merged LAZ file with **dimensions from the original files** added (e.g. Intensity, ReturnNumber, Classification), filled by nearest-neighbor matching. Dimension names are taken from the merged/original headers (no hardcoded dimension names).
 
-        Uses same parameters as separate remap and merge tasks.
-
-        *Outputs:*
-        - Collection of per-tile segmented LAZ files
-        - Single merged LAZ file (if not skipped)
+        *Inputs:* Merged LAZ file; Original LAZ/LAS files (multiple).
+        *Outputs:* Collection of original files with dimensions from the merged file added; Merged LAZ with original dimensions.
 
         **Processing Notes**
 
