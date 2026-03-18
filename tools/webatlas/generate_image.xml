@@ -1,0 +1,258 @@
+<tool id="webatlas_generate_image" name="Webatlas Generate image" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5" profile="@PROFILE_VERSION@">
+    <description>TODO description</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+    #if $input_type_selector == "label_visium":
+        #if $file_type_selector_visium == "h5ad":
+            ln -s '$input_visium_h5ad' input.h5ad &&
+            /usr/local/bin/generate_image.py --stem $stem --img_type label --file_type visium --file_path input.h5ad
+            @VISIUM_LABEL_COMMAND@
+            mv $stem-label.tif $output_label
+        #elif $file_type_selector_visium == "zip":
+            mkdir unpacked_spaceranger &&
+            unzip $input_visium_zip -d unpacked_spaceranger &&
+            /usr/local/bin/generate_image.py --stem $stem --img_type label --file_type visium --file_path unpacked_spaceranger
+            @VISIUM_LABEL_COMMAND@
+            mv $stem-label.tif $output_label
+        #end if
+    #elif $input_type_selector == "label_xenium":
+        mkdir unpacked_xenium &&
+        unzip $input_xenium -d unpacked_xenium &&
+        /usr/local/bin/generate_image.py --stem $stem --img_type label --file_type xenium --file_path unpacked_xenium
+        @REF_IMG_COMMAND@
+        --args "{
+        #if $resolution:
+            'resolution': $resolution
+        #end if
+        }"
+        &&
+        mv $stem-label.tif $output_label
+    #elif $input_type_selector == "label_merscope":
+        mkdir unpacked_merscope &&
+        unzip $input_merscope_label -d unpacked_merscope &&
+        /usr/local/bin/generate_image.py --stem $stem --img_type label --file_type merscope --file_path unpacked_merscope
+        @REF_IMG_COMMAND@
+        @Z_INDEX_COMMAND@
+        mv $stem-label.tif $output_label
+    #elif $input_type_selector == "raw_merscope":
+        mkdir unpacked_merscope &&
+        unzip $input_merscope_raw -d unpacked_merscope &&
+        /usr/local/bin/generate_image.py --stem $stem --img_type raw --file_type merscope --file_path unpacked_merscope
+        @Z_INDEX_COMMAND@
+        mv $stem-raw.tif $output_raw
+    #end if
+    ]]></command>
+    <inputs>
+        <conditional name="input_type">
+            <param name="input_type_selector" type="select" label="Choose the type of input data" help="">
+                <option value="label_visium">Visium (spaceranger)</option>
+                <option value="label_xenium">Xenium</option>
+                <option value="label_merscope">Merscope data with 'cell_boundaries'</option>
+                <option value="raw_merscope">Merscope data with raw tif files</option>
+            </param>
+            <when value="label_visium">
+                <conditional name="file_type_visium">
+                    <param name="file_type_selector_visium" type="select" label="Choose the type of input file">
+                        <option value="h5ad">h5ad file</option>
+                        <option value="zip">zip compressed Spaceranger output</option>
+                    </param>
+                    <when value="h5ad">
+                        <param name="input_visium_h5ad" type="data" format="h5ad" label="h5ad file"/>
+                    </when>
+                    <when value="zip">
+                        <param name="input_visium_zip" type="data" format="zip" label="zip compressed Spaceranger output"/>
+                    </when>
+                </conditional>
+                <expand macro="ref_img"/>
+                <expand macro="stem"/>
+                <expand macro="obs_subset"/>
+                <param name="sample_id" type="text" optional="true" label="Sample ID" help="Sample ID string within the AnnData object."/>
+                <param name="relative_size" type="text" optional="true" label="Relative size" help="Optional numerical 'obs' column name that holds a multiplier for the spot diameter. Only useful for data that has been processed to merge spots."/>
+            </when>
+            <when value="label_xenium">
+                <param name="input_xenium" type="data" format="zip" label="zip compressed Xenium output or cells.zarr.zip file"/>
+                <expand macro="ref_img"/>
+                <expand macro="stem"/>
+                <param name="resolution" type="float" value="0.2125" optional="true" label="Pixel resolution" help="Default value: 0.2125"/>
+            </when>
+            <when value="label_merscope">
+                <param name="input_merscope_label" type="data" format="zip" label="zip compressed MERSCOPE output"/>
+                <expand macro="ref_img"/>
+                <expand macro="stem"/>
+                <expand macro="z_index"/>
+            </when>
+            <when value="raw_merscope">
+                <param name="input_merscope_raw" type="data" format="zip" label="zip compressed MERSCOPE output"/>
+                <expand macro="stem"/>
+                <expand macro="z_index"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output_label" format="tiff" label="${tool.name} on ${on_string}: label tif">
+            <filter>input_type['input_type_selector'] == 'label_visium' or input_type['input_type_selector'] == 'label_xenium' or input_type['input_type_selector'] == 'label_merscope'
+            </filter>
+        </data>
+        <data name="output_raw" format="tiff" label="${tool.name} on ${on_string}: raw tif">
+            <filter>input_type['input_type_selector'] == 'raw_merscope'</filter>
+        </data>
+    </outputs>
+    <tests>
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="label_visium"/>
+            <param name="stem" value="visium_h5ad"/>
+            <param name="sample_id" value=""/>
+            <param name="relative_size" value=""/>
+            <conditional name="file_type_visium">
+                <param name="file_type_selector_visium" value="h5ad"/>
+                <param name="input_visium_h5ad" location="https://zenodo.org/records/19053876/files/input.h5ad"/>
+            </conditional>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_label">
+            <assert_contents>
+                <has_size value="841661656" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="label_visium"/>
+            <param name="stem" value="visium_h5ad"/>
+            <param name="sample_id" value=""/>
+            <param name="relative_size" value=""/>
+            <conditional name="file_type_visium">
+                <param name="file_type_selector_visium" value="h5ad"/>
+                <param name="input_visium_h5ad" location="https://zenodo.org/records/19053876/files/input.h5ad"/>
+            </conditional>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="true"/>
+                <param name="obs_subset_column" value="in_tissue"/>
+                <param name="obs_subset_values" value="1"/>
+            </conditional>
+        </conditional>
+        <output name="output_label">
+            <assert_contents>
+                <has_size value="841661656" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="label_visium"/>
+            <param name="stem" value="visium_h5ad"/>
+            <param name="sample_id" value=""/>
+            <param name="relative_size" value=""/>
+            <conditional name="file_type_visium">
+                <param name="file_type_selector_visium" value="h5ad"/>
+                <param name="input_visium_h5ad" location="https://zenodo.org/records/19053876/files/input.h5ad"/>
+            </conditional>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="true"/>
+                <param name="obs_subset_column" value="in_tissue"/>
+                <param name="obs_subset_values" value="0"/>
+            </conditional>
+        </conditional>
+        <output name="output_label">
+            <assert_contents>
+                <has_size value="841661672" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+    
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="label_visium"/>
+            <param name="stem" value="visium-breast-cancer"/>
+            <param name="sample_id" value=""/>
+            <param name="relative_size" value=""/>
+            <conditional name="file_type_visium">
+                <param name="file_type_selector_visium" value="zip"/>
+                <param name="input_visium_zip" location="https://zenodo.org/records/19053876/files/spaceranger.zip"/>
+            </conditional>
+            <conditional name="obs_subset_conditional">
+                <param name="obs_subset" value="false"/>
+            </conditional>
+        </conditional>
+        <output name="output_label">
+            <assert_contents>
+                <has_size value="841661656" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+    
+
+    <!-- <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="label_xenium"/>
+            <param name="input_xenium" value="xenium.zip"/>
+            <param name="ref_img" value="morphology.ome.tif"/>
+            <param name="stem" value="xenium-breast-cancer"/>
+            <param name="resolution" value="0.8"/>
+        </conditional>
+        <output name="output_label">
+            <assert_contents>
+                <has_size value="1683323056" delta="100"/>
+            </assert_contents>
+        </output>
+    </test> -->
+    
+    <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="label_merscope"/>
+            <param name="input_merscope_label" value="merscope.zip"/>
+            <param name="ref_img" value="shape.tiff"/>
+            <param name="stem" value="label_merscope"/>
+            <param name="z_index" value=""/>
+        </conditional>
+        <output name="output_label">
+            <assert_contents>
+                <has_size value="14838160" delta="100"/>
+            </assert_contents>
+        </output>
+    </test>
+    
+    <!-- MISSING TEST DATA -->
+    <!-- <test expect_num_outputs="1">
+        <conditional name="input_type">
+            <param name="input_type_selector" value="raw_merscope"/>
+            <param name="input_merscope_raw" value="PLACEHOLDER.zip"/>
+            <param name="stem" value=""/>
+            <param name="z_index" value=""/>
+        </conditional>
+        <output name="output_raw">
+            <assert_contents>
+                <has_size value="100" delta="100"/>
+            </assert_contents>
+        </output>
+    </test> -->
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**What it does**
+
+TODO: Fill in help in reStructuredText format (https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html)
+
+Usage
+.....
+
+
+**Input**
+
+
+**Output**
+
+
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
