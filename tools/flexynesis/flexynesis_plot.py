@@ -19,6 +19,8 @@ from flexynesis.utils import (
     plot_pr_curves,
     plot_roc_curves,
     plot_scatter,
+    plot_label_concordance_heatmap,
+    plot_boxplot,
 )
 from scipy.stats import kruskal, mannwhitneyu
 
@@ -123,96 +125,6 @@ def detect_color_type(labels_series):
 
     except Exception:
         return "categorical"
-
-
-def plot_label_concordance_heatmap(labels1, labels2, figsize=(12, 10)):
-    """
-    Plot a heatmap reflecting the concordance between two sets of labels using pandas crosstab.
-
-    Parameters:
-    - labels1: The first set of labels.
-    - labels2: The second set of labels.
-    """
-    # Compute the cross-tabulation
-    ct = pd.crosstab(
-        pd.Series(labels1, name="Labels Set 1"), pd.Series(labels2, name="Labels Set 2")
-    )
-    # Normalize the cross-tabulation matrix column-wise
-    ct_normalized = ct.div(ct.sum(axis=1), axis=0)
-
-    # Plot the heatmap
-    plt.figure(figsize=figsize)
-    sns.heatmap(
-        ct_normalized, annot=True, cmap="viridis", linewidths=0.5
-    )  # col_cluster=False)
-    plt.title("Concordance between label groups")
-
-    return plt.gcf()
-
-
-def plot_boxplot(
-    categorical_x,
-    numerical_y,
-    title_x="Categories",
-    title_y="Values",
-    figsize=(10, 6),
-    jittersize=4,
-):
-    """
-    Create a boxplot with to visualize the distribution of predicted probabilities across different categories.
-    the x axis represents the true labels, and the y axis represents the predicted probabilities for specific categories.
-    """
-    df = pd.DataFrame({title_x: categorical_x, title_y: numerical_y})
-
-    # Compute p-value
-    groups = df[title_x].unique()
-    if len(groups) == 2:
-        group1 = df[df[title_x] == groups[0]][title_y]
-        group2 = df[df[title_x] == groups[1]][title_y]
-        stat, p = mannwhitneyu(group1, group2, alternative="two-sided")
-        test_name = "Mann-Whitney U"
-    else:
-        group_data = [df[df[title_x] == group][title_y] for group in groups]
-        stat, p = kruskal(*group_data)
-        test_name = "Kruskal-Wallis"
-
-    # Create a boxplot with jittered points
-    plt.figure(figsize=figsize)
-    sns.boxplot(
-        x=title_x,
-        y=title_y,
-        hue=title_x,
-        data=df,
-        palette="Set2",
-        legend=False,
-        fill=False,
-    )
-    sns.stripplot(
-        x=title_x,
-        y=title_y,
-        data=df,
-        color="black",
-        size=jittersize,
-        jitter=True,
-        dodge=True,
-        alpha=0.4,
-    )
-
-    # Labels and p-value annotation
-    plt.xlabel(title_x)
-    plt.ylabel(title_y)
-    plt.text(
-        x=-0.4,
-        y=plt.ylim()[1],
-        s=f"{test_name} p = {p:.3e}",
-        verticalalignment="top",
-        horizontalalignment="left",
-        fontsize=12,
-        bbox=dict(boxstyle="round,pad=0.3", facecolor="white", edgecolor="gray"),
-    )
-
-    plt.tight_layout()
-    return plt.gcf()
 
 
 def generate_dimred_plots(

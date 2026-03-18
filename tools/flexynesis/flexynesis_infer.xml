@@ -1,0 +1,270 @@
+<tool id="flexynesis_infer" name="Flexynesis Inference" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Run inference using a pretrained Flexynesis model</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="edam"/>
+    <expand macro="requirements"/>
+    <required_files>
+        <include path="flexynesis_utils.py"/>
+        <include path="convert_tabular_csv.py"/>
+        <include path="convert_joblib_json.py"/>
+        <include path="convert_safetensors_pth.py"/>
+    </required_files>
+    <command detect_errors="exit_code"><![CDATA[
+        @CHECK_NON_COMMERCIAL_USE@
+        export TORCHINDUCTOR_CACHE_DIR=/tmp/torch_cache &&
+        mkdir -p input/test output &&
+
+        ln -s '$test_clin' input/test/clin.tabular &&
+        python '$__tool_directory__/convert_tabular_csv.py' input/test/clin.tabular input/test/clin.csv &&
+
+        #if str($assay_main) != '':
+            #set $name = str($assay_main.replace(" ", "_"))
+            ln -s '$test_omics_main' input/test/${name}.tabular &&
+            python '$__tool_directory__/convert_tabular_csv.py' input/test/${name}.tabular input/test/${name}.csv &&
+
+            #set $data_names = [$name]
+        #else
+            ln -s '$test_omics_main' input/test/main.tabular &&
+            python '$__tool_directory__/convert_tabular_csv.py' input/test/main.tabular input/test/main.csv &&
+            #set $data_names = ['main']
+        #end if
+        #for $i, $element in enumerate($omics)
+            #if str($element.test_omics) != 'None':
+                #if str($element.assay) != '':
+                    #set $i = str($element.assay.replace(" ", "_"))
+                    ln -s '${element.test_omics}' input/test/${i}.tabular &&
+                    python '$__tool_directory__/convert_tabular_csv.py' input/test/${i}.tabular input/test/${i}.csv &&
+
+                    $data_names.append(str($i))
+                #else
+                    ln -s '${element.test_omics}' input/test/omics_${i}.tabular &&
+                    python '$__tool_directory__/convert_tabular_csv.py' input/test/omics_${i}.tabular input/test/omics_${i}.csv &&
+
+                    $data_names.append("omics_" + str($i))
+                #end if
+            #end if
+        #end for
+        python3 '$__tool_directory__/convert_joblib_json.py' --convert json_joblib -i '$artifacts' -o input/artifacts.joblib &&
+        python3 '$__tool_directory__/convert_safetensors_pth.py' --safetensors "$model" --config "$config" --artifacts "$artifacts" --output "input/model.pth" &&
+
+        #if $target_variables == "True":
+            ## Extract target variables from config.json
+            target_vars=\$(python -c "import json; config=json.load(open('$config')); tv=config.get('target_variables'); print(','.join(tv) if tv else 'None')") &&
+            echo "Target variables from config: \$target_vars" &&
+        #end if
+
+        #if $survival == "True":
+            ## Extract survival variables from config.json
+            surv_event=\$(python -c "import json; config=json.load(open('$config')); print(config.get('surv_event_var') or 'None')") &&
+            surv_time=\$(python -c "import json; config=json.load(open('$config')); print(config.get('surv_time_var') or 'None')") &&
+            echo "Survival event variable from config: \$surv_event" &&
+            echo "Survival time variable from config: \$surv_time" &&
+        #end if
+
+        flexynesis
+            --pretrained_model input/model.pth
+            --artifacts input/artifacts.joblib
+            --data_path_test input/test
+            --outdir output
+            --prefix infered
+            --target_variables "\$target_vars"
+            --surv_event_var "\$surv_event"
+            --surv_time_var "\$surv_time"
+            --threads "\${GALAXY_SLOTS:-4}"
+            \${GALAXY_FLEXYNESIS_EXTRA_ARGUMENTS}
+            &&
+
+        ## convert flexynesis output files to tabular format
+        for file in output/*.csv; do
+            if [ -f "\$file" ]; then
+                basename="\${file%.csv}";
+                python '$__tool_directory__/convert_tabular_csv.py' "\$file" "\${basename}.tabular";
+                echo "Converted \$file to \${basename}.tabular";
+            fi
+        done
+    ]]></command>
+    <environment_variables>
+        <!-- we will disable the progress bar which is printed to stderr -->
+        <environment_variable name="TQDM_DISABLE">1</environment_variable>
+    </environment_variables>
+    <inputs>
+        <expand macro="commercial_use_param"/>
+        <param name="model" type="data" format="safetensors" label="Pretrained model"/>
+        <param name="artifacts" type="data" format="json" label="Training artifacts"/>
+        <param name="config" type="data" format="json" label="Model config"/>
+        <expand macro="main_inputs"/>
+        <repeat name="omics" min="0" title="Multiple omics layers?">
+            <expand macro="extra_inputs"/>
+        </repeat>
+        <param name="target_variables" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Use target variable for prediction" help="Set this to True, if the model was trained with target_variable"/>
+        <param name="survival" type="boolean" truevalue="True" falsevalue="False" checked="false" label="Use survival variable for prediction" help="Set this to True, if the model was trained with survival data"/>
+    </inputs>
+    <outputs>
+        <collection name="results" type="list" label="${tool.name} on ${on_string}: results">
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.tabular$" format="tabular" directory="output"/>
+        </collection>
+    </outputs>
+    <tests>
+        <!-- test 1: regression task -->
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="model" value="regression_model.safetensors"/>
+            <param name="config" value="regression_model_config.json"/>
+            <param name="artifacts" value="regression_artifacts.json"/>
+            <param name="test_clin" value="test/clin"/>
+            <param name="test_omics_main" value="test/gex"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <param name="target_variables" value="True"/>
+            <output_collection name="results" type="list">
+                <element name="infered.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="infered.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="infered.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 2: unsupervised task -->
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="model" value="unsupervised_model.safetensors"/>
+            <param name="config" value="unsupervised_model_config.json"/>
+            <param name="artifacts" value="unsupervised_artifacts.json"/>
+            <param name="test_clin" value="test/clin"/>
+            <param name="test_omics_main" value="test/gex"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <output_collection name="results" type="list">
+                <element name="infered.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 3: classification task -->
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="model" value="classification_model.safetensors"/>
+            <param name="config" value="classification_model_config.json"/>
+            <param name="artifacts" value="classification_artifacts.json"/>
+            <param name="test_clin" value="test/clin"/>
+            <param name="test_omics_main" value="test/gex"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <param name="target_variables" value="True"/>
+            <output_collection name="results" type="list">
+                <element name="infered.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="infered.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="target_dataset:KMRC-20\tclass\tbuz"/>
+                    </assert_contents>
+                </element>
+                <element name="infered.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred\tclass\tcategorical\tbalanced_acc\t"/>
+                        <has_text_matching expression="DirectPred\tclass\tcategorical\tf1_score\t"/>
+                        <has_text_matching expression="DirectPred\tclass\tcategorical\tkappa\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 4: cross modality task -->
+        <test>
+            <param name="non_commercial_use" value="True"/>
+            <param name="model" value="crossmodal_model.safetensors"/>
+            <param name="config" value="crossmodal_model_config.json"/>
+            <param name="artifacts" value="crossmodal_artifacts.json"/>
+            <param name="test_clin" value="test/clin"/>
+            <param name="test_omics_main" value="test/gex"/>
+            <param name="assay_main" value="bar"/>
+            <repeat name="omics">
+                <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                <param name="assay" value="foo"/>
+            </repeat>
+            <output_collection name="results" type="list">
+                <element name="infered.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="infered.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="infered.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help><![CDATA[
+@COMMON_HELP@
+
+**Flexynesis Inference Mode**
+
+This tool runs inference using a pretrained Flexynesis model on new test data, without retraining.
+
+-----
+
+**When to use inference mode**
+
+Use this tool when you have:
+
+1. A trained model from a previous Flexynesis training run
+2. The corresponding artifacts file from that training run
+3. The model configuration file from that training run
+4. New samples you want to classify/predict using the trained model
+
+-----
+
+**Automatic parameter extraction**
+
+The tool automatically extracts the following parameters from the model configuration file:
+
+- **Target variables**: Variable(s) the model was trained to predict
+- **Survival variables**: Event and time variables if the model was trained for survival analysis
+
+This ensures that inference runs with the same settings as training, generating both embeddings and predictions.
+
+-----
+
+
+.. _Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
+.. _copyright holders: https://github.com/BIMSBbioinfo/flexynesis
+    ]]></help>
+    <expand macro="creator"/>
+    <expand macro="citations"/>
+</tool>
