@@ -5,9 +5,7 @@ import json
 import os
 import os.path as osp
 
-import numpy as np
 from tqdm import tqdm
-
 
 DEFAULT_LABELME = {
     "version": "0.4.30",
