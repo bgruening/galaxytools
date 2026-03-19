@@ -8,6 +8,7 @@ import torch
 from llama_index.readers.file import PDFReader
 from llama_index.readers.json import JSONReader
 
+
 def main():
     context_files = json.loads(sys.argv[1])
     question = (sys.argv[2] or "").strip()
@@ -25,7 +26,9 @@ def main():
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
-    embed_model = HuggingFaceEmbedding(model_name=embedding_model, normalize=True, device=device)
+    embed_model = HuggingFaceEmbedding(
+        model_name=embedding_model, normalize=True, device=device
+    )
 
     docs: list[Document] = []
 
