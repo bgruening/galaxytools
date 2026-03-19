@@ -6,11 +6,10 @@ Usage:
     python download_embeddings.py
 """
 
-from sentence_transformers import SentenceTransformer
-from pathlib import Path
 import os
 import sys
-
+from sentence_transformers import SentenceTransformer
+from pathlib import Path
 
 models = [
     "sentence-transformers/all-MiniLM-L6-v2",
