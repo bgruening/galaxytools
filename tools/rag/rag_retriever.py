@@ -1,10 +1,11 @@
 import json
 import sys
-from pathlib import Path
+import os
+import torch
 
+from pathlib import Path
 from llama_index.core import Document, SimpleDirectoryReader, VectorStoreIndex
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
-import torch
 from llama_index.readers.file import PDFReader
 from llama_index.readers.json import JSONReader
 
@@ -19,8 +20,8 @@ def main():
         sys.exit("Question is empty.")
     if not context_files:
         sys.exit("No input files given.")
-    if not embedding_model:
-        sys.exit("No embedding model specified.")
+    if not os.path.exists(embedding_model):
+        sys.exit(f"Embedding model path does not exist: {embedding_model}")
     if top_k <= 0:
         sys.exit("Top K must be a positive integer.")
 
