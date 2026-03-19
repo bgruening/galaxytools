@@ -8,8 +8,9 @@ Usage:
 
 import os
 import sys
-from sentence_transformers import SentenceTransformer
 from pathlib import Path
+
+from sentence_transformers import SentenceTransformer
 
 models = [
     "sentence-transformers/all-MiniLM-L6-v2",

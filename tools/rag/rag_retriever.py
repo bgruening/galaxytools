@@ -1,9 +1,9 @@
 import json
-import sys
 import os
-import torch
-
+import sys
 from pathlib import Path
+
+import torch
 from llama_index.core import Document, SimpleDirectoryReader, VectorStoreIndex
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.readers.file import PDFReader
