@@ -33,7 +33,7 @@ def main():
 
     docs: list[Document] = []
 
-    valid_file_types = ["pdf", "jsonl", "json", "txt", "csv", "md"]
+    valid_file_types = ["pdf", "json", "txt", "csv", "md"]
 
     for file_path, file_type in context_files:
         if file_type not in valid_file_types:
@@ -45,8 +45,6 @@ def main():
                     file_extractor={".pdf": PDFReader()},
                 ).load_data()
             )
-        elif file_type == "jsonl":
-            docs.extend(JSONReader(is_jsonl=True, levels_back=1).load_data(file_path))
         elif file_type == "json":
             docs.extend(JSONReader(levels_back=1).load_data(file_path))
         else:

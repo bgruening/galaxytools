@@ -11,6 +11,11 @@
 #import os
 #import re
 
+## Create local directory and extract model
+mkdir -p ./local_model &&
+## Try to strip a top-level folder, fallback to normal extract if flat
+tar -zxf '$model_archive' -C ./local_model --strip-components=1 || tar -zxf '$model_archive' -C ./local_model &&
+
 #set LINKED = []
 #for $f in $files
   #set base = re.sub('[^\w\-]', '_', os.path.splitext($f.element_identifier)[0])
@@ -20,7 +25,7 @@
 #end for
 #set context_files = json.dumps($LINKED)
 
-python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$embedding_model' '$top_k'
+python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' './local_model' '$top_k'
   ]]></command>
 
   <inputs>
@@ -29,7 +34,7 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$emb
       multiple="true"
       separator=","
       optional="false"
-      format="pdf,txt,json,jsonl,csv,md"
+      format="pdf,txt,json,csv,markdown"
       label="Corpus documents" />
 
     <param name="question"
@@ -40,16 +45,8 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$emb
       <validator type="empty_field" />
     </param>
 
-    <param name="embedding_model"
-       type="select"
-       label="Embedding Model"
-       help="Select one of the locally installed embedding models.">
-    <options from_data_table="huggingface">
-        <column name="value" index="6"/>
-        <column name="name" index="1"/>
-    </options>
-    <validator type="no_options" message="No embedding models are available."/>
-</param>
+    <param name="model_archive" type="data" format="tar.gz,tgz,tar,data"
+      label="Embedding Model Archive" />
 
     <param name="top_k"
       type="integer"
@@ -62,16 +59,15 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$emb
   </outputs>
 
   <tests>
-    <test expect_failure="true" expect_exit_code="1">
-  <param name="files" value="test.txt" ftype="txt" />
-  <param name="question" value="Test" />
-  <param name="embedding_model" value="/tmp/fake-model" />
-  <param name="top_k" value="0" />
-
-  <assert_stderr>
-    <has_text text="Embedding model path does not exist: /tmp/fake-model" />
-  </assert_stderr>
-</test>
+    <test expect_failure="true" expect_exit_code="2">
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="Test" />
+      <param name="model_archive" value="test.txt" />
+      <param name="top_k" value="5" />
+      <assert_stderr>
+        <has_text text="gzip: stdin: unexpected end of file" />
+      </assert_stderr>
+    </test>
   </tests>
 
   <help><![CDATA[
@@ -104,7 +100,6 @@ Usage
    - PDF
    - TXT
    - JSON
-   - JSONL
    - CSV
    - Markdown
 
@@ -114,16 +109,7 @@ Usage
 
 3. **Embedding Model**
 
-   Choose an embedding model used to compute semantic similarity between the question and document chunks.
-
-   Available preset models include:
-
-   - **all-MiniLM-L6-v2** – fast and lightweight
-   - **all-mpnet-base-v2** – higher quality embeddings
-   - **BAAI/bge-small-en**
-   - **BAAI/bge-base-en-v1.5**
-
-   You can also provide a **custom HuggingFace embedding model repository ID**.
+   Provide the embedding model as a **.tgz** or **.tar.gz** archive. This allows the tool to run offline using the provided model files (e.g., config.json, model weights).
 
 4. **Top-K Chunks**
 
