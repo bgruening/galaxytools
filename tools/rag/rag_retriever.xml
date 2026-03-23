@@ -1,5 +1,6 @@
-<tool id="rag_retriever" name="RAG Retriever" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
-  <description>Retrieve relevant chunks from documents and output a context file for LLM Hub</description>
+<tool id="rag_retriever" name="RAG Retriever" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@"
+  profile="24.2">
+  <description>Retrieve relevant chunks from documents and output a context file</description>
 
   <macros>
     <token name="@TOOL_VERSION@">1.0.0</token>
@@ -7,7 +8,7 @@
   </macros>
 
   <requirements>
-    <container type="docker">quay.io/luca_r/rag-tool:v1.0.3</container>
+    <container type="docker">quay.io/luca_r/rag-tool:v1.0.5</container>
   </requirements>
 
   <command detect_errors="exit_code"><![CDATA[
@@ -15,10 +16,13 @@
 #import os
 #import re
 
-## Create local directory and extract model
-mkdir -p ./local_model &&
-## Try to strip a top-level folder, fallback to normal extract if flat
-tar -zxf '$model_archive' -C ./local_model --strip-components=1 || tar -zxf '$model_archive' -C ./local_model &&
+#if $model_source.source_type == "upload":
+    mkdir -p ./local_model &&
+    (tar -xf '$model_source.model_archive' -C ./local_model --strip-components=1 || tar -xf '$model_source.model_archive' -C ./local_model) &&
+    #set MODEL_PATH = "./local_model"
+#else:
+    #set MODEL_PATH = str($model_source.embedding_model)
+#end if
 
 #set LINKED = []
 #for $f in $files
@@ -29,10 +33,33 @@ tar -zxf '$model_archive' -C ./local_model --strip-components=1 || tar -zxf '$mo
 #end for
 #set context_files = json.dumps($LINKED)
 
-python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' './local_model' '$top_k'
-  ]]></command>
+python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$MODEL_PATH' '$top_k'
+]]></command>
 
   <inputs>
+    <conditional name="model_source">
+      <param name="source_type" type="select" label="Embedding Model Source">
+        <option value="preinstalled">Use an installed model</option>
+        <option value="upload">Upload a custom model archive</option>
+      </param>
+
+      <when value="preinstalled">
+        <param name="embedding_model" type="select" label="Select Model">
+          <options from_data_table="huggingface">
+            <column name="name" index="1" />
+            <column name="value" index="6" />
+          </options>
+          <validator type="no_options" message="No models are installed on this Galaxy instance." />
+        </param>
+      </when>
+
+      <when value="upload">
+        <param name="model_archive" type="data" format="tar.gz,tgz,tar,data"
+          label="Custom Model Archive"
+          help="Upload a .tar.gz file containing your SentenceTransformer model." />
+      </when>
+    </conditional>
+
     <param name="files"
       type="data"
       multiple="true"
@@ -48,14 +75,7 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' './lo
       <validator type="empty_field" />
     </param>
 
-    <param name="model_archive" type="data" format="tar.gz,tgz,tar,data"
-      label="Embedding Model Archive" />
-
-    <param name="top_k"
-      type="integer"
-      value="5"
-      min="1"
-      label="Top K chunks" />
+    <param name="top_k" type="integer" value="5" min="1" label="Top K chunks" />
   </inputs>
 
   <outputs>
@@ -64,18 +84,35 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' './lo
 
   <tests>
     <test expect_failure="true" expect_exit_code="2">
+      <conditional name="model_source">
+        <param name="source_type" value="upload" />
+        <param name="model_archive" value="test.txt" ftype="txt" />
+      </conditional>
       <param name="files" value="test.txt" ftype="txt" />
-      <param name="question" value="Test" />
-      <param name="model_archive" value="test.txt" />
+      <param name="question" value="Test Question" />
       <param name="top_k" value="5" />
       <assert_stderr>
-        <has_text_matching expression="gzip|not a gzip file|unexpected end of file" />
+        <has_text_matching
+          expression="gzip|not a gzip file|unexpected end of file|look like a tar archive" />
+      </assert_stderr>
+    </test>
+
+    <test expect_failure="true" expect_exit_code="5">
+      <conditional name="model_source">
+        <param name="source_type" value="preinstalled" />
+        <param name="embedding_model" value="unknown" />
+      </conditional>
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="How does it work?" />
+      <param name="top_k" value="2" />
+      <assert_stderr>
+        <has_text text="Embedding model path does not exist: unknown" />
       </assert_stderr>
     </test>
   </tests>
 
-  <help><![CDATA[
 
+  <help><![CDATA[
 .. class:: infomark
 
 **What it does**
@@ -95,25 +132,21 @@ Usage
 
 **Input**
 
-1. **Corpus Documents**
+1. **Embedding Model Source**
+
+   You can provide the embedding model in two ways:
+   
+   - **Use an installed model**: Select a model from a list provided by the administrator (configured via `.loc` files).
+   - **Upload custom Model Archive**: Provide your own model as a **.tgz** or **.tar.gz** archive. This allows the tool to run offline using the provided model files (e.g., config.json, model weights).
+
+2. **Corpus Documents**
 
    Upload one or more documents that should be searched for relevant information.
+   Supported formats: PDF, TXT, JSON, CSV, Markdown.
 
-   Supported formats:
-
-   - PDF
-   - TXT
-   - JSON
-   - CSV
-   - Markdown
-
-2. **Question**
+3. **Question**
 
    Provide the question or query that should be used to search the documents.
-
-3. **Embedding Model**
-
-   Provide the embedding model as a **.tgz** or **.tar.gz** archive. This allows the tool to run offline using the provided model files (e.g., config.json, model weights).
 
 4. **Top-K Chunks**
 
@@ -152,17 +185,18 @@ Notes
 - GPU acceleration is automatically used if available.
 - Retrieval quality strongly depends on the chosen embedding model.
 - Larger Top-K values provide more context but may introduce irrelevant information.
+- For the preinstalled models, the paths are managed via the `huggingface` data table.
 
 ]]></help>
 
-<citations>
+  <citations>
     <citation type="bibtex">
-        @misc{rag_retriever,
-            author = {RAG Retriever},
-            title = {RAG Retriever - Retrieval-Augmented Generation Document Retrieval},
-            howpublished = {\url{https://github.com/bgruening/galaxytools/tree/master/tools/rag}},
-            year = {2025}
-        }
+      @misc{rag_retriever,
+      author = {RAG Retriever},
+      title = {RAG Retriever - Retrieval-Augmented Generation Document Retrieval},
+      howpublished = {\url{https://github.com/bgruening/galaxytools/tree/master/tools/rag}},
+      year = {2025}
+      }
     </citation>
-</citations>
+  </citations>
 </tool>
