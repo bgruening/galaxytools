@@ -93,7 +93,8 @@ def extract_bb_crop(results, output_segmentation_coordinates):
     geojson_obj = build_geojson(results)
 
     with open(output_segmentation_coordinates, "w") as f:
-        json.dump(geojson_obj, f)
+        json.dump(geojson_obj, f, indent=2, sort_keys=True)
+        f.write("\n")
 
 
 if __name__ == "__main__":
