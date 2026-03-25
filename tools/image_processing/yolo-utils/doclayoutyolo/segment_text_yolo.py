@@ -8,14 +8,49 @@ import os
 
 import cv2
 from doclayout_yolo import YOLOv10
-from geojson import Feature, FeatureCollection
-from shapely.geometry import box, mapping
+
+
+def _as_numpy(value):
+    if value is None:
+        return None
+    if hasattr(value, "cpu"):
+        value = value.cpu()
+    if hasattr(value, "numpy"):
+        value = value.numpy()
+    return value
+
+
+def _class_name(names, class_id):
+    if isinstance(names, dict):
+        return names.get(class_id, names.get(str(class_id), str(class_id)))
+    try:
+        return names[class_id]
+    except Exception:
+        return str(class_id)
+
+
+def _build_feature(x1, y1, x2, y2, properties):
+    return {
+        "type": "Feature",
+        "geometry": {
+            "type": "Polygon",
+            "coordinates": [
+                [
+                    [x1, y1],
+                    [x2, y1],
+                    [x2, y2],
+                    [x1, y2],
+                    [x1, y1],
+                ]
+            ],
+        },
+        "properties": properties,
+    }
 
 
 def load_model_and_predict(
     model_path, input_image_path, input_confidence, image_size, output_image_path
 ):
-
     model = YOLOv10(model=model_path)
 
     det_res = model.predict(
@@ -26,21 +61,38 @@ def load_model_and_predict(
     return det_res[0]
 
 
-def extract_bb_crop(results, output_segmentation_coordiates):
-    bounding_boxes = []
+def build_geojson(results):
+    boxes = getattr(results, "boxes", None)
+    if boxes is None or not len(boxes):
+        return {"type": "FeatureCollection", "features": []}
+
+    xyxy = _as_numpy(getattr(boxes, "xyxy", None))
+    classes = _as_numpy(getattr(boxes, "cls", None))
+    confidences = _as_numpy(getattr(boxes, "conf", None))
+    names = getattr(results, "names", {})
+
     features = []
-    for bx in results.boxes.xyxy.cpu().numpy():
-        x1, y1, x2, y2 = bx
-        bounding_boxes.append((x1, y1, x2, y2))
+    for idx, bx in enumerate(xyxy):
+        x1, y1, x2, y2 = (float(coord) for coord in bx[:4])
+        properties = {"id": idx}
 
-    for i, (x1, y1, x2, y2) in enumerate(bounding_boxes):
-        poly = box(x1, y1, x2, y2)
-        feature = Feature(geometry=mapping(poly), properties={"id": i})
-        features.append(feature)
+        if classes is not None and idx < len(classes):
+            class_id = int(classes[idx])
+            properties["class_id"] = class_id
+            properties["class_name"] = _class_name(names, class_id)
 
-    geojson_obj = FeatureCollection(features)
+        if confidences is not None and idx < len(confidences):
+            properties["confidence"] = float(confidences[idx])
 
-    with open(output_segmentation_coordiates, "w") as f:
+        features.append(_build_feature(x1, y1, x2, y2, properties))
+
+    return {"type": "FeatureCollection", "features": features}
+
+
+def extract_bb_crop(results, output_segmentation_coordinates):
+    geojson_obj = build_geojson(results)
+
+    with open(output_segmentation_coordinates, "w") as f:
         json.dump(geojson_obj, f)
 
 
@@ -72,7 +124,7 @@ if __name__ == "__main__":
     confidence = args["input_confidence"]
     image_size = args["input_image_size"]
     output_image_path = args["output_image"]
-    output_segmentation_coordiates = args["output_geojson"]
+    output_segmentation_coordinates = args["output_geojson"]
 
     model_link = "yolo_model.pt"
     input_image = f"input_image.{input_ext}"
@@ -85,4 +137,4 @@ if __name__ == "__main__":
     segmented_image = load_model_and_predict(
         model_link, input_image, confidence, image_size, output_image
     )
-    extract_bb_crop(segmented_image, output_segmentation_coordiates)
+    extract_bb_crop(segmented_image, output_segmentation_coordinates)
