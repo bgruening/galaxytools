@@ -1,0 +1,215 @@
+<tool id="rag_retriever" name="RAG Retriever" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@"
+  profile="24.2">
+  <description>Retrieve relevant chunks from documents and output a context file</description>
+
+  <macros>
+    <token name="@TOOL_VERSION@">1.0.0</token>
+    <token name="@VERSION_SUFFIX@">0</token>
+    <token name="@CONTAINER_VERSION@">0.14.18</token>
+  </macros>
+
+  <creator>
+    <organization name="European Galaxy Team" url="https://galaxyproject.org/eu/" />
+    <person givenName="Luca" familyName="Riethmüller" email="luca.riethmueller@gmail.com" />
+  </creator>
+
+  <requirements>
+    <container type="docker">quay.io/galaxy/rag-retriever:@CONTAINER_VERSION@</container>
+  </requirements>
+
+  <required_files>
+    <include path="rag_retriever.py" />
+  </required_files>
+
+  <command detect_errors="exit_code"><![CDATA[
+#import json
+#import os
+#import re
+
+#if $model_source.source_type == "upload":
+    mkdir -p ./local_model &&
+    (tar -xf '$model_source.model_archive' -C ./local_model --strip-components=1 || tar -xf '$model_source.model_archive' -C ./local_model) &&
+    #set MODEL_PATH = "./local_model"
+#else:
+    #set MODEL_PATH = str($model_source.embedding_model)
+#end if
+
+#set LINKED = []
+#for $f in $files
+  #set base = re.sub('[^\w\-]', '_', os.path.splitext($f.element_identifier)[0])
+  #set link_name = '%s_%s.%s' % ($f.hid, $base, $f.ext)
+  ln -s '$f' '$link_name' &&
+  $LINKED.append(($link_name, $f.ext))
+#end for
+#set context_files = json.dumps($LINKED)
+
+python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$MODEL_PATH' '$top_k'
+]]></command>
+
+  <inputs>
+    <conditional name="model_source">
+      <param name="source_type" type="select" label="Embedding Model Source">
+        <option value="preinstalled">Use an installed model</option>
+        <option value="upload">Upload a custom model archive</option>
+      </param>
+
+      <when value="preinstalled">
+        <param name="embedding_model" type="select" label="Select Model">
+          <options from_data_table="huggingface">
+            <column name="name" index="1" />
+            <column name="value" index="6" />
+            <filter type="static_value" value="embedding" column="4" />
+          </options>
+          <validator type="no_options"
+            message="No embedding models are installed on this Galaxy instance." />
+        </param>
+      </when>
+
+      <when value="upload">
+        <param name="model_archive" type="data" format="tar.gz,tgz,tar,data"
+          label="Custom Model Archive"
+          help="Upload a .tar.gz, .tgz, or .tar file containing your SentenceTransformer model." />
+      </when>
+    </conditional>
+
+    <param name="files"
+      type="data"
+      multiple="true"
+      optional="false"
+      format="pdf,txt,json,csv,markdown"
+      label="Corpus documents" />
+
+    <param name="question"
+      type="text"
+      optional="false"
+      label="Question"
+      area="true">
+      <validator type="empty_field" />
+    </param>
+
+    <param name="top_k" type="integer" value="5" min="1" label="Top K chunks"
+      help="Select how many relevant text segments (chunks) should be extracted as context." />
+  </inputs>
+
+  <outputs>
+    <data name="rag_context" format="txt" from_work_dir="rag_context.txt" label="RAG context" />
+  </outputs>
+
+  <tests>
+    <test expect_failure="true" expect_exit_code="2">
+      <conditional name="model_source">
+        <param name="source_type" value="upload" />
+        <param name="model_archive" value="test.txt" ftype="txt" />
+      </conditional>
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="Test Question" />
+      <param name="top_k" value="5" />
+      <assert_stderr>
+        <has_text_matching
+          expression="gzip|not a gzip file|unexpected end of file|look like a tar archive" />
+      </assert_stderr>
+    </test>
+
+    <test expect_failure="true" expect_exit_code="5">
+      <conditional name="model_source">
+        <param name="source_type" value="preinstalled" />
+        <param name="embedding_model" value="unknown" />
+      </conditional>
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="How does it work?" />
+      <param name="top_k" value="2" />
+      <assert_stderr>
+        <has_text text="Embedding model path does not exist: unknown" />
+      </assert_stderr>
+    </test>
+  </tests>
+
+
+  <help><![CDATA[
+.. class:: infomark
+
+**What it does**
+
+This tool performs **Retrieval-Augmented Generation (RAG) document retrieval**.
+It extracts relevant text passages from a set of input files using **semantic search with HuggingFace embeddings**.
+
+The retrieved passages are written to a text file which can then be used as **context input for an LLM** (for example with the LLM Hub tool).
+
+This tool **does not generate answers itself**.  
+Instead, it prepares high-quality context that can be passed to an LLM.
+
+---
+
+Usage
+.....
+
+**Input**
+
+1. **Embedding Model Source**
+
+   You can provide the embedding model in two ways:
+   
+   - **Use an installed model**: Select a model from a list provided by the administrator (configured via `.loc` files).
+   - **Upload custom Model Archive**: Provide your own model as a **.tgz** or **.tar.gz** archive. This allows the tool to run offline using the provided model files (e.g., config.json, model weights).
+
+2. **Corpus Documents**
+
+   Upload one or more documents that should be searched for relevant information.
+   Supported formats: PDF, TXT, JSON, CSV, Markdown.
+
+3. **Question**
+
+   Provide the question or query that should be used to search the documents.
+
+4. **Top-K Chunks**
+
+   The number of most relevant document chunks that should be returned.
+
+---
+
+How it works
+............
+
+1. The input documents are loaded and converted into text.
+2. Documents are automatically split into **smaller chunks**.
+3. Each chunk is converted into a **vector embedding** using the selected embedding model.
+4. The question is embedded using the same model.
+5. A **vector similarity search** retrieves the *Top-K most relevant chunks*.
+6. The retrieved chunks are written to a text file.
+
+---
+
+Output
+......
+
+The output is a **text file containing the retrieved document chunks**.
+
+This file can be used as **context input for downstream LLM tools**, such as the **LLM Hub** tool.
+
+Example workflow:
+
+Document files → **RAG Retriever** → retrieved context → **LLM Hub**
+
+---
+
+Notes
+.....
+
+- GPU acceleration is automatically used if available.
+- Retrieval quality strongly depends on the chosen embedding model.
+- Larger Top-K values provide more context but may introduce irrelevant information.
+- For the preinstalled models, the paths are managed via the `huggingface` data table.
+
+]]></help>
+
+  <citations>
+    <citation type="bibtex">
+      @misc{rag_retriever,
+      author = {RAG Retriever},
+      title = {RAG Retriever - Retrieval-Augmented Generation Document Retrieval},
+      howpublished = {\url{https://github.com/bgruening/galaxytools/tree/master/tools/rag}},
+      year = {2025}
+      }
+    </citation>
+  </citations>
+</tool>
