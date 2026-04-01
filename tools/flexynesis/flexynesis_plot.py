@@ -10,7 +10,6 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-
 from flexynesis.utils import (build_cox_model, plot_boxplot, plot_dim_reduced,
                               plot_hazard_ratios, plot_kaplan_meier_curves,
                               plot_label_concordance_heatmap, plot_pr_curves,
