@@ -5,13 +5,14 @@
     </macros>
     <expand macro="requirements"/>
     <required_files>
-        <include path="flexynesis_plot.py" />
-        <include path="flexynesis_utils.py" />
+        <include path="flexynesis_plot.py"/>
+        <include path="flexynesis_utils.py"/>
     </required_files>
     <command detect_errors="exit_code"><![CDATA[
         @CHECK_NON_COMMERCIAL_USE@
+        export TORCHINDUCTOR_CACHE_DIR=/tmp/torch_cache &&
         mkdir -p inputs/ output/ &&
-        #if $utils_conditional.util != "compute_ami_ari" and $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize":
+        #if $utils_conditional.util != "compute_ami_ari" and $utils_conditional.util != "split_data" and $utils_conditional.util != "binarize" and $utils_conditional.util != "recursive_binary_split":
             ## flexynesis coexpression recognizes .tsv instead of .tabular, so we create a symlink with the appropriate extension
             ln -s '$utils_conditional.X' 'inputs/${utils_conditional.X.element_identifier}.tsv' &&
         #end if
@@ -58,7 +59,8 @@ from flexynesis.utils import (
     louvain_clustering,
     get_optimal_clusters,
     compute_ami_ari,
-    k_means_clustering
+    k_means_clustering,
+    recursive_binary_split_minN
 )
 
 from flexynesis_plot import (
@@ -145,6 +147,28 @@ generate_coexpression_network(
     min_correlation=$utils_conditional.min_correlation,
     top_k=$utils_conditional.top_k
 )
+#else if $utils_conditional.util == "recursive_binary_split":
+label_data = load_omics('inputs/$utils_conditional.labels.element_identifier.$utils_conditional.labels.ext')
+
+score_col = label_data.columns[$utils_conditional.score_col-2]
+time_col = label_data.columns[$utils_conditional.time_col-2]
+event_col = label_data.columns[$utils_conditional.event_col-2]
+
+result_df = recursive_binary_split_minN(
+    df=label_data,
+    score=score_col,
+    time=time_col,
+    event=event_col,
+    alpha=$utils_conditional.alpha,
+    min_samples_per_group=$utils_conditional.min_samples_per_group
+)
+
+output_path = f"output/recursive_binary_split.tabular"
+result_df.to_csv(output_path, sep="\t", index=True)
+
+print(f"Created {result_df['auto_group'].nunique()} groups")
+print(f"Group sizes: {result_df['auto_group'].value_counts().sort_index().to_dict()}")
+
 #end if
         ]]></configfile>
     </configfiles>
@@ -159,6 +183,7 @@ generate_coexpression_network(
                 <option value="split_data">Split data to train and test</option>
                 <option value="binarize">Binarize mutation data</option>
                 <option value="coexpression">Generate Coexpression Network (can be used instead of STRING network in GNN)</option>
+                <option value="recursive_binary_split">Recursive Binary Split with Minimum Group Size</option>
             </param>
             <when value="louvain_clustering">
                 <param argument="--X" type="data" format="tabular" label="Matrix" help="Input matrix, (samples, features)"/>
@@ -200,6 +225,14 @@ generate_coexpression_network(
                 </param>
                 <param argument="--min_correlation" type="float" min="0" max="1" value="0.3" label="Minimum absolute correlation threshold"/>
                 <param argument="--top_k" type="integer" min="0" value="10" label="Keep top K neighbors per gene"/>
+            </when>
+            <when value="recursive_binary_split">
+                <expand macro="plots_common_input"/>
+                <param name="score_col" type="data_column" data_ref="labels" label="Score column" help="Column containing predicted risk scores"/>
+                <param name="time_col" type="data_column" data_ref="labels" label="Time column" help="Column containing survival or event time"/>
+                <param name="event_col" type="data_column" data_ref="labels" label="Event column" help="Column containing event indicator (0=censored, 1=event)"/>
+                <param argument="-alpha" type="float" min="0" max="1" value="0.05" label="Significance threshold" help="P-value threshold for accepting splits"/>
+                <param argument="-min_samples_per_group" type="integer" min="1" value="25" label="Minimum samples per group" help="Minimum number of samples required in each resulting group"/>
             </when>
         </conditional>
     </inputs>
@@ -384,6 +417,27 @@ generate_coexpression_network(
                 </assert_contents>
             </output>
         </test>
+        <!-- test 8: recursive binary split -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="utils_conditional">
+                <param name="util" value="recursive_binary_split"/>
+                <param name="labels" value="labels_survival_with_time.tabular"/>
+                <param name="score_col" value="6"/>
+                <param name="time_col" value="9"/>
+                <param name="event_col" value="5"/>
+            </conditional>
+            <assert_stdout>
+                <has_text text="Created"/>
+                <has_text text="groups"/>
+            </assert_stdout>
+            <output name="util_out">
+                <assert_contents>
+                    <has_text_matching expression="sample_id\tvariable\tclass_label\tprobability\tknown_label\tpredicted_label\tsplit\tmethod\tOS_TIME\tauto_group"/>
+                    <has_text_matching expression="source_dataset:[^\t]+\tOS_STATUS\t+\t+\t[01]\.0\t-?[0-9.]+\t\w+\tDirectPred\t[0-9]+\t[0-9]+"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help><![CDATA[
 @COMMON_HELP@
@@ -432,6 +486,11 @@ Flexynesis Utils provides a collection of clustering and evaluation utilities fo
 **Binarize mutation data**
     Converts mutation data into a binary format, indicating presence or absence of mutations for each gene in each sample. This is useful for preparing mutation data for analysis.
     The output will be a tabular file with genes as rows and samples as columns, where each cell indicates whether a mutation is present (1) or absent (0).
+
+**Recursive Binary Split with Minimum Group Size**
+    Performs recursive binary splitting on survival data to create risk groups based on predicted scores.
+    Outputs Original labels file with added 'auto_group' column containing integer group labels
+    Console output shows the number of groups created and their sizes
 
 
 .. _Documentation: https://bimsbstatic.mdc-berlin.de/akalin/buyar/flexynesis/site/
