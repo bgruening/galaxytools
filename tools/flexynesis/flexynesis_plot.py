@@ -10,19 +10,11 @@ from pathlib import Path
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
-from flexynesis.utils import (
-    build_cox_model,
-    plot_dim_reduced,
-    plot_hazard_ratios,
-    plot_kaplan_meier_curves,
-    plot_pr_curves,
-    plot_roc_curves,
-    plot_scatter,
-    plot_label_concordance_heatmap,
-    plot_boxplot,
-)
-from scipy.stats import kruskal, mannwhitneyu
+
+from flexynesis.utils import (build_cox_model, plot_boxplot, plot_dim_reduced,
+                              plot_hazard_ratios, plot_kaplan_meier_curves,
+                              plot_label_concordance_heatmap, plot_pr_curves,
+                              plot_roc_curves, plot_scatter)
 
 
 def load_embeddings(embeddings_path):
