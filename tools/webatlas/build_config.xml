@@ -1,0 +1,519 @@
+<tool id="webatlas_build_config" name="WebAtlas Build Config" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5" profile="@PROFILE_VERSION@">
+    <description>Builds a Vitessce View config from AnnData and image Zarr inputs</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <requirements>
+        <container type="docker">dannyspadaro/webatlas-pipeline-build-config:0.5.3-galaxy</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        python "$images_script" &&
+        python "$options_script" &&
+        /usr/local/bin/build_config.py
+        #if $project:
+            --project '$project'
+        #end if
+        #if $dataset:
+            --dataset '$dataset'
+        #end if
+        --file_paths '["/api/datasets/${__app__.security.encode_id($input_file_path.id)}/extra_files/raw/$input_file_path.metadata.store_root/"]'
+        --images "\$(cat images.json)"
+        --url ${__app__.config.galaxy_infrastructure_url}
+        --options "\$(cat options.json)"
+        --layout '$layout'
+        #if $custom_layout:
+            --custom_layout '$custom_layout'
+        #end if
+        #if $title:
+            --title '$title'
+        #end if
+        #if $description:
+            --description '$description'
+        #end if
+        #if $config_filename_suffix:
+            --config_filename_suffix '$config_filename_suffix'
+        #end if
+        &&
+        mv $project-$dataset-'$config_filename_suffix'* $output_json
+    ]]></command>
+<configfiles>
+<configfile name="images_script"><![CDATA[
+import json
+
+images = {"raw": [], "label": []}
+
+#if $sec_label_img.input_image_label and $sec_label_img.input_metadata_label and $sec_label_img.image_name_label
+label_zarr_path = "/api/datasets/${__app__.security.encode_id($sec_label_img.input_image_label.id)}/extra_files/raw/${sec_label_img.input_image_label.metadata.store_root}/"
+label_metadata_path = "${sec_label_img.input_metadata_label}"
+label_image_name = "${sec_label_img.image_name_label}"
+
+with open(label_metadata_path) as md_file:
+    label_md = json.load(md_file)
+
+images["label"].append({
+    "path": label_zarr_path,
+    "name": f"{label_image_name}-label",
+    "md": label_md
+})
+#end if
+
+#if $sec_raw_img.input_image_raw and $sec_raw_img.input_metadata_raw and $sec_raw_img.image_name_raw
+raw_zarr_path = "/api/datasets/${__app__.security.encode_id($sec_raw_img.input_image_raw.id)}/extra_files/raw/${sec_raw_img.input_image_raw.metadata.store_root}/"
+raw_metadata_path = "${sec_raw_img.input_metadata_raw}"
+raw_image_name = "${sec_raw_img.image_name_raw}"
+
+with open(raw_metadata_path) as md_file:
+    raw_md = json.load(md_file)
+
+images["raw"].append({
+    "path": raw_zarr_path,
+    "name": f"{raw_image_name}-raw",
+    "md": raw_md
+})
+#end if
+
+clean_dict = {}
+for key, value in images.items():
+    if value:
+        clean_dict[key] = value
+images = clean_dict
+
+with open("images.json", "w") as file:
+    json.dump(images, file)
+]]>
+</configfile>
+<configfile name="options_script"><![CDATA[
+import json
+
+options = {}
+
+spatial = "${sec_vitessce_options.spatial}".strip()
+factors= "${sec_vitessce_options.factors}".strip()
+sets = "${sec_vitessce_options.sets}".strip()
+matrix = "${sec_vitessce_options.matrix}".strip()
+
+## spatial
+if spatial:
+    options["spatial"] = {
+        "xy": f"obsm/{spatial}"
+    }
+
+## mappings
+mappings = {}
+
+#if $sec_vitessce_options.mappings_spatial_conditional.mappings_spatial == "true" and $sec_vitessce_options.spatial:
+spatial_dim1 = int("${sec_vitessce_options.mappings_spatial_conditional.spatial_dim1}")
+spatial_dim2 = int("${sec_vitessce_options.mappings_spatial_conditional.spatial_dim2}")
+mappings[f"obsm/{spatial}"] = [spatial_dim1, spatial_dim2]
+#end if
+
+#if $sec_vitessce_options.mappings_pca_conditional.mappings_pca == "true":
+pca_value = "${sec_vitessce_options.mappings_pca_conditional.pca_value}"
+pca_dim1 = int("${sec_vitessce_options.mappings_pca_conditional.pca_dim1}")
+pca_dim2 = int("${sec_vitessce_options.mappings_pca_conditional.pca_dim2}")
+mappings[f"obsm/{pca_value}"] = [pca_dim1, pca_dim2]
+#end if
+
+#if $sec_vitessce_options.mappings_umap_conditional.mappings_umap == "true":
+umap_value = "${sec_vitessce_options.mappings_umap_conditional.umap_value}"
+umap_dim1 = int("${sec_vitessce_options.mappings_umap_conditional.umap_dim1}")
+umap_dim2 = int("${sec_vitessce_options.mappings_umap_conditional.umap_dim2}")
+mappings[f"obsm/{umap_value}"] = [umap_dim1, umap_dim2]
+#end if
+
+if mappings:
+    options["mappings"] = mappings
+
+## factors
+if factors:
+    options["factors"] = [f"obs/{f.strip()}" for f in factors.split(",") if f.strip()]
+
+## sets
+if sets:
+    parsed_sets = []
+
+    for s in sets.split(","):
+        s = s.strip()
+        if not s:
+            continue
+
+        if ":" in s:
+            name, score = [x.strip() for x in s.split(":", 1)]
+            parsed_sets.append({"name": f"obs/{name}","score": f"obs/{score}"})
+        else:
+            parsed_sets.append(f"obs/{s}")
+    if parsed_sets:
+        options["sets"] = parsed_sets
+
+## matrix
+if matrix:
+    options["matrix"] = matrix
+
+with open("options.json", "w") as file:
+    json.dump(options, file, indent=2)
+]]>
+</configfile>
+</configfiles>
+    <inputs>
+        <param name="input_file_path" type="data" format="zarr" label="AnnData Zarr generated by WebAtlas Process files"/>
+        <section name="sec_label_img" title="Add label image">
+            <param name="input_image_label" type="data" optional="true" format="zarr" label="Image Zarr generated by WebAtlas Consolidate Metadata"/>
+            <param name="input_metadata_label" type="data" optional="true" format="json" label="Metadata JSON generated by WebAtlas OME Zarr Metadata"/>
+            <param name="image_name_label" type="text" optional="true" label="Image name (prefix)" help="Display name prefix used inside Vitessce. Should be the same as the 'prefix' used in other WebAtlas tools. E.g. 'visium-breast-cancer'.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                    </valid>
+                </sanitizer>
+            </param>
+        </section>
+        <section name="sec_raw_img" title="Add raw image">
+            <param name="input_image_raw" type="data" optional="true" format="zarr" label="Image Zarr generated by WebAtlas Consolidate Metadata"/>
+            <param name="input_metadata_raw" type="data" optional="true" format="json" label="Metadata JSON generated by WebAtlas OME Zarr Metadata"/>
+            <param name="image_name_raw" type="text" optional="true" label="Image name (prefix)" help="Display name prefix used inside Vitessce. Should be the same as the 'prefix' used in other WebAtlas tools. E.g. 'visium-breast-cancer'.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                    </valid>
+                </sanitizer>
+            </param>
+        </section>
+        <param name="project" type="text" value="" optional="false" label="Project name" help="Displayed in the config metadata and used in the output filename.">
+            <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value="_"/>
+                    <add value="-"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <param name="dataset" type="text" value="" optional="false" label="Dataset name" help="Displayed in the config metadata and used in the output filename.">
+            <sanitizer invalid_char="">
+                <valid initial="string.ascii_letters,string.digits">
+                    <add value="_"/>
+                    <add value="-"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <param argument="--layout" type="select" label="Layout" help="Predefined Vitessce layout to use. Default: minimal.">
+            <option value="minimal">minimal</option>
+            <option value="simple">simple</option>
+            <option value="advanced">advanced</option>
+        </param>
+        <section name="sec_vitessce_options" title="Vitessce config file options">
+            <param name="spatial" type="text" value="spatial" label="Where the AnnData object stores the spatial coordinates" help="Examples: 'spatial', 'X_spatial'. 'xy:' gets prepended automatically.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="."/>
+                    </valid>
+                </sanitizer>
+            </param>
+            <conditional name="mappings_spatial_conditional">
+                <param name="mappings_spatial" type="select" label="Include spatial in scatterplot (mappings option)">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                </param>
+                <when value="true">
+                    <param name="spatial_dim1" type="integer" value="0" optional="false" label="Dimension 1"/>
+                    <param name="spatial_dim2" type="integer" value="1" optional="false" label="Dimension 2"/>
+                </when>
+                <when value="false">
+                </when>
+            </conditional>
+            <conditional name="mappings_pca_conditional">
+                <param name="mappings_pca" type="select" label="Include PCA in scatterplot (mappings option)">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                </param>
+                <when value="true">
+                    <param name="pca_value" type="text" value="" optional="false" label="Where the PCA is stored" help="Example: 'X_pca'. 'obsm/' gets prepended automatically.">
+                        <sanitizer invalid_char="">
+                            <valid initial="string.ascii_letters,string.digits">
+                                <add value="_"/>
+                                <add value="-"/>
+                                <add value="."/>
+                            </valid>
+                        </sanitizer>
+                    </param>
+                    <param name="pca_dim1" type="integer" value="0" optional="false" label="Dimension 1" help="First dimension to be plotted (e.g. PC1)"/>
+                    <param name="pca_dim2" type="integer" value="1" optional="false" label="Dimension 2" help="Second dimension to be plotted (e.g. PC2)"/>
+                </when>
+                <when value="false">
+                </when>
+            </conditional>
+            <conditional name="mappings_umap_conditional">
+                <param name="mappings_umap" type="select" label="Include UMAP in scatterplot (mappings option)">
+                    <option value="false">No</option>
+                    <option value="true">Yes</option>
+                </param>
+                <when value="true">
+                    <param name="umap_value" type="text" value="" optional="false" label="Where the UMAP is stored" help="Example: 'X_umap'. 'obsm/' gets prepended automatically.">
+                        <sanitizer invalid_char="">
+                            <valid initial="string.ascii_letters,string.digits">
+                                <add value="_"/>
+                                <add value="-"/>
+                                <add value="."/>
+                            </valid>
+                        </sanitizer>
+                    </param>
+                    <param name="umap_dim1" type="integer" value="0" optional="false" label="Dimension 1"/>
+                    <param name="umap_dim2" type="integer" value="1" optional="false" label="Dimension 2"/>
+                </when>
+                <when value="false">
+                </when>
+            </conditional>
+            <param name="factors" type="text"  value="" optional="true" label="Factors" help="Comma-separated list of 'obs' fields to show when hovering over cells in the visualization. Example input: sample. 'obs/' gets prepended automatically.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="."/>
+                        <add value=","/>
+                    </valid>
+                </sanitizer>
+            </param>
+            <param name="sets" type="text" value="" optional="true" label="Sets" help="Comma-separated list of keys for grouping cells. Use 'name' for simple sets or 'name:score' for scored sets. Example: 'cluster, celltype:celltype_prob'.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="."/>
+                        <add value=","/>
+                        <add value=":"/>
+                        <add value=" "/>
+                    </valid>
+                </sanitizer>
+            </param>
+            <param name="matrix" type="text" value="X" optional="true" label="Matrix" help="Expression matrix to use in the Vitessce config. Default: X.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="."/>
+                    </valid>
+                </sanitizer>
+            </param>
+        </section>
+        <section name="sec_advanced_options" title="Advanced options" expanded="false">
+            <param argument="--title" type="text" value="" optional="true" label="Title" help="Data title to show in the visualization.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="."/>
+                        <add value=","/>
+                        <add value=":"/>
+                        <add value=";"/>
+                        <add value="("/>
+                        <add value=")"/>
+                        <add value="/"/>
+                        <add value=" "/>
+                    </valid>
+                </sanitizer>
+            </param>
+            <param argument="--description" type="text" value="" optional="true" label="Description" help="Description to include in the config file.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="."/>
+                        <add value=","/>
+                        <add value=":"/>
+                        <add value=";"/>
+                        <add value="("/>
+                        <add value=")"/>
+                        <add value="/"/>
+                        <add value=" "/>
+                    </valid>
+                </sanitizer>
+            </param>
+            <param argument="--config_filename_suffix" type="text" value="config.json" optional="true" label="Config filename suffix" help="Default value: config.json">
+                <sanitizer invalid_char="">
+                    <valid initial="string.ascii_letters,string.digits">
+                        <add value="_"/>
+                        <add value="-"/>
+                        <add value="."/>
+                    </valid>
+                </sanitizer>
+            </param>
+            <param argument="--custom_layout" type="text" value="" optional="true" label="Custom layout" help="String defining a Vitessce layout following its alternative syntax. https://vitessce.github.io/vitessce-python/api_config.html#vitessce.config.VitessceConfig.layout https://github.com/vitessce/vitessce-python/blob/1e100e4f3f6b2389a899552dffe90716ffafc6d5/vitessce/config.py#L855"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_json" format="vitessce.json" label="${tool.name} on ${on_string}: $project-$dataset-$config_filename_suffix"/>
+    </outputs>
+    <tests>
+    <test expect_num_outputs="1">
+        <param name="input_file_path" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-anndata.zarr.zip"/>
+        <param name="project" value="visium"/>
+        <param name="dataset" value="breast-cancer"/>
+        <section name="sec_label_img">
+            <param name="input_image_label" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-label.zarr.zip"/>
+            <param name="input_metadata_label" location="https://zenodo.org/records/19053876/files/metadata_label.json"/>
+            <param name="image_name_label" value="visium-breast-cancer"/>
+        </section>
+        <section name="sec_raw_img">
+            <param name="input_image_raw" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-raw.zarr.zip"/>
+            <param name="input_metadata_raw" location="https://zenodo.org/records/19053876/files/metadata_raw.json"/>
+            <param name="image_name_raw" value="visium-breast-cancer"/>
+        </section>
+        <param name="layout" value="advanced"/>
+        <section name="sec_vitessce_options">
+            <param name="spatial" value="spatial"/>
+            <conditional name="mappings_spatial_conditional">
+                <param name="mappings_spatial" value="false"/>
+            </conditional>
+            <conditional name="mappings_pca_conditional">
+                <param name="mappings_pca" value="false"/>
+            </conditional>
+            <conditional name="mappings_umap_conditional">
+                <param name="mappings_umap" value="false"/>
+            </conditional>
+            <param name="factors" value=""/>
+            <param name="sets" value=""/>
+            <param name="matrix" value="X"/>
+        </section>
+        <section name="sec_advanced_options">
+            <param name="custom_layout" value=""/>
+            <param name="title" value="Visium CytAssist - High resolution mapping of the breast cancer tumor microenvironment"/>
+            <param name="description" value="test description"/>
+            <param name="config_filename_suffix" value="config.json"/>
+        </section>
+        <output name="output_json">
+            <assert_contents>
+                <has_line line='  "name": "Visium CytAssist - High resolution mapping of the breast cancer tumor microenvironment",'/>
+                <has_line line='  "description": "test description",'/>
+                <has_line line='      "uid": "breast-cancer",'/>
+                <has_line line='      "name": "breast-cancer",'/>
+                <has_line line='          "fileType": "raster.json",'/>
+                <has_line line='                "name": "visium-breast-cancer-raw",'/>
+                <has_line line='                "name": "visium-breast-cancer-label",'/>
+                <has_line line='          "fileType": "anndata.zarr",'/>
+                <has_line line='              "path": "obsm/spatial"'/>
+                <has_line line='            "obsFeatureMatrix": {'/>
+                <has_line line='              "path": "X"'/>
+                <has_size value="4274" delta="300"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <param name="input_file_path" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-anndata.zarr.zip"/>
+        <param name="project" value="visium"/>
+        <param name="dataset" value="breast-cancer"/>
+        <section name="sec_label_img">
+            <param name="input_image_label" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-label.zarr.zip"/>
+            <param name="input_metadata_label" location="https://zenodo.org/records/19053876/files/metadata_label.json"/>
+            <param name="image_name_label" value="visium-breast-cancer"/>
+        </section>
+        <param name="layout" value="minimal"/>
+        <section name="sec_vitessce_options">
+            <param name="spatial" value="spatial"/>
+            <conditional name="mappings_spatial_conditional">
+                <param name="mappings_spatial" value="false"/>
+            </conditional>
+            <conditional name="mappings_pca_conditional">
+                <param name="mappings_pca" value="false"/>
+            </conditional>
+            <conditional name="mappings_umap_conditional">
+                <param name="mappings_umap" value="false"/>
+            </conditional>
+            <param name="factors" value=""/>
+            <param name="sets" value=""/>
+            <param name="matrix" value="X"/>
+        </section>
+        <section name="sec_advanced_options">
+            <param name="custom_layout" value=""/>
+            <param name="title" value="Visium CytAssist - High resolution mapping of the breast cancer tumor microenvironment"/>
+            <param name="description" value="test description"/>
+            <param name="config_filename_suffix" value="config.json"/>
+        </section>
+        <output name="output_json">
+            <assert_contents>
+                <has_line line='  "name": "Visium CytAssist - High resolution mapping of the breast cancer tumor microenvironment",'/>
+                <has_line line='  "description": "test description",'/>
+                <has_line line='      "uid": "breast-cancer",'/>
+                <has_line line='      "name": "breast-cancer",'/>
+                <has_line line='          "fileType": "raster.json",'/>
+                <has_line line='                "name": "visium-breast-cancer-label",'/>
+                <has_line line='          "fileType": "anndata.zarr",'/>
+                <has_line line='              "path": "obsm/spatial"'/>
+                <has_line line='            "obsFeatureMatrix": {'/>
+                <has_line line='              "path": "X"'/>
+                <has_size value="2581" delta="300"/>
+            </assert_contents>
+        </output>
+    </test>
+
+    <test expect_num_outputs="1">
+        <param name="input_file_path" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-anndata.zarr.zip"/>
+        <param name="project" value="visium"/>
+        <param name="dataset" value="breast-cancer"/>
+        <section name="sec_raw_img">
+            <param name="input_image_raw" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-raw.zarr.zip"/>
+            <param name="input_metadata_raw" location="https://zenodo.org/records/19053876/files/metadata_raw.json"/>
+            <param name="image_name_raw" value="visium-breast-cancer"/>
+        </section>
+        <param name="layout" value="simple"/>
+        <section name="sec_vitessce_options">
+            <param name="spatial" value="spatial"/>
+            <conditional name="mappings_spatial_conditional">
+                <param name="mappings_spatial" value="false"/>
+            </conditional>
+            <conditional name="mappings_pca_conditional">
+                <param name="mappings_pca" value="false"/>
+            </conditional>
+            <conditional name="mappings_umap_conditional">
+                <param name="mappings_umap" value="false"/>
+            </conditional>
+            <param name="factors" value=""/>
+            <param name="sets" value=""/>
+            <param name="matrix" value="X"/>
+        </section>
+        <section name="sec_advanced_options">
+            <param name="custom_layout" value=""/>
+            <param name="title" value="Visium CytAssist - High resolution mapping of the breast cancer tumor microenvironment"/>
+            <param name="description" value="test description"/>
+            <param name="config_filename_suffix" value="config.json"/>
+        </section>
+        <output name="output_json">
+            <assert_contents>
+                <has_line line='  "name": "Visium CytAssist - High resolution mapping of the breast cancer tumor microenvironment",'/>
+                <has_line line='  "description": "test description",'/>
+                <has_line line='      "uid": "breast-cancer",'/>
+                <has_line line='      "name": "breast-cancer",'/>
+                <has_line line='          "fileType": "raster.json",'/>
+                <has_line line='                "name": "visium-breast-cancer-raw",'/>
+                <has_line line='          "fileType": "anndata.zarr",'/>
+                <has_line line='              "path": "obsm/spatial"'/>
+                <has_line line='            "obsFeatureMatrix": {'/>
+                <has_line line='              "path": "X"'/>
+                <has_size value="2820" delta="300"/>
+            </assert_contents>
+        </output>
+    </test>
+    </tests>
+    <help><![CDATA[
+
+.. class:: infomark
+
+**What it does**
+
+TODO: Fill in help in reStructuredText format (https://docutils.sourceforge.io/docs/ref/rst/restructuredtext.html)
+
+Usage
+.....
+
+
+**Input**
+
+
+**Output**
+
+
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
