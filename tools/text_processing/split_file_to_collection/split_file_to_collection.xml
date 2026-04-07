@@ -1,4 +1,4 @@
-<tool id="split_file_to_collection" name="Split file" version="0.5.2">
+<tool id="split_file_to_collection" name="Split file" version="0.5.3">
     <description>to dataset collection</description>
     <macros>
         <xml name="regex_sanitizer">
@@ -30,7 +30,7 @@
             <param name="newfilenames" type="text" label="Base name for new files in collection"
                 help="This will increment automatically - if input is 'file', then output is 'file0', 'file1', etc." value="split_file"/>
             <conditional name="select_allocate">
-                <param name="allocate" type="select" label="Method to allocate records to new files" help="See the information section for a diagram">
+                <param name="allocate" type="select" label="Method to allocate records to new files" help="See the help section for a diagram">
                     <option value="random">At random</option>
                     <option value="batch">Maintain record order</option>
                     <option value="byrow" selected="true">Alternate output files</option>
@@ -527,58 +527,110 @@
         </test>
     </tests>
     <help><![CDATA[
-**Split file into a dataset collection**
 
-This tool splits a data set consisting of records into multiple data sets within a collection.
-A record can be for instance simply a line, a FASTA sequence (header + sequence), a FASTQ sequence
-(headers + sequence + qualities), etc. The important property is that the records either have a 
-specific length (e.g. 4 lines for FASTQ) or that the beginning/end of a new record
-can be specified by a regular expression, e.g. ".*" for lines or ">.*" for FASTA.
-The tool has presets for text, tabular data sets (which are split after each line), FASTA (new records start with ">.*"), FASTQ (records consist of 4 lines), SDF (records start with "^BEGIN IONS") and MGF (records end with "^$$$$").
-For other data types the text delimiting records or the number of lines making up a record can be specified manually using the generic splitter. 
-If the generic splitter is used, an option is also available to split records either before or after the
-separator. If a preset filetype is used, this is selected automatically (after for SDF, before for all
-others).
+===========
+Description
+===========
 
-If splitting by line (or by some other item, like a FASTA entry or an MGF record), the splitting can be either done alternatingly, in original record order, or at random.
+Splits a dataset into multiple files organized as a dataset collection. Supports FASTA, FASTQ, tabular, text, MGF, SD-files, and generic record-based formats.
 
-If t records are to be distributed to n new data sets, then the i-th record goes to data set
+Records can be defined by a fixed line count (e.g. 4 lines for FASTQ) or by a regular expression marking record boundaries (e.g. ``>.*`` for FASTA). Presets handle common formats automatically; the generic splitter allows custom separators.
 
-* floor(i / t * n) (for batch),
-* i % n (for alternating), or
-* a random data set
+.. image:: $PATH_TO_IMAGES/split_file.png
+  :alt: Split a dataset into a collection of files
+  :width: 620
 
-For instance, t=5 records are distributed as follows on n=2 data sets
+You can control how many output files are created:
 
-= === === ====
-i bat alt rand
-= === === ====
-0 0   0   0
-1 0   1   1
-2 0   0   1
-3 1   1   0
-4 1   0   0
-= === === ====
+- **Number of output files** — records are shared out between *n* files
+- **Chunk mode** — each file gets exactly *k* records (the last file may get fewer)
 
-If the five records are distributed on n=3 data sets:
+For tabular input, you can also split by a column value — a new file is created for each unique value in the chosen column, with optional regex substitution.
 
-= === === ====
-i bat alt rand
-= === === ====
-0 0   0   0
-1 0   1   1
-2 1   2   2
-3 1   0   0
-4 2   1   1
-= === === ====
+========
+Examples
+========
 
-Note that there are no guarantees when splitting at random that every result file will be non-empty, so downstream tools should be able to gracefully handle empty files.
+The following examples use a FASTA file with 4 sequences as input::
 
-If a tabular file is used as input, you may choose to split by line or by column. If split by column, a new file is created for each unique value in the column.
-In addition, (Python) regular expressions may be used to transform the value in the column to a new value. Caution should be used with this feature, as it could transform all values to the same value, or other unexpected behavior.
-The default regular expression uses each value in the column without modifying it.
+ >🍎        >🍊        >🍋        >🍇
+ ATCG       GCTA       TTAA       CCGG
 
-Two modes are available for the tool. For the main mode, the number of output files is selected. In this case, records are shared out between this number of files. Alternatively, 'chunking mode' can be selected, which puts a fixed number of records (the 'chunk size') into each output file.
+-------
+
+**Alternating** (default) — records are dealt out round-robin, like cards. Split into 2 files::
+
+ split_000000.fasta:       split_000001.fasta:
+   >🍎  (1st record)         >🍊  (2nd record)
+   ATCG                      GCTA
+   >🍋  (3rd record)         >🍇  (4th record)
+   TTAA                      CCGG
+
+Records alternate: 🍎→file0, 🍊→file1, 🍋→file0, 🍇→file1.
+
+-------
+
+**Batch** — records stay in original order, split into contiguous blocks. Split into 2 files::
+
+ split_000000.fasta:       split_000001.fasta:
+   >🍎  (1st record)         >🍋  (3rd record)
+   ATCG                      TTAA
+   >🍊  (2nd record)         >🍇  (4th record)
+   GCTA                      CCGG
+
+First half goes to file 0, second half to file 1.
+
+-------
+
+**Random** — each record is assigned to a random file (seeded for reproducibility)::
+
+ split_000000.fasta:       split_000001.fasta:
+   >🍎                       >🍊
+   ATCG                      GCTA
+   >🍇                       >🍋
+   CCGG                      TTAA
+
+.. class:: warningmark
+
+Random mode does not guarantee every output file will be non-empty.
+
+-------
+
+**Chunk mode** — fixed number of records per file. With **chunk size** = 1::
+
+ split_000000.fasta:  split_000001.fasta:  split_000002.fasta:  split_000003.fasta:
+   >🍎                 >🍊                 >🍋                 >🍇
+   ATCG                GCTA                TTAA                CCGG
+
+-------
+
+**Split tabular by column value**
+
+A tabular file with a "group" column::
+
+ gene    group   score
+ geneA   wnt     0.9
+ geneB   notch   0.7
+ geneC   wnt     0.8
+ geneD   notch   0.6
+
+Split by column 2 produces one file per unique value::
+
+ wnt.tabular:            notch.tabular:
+   gene   group  score     gene   group  score
+   geneA  wnt    0.9       geneB  notch  0.7
+   geneC  wnt    0.8       geneD  notch  0.6
+
+-------
+
+**Split tabular by column with regex substitution**
+
+Column values can be transformed before grouping using a regex match/replace pair. For example, if column 1 contains filenames like ``sample1.mgf``, ``sample2.mgf``, you can strip the extension::
+
+ Match regex:   (.*)\.mgf
+ Replace with:  \1
+
+This groups rows by the part before ``.mgf`` and names the output files accordingly (``sample1.tabular``, ``sample2.tabular`` instead of ``sample1.mgf.tabular``, ``sample2.mgf.tabular``).
 
     ]]></help>
     <citations>
