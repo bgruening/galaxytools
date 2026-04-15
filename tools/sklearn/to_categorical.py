@@ -1,5 +1,4 @@
 import argparse
-import json
 import warnings
 
 import h5py
@@ -8,10 +7,10 @@ import pandas as pd
 
 warnings.simplefilter("ignore")
 
+
 def _get_longest_sequence_length(fasta_file):
     max_len = 0
     max_id = None
-
     for name in fasta_file.keys():
         seq_len = len(fasta_file[name])
         if seq_len > max_len:
