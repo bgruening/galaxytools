@@ -164,5 +164,4 @@ if __name__ == "__main__":
     )
     # get argument values
     args = vars(arg_parser.parse_args())
-    print(args)
     train_evaluate(args)
