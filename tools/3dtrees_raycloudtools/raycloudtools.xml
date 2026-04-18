@@ -11,29 +11,45 @@
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
-        mkdir -p 'in' 'out' &&
-        ln -sf '$input' 'in/${input.element_identifier}.${input.ext}' &&
-        python3 -u /src/run.py
-        --dataset-path 'in/${input.element_identifier}.${input.ext}'
-        --output-dir 'out'
-        --gradient '$gradient'
-        --max-diameter '$max_diameter'
-        --crop-length '$crop_length'
-        --distance-limit '$distance_limit'
-        --height-min '$height_min'
-        --girth-height-ratio '$girth_height_ratio'
-        --global-taper '$global_taper'
-        --global-taper-factor '$global_taper_factor'
-        --gravity-factor '$gravity_factor'
-        $branch_segmentation
-        $treeinfo
-        $branch_data
+        mkdir -p 'in' 'out' 'out_segmented_laz' 'out_tree_model_txt' 'out_tree_info_txt' 'out_tree_mesh_ply' 'out_terrain_mesh_ply' &&
+        #for $f in $input
+        #set $input_name = str($f.element_identifier)
+            ln -sf '$f' 'in/${input_name}.${f.ext}' &&
+            python3 -u /src/run.py
+            --dataset-path 'in/${input_name}.${f.ext}'
+            --output-dir 'out'
+            --gradient '$gradient'
+            --max-diameter '$max_diameter'
+            --crop-length '$crop_length'
+            --distance-limit '$distance_limit'
+            --height-min '$height_min'
+            --girth-height-ratio '$girth_height_ratio'
+            --global-taper '$global_taper'
+            --global-taper-factor '$global_taper_factor'
+            --gravity-factor '$gravity_factor'
+            $branch_segmentation
+            $treeinfo
+            $branch_data
+            &&
+            ## Some RayCloudTools artifacts can be absent depending on the chosen parameters
+            ## and what the backend emits for a given input, so stage outputs only if they exist.
+            mv "out/${input_name}_segmented.laz" "out_segmented_laz/${input_name}_segmented.laz" &&
+            if [ -f "out/${input_name}_trees_mesh.ply" ]; then mv "out/${input_name}_trees_mesh.ply" "out_tree_mesh_ply/${input_name}_trees_mesh.ply"; fi &&
+            if [ -f "out/${input_name}_mesh.ply" ]; then mv "out/${input_name}_mesh.ply" "out_terrain_mesh_ply/${input_name}_mesh.ply"; fi &&
+            rm -f 'in/${input_name}.${f.ext}' &&
+            #if $treeinfo
+                if [ -f "out/${input_name}_trees_info.txt" ]; then mv "out/${input_name}_trees_info.txt" "out_tree_info_txt/${input_name}_trees_info.txt"; fi &&
+            #else
+                if [ -f "out/${input_name}_trees.txt" ]; then mv "out/${input_name}_trees.txt" "out_tree_model_txt/${input_name}_trees.txt"; fi &&
+            #end if
+        #end for
+        true
         ]]>
     </command>
 
     <inputs>
-        <param name="input" type="data" format="laz" label="Input Dataset (.laz)"
-                help="Input file to process"/>
+        <param name="input" type="data_collection" collection_type="list" format="laz" label="Input Dataset Collection (.laz)"
+                help="Input list collection of LAZ files to process in one RayCloudTools run."/>
         <!-- rayextract terrain -->
         <param argument="--gradient" type="float" min="0.001" max="1000" value="1" label="Gradient" help="Gradient threshold for terrain extraction"/>
         <!-- rayextract trees -->
@@ -52,33 +68,65 @@
     </inputs>
 
     <outputs>
-        <data name="segmented_laz" format="laz" from_work_dir="out/${input.element_identifier}_segmented.laz" label="${tool.name} on ${on_string}: Segmented point cloud (LAZ)"/>
-        <data name="tree_model_txt" format="txt" from_work_dir="out/${input.element_identifier}_trees.txt" label="${tool.name} on ${on_string}: Tree model (TXT)">
+        <collection name="segmented_laz" type="list" label="${tool.name} on ${on_string}: Segmented point clouds (LAZ)">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.laz" directory="out_segmented_laz" format="laz" recurse="false"/>
+        </collection>
+        <collection name="tree_model_txt" type="list" label="${tool.name} on ${on_string}: Tree models (TXT)">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.txt" directory="out_tree_model_txt" format="txt" recurse="false"/>
             <filter>not treeinfo</filter>
-        </data>
-        <data name="tree_info_txt" format="txt" from_work_dir="out/${input.element_identifier}_trees_info.txt" label="${tool.name} on ${on_string}: Tree info (TXT)">
+        </collection>
+        <collection name="tree_info_txt" type="list" label="${tool.name} on ${on_string}: Tree info (TXT)">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.txt" directory="out_tree_info_txt" format="txt" recurse="false"/>
             <filter>treeinfo</filter>
-        </data>
-        <data name="tree_mesh_ply" format="binary" from_work_dir="out/${input.element_identifier}_trees_mesh.ply" label="${tool.name} on ${on_string}: Tree meshes (PLY)"/>
-        <data name="terrain_mesh_ply" format="binary" from_work_dir="out/${input.element_identifier}_mesh.ply" label="${tool.name} on ${on_string}: Terrain mesh (PLY)"/>
+        </collection>
+        <collection name="tree_mesh_ply" type="list" label="${tool.name} on ${on_string}: Tree meshes (PLY)">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.ply" directory="out_tree_mesh_ply" format="plybinary" recurse="false"/>
+        </collection>
+        <collection name="terrain_mesh_ply" type="list" label="${tool.name} on ${on_string}: Terrain meshes (PLY)">
+            <discover_datasets pattern="(?P&lt;designation&gt;.*)\.ply" directory="out_terrain_mesh_ply" format="plybinary" recurse="false"/>
+        </collection>
     </outputs>
 
     <tests>
         <test expect_num_outputs="4">
-            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
-            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
-            <output name="tree_model_txt" file="Example_Tree_RCT_trees.txt" compare="contains" ftype="txt"/>
-            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="8000" ftype="binary"/>
-            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="binary"/>
+            <param name="input">
+                <collection type="list">
+                    <element name="Example_Tree_RCT" value="Example_Tree_RCT" ftype="laz"/>
+                </collection>
+            </param>
+            <output_collection name="segmented_laz" count="1" type="list">
+                <element name="Example_Tree_RCT_segmented" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
+            </output_collection>
+            <output_collection name="tree_model_txt" count="1" type="list">
+                <element name="Example_Tree_RCT_trees" file="Example_Tree_RCT_trees.txt" compare="contains" ftype="txt"/>
+            </output_collection>
+            <output_collection name="tree_mesh_ply" count="1" type="list">
+                <element name="Example_Tree_RCT_trees_mesh" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            </output_collection>
+            <output_collection name="terrain_mesh_ply" count="1" type="list">
+                <element name="Example_Tree_RCT_mesh" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            </output_collection>
         </test>
         <!-- Test 2: treeinfo enabled -->
         <test expect_num_outputs="4">
-            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
+            <param name="input">
+                <collection type="list">
+                    <element name="Example_Tree_RCT" value="Example_Tree_RCT" ftype="laz"/>
+                </collection>
+            </param>
             <param name="treeinfo" value="true"/>
-            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
-            <output name="tree_info_txt" file="Example_Tree_RCT_trees_info.txt" compare="contains" ftype="txt"/>
-            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="8000" ftype="binary"/>
-            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="binary"/>
+            <output_collection name="segmented_laz" count="1" type="list">
+                <element name="Example_Tree_RCT_segmented" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
+            </output_collection>
+            <output_collection name="tree_info_txt" count="1" type="list">
+                <element name="Example_Tree_RCT_trees_info" file="Example_Tree_RCT_trees_info.txt" compare="contains" ftype="txt"/>
+            </output_collection>
+            <output_collection name="tree_mesh_ply" count="1" type="list">
+                <element name="Example_Tree_RCT_trees_mesh" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            </output_collection>
+            <output_collection name="terrain_mesh_ply" count="1" type="list">
+                <element name="Example_Tree_RCT_mesh" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            </output_collection>
         </test>
     </tests>
 
@@ -104,14 +152,19 @@ It is platform-agnostic and works across airborne (ULS), terrestrial (TLS), and 
 
 **Output**
 
-Four separate datasets (segmented LAZ, tree model TXT, tree mesh PLY, terrain mesh PLY). When you **map** this tool over a list of LAZ files, Galaxy creates **one list collection per output** (each collection has one element per input), not a nested list-of-lists.
+One collection per artifact type:
 
-- **Segmented point cloud (LAZ):** `{basename}_segmented.laz` (instance dimension `PredInstance_RCT`)
-- **Tree model (TXT):** `{basename}_trees.txt`, or `{basename}_trees_info.txt` when tree attributes are enabled
+- **Segmented point clouds (LAZ):** `{basename}_segmented.laz` (instance dimension `PredInstance_RCT`)
+- **Tree models (TXT):** `{basename}_trees.txt`
+- **Tree info (TXT):** `{basename}_trees_info.txt` when tree attributes are enabled
 - **Tree meshes (PLY):** `{basename}_trees_mesh.ply`
-- **Terrain mesh (PLY):** `{basename}_mesh.ply`
+- **Terrain meshes (PLY):** `{basename}_mesh.ply`
 
-*`{basename}` is the input dataset name without its last extension (for example `tile_01` from `tile_01.laz`).*
+The input is a single Galaxy list collection, and the wrapper iterates over that collection internally. That keeps the outputs flat as one collection per artifact type instead of nested list collections.
+
+Some artifact collections may be empty for a given run. That depends on the selected parameters, whether `treeinfo` is enabled, and which files RayCloudTools actually emits for each input tile.
+
+        *`{basename}` is the input dataset name without its last extension (for example `tile_01` from `tile_01.laz`). Tile identifiers are preserved as-is, so names such as `c00r00` or `c00_r00` stay unchanged in the outputs.*
 
 ***Tip:** We recommend using the '3DTrees: Tile and Merge' or '3DTrees: Smart Tile' tool to process large point clouds (workflow: tile → segment → merge)!*
 
