@@ -14,10 +14,19 @@
                 </param>
                 <when value="False"/>
                 <when value="True">
-                    <param name="standardization_json" type="data" format="json" optional="true" label="Standardization summary (optional)" help="`collection_summary.json` from the Standardization tool. If provided, it limits which original attributes are transferred into the merged output."/>
+                    <param name="standardization_json" type="data" format="json" optional="true" label="Standardization summary (optional)" help="`collection_summary.json` from the 3Dtrees: Standardization tool. If provided, it limits which original attributes are transferred into the merged output."/>
                     <param argument="--remap-dims" type="text" optional="true" label="Dimensions to transfer (optional allowlist)" help="Leave empty to transfer all *extra* dimensions from the source segmented tiles. If set, it becomes a strict allowlist: only the listed dimension names are transferred (standard or extra). Comma-separated, e.g. `PredInstance,Intensity`. Disclaimer: dimension names starting with a digit are sanitized for COPC, so a requested `3DT_*` dimension may appear as `TDT_*` in outputs.">
                         <validator type="regex" message="Only letters, numbers, spaces, dots, commas, colons, underscores, and dashes are allowed">^[A-Za-z0-9 .,:_-]*$</validator>
                     </param>
+                </when>
+            </conditional>
+        </xml>
+        <xml name="merged_output_conditional">
+            <conditional name="merged_output">
+                <expand macro="produce_merged_file_param"/>
+                <when value="False"/>
+                <when value="True">
+                    <expand macro="merge_enrichment_conditional"/>
                 </when>
             </conditional>
         </xml>
@@ -76,22 +85,6 @@
             #end if
 
             #if $operation.filter_mode.mode == 'filter_and_remap':
-                #if $operation.filter_mode.remap_target_mode.mode == 'both':
-                    #if not $operation.filter_mode.remap_target_mode.original_files or not $operation.filter_mode.remap_target_mode.input_target_files:
-                        echo "ERROR: Filter and remap (both) requires original files and subsampled target files." 1>&2 &&
-                        exit 1 &&
-                    #end if
-                #elif $operation.filter_mode.remap_target_mode.mode == 'originals_only':
-                    #if not $operation.filter_mode.remap_target_mode.original_files:
-                        echo "ERROR: Filter and remap (originals only) requires at least one original file." 1>&2 &&
-                        exit 1 &&
-                    #end if
-                #elif $operation.filter_mode.remap_target_mode.mode == 'targets_only':
-                    #if not $operation.filter_mode.remap_target_mode.input_target_files:
-                        echo "ERROR: Filter and remap (targets only) requires at least one subsampled target file." 1>&2 &&
-                        exit 1 &&
-                    #end if
-                #end if
                 #if $operation.filter_mode.remap_target_mode.mode == 'both' or $operation.filter_mode.remap_target_mode.mode == 'originals_only':
                     mkdir -p input_original &&
                     #for $f in $operation.filter_mode.remap_target_mode.original_files:
@@ -138,18 +131,22 @@
                     #if $operation.filter_mode.remap_target_mode.mode == 'both' or $operation.filter_mode.remap_target_mode.mode == 'targets_only':
                         --subsampled-target-folder input_target
                     #end if
-                    --produce-merged-file $operation.filter_mode.produce_merged_file
+                    --produce-merged-file $operation.filter_mode.merged_output.produce_merged_file
                     #if $operation.filter_mode.remap_target_mode.mode == 'both' or $operation.filter_mode.remap_target_mode.mode == 'originals_only':
                         --original-input-dir input_original
-                        --transfer-original-dims-to-merged '$operation.filter_mode.merge_enrichment_mode.transfer_original_dims_to_merged'
-                        #if $operation.filter_mode.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.filter_mode.merge_enrichment_mode.standardization_json:
-                            --standardization-json '$operation.filter_mode.merge_enrichment_mode.standardization_json'
+                        #if $operation.filter_mode.merged_output.produce_merged_file == 'True':
+                            --transfer-original-dims-to-merged '$operation.filter_mode.merged_output.merge_enrichment_mode.transfer_original_dims_to_merged'
+                            #if $operation.filter_mode.merged_output.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.filter_mode.merged_output.merge_enrichment_mode.standardization_json:
+                                --standardization-json '$operation.filter_mode.merged_output.merge_enrichment_mode.standardization_json'
+                            #end if
+                        #else
+                            --transfer-original-dims-to-merged False
                         #end if
                     #else
                         --transfer-original-dims-to-merged False
                     #end if
-                    #if $operation.filter_mode.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.filter_mode.merge_enrichment_mode.remap_dims:
-                        --remap-dims '$operation.filter_mode.merge_enrichment_mode.remap_dims'
+                    #if $operation.filter_mode.merged_output.produce_merged_file == 'True' and $operation.filter_mode.merged_output.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.filter_mode.merged_output.merge_enrichment_mode.remap_dims:
+                        --remap-dims '$operation.filter_mode.merged_output.merge_enrichment_mode.remap_dims'
                     #end if
                 #end if
 
@@ -203,13 +200,17 @@
                 #end if
                 --chunk-size '$operation.chunk_size'
                 --workers \${GALAXY_SLOTS:-2}
-                --produce-merged-file $operation.produce_merged_file
-                --transfer-original-dims-to-merged '$operation.merge_enrichment_mode.transfer_original_dims_to_merged'
-                #if $operation.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.merge_enrichment_mode.standardization_json:
-                    --standardization-json '$operation.merge_enrichment_mode.standardization_json'
+                --produce-merged-file $operation.merged_output.produce_merged_file
+                #if $operation.merged_output.produce_merged_file == 'True':
+                    --transfer-original-dims-to-merged '$operation.merged_output.merge_enrichment_mode.transfer_original_dims_to_merged'
+                    #if $operation.merged_output.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.merged_output.merge_enrichment_mode.standardization_json:
+                        --standardization-json '$operation.merged_output.merge_enrichment_mode.standardization_json'
+                    #end if
+                #else
+                    --transfer-original-dims-to-merged False
                 #end if
-                #if $operation.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.merge_enrichment_mode.remap_dims:
-                    --remap-dims '$operation.merge_enrichment_mode.remap_dims'
+                #if $operation.merged_output.produce_merged_file == 'True' and $operation.merged_output.merge_enrichment_mode.transfer_original_dims_to_merged == 'True' and $operation.merged_output.merge_enrichment_mode.remap_dims:
+                    --remap-dims '$operation.merged_output.merge_enrichment_mode.remap_dims'
                 #end if
         #end if
     ]]></command>
@@ -253,7 +254,6 @@
                         <param argument="--border-zone-width" type="float" min="0" max="1000" label="Border zone width override (m)" help="Manual override for the border/overlap zone width, in meters."/>
                     </when>
                 </conditional>
-                <param argument="--chunk-size" type="integer" min="100000" max="200000000" value="20000000" label="Chunk size (points)" help="Performance knob. Controls chunked reads used for filtering and (optional) COPC preparation for remap."/>
                 <conditional name="small_cluster_reassignment">
                     <param name="enabled" type="select" label="Small cluster reassignment" help="If enabled (default), very small kept instances can be reassigned/merged based on size and volume thresholds below.">
                         <option value="False">Disabled</option>
@@ -289,20 +289,19 @@
                                 <param name="input_target_files" type="data" format="laz,las" multiple="true" label="Subsampled target files (LAZ/LAS)" help="Subsampled target point clouds to receive remapped dimensions."/>
                             </when>
                         </conditional>
-                        <expand macro="produce_merged_file_param"/>
-                        <expand macro="merge_enrichment_conditional"/>
+                        <expand macro="merged_output_conditional"/>
                     </when>
                 </conditional>
+                <param argument="--chunk-size" type="integer" min="100000" max="200000000" value="20000000" label="Chunk size (points)" help="Performance knob. Controls chunked reads used for filtering and (optional) COPC preparation for remap."/>
             </when>
             <when value="remap">
-                <repeat name="segmented_collections" title="Segmented tiles (one source)" min="1" help="Add one entry per segmentation source (for example one for RCT and one for SAT). Each entry is staged in its own folder so overlapping tile IDs from different sources do not collide.">
+                <repeat name="segmented_collections" title="Segmented tiles (one source)" min="1" help="Add one entry per segmentation source (for example one for 3Dtrees: Raycloudtools and one for 3Dtrees: SegmentAnyTree). Each entry is staged in its own folder so overlapping tile IDs from different sources do not collide.">
                     <param name="collection" type="data" format="laz,las" multiple="true" label="Segmented tiles (LAZ/LAS)" help="Segmented tiles from one source."/>
                 </repeat>
                 <param name="original_files" type="data" format="laz,las" multiple="true" label="Original files (LAZ/LAS)" help="Original point clouds to receive the remapped dimensions."/>
                 <param name="input_target_files" type="data" format="laz,las" multiple="true" optional="true" label="Subsampled target files (optional)" help="Optional target point clouds to receive remapped dimensions before the originals."/>
+                <expand macro="merged_output_conditional"/>
                 <param argument="--chunk-size" type="integer" min="100000" max="200000000" value="20000000" label="Chunk size (points)" help="Performance knob. Controls chunked reads used for remap-style spatial slicing and source normalization."/>
-                <expand macro="produce_merged_file_param"/>
-                <expand macro="merge_enrichment_conditional"/>
             </when>
         </conditional>
     </inputs>
@@ -344,10 +343,10 @@
             <discover_datasets pattern="__name_and_ext__" directory="output_dir/subsampled_with_predictions" format="laz" recurse="false"/>
         </collection>
         <data name="output_remap_merged_laz" format="laz" label="${tool.name}: Merged output (LAZ)" from_work_dir="output_dir/merged_with_all_dims.laz">
-            <filter>(operation['task'] == "remap" and str(operation['produce_merged_file']) == "True" and str(operation['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "False") or (operation['task'] == "filter" and operation['filter_mode']['mode'] == "filter_and_remap" and str(operation['filter_mode']['produce_merged_file']) == "True" and str(operation['filter_mode']['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "False")</filter>
+            <filter>(operation['task'] == "remap" and str(operation['merged_output']['produce_merged_file']) == "True" and str(operation['merged_output']['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "False") or (operation['task'] == "filter" and operation['filter_mode']['mode'] == "filter_and_remap" and str(operation['filter_mode']['merged_output']['produce_merged_file']) == "True" and str(operation['filter_mode']['merged_output']['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "False")</filter>
         </data>
         <data name="output_merged_with_originals" format="laz" label="${tool.name}: Merged output with original attributes (LAZ)" from_work_dir="output_dir/merged_with_originals.laz">
-            <filter>(operation['task'] == "remap" and str(operation['produce_merged_file']) == "True" and str(operation['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "True") or (operation['task'] == "filter" and operation['filter_mode']['mode'] == "filter_and_remap" and str(operation['filter_mode']['produce_merged_file']) == "True" and str(operation['filter_mode']['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "True")</filter>
+            <filter>(operation['task'] == "remap" and str(operation['merged_output']['produce_merged_file']) == "True" and str(operation['merged_output']['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "True") or (operation['task'] == "filter" and operation['filter_mode']['mode'] == "filter_and_remap" and str(operation['filter_mode']['merged_output']['produce_merged_file']) == "True" and str(operation['filter_mode']['merged_output']['merge_enrichment_mode']['transfer_original_dims_to_merged']) == "True")</filter>
         </data>
     </outputs>
     <tests>
@@ -401,9 +400,8 @@
                         <param name="mode" value="originals_only"/>
                         <param name="original_files" value="mikro" ftype="laz"/>
                     </conditional>
-                    <param name="produce_merged_file" value="False"/>
-                    <conditional name="merge_enrichment_mode">
-                        <param name="transfer_original_dims_to_merged" value="False"/>
+                    <conditional name="merged_output">
+                        <param name="produce_merged_file" value="False"/>
                     </conditional>
                 </conditional>
             </conditional>
@@ -421,52 +419,54 @@
                     <param name="collection" value="mikro_segmented_rct" ftype="laz"/>
                 </repeat>
                 <param name="original_files" value="mikro" ftype="laz"/>
-                <param name="produce_merged_file" value="True"/>
-                <conditional name="merge_enrichment_mode">
-                    <param name="transfer_original_dims_to_merged" value="True"/>
+                <conditional name="merged_output">
+                    <param name="produce_merged_file" value="True"/>
+                    <conditional name="merge_enrichment_mode">
+                        <param name="transfer_original_dims_to_merged" value="True"/>
+                    </conditional>
                 </conditional>
             </conditional>
             <output_collection name="output_originals_with_dims" type="list" count="1"/>
         </test>
     </tests>
     <help format="markdown">
-        **SmartTile** covers three common steps when working with tiled point clouds and per-point predictions:
+**SmartTile** covers three common steps when working with tiled point clouds and per-point predictions:
 
-        1. **Tile**: normalize to COPC, create tiles, and write two subsampled outputs.
-        2. **Filter**: remove overlap-only/border-zone instances from segmented tiles (optionally followed by a remap).
-        3. **Remap**: transfer selected dimensions from segmented tiles back onto originals (and optionally onto a subsampled target set).
+1. **Tile**: normalize to COPC, create tiles, and write two subsampled outputs.
+2. **Filter**: remove overlap-only/border-zone instances from segmented tiles (optionally followed by a remap).
+3. **Remap**: transfer selected dimensions from segmented tiles back onto originals (and optionally onto a subsampled target set).
 
-        **General tips**
+**General tips**
 
-        - For best matching, use filenames (element identifiers) that contain tile IDs like `c00_r01`.
-        - These inputs expect LAZ/LAS (and optional tree TXT). If your history/collection also contains mesh `.ply` files, keep them separate to avoid Galaxy format errors.
-        - The tool uses Galaxy slots for parallelism where available.
-        - `Chunk size (points)` is the main performance knob: larger chunks reduce overhead but may increase memory use.
+- For best matching, use filenames (element identifiers) that contain tile IDs like `c00_r01`.
+- These inputs expect LAZ/LAS (and optional tree TXT). If your history/collection also contains mesh `.ply` files, keep them separate to avoid Galaxy format errors.
+- The tool uses Galaxy slots for parallelism where available.
+- `Chunk size (points)` is the main performance knob: larger chunks reduce overhead but may increase memory use.
 
-        **Tile**
+**Tile**
 
-        - SmartTile first builds a COPC-normalized cache of your inputs while preserving all source dimensions.
-        - It then creates overlapping tiles and writes two subsampled output collections.
-        - `Reduce dimensions in subsampled outputs` only affects the subsampled outputs, not the internal COPC cache.
-        - `Write resolution 1 as COPC (.copc.laz)` only affects the first subsampled output collection (default: enabled).
+- SmartTile first builds a COPC-normalized cache of your inputs while preserving all source dimensions.
+- It then creates overlapping tiles and writes two subsampled output collections.
+- `Reduce dimensions in subsampled outputs` only affects the subsampled outputs, not the internal COPC cache.
+- `Write resolution 1 as COPC (.copc.laz)` only affects the first subsampled output collection (default: enabled).
 
-        **Filter**
+**Filter**
 
-        - Removes instances that only exist in overlap/border zones and keeps tile-core ownership.
-        - `Small cluster reassignment` (default: enabled) can merge/reassign tiny surviving instances.
-        - If you choose “Also remap…”, pick **Remap target files** (originals only, targets only, or both), then remap the filtered dimensions onto the selected collections.
+- Removes instances that only exist in overlap/border zones and keeps tile-core ownership.
+- `Small cluster reassignment` (default: enabled) can merge/reassign tiny surviving instances.
+- If you choose “Also remap…”, pick **Remap target files** (originals only, targets only, or both), then remap the filtered dimensions onto the selected collections.
 
-        **Remap**
+**Remap**
 
-        - Default behavior transfers all *extra* dimensions from the source segmented tiles.
-        - If you set **Dimensions to transfer (optional allowlist)**, it becomes a strict allowlist and may include both standard and extra dimensions (comma-separated, e.g. `PredInstance,Intensity`).
-        - COPC-safe naming: dimension names starting with a digit are sanitized, so a requested `3DT_*` dimension may appear as `TDT_*` in outputs.
+- Default behavior transfers all *extra* dimensions from the source segmented tiles.
+- If you set **Dimensions to transfer (optional allowlist)**, it becomes a strict allowlist and may include both standard and extra dimensions (comma-separated, e.g. `PredInstance,Intensity`).
+- COPC-safe naming: dimension names starting with a digit are sanitized, so a requested `3DT_*` dimension may appear as `TDT_*` in outputs.
 
-        **Outputs**
+**Outputs**
 
-        - Tiling: two subsampled collections, a COPC-normalized original collection, a preview PNG, and a tile layout JSON.
-        - Filtering: filtered tiles plus (optional) filtered tree TXT sidecars.
-        - Remapping: originals (and optional targets) with transferred dimensions, plus an optional merged LAZ output.
+- Tiling: two subsampled collections, a COPC-normalized original collection, a preview PNG, and a tile layout JSON.
+- Filtering: filtered tiles plus (optional) filtered tree TXT sidecars.
+- Remapping: originals (and optional targets) with transferred dimensions, plus an optional merged LAZ output.
     </help>
     <creator>
         <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" identifier="0009-0002-5001-2571"/>
