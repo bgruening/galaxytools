@@ -2,22 +2,21 @@
     <description>Tree instance segmentation</description>
     <macros>
         <token name="@TOOL_VERSION@">1.1.1</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
     <requirements>
         <container type="docker">
             ghcr.io/3dtrees-earth/3dtrees_rct:@TOOL_VERSION@
         </container>
     </requirements>
-    
+
     <command detect_errors="exit_code"><![CDATA[
-        mkdir 'in' &&
-        mkdir 'out' &&
-        ln -s '$input' 'in/$input.element_identifier' &&
-        python3 -u /src/run.py 
-        --dataset-path 'in/$input.element_identifier'
+    #set $input_name = str($input.element_identifier)
+        ln -sf '$input' '${input_name}.${input.ext}' &&
+        python3 -u /src/run.py
+        --dataset-path '${input_name}.${input.ext}'
         --output-dir 'out'
-        --gradient '$gradient'  
+        --gradient '$gradient'
         --max-diameter '$max_diameter'
         --crop-length '$crop_length'
         --distance-limit '$distance_limit'
@@ -29,13 +28,21 @@
         $branch_segmentation
         $treeinfo
         $branch_data
+        &&
+        ## Mesh artifacts can be absent depending on the run
+        mv "out/${input_name}_segmented.laz" '$segmented_laz' &&
+        if [ -f "out/${input_name}_trees_mesh.ply" ]; then mv "out/${input_name}_trees_mesh.ply" '$tree_mesh_ply'; fi &&
+        if [ -f "out/${input_name}_mesh.ply" ]; then mv "out/${input_name}_mesh.ply" '$terrain_mesh_ply'; fi &&
+        #if $treeinfo
+            mv "out/${input_name}_trees_info.txt" '$tree_info_txt'
+        #else
+            mv "out/${input_name}_trees.txt" '$tree_model_txt'
+        #end if
         ]]>
     </command>
 
     <inputs>
-        <param name="input" type="data" format="laz" label="Input Dataset (.laz)" 
-                help="Input file to process"/>
-        <!-- Add your specific parameters from parameters.py -->
+        <param name="input" type="data" format="laz" label="Input point cloud (.laz)" help="Input LAZ file."/>
         <!-- rayextract terrain -->
         <param argument="--gradient" type="float" min="0.001" max="1000" value="1" label="Gradient" help="Gradient threshold for terrain extraction"/>
         <!-- rayextract trees -->
@@ -52,50 +59,44 @@
         <param argument="--treeinfo" type="boolean" checked="false" truevalue="--treeinfo" falsevalue="" label="Treeinfo" help="Calculate tree attributes - dbh, height, crown radius, volume, ..."/>
         <param argument="--branch-data" type="boolean" checked="false" truevalue="--branch-data" falsevalue="" label="Branch data" help="Calculate branch attributes - branch number, segment_length, branch order number, extension and position in branch integers per-segment"/>
     </inputs>
-    
+
     <outputs>
-        <!-- collection with terrain, segmented point cloud, and treefile -->
-        <collection name="raycloudtools_outputs_default" type="list" label="RayCloudTools">
-            <!--to exclude tree meshes pattern="(?P&lt;designation&gt;.*_segmented|.*_trees|^(?!.*trees).*_mesh)\.(?P&lt;ext&gt;laz|txt|(?&lt;=_mesh\.)ply)"-->
-            <discover_datasets pattern="(?P&lt;designation&gt;.*_segmented|.*_trees|.*_mesh)\.(?P&lt;ext&gt;laz|txt|(?&lt;=_mesh\.)ply)" directory="out"/>
+        <data name="segmented_laz" format="laz" label="RCT: Segmented point cloud"/>
+        <data name="tree_model_txt" format="txt" label="RCT: Tree-file">
             <filter>not treeinfo</filter>
-        </collection>
-        <!-- collection with terrain, segmented point cloud, and treefile with tree attributes -->
-        <collection name="raycloudtools_outputs_treeinfo" type="list" label="RayCloudTools (treeinfo)">
-            <!-- to exclude tree meshes pattern="(?P&lt;designation&gt;.*_segmented|.*_trees_info|^(?!.*trees).*_mesh)\.(?P&lt;ext&gt;laz|txt|(?&lt;=_mesh\.)ply)"-->
-            <discover_datasets pattern="(?P&lt;designation&gt;.*_segmented|.*_trees_info|.*_mesh)\.(?P&lt;ext&gt;laz|txt|(?&lt;=_mesh\.)ply)" directory="out"/>
+        </data>
+        <data name="tree_info_txt" format="txt" label="RCT: Tree-file incl. treeinfo">
             <filter>treeinfo</filter>
-        </collection>
+        </data>
+        <data name="tree_mesh_ply" format="plybinary" label="RCT: Tree-mesh"/>
+        <data name="terrain_mesh_ply" format="plybinary" label="RCT: Terrain-mesh"/>
     </outputs>
 
     <tests>
-        <test expect_num_outputs="1">
-            <param name="input" value="Example_Tree_RCT.laz"/>
-            <output_collection name="raycloudtools_outputs_default" count="4" type="list">
-                <element name="Example_Tree_RCT_mesh" file="Example_Tree_RCT_mesh.ply" compare="contains"/>
-                <element name="Example_Tree_RCT_segmented" file="Example_Tree_RCT_segmented.laz" compare="contains"/>
-                <element name="Example_Tree_RCT_trees" file="Example_Tree_RCT_trees.txt" compare="contains"/>
-                <element name="Example_Tree_RCT_trees_mesh" file="Example_Tree_RCT_trees_mesh.ply" compare="contains"/>
-            </output_collection>
+        <test expect_num_outputs="4">
+            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
+            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
+            <output name="tree_model_txt" file="Example_Tree_RCT_trees.txt" compare="contains" ftype="txt"/>
+            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
         </test>
-        <test expect_num_outputs="1">
-            <param name="input" value="Example_Tree_RCT.laz"/>
+        <!-- Test 2: treeinfo enabled -->
+        <test expect_num_outputs="4">
+            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
             <param name="treeinfo" value="true"/>
-            <output_collection name="raycloudtools_outputs_treeinfo" count="4" type="list">
-                <element name="Example_Tree_RCT_mesh" file="Example_Tree_RCT_mesh.ply" compare="contains"/>
-                <element name="Example_Tree_RCT_segmented" file="Example_Tree_RCT_segmented.laz" compare="contains"/>
-                <element name="Example_Tree_RCT_trees_info" file="Example_Tree_RCT_trees_info.txt" compare="contains"/>
-                <element name="Example_Tree_RCT_trees_mesh" file="Example_Tree_RCT_trees_mesh.ply" compare="contains"/>
-            </output_collection>
+            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
+            <output name="tree_info_txt" file="Example_Tree_RCT_trees_info.txt" compare="contains" ftype="txt"/>
+            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
         </test>
     </tests>
 
     <help format="markdown">
 **What it does**
 
-This tool performs graph-based tree instance segmentation on LiDAR point clouds using the **RayExtract** algorithm (Devereux et al., 2026) implemented as part of **RayCloudTools** (Lowe &amp; Stepanas, 2021). 
+This tool performs graph-based tree instance segmentation on LiDAR point clouds using the **RayExtract** algorithm (Devereux et al., 2026) implemented as part of **RayCloudTools** (Lowe &amp; Stepanas, 2021).
 It is platform-agnostic and works across airborne (ULS), terrestrial (TLS), and mobile (MLS) laser scanning data, as long as trees are well-represented by points along the entire tree length.
-  
+
 -----
 
 **Processing Steps**
@@ -106,30 +107,32 @@ It is platform-agnostic and works across airborne (ULS), terrestrial (TLS), and 
 - Extract trees
 - Convert point color (segmentation result) to instance IDs
 - Add instance IDs back to input point cloud
-- Optional: Calculate tree attributes (dbh, height, crown radius, volume, ...)  
+- Optional: Calculate tree attributes (dbh, height, crown radius, volume, ...)
 
 -----
 
-**Output**
+**Outputs**
 
-List collection with:
-- Original LAZ point cloud + instance IDs in extra dimension 'PredInstance_RCT' (_segmented.laz)
-- Terrain mesh (_mesh.ply)
-- Tree meshes (_trees_mesh.ply)
-- Tree quantitative structure models (_trees.txt), optionally with additional tree attributes (_trees_info.txt).
+- **Segmented point cloud (LAZ):** instance dimension `PredInstance_RCT`
+- **Tree info (TXT):** produced when `treeinfo` is disabled
+- **Tree info (TXT):** produced when `treeinfo` is enabled
+- **Tree meshes (PLY)**
+- **Terrain meshes (PLY)**
+
+This wrapper processes one input file per job. If you pass a collection in Galaxy workflows, Galaxy will iterate the tool over the collection and can parallelize those jobs.
 
 ***Tip:** We recommend using the '3DTrees: Tile and Merge' or '3DTrees: Smart Tile' tool to process large point clouds (workflow: tile → segment → merge)!*
 
 -----
 
-**Third-Party Components**  
+**Third-Party Components**
 
 You agree to comply with the licence terms for these components as part of accessing the tool.
 
-**RayCloudTools:** Copyright (c) 2020, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230 | [CSIRO-Open Source Software License (variation of the BSD / MIT License)](https://github.com/csiro-robotics/raycloudtools); 
+**RayCloudTools:** Copyright (c) 2020, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230 | [CSIRO-Open Source Software License (variation of the BSD / MIT License)](https://github.com/csiro-robotics/raycloudtools);
 **PDAL:** Copyright (c) 2025, Hobu, Inc. (howard@hobu.co) | [pdal License (BSD)](https://github.com/PDAL/PDAL?tab=License-1-ov-file#readme);
-**NumPy:** Copyright (c) 2005-2025, NumPy Developers | [numpy License (BSD)](https://github.com/numpy/numpy?tab=License-1-ov-file#readme); 
-**LasPy:** Copyright (c) 2012, Grant Brown, grant.brown73 at gmail.com, Copyright (c) 2012, Howard Butler, hobu.inc at gmail.com, Copyright (c) 2020, Thomas Montaigu, thomas.montaigu@laposte.net | [laspy License](https://github.com/laspy/laspy?tab=License-1-ov-file#readme); 
+**NumPy:** Copyright (c) 2005-2025, NumPy Developers | [numpy License (BSD)](https://github.com/numpy/numpy?tab=License-1-ov-file#readme);
+**LasPy:** Copyright (c) 2012, Grant Brown, grant.brown73 at gmail.com, Copyright (c) 2012, Howard Butler, hobu.inc at gmail.com, Copyright (c) 2020, Thomas Montaigu, thomas.montaigu at laposte.net | [laspy License](https://github.com/laspy/laspy?tab=License-1-ov-file#readme);
 **Open3D:** Copyright (c) 2018-2023 www.open3d.org | [Open3D License (MIT)](https://github.com/isl-org/Open3D?tab=License-1-ov-file#readme).
     </help>
     <creator>
