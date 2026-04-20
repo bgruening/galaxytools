@@ -37,8 +37,12 @@ def encode_dna_sequences(fasta_path, padding, outfile, outfile_matrix):
     )
     genome_encoder.fit(X)
     encoded_dna_sequences = genome_encoder.transform(X)
-    flatted_enc_seqs = encoded_dna_sequences.flatten().reshape(encoded_dna_sequences.shape[0], -1)
-    np.savetxt(outfile, np.asarray(flatted_enc_seqs, dtype=int), fmt="%d", delimiter="\t")
+    flatted_enc_seqs = encoded_dna_sequences.flatten().reshape(
+        encoded_dna_sequences.shape[0], -1
+    )
+    np.savetxt(
+        outfile, np.asarray(flatted_enc_seqs, dtype=int), fmt="%d", delimiter="\t"
+    )
     with h5py.File(outfile_matrix, "w") as handle:
         handle.create_dataset("data", data=encoded_dna_sequences, compression="gzip")
 
@@ -64,12 +68,17 @@ def build_kmer_vocabulary(sequences, k):
 
 
 def encode_sequence_kmers(sequence, vocabulary, k):
-    return [vocabulary.get(kmer, vocabulary["<UNK>"]) for kmer in seq_to_kmers(sequence, k)]
+    return [
+        vocabulary.get(kmer, vocabulary["<UNK>"]) for kmer in seq_to_kmers(sequence, k)
+    ]
 
 
 def pad_encoded_sequences(encoded_sequences, pad_value=0):
     max_len = max(len(sequence) for sequence in encoded_sequences)
-    return [sequence + [pad_value] * (max_len - len(sequence)) for sequence in encoded_sequences]
+    return [
+        sequence + [pad_value] * (max_len - len(sequence))
+        for sequence in encoded_sequences
+    ]
 
 
 def encode_dna_kmers(fasta_path, k, outfile, outfile_vocab):
@@ -115,11 +124,17 @@ def main(args):
         encode_labels(args.labels_path, header, args.outfile, num_classes=num_classes)
     elif task_type == "dna_encoder":
         if sequence_encoding == "one_hot":
-            encode_dna_sequences(args.fasta_path, padding, args.outfile, args.outfile_matrix)
+            encode_dna_sequences(
+                args.fasta_path, padding, args.outfile, args.outfile_matrix
+            )
         elif sequence_encoding == "kmer":
-            encode_dna_kmers(args.fasta_path, kmer_size, args.outfile, args.outfile_vocab)
+            encode_dna_kmers(
+                args.fasta_path, kmer_size, args.outfile, args.outfile_vocab
+            )
         else:
-            raise ValueError("Unsupported DNA sequence encoding: %s" % sequence_encoding)
+            raise ValueError(
+                "Unsupported DNA sequence encoding: %s" % sequence_encoding
+            )
     else:
         raise ValueError("Unsupported encoder type: %s" % task_type)
 
@@ -128,10 +143,16 @@ if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-l", "--labels_path", dest="labels_path")
     aparser.add_argument("-d", "--labels_header", dest="labels_header", default=False)
-    aparser.add_argument("-t", "--encoder_task_type", dest="encoder_task_type", required=True)
-    aparser.add_argument("-y", "--num_classes", dest="num_classes", type=int, default=None)
+    aparser.add_argument(
+        "-t", "--encoder_task_type", dest="encoder_task_type", required=True
+    )
+    aparser.add_argument(
+        "-y", "--num_classes", dest="num_classes", type=int, default=None
+    )
     aparser.add_argument("-p", "--padding", dest="padding", default="boolfalse")
-    aparser.add_argument("-s", "--sequence_encoding", dest="sequence_encoding", default="one_hot")
+    aparser.add_argument(
+        "-s", "--sequence_encoding", dest="sequence_encoding", default="one_hot"
+    )
     aparser.add_argument("-k", "--kmer_size", dest="kmer_size", type=int, default=3)
     aparser.add_argument("-f", "--fasta_path", dest="fasta_path")
     aparser.add_argument("-o", "--outfile", dest="outfile", required=True)
@@ -139,8 +160,4 @@ if __name__ == "__main__":
     aparser.add_argument("-v", "--outfile_vocab", dest="outfile_vocab")
     args = aparser.parse_args()
 
-    print(args)
-
-    main(
-        args
-    )
+    main(args)
