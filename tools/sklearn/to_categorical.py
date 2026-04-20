@@ -1,5 +1,6 @@
 import argparse
 import json
+import re
 import warnings
 
 import h5py
@@ -48,15 +49,23 @@ def encode_dna_sequences(fasta_path, padding, outfile, outfile_matrix):
 
 
 def seq_to_kmers(sequence, k=3):
-    sequence = sequence.upper()
     return [sequence[idx: idx + k] for idx in range(len(sequence) - k + 1)]
+
+
+def normalize_dna_sequence(sequence):
+    return re.sub(r"\s+", "", sequence.upper())
+
+
+def is_valid_dna_kmer(kmer):
+    valid_dna_chars = set("ACGTRYSWKMBDHVN")
+    return set(kmer).issubset(valid_dna_chars)
 
 
 def build_kmer_vocabulary(sequences, k):
     vocabulary = {"<PAD>": 0, "<UNK>": 1}
     for sequence in sequences:
         for kmer in seq_to_kmers(sequence, k):
-            if kmer not in vocabulary:
+            if is_valid_dna_kmer(kmer) and kmer not in vocabulary:
                 vocabulary[kmer] = len(vocabulary)
 
     if len(vocabulary) == 2:
@@ -70,6 +79,7 @@ def build_kmer_vocabulary(sequences, k):
 def encode_sequence_kmers(sequence, vocabulary, k):
     return [
         vocabulary.get(kmer, vocabulary["<UNK>"]) for kmer in seq_to_kmers(sequence, k)
+        if is_valid_dna_kmer(kmer)
     ]
 
 
@@ -88,7 +98,7 @@ def encode_dna_kmers(fasta_path, k, outfile, outfile_vocab):
         raise ValueError("k-mer size must be at least 1.")
 
     fasta_file = pyfaidx.Fasta(fasta_path)
-    sequences = [str(fasta_file[name]).upper() for name in fasta_file.keys()]
+    sequences = [normalize_dna_sequence(str(fasta_file[name])) for name in fasta_file.keys()]
     vocabulary = build_kmer_vocabulary(sequences, k)
     encoded_sequences = [
         encode_sequence_kmers(sequence, vocabulary, k) for sequence in sequences
