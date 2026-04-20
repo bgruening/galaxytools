@@ -91,6 +91,7 @@ def encode_dna_kmers(fasta_path, k, outfile, outfile_vocab):
     np.savetxt(outfile, padded_sequences, fmt="%d", delimiter="\t")
     with open(outfile_vocab, "w") as handle:
         json.dump(vocabulary, handle, indent=4, sort_keys=False)
+        handle.write("\n")
 
 
 def encode_labels(infile, input_header, outfile, num_classes=None):
