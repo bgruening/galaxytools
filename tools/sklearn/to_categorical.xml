@@ -17,15 +17,21 @@
             #end if
             #else
             --fasta_path '$encoder_type.fasta_path'
-            --padding '$encoder_type.padding'
+            --sequence_encoding '$encoder_type.sequence_encoding.encoding_method'
+            #if str($encoder_type.sequence_encoding.encoding_method) == 'one_hot'
+            --padding '$encoder_type.sequence_encoding.padding'
             --outfile_matrix '$outfile_matrix'
+            #else
+            --kmer_size '$encoder_type.sequence_encoding.kmer_size'
+            --outfile_vocab '$outfile_vocab'
+            #end if
             #end if
             --outfile '$outfile'
     ]]>
     </command>
     <inputs>
-        <conditional name="encoder_type" label="Select one-hot encoding data">
-            <param name="task_type" type="select" label="One-hot encoding for">
+        <conditional name="encoder_type" label="Select encoding target">
+            <param name="task_type" type="select" label="Encoding for">
                 <option value="label_encoder">Labels</option>
                 <option value="dna_encoder">DNA sequences</option>
             </param>
@@ -35,15 +41,29 @@
                 <param name="labels_header" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Does the dataset contain header?" />
             </when>
             <when value="dna_encoder">
-                <param name="fasta_path" type="data" format="fasta" label="Dataset containing fasta genomic sequences" help="Sequences will be one-hot encoded." />
-                <param name="padding" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Enable padding?" />
+                <param name="fasta_path" type="data" format="fasta" label="Dataset containing fasta genomic sequences" help="Sequences can be one-hot encoded or converted into k-mer token features." />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" type="select" label="Sequence encoding method">
+                        <option value="one_hot">One-hot encoding</option>
+                        <option value="kmer">K-mer encoding</option>
+                    </param>
+                    <when value="one_hot">
+                        <param name="padding" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Enable padding?" />
+                    </when>
+                    <when value="kmer">
+                        <param name="kmer_size" type="integer" value="3" min="1" label="K-mer size" help="Build a shared DNA k-mer vocabulary with &lt;PAD&gt; and &lt;UNK&gt;, encode sequences as token ids, and pad them to equal length." />
+                    </when>
+                </conditional>
             </when>
         </conditional>
     </inputs>
     <outputs>
         <data name="outfile" format="tabular"/>
         <data name="outfile_matrix" format="h5" label="${tool.name} DNA matrix on ${on_string}">
-            <filter>encoder_type['task_type'] == "dna_encoder"</filter>
+            <filter>encoder_type['task_type'] == "dna_encoder" and encoder_type['sequence_encoding']['encoding_method'] == "one_hot"</filter>
+        </data>
+        <data name="outfile_vocab" format="json" label="${tool.name} k-mer vocabulary on ${on_string}">
+            <filter>encoder_type['task_type'] == "dna_encoder" and encoder_type['sequence_encoding']['encoding_method'] == "kmer"</filter>
         </data>
     </outputs>
     <tests>
@@ -104,7 +124,10 @@
             <conditional name="encoder_type">
                 <param name="task_type" value="dna_encoder" />
                 <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
-                <param name="padding" value="true" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="one_hot" />
+                    <param name="padding" value="true" />
+                </conditional>
             </conditional>
             <output name="outfile_matrix" file="dna_ohe_output.h5" ftype="h5" compare="sim_size" delta="32" />
             <output name="outfile" file="dna_ohe_output.tabular" ftype="tabular" />
@@ -113,31 +136,57 @@
             <conditional name="encoder_type">
                 <param name="task_type" value="dna_encoder" />
                 <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
-                <param name="padding" value="false" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="one_hot" />
+                    <param name="padding" value="false" />
+                </conditional>
             </conditional>
         </test>
         <test expect_num_outputs="2">
             <conditional name="encoder_type">
                 <param name="task_type" value="dna_encoder" />
                 <param name="fasta_path" value="dna_ohe_input_same_seq_len.fasta" ftype="fasta" />
-                <param name="padding" value="false" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="one_hot" />
+                    <param name="padding" value="false" />
+                </conditional>
             </conditional>
             <output name="outfile_matrix" file="dna_ohe_output_same_len.h5" ftype="h5" compare="sim_size" delta="32" />
             <output name="outfile" file="dna_ohe_output_same_len.tabular" ftype="tabular" />
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="kmer" />
+                    <param name="kmer_size" value="3" />
+                </conditional>
+            </conditional>
+            <output name="outfile" file="dna_kmer_output_k3.tabular" ftype="tabular" />
+            <output name="outfile_vocab" file="dna_kmer_vocab_k3.json" ftype="json" />
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="kmer" />
+                    <param name="kmer_size" value="6" />
+                </conditional>
+            </conditional>
         </test>
     </tests>
     <help><![CDATA[
 **What it does**
 
-The tool does one-hot encoding of either labels or DNA sequences.
+The tool does one-hot encoding of either labels or DNA sequences, and can also generate k-mer token encodings for DNA sequences.
 
 1. Converts a class vector (integers) to binary class matrix.
 
 tf.keras.utils.to_categorical(
-y, num_classes=None, dtype='float32'
+    y, num_classes=None, dtype='float32'
 )
-
-E.g. for use with categorical_crossentropy.
 
 Arguments
 
@@ -149,18 +198,20 @@ Returns
 
 A binary matrix representation of the input. The classes axis is placed last.
 
-Raises
-
-Value Error: If input contains string value
-
 2. Converts DNA sequences to one-hot encoded matrices. Outputs H5 file containing the one-hot encoded matrices and 
 a tabular file containing flattend representations.
 
-DNA sequence: ACGCTG to gets encoded to [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,1,0,0], [0,0,0,1], [0,0,1,0]]
+DNA sequence: ACGCTG to gets encoded to [[1,0,0,0], [0,1,0,0], [0,0,1,0], [0,1,0,0], [0,0,0,1], [0,0,1,0]] in H5 file.
 A: [1,0,0,0]
 C: [0,1,0,0]
 G: [0,0,1,0]
 T: [0,0,0,1]
+
+In the tabular file, the same sequence gets encoded to 1,0,0,0,0,1,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0.
+
+3. Converts DNA sequences to k-mer token matrices. The tool first builds a shared k-mer vocabulary from all input sequences, starting with &lt;PAD&gt; = 0 and &lt;UNK&gt; = 1. It then encodes each sequence as token ids and pads all rows to the same length with &lt;PAD&gt;. The vocabulary is also emitted as a JSON output when k-mer encoding is selected.
+
+For example, with sequences ACGT and TGCAA using k=3, the vocabulary becomes {'&lt;PAD&gt;': 0, '&lt;UNK&gt;': 1, 'ACG': 2, 'CGT': 3, 'TGC': 4, 'GCA': 5, 'CAA': 6}. The encoded rows are [2, 3, 0] and [4, 5, 6].
 
     ]]>    </help>
     <expand macro="sklearn_citation" />
