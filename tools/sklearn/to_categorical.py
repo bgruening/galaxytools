@@ -45,7 +45,7 @@ def encode_dna_sequences(fasta_path, padding, outfile, outfile_matrix):
 
 def seq_to_kmers(sequence, k=3):
     sequence = sequence.upper()
-    return [sequence[idx : idx + k] for idx in range(len(sequence) - k + 1)]
+    return [sequence[idx: idx + k] for idx in range(len(sequence) - k + 1)]
 
 
 def build_kmer_vocabulary(sequences, k):
