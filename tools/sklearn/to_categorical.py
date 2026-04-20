@@ -78,7 +78,8 @@ def build_kmer_vocabulary(sequences, k):
 
 def encode_sequence_kmers(sequence, vocabulary, k):
     return [
-        vocabulary.get(kmer, vocabulary["<UNK>"]) for kmer in seq_to_kmers(sequence, k)
+        vocabulary.get(kmer, vocabulary["<UNK>"])
+        for kmer in seq_to_kmers(sequence, k)
         if is_valid_dna_kmer(kmer)
     ]
 
@@ -98,7 +99,9 @@ def encode_dna_kmers(fasta_path, k, outfile, outfile_vocab):
         raise ValueError("k-mer size must be at least 1.")
 
     fasta_file = pyfaidx.Fasta(fasta_path)
-    sequences = [normalize_dna_sequence(str(fasta_file[name])) for name in fasta_file.keys()]
+    sequences = [
+        normalize_dna_sequence(str(fasta_file[name])) for name in fasta_file.keys()
+    ]
     vocabulary = build_kmer_vocabulary(sequences, k)
     encoded_sequences = [
         encode_sequence_kmers(sequence, vocabulary, k) for sequence in sequences
