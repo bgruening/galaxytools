@@ -94,7 +94,7 @@ def train_evaluate(args):
         te_labels = []
     s_time = time.time()
     if args["selected_task"] == "Classification":
-        classifier = TabPFNClassifier(random_state=42, model_path=args["model_path"])
+        classifier = TabPFNClassifier(random_state=42, model_path=args["model_path"], ignore_pretraining_limits=True)
         classifier.fit(tr_features, tr_labels)
         y_eval = classifier.predict(te_features)
         pred_probas_test = classifier.predict_proba(te_features)
@@ -105,7 +105,7 @@ def train_evaluate(args):
             "output_predicted_data", sep="\t", index=None
         )
     else:
-        regressor = TabPFNRegressor(random_state=42, model_path=args["model_path"])
+        regressor = TabPFNRegressor(random_state=42, model_path=args["model_path"], ignore_pretraining_limits=True)
         regressor.fit(tr_features, tr_labels)
         y_eval = regressor.predict(te_features)
         if len(te_labels) > 0:
