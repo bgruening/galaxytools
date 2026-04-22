@@ -1,5 +1,5 @@
 <tool id="sklearn_to_categorical" name="To categorical" version="@VERSION@" profile="@PROFILE@">
-    <description>Converts a class vector (integers) to binary class matrix</description>
+    <description>Encodes labels to a one-hot encoded matrix and DNA sequences to one-hot and k-mer representations</description>
     <macros>
         <import>main_macros.xml</import>
     </macros>
@@ -7,86 +7,334 @@
     <expand macro="macro_stdio" />
     <version_command>echo "@VERSION@"</version_command>
     <command detect_errors="exit_code"><![CDATA[
+        #if str($encoder_type.task_type) == 'dna_encoder'
+            ln -s '$encoder_type.fasta_path' input_fasta.fasta &&
+        #end if
         python '$__tool_directory__/to_categorical.py'
-            --inputs '$inputs'
-            --infile '$infile'
-            #if $num_classes
-            --num_classes '$num_classes'
+            --encoder_task_type '$encoder_type.task_type'
+            #if str($encoder_type.task_type) == 'label_encoder'
+            --labels_path '$labels_path'
+            --labels_header '$labels_header'
+            #if str($encoder_type.num_classes) != ''
+            --num_classes '$encoder_type.num_classes'
+            #end if
+            #else
+            --fasta_path input_fasta.fasta
+            --sequence_encoding '$encoder_type.sequence_encoding.encoding_method'
+            #if str($encoder_type.sequence_encoding.encoding_method) == 'one_hot'
+            --padding '$encoder_type.sequence_encoding.padding'
+            --outfile_matrix '$outfile_matrix'
+            #else
+            --kmer_size '$encoder_type.sequence_encoding.kmer_size'
+            --outfile_vocab '$outfile_vocab'
+            #end if
             #end if
             --outfile '$outfile'
     ]]>
     </command>
-    <configfiles>
-        <inputs name="inputs" />
-    </configfiles>
     <inputs>
-        <param name="infile" type="data" format="tabular" label="Input file" />
-        <param name="header0" type="boolean" optional="true" truevalue="booltrue" falsevalue="boolfalse" checked="true" label="Does the dataset contain header?" />
-        <param name="num_classes" type="integer" optional="true" label="Total number of classes" />
+        <conditional name="encoder_type" label="Select encoding target">
+            <param name="task_type" type="select" label="Encoding for">
+                <option value="label_encoder">Labels</option>
+                <option value="dna_encoder">DNA sequences</option>
+            </param>
+            <when value="label_encoder">
+                <param name="num_classes" type="integer" optional="true" value="" label="Total number of classes" />
+                <param name="labels_path" type="data" format="tabular" label="Dataset containing labels" help="Dataset containing labels" />
+                <param name="labels_header" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Does the dataset contain header?" />
+            </when>
+            <when value="dna_encoder">
+                <param name="fasta_path" type="data" format="fasta" label="Dataset containing fasta genomic sequences" help="Sequences can be one-hot encoded or converted into k-mer token features." />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" type="select" label="Sequence encoding method">
+                        <option value="one_hot">One-hot encoding</option>
+                        <option value="kmer">K-mer encoding</option>
+                    </param>
+                    <when value="one_hot">
+                        <param name="padding" type="boolean" truevalue="booltrue" falsevalue="boolfalse" checked="false" label="Enable padding?" />
+                    </when>
+                    <when value="kmer">
+                        <param name="kmer_size" type="integer" value="3" min="1" label="K-mer size" help="Build a shared DNA k-mer vocabulary with &lt;PAD&gt; and &lt;UNK&gt;, encode sequences as token ids, and pad them to equal length." />
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-        <data name="outfile" format="tabular" />
+        <data name="outfile" format="tabular"/>
+        <data name="outfile_matrix" format="h5" label="${tool.name} DNA matrix on ${on_string}">
+            <filter>encoder_type['task_type'] == "dna_encoder" and encoder_type['sequence_encoding']['encoding_method'] == "one_hot"</filter>
+        </data>
+        <data name="outfile_vocab" format="json" label="${tool.name} k-mer vocabulary on ${on_string}">
+            <filter>encoder_type['task_type'] == "dna_encoder" and encoder_type['sequence_encoding']['encoding_method'] == "kmer"</filter>
+        </data>
     </outputs>
     <tests>
-        <test>
-            <param name="infile" value="ohe_in_w_header.tabular" ftype="tabular" />
-            <param name="header0" value="true" />
-            <output name="outfile" file="ohe_out_4.tabular" ftype="tabular" />
+        <test expect_num_outputs="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="label_encoder" />
+                <param name="labels_path" value="ohe_in_w_header.tabular" ftype="tabular" />
+                <param name="labels_header" value="true" />
+                <param name="num_classes" value="4" />
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="4" />
+                    <has_n_lines n="8" />
+                    <has_line_matching expression="1\t0\t0\t0" />
+                </assert_contents>
+            </output>
         </test>
-        <test>
-            <param name="infile" value="ohe_in_w_header.tabular" ftype="tabular" />
-            <param name="header0" value="true" />
-            <param name="num_classes" value="4" />
-            <output name="outfile" file="ohe_out_4.tabular" ftype="tabular" />
+        <test expect_num_outputs="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="label_encoder" />
+                <param name="labels_path" value="ohe_in_w_header.tabular" ftype="tabular" />
+                <param name="labels_header" value="true" />
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="4" />
+                    <has_n_lines n="8" />
+                    <has_line_matching expression="1\t0\t0\t0" />
+                </assert_contents>
+            </output>
         </test>
-        <test>
-            <param name="infile" value="ohe_in_w_header.tabular" ftype="tabular" />
-            <param name="header0" value="true" />
-            <param name="num_classes" value="5" />
-            <output name="outfile" file="ohe_out_5.tabular" ftype="tabular" />
+        <test expect_num_outputs="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="label_encoder" />
+                <param name="labels_path" value="ohe_in_w_header.tabular" ftype="tabular" />
+                <param name="labels_header" value="true" />
+                <param name="num_classes" value="5" />
+            </conditional>
+            <output name="outfile" ftype="tabular" >
+                <assert_contents>
+                    <has_n_columns n="5" />
+                    <has_n_lines n="8" />
+                    <has_line_matching expression="1\t0\t0\t0\t0" />
+                </assert_contents>
+            </output>
         </test>
-        <test>
-            <param name="infile" value="ohe_in_wo_header.tabular" ftype="tabular" />
-            <param name="header0" value="false" />
-            <output name="outfile" file="ohe_out_4.tabular" ftype="tabular" />
+        <test expect_num_outputs="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="label_encoder" />
+                <param name="labels_path" value="ohe_in_wo_header.tabular" ftype="tabular" />
+                <param name="labels_header" value="false" />
+                <param name="num_classes" value="4" />
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="4" />
+                    <has_n_lines n="8" />
+                    <has_line_matching expression="1\t0\t0\t0" />
+                </assert_contents>
+            </output>
         </test>
-        <test>
-            <param name="infile" value="ohe_in_wo_header.tabular" ftype="tabular" />
-            <param name="header0" value="false" />
-            <param name="num_classes" value="4" />
-            <output name="outfile" file="ohe_out_4.tabular" ftype="tabular" />
+        <test expect_num_outputs="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="label_encoder" />
+                <param name="labels_path" value="ohe_in_wo_header.tabular" ftype="tabular" />
+                <param name="labels_header" value="false" />
+                <param name="num_classes" value="4" />
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="4" />
+                    <has_n_lines n="8" />
+                    <has_line_matching expression="1\t0\t0\t0" />
+                </assert_contents>
+            </output>
         </test>
-        <test>
-            <param name="infile" value="ohe_in_wo_header.tabular" ftype="tabular" />
-            <param name="header0" value="false" />
-            <param name="num_classes" value="5" />
-            <output name="outfile" file="ohe_out_5.tabular" ftype="tabular" />
+        <test expect_num_outputs="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="label_encoder" />
+                <param name="labels_path" value="ohe_in_wo_header.tabular" ftype="tabular" />
+                <param name="labels_header" value="false" />
+                <param name="num_classes" value="5" />
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="5" />
+                    <has_n_lines n="8" />
+                    <has_line_matching expression="1\t0\t0\t0\t0" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="one_hot" />
+                    <param name="padding" value="true" />
+                </conditional>
+            </conditional>
+            <output name="outfile_matrix" ftype="h5" compare="sim_size" delta="32">
+                <assert_contents>
+                    <has_h5_keys keys="data" />
+                </assert_contents>
+            </output>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="20" />
+                    <has_n_lines n="2" />
+                    <has_line_matching expression="1\t0\t0\t0\t0\t1\t0\t0\t0\t0\t1\t0\t0\t0\t0\t1\t0\t0\t0\t0" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="one_hot" />
+                    <param name="padding" value="false" />
+                </conditional>
+            </conditional>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_ohe_input_same_seq_len.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="one_hot" />
+                    <param name="padding" value="false" />
+                </conditional>
+            </conditional>
+            <output name="outfile_matrix" ftype="h5">
+                <assert_contents>
+                    <has_h5_keys keys="data" />
+                </assert_contents>
+            </output>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="16" />
+                    <has_n_lines n="2" />
+                    <has_line_matching expression="1\t0\t0\t0\t0\t1\t0\t0\t0\t0\t1\t0\t0\t0\t0\t1" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="kmer" />
+                    <param name="kmer_size" value="3" />
+                </conditional>
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="3" />
+                    <has_n_lines n="2" />
+                    <has_line_matching expression="2\t3\t0" />
+                    <has_line_matching expression="4\t5\t6" />
+                </assert_contents>
+            </output>
+            <output name="outfile_vocab" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="&lt;PAD&gt;" value="0" />
+                    <has_json_property_with_value property="&lt;UNK&gt;" value="1" />
+                    <has_json_property_with_value property="ACG" value="2" />
+                    <has_json_property_with_value property="CAA" value="6" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_ohe_input.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="kmer" />
+                    <param name="kmer_size" value="6" />
+                </conditional>
+            </conditional>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="encoder_type">
+                <param name="task_type" value="dna_encoder" />
+                <param name="fasta_path" value="dna_kmer_sanitized_input.fasta" ftype="fasta" />
+                <conditional name="sequence_encoding">
+                    <param name="encoding_method" value="kmer" />
+                    <param name="kmer_size" value="3" />
+                </conditional>
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="3" />
+                    <has_n_lines n="3" />
+                    <has_line_matching expression="0\t0\t0" />
+                    <has_line_matching expression="2\t3\t0" />
+                    <has_line_matching expression="4\t5\t6" />
+                </assert_contents>
+            </output>
+            <output name="outfile_vocab" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="&lt;PAD&gt;" value="0" />
+                    <has_json_property_with_value property="&lt;UNK&gt;" value="1" />
+                    <has_json_property_with_value property="ACG" value="2" />
+                    <has_json_property_with_value property="CAA" value="6" />
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
 **What it does**
 
-Converts a class vector (integers) to binary class matrix.
+The tool does one-hot encoding of either labels or DNA sequences, and can also generate k-mer token encodings for DNA sequences.
 
-tf.keras.utils.to_categorical(
-y, num_classes=None, dtype='float32'
-)
+1. Label encoding to categorical matrix
 
-E.g. for use with categorical_crossentropy.
+This mode wraps ``tf.keras.utils.to_categorical(y, num_classes=None, dtype='float32')``.
 
-Arguments
+- ``y``: vector of class labels to convert into a one-hot matrix.
+- ``num_classes``: total number of classes. If omitted, it is inferred as ``max(y) + 1``.
+- Output: a binary matrix representation of the input with the classes axis placed last.
 
-y: a vector of numbers to be converted into a matrix of one-hot encoded values.
-num_classes: total number of classes. If None, this would be inferred as the (largest number in y) + 1.
-dtype: The data type expected by the input. Default: 'float32'.
+2. DNA one-hot encoding
 
-Returns
+This mode outputs:
 
-A binary matrix representation of the input. The classes axis is placed last.
+- an H5 file containing the one-hot encoded sequence matrices
+- a tabular file containing flattened representations
 
-Raises
+Example mapping:
 
-Value Error: If input contains string value
+- ``A`` -> ``[1, 0, 0, 0]``
+- ``C`` -> ``[0, 1, 0, 0]``
+- ``G`` -> ``[0, 0, 1, 0]``
+- ``T`` -> ``[0, 0, 0, 1]``
+
+For example, ``ACGCTG`` is encoded in the H5 output as::
+
+    [[1, 0, 0, 0],
+     [0, 1, 0, 0],
+     [0, 0, 1, 0],
+     [0, 1, 0, 0],
+     [0, 0, 0, 1],
+     [0, 0, 1, 0]]
+
+The same sequence is flattened in the tabular output as::
+
+    1,0,0,0,0,1,0,0,0,0,1,0,0,1,0,0,0,0,0,1,0,0,1,0
+
+3. DNA k-mer token encoding
+
+This mode:
+
+- builds a shared k-mer vocabulary from all input sequences
+- starts the vocabulary with ``<PAD> = 0`` and ``<UNK> = 1``
+- encodes each sequence as token ids
+- pads all encoded rows to the same length using ``<PAD>``
+- also outputs the vocabulary as a JSON output
+
+For example, with sequences ``ACGT`` and ``TGCAA`` using ``k=3``, the vocabulary becomes::
+
+    {'<PAD>': 0, '<UNK>': 1, 'ACG': 2, 'CGT': 3, 'TGC': 4, 'GCA': 5, 'CAA': 6}
+
+The encoded rows become::
+
+    [2, 3, 0]
+    [4, 5, 6]
 
     ]]>    </help>
     <expand macro="sklearn_citation" />
