@@ -1,0 +1,133 @@
+<tool id="webatlas_write_spatialdata" name="WebAtlas Write" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5" profile="@PROFILE_VERSION@">
+    <description>AnnData and images into SpatialData Zarr</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $input_anndata.ext =="h5ad":
+            cp $input_anndata input.h5ad &&
+        #end if
+        #if $input_raw_img
+            ln -s $input_raw_img raw_img.tif &&
+        #end if
+        #if $input_label_img
+            ln -s $input_label_img label_img.tif &&
+        #end if
+        write_spatialdata.py
+        #if $input_anndata.ext =="zarr":
+            --anndata_path '$input_anndata.extra_files_path/$input_anndata.metadata.store_root'
+        #else
+            --anndata_path input.h5ad
+        #end if
+        --stem $stem
+        #if $input_raw_img
+            --raw_img_path raw_img.tif
+        #end if
+        #if $input_label_img
+            --label_img_path label_img.tif
+        #end if
+        &&
+        zip -r $stem-spatialdata.zarr.zip $stem-spatialdata.zarr &&
+        mv $stem-spatialdata.zarr.zip $output_zarr
+    ]]></command>
+    <inputs>
+        <param name="input_anndata" type="data" format="h5ad,zarr" label="AnnData input" help="AnnData input to include in the SpatialData Zarr. Can be H5AD or AnnData Zarr."/>
+        <expand macro="stem"/>
+        <param name="input_raw_img" type="data" format="tif,tiff" optional="true" label="Raw image TIFF" help="Optional raw TIFF image to include in the SpatialData Zarr."/>
+        <param name="input_label_img" type="data" format="tif,tiff" optional="true" label="Label image TIFF" help="Optional label TIFF image to include in the SpatialData Zarr."/>
+    </inputs>
+    <outputs>
+        <data name="output_zarr" format="zarr.zip" label="${tool.name} on ${on_string}: ZIP-compressed SpatialData Zarr output"/>
+    </outputs>
+    <tests>
+    <test expect_num_outputs="1">
+        <param name="input_anndata" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-anndata.zarr.zip"/>
+        <param name="stem" value="visium-breast-cancer"/>
+        <param name="input_raw_img" location="https://zenodo.org/records/19053876/files/tissue_image.tif"/>
+        <param name="input_label_img" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-label.tif"/>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/.zgroup"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/.zattrs"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/tables/.zgroup"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/images/raw/.zgroup"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/labels/label/.zgroup"/>
+                <has_size value="936976652" delta="20000"/>
+            </assert_contents>
+        </output>
+    </test>
+    <test expect_num_outputs="1">
+        <param name="input_anndata" location="https://zenodo.org/records/19053876/files/input.h5ad"/>
+        <param name="stem" value="visium-breast-cancer"/>
+        <param name="input_raw_img" location="https://zenodo.org/records/19053876/files/tissue_image.tif"/>
+        <param name="input_label_img" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-label.tif"/>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/.zgroup"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/.zattrs"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/tables/.zgroup"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/images/raw/.zgroup"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/labels/label/.zgroup"/>
+                <has_size value="928962769" delta="20000"/>
+            </assert_contents>
+        </output>
+    </test>
+    <test expect_num_outputs="1">
+        <param name="input_anndata" location="https://zenodo.org/records/19053876/files/visium-breast-cancer-anndata.zarr.zip"/>
+        <param name="stem" value="visium-breast-cancer"/>
+        <output name="output_zarr">
+            <assert_contents>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/.zgroup"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/.zattrs"/>
+                <has_archive_member path="visium-breast-cancer-spatialdata.zarr/tables/.zgroup"/>
+                <has_size value="77147714" delta="20000"/>
+            </assert_contents>
+        </output>
+    </test>
+    </tests>
+    <help><![CDATA[
+This tool converts spatial omics data into a SpatialData object and exports it as a Zarr dataset.
+
+----
+
+**Inputs**
+
+- **AnnData** (H5AD or Zarr)
+- **Label image (TIFF)** *(optional)*
+- **Raw image (TIFF)** *(optional)*
+
+Image inputs can be provided independently or omitted entirely.
+
+----
+
+**Functionality**
+
+The tool constructs a SpatialData object from the provided inputs:
+
+- The AnnData object is stored as a **table element**
+- The label image is stored as a **labels element**
+- The raw image is stored as an **image element**
+
+To ensure compatibility with the SpatialData format, the observation index of the AnnData object is adjusted.
+A new integer-based index *webatlas_index* is introduced while preserving the original observation index as *original_obs_index*.
+
+The resulting SpatialData object is written to Zarr format.
+
+----
+
+**Output**
+
+- **SpatialData object (Zarr, ZIP-compressed)**
+
+----
+
+**Use Case**
+
+This SpatialData object enables unified storage and handling of different types of spatial omics data (e.g. AnnData, label images, raw images) in a single data structure.
+It can be used in other tools or workflows that support SpatialData in Zarr format.
+
+SpatialData objects are not utilized by the WebAtlas pipeline itself.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
