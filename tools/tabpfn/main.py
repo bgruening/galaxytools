@@ -17,8 +17,8 @@ from sklearn.preprocessing import label_binarize
 from tabpfn import TabPFNClassifier, TabPFNRegressor
 
 
-def separate_features_labels(data):
-    df = pd.read_csv(data, sep="\t")
+def separate_features_labels(data, header):
+    df = pd.read_csv(data, sep="\t", header=0 if header == "true" else None)
     labels = df.iloc[:, -1]
     features = df.iloc[:, :-1]
     return features, labels
@@ -84,17 +84,22 @@ def train_evaluate(args):
     """
     Train TabPFN and predict
     """
+    MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES = 1000
+    SEED = 42
     # prepare train data
-    tr_features, tr_labels = separate_features_labels(args["train_data"])
+    tr_features, tr_labels = separate_features_labels(args["train_data"], args["train_header"])
     # prepare test data
     if args["testhaslabels"] == "true":
-        te_features, te_labels = separate_features_labels(args["test_data"])
+        te_features, te_labels = separate_features_labels(args["test_data"], args["test_header"])
     else:
-        te_features = pd.read_csv(args["test_data"], sep="\t")
+        te_features = pd.read_csv(args["test_data"], sep="\t", header=0 if args["test_header"] == "true" else None)
         te_labels = []
     s_time = time.time()
     if args["selected_task"] == "Classification":
-        classifier = TabPFNClassifier(random_state=42)
+        if tr_features.shape[0] <= MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES:
+            classifier = TabPFNClassifier(random_state=SEED, model_path=args["model_path"])
+        else:
+            classifier = TabPFNClassifier(random_state=SEED, model_path=args["model_path"], ignore_pretraining_limits=True)
         classifier.fit(tr_features, tr_labels)
         y_eval = classifier.predict(te_features)
         pred_probas_test = classifier.predict_proba(te_features)
@@ -105,7 +110,10 @@ def train_evaluate(args):
             "output_predicted_data", sep="\t", index=None
         )
     else:
-        regressor = TabPFNRegressor(random_state=42)
+        if tr_features.shape[0] <= MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES:
+            regressor = TabPFNRegressor(random_state=SEED, model_path=args["model_path"])
+        else:
+            regressor = TabPFNRegressor(random_state=SEED, model_path=args["model_path"], ignore_pretraining_limits=True)
         regressor.fit(tr_features, tr_labels)
         y_eval = regressor.predict(te_features)
         if len(te_labels) > 0:
@@ -133,6 +141,18 @@ if __name__ == "__main__":
     arg_parser.add_argument("-trdata", "--train_data", required=True, help="Train data")
     arg_parser.add_argument("-tedata", "--test_data", required=True, help="Test data")
     arg_parser.add_argument(
+        "-train_header",
+        "--train_header",
+        required=True,
+        help="if train data contain header"
+    )
+    arg_parser.add_argument(
+        "-test_header",
+        "--test_header",
+        required=True,
+        help="if test data contain header"
+    )
+    arg_parser.add_argument(
         "-testhaslabels",
         "--testhaslabels",
         required=True,
@@ -143,6 +163,12 @@ if __name__ == "__main__":
         "--selected_task",
         required=True,
         help="Type of machine learning task",
+    )
+    arg_parser.add_argument(
+        "-modelpath",
+        "--model_path",
+        required=True,
+        help="Pretrained model to use",
     )
     # get argument values
     args = vars(arg_parser.parse_args())
