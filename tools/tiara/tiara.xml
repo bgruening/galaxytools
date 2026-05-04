@@ -29,8 +29,8 @@
             --k1 $advanced_options.advance.first_stage_kmer
             --k2 $advanced_options.advance.second_stage_kmer
         #end if
-        #if $taxonomy_filter
-            --tf #for $tf in $taxonomy_filter
+        #if $fasta_output.produce_fasta == "yes"
+            --tf #for $tf in $fasta_output.taxonomy_filter
                 $tf
             #end for
         #end if
@@ -38,14 +38,24 @@
     ]]></command>
     <inputs>
         <param name="input" type="data" format="fasta" label="input fasta,fasta.gz file"/>
-        <param name="taxonomy_filter" type="select" multiple="true" optional="true" label="Write sequences to fasta,fasta.gz files specified in the arguments to this option." help="Select one or more target types of sequences to write to separate FASTA files.">
-            <option value="mit">mitochondria</option>
-            <option value="pla">plastid</option>
-            <option value="bac">bacteria</option>
-            <option value="arc">archaea</option>
-            <option value="euk">eukarya</option>
-            <option value="unk">unknown</option>
-        </param>
+        <conditional name="fasta_output">
+            <param name="produce_fasta" type="select" label="Produce split FASTA output?" help="Select Yes to write classified sequences for selected groups as separate FASTA outputs. By default, no FASTA files are produced and only the main classification table and log are generated.">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="yes">
+                <param name="taxonomy_filter" type="select" multiple="true" label="Select sequence types">
+                    <option value="mit">mitochondria</option>
+                    <option value="pla">plastid</option>
+                    <option value="bac">bacteria</option>
+                    <option value="arc">archaea</option>
+                    <option value="euk">eukarya</option>
+                    <option value="unk">unknown</option>
+                </param>
+            </when>
+            <when value="no"/>
+        </conditional>
+
         <param argument="probabilities" type="boolean" truevalue="--pr" falsevalue="" checked="false" label="Add probabilities of individual classes for each sequence."/>
         <param argument="min_len" type="integer" value="3000" min="1000" optional="true" label="Minimum length of a sequence. Default: 3000 bp." help="Specify the desired minimum length in base pairs.Default value is 3000 bp and we do not recommend classifying sequences shorter than 1000 bp. "/>
         <param argument="cutoff_stage1" type="float" value="0.65" min="0.5" max="1" optional="true" label="Probability threshold for the first stage." help="Probability threshold needed for classification in the first stage. Default: 0.65." />
@@ -77,38 +87,47 @@
     </inputs>
     <outputs>
         <collection name="output_fasta" type="list" label="${tool.name} on ${on_string}: Fasta Output">
+            <filter>fasta_output['produce_fasta'] == 'yes'</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;[^_]+)_dataset_.*\.dat$"  format="fasta" directory="txt" />
         </collection>
-        <collection name="output_txt" type="list" label="${tool.name} on ${on_string}: Classified sequences in txt">
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt$"  format="txt" directory="txt" />
-        </collection>
+        <data name="main_result" format="tabular" from_work_dir="txt/main_result.txt" label="${tool.name} on ${on_string}: main result" />
+        <data name="log_result" format="txt" from_work_dir="txt/log_main_result.txt" label="${tool.name} on ${on_string}: log" />
     </outputs>
     <tests>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="input" value="plast_fr.fasta.gz"/>
-            <param name="taxonomy_filter" value="pla"/>
+            <param name="fasta_output|produce_fasta" value="yes"/>
+            <param name="fasta_output|taxonomy_filter" value="pla"/>
             <output_collection name="output_fasta" type="list">
                 <element name="plastid" file="pla" ftype="fasta" />
             </output_collection>
-            <output_collection name="output_txt" type="list">
-                <element name="main_result" file="main_result01.txt" ftype="txt"/>
-            </output_collection>
+            <output name="main_result" file="main_result01.txt" ftype="tabular" />
+            <output name="log_result" ftype="txt">
+                <assert_contents>
+                    <has_text text="First iteration statistics" />
+                </assert_contents>
+            </output>
         </test>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="input" value="sample_all.fasta"/>
-            <param name="taxonomy_filter" value="euk,bac,arc,unk"/>
+            <param name="fasta_output|produce_fasta" value="yes"/>
+            <param name="fasta_output|taxonomy_filter" value="euk,bac,arc,unk"/>
             <output_collection name="output_fasta" type="list">
                 <element name="archaea" file="arc" ftype="fasta" />
                 <element name="bacteria" file="bac" ftype="fasta" />
                 <element name="eukarya" file="euk" ftype="fasta" />
             </output_collection>
-            <output_collection name="output_txt" type="list">
-                <element name="main_result" file="main_result02.txt" ftype="txt" />
-            </output_collection>
+            <output name="main_result" file="main_result02.txt" ftype="tabular" />
+            <output name="log_result" ftype="txt">
+                <assert_contents>
+                    <has_text text="Models used:" />
+                </assert_contents>
+            </output>
         </test>
-        <test expect_num_outputs="2">
+        <test expect_num_outputs="3">
             <param name="input" value="eukarya_fr.fasta"/>
-            <param name="taxonomy_filter" value="euk"/>
+            <param name="fasta_output|produce_fasta" value="yes"/>
+            <param name="fasta_output|taxonomy_filter" value="euk"/>
             <param name="min_len" value="5000"/>
             <param name="cutoff_stage1" value="0.65"/>
             <param name="cutoff_stage2" value="0.60"/>
@@ -116,9 +135,12 @@
             <output_collection name="output_fasta" type="list">
                 <element name="eukarya" file="euk" ftype="fasta" />
             </output_collection>
-            <output_collection name="output_txt" type="list">
-                <element name="main_result" file="main_result03.txt" ftype="txt" />
-            </output_collection>
+            <output name="main_result" file="main_result03.txt" ftype="tabular" />
+            <output name="log_result" ftype="txt">
+                <assert_contents>
+                    <has_text text="Hyperparameters:" />
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
