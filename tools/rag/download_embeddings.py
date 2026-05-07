@@ -1,9 +1,13 @@
+# /// script
+# requires-python = ">=3.9"
+# dependencies = ["huggingface_hub"]
+# ///
 import argparse
 import os
 import sys
 from pathlib import Path
 
-from sentence_transformers import SentenceTransformer
+from huggingface_hub import snapshot_download
 
 
 def main():
@@ -34,8 +38,7 @@ def main():
         print(f"[PATH] Destination: {out_dir}")
 
         try:
-            model = SentenceTransformer(model_id)
-            model.save(str(out_dir))
+            snapshot_download(repo_id=model_id, local_dir=str(out_dir))
             print(f"[SUCCESS] Saved {model_id}")
         except Exception as e:
             print(f"[ERROR] Could not download {model_id}: {e}")
