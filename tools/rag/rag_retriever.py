@@ -33,7 +33,7 @@ def main():
 
     docs: list[Document] = []
 
-    valid_file_types = ["pdf", "json", "txt", "csv", "md"]
+    valid_file_types = ["pdf", "json", "txt", "csv", "markdown"]
 
     for file_path, file_type in context_files:
         if file_type not in valid_file_types:
