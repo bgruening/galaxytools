@@ -1,0 +1,335 @@
+<tool id="pecat" name="PECAT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>phased error correction and assembly of long reads</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="edam_ontology"/>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <version_command><![CDATA[pecat.pl 2>&1 | head -n 1]]></version_command>
+    <command detect_errors="aggressive"><![CDATA[
+        #if $reads_input.is_of_type('fasta.gz')
+            #set $ext = '.fasta.gz'
+        #elif $reads_input.is_of_type('fastqsanger.gz')
+            #set $ext = '.fastq.gz'
+        #elif $reads_input.is_of_type('fastqsanger')
+            #set $ext = '.fastq'
+        #else
+            #set $ext = '.fasta'
+        #end if
+        ln -s '$reads_input' 'reads${ext}' &&
+        cp '$pecat_cfg' pecat_config.txt &&
+        sed -i "$ a threads=\${GALAXY_SLOTS:-8}" pecat_config.txt &&
+        pecat.pl unzip pecat_config.txt
+    ]]></command>
+    <configfiles>
+        <configfile name="pecat_cfg"><![CDATA[
+#if $reads_input.is_of_type('fasta.gz')
+    #set $ext = '.fasta.gz'
+#elif $reads_input.is_of_type('fastqsanger.gz')
+    #set $ext = '.fastq.gz'
+#elif $reads_input.is_of_type('fastqsanger')
+    #set $ext = '.fastq'
+#else
+    #set $ext = '.fasta'
+#end if
+project=pecat_run
+reads=reads$ext
+genome_size=$genome_size
+cleanup=1
+compress=0
+grid=local
+
+prep_min_length=$platform.prep.prep_min_length
+prep_output_coverage=$platform.prep.prep_output_coverage
+
+corr_iterate_number=$platform.corr.corr_iterate_number
+corr_block_size=$platform.corr.corr_block_size
+corr_rd2rd_options=$platform.corr.corr_rd2rd_options
+corr_filter_options=$platform.corr.corr_filter_options
+corr_correct_options=$platform.corr.corr_correct_options
+corr_output_coverage=$platform.corr.corr_output_coverage
+
+align_block_size=$platform.align.align_block_size
+align_rd2rd_options=$platform.align.align_rd2rd_options
+align_filter_options=$platform.align.align_filter_options
+
+asm1_assemble_options=$platform.asm1.asm1_assemble_options
+
+phase_method=$platform.phase.phase_method_cond.phase_method
+phase_use_reads=$platform.phase.phase_method_cond.phase_use_reads
+phase_rd2ctg_options=$platform.phase.phase_method_cond.phase_rd2ctg_options
+phase_phase_options=$platform.phase.phase_method_cond.phase_phase_options
+phase_filter_options=$platform.phase.phase_method_cond.phase_filter_options
+
+asm2_assemble_options=$platform.asm2.asm2_assemble_options
+
+polish_use_reads=$platform.polish.polish_use_reads
+polish_map_options=$platform.polish.polish_map_options
+polish_filter_options=$platform.polish.polish_filter_options
+polish_cns_options=$platform.polish.polish_cns_options
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="reads_input" type="data" format="fasta,fasta.gz,fastqsanger,fastqsanger.gz" label="Long reads" help="PacBio CLR, Oxford Nanopore (ONT), or PacBio HiFi long reads"/>
+        <param argument="genome_size" type="text" value="" label="Estimated genome size (bp)" help="Integer number of bases (e.g. 130000000 for a 130 Mb genome)">
+            <validator type="regex" message="Must be a positive integer (no unit suffix; specify the size in bp)">^[1-9][0-9]*$</validator>
+        </param>
+        <conditional name="platform">
+            <param name="preset" type="select" label="Sequencing platform" help="Selects a tuned set of correction, phasing and polishing parameters. Each preset's defaults are taken from PECAT's upstream demo configs.">
+                <option value="ont" selected="true">Oxford Nanopore (ONT)</option>
+                <option value="clr">PacBio CLR</option>
+                <option value="hifi">PacBio HiFi</option>
+            </param>
+            <when value="ont">
+                <expand macro="ont_params"/>
+            </when>
+            <when value="clr">
+                <expand macro="clr_params"/>
+            </when>
+            <when value="hifi">
+                <expand macro="hifi_params"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="corrected_reads" format="fasta" from_work_dir="pecat_run/1-correct/corrected_reads.fasta" label="${tool.name} on ${on_string}: Corrected reads"/>
+        <data name="primary" format="fasta" from_work_dir="pecat_run/6-polish/racon/primary.fasta" label="${tool.name} on ${on_string}: Primary Contigs (Racon)"/>
+        <data name="alternate" format="fasta" from_work_dir="pecat_run/6-polish/racon/alternate.fasta" label="${tool.name} on ${on_string}: Alternate Contigs (Racon)"/>
+        <data name="haplotype_1" format="fasta" from_work_dir="pecat_run/6-polish/racon/haplotype_1.fasta" label="${tool.name} on ${on_string}: Haplotype 1 (Racon)"/>
+        <data name="haplotype_2" format="fasta" from_work_dir="pecat_run/6-polish/racon/haplotype_2.fasta" label="${tool.name} on ${on_string}: Haplotype 2 (Racon)"/>
+        <data name="pecat_config" format="txt" from_work_dir="pecat_config.txt" hidden="true" label="${tool.name} on ${on_string}: PECAT config file"/>
+    </outputs>
+    <tests>
+        <!-- Haploid input reads -->
+        <test expect_num_outputs="6">
+            <param name="reads_input" value="reads.fasta.gz" ftype="fasta.gz"/>
+            <param name="genome_size" value="1500000"/>
+            <conditional name="platform">
+                <param name="preset" value="clr"/>
+                <section name="prep">
+                    <param name="prep_min_length" value="3000"/>
+                    <param name="prep_output_coverage" value="80"/>
+                </section>
+                <section name="corr">
+                    <param name="corr_iterate_number" value="1"/>
+                    <param name="corr_block_size" value="4000000000"/>
+                    <param name="corr_rd2rd_options" value="-x ava-pb"/>
+                    <param name="corr_filter_options" value="--filter0=:al=5000:alr=0.5:aalr=0.5:oh=1000:ohr=0.1"/>
+                    <param name="corr_correct_options" value="--score=weight:lc=10 --aligner diff:s=1000 --candidate c=80:n=200:f=10:p=0.95:ohwt=0.1 --min_coverage 4"/>
+                    <param name="corr_output_coverage" value="80"/>
+                </section>
+                <section name="align">
+                    <param name="align_block_size" value="4000000000"/>
+                    <param name="align_rd2rd_options" value="-X -g3000 -w30 -k19 -m100 -r500"/>
+                    <param name="align_filter_options" value="--filter0=l=5000:al=5000:aal=6000:aalr=0.5:oh=1000:ohr=0.1 --task=extend --filter1=oh=100:ohr=0.01"/>
+                </section>
+                <section name="asm1">
+                    <param name="asm1_assemble_options" value=""/>
+                </section>
+                <section name="phase">
+                    <conditional name="phase_method_cond">
+                        <param name="phase_method" value="0"/>
+                        <param name="phase_use_reads" value="1"/>
+                        <param name="phase_rd2ctg_options" value="-x map-pb -c -p 0.5 -r 1000"/>
+                        <param name="phase_phase_options" value=" --phase_options icr=0.2"/>
+                        <param name="phase_filter_options" value=" --threshold=1000"/>
+                    </conditional>
+                </section>
+                <section name="asm2">
+                    <param name="asm2_assemble_options" value=""/>
+                </section>
+                <section name="polish">
+                    <param name="polish_use_reads" value="1"/>
+                    <param name="polish_map_options" value="-x asm20"/>
+                </section>
+            </conditional>
+            <output name="pecat_config" ftype="txt">
+                <assert_contents>
+                    <has_line line="project=pecat_run"/>
+                    <has_line line="reads=reads.fasta.gz"/>
+                    <has_line line="genome_size=1500000"/>
+                    <has_line line="prep_min_length=3000"/>
+                    <has_line line="prep_output_coverage=80"/>
+                    <has_line line="corr_iterate_number=1"/>
+                    <has_line line="corr_block_size=4000000000"/>
+                    <has_line line="corr_rd2rd_options=-x ava-pb"/>
+                    <has_line line="corr_filter_options=--filter0=:al=5000:alr=0.5:aalr=0.5:oh=1000:ohr=0.1"/>
+                    <has_line line="corr_correct_options=--score=weight:lc=10 --aligner diff:s=1000 --candidate c=80:n=200:f=10:p=0.95:ohwt=0.1 --min_coverage 4"/>
+                    <has_line line="corr_output_coverage=80"/>
+                    <has_line line="align_block_size=4000000000"/>
+                    <has_line line="align_rd2rd_options=-X -g3000 -w30 -k19 -m100 -r500"/>
+                    <has_line line="align_filter_options=--filter0=l=5000:al=5000:aal=6000:aalr=0.5:oh=1000:ohr=0.1 --task=extend --filter1=oh=100:ohr=0.01"/>
+                    <has_line line="asm1_assemble_options="/>
+                    <has_line line="phase_method=0"/>
+                    <has_line line="phase_use_reads=1"/>
+                    <has_line line="phase_rd2ctg_options=-x map-pb -c -p 0.5 -r 1000"/>
+                    <has_line line="phase_phase_options= --phase_options icr=0.2"/>
+                    <has_line line="phase_filter_options= --threshold=1000"/>
+                    <has_line line="asm2_assemble_options="/>
+                    <has_line line="polish_use_reads=1"/>
+                    <has_line line="polish_map_options=-x asm20"/>
+                    <has_line line="polish_filter_options="/>
+                    <has_line line="polish_cns_options="/>
+                </assert_contents>
+            </output>
+            <output name="corrected_reads">
+                <assert_contents>
+                    <has_n_lines n="304"/>
+                    <has_text text=">205 range=34-4641"/>
+                </assert_contents>
+            </output>
+            <output name="primary">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_text text=">ctg0 LN:i:31646 RC:i:119 XC:f:0.984375"/>
+                </assert_contents>
+            </output>
+            <output name="alternate">
+                <assert_contents>
+                    <has_n_lines n="0"/> <!-- No alternate assembly is produced with the given input dataset -->
+                </assert_contents>
+            </output>
+            <output name="haplotype_1">
+                <assert_contents>
+                    <has_n_lines n="0"/> <!-- No alternate assembly is produced with the given input dataset -->
+                </assert_contents>
+            </output>
+            <output name="haplotype_2">
+                <assert_contents>
+                    <has_n_lines n="0"/> <!-- No alternate assembly is produced with the given input dataset -->
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Diploid input reads -->
+        <test expect_num_outputs="6">
+            <param name="reads_input" value="reads_diploid.fasta.gz" ftype="fasta.gz"/>
+            <param name="genome_size" value="28000"/>
+            <conditional name="platform">
+                <param name="preset" value="ont"/>
+            </conditional>
+            <output name="corrected_reads" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="458"/>
+                    <has_text text=">399 range=0-6687"/>
+                </assert_contents>
+            </output>
+            <output name="primary" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_text text=">ctg0 LN:i:26628 RC:i:114 XC:f:1.000000"/>
+                </assert_contents>
+            </output>
+            <output name="alternate" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_text text=">ctg1 LN:i:26903 RC:i:107 XC:f:1.000000"/>
+                </assert_contents>
+            </output>
+            <output name="haplotype_1" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_text text=">ctg0 LN:i:26628 RC:i:114 XC:f:1.000000"/>
+                </assert_contents>
+            </output>
+            <output name="haplotype_2" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_text text=">ctg1 LN:i:26903 RC:i:107 XC:f:1.000000"/>
+                </assert_contents>
+            </output>
+            <output name="pecat_config" ftype="txt">
+                <assert_contents>
+                    <has_line line="project=pecat_run"/>
+                    <has_line line="reads=reads.fasta.gz"/>
+                    <has_line line="genome_size=28000"/>
+                    <has_line line="prep_min_length=3000"/>
+                    <has_line line="prep_output_coverage=80"/>
+                    <has_line line="corr_iterate_number=1"/>
+                    <has_line line="corr_block_size=4000000000"/>
+                    <has_line line="corr_rd2rd_options=-x ava-ont -k19"/>
+                    <has_line line="corr_filter_options=--filter0=l=5000:al=2500:alr=0.5:aal=5000:oh=3000:ohr=0.3"/>
+                    <has_line line="corr_correct_options=--score=weight:lc=10 --aligner edlib --filter1 oh=1000:ohr=0.01"/>
+                    <has_line line="corr_output_coverage=80"/>
+                    <has_line line="align_block_size=4000000000"/>
+                    <has_line line="align_rd2rd_options=-X -g3000 -w30 -k19 -m100 -r500 -f 0.001"/>
+                    <has_line line="align_filter_options=--filter0=l=5000:aal=6000:aalr=0.5:oh=3000:ohr=0.3 --task=extend --filter1=oh=300:ohr=0.03"/>
+                    <has_line line="asm1_assemble_options=--max_trivial_length 10000"/>
+                    <has_line line="phase_method=0"/>
+                    <has_line line="phase_use_reads=1"/>
+                    <has_line line="phase_rd2ctg_options=-x map-ont -c -p 0.5 -r 1000"/>
+                    <has_line line="phase_phase_options= --coverage lc=30 --phase_options icr=0.1:icc=8:sc=10"/>
+                    <has_line line="phase_filter_options= --threshold=1000"/>
+                    <has_line line="asm2_assemble_options=--max_trivial_length 10000 --contig_format dual,prialt"/>
+                    <has_line line="polish_use_reads=0"/>
+                    <has_line line="polish_map_options=-x map-ont -k19 -w10 -I 10g"/>
+                    <has_line line="polish_filter_options="/>
+                    <has_line line="polish_cns_options="/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**PECAT: Phased Error Correction and Assembly Tool**
+
+PECAT is a long-read assembly pipeline for diploid genomes. It performs haplotype-aware error
+correction, phased string-graph assembly, and Racon consensus polishing
+on PacBio CLR, Oxford Nanopore, or PacBio HiFi reads.
+
+-----
+
+**Inputs**
+
+- *Long reads* - FASTA or FASTQ (gzipped or not) from a single sequencing run.
+- *Estimated genome size (bp)* - used to set coverage targets during read preparation and
+  correction. Specify the size in bases, with no unit suffix (e.g. `130000000`).
+- *Sequencing platform* - selects a tuned set of correction, phasing, and polishing
+  parameters that PECAT's authors validated for that platform. Each parameter the preset
+  configures is also exposed as an input you can override.
+
+-----
+
+**Outputs**
+
+After the full `pecat.pl unzip` pipeline finishes, the tool produces:
+
+- *corrected reads* - error-corrected reads from the first pipeline stage.
+- *primary / alternate contigs (Racon)* - Racon-polished diploid assembly.
+- *haplotype 1 / haplotype 2 (Racon)* - Racon-polished phased haplotypes.
+
+-----
+
+**Platform presets**
+
+- *Oxford Nanopore (ONT)* - based on `cfg_arab_ont`. Uses minimap2 `-x ava-ont` for
+  read-vs-read overlap and `-x map-ont` for polishing.
+- *PacBio CLR* - based on `cfg_arab_clr`. Uses `-x ava-pb` and `-x asm20`.
+- *PacBio HiFi* - based on `cfg_hg002_hifi`. Stricter identity thresholds.
+
+-----
+
+**Configuration sections**
+
+Every parameter that PECAT's perl driver recognises in its config file is exposed as an input,
+grouped into collapsible sections per pipeline stage:
+
+- *Preparation* - `prep_min_length`, `prep_output_coverage`.
+- *Correction* - `corr_iterate_number`, `corr_block_size`, `corr_rd2rd_options`,
+  `corr_filter_options`, `corr_correct_options`, `corr_output_coverage`.
+- *Alignment* - `align_block_size`, `align_rd2rd_options`, `align_filter_options`.
+- *First-round assembly* - `asm1_assemble_options`.
+- *Phasing* - `phase_method` (built-in FSA), plus `phase_use_reads`,
+  `phase_rd2ctg_options`, `phase_phase_options`, `phase_filter_options`.
+- *Second-round assembly* - `asm2_assemble_options`.
+- *Polishing (Racon)* - `polish_use_reads`, `polish_map_options`, `polish_filter_options`,
+  `polish_cns_options`.
+
+-----
+
+For full documentation, demo data, and a description of every parameter see the upstream
+README and `doc/config.md` at https://github.com/lemene/PECAT.
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>
