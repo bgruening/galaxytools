@@ -128,6 +128,8 @@ def __main__():
     )
     parser.add_argument("--pbat", dest="pbat", action="store_true")
 
+    parser.add_argument("--local", dest="local", action="store_true")
+
     parser.add_argument("--skip-reads", dest="skip_reads", type=int)
     parser.add_argument("--score-min", dest="score_min", type=str)
     parser.add_argument("--qupto", type=int)
@@ -264,6 +266,8 @@ def __main__():
         cmd.append("--non_directional")
     if args.pbat:
         cmd.append("--pbat")
+    if args.local:
+        cmd.append("--local")
     if args.suppress_header:
         cmd.append("--sam-no-hd")
     if args.output_unmapped_reads or (
