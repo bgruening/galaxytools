@@ -1,0 +1,141 @@
+<tool id="3dtrees_metadata" name="3Dtrees: Metadata" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>Extract administrative and ecoregion metadata for a point-cloud collection</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/tool_metadata:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        ln -s '$collection_summary' collection_summary.json &&
+        #if str($metadata_layers).find('gadm') != -1:
+            #set $gadm_name = 'gadm.' + str($gadm_path.ext)
+            ln -s '$gadm_path' '$gadm_name' &&
+        #end if
+        #if str($metadata_layers).find('ecoregion') != -1:
+            #set $wwf_name = 'wwf_ecoregions.' + str($wwf_ecoregions_path.ext)
+            ln -s '$wwf_ecoregions_path' '$wwf_name' &&
+        #end if
+        python -u /src/run.py
+        --collection-summary collection_summary.json
+        #if str($metadata_layers).find('gadm') != -1:
+            --gadm-path '$gadm_name'
+            #if $gadm_layer:
+                --gadm-layer '$gadm_layer'
+            #end if
+        #end if
+        #if str($metadata_layers).find('ecoregion') != -1:
+            --wwf-ecoregions-path '$wwf_name'
+            #if $wwf_ecoregions_layer:
+                --wwf-ecoregions-layer '$wwf_ecoregions_layer'
+            #end if
+        #end if
+        --output-file additional_metadata.json
+        2>&1
+    ]]></command>
+    <inputs>
+        <param name="collection_summary" type="data" format="json" label="Collection summary" help="collection_summary.json from the 3Dtrees: LAS/LAZ Standardization collection mode."/>
+        <param name="metadata_layers" type="select" multiple="true" display="checkboxes" min="1" label="Metadata layers to extract" help="Choose at least one metadata layer. Both are selected by default.">
+            <option value="gadm" selected="true">GADM administrative boundaries</option>
+            <option value="ecoregion" selected="true">WWF Terrestrial Ecoregions v2.0</option>
+        </param>
+        <param name="gadm_path" type="data" format="data,geojson" optional="true" label="GADM vector dataset" help="Required when GADM administrative boundaries are selected. Typically a GeoPackage (.gpkg) or GeoJSON export. The dataset is supplied at runtime because GADM data is not bundled with the container."/>
+        <param argument="--gadm-layer" type="text" value="" optional="true" label="GADM layer" help="Optional layer name. Leave empty to check all layers and select the deepest matching administrative level.">
+            <validator type="regex" message="Only letters, numbers, dots, underscores, and dashes are allowed">^[A-Za-z0-9._-]*$</validator>
+        </param>
+        <param name="wwf_ecoregions_path" type="data" format="data,geojson" optional="true" label="WWF Terrestrial Ecoregions v2.0 dataset" help="Optional WWF terrestrial ecoregions vector dataset, typically wwf_terr_ecos.shp or a GeoJSON export."/>
+        <param argument="--wwf-ecoregions-layer" name="wwf_ecoregions_layer" type="text" value="" optional="true" label="WWF ecoregions layer" help="Optional layer name for the WWF ecoregions dataset. Leave empty to check all layers.">
+            <validator type="regex" message="Only letters, numbers, dots, underscores, and dashes are allowed">^[A-Za-z0-9._-]*$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="additional_metadata" format="json" label="additional_metadata" from_work_dir="additional_metadata.json"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="collection_summary" value="collection_summary.json" ftype="json"/>
+            <param name="metadata_layers" value="gadm,ecoregion"/>
+            <param name="gadm_path" value="gadm_fixture.geojson" ftype="geojson"/>
+            <param name="wwf_ecoregions_path" value="wwf_ecoregions_fixture.geojson" ftype="geojson"/>
+            <output name="additional_metadata" ftype="json">
+                <assert_contents>
+                    <has_text text='"matched": true'/>
+                    <has_text text='"selected_level": 1'/>
+                    <has_text text='"name": "Baden-Wuerttemberg"'/>
+                    <has_text text='"ecoregion_name": "Black Forest"'/>
+                    <has_text text='"biome_name": "Temperate Broadleaf &amp; Mixed Forests"'/>
+                    <has_text text='"is_forest_biome": true'/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="collection_summary" value="collection_summary.json" ftype="json"/>
+            <param name="metadata_layers" value="gadm"/>
+            <param name="gadm_path" value="gadm_fixture.geojson" ftype="geojson"/>
+            <output name="additional_metadata" ftype="json">
+                <assert_contents>
+                    <has_text text='"admin"'/>
+                    <has_text text='"selected_level": 1'/>
+                    <has_text text='"name": "Baden-Wuerttemberg"'/>
+                    <not_has_text text='"ecoregion"'/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="collection_summary" value="collection_summary.json" ftype="json"/>
+            <param name="metadata_layers" value="ecoregion"/>
+            <param name="wwf_ecoregions_path" value="wwf_ecoregions_fixture.geojson" ftype="geojson"/>
+            <output name="additional_metadata" ftype="json">
+                <assert_contents>
+                    <has_text text='"ecoregion_name": "Black Forest"'/>
+                    <has_text text='"is_forest_biome": true'/>
+                    <not_has_text text='"admin"'/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+This tool reads a 3Dtrees `collection_summary.json`, computes the WGS84 centroid
+from `collection.multipolygon_wkt`, and intersects that point with supplied
+reference vector datasets. GADM provides administrative context; optional WWF
+Terrestrial Ecoregions v2.0 data provides ecoregion, realm, and biome context.
+
+-----
+
+**Input**
+
+- **Collection summary**: `collection_summary.json` produced by the 3Dtrees
+  standardization tool in collection mode.
+- **GADM vector dataset**: A GADM boundary file supplied at runtime. GeoPackage
+  and GeoJSON inputs are the intended formats.
+- **GADM layer**: Optional layer name. If omitted, the tool checks all available
+  layers and selects the deepest matching administrative level.
+- **WWF Terrestrial Ecoregions v2.0 dataset**: Optional ecoregions vector file.
+- **WWF ecoregions layer**: Optional layer name for the WWF dataset.
+
+-----
+
+**Output**
+
+The tool writes `additional_metadata.json` with:
+
+- GADM source details and checked layers
+- Collection centroid longitude/latitude in EPSG:4326
+- Whether the centroid matched a GADM feature
+- Selected administrative level and hierarchy
+- Raw matched GADM fields for downstream metadata enrichment
+- Optional WWF ecoregion name/id, realm, biome code/name, and forest-biome flag
+    ]]></help>
+    <creator>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="bibtex">
+            @misc{3dtrees_metadata, title = {3Dtrees: Metadata}, author = {3Dtrees Project}, year = {2026}}
+        </citation>
+    </citations>
+</tool>
