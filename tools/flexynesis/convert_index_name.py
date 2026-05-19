@@ -3,35 +3,29 @@
 import sys
 from pathlib import Path
 
-import pandas as pd
-
 
 def get_column_names(file_path, indices):
     """
     Get column names based on multiple indices from a tabular file.
     """
-    try:
-        file_ext = Path(file_path).suffix.lower()
-        sep = "," if file_ext == ".csv" else "\t"
+    file_ext = Path(file_path).suffix.lower()
+    sep = "," if file_ext == ".csv" else "\t"
 
-        if file_ext in [".csv", ".tsv", ".txt", ".tab", ".tabular"]:
-            data = pd.read_csv(file_path, sep=sep)
-        else:
-            raise ValueError(f"Unsupported file extension: {file_ext}")
+    with open(file_path) as fh:
+        header = fh.readline().rstrip("\n")
 
-    except Exception as e:
-        raise ValueError(f"Error loading data from {file_path}: {e}") from e
+    columns = header.split(sep)
+    num_cols = len(columns)
 
     column_names = []
-
     for index in indices:
         zero_based_index = index - 1  # Convert to zero-based index
-        if zero_based_index < 0 or zero_based_index >= len(data.columns):
+        if zero_based_index < 0 or zero_based_index >= num_cols:
             print(
-                f"Error: Index {index} is out of range. File has {len(data.columns)} columns (1-{len(data.columns)})."
+                f"Error: Index {index} is out of range. File has {num_cols} columns (1-{num_cols})."
             )
             return None
-        column_names.append(data.columns[zero_based_index].strip())
+        column_names.append(columns[zero_based_index].strip())
 
     return column_names
 
