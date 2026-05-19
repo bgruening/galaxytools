@@ -1,0 +1,87 @@
+<tool id="grobid_dataset_annotate" name="GROBID DataStet" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>identify dataset mentions in scientific articles</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <required_files>
+        <include path="run_datastet_service.sh"/>
+    </required_files>
+    <version_command><![CDATA[
+        echo @TOOL_VERSION@
+    ]]></version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $input.ext == "pdf" and $output_format == "json":
+            #set endpoint = "annotateDatasetPDF"
+        #elif $input.ext == "pdf" and $output_format == "tei":
+            #set endpoint = "processDataseerPDF"
+        #elif $input.ext == "tei" and $output_format == "tei":
+            #set endpoint = "processDataseerTEI"
+        #else:
+            echo 'JSON output is only available for PDF input in DataStet 0.8.1.' >&2
+            exit 2
+        #end if
+
+        bash '$__tool_directory__/run_datastet_service.sh'
+            --endpoint '$endpoint'
+            --input '$input'
+            --output '$output'
+            $add_paragraph_context
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="pdf,tei" label="Scientific article PDF or TEI XML"/>
+        <param name="output_format" type="select" label="Output format">
+            <option value="json" selected="true">Dataset annotations JSON</option>
+            <option value="tei">Enriched TEI XML</option>
+        </param>
+        <param argument="addParagraphContext" name="add_paragraph_context" type="boolean" truevalue="--add-paragraph-context 1" falsevalue="--add-paragraph-context 0" checked="false"
+            label="Add paragraph context" help="Only used by the PDF annotation endpoint."/>
+    </inputs>
+    <outputs>
+        <data name="output" format="json" label="${tool.name} on ${on_string}: dataset annotations">
+            <change_format>
+                <when input="output_format" value="tei" format="tei"/>
+            </change_format>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="sample.pdf" ftype="pdf"/>
+            <param name="output_format" value="json"/>
+            <!-- we keep the file here, even if the JSON is a bit random generated, because we want the Tool Tours to work. Asserts are for more strict tests. -->
+            <output name="output" file="sample_pdf_dataset_annotations.json" ftype="json" lines_diff="300">
+                <assert_contents>
+                    <has_json_property_with_text property="application" text="datastet"/>
+                    <has_json_property_with_text property="version" text="0.8.1"/>
+                    <has_json_property_with_value property="page_height" value="792.0"/>
+                    <has_json_property_with_text property="type" text="dataset-name"/>
+                    <has_json_property_with_text property="rawForm" text="Icluster"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="minimal_dataset.tei" ftype="tei"/>
+            <param name="output_format" value="tei"/>
+            <output name="output" ftype="tei">
+                <assert_contents>
+                    <is_valid_xml/>
+                    <xml_element path="./{http://www.tei-c.org/ns/1.0}teiHeader/{http://www.tei-c.org/ns/1.0}encodingDesc/{http://www.tei-c.org/ns/1.0}list/{http://www.tei-c.org/ns/1.0}dataset"/>
+                    <xml_element path="./{http://www.tei-c.org/ns/1.0}teiHeader/{http://www.tei-c.org/ns/1.0}encodingDesc/{http://www.tei-c.org/ns/1.0}list/{http://www.tei-c.org/ns/1.0}dataInstance"/>
+                    <xml_element path="./{http://www.tei-c.org/ns/1.0}text/{http://www.tei-c.org/ns/1.0}body/{http://www.tei-c.org/ns/1.0}div/{http://www.tei-c.org/ns/1.0}p/{http://www.tei-c.org/ns/1.0}s">
+                        <has_text text="Insulin levels"/>
+                    </xml_element>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**GROBID DataStet** starts the DataStet service inside the Galaxy job and identifies dataset mentions in a scientific article.
+
+PDF input can be processed in two ways. With JSON output, the tool calls ``/service/annotateDatasetPDF`` and returns dataset mentions, coordinates, references, page metadata, and contextual use/create/share scores. With TEI output, the tool calls ``/service/processDataseerPDF`` and returns a TEI document enriched with DataStet annotations.
+
+TEI input is sent to ``/service/processDataseerTEI`` and returns enriched TEI. DataStet 0.8.1 does not expose a public TEI-to-JSON service route, so JSON output is limited to PDF input.
+
+Use the GROBID wrapper first when you want to convert a PDF to TEI before running DataStet explicitly. The service is started and stopped for each Galaxy job; no external DataStet server is required.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
