@@ -1,0 +1,133 @@
+<tool id="grobid_grobid" name="GROBID" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>extract structured TEI XML from scholarly documents and patents</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <required_files>
+        <include path="run_grobid_service.sh"/>
+    </required_files>
+    <version_command><![CDATA[
+        echo @TOOL_VERSION@
+    ]]></version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $document.kind == "article_pdf":
+            #set endpoint = "processFulltextDocument"
+            #set input_file = $document.input_pdf
+            #set upload_mode = "multipart"
+        #elif $document.kind == "patent_pdf":
+            #set endpoint = "processCitationPatentPDF"
+            #set input_file = $document.input_pdf
+            #set upload_mode = "multipart"
+        #elif $document.kind == "patent_st36":
+            #set endpoint = "processCitationPatentST36"
+            #set input_file = $document.input_xml
+            #set upload_mode = "multipart"
+        #else:
+            #set endpoint = "processCitationPatentTXT"
+            #set input_file = $document.input_text
+            #set upload_mode = "urlencoded"
+        #end if
+
+        bash '$__tool_directory__/run_grobid_service.sh'
+            --endpoint '$endpoint'
+            --upload-mode '$upload_mode'
+            --input '$input_file'
+            --output '$output'
+            --consolidate-header '$advanced.consolidate_header'
+            --consolidate-citations '$advanced.consolidate_citations'
+            $advanced.include_raw_citations
+            $advanced.include_raw_affiliations
+            --start-page '$advanced.start_page'
+            --end-page '$advanced.end_page'
+    ]]></command>
+    <inputs>
+        <conditional name="document">
+            <param name="kind" type="select" label="Document processing mode">
+                <option value="article_pdf" selected="true">Scientific article PDF to TEI</option>
+                <option value="patent_pdf">Patent PDF citation extraction to TEI</option>
+                <option value="patent_st36">Patent ST.36 XML citation extraction to TEI</option>
+                <option value="patent_text">Patent text citation extraction to TEI</option>
+            </param>
+            <when value="article_pdf">
+                <param name="input_pdf" type="data" format="pdf" label="Scientific article PDF"/>
+            </when>
+            <when value="patent_pdf">
+                <param name="input_pdf" type="data" format="pdf" label="Patent PDF"/>
+            </when>
+            <when value="patent_st36">
+                <param name="input_xml" type="data" format="xml" label="Patent ST.36 XML"/>
+            </when>
+            <when value="patent_text">
+                <param name="input_text" type="data" format="txt" label="Patent text"/>
+            </when>
+        </conditional>
+        <section name="advanced" title="Advanced options" expanded="false">
+            <param argument="consolidateHeader" name="consolidate_header" type="select" label="Header consolidation">
+                <option value="0" selected="true">No consolidation</option>
+                <option value="1">Inject extra metadata</option>
+                <option value="2">Inject DOI only</option>
+                <option value="3">Use extracted DOI only</option>
+            </param>
+            <param argument="consolidateCitations" name="consolidate_citations" type="select" label="Citation consolidation">
+                <option value="0" selected="true">No consolidation</option>
+                <option value="1">Inject extra metadata</option>
+                <option value="2">Inject DOI only</option>
+            </param>
+            <param argument="includeRawCitations" name="include_raw_citations" type="boolean" truevalue="--include-raw-citations 1" falsevalue="--include-raw-citations 0" checked="false" label="Include raw citation strings"/>
+            <param argument="includeRawAffiliations" name="include_raw_affiliations" type="boolean" truevalue="--include-raw-affiliations 1" falsevalue="--include-raw-affiliations 0" checked="false" label="Include raw affiliation strings"/>
+            <param argument="start" name="start_page" type="integer" value="-1" label="Start page" help="Use -1 to start from the first page."/>
+            <param argument="end" name="end_page" type="integer" value="-1" label="End page" help="Use -1 to process to the last page."/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output" format="tei" label="${tool.name} on ${on_string}: TEI XML"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <conditional name="document">
+                <param name="kind" value="article_pdf"/>
+                <param name="input_pdf" value="sample.pdf" ftype="pdf"/>
+            </conditional>
+            <output name="output" ftype="tei">
+                <assert_contents>
+                    <is_valid_xml/>
+                    <xml_element path="./{http://www.tei-c.org/ns/1.0}teiHeader/{http://www.tei-c.org/ns/1.0}fileDesc/{http://www.tei-c.org/ns/1.0}titleStmt/{http://www.tei-c.org/ns/1.0}title">
+                        <has_text text="Bi-criteria Algorithm"/>
+                    </xml_element>
+                    <xml_element path="./{http://www.tei-c.org/ns/1.0}text/{http://www.tei-c.org/ns/1.0}body/{http://www.tei-c.org/ns/1.0}div"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="document">
+                <param name="kind" value="patent_text"/>
+                <param name="input_text" value="patent_sample4.txt" ftype="txt"/>
+            </conditional>
+            <section name="advanced">
+                <param name="include_raw_citations" value="true"/>
+            </section>
+            <output name="output" ftype="tei">
+                <assert_contents>
+                    <is_valid_xml/>
+                    <xml_element path="./{http://www.tei-c.org/ns/1.0}text/{http://www.tei-c.org/ns/1.0}div/{http://www.tei-c.org/ns/1.0}p">
+                        <has_text text="2011/0155847"/>
+                    </xml_element>
+                    <xml_element path=".//{http://www.tei-c.org/ns/1.0}biblStruct/{http://www.tei-c.org/ns/1.0}monogr/{http://www.tei-c.org/ns/1.0}idno[@subtype='epodoc']">
+                        <has_text text="7930197"/>
+                    </xml_element>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**GROBID** starts the GROBID service inside the Galaxy job container and submits one document to the local API.
+
+The tool always returns TEI XML. Scientific article PDFs are sent to ``/api/processFulltextDocument`` for full-text document structuring. Patent inputs are sent to one of the patent citation extraction endpoints and return TEI containing the source text plus extracted patent and non-patent citation structures.
+
+Advanced options expose the main GROBID consolidation and raw-string flags. Page limits only apply to multipart PDF/XML requests; use ``-1`` to leave a bound unset.
+
+The service is started and stopped for each job, so no external GROBID server is required. The launcher writes a job-local GROBID configuration and temporary directory so the container works with Galaxy's non-root Docker execution.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
