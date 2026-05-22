@@ -1,0 +1,187 @@
+<tool id="kat_cold" name="KAT Cold" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Contig length and duplication analysis</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        ## Assembly must not be gzipped - link with correct extension
+        cp '$assembly' 'assembly.fasta' &&
+
+        ## Link read input files with appropriate extensions
+        #for $i, $f in enumerate($input_files):
+            @SET_EXT@
+            cp '$f' 'input${i}${ext}' &&
+        #end for
+
+        kat cold
+            -o kat-cold
+            -t "\${GALAXY_SLOTS:-1}"
+            -x '$matrix_options.gc_bins'
+            -y '$matrix_options.cvg_bins'
+            -m '$kmer_options.mer_len'
+            -H '$kmer_options.hash_size'
+            #if str($kmer_options.five_prime_trim).strip():
+                --5ptrim '$kmer_options.five_prime_trim'
+            #end if
+            -p '$output_options.output_type'
+            'assembly.fasta'
+            #for $i, $f in enumerate($input_files):
+                @SET_EXT@
+                'input${i}${ext}'
+            #end for
+            || true ;
+            ## The use of || true is a workaround for a crash caused by a C++ heap corruption issue within the KAT binary.
+            ## There is currently no fix available. Despite the crash, the tool is still able to generate the required output and statistics files for downstream analysis.
+    ]]></command>
+    <inputs>
+        <param name="assembly" type="data" format="fasta" label="Assembly" help="Assembly FASTA file to analyse. Must NOT be gzip-compressed."/>
+        <param name="input_files" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz,jellyfish" multiple="true" label="Reads" help="One or more FASTA/FASTQ read files (gzip accepted) or a single pre-counted Jellyfish hash file."/>
+
+        <section name="kmer_options" title="K-mer Options" expanded="false">
+            <param argument="--mer_len" type="integer" value="27" min="1" label="K-mer length" help="Larger values provide more discriminating power between k-mers but require more memory and result in lower coverage. (default: 27)"/>
+            <param argument="--hash_size" type="integer" value="100000000" min="1" label="Hash size" help="Hash size for k-mer counting of the reads. The assembly uses half this value. Doubled automatically if too small, increasing runtime and memory usage. (default: 100000000)"/>
+            <expand macro="five_prime_trim_param"/>
+        </section>
+
+        <section name="matrix_options" title="Matrix Options" expanded="false">
+            <param argument="--gc_bins" type="integer" value="1001" min="1" label="GC bins" help="Number of bins for the GC data when creating the contamination matrix. (default: 1001)"/>
+            <param argument="--cvg_bins" type="integer" value="1001" min="1" label="Coverage bins" help="Number of bins for the coverage data when creating the contamination matrix. (default: 1001)"/>
+        </section>
+
+        <section name="output_options" title="Output Options" expanded="false">
+            <expand macro="output_type_param"/>
+        </section>
+    </inputs>
+
+    <outputs>
+        <!-- Per-sequence stats table -->
+        <data name="output_stats" format="tabular" from_work_dir="kat-cold-stats.tsv" label="${tool.name} on ${on_string}: Per-sequence stats"/>
+
+        <!-- Contamination matrix -->
+        <data name="output_matrix" format="tabular" from_work_dir="kat-cold.contamination.mx" label="${tool.name} on ${on_string}: Contamination matrix"/>
+
+        <!-- Scatter plot - format depends on user selection -->
+        <data name="output_plot_png" format="png" from_work_dir="kat-cold.png" label="${tool.name} on ${on_string}: Scatter plot (PNG)">
+            <filter>output_options['output_type'] == 'png'</filter>
+        </data>
+        <data name="output_plot_pdf" format="pdf" from_work_dir="kat-cold.pdf" label="${tool.name} on ${on_string}: Scatter plot (PDF)">
+            <filter>output_options['output_type'] == 'pdf'</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <!-- Test 01: Basic assembly vs FASTQ reads, default options, PNG output -->
+        <test expect_num_outputs="3">
+            <param name="assembly" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <param name="input_files" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="png"/>
+            </section>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="12"/>
+                    <has_n_lines n="2"/>
+                    <has_text text="gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot_png">
+                <assert_contents>
+                    <has_image_channels channels="4"/> 
+                    <has_image_height height="1800"/> 
+                    <has_image_width width="2400"/> 
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 02: Assembly vs gzipped FASTQ reads, PDF output -->
+        <test expect_num_outputs="3">
+            <param name="assembly" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <param name="input_files" value="ecoli_r1.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="pdf"/>
+            </section>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="12"/>
+                    <has_n_lines n="2"/>
+                    <has_text text="gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot_pdf">
+                <assert_contents>
+                    <has_size size="16368"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+
+    <help><![CDATA[
+**KAT COLD - Contig Length and Duplication Analysis**
+
+KAT (K-mer Analysis Toolkit) COLD calculates median read k-mer coverage, assembly k-mer coverage, and GC% across each sequence in a provided assembly.
+
+-----
+
+**What it does**
+
+For each contig or scaffold in the assembly, COLD calculates:
+
+- **Median read k-mer coverage** - how well reads cover the sequence
+- **Assembly k-mer coverage** - coverage as seen in the assembly itself
+- **GC%** - GC content of the sequence
+
+Results are presented as a tabular stats file and a scatter plot where:
+
+- Each point represents one sequence
+- The **y-axis** shows median read k-mer coverage
+- The **x-axis** shows GC%
+- Points are **colored** similarly to spectra-cn plots (indicating duplication level)
+- Points are **sized** according to sequence length
+
+This allows rapid identification of contaminant sequences (outlier GC%), collapsed repeats (unusually high coverage), and other assembly artefacts.
+
+-----
+
+**Inputs**
+
+- **Assembly**: A FASTA file of the genome assembly (**must not be gzip-compressed**).
+- **Reads**: One or more FASTA/FASTQ read files (gzip compression accepted), or a single pre-counted Jellyfish hash file.
+
+-----
+
+**Outputs**
+
+- **Per-sequence stats** (``.stats``): Tab-separated table with per-sequence statistics including sequence name, length, GC%, and median k-mer coverage.
+- **Contamination matrix** (``.contamination.mx``): 2D matrix of GC% vs coverage bins, used to identify contamination.
+- **Scatter plot**: Visual plot in the selected format (PNG, PDF, or PostScript) with each contig plotted by GC% and coverage.
+
+-----
+
+**Notes**
+
+- The assembly file **cannot** be gzip-compressed.
+- Increase the **k-mer length** for more discriminating power at the cost of higher memory usage and lower effective coverage.
+- Use **Disable automatic hash growing** when working with very large genomes or under strict memory limits to prevent unexpected memory spikes.
+- The default **hash size** (100 million) suits most datasets; adjust upward for large or high-coverage genomes.
+- For multiple read files, **5' trim** values can be specified per-file using comma-separated integers (e.g. ``5,10,0``).
+
+-----
+
+**Citation**
+
+Mapleson et al. (2017) KAT: A K-mer Analysis Toolkit to quality control NGS datasets and genome assemblies.
+*Bioinformatics*, 33(4), 574–576. https://doi.org/10.1093/bioinformatics/btw663
+    ]]></help>
+
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>

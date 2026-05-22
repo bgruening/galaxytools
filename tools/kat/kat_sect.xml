@@ -1,0 +1,280 @@
+<tool id="kat_sect" name="KAT Sect" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>estimates k-mer coverage across sequences</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        ## Sequence file must not be gzipped - link as-is with correct extension
+        #if $sequence_file.ext in ('fasta', 'fa'):
+            #set $seq_ext = '.fasta'
+        #elif $sequence_file.ext in ('fastq', 'fastqsanger'):
+            #set $seq_ext = '.fastq'
+        #else:
+            #set $seq_ext = '.fasta'
+        #end if
+        cp '$sequence_file' 'sequence${seq_ext}' &&
+
+        ## Link k-mer input files (one or more FastA/FastQ, or a single jellyfish hash)
+        #set $all_inputs = $input_files
+        #for $i, $f in enumerate($all_inputs):
+            @SET_EXT@
+            cp '$f' 'input${i}${ext}' &&
+        #end for
+
+        kat sect
+            -o kat-sect
+            -t "\${GALAXY_SLOTS:-1}"
+            -x '$matrix_options.gc_bins'
+            -y '$matrix_options.cvg_bins'
+            $matrix_options.cvg_logscale
+            -m '$kmer_options.mer_len'
+            -H '$kmer_options.hash_size'
+            $kmer_options.non_canonical
+            #if str($kmer_options.five_prime_trim).strip():
+                --5ptrim '$kmer_options.five_prime_trim'
+            #end if
+            $output_options.no_count_stats
+            $output_options.output_gc_stats
+            $repeat_options.extract_nr
+            $repeat_options.extract_r
+            #if int(str($repeat_options.min_repeat)) != 2:
+                --min_repeat '$repeat_options.min_repeat'
+            #end if
+            #if int(str($repeat_options.max_repeat)) != 0:
+                --max_repeat '$repeat_options.max_repeat'
+            #end if
+            -v
+            'sequence${seq_ext}'
+            #for $i, $f in enumerate($all_inputs):
+                @SET_EXT@
+                'input${i}${ext}'
+            #end for
+            || true ;
+            ## The use of || true is a workaround for a crash caused by a C++ heap corruption issue within the KAT binary.
+            ## There is currently no fix available. Despite the crash, the tool is still able to generate the required output and statistics files for downstream analysis.
+
+    ]]></command>
+    <inputs>
+        <param name="sequence_file" type="data" format="fasta,fastqsanger" label="Sequence file" help="Input sequence file to estimate coverage across. Must not be gzip-compressed"/>
+        <param name="input_files" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz,jellyfish" multiple="true" label="K-mer input files" help="One or more FASTA/FASTQ files (gzip accepted) or a single Jellyfish hash file used to determine k-mer coverage"/>
+        <expand macro="kmer_params">
+            <expand macro="five_prime_trim_param"/>
+        </expand>
+        <section name="matrix_options" title="Matrix Options" expanded="false">
+            <param argument="--gc_bins" type="integer" value="1001" min="1" label="GC bins" help="Number of bins for the GC data when creating the contamination matrix"/>
+            <param argument="--cvg_bins" type="integer" value="1001" min="1" label="Coverage bins" help="Number of bins for the coverage data when creating the contamination matrix"/>
+            <param argument="--cvg_logscale" type="boolean" truevalue="--cvg_logscale" falsevalue="" checked="false" label="Coverage log scale" help="Compress coverage scores into log scale for determining coverage bins. Otherwise compresses by a factor of 0.1"/>
+        </section>
+        <section name="output_options" title="Output Options" expanded="false">
+            <param argument="--no_count_stats" type="boolean" truevalue="--no_count_stats" falsevalue="" checked="false" label="Suppress per-k-mer count stats" help="Only output summary stats per sequence, not per-k-mer counts. Useful when running SECT on read files to avoid very large output"/>
+            <param argument="--output_gc_stats"  type="boolean" truevalue="--output_gc_stats" falsevalue="" checked="false" label="Output GC stats" help="Output GC counts for each k-mer as a FASTA-like counts file. This can be slow"/>
+        </section>
+        <section name="repeat_options" title="Repeat Extraction Options" expanded="false">
+            <param argument="--extract_nr" type="boolean" truevalue="--extract_nr" falsevalue="" checked="false" label="Extract non-repetitive regions" help="Extract non-repetitive regions into a separate FASTA file"/>
+            <param argument="--extract_r" type="boolean" truevalue="--extract_r" falsevalue="" checked="false" label="Extract repetitive regions" help="Extract repetitive regions into a separate FASTA file"/>
+            <param argument="--min_repeat" type="integer" value="2" min="1" label="Minimum repeat coverage" help="Minimum k-mer coverage required to consider a region repetitive. Only used when extracting repetitive regions"/>
+            <param argument="--max_repeat" type="integer" value="0" min="0" label="Maximum repeat coverage" help="Maximum k-mer coverage allowed for repetitive regions. Avoids low-complexity sequences. A value of 0 means no upper limit"/>
+        </section>
+    </inputs>
+    <outputs>
+        <!-- Per-sequence coverage counts in FASTA-like format -->
+        <data name="output_counts" format="fasta" from_work_dir="kat-sect-counts.cvg" label="${tool.name} on ${on_string}: Per-sequence coverage counts">
+            <filter>not output_options['no_count_stats']</filter>
+        </data>
+        
+        <!-- Summary stats table: mean coverage and GC per sequence -->
+        <data name="output_stats" format="tabular" from_work_dir="kat-sect-stats.tsv" label="${tool.name} on ${on_string}: Per-sequence summary stats"/>
+
+        <!-- GC counts output (optional) -->
+        <data name="output_gc_counts" format="fasta" from_work_dir="kat-sect-counts.gc" label="${tool.name} on ${on_string}: Per-sequence GC counts">
+            <filter>output_options['output_gc_stats']</filter>
+        </data>
+        
+        <!-- Non-repetitive regions FASTA (optional) -->
+        <data name="output_nr_fasta" format="fasta" from_work_dir="kat-sect-non_repetitive.fa" label="${tool.name} on ${on_string}: Non-repetitive regions FASTA">
+            <filter>repeat_options['extract_nr']</filter>
+        </data>
+        
+        <!-- Repetitive regions FASTA (optional) -->
+        <data name="output_r_fasta" format="fasta" from_work_dir="kat-sect-repetitive.fa" label="${tool.name} on ${on_string}: Repetitive regions FASTA">
+            <filter>repeat_options['extract_r']</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 01: Basic sequence file vs FASTQ reads, default options -->
+        <test expect_num_outputs="2">
+            <param name="sequence_file" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <param name="input_files" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <output name="output_counts">
+                <assert_contents>
+                    <has_text text=">gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="11"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 02: Sequence file vs gzipped FASTQ, suppress count stats -->
+        <test expect_num_outputs="1">
+            <param name="sequence_file" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <param name="input_files" value="ecoli_r1.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="output_options">
+                <param name="no_count_stats" value="true"/>
+            </section>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="11"/>
+                    <has_text text="gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 03: Non-canonical k-mers, custom k-mer length, GC stats output -->
+        <test expect_num_outputs="3">
+            <param name="sequence_file" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <param name="input_files" value="ecoli_r1.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="21"/>
+                <param name="non_canonical" value="true"/>
+            </section>
+            <section name="output_options">
+                <param name="output_gc_stats" value="true"/>
+            </section>
+            <output name="output_counts">
+                <assert_contents>
+                    <has_text text=">gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                    <has_size value="9283354"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="11"/>
+                    <has_n_lines n="2"/>
+                    <has_text text="gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+            <output name="output_gc_counts">
+                <assert_contents>
+                    <has_text text=">gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                    <has_n_lines n="2"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 04: Extract repetitive and non-repetitive regions -->
+        <test expect_num_outputs="4">
+            <param name="sequence_file" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <param name="input_files" value="ecoli_r1.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="repeat_options">
+                <param name="extract_nr" value="true"/>
+                <param name="extract_r" value="true"/>
+                <param name="min_repeat" value="3"/>
+            </section>
+            <output name="output_counts">
+                <assert_contents>
+                    <has_text text=">gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="11"/>
+                    <has_n_lines n="2"/>
+                    <has_text text="gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+            <output name="output_nr_fasta">
+                <assert_contents>
+                    <has_text text=">gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome___region:1_length:99_pos:1113:1212_cov:1-3"/>
+                    <has_n_lines n="1708"/>
+                </assert_contents>
+            </output>
+            <output name="output_r_fasta">
+                <assert_contents>
+                    <has_text text=">gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome___region:1_length:81_pos:15498:15579_cov:3+"/>
+                    <has_n_lines n="112"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 05: Multiple read inputs, custom matrix bins, log scale coverage -->
+        <test expect_num_outputs="2">
+            <param name="sequence_file" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <param name="input_files" value="ecoli_r1.1K.fastq.gz,ecoli_r2.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="matrix_options">
+                <param name="gc_bins" value="500"/>
+                <param name="cvg_bins" value="500"/>
+                <param name="cvg_logscale" value="true"/>
+            </section>
+            <output name="output_counts">
+                <assert_contents>
+                    <has_text text=">gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="11"/>
+                    <has_n_lines n="2"/>
+                    <has_text text="gi|556503834|ref|NC_000913.3| Escherichia coli str. K-12 substr. MG1655, complete genome"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+**KAT Sect - Sequence Coverage Estimation**
+
+KAT (K-mer Analysis Toolkit) Sect estimates k-mer coverage levels across sequences in a provided sequence file.
+
+-----
+
+**What it does**
+
+SECT produces a FASTA-style representation of the input sequence file with k-mer coverage counts mapped across each sequence. K-mer coverage is determined from one or more FASTA/FASTQ read files or a pre-computed Jellyfish hash. A summary table containing mean coverage and GC content per sequence is also produced.
+
+-----
+
+**Inputs**
+
+- **Sequence file**: The reference sequences to estimate coverage across (FASTA or FASTQ, **must not be gzip-compressed**).
+- **K-mer input files**: One or more FASTA/FASTQ files (gzip accepted) or a single Jellyfish hash file used to count k-mers.
+
+-----
+
+**Outputs**
+
+- **Per-sequence coverage counts** (``.cvg``): FASTA-like file with k-mer coverage counts mapped across each sequence.
+- **Per-sequence summary stats** (``.tsv``): Tab-separated table with mean coverage and GC content per sequence. Row order matches the input sequence file.
+- **GC counts** *(optional)*: FASTA-like file with GC counts per k-mer position. Enabled via *Output GC stats*. Can be slow to generate.
+- **Non-repetitive regions FASTA** *(optional)*: Sequences or regions with low k-mer coverage extracted to a separate FASTA file.
+- **Repetitive regions FASTA** *(optional)*: Sequences or regions with high k-mer coverage extracted to a separate FASTA file.
+
+-----
+
+**Notes**
+
+- K-mers containing any Ns from the sequence file are excluded from analysis.
+- The sequence file **cannot** be gzip-compressed.
+- When running SECT against read files, consider enabling *Suppress per-k-mer count stats* to avoid very large output files.
+- The minimum and maximum repeat coverage thresholds only apply when repeat extraction is enabled.
+
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>

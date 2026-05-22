@@ -1,0 +1,303 @@
+<tool id="kat_filter_seq" name="KAT Filter Seq" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>filters sequences based on k-mer content</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        ## Link sequence file to filter with appropriate extension
+        #if $seq.ext in ('fastq.gz', 'fastqsanger.gz'):
+            #set $seq_ext = '.fastq'
+            zcat '$seq' > 'seq${seq_ext}' &&
+        #elif $seq.ext in ('fasta.gz',):
+            #set $seq_ext = '.fasta'
+            zcat '$seq' > 'seq${seq_ext}' &&
+        #elif $seq.ext in ('fastq', 'fastqsanger'):
+            #set $seq_ext = '.fastq'
+            cp '$seq' 'seq${seq_ext}' &&
+        #else:
+            #set $seq_ext = '.fasta'
+            cp '$seq' 'seq${seq_ext}' &&
+        #end if
+
+        ## Link optional second sequence file for paired-end mode
+        #if $paired_end.use_seq2 == 'true':
+            #if $paired_end.seq2.ext in ('fastq.gz', 'fastqsanger.gz'):
+                #set $seq2_ext = '.fastq'
+                zcat '$paired_end.seq2' > 'seq2${seq2_ext}' &&
+            #elif $paired_end.seq2.ext in ('fasta.gz',):
+                #set $seq2_ext = '.fasta'
+                zcat '$paired_end.seq2' > 'seq2${seq2_ext}' &&
+            #elif $paired_end.seq2.ext in ('fastq', 'fastqsanger'):
+                #set $seq2_ext = '.fastq'
+                cp '$paired_end.seq2' 'seq2${seq2_ext}' &&
+            #else:
+                #set $seq2_ext = '.fasta'
+                cp '$paired_end.seq2' 'seq2${seq2_ext}' &&
+            #end if
+        #end if
+
+        ## Link k-mer hash input with appropriate extension
+        #if $kmer_input.ext in ('fastq.gz', 'fastqsanger.gz'):
+            #set $kmer_ext = '.fastq'
+            zcat '$kmer_input' > 'kmer${kmer_ext}' &&
+        #elif $kmer_input.ext in ('fasta.gz',):
+            #set $kmer_ext = '.fasta'
+            zcat '$kmer_input' > 'kmer${kmer_ext}' &&
+        #elif $kmer_input.ext in ('fastq', 'fastqsanger'):
+            #set $kmer_ext = '.fastq'
+            cp '$kmer_input' 'kmer${kmer_ext}' &&
+        #elif $kmer_input.ext == 'jellyfish':
+            #set $kmer_ext = '.jf'
+            cp '$kmer_input' 'kmer${kmer_ext}' &&
+        #else:
+            #set $kmer_ext = '.fasta'
+            cp '$kmer_input' 'kmer${kmer_ext}' &&
+        #end if
+
+        kat filter seq
+            -o kat-filter-seq
+            -t "\${GALAXY_SLOTS:-1}"
+            -T '$filter_options.threshold'
+            $filter_options.invert
+            $filter_options.separate
+            -f '$filter_options.frequency'
+            $filter_options.stats
+            $filter_options.verbose
+            $kmer_options.non_canonical
+            -m '$kmer_options.mer_len'
+            -H '$kmer_options.hash_size'
+            --seq 'seq${seq_ext}'
+            #if $paired_end.use_seq2 == 'true':
+                --seq2 'seq2${seq2_ext}'
+            #end if
+            'kmer${kmer_ext}'
+    ]]></command>
+    <inputs>
+        <param name="seq" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz" label="Sequence file to filter" help="FASTA or FASTQ reads to be filtered against the k-mer hash"/>
+        <conditional name="paired_end">
+            <param name="use_seq2" type="select" label="Filter paired-end reads" help="Enable to filter a paired-end read pair. Both files are processed together and kept in sync">
+                <option value="false" selected="true">Single-end</option>
+                <option value="true">Paired-end</option>
+            </param>
+            <when value="true">
+                <param name="seq2" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz" label="Second sequence file (R2)" help="Second read file of the paired-end pair"/>
+            </when>
+            <when value="false"/>
+        </conditional>
+        <param name="kmer_input" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz,jellyfish" label="K-mer hash input" help="Pre-counted Jellyfish hash (.jf) or a FASTA/FASTQ file from which k-mers will be counted on the fly"/>
+        <section name="filter_options" title="Filter Options" expanded="true">
+            <param argument="--threshold" type="float" value="0.1" min="0.0" max="1.0" label="K-mer coverage threshold" help="Minimum fraction of k-mers in the sequence that must be present in the hash to keep the sequence"/>
+            <param argument="--invert" type="boolean" truevalue="--invert" falsevalue="" checked="false" label="Invert selection" help="Output sequences NOT found in the k-mer hash, rather than those found inside"/>
+            <param argument="--separate" type="boolean" truevalue="--separate" falsevalue="" checked="false" label="Separate into two sets" help="Partition sequences into two sets: those with k-mers detected and those without. Works in combination with Invert"/>
+            <param argument="--frequency" type="float" value="0.0" min="0.0" max="1.0" label="Frequency threshold" help="Keep a matching sequence only if a random number between 0 and 1 exceeds this value. Default 0.0 keeps all hits. Useful for subsampling"/>
+            <param argument="--stats" type="boolean" truevalue="--stats" falsevalue="" checked="false" label="Emit k-mer statistics" help="Output per-sequence statistics on the quantity of k-mers found"/>
+        </section>
+        <expand macro="kmer_params"/>
+    </inputs>
+    <outputs>
+        <!-- Single-end: sequences that passed the filter -->
+        <data name="output_in" format_source="seq" from_work_dir="kat-filter-seq.in*" label="${tool.name} on ${on_string}: Filtered-in sequences">
+            <filter>paired_end['use_seq2'] == 'false'</filter>
+        </data>
+
+        <!-- Single-end: sequences that failed the filter (only with separate) -->
+        <data name="output_out" format_source="seq" from_work_dir="kat-filter-seq.out*" label="${tool.name} on ${on_string}: Filtered-out sequences">
+            <filter>paired_end['use_seq2'] == 'false' and filter_options['separate']</filter>
+        </data>
+
+        <!-- Paired-end: R1 sequences that passed the filter -->
+        <data name="output_in_r1" format_source="seq" from_work_dir="kat-filter-seq.in.R1*" label="${tool.name} on ${on_string}: Filtered-in sequences (R1)">
+            <filter>paired_end['use_seq2'] == 'true'</filter>
+        </data>
+
+        <!-- Paired-end: R2 sequences that passed the filter -->
+        <data name="output_in_r2" format_source="seq2" from_work_dir="kat-filter-seq.in.R2*" label="${tool.name} on ${on_string}: Filtered-in sequences (R2)">
+            <filter>paired_end['use_seq2'] == 'true'</filter>
+        </data>
+
+        <!-- Paired-end: R1 sequences that failed the filter (only with separate) -->
+        <data name="output_out_r1" format_source="seq" from_work_dir="kat-filter-seq.out.R1*" label="${tool.name} on ${on_string}: Filtered-out sequences (R1)">
+            <filter>paired_end['use_seq2'] == 'true' and filter_options['separate']</filter>
+        </data>
+
+        <!-- Paired-end: R2 sequences that failed the filter (only with separate) -->
+        <data name="output_out_r2" format_source="seq2" from_work_dir="kat-filter-seq.out.R2*" label="${tool.name} on ${on_string}: Filtered-out sequences (R2)">
+            <filter>paired_end['use_seq2'] == 'true' and filter_options['separate']</filter>
+        </data>
+
+        <!-- Statistics output (only with stats) -->
+        <data name="output_stats" format="tabular" from_work_dir="kat-filter-seq.stats" label="${tool.name} on ${on_string}: K-mer statistics">
+            <filter>filter_options['stats']</filter>
+        </data>
+
+    </outputs>
+    <tests>
+        <!-- Test 01: Single-end FASTQ, default parameters -->
+        <test expect_num_outputs="1">
+            <param name="seq" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <param name="kmer_input" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <output name="output_in">
+                <assert_contents>
+                    <has_n_lines n="2420"/>
+                    <has_size value="159368"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 02: Single-end with separate output and stats -->
+        <test expect_num_outputs="3">
+            <param name="seq" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <param name="kmer_input" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <section name="filter_options">
+                <param name="separate" value="true"/>
+                <param name="stats" value="true"/>
+            </section>
+            <output name="output_in">
+                <assert_contents>
+                    <has_n_lines n="2420"/>
+                    <has_size value="159368"/>
+                </assert_contents>
+            </output>
+            <output name="output_out">
+                <assert_contents>
+                    <has_n_lines n="1580"/>
+                    <has_size value="104051"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="5"/>
+                    <has_n_lines n="1001"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 03: Inverted selection with higher threshold and non-canonical k-mers -->
+        <test expect_num_outputs="1">
+            <param name="seq" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <param name="kmer_input" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <section name="filter_options">
+                <param name="invert" value="true"/>
+                <param name="threshold" value="0.5"/>
+            </section>
+            <section name="kmer_options">
+                <param name="non_canonical" value="true"/>
+                <param name="mer_len" value="21"/>
+            </section>
+            <output name="output_in">
+                <assert_contents>
+                    <has_n_lines n="2864"/>
+                    <has_size value="188603"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 04: Paired-end filtering -->
+        <test expect_num_outputs="2">
+            <param name="seq" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <conditional name="paired_end">
+                <param name="use_seq2" value="true"/>
+                <param name="seq2" value="ecoli_r2.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            </conditional>
+            <param name="kmer_input" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <output name="output_in_r1">
+                <assert_contents>
+                    <has_n_lines n="2468"/>
+                    <has_size value="162528"/>
+                </assert_contents>
+            </output>
+            <output name="output_in_r2">
+                <assert_contents>
+                    <has_n_lines n="2468"/>
+                    <has_size value="162528"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 05: Paired-end with separate output -->
+        <test expect_num_outputs="4">
+            <param name="seq" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <conditional name="paired_end">
+                <param name="use_seq2" value="true"/>
+                <param name="seq2" value="ecoli_r2.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            </conditional>
+            <param name="kmer_input" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <section name="filter_options">
+                <param name="separate" value="true"/>
+            </section>
+            <output name="output_in_r1">
+                <assert_contents>
+                    <has_n_lines n="2468"/>
+                    <has_size value="162528"/>
+                </assert_contents>
+            </output>
+            <output name="output_in_r2">
+                <assert_contents>
+                    <has_n_lines n="2468"/>
+                    <has_size value="162528"/>
+                </assert_contents>
+            </output>
+            <output name="output_out_r1">
+                <assert_contents>
+                    <has_n_lines n="1532"/>
+                    <has_size value="100891"/>
+                </assert_contents>
+            </output>
+            <output name="output_out_r2">
+                <assert_contents>
+                    <has_n_lines n="1532"/>
+                    <has_size value="100891"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**KAT Filter Seq - Sequence Filtering Based on K-mer Content**
+
+KAT (K-mer Analysis Toolkit) Filter Seq retains or removes sequences (FASTA or FASTQ) based on whether those sequences contain k-mers found in a reference k-mer hash.
+
+-----
+
+**What it does**
+
+The tool loads a k-mer hash and filters input sequences depending on whether those sequences contain the target k-mers. A threshold controls what fraction of a sequence's k-mers must be present in the hash before that sequence is retained.
+
+Common use cases:
+
+- Remove contamination by keeping only reads matching a known reference
+- Isolate reads from a target organism in a mixed-species dataset
+- Subsample reads based on k-mer presence using the frequency threshold
+
+-----
+
+**Inputs**
+
+- **Sequence file to filter**: FASTA or FASTQ reads (gzip accepted) to be filtered.
+- **Second sequence file (R2)**: Optional. Enable *Filter paired-end reads* to supply a paired-end mate file. Both files are evaluated together and kept in sync.
+- **K-mer hash input**: A pre-counted Jellyfish hash (``.jf``) or a FASTA/FASTQ file from which k-mers will be counted on the fly.
+
+-----
+
+**Outputs**
+
+- **Filtered-in sequences**: Sequences that passed the filter (contain sufficient k-mers from the hash). In paired-end mode this becomes R1 and R2 outputs.
+- **Filtered-out sequences** *(optional)*: Sequences that failed the filter. Only produced when *Separate into two sets* is enabled. In paired-end mode this becomes R1 and R2 outputs.
+- **K-mer statistics** *(optional)*: Per-sequence statistics on the number of k-mers found. Only produced when *Emit k-mer statistics* is enabled. For paired-end input, each entry represents both reads combined.
+
+-----
+
+**Notes**
+
+- The **threshold** (default 0.1) sets the minimum fraction of a sequence's k-mers that must be present in the hash for the sequence to pass. Increase this to be more stringent.
+- **Invert** reverses the filter, keeping sequences that do *not* match the hash.
+- **Separate** produces both the matching and non-matching sets simultaneously, regardless of the invert setting.
+- When the k-mer hash input is a FASTA/FASTQ file, k-mers are counted on the fly using the configured k-mer length and hash size.
+- For paired-end reads, both reads in a pair are evaluated together. A pair is kept or discarded as a unit.
+
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>
