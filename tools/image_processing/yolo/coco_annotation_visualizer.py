@@ -4,11 +4,8 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import cv2
-
-import numpy as np
-
 import matplotlib.colors as mcolors
-
+import numpy as np
 from pycocotools import mask as mask_utils
 
 
@@ -334,7 +331,7 @@ def main():
 
         if output_mode in ("frames", "both"):
             out_path = (
-               frames_dir / f"{Path(img_path.stem).stem}.{args.output_format}"
+                frames_dir / f"{Path(img_path.stem).stem}.{args.output_format}"
             )
             print(f"out_path {out_path}")
             cv2.imwrite(str(out_path), annotated)
