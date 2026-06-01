@@ -3,12 +3,14 @@ from __future__ import annotations
 import base64
 import json
 import os
+import random
 import sys
-from collections.abc import Iterable, Sequence
+import time
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast, ClassVar, TypeAlias
 
-from openai import AuthenticationError, OpenAI
+from openai import AuthenticationError, InternalServerError, OpenAI, RateLimitError
 from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion_content_part_image_param import (
     ChatCompletionContentPartImageParam,
@@ -21,12 +23,60 @@ from openai.types.chat.chat_completion_content_part_text_param import (
     ChatCompletionContentPartTextParam,
 )
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
+from openai.types.chat.chat_completion_system_message_param import (
+    ChatCompletionSystemMessageParam,
+)
 from openai.types.chat.chat_completion_user_message_param import (
     ChatCompletionUserMessageParam,
 )
 
 MessageContentItem: TypeAlias = ChatCompletionContentPartParam
 ContextFile: TypeAlias = tuple[str, str]
+
+MAX_RETRIES = 3
+MAX_DELAY = 900
+
+
+def resolve_api_key(server_type: str) -> str | None:
+    """Resolve the API key based on server type."""
+    if server_type == "openai":
+        key = os.getenv("OPENAI_API_KEY")
+        if not key:
+            raise ValueError("OpenAI API key is not provided in credentials!")
+        return key
+    elif server_type == "custom":
+        key = os.getenv("CUSTOM_SERVER_API_KEY")
+        return key if key else None
+    else:
+        raise ValueError(f"Unknown server type: {server_type}")
+
+
+def resolve_base_url(server_type: str) -> str | None:
+    """Resolve the base URL based on server type."""
+    if server_type == "custom":
+        url = os.getenv("CUSTOM_SERVER_URL")
+        if not url:
+            raise ValueError("Custom server URL is not provided in credentials!")
+        if not url.startswith(("http://", "https://")):
+            raise ValueError(
+                f"Custom server URL must start with http:// or https://, got: {url}"
+            )
+        return url
+    return None
+
+
+def build_client(base_url: str | None, api_key: str | None) -> OpenAI:
+    """Create an OpenAI client, optionally with a custom base URL."""
+    kwargs: dict = {}
+    if api_key:
+        kwargs["api_key"] = api_key
+    elif base_url:
+        # Custom servers (e.g. Ollama, vLLM) may not require authentication.
+        # The OpenAI SDK requires an api_key, so use a placeholder.
+        kwargs["api_key"] = "not-needed"
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAI(**kwargs)
 
 
 @dataclass(frozen=True)
@@ -118,29 +168,90 @@ def parse_context_files(raw: str) -> list[ContextFile]:
 
 
 def build_messages(
-    question: str, context_files: Sequence[ContextFile]
-) -> list[MessageContentItem]:
-    """Helper to hide the dataclass implementation detail from callers."""
-    return MessageBuilder(question=question, context_files=context_files).build()
+    question: str,
+    context_files: Sequence[ContextFile],
+    system_message: str | None = None,
+) -> list[ChatCompletionMessageParam]:
+    """Build the full message list including optional system message and user content."""
+    message_content = MessageBuilder(
+        question=question, context_files=context_files
+    ).build()
+
+    messages: list[ChatCompletionMessageParam] = []
+
+    if system_message:
+        messages.append(
+            cast(
+                ChatCompletionMessageParam,
+                ChatCompletionSystemMessageParam(
+                    role="system", content=system_message
+                ),
+            )
+        )
+
+    user_message = ChatCompletionUserMessageParam(role="user", content=list(message_content))
+    messages.append(cast(ChatCompletionMessageParam, user_message))
+    return messages
 
 
 def call_chat_completion(
-    client: OpenAI, model: str, messages: Iterable[MessageContentItem]
+    client: OpenAI,
+    model: str,
+    messages: list[ChatCompletionMessageParam],
+    temperature: float | None = None,
+    max_tokens: int | None = None,
+    top_p: float | None = None,
 ) -> ChatCompletion:
-    """Request a chat completion using the given client."""
-    user_message = ChatCompletionUserMessageParam(role="user", content=list(messages))
-    payload: list[ChatCompletionMessageParam] = [
-        cast(ChatCompletionMessageParam, user_message)
-    ]
-    return client.chat.completions.create(
-        model=model,
-        messages=payload,
-    )
+    """Request a chat completion with optional parameters."""
+    api_params: dict = {"model": model, "messages": messages}
+    if temperature is not None:
+        api_params["temperature"] = temperature
+    if max_tokens is not None:
+        api_params["max_tokens"] = max_tokens
+    if top_p is not None:
+        api_params["top_p"] = top_p
+
+    return client.chat.completions.create(**api_params)
+
+
+def _call_with_retries(
+    client: OpenAI,
+    model: str,
+    messages: list[ChatCompletionMessageParam],
+    temperature: float | None,
+    max_tokens: int | None,
+    top_p: float | None,
+) -> ChatCompletion | None:
+    """Call chat completion with exponential backoff retry on server errors."""
+    for attempt in range(MAX_RETRIES):
+        try:
+            return call_chat_completion(
+                client, model, messages, temperature, max_tokens, top_p
+            )
+        except (InternalServerError, RateLimitError) as exc:
+            if attempt == MAX_RETRIES - 1:
+                print(f"Max retries reached. Last error: {exc}")
+                return None
+            sleep_time = min(2**attempt + random.uniform(0, 1), MAX_DELAY)
+            print(
+                f"Server error encountered ({exc}). Retrying in {sleep_time:.2f}s..."
+            )
+            time.sleep(sleep_time)
+        except AuthenticationError as exc:
+            print(f"Authentication error: {exc}")
+            return None
+        except Exception as exc:  # noqa: BLE001 - keep reporting unexpected errors
+            print(f"An error occurred: {exc}")
+            return None
+    return None
 
 
 def main(argv: Sequence[str]) -> int:
-    if len(argv) < 4:
-        print("Usage: chatgpt.py <context_files_json> <question> <model>")
+    if len(argv) < 9:
+        print(
+            "Usage: chatgpt.py <context_files_json> <question> <model> "
+            "<server_type> <temperature> <max_tokens> <top_p> <system_message>"
+        )
         return 1
 
     try:
@@ -149,43 +260,64 @@ def main(argv: Sequence[str]) -> int:
         print(str(exc))
         return 1
 
-    question = argv[2]
+    question = argv[2].replace("__cn__", "\n")
     model = argv[3]
-    question = question.replace("__cn__", "\n")
+    server_type = argv[4]
+    temperature_arg = argv[5]
+    max_tokens_arg = argv[6]
+    top_p_arg = argv[7]
+    system_message_arg = argv[8]
 
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        print("OpenAI API key is not provided in credentials!")
-        return 1
-
-    client = OpenAI(api_key=openai_api_key)
+    temperature = float(temperature_arg) if temperature_arg and temperature_arg != "None" else None
+    max_tokens = int(max_tokens_arg) if max_tokens_arg and max_tokens_arg != "None" else None
+    top_p = float(top_p_arg) if top_p_arg and top_p_arg != "None" else None
+    system_message = system_message_arg.replace("__cn__", "\n") if system_message_arg and system_message_arg != "None" else None
 
     try:
-        message_content = build_messages(question, context_files)
-        response = call_chat_completion(client, model, message_content)
-    except AuthenticationError as exc:
-        print(f"Authentication error: {exc}")
-        return 1
+        api_key = resolve_api_key(server_type)
     except ValueError as exc:
         print(str(exc))
         return 1
-    except Exception as exc:  # noqa: BLE001 - keep reporting unexpected OpenAI errors
+
+    try:
+        base_url = resolve_base_url(server_type)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    try:
+        client = build_client(base_url, api_key)
+    except Exception as exc:  # noqa: BLE001
         print(f"An error occurred: {exc}")
         return 1
 
+    try:
+        messages = build_messages(question, context_files, system_message)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    response = _call_with_retries(client, model, messages, temperature, max_tokens, top_p)
+    if response is None:
+        return 1
+
     if not response.choices:
+        server_label = server_type if server_type != "openai" else "OpenAI"
         print(
-            "No output was generated!\nPlease ensure that your OpenAI account has sufficient credits.\n"
-            "You can check your balance here: https://platform.openai.com/settings/organization/billing"
+            f"No output was generated!\n"
+            f"Please ensure that your {server_label} account has sufficient credits "
+            f"or that the model '{model}' is available on the configured server."
         )
         return 1
 
     message = response.choices[0].message
     content = getattr(message, "content", None)
     if not content:
+        server_label = server_type if server_type != "openai" else "OpenAI"
         print(
-            "No output was generated!\nPlease ensure that your OpenAI account has sufficient credits.\n"
-            "You can check your balance here: https://platform.openai.com/settings/organization/billing"
+            f"No output was generated!\n"
+            f"Please ensure that your {server_label} account has sufficient credits "
+            f"or that the model '{model}' is available on the configured server."
         )
         return 1
 

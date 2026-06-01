@@ -1,14 +1,19 @@
-<tool id="chatgpt_openai_api" name="chatGPT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1">
+<tool id="chatgpt_openai_api" name="chatGPT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>Integrating OpenAI's ChatGPT into Galaxy</description>
     <macros>
-        <token name="@TOOL_VERSION@">2025</token>
+        <import>macros.xml</import>
         <token name="@VERSION_SUFFIX@">1</token>
+        <token name="@PROFILE@">25.1</token>
     </macros>
     <requirements>
         <requirement type="package" version="3.13">python</requirement>
-        <requirement type="package" version="2.7.1">openai</requirement>
+        <requirement type="package" version="@TOOL_VERSION@">openai</requirement>
         <credentials name="openai_credentials" version="1.0" label="OpenAI Credentials" description="Credentials for accessing OpenAI's API.">
-            <secret name="openai_api_key" inject_as_env="OPENAI_API_KEY" optional="false" label="OpenAI API Key" description="Your OpenAI API key is required to use this tool. You can obtain it from your OpenAI account dashboard."/>
+            <secret name="openai_api_key" inject_as_env="OPENAI_API_KEY" optional="true" label="OpenAI API Key" description="Required when using the OpenAI server type. You can obtain it from your OpenAI account dashboard."/>
+        </credentials>
+        <credentials name="custom_server_credentials" version="1.1" label="Custom Server Credentials" description="Credentials for accessing a custom OpenAI-compatible server.">
+            <variable name="custom_server_url" inject_as_env="CUSTOM_SERVER_URL" optional="true" label="Server URL" description="Base URL of the OpenAI-compatible API (e.g. http://localhost:8000/v1, https://my-server.com/v1)."/>
+            <secret name="custom_server_api_key" inject_as_env="CUSTOM_SERVER_API_KEY" optional="true" label="Custom Server API Key" description="Only needed if your custom server requires authentication. Leave empty for servers without API key requirements (e.g., local vLLM or Ollama)."/>
         </credentials>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
@@ -30,34 +35,99 @@
 #end if
 #set context_files = json.dumps($LINK_LIST)
 
+## Resolve model based on server type
+#if $server_type.server_type_selection == 'openai'
+    #set model = $server_type.model
+#else
+    #set model = $server_type.custom_model
+#end if
+
 python '$__tool_directory__/chatgpt.py'
 '$context_files'
 '$prompt'
 '$model'
+'$server_type.server_type_selection'
+'$advanced.temperature'
+'$advanced.max_tokens'
+'$advanced.top_p'
+'$advanced.system_message'
     ]]></command>
     <inputs>
-        <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
-            <option value="gpt-5" selected="true">Flagship model for coding, reasoning, and agentic tasks across domains. (gpt-5)</option>
-            <option value="gpt-5-mini">Faster, more cost-efficient version of GPT-5. It's great for well-defined tasks and precise prompts. (gpt-5-mini)</option>
-            <option value="gpt-5-nano">Fastest, cheapest version of GPT-5. It's great for summarization and classification tasks. (gpt-5-nano)</option>
-            <option value="gpt-4.1">Excels at instruction following and tool calling, with broad knowledge across domains (gpt-4.1)</option>
-            <option value="gpt-4o">High-intelligence flagship model for complex, multi-step tasks (gpt-4o)</option>
-        </param>
-        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional context data that will be uploaded to OpenAI's servers for processing."/>
-        <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want ChatGPT to perform." area="true">
+        <conditional name="server_type">
+            <param name="server_type_selection" type="select" label="Server" help="Choose where to send your request.">
+                <option value="openai" selected="true">OpenAI (official API)</option>
+                <option value="custom">Custom OpenAI-compatible server</option>
+            </param>
+            <when value="openai">
+                <param name="model" type="select" optional="false" label="Model" help="Select the OpenAI model you want to use.">
+                    <option value="gpt-5" selected="true">Flagship model for coding, reasoning, and agentic tasks across domains. (gpt-5)</option>
+                    <option value="gpt-5-mini">Faster, more cost-efficient version of GPT-5. It's great for well-defined tasks and precise prompts. (gpt-5-mini)</option>
+                    <option value="gpt-5-nano">Fastest, cheapest version of GPT-5. It's great for summarization and classification tasks. (gpt-5-nano)</option>
+                    <option value="gpt-4.1">Excels at instruction following and tool calling, with broad knowledge across domains. (gpt-4.1)</option>
+                    <option value="gpt-4o">High-intelligence flagship model for complex, multi-step tasks. (gpt-4o)</option>
+                </param>
+            </when>
+            <when value="custom">
+                <param name="custom_model" type="text" optional="false" label="Model" help="Model identifier as recognized by the server (e.g. llama-3.2-8b, gpt-4o).">
+                    <validator type="empty_field"/>
+                </param>
+            </when>
+        </conditional>
+        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional context data that will be uploaded for processing."/>
+        <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want the model to perform." area="true">
             <validator type="empty_field"/>
         </param>
+        <section name="advanced" title="Advanced Options" expanded="false">
+            <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Controls randomness in the output. Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model's default temperature will be used."/>
+            <param name="max_tokens" type="integer" optional="true" min="1" max="128000" label="Max tokens" help="Maximum number of tokens in the response. If not set, the model's default is used."/>
+            <param name="top_p" type="float" optional="true" min="0.0" max="1.0" label="Top P" help="Nucleus sampling threshold. If not set, the model's default is used."/>
+            <param name="system_message" type="text" optional="true" label="System message" help="Optional system prompt to set the model's behavior. If not set, no system message is sent." area="true"/>
+
+        </section>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} (${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" label="${tool.name} (#if $server_type.server_type_selection == 'openai' then $server_type.model else $server_type.custom_model#) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
     </outputs>
     <tests>
         <test expect_failure="true" expect_exit_code="1">
-            <param name="model" value="gpt-5"/>
+            <conditional name="server_type">
+                <param name="server_type_selection" value="openai"/>
+                <param name="model" value="gpt-5"/>
+            </conditional>
             <param name="context" value="chatgpt_test.txt" ftype="txt"/>
             <param name="prompt" value="What is this?"/>
             <assert_stdout>
                 <has_text text="OpenAI API key is not provided in credentials!"/>
+            </assert_stdout>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="server_type">
+                <param name="server_type_selection" value="custom"/>
+                <param name="custom_model" value="test-model"/>
+            </conditional>
+            <param name="prompt" value="Hello"/>
+            <credentials name="custom_server_credentials">
+                <variable name="custom_server_url" value="http://localhost:99999/v1"/>
+            </credentials>
+            <assert_stdout>
+                <has_text text="error"/>
+            </assert_stdout>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="server_type">
+                <param name="server_type_selection" value="custom"/>
+                <param name="custom_model" value="test-model"/>
+            </conditional>
+            <param name="prompt" value="Test with system message"/>
+            <section name="advanced">
+                <param name="system_message" value="You are a helpful assistant."/>
+                <param name="temperature" value="0.5"/>
+            </section>
+            <credentials name="custom_server_credentials">
+                <variable name="custom_server_url" value="http://localhost:99999/v1"/>
+            </credentials>
+            <assert_stdout>
+                <has_text text="error"/>
             </assert_stdout>
         </test>
     </tests>
@@ -67,43 +137,47 @@ python '$__tool_directory__/chatgpt.py'
 
 **What it does**
 
-This tool leverages OpenAI's ChatGPT API to generate responses based on user-provided context and prompt.
+This tool leverages OpenAI-compatible APIs to generate responses based on user-provided context and prompts.
 Users can upload context data in various formats and ask questions or execute prompts related to that data.
-The tool then uploads the data to a OpenAI server and processes them using the selected ChatGPT model, returning an AI-generated response tailored to the context provided.
+The tool processes the data using the selected model and returns an AI-generated response tailored to the context provided.
 
-To utilize this tool, users need to input their OpenAI API key in the credentials section. To obtain an API key, visit API keys page in your OpenAI Dashboard.
-Make sure to setup the payment method in your OpenAI account to use the API key.
+**Server Types**
 
-When you run this tool, your input data is sent to OpenAI's servers using your API-key. 
-OpenAI's models process the data and generate a response based on the context and prompt provided. 
-After receiving the response from the OpenAI server, the tool returns it to Galaxy and puts it in your history. 
-The files that have been uploaded are then deleted from the OpenAI's server, so they are not stored beyond their necessary use. 
-If the tool fails to delete your uploaded files automatically, you can manually delete them in your openai account page. You might want to check your OpenAI storage from time to time as they also have a quota.
+You can choose from two server types:
 
-For more information on the tool refer to GitHub README_ file.
+- **OpenAI (official API)**: Connect directly to OpenAI's API using your OpenAI API key. Select from the available OpenAI models.
+- **Custom OpenAI-compatible server**: Connect to any server that implements the OpenAI Chat Completions API (e.g., vLLM, Ollama, LiteLLM proxy, Mistral, local deployments). The server URL and API key are configured in the Custom Server Credentials section. Only the model name is specified per run.
 
-.. _README: https://github.com/bgruening/galaxytools/blob/master/tools/chatgpt/README.md
+**Credentials**
 
-Usage
-.....
+- **OpenAI API Key**: Required when using the OpenAI server type. Enter your key in the Galaxy credentials section.
+- **Custom Server URL**: Required when using the Custom server type. The base URL of the OpenAI-compatible API (e.g. ``http://localhost:8000/v1``, ``https://my-server.com/v1``).
+- **Custom Server API Key**: Optional. Only needed if your custom server requires authentication. Leave empty for servers without API key requirements (e.g., local vLLM or Ollama).
+
+**Usage**
 
 **Input**
 
-1. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOC, DOCX, HTML, JSON, PDF, TXT, JPG, JPEG, PNG, WEBP, or GIF. 
-This context data serves as the input for the prompt you wish to execute. If no context is provided, ChatGPT will respond based solely on the prompt.
+1. **Select a Server Type**: Choose between OpenAI or Custom.
 
-2. **Provide a Prompt**: Provide a prompt or task for ChatGPT to execute.
-The more specific the prompt, the more tailored the response will be.
+2. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOCX, HTML, JSON, PDF, TXT, JPG, PNG, or GIF. This context data serves as the input for the prompt you wish to execute. If no context is provided, the model will respond based solely on the prompt.
 
-3. **Select a Model**: Choose the ChatGPT model that best fits your needs. 
-Information about different models and their pricing can be found on the OpenAI website.
+3. **Provide a Prompt**: Provide a prompt or task for the model to execute. The more specific the prompt, the more tailored the response will be.
 
+**Advanced Options**
+
+- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature.
+
+- **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used.
+
+- **Top P**: Nucleus sampling threshold. If not set, the model's default is used.
+
+- **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
 
 **Output**
 
-The output is a response generated by ChatGPT, crafted based on the provided context data and the prompt posed.
-This response is saved in the `output.txt` file.
-
+The output is a response generated by the selected model, crafted based on the provided context data and the prompt.
+This response is saved in a Markdown file.
 
     ]]></help>
     <citations>
