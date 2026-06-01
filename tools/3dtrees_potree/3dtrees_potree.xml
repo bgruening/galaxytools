@@ -1,8 +1,8 @@
 <tool id="3dtrees_potree" name="3Dtrees: Potree Converter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
     <description>Convert LAS/LAZ point clouds to Potree octree format for web visualization</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.0.2</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@TOOL_VERSION@">1.1.0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
     <requirements>
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees_potree:@TOOL_VERSION@</container>
@@ -18,7 +18,7 @@
         --encoding '$encoding'
         --method '$method'
         --chunk-method '$chunk_method'
-        #if $attributes
+        #if $attributes and str($special_coloring.enabled) != 'true'
             --attributes '$attributes'
         #end if
         #if $grid_size and int($grid_size) > 0
@@ -28,6 +28,16 @@
         $keep_chunks
         $no_chunking
         $no_indexing
+        #if str($special_coloring.enabled) == 'true'
+            --special-coloring
+            --special-coloring-palette '$special_coloring.palette'
+            --special-coloring-n-colors '$special_coloring.n_colors'
+            --special-coloring-n-neighbors '$special_coloring.n_neighbors'
+            --special-coloring-instance-attribute '$special_coloring.instance_attribute'
+            --special-coloring-ground-id '$special_coloring.ground_id'
+            --special-coloring-ground-color '$special_coloring.ground_color'
+            $special_coloring.sidecar_json
+        #end if
         $generate_page
         #if $title
             --title '$title'
@@ -60,13 +70,32 @@
         <param argument="--chunk-method" type="select" label="Chunk Method" help="Chunking method used during the conversion phase">
             <option value="LASZIP" selected="true">LASZIP</option>
         </param>
-        <param argument="--attributes" type="text" optional="true" label="Attributes" help="Comma-separated list of attributes to include in output (e.g., 'rgb,intensity,classification'). Leave empty to use defaults." >
-             <validator type="regex" message="Only letters and commas are allowed">^[a-zA-Z,]+$</validator>
+        <param argument="--attributes" type="text" optional="true" label="Attributes" help="Comma-separated list of attributes to include in output (e.g., 'rgb,intensity,classification'). Leave empty to use defaults. Ignored when Special Coloring is enabled." >
+             <validator type="regex" message="Only letters, numbers, underscores, and commas are allowed">^[a-zA-Z0-9_,]+$</validator>
         </param>
         <param argument="--grid-size" type="integer" optional="true" value="0" min="0" label="Grid Size" help="Grid size for chunking phase. Leave at 0 to use PotreeConverter's automatic size selection." />
         <param argument="--keep-chunks" type="boolean" truevalue="--keep-chunks" falsevalue="" checked="false" label="Keep Chunks" help="Skip deleting temporary chunks during conversion" />
         <param argument="--no-chunking" type="boolean" truevalue="--no-chunking" falsevalue="" checked="false" label="No Chunking" help="Disable chunking phase" />
         <param argument="--no-indexing" type="boolean" truevalue="--no-indexing" falsevalue="" checked="false" label="No Indexing" help="Disable indexing phase" />
+        <conditional name="special_coloring">
+            <param name="enabled" argument="--special-coloring" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Special Coloring" help="Add a coloring_id extra dimension using neighbor-aware instance colors." />
+            <when value="true">
+                <param name="palette" argument="--special-coloring-palette" type="text" value="candy" label="Special Coloring Palette" help="Built-in palette name, or comma-separated #RRGGBB colors used to generate coloring_id values">
+                    <validator type="regex" message="Use a built-in palette name or comma-separated hex colors like #ff0000,#00ff00">^(sky|sea|cozy|fairy|winter|rainbow|pastel|candy|boring|#?[0-9A-Fa-f]{6}(,#?[0-9A-Fa-f]{6})*)$</validator>
+                </param>
+                <param name="n_colors" argument="--special-coloring-n-colors" type="integer" value="10" min="1" label="Special Coloring Color Count" help="Number of non-ground coloring IDs to generate" />
+                <param name="n_neighbors" argument="--special-coloring-n-neighbors" type="integer" value="10" min="1" label="Special Coloring Neighbors" help="Nearest instance centroids considered when avoiding nearby color collisions" />
+                <param name="instance_attribute" argument="--special-coloring-instance-attribute" type="text" value="PredInstance" label="Special Coloring Instance Attribute" help="Point attribute containing instance IDs">
+                    <validator type="regex" message="Only letters, numbers, and underscores are allowed">^[A-Za-z0-9_]+$</validator>
+                </param>
+                <param name="ground_id" argument="--special-coloring-ground-id" type="integer" value="0" label="Special Coloring Ground Instance ID" help="Instance ID treated as ground/background" />
+                <param name="ground_color" argument="--special-coloring-ground-color" type="text" value="#808080" label="Special Coloring Ground Color" help="Ground/background color as #RRGGBB">
+                    <validator type="regex" message="Use a hex color like #ffffff">^#[0-9A-Fa-f]{6}$</validator>
+                </param>
+                <param name="sidecar_json" argument="--special-coloring-sidecar-json" type="boolean" truevalue="--special-coloring-sidecar-json" falsevalue="" checked="false" label="Write Special Coloring JSON" help="Write special_coloring_mapping.json and patch generated Potree HTML viewers to use those colors." />
+            </when>
+            <when value="false" />
+        </conditional>
         <param argument="--title" type="text" optional="true" label="Viewer Title" help="Optional page title for the generated Potree viewer." >
             <validator type="regex" message="Only letters, numbers, spaces, dots, commas, colons, underscores, and dashes are allowed">^[A-Za-z0-9 .,_:-]+$</validator>
         </param>
@@ -80,6 +109,7 @@
         <!-- Collection output - discovers files in output directory -->
         <collection name="potree_output" type="list" label="Potree Output">
             <discover_datasets pattern="(?P&lt;designation&gt;metadata)\.json$" directory="output" format="json" recurse="true"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;special_coloring_mapping)\.json$" directory="output" format="json"/>
             <discover_datasets pattern="(?P&lt;designation&gt;hierarchy)\.bin$" directory="output" format="binary" recurse="true"/>
             <discover_datasets pattern="(?P&lt;designation&gt;octree)\.bin$" directory="output" format="binary" recurse="true"/>
             <discover_datasets pattern="(?P&lt;designation&gt;log)\.txt$" directory="output" format="txt" recurse="true"/>
@@ -119,6 +149,36 @@
                 </element>
             </output_collection>
         </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="mikro_segmented.laz" ftype="laz"/>
+            <param name="special_coloring|enabled" value="true"/>
+            <param name="special_coloring|palette" value="#ff0000,#00ff00"/>
+            <param name="special_coloring|sidecar_json" value="true"/>
+            <output_collection name="potree_output" type="list" count="5">
+                <element name="metadata" ftype="json">
+                    <assert_contents>
+                        <has_json_property_with_value property="points" value="12917" />
+                    </assert_contents>
+                </element>
+                <element name="special_coloring_mapping" ftype="json">
+                    <assert_contents>
+                        <has_json_property_with_value property="version" value="1" />
+                        <has_json_property_with_value property="color_attribute" value='"coloring_id"' />
+                        <has_json_property_with_value property="instance_attribute" value='"PredInstance"' />
+                        <has_json_property_with_value property="ground_instance_id" value="0" />
+                        <has_json_property_with_value property="ground_coloring_id" value="0" />
+                        <has_json_property_with_value property="ground_color" value='"#808080"' />
+                        <has_json_property_with_value property="palette" value='"#ff0000,#00ff00"' />
+                        <has_json_property_with_value property="n_colors" value="10" />
+                        <has_json_property_with_value property="n_neighbors" value="10" />
+                        <has_json_property_with_value property="0" value='{"hex": "#808080", "rgb": [128, 128, 128]}' />
+                        <has_json_property_with_value property="1" value='{"hex": "#ff0000", "rgb": [255, 0, 0]}' />
+                        <has_json_property_with_value property="10" value='{"hex": "#00ff00", "rgb": [0, 255, 0]}' />
+                        <has_json_property_with_value property="0" value="0" />
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
     </tests>
     <help>
 
@@ -133,6 +193,7 @@ This tool converts LAS/LAZ point cloud files to the Potree octree format for eff
 3. **Flexible sampling methods**: Choose between Poisson, Poisson Average, or Random sampling
 4. **Web-ready output**: Generates files that can be directly served for Potree viewer visualization
 5. **Optional web page generation**: Can generate a ready-to-use HTML viewer page
+6. **Special instance coloring**: Optionally adds a display-only ``coloring_id`` attribute from ``PredInstance`` while preserving original RGB
 
 -----
 
@@ -147,6 +208,14 @@ This tool converts LAS/LAZ point cloud files to the Potree octree format for eff
 - **Keep Chunks**: Preserve temporary chunk files after conversion
 - **No Chunking**: Disable the chunking phase
 - **No Indexing**: Disable the indexing phase
+- **Special Coloring**: Add a ``coloring_id`` point attribute for neighbor-aware instance colors.
+- **Special Coloring Palette**: Built-in palette name (sky, sea, cozy, fairy, winter, rainbow, pastel, candy, boring) or custom comma-separated ``#RRGGBB`` colors
+- **Special Coloring Color Count**: Number of non-ground coloring IDs
+- **Special Coloring Neighbors**: Number of nearest instance centroids considered when avoiding nearby color reuse
+- **Special Coloring Instance Attribute**: Point attribute containing instance IDs, default ``PredInstance``
+- **Special Coloring Ground Instance ID**: Instance ID treated as ground/background, default ``0``. Negative instance IDs are also treated as background.
+- **Special Coloring Ground Color**: Ground/background color as ``#RRGGBB``
+- **Write Special Coloring JSON**: Write ``special_coloring_mapping.json`` and patch generated Potree HTML viewers to use the sidecar colors.
 - **Generate Page**: Create a web viewer page with the specified name
 - **Viewer Title**: Optional title shown in the generated viewer page
 
@@ -160,6 +229,7 @@ The tool produces a collection containing:
 - **hierarchy** (binary): Binary file containing the octree hierarchy
 - **octree** (binary): Binary file containing the point data
 - **log** (text): Conversion log file
+- **special_coloring_mapping** (JSON, optional): Mapping from ``coloring_id`` to colors and from ``PredInstance`` to ``coloring_id`` when Write Special Coloring JSON is enabled
 
 When **Generate Page** is specified (e.g., "viewer"):
 
