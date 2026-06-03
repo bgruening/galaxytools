@@ -12,35 +12,33 @@
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees_metadata:@TOOL_VERSION@</container>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-        #set $pointcloud_arg = ''
-        #if $pointcloud
-            #set $pointcloud_name = 'pointcloud.' + str($pointcloud.ext)
-            ln -s '$pointcloud' '$pointcloud_name' &&
-            #set $pointcloud_arg = '--pointcloud ' + $pointcloud_name
+        #set $input_name = 'metadata_input.' + str($input.ext)
+        ln -s '$input' '$input_name' &&
+        #if str($input.ext) == 'json'
+            #set $input_arg = '--collection-summary ' + $input_name
+        #else
+            #set $input_arg = '--pointcloud ' + $input_name
         #end if
-        ln -s '$collection_summary' collection_summary.json &&
         python -u /src/run.py
-        --collection-summary collection_summary.json
-        $pointcloud_arg
+        $input_arg
         --metadata-layers '$metadata_layers'
         --reference-data-dir /reference-data
         --output-file additional_metadata.json
         2>&1
     ]]></command>
     <inputs>
-        <param name="collection_summary" type="data" format="json" label="Collection summary" help="collection_summary.json from the 3Dtrees: LAS/LAZ Standardization collection mode. If centroid longitude/latitude values are present, they are used directly; otherwise the centroid is derived from collection.multipolygon_wkt."/>
-        <param name="pointcloud" type="data" format="las,laz" optional="true" label="Point cloud centroid fallback" help="Optional LAS/LAZ file used only if the collection summary has no centroid and no multipolygon_wkt. The tool reads only header bounds, not point records."/>
+        <param name="input" type="data" format="json,las,laz" label="Collection summary or point cloud" help="Use a collection_summary.json with centroid information or a LAS/LAZ point cloud. JSON inputs are read as collection summaries; LAS/LAZ inputs use header bounds as the centroid source."/>
         <param argument="--metadata-layers" type="select" multiple="true" optional="false" label="Metadata layers to extract" help="Choose at least one metadata layer. Both are selected by default.">
             <option value="gadm" selected="true">GADM administrative boundaries</option>
             <option value="ecoregion" selected="true">WWF Terrestrial Ecoregions v2.0</option>
         </param>
     </inputs>
     <outputs>
-        <data name="additional_metadata" format="json" label="additional_metadata (${metadata_layers})" from_work_dir="additional_metadata.json"/>
+        <data name="additional_metadata" format="json" label="Additional Metadata (${metadata_layers})" from_work_dir="additional_metadata.json"/>
     </outputs>
     <tests>
         <test expect_num_outputs="1">
-            <param name="collection_summary" value="collection_summary_without_crs.json" ftype="json"/>
+            <param name="input" value="collection_summary_without_crs.json" ftype="json"/>
             <param name="metadata_layers" value="gadm,ecoregion"/>
             <output name="additional_metadata" ftype="json">
                 <assert_contents>
@@ -59,7 +57,7 @@
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="collection_summary" value="collection_summary_with_crs.json" ftype="json"/>
+            <param name="input" value="collection_summary_with_crs.json" ftype="json"/>
             <param name="metadata_layers" value="gadm,ecoregion"/>
             <output name="additional_metadata" ftype="json">
                 <assert_contents>
@@ -81,8 +79,7 @@
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="collection_summary" value="collection_summary_no_geometry.json" ftype="json"/>
-            <param name="pointcloud" value="mikro.laz" ftype="laz"/>
+            <param name="input" value="mikro.laz" ftype="laz"/>
             <param name="metadata_layers" value="gadm,ecoregion"/>
             <output name="additional_metadata" ftype="json">
                 <assert_contents>
@@ -102,22 +99,23 @@
     <help format="markdown"><![CDATA[
 **What it does**
 
-This tool reads a 3Dtrees `collection_summary.json`, resolves a WGS84 centroid,
-and intersects that point with the selected reference layers. If the summary
-contains centroid longitude/latitude values, the tool uses them directly. If not,
-it computes the centroid from `collection.multipolygon_wkt`. GADM provides
-administrative attributes; WWF Terrestrial Ecoregions v2.0 provides raw
-ecoregion, realm, and biome attributes.
+This tool reads a 3Dtrees `collection_summary.json` or LAS/LAZ point cloud,
+resolves a WGS84 centroid, and intersects that point with the selected reference
+layers. If the summary contains centroid longitude/latitude values, the tool uses
+them directly. If not, it computes the centroid from
+`collection.multipolygon_wkt`. If no summary is supplied, it reads the point
+cloud header bounds. GADM provides administrative attributes; WWF Terrestrial
+Ecoregions v2.0 provides raw ecoregion, realm, and biome attributes.
 
 -----
 
 **Input**
 
-- **Collection summary**: `collection_summary.json` produced by the 3Dtrees
-  standardization tool in collection mode.
-- **Point cloud centroid fallback**: optional LAS/LAZ file used only when the
-  summary has no centroid and no `collection.multipolygon_wkt`. The tool reads
-  header bounds only.
+- **Collection summary or point cloud**: a `collection_summary.json` produced by
+  the [3DTrees: LAS/LAZ Standardization](https://github.com/bgruening/galaxytools/tree/master/tools/3dtrees_standardization)
+  tool in collection mode, or a LAS/LAZ point cloud.
+  JSON inputs are read as collection summaries; LAS/LAZ inputs use header bounds
+  as the centroid source.
 - **Metadata layers to extract**: one or more internal reference layers. The tool
   reads the selected reference datasets from the Docker image.
 
