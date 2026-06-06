@@ -85,16 +85,16 @@
         #if str($training_type.model) == 's_train':
             ## set target variables
             #if str($target_variables) != 'None':
-                targets=`'$__tool_directory__/convert_index_name.py' input/train/clin.csv $target_variables` &&
+                targets="`python '$__tool_directory__/convert_index_name.py' input/train/clin.csv $target_variables`" &&
                 echo "Target variables: \$targets" &&
             #end if
             ## set survival variables
             #if str($surv_event_var) != 'None' and str($surv_time_var) != 'None':
-                survival_event=`'$__tool_directory__/convert_index_name.py' input/train/clin.csv $surv_event_var` &&
+                survival_event="`python '$__tool_directory__/convert_index_name.py' input/train/clin.csv $surv_event_var`" &&
                 ## check if survival variable is numerical
                 echo "Survival event variable: \$survival_event" &&
-                python '$__tool_directory__/flexynesis_utils.py' --util validate_survival --clin input/train/clin.csv --clin_variable \$survival_event &&
-                survival_time=`'$__tool_directory__/convert_index_name.py' input/train/clin.csv $surv_time_var` &&
+                python '$__tool_directory__/flexynesis_utils.py' --util validate_survival --clin input/train/clin.csv --clin_variable "\$survival_event" &&
+                survival_time="`python '$__tool_directory__/convert_index_name.py' input/train/clin.csv $surv_time_var`" &&
                 echo "Survival time variable: \$survival_time" &&
             #end if
             #if str($model_class) == 'DirectPred' or str($model_class) == 'GNN' or str($model_class) == 'MultiTripletNetwork':
@@ -102,14 +102,18 @@
                     ## set clinical variables for Cox model
                     #if str($plot.plot_parent_condi.plot_cox_conditional.plot_cox) == 'yes':
                         #if str($plot.plot_parent_condi.plot_cox_conditional.clinical_variables) != 'None':
-                            covars=`'$__tool_directory__/convert_index_name.py' input/train/clin.csv $plot.plot_parent_condi.plot_cox_conditional.clinical_variables` &&
+                            covars="`python '$__tool_directory__/convert_index_name.py' input/train/clin.csv $plot.plot_parent_condi.plot_cox_conditional.clinical_variables`" &&
                             ## check if covariates is numerical
                             echo "Clinical variables for Cox model: \$covars" &&
-                            python '$__tool_directory__/flexynesis_utils.py' --util validate_covariate --clin input/train/clin.csv --clin_variable \$covars &&
+                            python '$__tool_directory__/flexynesis_utils.py' --util validate_covariate --clin input/train/clin.csv --clin_variable "\$covars" &&
                         #end if
                     #end if
                 #end if
             #end if
+        #end if
+        #if str($covariates) != 'None':
+            covariates_names="`python '$__tool_directory__/convert_index_name.py' input/train/clin.csv $covariates`" &&
+            echo "Covariates: \$covariates_names" &&
         #end if
 
         flexynesis
@@ -127,16 +131,19 @@
             #end if
             #if str($training_type.model) == 's_train':
                 #if str($target_variables) != 'None':
-                    --target_variables \$targets
+                    --target_variables "\$targets"
                 #end if
                 #if str($surv_event_var) != 'None' and str($surv_time_var) != 'None':
-                    --surv_event_var \$survival_event
-                    --surv_time_var \$survival_time
+                    --surv_event_var "\$survival_event"
+                    --surv_time_var "\$survival_time"
                 #end if
             #end if
             #if str($training_type.model) == 'cm_train':
                 --input_layers $str(",".join($input_layers))
                 --output_layers $str(",".join($output_layers))
+            #end if
+            #if str($covariates) != 'None':
+                --covariates "\$covariates_names"
             #end if
             --fusion_type $fusion_type
             --hpo_iter $hpo_iter
@@ -156,7 +163,7 @@
             $evaluate_baseline_performance
             --feature_importance_method $feature_importance_method
             #if str($training_type.model) == 's_train':
-                #if str($training_type.model_class.model_class) in ("DirectPred", "GNN", "MultiTripletNetwork"):
+                #if str($training_type.model_class.model_class) in ("DirectPred", "GNN", "MultiTripletNetwork", "supervised_vae"):
                     #if str($training_type.model_class.safetensors_out_bool) == 'True':
                         --safetensors
                     #end if
@@ -180,7 +187,7 @@
         done
 
         #if str($training_type.model) == 's_train':
-            #if str($model_class) == 'DirectPred' or str($model_class) == 'GNN' or str($model_class) == 'MultiTripletNetwork':
+            #if str($model_class) == 'DirectPred' or str($model_class) == 'GNN' or str($model_class) == 'MultiTripletNetwork' or str($model_class) == 'supervised_vae':
                 #if str($plot.plot_parent_condi.plot_boolean) == 'yes':
                     #if str($plot.plot_parent_condi.plot_embeddings_conditional.plot_embeddings) == 'yes':
                             && python '$__tool_directory__/flexynesis_plot.py'
@@ -235,14 +242,14 @@
                                     --omics_test input/test/${omics_name}.csv
                                     --layer ${omics_name}
                                 #else
-                                    --omics_train input/train/${data_names}.csv
-                                    --omics_test input/test/${data_names}.csv
-                                    --layer ${data_names}
+                                    --omics_train input/train/${data_names[0]}.csv
+                                    --omics_test input/test/${data_names[0]}.csv
+                                    --layer ${data_names[0]}
                                 #end if
                                 --surv_time_var \$survival_time
                                 --surv_event_var \$survival_event
                                 #if str($plot.plot_parent_condi.plot_cox_conditional.clinical_variables) != 'None':
-                                    --clinical_variables \$covars
+                                    --clinical_variables "\$covars"
                                 #end if
                                 --top_features $plot.plot_parent_condi.plot_cox_conditional.top_features
                                 --n_splits $plot.plot_parent_condi.plot_cox_conditional.n_splits
@@ -347,9 +354,10 @@
                 </repeat>
                 <conditional name="model_class" label="Model class">
                     <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
-                        <option value="DirectPred">DirectPred</option>
-                        <option value="GNN">GNN</option>
-                        <option value="MultiTripletNetwork">MultiTripletNetwork</option>
+                        <option value="DirectPred">Fully connected network for multi-omics integration with supervisor heads (DirectPred)</option>
+                        <option value="GNN">Graph Neural Network (GNN)</option>
+                        <option value="MultiTripletNetwork">Multi-triplet network</option>
+                        <option value="supervised_vae">Supervised Variational Autoencoder</option>
                         <option value="RandomForest">RandomForest</option>
                         <option value="SVM">SVM</option>
                         <option value="RandomSurvivalForest">RandomSurvivalForest</option>
@@ -399,6 +407,12 @@
                             <expand macro="safetensors_param"/>
                         </expand>
                     </when>
+                    <when value="supervised_vae">
+                        <expand macro="flexynesis_common_params">
+                            <expand macro="plot_input_section"/>
+                            <expand macro="safetensors_param"/>
+                        </expand>
+                    </when>
                     <when value="RandomForest">
                         <expand macro="flexynesis_common_params"/>
                     </when>
@@ -426,6 +440,7 @@
                 <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
                     <option value="supervised_vae">supervised_vae</option>
                 </param>
+                <expand macro="covariates_param"/>
                 <expand macro="advanced"/>
                 <expand macro="safetensors_param"/>
             </when>
@@ -450,6 +465,7 @@
                 <param argument="--model_class" type="select" label="Model class" help="The kind of model class to instantiate">
                     <option value="CrossModalPred">CrossModalPred</option>
                 </param>
+                <expand macro="covariates_param"/>
                 <expand macro="advanced"/>
                 <expand macro="safetensors_param"/>
             </when>
@@ -460,17 +476,17 @@
             <discover_datasets pattern="(?P&lt;name&gt;.+)\.tabular$" format="tabular" directory="output"/>
         </collection>
         <data name="model" format="safetensors" from_work_dir="output/job.final_model.safetensors" label="${tool.name} on ${on_string}: trained_model">
-            <filter>(training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork") and training_type['model_class']['safetensors_out_bool'] == True) or ((training_type['model'] == 'us_train' or training_type['model'] == 'cm_train') and training_type['safetensors_out_bool'] == True)</filter>
+            <filter>(training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork", "supervised_vae") and training_type['model_class']['safetensors_out_bool'] == True) or ((training_type['model'] == 'us_train' or training_type['model'] == 'cm_train') and training_type['safetensors_out_bool'] == True)</filter>
         </data>
         <data name="artifacts" format="json" from_work_dir="output/job.artifacts.json" label="${tool.name} on ${on_string}: artifacts">
-            <filter>(training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork") and training_type['model_class']['safetensors_out_bool'] == True) or ((training_type['model'] == 'us_train' or training_type['model'] == 'cm_train') and training_type['safetensors_out_bool'] == True)</filter>
+            <filter>(training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork", "supervised_vae") and training_type['model_class']['safetensors_out_bool'] == True) or ((training_type['model'] == 'us_train' or training_type['model'] == 'cm_train') and training_type['safetensors_out_bool'] == True)</filter>
         </data>
         <data name="config" format="json" from_work_dir="output/job.final_model_config.json" label="${tool.name} on ${on_string}: config">
-            <filter>(training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork") and training_type['model_class']['safetensors_out_bool'] == True) or ((training_type['model'] == 'us_train' or training_type['model'] == 'cm_train') and training_type['safetensors_out_bool'] == True)</filter>
+            <filter>(training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork", "supervised_vae") and training_type['model_class']['safetensors_out_bool'] == True) or ((training_type['model'] == 'us_train' or training_type['model'] == 'cm_train') and training_type['safetensors_out_bool'] == True)</filter>
         </data>
         <collection name="plots" type="list" label="${tool.name} on ${on_string}: plots">
             <discover_datasets pattern="__name_and_ext__" directory="plots"/>
-            <filter>training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork") and training_type['model_class']['plot']['plot_parent_condi']['plot_boolean'] == 'yes'</filter>
+            <filter>training_type['model'] == 's_train' and training_type['model_class']['model_class'] in ("DirectPred", "GNN", "MultiTripletNetwork", "supervised_vae") and training_type['model_class']['plot']['plot_parent_condi']['plot_boolean'] == 'yes'</filter>
         </collection>
     </outputs>
     <tests>
@@ -1680,6 +1696,282 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- test 23: Supervised training with GEX and CNV data, supervised_vae model, Erlotinib target -->
+        <test expect_num_outputs="4">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <repeat name="omics">
+                    <param name="train_omics" value="train/cnv" ftype="tabular"/>
+                    <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                    <param name="assay" value="foo"/>
+                </repeat>
+                <conditional name="model_class">
+                    <param name="model_class" value="supervised_vae"/>
+                    <param name="target_variables" value="3"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                </conditional>
+            </conditional>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.GradientShap">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tA2M\t"/>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tABCC4\t"/>
+                        <has_text_matching expression="GradientShap"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_importance.IntegratedGradients">
+                    <assert_contents>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tA2M\t"/>
+                        <has_text_matching expression="Erlotinib\t0\t\tbar\tABCC4\t"/>
+                        <has_text_matching expression="IntegratedGradients"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.bar">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.feature_logs.foo">
+                    <assert_contents>
+                        <has_n_lines n="25"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704\tErlotinib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="supervised_vae\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="supervised_vae\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="supervised_vae\tErlotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="model" ftype="safetensors">
+                <assert_contents>
+                    <has_size value="210916"/>
+                </assert_contents>
+            </output>
+            <output name="artifacts" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="schema_version" value="1"/>
+                    <has_json_property_with_value property="original_modalities" value="[&quot;bar&quot;, &quot;foo&quot;]"/>
+                </assert_contents>
+            </output>
+            <output name="config" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="model_class" value='"supervised_vae"'/>
+                    <has_json_property_with_value property="epochs" value="500"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test 24: Supervised training with GEX data, DirectPred model, Erlotinib target + Lapatinib covariate -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="DirectPred"/>
+                    <param name="target_variables" value="3"/>
+                    <param name="covariates" value="5"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text_matching expression="Covariates: Lapatinib"/>
+            </assert_stdout>
+            <output_collection name="results" type="list">
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704\tErlotinib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 25: Supervised training with a target variable name containing a space ("Niloti nib") to verify shell-quoting safety -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="DirectPred"/>
+                    <param name="target_variables" value="6"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text_matching expression="Target variables: Niloti nib"/>
+            </assert_stdout>
+            <output_collection name="results" type="list">
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704\tNiloti nib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tNiloti nib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred\tNiloti nib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="DirectPred\tNiloti nib\tnumerical\tr2\t"/>
+                        <has_text_matching expression="DirectPred\tNiloti nib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 26: two target variables (one with a space) + covariate, to verify shell-quoting safety -->
+        <test expect_num_outputs="1">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <conditional name="model_class">
+                    <param name="model_class" value="DirectPred"/>
+                    <param name="target_variables" value="3,6"/>
+                    <param name="covariates" value="5"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
+            </conditional>
+            <assert_stdout>
+                <has_text_matching expression="Target variables: Erlotinib,Niloti nib"/>
+                <has_text_matching expression="Covariates: Lapatinib"/>
+            </assert_stdout>
+            <output_collection name="results" type="list">
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704\tErlotinib\t"/>
+                        <has_text_matching expression="source_dataset:A-704\tNiloti nib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tNiloti nib\t"/>
+                    </assert_contents>
+                </element>
+                <element name="job.stats">
+                    <assert_contents>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="DirectPred\tNiloti nib\tnumerical\tmse\t"/>
+                        <has_text_matching expression="DirectPred\tErlotinib\tnumerical\tpearson_corr\t"/>
+                        <has_text_matching expression="DirectPred\tNiloti nib\tnumerical\tpearson_corr\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- test 27: supervised_vae with dimred plot-->
+        <test expect_num_outputs="2">
+            <param name="non_commercial_use" value="True"/>
+            <conditional name="training_type">
+                <param name="model" value="s_train"/>
+                <param name="train_clin" value="train/clin" ftype="tabular"/>
+                <param name="test_clin" value="test/clin" ftype="tabular"/>
+                <param name="train_omics_main" value="train/gex" ftype="tabular"/>
+                <param name="test_omics_main" value="test/gex" ftype="tabular"/>
+                <param name="assay_main" value="bar"/>
+                <repeat name="omics">
+                    <param name="train_omics" value="train/cnv" ftype="tabular"/>
+                    <param name="test_omics" value="test/cnv" ftype="tabular"/>
+                    <param name="assay" value="foo"/>
+                </repeat>
+                <conditional name="model_class">
+                    <param name="model_class" value="supervised_vae"/>
+                    <param name="target_variables" value="3"/>
+                    <section name="advanced">
+                        <param name="hpo_iter" value="1"/>
+                    </section>
+                    <section name="plot">
+                        <conditional name="plot_parent_condi">
+                            <param name="plot_boolean" value="yes"/>
+                            <conditional name="plot_embeddings_conditional">
+                                <param name="plot_embeddings" value="yes"/>
+                                <param name="method" value="pca"/>
+                                <param name="format" value="jpg"/>
+                                <param name="dpi" value="300"/>
+                            </conditional>
+                        </conditional>
+                    </section>
+                    <param name="safetensors_out_bool" value="False"/>
+                </conditional>
+            </conditional>
+            <output_collection name="results" type="list">
+                <element name="job.embeddings_test">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_train">
+                    <assert_contents>
+                        <has_n_lines n="50"/>
+                    </assert_contents>
+                </element>
+                <element name="job.predicted_labels">
+                    <assert_contents>
+                        <has_text_matching expression="source_dataset:A-704\tErlotinib\t"/>
+                        <has_text_matching expression="target_dataset:KMRC-20\tErlotinib\t"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="plots" type="list">
+                <element name="job.embeddings_test_pca_Erlotinib_known">
+                    <assert_contents>
+                        <has_image_channels channels="3"/>
+                    </assert_contents>
+                </element>
+                <element name="job.embeddings_test_pca_Erlotinib_predicted">
+                    <assert_contents>
+                        <has_image_channels channels="3"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
     </tests>
     <help><![CDATA[
 @COMMON_HELP@
@@ -1784,6 +2076,14 @@ For survival analysis, two separate variables are required, where the first vari
 .. class:: infomark
 
 **Note:**  The **GNN** model only works with genes (for example CpG methylation sites does not work). The reason is that GNNs require a prior knowledge network, which is currently set to use STRING database.
+
+.. class:: infomark
+
+**Note:**  When using the **GNN** model, four graph convolution types are available:
+
+- **GC** (GraphConv — default): applies separate learned linear transformations to the node itself and to its neighbors, then aggregates neighbors by mean. A good general-purpose baseline.
+- **GCN** (GCNConv): aggregates neighbor features using a symmetrically normalized mean, where weights are determined by node degrees. Computationally efficient and treats all neighbors equally weighted by their connectivity.
+- **SAGE** (SAGEConv): aggregates neighbors by mean with a learnable transformation, then concatenates with the node's own features. Unlike GCN it is inductive — it can generalize to nodes not seen during training.
 
 -----
 
