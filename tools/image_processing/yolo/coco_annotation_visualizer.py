@@ -13,39 +13,71 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Visualize COCO annotations on images or videos"
     )
-    parser.add_argument("--annotations", required=True,
-                        help="Path to COCO JSON annotation file")
+    parser.add_argument(
+        "--annotations",
+        required=True,
+        help="Path to COCO JSON annotation file",
+    )
     parser.add_argument("--outdir", default="outputs", help="Output directory")
-    parser.add_argument("--filter_categories", default="",
-                        help="Comma-separated category names to display (empty = all)")
+    parser.add_argument(
+        "--filter_categories",
+        default="",
+        help="Comma-separated category names to display (empty = all)",
+    )
     parser.add_argument("--show_bbox", default="true")
     parser.add_argument("--show_mask", default="true")
     parser.add_argument("--show_labels", default="true")
-    parser.add_argument("--show_count", default="false",
-                        help="Draw annotation count in image corner")
+    parser.add_argument(
+        "--show_count",
+        default="false",
+        help="Draw annotation count in image corner",
+    )
     parser.add_argument("--mask_opacity", type=float, default=0.4)
     parser.add_argument("--bbox_thickness", type=int, default=2)
-    parser.add_argument("--color_mode", default="per_category",
-                        choices=["per_category", "per_instance"])
-    parser.add_argument("--output_format", default="png", choices=["png", "jpg"])
+    parser.add_argument(
+        "--color_mode",
+        default="per_category",
+        choices=["per_category", "per_instance"],
+    )
+    parser.add_argument(
+        "--output_format", default="png", choices=["png", "jpg"]
+    )
     parser.add_argument("--font_scale", type=float, default=0.6)
-    parser.add_argument("--output_mode", default="frames",
-                        choices=["frames", "video", "both"],
-                        help="frames: individual images; video: compiled MP4; both: both")
-    parser.add_argument("--video_fps", type=float, default=0.0,
-                        help="Output video FPS. 0 = auto-detect from input video "
-                             "(ignored for image inputs, which default to 25).")
-    parser.add_argument("--input_kind", default="image", choices=["image", "video"],
-                        help="Whether the input is one or more images or a single video")
-    parser.add_argument("--vid_stride", type=int, default=1,
-                        help="For video input: process one frame every N frames. "
-                             "Must match the stride used when generating the COCO annotations. "
-                             "Use 0 for positional matching: frame 0 of the video is matched "
-                             "to the 1st COCO entry (sorted by file_name), frame 1 to the 2nd, etc. "
-                             "Useful when the input video already contains only the annotated frames.")
-    parser.add_argument("--only_annotated", default="true",
-                        help="Only output frames that have at least one COCO annotation. "
-                             "When false, unannotated frames are passed through as-is.")
+    parser.add_argument(
+        "--output_mode",
+        default="frames",
+        choices=["frames", "video", "both"],
+        help="frames: individual images; video: compiled MP4; both: both",
+    )
+    parser.add_argument(
+        "--video_fps",
+        type=float,
+        default=0.0,
+        help="Output video FPS. 0 = auto-detect from input video "
+        "(ignored for image inputs, which default to 25).",
+    )
+    parser.add_argument(
+        "--input_kind",
+        default="image",
+        choices=["image", "video"],
+        help="Whether the input is one or more images or a single video",
+    )
+    parser.add_argument(
+        "--vid_stride",
+        type=int,
+        default=1,
+        help="For video input: process one frame every N frames. "
+        "Must match the stride used when generating the COCO annotations. "
+        "Use 0 for positional matching: frame 0 of the video is matched "
+        "to the 1st COCO entry (sorted by file_name), frame 1 to the 2nd, etc. "
+        "Useful when the input video already contains only the annotated frames.",
+    )
+    parser.add_argument(
+        "--only_annotated",
+        default="true",
+        help="Only output frames that have at least one COCO annotation. "
+        "When false, unannotated frames are passed through as-is.",
+    )
     return parser.parse_args()
 
 
@@ -148,7 +180,9 @@ def draw_annotations(
 
         if show_bbox and "bbox" in ann:
             x, y, w, h = (int(v) for v in ann["bbox"])
-            cv2.rectangle(result, (x, y), (x + w, y + h), color, bbox_thickness)
+            cv2.rectangle(
+                result, (x, y), (x + w, y + h), color, bbox_thickness
+            )
 
         if show_labels and "bbox" in ann:
             label = category_map.get(cat_id, str(cat_id))
@@ -271,7 +305,8 @@ def main():
     if args.input_kind == "image":
         data_dir = Path("data_files")
         image_files = sorted(
-            f for f in data_dir.glob("*")
+            f
+            for f in data_dir.glob("*")
             if f.suffix.lower() in {".jpg", ".jpeg", ".png", ".tiff", ".tif"}
         )
         if not image_files:
@@ -287,14 +322,18 @@ def main():
                 print(f"  Error: could not read {img_path.name}")
                 continue
 
-            image_id = find_image_id(img_path.name, coco_data.get("images", []))
+            image_id = find_image_id(
+                img_path.name, coco_data.get("images", [])
+            )
             if image_id is None:
                 if only_annotated:
                     print(f"  {img_path.name}: no COCO match — skipped")
                     unmatched_count += 1
                     continue
                 else:
-                    print(f"  {img_path.name}: no COCO match — included without annotations")
+                    print(
+                        f"  {img_path.name}: no COCO match — included without annotations"
+                    )
                     anns = []
                     unmatched_count += 1
             else:
@@ -302,12 +341,17 @@ def main():
                 print(f"  {img_path.name}: {len(anns)} annotation(s)")
                 matched_count += 1
 
-            annotated = draw_annotations(image, anns, category_map, **draw_kwargs)
+            annotated = draw_annotations(
+                image, anns, category_map, **draw_kwargs
+            )
             if show_count:
                 draw_count_overlay(annotated, len(anns), args.font_scale)
 
             if output_mode in ("frames", "both"):
-                out_path = frames_dir / f"{Path(img_path.stem).stem}.{args.output_format}"
+                out_path = (
+                    frames_dir
+                    / f"{Path(img_path.stem).stem}.{args.output_format}"
+                )
                 cv2.imwrite(str(out_path), annotated)
 
             if output_mode in ("video", "both"):
@@ -317,7 +361,9 @@ def main():
             out_fps = args.video_fps if args.video_fps > 0 else 25.0
             h, w = video_frames[0].shape[:2]
             fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-            writer = cv2.VideoWriter(str(video_out_path), fourcc, out_fps, (w, h))
+            writer = cv2.VideoWriter(
+                str(video_out_path), fourcc, out_fps, (w, h)
+            )
             for frame in video_frames:
                 writer.write(frame)
             writer.release()
@@ -327,7 +373,8 @@ def main():
     else:
         data_dir = Path("data_files")
         video_files = sorted(
-            f for f in data_dir.glob("*")
+            f
+            for f in data_dir.glob("*")
             if f.suffix.lower() in {".mp4", ".avi", ".mov", ".gif"}
         )
         if not video_files:
@@ -350,7 +397,9 @@ def main():
 
         coco_images = coco_data.get("images", [])
         coco_names_sample = [img["file_name"] for img in coco_images[:5]]
-        mode_label = "positional" if vid_stride == 0 else f"stride={vid_stride}"
+        mode_label = (
+            "positional" if vid_stride == 0 else f"stride={vid_stride}"
+        )
         print(
             f"\nProcessing video: {vid_path.name}  "
             f"({native_fps:.2f} FPS, ~{total} frames, {mode_label})\n"
@@ -371,14 +420,18 @@ def main():
         # sorted numerically by file_name (no index arithmetic needed).
         # ----------------------------------------------------------
         if vid_stride == 0:
-            # Sort COCO images numerically by file_name so frame 0 → entry 0, etc.
+            # Sort COCO images numerically by file_name so frame 0 → entry 0,
+            # etc.
             def _numeric_sort_key(img_entry):
                 import re
+
                 nums = re.findall(r"\d+", Path(img_entry["file_name"]).stem)
                 return [int(n) for n in nums] if nums else [0]
 
             sorted_coco_images = sorted(coco_images, key=_numeric_sort_key)
-            print(f"  Positional mode: {len(sorted_coco_images)} COCO entries sorted numerically")
+            print(
+                f"  Positional mode: {len(sorted_coco_images)} COCO entries sorted numerically"
+            )
 
             video_frame_idx = 0
             while True:
@@ -391,22 +444,31 @@ def main():
                     image_id = coco_entry["id"]
                     anns = ann_by_image.get(image_id, [])
                     entry_name = coco_entry["file_name"]
-                    print(f"  video_frame={video_frame_idx}  → COCO '{entry_name}' (id={image_id}, {len(anns)} ann)")
+                    print(
+                        f"  video_frame={video_frame_idx}  → COCO '{entry_name}' (id={image_id}, {len(anns)} ann)"
+                    )
                     matched_count += 1
                 else:
                     image_id = None
                     anns = []
-                    print(f"  video_frame={video_frame_idx}  → no COCO entry (beyond list)")
+                    print(
+                        f"  video_frame={video_frame_idx}  → no COCO entry (beyond list)"
+                    )
                     unmatched_count += 1
 
-                annotated = draw_annotations(frame, anns, category_map, **draw_kwargs)
+                annotated = draw_annotations(
+                    frame, anns, category_map, **draw_kwargs
+                )
                 if show_count:
                     draw_count_overlay(annotated, len(anns), args.font_scale)
 
                 save_frame = (image_id is not None) or (not only_annotated)
 
                 if output_mode in ("frames", "both") and save_frame:
-                    out_path = frames_dir / f"{stem}_frame_{video_frame_idx:06d}.{args.output_format}"
+                    out_path = (
+                        frames_dir
+                        / f"{stem}_frame_{video_frame_idx:06d}.{args.output_format}"
+                    )
                     cv2.imwrite(str(out_path), annotated)
 
                 if writer is not None and save_frame:
@@ -418,7 +480,8 @@ def main():
         # vid_stride >= 1 → classic index-based matching mode
         # ----------------------------------------------------------
         else:
-            # Replicate SAM3's frame indexing: starts at 1 when stride > 1, else 0
+            # Replicate SAM3's frame indexing: starts at 1 when stride > 1,
+            # else 0
             frame_idx = 1 if vid_stride > 1 else 0
 
             while True:
@@ -426,29 +489,44 @@ def main():
                 if not ret:
                     break
 
-                is_stride_frame = (frame_idx % vid_stride == 0)
+                is_stride_frame = frame_idx % vid_stride == 0
 
                 if is_stride_frame:
                     frame_name = f"{stem}_frame_{frame_idx:06d}.jpg"
-                    image_id = find_image_id(frame_name, coco_data.get("images", []))
-                    anns = ann_by_image.get(image_id, []) if image_id is not None else []
+                    image_id = find_image_id(
+                        frame_name, coco_data.get("images", [])
+                    )
+                    anns = (
+                        ann_by_image.get(image_id, [])
+                        if image_id is not None
+                        else []
+                    )
 
                     if image_id is not None:
-                        print(f"  frame_idx={frame_idx}  search='{frame_name}'  → matched (id={image_id}, {len(anns)} ann)")
+                        print(
+                            f"  frame_idx={frame_idx}  search='{frame_name}'  → matched (id={image_id}, {len(anns)} ann)"
+                        )
                         matched_count += 1
                     else:
-                        print(f"  frame_idx={frame_idx}  search='{frame_name}'  → no match")
+                        print(
+                            f"  frame_idx={frame_idx}  search='{frame_name}'  → no match"
+                        )
                         unmatched_count += 1
 
-                    annotated = draw_annotations(frame, anns, category_map, **draw_kwargs)
+                    annotated = draw_annotations(
+                        frame, anns, category_map, **draw_kwargs
+                    )
                     if show_count:
-                        draw_count_overlay(annotated, len(anns), args.font_scale)
+                        draw_count_overlay(
+                            annotated, len(anns), args.font_scale
+                        )
 
                     save_frame = (image_id is not None) or (not only_annotated)
 
                     if output_mode in ("frames", "both") and save_frame:
                         out_path = (
-                            frames_dir / f"{stem}_frame_{frame_idx:06d}.{args.output_format}"
+                            frames_dir
+                            / f"{stem}_frame_{frame_idx:06d}.{args.output_format}"
                         )
                         cv2.imwrite(str(out_path), annotated)
 
@@ -456,7 +534,8 @@ def main():
                         writer.write(annotated)
 
                 elif writer is not None and not only_annotated:
-                    # non-stride frame: include in video as-is when keeping all frames
+                    # non-stride frame: include in video as-is when keeping all
+                    # frames
                     writer.write(frame)
 
                 frame_idx += 1
