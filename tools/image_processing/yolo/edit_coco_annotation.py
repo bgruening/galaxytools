@@ -1,8 +1,8 @@
+import argparse
 import json
 import sys
-import argparse
-from pathlib import Path
 from copy import deepcopy
+from pathlib import Path
 
 
 def parse_ids(raw):
