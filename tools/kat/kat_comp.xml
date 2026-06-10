@@ -1,0 +1,171 @@
+<tool id="kat_hist" name="KAT Histogram" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>creates a histogram of k-mer occurrences</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <stdio>
+        <regex match="corrupted double-linked list" source="stderr" level="warning" description="KAT C++ heap corruption - output files were still produced correctly"/>
+        <exit_code range="2:133" level="fatal" description="Error occurred"/>
+        <exit_code range="135:" level="fatal" description="Error occurred"/>
+        <exit_code range=":-1" level="fatal" description="Error occurred"/>
+    </stdio>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command><![CDATA[
+            #for $i in range(len($input_files)):
+                #set $f = $input_files[$i]
+                @SET_EXT@
+                cp '$f' 'input_${i}${ext}' &&
+            #end for
+            kat hist
+                -o kat_hist_out
+                -t "\${GALAXY_SLOTS:-1}"
+                --low $histogram_options.low
+                --high $histogram_options.high
+                --inc $histogram_options.inc
+                --mer_len $kmer_options.mer_len
+                --hash_size $kmer_options.hash_size
+                $kmer_options.non_canonical
+                @CMD_5PTRIM@
+                --output_type '$advanced_options.output_type'
+                #for $i in range(len($input_files)):
+                    #set $f = $input_files[$i]
+                    @SET_EXT@
+                    'input_${i}${ext}'
+                #end for
+        ]]></command>
+    <inputs>
+        <param name="input_files" type="data" format="fastqsanger,fastqsanger.gz,fasta,fasta.gz" multiple="true" label="Input files" help="One or more FastA/FastQ files (gzipped accepted), or a single Jellyfish hash file"/>
+        <section name="histogram_options" title="Histogram Options" expanded="true">
+            <param argument="--low" type="integer" value="1" min="1" label="Low count" help="Low count value of histogram"/>
+            <param argument="--high" type="integer" value="10000" min="1" label="High count" help="High count value of histogram"/>
+            <param argument="--inc" type="integer" value="1" min="1" label="Increment" help="Increment for each bin"/>
+        </section>
+        <expand macro="kmer_params"/>
+        <section name="advanced_options" title="Advanced Options" expanded="false">
+            <param name="trim_5p" argument="--5ptrim" type="text" value="" label="5' trim" help="Ignore the first X bases from reads. For multiple input files, provide comma-separated values (e.g. 5,10,0).">
+                <validator type="regex" message="Must be a number or comma-separated numbers">^[0-9]+(,[0-9]+)*$|^$</validator>
+            </param>
+            <expand macro="output_type_param"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_hist" format="tabular" from_work_dir="kat_hist_out" label="${tool.name} on ${on_string}: Histogram"/>
+        <data name="output_plot" format="png" from_work_dir="kat_hist_out.png" label="${tool.name} on ${on_string}: PNG Plot">
+            <filter>advanced_options['output_type'] == 'png'</filter>
+        </data>
+        <data name="output_pdf" format="pdf" from_work_dir="kat_hist_out.pdf" label="${tool.name} on ${on_string}: PDF Plot">
+            <filter>advanced_options['output_type'] == 'pdf'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 01: Default options with PNG Output -->
+        <test expect_num_outputs="2">
+            <param name="input_files" location="https://zenodo.org/records/20347489/files/kat-input-subsampled.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="histogram_options">
+                <param name="low" value="1"/>
+                <param name="high" value="10000"/>
+                <param name="inc" value="1"/>
+            </section>
+            <output name="output_hist" file="kat_hist.out">
+                <assert_contents>
+                    <has_text text="# Kmer value:27"/>
+                    <has_n_lines n="10007"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot" file="kat_hist.out.png" ftype="png">
+                <assert_contents>
+                    <has_image_channels channels="4"/> 
+                    <has_image_height height="1800"/> 
+                    <has_image_width width="2400"/> 
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: Custom k-mer length with PDF Output -->
+        <test expect_num_outputs="2">
+            <param name="input_files" location="https://zenodo.org/records/20347489/files/kat-input-subsampled.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="kmer_options">
+                <param name="mer_len" value="21"/>
+            </section>
+            <section name="advanced_options">
+                <param name="output_type" value="pdf"/>
+            </section>
+            <output name="output_hist">
+                <assert_contents>
+                    <has_text text="# Kmer value:21"/>
+                    <has_n_lines n="10007"/>
+                </assert_contents>
+            </output>
+            <output name="output_pdf" ftype="pdf">
+                <assert_contents>
+                    <has_size size="13956"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 03: 5' trim with PNG Output -->
+        <test expect_num_outputs="2">
+            <param name="input_files" location="https://zenodo.org/records/20347489/files/kat-input-subsampled.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="advanced_options">
+                <param name="trim_5p" value="5"/>
+            </section>
+            <output name="output_hist">
+                <assert_contents>
+                    <has_text text="# Kmer value:27"/>
+                    <has_n_lines n="10007"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_channels channels="4"/> 
+                    <has_image_height height="1800"/> 
+                    <has_image_width width="2400"/> 
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**KAT Histogram (kat hist)**
+
+Creates a histogram of k-mer occurrences from sequencing data.
+
+-----
+
+**What it does**
+
+The histogram shows how many k-mers appear at each frequency in the input data. Bucket *i* tallies k-mers with count *c* satisfying:
+
+```
+low + i*inc <= c < low + (i+1)*inc
+```
+
+The final bucket catches all k-mers with count >= the last bucket's lower bound.
+
+This tool is similar to the `histo` command in Jellyfish, but the output includes metadata that makes the histogram easier to plot and interpret.
+
+-----
+
+**Input**
+
+- One or more **FASTA** or **FASTQ** files (gzipped accepted)
+- Or a single pre-computed **Jellyfish hash** file
+
+-----
+
+**Outputs**
+
+1. **Histogram** (tabular) - tab-separated count/frequency table with metadata header lines prefixed with `#`.
+2. **Plot** (PNG/PDF) - visual plot of the k-mer frequency histogram.
+
+-----
+
+**Tips**
+
+- The default k-mer length of **27** works well for most short-read sequencing data.
+- For diploid or polyploid genomes, distinct peaks correspond to heterozygous and homozygous k-mers.
+- If the hash size is too small, KAT will automatically double it (increasing runtime and memory). Increase it if you expect many unique k-mers.
+- For multiple input files, provide different 5' trim values as comma-separated numbers (e.g. `5,10`).
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>
