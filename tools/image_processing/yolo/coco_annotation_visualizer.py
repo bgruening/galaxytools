@@ -1,5 +1,6 @@
 import argparse
 import json
+import subprocess
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
@@ -233,6 +234,18 @@ def find_image_id(filename: str, coco_images: List[dict]) -> Optional[int]:
     return None
 
 
+def reencode_h264(path: Path, crf: int = 23) -> None:
+    tmp = path.with_stem(path.stem + "_tmp")
+    path.rename(tmp)
+    try:
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", str(tmp), "-c:v", "libx264", "-crf", str(crf), "-preset", "fast", str(path)],
+            check=True, capture_output=True,
+        )
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def main():
     args = parse_arguments()
 
@@ -367,6 +380,7 @@ def main():
             for frame in video_frames:
                 writer.write(frame)
             writer.release()
+            reencode_h264(video_out_path)
             print(f"  Video: {video_out_path}  ({out_fps:.2f} FPS)")
 
     # ------------------------------------------------------------------ video
@@ -543,6 +557,7 @@ def main():
         cap.release()
         if writer is not None:
             writer.release()
+            reencode_h264(video_out_path)
             print(f"  Video: {video_out_path}  ({out_fps:.2f} FPS)")
 
     print(f"\n✓ Done: {matched_count} annotated, {unmatched_count} unmatched")
