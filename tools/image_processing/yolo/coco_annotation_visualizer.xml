@@ -1,0 +1,272 @@
+<tool id="coco_annotation_visualizer" name="COCO Annotation Visualizer" version="1.0.0" profile="25.1">
+    <description>
+        Draw COCO bounding boxes, segmentation masks, and labels.
+    </description>
+    <requirements>
+        <requirement type="package" version="4.13.0">opencv</requirement>
+        <requirement type="package" version="1.26.0">numpy</requirement>
+        <requirement type="package" version="2.0.11">pycocotools</requirement>
+    </requirements>
+    <required_files>
+        <include path="coco_annotation_visualizer.py"/>
+    </required_files>
+    <command detect_errors="exit_code"><![CDATA[
+    mkdir -p data_files &&
+    #if $input.input_kind == "image"
+        #for $indata in $input.source
+            ln -s '$indata' 'data_files/${indata.element_identifier}.${indata.ext}' &&
+        #end for
+    #else
+        ln -s '$input.source' 'data_files/${input.source.element_identifier}.${input.source.ext}' &&
+    #end if
+    python '$__tool_directory__/coco_annotation_visualizer.py'
+        --annotations '$annotations'
+        --outdir outputs
+        --input_kind '$input.input_kind'
+        #if $input.input_kind == "video"
+            --vid_stride '$input.vid_stride'
+        #end if
+        #if $filter_categories
+            --filter_categories '$filter_categories'
+        #end if
+        --show_bbox '$display.show_bbox'
+        --show_mask '$display.show_mask'
+        --show_labels '$display.show_labels'
+        --show_count '$display.show_count'
+        --mask_opacity '$display.mask_opacity'
+        --bbox_thickness '$display.bbox_thickness'
+        --color_mode '$display.color_mode'
+        --font_scale '$display.font_scale'
+        --output_format '$display.output_format'
+        --only_annotated '$only_annotated'
+        --output_mode '$output_mode.mode'
+        #if $output_mode.mode in ['video', 'both']
+            --video_fps '$output_mode.video_fps'
+        #end if
+    ]]></command>
+    <inputs>
+        <conditional name="input">
+            <param argument="--input_kind" type="select" label="Input type"
+                help="Choose either one or more images, or a single video file (not both).">
+                <option value="image">One or more images</option>
+                <option value="video">One video</option>
+            </param>
+            <when value="image">
+                <param name="source" type="data" format="jpg,png,tiff" multiple="true"
+                    label="Input images"
+                    help="Select one or more images or a list collection. Filenames must match those in the COCO JSON.">
+                    <validator type="expression" message="TIFF images must contain exactly 3 channels (RGB).">value.ext not in ('tiff') or value.metadata.channels == 3</validator>
+                </param>
+            </when>
+            <when value="video">
+                <param name="source" type="data" format="mp4,avi,mov,gif"
+                    multiple="false" label="Input video file">
+                </param>
+                <param argument="--vid_stride" type="integer" value="1" min="0" max="300"
+                    label="Frame stride">
+                    <help><![CDATA[
+<strong>N ≥ 1 — Index-based matching (SAM3 tool output):</strong><br/>
+Process one frame every N frames. Each candidate frame is matched by name using the pattern
+<code>{video_name}_frame_{index:06d}</code>.<br/>
+Set N to the same stride value used when generating the COCO file.<br/>
+<u>⚠ The video filename must match the one referenced in the COCO file (i.e. the name used when running SAM3).</u><br/>
+<strong>N = 0 — Positional matching:</strong><br/>
+Ignore filenames entirely. The 1st COCO image entry is applied to the 1st video frame,
+the 2nd entry to the 2nd frame, and so on.
+                    ]]></help>
+                </param>
+            </when>
+        </conditional>
+        <param argument="--annotations" type="data" format="json" label="COCO annotation file"/>
+        <param argument="--filter_categories" type="text" optional="true" value="" label="Filter categories " help="Comma-separated list of category names to display. Leave empty to show all categories. Note: apostrophes (') are not supported in category names.">
+            <sanitizer invalid_char="">
+                <valid initial="string.printable">
+                    <remove value="&apos;"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <section name="display" title="Display options" expanded="false">
+            <param argument="--show_bbox" type="boolean" checked="true" truevalue="true" falsevalue="false" label="Show bounding boxes"/>
+            <param argument="--show_mask" type="boolean" checked="true" truevalue="true" falsevalue="false" label="Show segmentation masks" />
+            <param argument="--show_labels" type="boolean" checked="true" truevalue="true" falsevalue="false" label="Show category labels"/>
+            <param argument="--show_count" type="boolean" checked="false" truevalue="true" falsevalue="false" label="Show annotation count" help="Draws the total number of visible annotations in the top-left corner of each image."/>
+            <param argument="--mask_opacity" type="float" value="0.4" min="0.05" max="1.0" label="Mask opacity" help="Transparency of segmentation mask overlays (0 = transparent, 1 = opaque)."/>
+            <param argument="--bbox_thickness" type="integer" value="2" min="1" max="15" label="Bounding box thickness (pixels)"/>
+            <param argument="--font_scale" type="float" value="0.6" min="0.3" max="3.0" label="Label font scale" />
+            <param argument="--color_mode" type="select" label="Color mode">
+                <option value="per_category" selected="true">Per category (same color for each class) </option>
+                <option value="per_instance">Per instance (different color for each annotation) </option>
+            </param>
+            <param argument="--output_format" type="select" label="Output image format">
+                <option value="png" selected="true">PNG (lossless)</option>
+                <option value="jpg">JPEG (smaller file size)</option>
+            </param>
+        </section>
+        <conditional name="output_mode">
+            <param name="mode" type="select" label="Output mode" help="Choose whether to output annotated frames, a compiled video, or both.">
+                <option value="frames" selected="true">Frames (one image per input frame) </option>
+                <option value="video">Video (compile all frames into a single video) </option>
+                <option value="both">Both (frames and video) </option>
+            </param>
+            <when value="frames"/>
+            <when value="video">
+                <param argument="--video_fps" type="float" value="0" min="0" max="120" label="Video frame rate (FPS)" >
+                    <help><![CDATA[
+Controls the speed of the output video. Set to <strong>0</strong> to auto-detect from the input video (recommended when input is a video file). For image inputs, set to the original acquisition rate (e.g. 25 fps for PAL, 30 fps for NTSC). If left at 0 with image input, 25 FPS is used.<br/>
+Example: 60 frames at <strong>60 FPS</strong> gives a <strong>1 second</strong> video, at <strong>10 FPS</strong> the same frames give a <strong>6 second</strong> video.
+                    ]]></help>
+                </param>
+            </when>
+            <when value="both">
+                <param argument="--video_fps" type="float" value="0" min="0" max="120" label="Video frame rate (FPS)" >
+                    <help><![CDATA[
+Controls the speed of the output video. Set to <strong>0</strong> to auto-detect from the input video (recommended when input is a video file). For image inputs, set to the original acquisition rate (e.g. 25 fps for PAL, 30 fps for NTSC). If left at 0 with image input, 25 FPS is used.<br/>
+Example: 60 frames at <strong>60 FPS</strong> gives a <strong>1 second</strong> video, at <strong>10 FPS</strong> the same frames give a <strong>6 second</strong> video.
+                    ]]></help>
+                </param>
+            </when>
+        </conditional>
+        <param argument="--only_annotated" type="boolean" checked="true" truevalue="true" falsevalue="false" label="Annotated frames only" >
+            <help><![CDATA[
+When checked (default) : only frames that have at least one matching annotation are saved or compiled into the video. <br/>
+When unchecked: all frames are included 
+            ]]></help>
+        </param>
+    </inputs>
+    <outputs>
+        <collection name="annotated_images" type="list" label="Annotated images">
+            <filter>output_mode['mode'] != 'video'</filter>
+            <discover_datasets pattern="__name_and_ext__" directory="outputs/outputs_annotated"/>
+        </collection>
+        <data name="output_video" format="mp4" label="Annotated video"
+            from_work_dir="outputs/output_video.mp4">
+            <filter>output_mode['mode'] != 'frames'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <conditional name="input">
+                <param name="input_kind" value="image"/>
+                <param name="source" value="2024-09-20-PorzBreign-shrimps_frame_000110.jpg"/>
+            </conditional>
+            <param name="annotations" value="Annotation_COCO_visualizer.json"/>
+            <section name="display">
+                <param name="output_format" value="jpg"/>
+            </section>
+            <conditional name="output_mode">
+                <param name="mode" value="frames"/>
+            </conditional>
+            <output_collection name="annotated_images" type="list" count="1">
+                <element name="2024-09-20-PorzBreign-shrimps_frame_000110" file="Annotate_2024-09-20-PorzBreign-shrimps_frame_000110.jpg" compare="diff"/>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="input">
+                <param name="input_kind" value="image"/>
+                <param name="source" value="2024-09-20-PorzBreign-shrimps_frame_000110.jpg,2024-09-20-PorzBreign-shrimps_frame_000140.jpg,2024-09-20-PorzBreign-shrimps_frame_000120.jpg,2024-09-20-PorzBreign-shrimps_frame_000130.jpg"/>
+            </conditional>
+            <param name="annotations" value="Annotation_COCO_visualizer.json"/>
+            <section name="display">
+                <param name="color_mode" value="per_instance"/>
+            </section>
+            <conditional name="output_mode">
+                <param name="mode" value="both"/>
+                <param name="video_fps" value="4"/>
+            </conditional>
+            <output_collection name="annotated_images" type="list" count="4"/>
+            <output name="output_video" ftype="mp4">
+                <assert_contents>
+                    <has_size value="752059" delta="100000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="input">
+                <param name="input_kind" value="video"/>
+                <param name="source" value="2024-09-20-PorzBreign-shrimps.mp4"/>
+                <param name="vid_stride" value="0"/>
+            </conditional>
+            <param name="annotations" value="Annotation_COCO_visualizer.json"/>
+            <section name="display">
+                <param name="color_mode" value="per_instance"/>
+            </section>
+            <conditional name="output_mode">
+                <param name="mode" value="both"/>
+                <param name="video_fps" value="4.0"/>
+            </conditional>
+            <output_collection name="annotated_images" type="list" count="4"/>
+            <output name="output_video">
+                <assert_contents>
+                    <has_size value="733808" delta="1000"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+=================================
+COCO Annotation Visualizer
+=================================
+
+Overlay COCO annotations (bounding boxes, segmentation masks, category labels) onto your images or videos.
+
+-------------------
+Inputs
+-------------------
+
+- **Images**: one or more .jpg / .png / .tiff files, or a Galaxy list collection.
+- **Video**: a single .mp4 / .avi / .mov / .gif file.
+- **COCO annotation file**: a JSON file strictly following the COCO format. It must contain three top-level keys:
+
+  - ``images``: list of image entries, each with at least ``id``, ``file_name``, ``width``, and ``height``.
+  - ``categories``: list of class definitions, each with ``id`` and ``name``.
+  - ``annotations``: list of annotation entries, each with ``id``, ``image_id``, ``category_id``,
+    and at least one of ``bbox`` (``[x, y, width, height]``) or ``segmentation`` (polygon list or RLE).
+
+
+-------------------
+Filtering
+-------------------
+
+Use **Filter categories** to display only a subset of classes, for example::
+
+    elephant, bird, fish
+
+Leave the field empty to display all categories present in the annotation file.
+
+-------------------
+Display options
+-------------------
+
+- **Bounding boxes**: colored rectangles around each detected object.
+- **Segmentation masks**: semi-transparent color fills drawn from polygon or RLE data.
+- **Labels**: category name drawn above the bounding box.
+- **Annotation count**: total number of visible annotations shown in the top-left corner.
+- **Color mode**: *per category* assigns a fixed color to each class; *per instance* gives each annotation its own color.
+
+-------------------
+Output mode
+-------------------
+
+Choose how the annotated frames are returned:
+
+- **Frames** *(default)*: a Galaxy list collection of annotated images, one per input image or stride frame (PNG or JPEG).
+- **Video**: a single MP4 video compiled from all frames. For video input, all frames are included (non-stride frames are passed through without annotations).
+- **Both**: the frame collection *and* the video.
+
+When compiling a video, **FPS = 0** auto-detects the frame rate from the input video.
+For image inputs, set it to match the original acquisition rate (e.g. 25 fps for PAL).
+
+    ]]></help>
+
+    <creator>
+        <person name="Arthur Barreau" email="arthurbarreau.ab@gmail.com"/>
+        <organization name="MOOREV" url="https://moorev.fr/"/>
+        <organization name="PNDB" url="https://www.pndb.fr/pages/accueil/"/>
+    </creator>
+    <citations>
+        <citation type="doi">
+            10.48550/arXiv.1405.0312
+        </citation>
+    </citations>
+</tool>

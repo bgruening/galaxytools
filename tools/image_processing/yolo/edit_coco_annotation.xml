@@ -1,0 +1,211 @@
+<tool id="edit_coco_annotation" name="Edit COCO Annotation" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description> Filter and rename tracks in a COCO annotation file</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">25.1</token>
+    </macros>
+    <required_files>
+        <include path="edit_coco_annotation.py"/>
+    </required_files>
+    <command detect_errors="exit_code"><![CDATA[
+    mkdir -p outputs &&
+    python3 '$__tool_directory__/edit_coco_annotation.py'
+        --annotations '$annotations'
+        --mode '$mode.mode'
+        #if $mode.mode == "keep"
+            #for $track in $mode.entries
+                #set $rename_val = str($track.rename).strip() if str($track.rename).strip() not in ('', 'None') else ""
+                #set $fmin_val = str($track.frame_min) if str($track.frame_min) not in ('', 'None') else ""
+                #set $fmax_val = str($track.frame_max) if str($track.frame_max) not in ('', 'None') else ""
+                --entry '${track.track_ids}|${rename_val}|${fmin_val}|${fmax_val}'
+            #end for
+        #elif $mode.mode == "remove"
+            #for $track in $mode.entries
+                #set $fmin_val = str($track.frame_min) if str($track.frame_min) not in ('', 'None') else ""
+                #set $fmax_val = str($track.frame_max) if str($track.frame_max) not in ('', 'None') else ""
+                --entry '${track.track_ids}|${fmin_val}|${fmax_val}'
+            #end for
+        #else
+            #for $track in $mode.entries
+                --entry '${track.track_ids}|${track.name}'
+            #end for
+        #end if
+    ]]></command>
+    <inputs>
+        <param argument="--annotations" type="data" format="json" label="COCO annotation file" help="JSON annotation file produced by SAM3 or any other COCO-format tool."/>
+        <conditional name="mode">
+            <param argument="--mode" type="select" label="Mode" help="Choose what to do with the track IDs listed below.">
+                <option value="keep">Keep - keep only listed IDs (remove all others)</option>
+                <option value="remove">Remove - remove only listed IDs (keep all others)</option>
+                <option value="rename">Rename - keep all tracks, rename listed IDs</option>
+            </param>
+            <when value="keep">
+                <repeat name="entries" title="Track to keep" min="1" help="All track IDs not listed here will be removed from the output.">
+                    <param name="track_ids" type="text" label="Track IDs" >
+                        <help><![CDATA[
+Comma-separated list (5,7,25), for a range use a dash '-' (12-20), or combine both (3,7,12-20,25) <br/>
+⚠ First track_id is zero "0"
+                     ]]></help>
+                        <sanitizer>
+                            <valid initial="string.digits">
+                                <add value=","/>
+                                <add value="-"/>
+                                <add value=" "/>
+                            </valid>
+                        </sanitizer>
+                        <validator type="regex" message="Use digits, commas and dashes only, e.g. '3,7,12-20'.">^[\d,\s\-]+$</validator>
+                    </param>
+                    <param name="rename" type="text" label="Rename" help="New category name for these tracks. Leave empty to keep the original name.">
+                        <sanitizer>
+                            <valid initial="string.printable">
+                                <remove value="&apos;"/>
+                            </valid>
+                        </sanitizer>
+                    </param>
+                    <param name="frame_min" type="integer" optional="true" min="0" label="Frame min" help="Keep annotations from this frame number onwards."/>
+                    <param name="frame_max" type="integer" optional="true" min="0" label="Frame max" help="Keep annotations up to this frame number, inclusive."/>
+                </repeat>
+            </when>
+            <when value="remove">
+                <repeat name="entries" title="Track to remove" min="1" help="All track IDs not listed here will be kept unchanged.">
+                    <param name="track_ids" type="text" label="Track IDs" >
+                        <help><![CDATA[
+Comma-separated list (5,7,25), for a range use a dash '-' (12-20), or combine both (3,7,12-20,25) <br/>
+⚠ First track_id is zero "0"
+                     ]]></help>
+                        <sanitizer>
+                            <valid initial="string.digits">
+                                <add value=","/>
+                                <add value="-"/>
+                                <add value=" "/>
+                            </valid>
+                        </sanitizer>
+                        <validator type="regex" message="Use digits, commas and dashes only, e.g. '3,7,12-20'.">^[\d,\s\-]+$</validator>
+                    </param>
+                    <param name="frame_min" type="integer" optional="true" min="0" label="Frame min" help="Remove annotations only from this frame onwards (leave empty to remove all frames)."/>
+                    <param name="frame_max" type="integer" optional="true" min="0" label="Frame max" help="Remove annotations only up to this frame, inclusive (leave empty to remove all frames)."/>
+                </repeat>
+            </when>
+            <when value="rename">
+                <repeat name="entries" title="Track to rename" min="1" help="All tracks are kept. Listed IDs get a new category name.">
+                    <param name="track_ids" type="text" label="Track IDs" >
+                        <help><![CDATA[
+Comma-separated list (5,7,25), for a range use a dash '-' (12-20), or combine both (3,7,12-20,25) <br/>
+⚠ First track_id is zero "0"
+                     ]]></help>
+                        <sanitizer>
+                            <valid initial="string.digits">
+                                <add value=","/>
+                                <add value="-"/>
+                                <add value=" "/>
+                            </valid>
+                        </sanitizer>
+                        <validator type="regex" message="Use digits, commas and dashes only, e.g. '3,7,12-20'.">^[\d,\s\-]+$</validator>
+                    </param>
+                    <param name="name" type="text" label="New category name" help="New category name assigned to every track in this group.">
+                        <sanitizer>
+                            <valid initial="string.printable">
+                                <remove value="&apos;"/>
+                            </valid>
+                        </sanitizer>
+                        <validator type="regex" message="Category name cannot be empty.">^.+$</validator>
+                    </param>
+                </repeat>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="output_json" format="json" from_work_dir="outputs/annotations_edited.json" label="Edited COCO annotations "/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="annotations" value="Annotation_COCO_visualizer.json"/>
+            <conditional name="mode">
+                <param name="mode" value="keep"/>
+                <repeat name="entries">
+                    <param name="track_ids" value="2,4-6"/>
+                </repeat>
+                <repeat name="entries">
+                    <param name="track_ids" value="1"/>
+                    <param name="rename" value="Algae"/>
+                </repeat>
+            </conditional>
+            <output name="output_json" file="Edited_COCO_annotations_keep.json" compare="diff"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="annotations" value="Annotation_COCO_visualizer.json"/>
+            <conditional name="mode">
+                <param name="mode" value="remove"/>
+                <repeat name="entries">
+                    <param name="track_ids" value="1"/>
+                    <param name="frame_min" value="130"/>
+                </repeat>
+            </conditional>
+            <output name="output_json" file="Edited_COCO_annotations_remove.json" compare="diff"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="annotations" value="Annotation_COCO_visualizer.json"/>
+            <conditional name="mode">
+                <param name="mode" value="rename"/>
+                <repeat name="entries">
+                    <param name="track_ids" value="1"/>
+                    <param name="name" value="Algae"/>
+                </repeat>
+                <repeat name="entries">
+                    <param name="track_ids" value="2-6"/>
+                    <param name="name" value="Crangon crangon"/>
+                </repeat>
+            </conditional>
+            <output name="output_json" file="Edited_COCO_annotations_rename.json" compare="diff"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+
+===============================
+Edit COCO Annotation
+===============================
+
+Filter and rename tracks in a COCO annotation file produced by SAM3 (or any COCO-format tool).
+
+-------------------
+Modes
+-------------------
+
+**Keep** — Only the track IDs you list survive; all others are deleted.
+Each entry can optionally rename the tracks and/or restrict them to a frame window.
+
+**Remove** — Only the track IDs you list are deleted; everything else is kept.
+Each entry can optionally restrict removal to a frame window.
+
+**Rename** — Every track is kept, but the listed IDs receive a new category name.
+
+---------------------
+COCO field reference
+---------------------
+
+- Track IDs are read from the ``track_id`` field of each annotation entry (``annotations[].track_id``).
+- Frame numbers are read from the ``frame_index`` field of each image entry (``images[].frame_index``).
+
+-------------------
+Notes
+-------------------
+
+- Annotations without a ``track_id`` are always kept unchanged.
+- Images with no remaining annotations are removed from the output.
+- Unused categories are cleaned up automatically.
+- If an ID appears in multiple entries, the last entry wins.
+
+
+    ]]></help>
+    <creator>
+        <person name="Arthur Barreau" email="arthurbarreau.ab@gmail.com" />
+        <organization name="MOOREV" url="https://moorev.fr/" />
+        <organization name="PNDB" url="https://www.pndb.fr/" />
+    </creator>
+    <citations>
+        <citation type="doi">
+            10.48550/arXiv.1405.0312
+        </citation>
+    </citations>
+</tool>
