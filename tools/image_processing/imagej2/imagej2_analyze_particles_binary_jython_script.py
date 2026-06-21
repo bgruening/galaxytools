@@ -60,7 +60,7 @@ if len(roi_coordinate_file) > 0:
     options2 = list(options)
     options2.append("show=Overlay")
     IJ.run(input_image_plus_copy, "Analyze Particles...", " ".join(options2))
-    ov = input_image_plus_copy.getOverlay()
+    ov = input_image_plus_copy.getOverlay() or []
     with open(roi_coordinate_file, 'w') as fo:
         fo.write("shape\tpoints\tlabel\tt\tz\n")
         for i, roi in enumerate(ov):
