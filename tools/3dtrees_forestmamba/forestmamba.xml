@@ -1,0 +1,109 @@
+<tool id="3dtrees_forestmamba" name="3Dtrees: ForestMamba" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>
+        Forest instance segmentation.
+    </description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">forestmamba-3dtrees-runtime-readable:latest</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        export NUMBA_CACHE_DIR=\$TMPDIR &&
+        export WANDB_MODE=disabled &&
+        mkdir -p output_dir work_dir &&
+        ln -s '$input' input.${input.ext} &&
+        python -u /workspace/src/run.py
+            --dataset-path input.${input.ext}
+            --output-dir output_dir
+            --work-dir work_dir
+            --repo-dir /workspace
+            --checkpoint '$checkpoint'
+            --config-base '$config_base'
+            --preprocess-workers \${GALAXY_SLOTS:-1}
+            --chunk-size '$chunk_size'
+            --semantic-dim '$semantic_dim'
+            --instance-dim '$instance_dim'
+            --score-dim '$score_dim'
+            --bluepoint-iterations '$bluepoint_iterations'
+            #if $bluepoint_score_threshold:
+                --bluepoint-score-threshold '$bluepoint_score_threshold'
+            #end if
+            --bluepoint-second-pass-threshold '$bluepoint_second_pass_threshold'
+            --spatial-match-tolerance '$spatial_match_tolerance'
+        &&
+        mv output_dir/input_forestmamba.laz '$output' &&
+        mv output_dir/summary.json '$summary'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="laz,las" label="Input LAZ/LAS point cloud" help="Point cloud to segment with ForestMamba."/>
+        <param argument="--bluepoint-iterations" type="integer" min="0" max="5" value="0" label="Bluepoint iterations" help="0 keeps standard one-pass inference. 2 enables the dense-forest first/second bluepoint pass."/>
+        <param argument="--bluepoint-score-threshold" type="float" min="0" max="1" value="" optional="true" label="Bluepoint score threshold" help="Optional model score_th override for bluepoint rounds."/>
+        <param argument="--bluepoint-second-pass-threshold" type="float" min="0" max="1" value="0.01" label="Second pass threshold" help="Run the second bluepoint pass only when more than this fraction of first-pass points are non-ground with raw instance_pred == -1. Default 0.01 = 1%."/>
+        <param argument="--spatial-match-tolerance" type="hidden" value="0.01"/>
+        <param argument="--chunk-size" type="hidden" value="1000000"/>
+        <param argument="--semantic-dim" type="hidden" value="PredSemantic_FM"/>
+        <param argument="--instance-dim" type="hidden" value="PredInstance_FM"/>
+        <param argument="--score-dim" type="hidden" value="PredScore_FM"/>
+        <param argument="--checkpoint" type="hidden" value="/workspace/work_dirs/forestmamba_chm_radius16_qp300_2many_v6/epoch_3000_fix.pth"/>
+        <param argument="--config-base" type="hidden" value="/workspace/configs/ForAINetv2/forestmamba_chm_radius16_qp300_2many_v6.py"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="laz" label="${tool.name}: ${input.name} segmented"/>
+        <data name="summary" format="json" label="${tool.name}: summary"/>
+    </outputs>
+    <tests>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="input" value="mikro.laz"/>
+            <param name="checkpoint" value="/missing/forestmamba_checkpoint.pth"/>
+            <assert_stderr>
+                <has_text text="Checkpoint not found"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+**What it does**
+
+This tool runs ForestMamba on one LAS/LAZ point cloud and writes a segmented
+LAZ output with ForestMamba prediction dimensions.
+
+**Galaxy entrypoint**
+
+The container calls `/workspace/src/run.py`, which reads parameters, stages the
+input into ForestMamba's ForAINetV2 test layout, runs preprocessing and
+inference, and writes the final LAZ in streamed chunks.
+
+`WANDB_MODE=disabled` is set internally to prevent the upstream model code from
+trying to send experiment logs to Weights &amp; Biases during Galaxy jobs.
+
+**Parameters**
+
+- **Input LAZ/LAS point cloud**: the point cloud to segment.
+- **Bluepoint iterations**: `0` runs the normal one-pass prediction. `2` enables
+  the dense-forest bluepoint flow: first pass, then an optional second pass on
+  points that remained unassigned.
+- **Bluepoint score threshold**: optional model confidence threshold override
+  for bluepoint runs. Leave empty to use the model/config default.
+- **Second pass threshold**: fraction of first-pass non-ground points with raw
+  `instance_pred == -1` required before the second bluepoint pass runs. The
+  default `0.01` means more than 1%.
+
+**Outputs**
+
+- Segmented LAZ with `PredSemantic_FM`, `PredInstance_FM`, and `PredScore_FM`
+  by default.
+- JSON summary of the wrapper run.
+
+Valid ForestMamba instance IDs are preserved. Raw negative instance IDs are
+written as `0` in the final LAZ.
+    </help>
+    <creator>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="bibtex">
+            @misc{3dtrees_forestmamba, title = {3Dtrees: ForestMamba}, author = {3Dtrees-Project}, year = {2026}}
+        </citation>
+    </citations>
+</tool>
