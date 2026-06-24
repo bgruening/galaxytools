@@ -1,0 +1,139 @@
+<tool id="kraken_binarize" name="Kraken Binarize" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="26.0">
+    <description>binarise document images</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements" />
+    <expand macro="creators" />
+
+    <command detect_errors="exit_code"><![CDATA[
+        ln -s '$image' 'input.${image.ext}' &&
+
+        @REJECT_MULTIPAGE_TIFF@
+
+        kraken
+            @VERBOSE_FLAGS@
+            -n
+            --raise-on-error
+
+            #if $image.ext == 'pdf'
+                -f pdf
+                -I 'input.${image.ext}'
+                -o .png
+            #else
+                --input 'input.${image.ext}' 'kraken_output'
+            #end if
+
+            binarize
+                --threshold '$threshold'
+                --zoom '$zoom'
+                --escale '$escale'
+                --border '$border'
+                --perc '$perc'
+                --range '$range'
+                --low '$low'
+                --high '$high'
+
+        #if $image.ext != 'pdf'
+            &&
+            mv kraken_output '$output'
+        #end if
+    ]]></command>
+
+    <inputs>
+        <param name="image" type="data" format="jpg,png,tiff,pdf" label="Image or document" help="multipage is only supported for PDF inputs"/>
+        <expand macro="verbose_param" />
+        <param argument="--threshold" type="float" value="0.5" label="Threshold"/>
+        <param argument="--zoom" type="float" value="0.5" label="Zoom for background page estimation"/>
+        <param argument="--escale" type="float" value="1.0" label="Scale estimate"/>
+        <param argument="--border" type="float" value="0.1" label="Ignore this much of the border"/>
+        <param argument="--perc" type="integer" min="1" max="100" value="80" label="Percentage for filters"/>
+        <param argument="--range" type="integer" value="20" label="Range for filters"/>
+        <param argument="--low" type="integer" min="1" max="100" value="5" label="Percentile for black estimation"/>
+        <param argument="--high" type="integer" min="1" max="100" value="90" label="Percentile for white estimation"/>
+    </inputs>
+
+    <outputs>
+        <data name="output" format="png" label="${tool.name} on ${on_string}">
+            <filter>image.ext != "pdf"</filter>
+        </data>
+
+        <collection name="pdf_output" type="list" label="${tool.name} pages on ${on_string}">
+            <filter>image.ext == "pdf"</filter>
+            <discover_datasets
+                pattern="(?P&lt;designation&gt;input\.pdf_[0-9]+)\.png$"
+                format="png"
+            />
+        </collection>
+    </outputs>
+
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="image" value="input.jpg" ftype="jpg"/>
+            <output name="output" ftype="png">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_num_outputs="1">
+            <param name="image" value="input.tiff" ftype="tiff"/>
+            <output name="output" ftype="png">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_num_outputs="1">
+            <param name="image" value="input_2pages.pdf" ftype="pdf"/>
+            <output_collection name="pdf_output" type="list" count="2">
+                <element name="input.pdf_000000" ftype="png">
+                    <assert_contents>
+                        <has_size min="1"/>
+                    </assert_contents>
+                </element>
+                <element name="input.pdf_000001" ftype="png">
+                    <assert_contents>
+                        <has_size min="1"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+
+        <test expect_failure="true">
+            <param name="image" value="input_2pages.tiff" ftype="tiff"/>
+            <assert_stderr>
+                <has_text text="Multi-page TIF(F) input is not supported"/>
+                <has_text text="Detected 2 pages"/>
+            </assert_stderr>
+        </test>
+    </tests>
+
+    <help>
+    <![CDATA[
+        **What it does**
+        
+        Kraken is a powerful OCR system for all languages. 
+        This tool only exposes Kraken's binarization command.
+
+        Binarization converts the input image/document into a binary image 
+        suitable for later segmentation and OCR steps.
+
+        For PDF inputs, this tool returns a Galaxy list collection 
+        of PNG images, one for each page.
+
+        **License**
+
+        Kraken is licensed under the Apache-2.0 license.
+
+        **Algorithmic background**
+
+        kraken's ``binarize`` command is derived from OCRopus/ocropy's 
+        ``nlbin``, a preprocessing script designed for degraded and 
+        historical book pages.
+    ]]></help>
+
+    <expand macro="citations" />
+</tool>
