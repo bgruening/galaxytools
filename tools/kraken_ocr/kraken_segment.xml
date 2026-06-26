@@ -1,0 +1,273 @@
+<tool id="kraken_segment" name="Kraken Segment" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>segment text regions and lines in document images</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="creators"/>
+    <command detect_errors="exit_code"><![CDATA[
+        @SET_GALAXY_USER@
+        #if $format_type == '-h'
+            #set $out_ext = 'html'
+        #elif $format_type == '-n'
+            #set $out_ext = 'json'
+        #else
+            #set $out_ext = 'xml'
+        #end if
+        @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+        @CREATE_SYMLINKS@
+        #if $segmenter.type == 'boxes'
+            #if $image.ext == 'pdf'
+                echo "The legacy box segmenter requires a binarized image input. PDF input seems to be not supported with the legacy box segmenter since its fails even for 1-bit bilevel PDFs. Please extract the PDF pages to binarized PNG/TIFF images first, or use the neural baseline segmenter." >&2;
+                exit 1;
+            #else
+                colors=\$(identify -format "%k" 'input.${image.ext}') &&
+                if [ "\$colors" -gt 2 ]; then
+                    echo "The legacy box segmenter requires a binarized image, but there were \$colors colors detected. Please run Kraken Binarize first or use the neural baseline segmenter." >&2;
+                    exit 1;
+                fi &&
+            #end if
+        #end if
+        @RUN_KRAKEN@ segment
+            #if $segmenter.type == 'baseline'
+                --baseline
+                #if $segmenter.model.fields.sort_key != '00-default'
+                    --model '$segmenter.model.fields.path'
+                #end if
+            #else
+                --boxes
+                #if str($segmenter.scale).strip()
+                    --scale '$segmenter.scale'
+                #end if
+                --maxcolseps '$segmenter.maxcolseps'
+                $segmenter.colseps
+                $segmenter.hlines
+                --pad '$segmenter.pad'
+            #end if
+            --text-direction '$text_direction'
+            --input-pad '$input_pad'
+    ]]></command>
+    <inputs>
+        <expand macro="input_param"/>
+        <param name="format_type" type="select" label="Output format">
+            <option value="-a" selected="true">ALTO XML</option>
+            <option value="-x">PageXML</option>
+            <option value="-h">hOCR</option>
+            <option value="-y">abbyyXML</option>
+            <option value="-n">JSON (cannot be used as input for kraken ocr)</option>
+        </param>
+        <conditional name="segmenter">
+            <param name="type" type="select" label="Segmenter type">
+                <option value="baseline" selected="true">Neural baseline segmenter</option>
+                <option value="boxes">Legacy box segmenter (requires binarized input image)</option>
+            </param>
+            <when value="baseline">
+                <param name="model" type="select" label="Segmentation model" help="Select a segmentation model to use. The default is kraken's internal stock model">
+                    <options from_data_table="ml_models">
+                        <column name="value" index="0"/>
+                        <column name="name" index="1"/>
+                        <column name="version" index="2"/>
+                        <column name="path" index="3"/>
+                        <column name="sort_key" index="4"/>
+                        <filter type="sort_by" column="4"/>
+                    </options>
+                </param>
+            </when>
+            <when value="boxes">
+                <!-- in kraken unbounded - tested manually: <1; >100 lines is empty or the processing time is very long -->
+                <param argument="--scale" type="float" optional="true" min="1" max="100" label="Scale"/>
+                <!-- in kraken unbounded - tested manually: <1 does not make sense;  no real slowdown for larger values
+                  arbitrary decision to put 1000 as the maximum -->
+                <param argument="--maxcolseps" type="integer" value="2" min="0" max="1000" label="Maximum column separators"/>
+                <param name="colseps" type="select" label="Column separator color">
+                    <option value="--white_colseps" selected="true">White</option>
+                    <option value="--black-colseps">Black</option>
+                </param>
+                <param name="hlines" type="select" label="Remove/keep horizontal lines">
+                    <option value="--remove-hlines" selected="true">Remove horizontal lines</option>
+                    <option value="--hlines">Keep horizontal lines</option>
+                </param>
+                <!-- in kraken unbounded - tested manually: <1 does not make sense;  no real slowdown for larger values
+                  arbitrary decision to put 1000 as the maximum -->
+                <param argument="--pad" type="integer" value="0" min="0" max="1000" label="Padding around segmented regions"/>
+            </when>
+        </conditional>
+        <param argument="--text-direction" type="select" label="Text direction">
+            <option value="horizontal-lr" selected="true">Horizontal, left-to-right</option>
+            <option value="horizontal-rl">Horizontal, right-to-left</option>
+            <option value="vertical-lr">Vertical, left-to-right columns</option>
+            <option value="vertical-rl">Vertical, right-to-left columns</option>
+        </param>
+        <!-- in kraken unbounded - tested manually: <1 does not make sense;  no real slowdown for larger values
+            arbitrary decision to put 1000 as the maximum -->
+        <param argument="--input-pad" type="integer" value="0" min="0" max="1000" label="Padding to add around input image"/>
+    </inputs>
+    <outputs>
+        <data name="output" format="json" label="${tool.name} on ${on_string}">
+            <filter>image.ext != "pdf"</filter>
+            <actions>
+                <conditional name="format_type">
+                    <when value="-a">
+                        <action type="format" default="xml"/>
+                    </when>
+                    <when value="-x">
+                        <action type="format" default="xml"/>
+                    </when>
+                    <when value="-h">
+                        <action type="format" default="html"/>
+                    </when>
+                    <when value="-y">
+                        <action type="format" default="xml"/>
+                    </when>
+                    <when value="-n">
+                        <action type="format" default="json"/>
+                    </when>
+                </conditional>
+            </actions>
+        </data>
+        <collection name="pdf_output" type="list" label="${tool.name} pages on ${on_string}">
+            <filter>image.ext == "pdf"</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.(?P&lt;ext&gt;json|xml|html)"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="image" value="input.jpg" ftype="jpg"/>
+            <param name="format_type" value="-n"/>
+            <conditional name="segmenter">
+                <param name="type" value="baseline"/>
+            </conditional>
+            <output name="output" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;type&quot;: &quot;baselines&quot;"/>
+                    <has_text text="&quot;imagename&quot;: &quot;input.jpg&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- <test expect_num_outputs="1">
+            <param name="image" value="input.jpg" ftype="jpg"/>
+            <param name="format_type" value="-a"/>
+            <conditional name="segmenter">
+                <param name="type" value="baseline"/>
+                <param name="model" value="test_ml_model"/>
+            </conditional>
+            <output name="output" ftype="xml">
+                <assert_contents>
+                    <has_text text="alto"/>
+                    <has_text text="bdd-segmentation-regions-1.0.mlmodel"/>
+                </assert_contents>
+            </output>
+        </test> -->
+        <test expect_num_outputs="1">
+            <param name="image" value="input_2pages.pdf" ftype="pdf"/>
+            <param name="format_type" value="-n"/>
+            <conditional name="segmenter">
+                <param name="type" value="baseline"/>
+            </conditional>
+            <output_collection name="pdf_output" type="list" count="2">
+                <element name="input.pdf_000000" ftype="json">
+                    <assert_contents>
+                        <has_text text="&quot;type&quot;: &quot;baselines&quot;"/>
+                    </assert_contents>
+                </element>
+                <element name="input.pdf_000001" ftype="json">
+                    <assert_contents>
+                        <has_text text="&quot;type&quot;: &quot;baselines&quot;"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="image" value="input_binarized.png" ftype="png"/>
+            <param name="format_type" value="-n"/>
+            <conditional name="segmenter">
+                <param name="type" value="boxes"/>
+                <param name="scale" value="10"/>
+                <param name="maxcolseps" value="2"/>
+                <param name="colseps" value="--white_colseps"/>
+                <param name="hlines" value="--remove-hlines"/>
+                <param name="pad" value="2"/>
+            </conditional>
+            <param name="text_direction" value="vertical-lr"/>
+            <param name="input_pad" value="0"/>
+            <output name="output" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;type&quot;: &quot;bbox&quot;"/>
+                    <has_text text="&quot;text_direction&quot;: &quot;vertical-lr&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="image" value="input_binarized.png" ftype="png"/>
+            <param name="format_type" value="-a"/>
+            <conditional name="segmenter">
+                <param name="type" value="boxes"/>
+            </conditional>
+            <output name="output" ftype="xml">
+                <assert_contents>
+                    <has_text text="alto"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="image" value="input_binarized.png" ftype="png"/>
+            <param name="format_type" value="-h"/>
+            <conditional name="segmenter">
+                <param name="type" value="boxes"/>
+            </conditional>
+            <output name="output" ftype="html">
+                <assert_contents>
+                    <has_text text="ocr_line"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true">
+            <param name="image" value="input.jpg" ftype="jpg"/>
+            <param name="format_type" value="-n"/>
+            <conditional name="segmenter">
+                <param name="type" value="boxes"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The legacy box segmenter requires a binarized image"/>
+                <has_text text="colors"/>
+                <has_text text="Please run Kraken Binarize first"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true">
+            <param name="image" value="input_2pages.pdf" ftype="pdf"/>
+            <param name="format_type" value="-n"/>
+            <conditional name="segmenter">
+                <param name="type" value="boxes"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="PDF input seems to be not supported with the legacy box segmenter"/>
+                <has_text text="1-bit bilevel PDFs"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+**What it does**
+
+Kraken is a powerful OCR system for all languages. 
+This tool only exposes Kraken's segmentation command.
+
+Segmentation is the process of detecting text regions and lines in document images,
+which is a prerequisite for the OCR step. Output can be in various formats, 
+such as ALTO XML, PageXML, hOCR and abbyyXML.
+
+It is recommended to use the neural baseline segmenter with Kraken's internal stock 
+segmentation model or you can select an alternative model. Next to it,
+kraken's legacy box segmenter is also available. However, it (a)
+expects binarized input and (b) does not support PDF input.
+
+**Important**
+
+The JSON output of the kraken segment command cannot be used as the
+input for the Kraken OCR command.
+
+**License**
+
+Kraken is licensed under the Apache-2.0 license.
+    </help>
+    <expand macro="citations"/>
+</tool>

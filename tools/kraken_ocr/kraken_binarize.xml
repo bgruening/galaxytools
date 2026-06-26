@@ -6,40 +6,26 @@
     <expand macro="requirements"/>
     <expand macro="creators"/>
     <command detect_errors="exit_code"><![CDATA[
-        export USER="\${USER:-galaxy}" &&
-        ln -s '$image' 'input.${image.ext}' &&
-
+        @SET_GALAXY_USER@
+        #set $format_type = '-n' 
         @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
-
-        #if $image.ext != 'pdf'
-            ln -s '$output' 'kraken_output.png' &&
-        #end if
-
-        kraken
-            -n
-            --raise-on-error
-
-            #if $image.ext == 'pdf'
-                -f pdf
-                -I 'input.${image.ext}'
-                -o .png
-            #else
-                --input 'input.${image.ext}' 'kraken_output.png'
-            #end if
-
-            binarize
-                --threshold '$threshold'
-                --zoom '$zoom'
-                --escale '$escale'
-                --border '$border'
-                --perc '$perc'
-                --range '$range'
-                --low '$low'
-                --high '$high'
-
+        @CREATE_SYMLINKS@
+        @RUN_KRAKEN@ binarize
+            --threshold '$threshold'
+            --zoom '$zoom'
+            --escale '$escale'
+            --border '$border'
+            --perc '$perc'
+            --range '$range'
+            --low '$low'
+            --high '$high'
     ]]></command>
     <inputs>
-        <param name="image" type="data" format="jpg,png,tiff,pdf" label="Image or document" help="multipage is only supported for PDF inputs"/>
+        <expand macro="input_param"/>
+        <param name="out_ext" type="select" label="Output format">
+            <option value="png" selected="true">png</option>
+            <option value="tiff">tiff</option>
+        </param>
         <!-- in kraken unbounded - tested manually: <0 output completely white; >0.999 output completely black. -->
         <param argument="--threshold" type="float" value="0.5" min="0" max="0.999" label="Threshold"/>
         <!-- in kraken unbounded - tested manually: <0.1 turning the right edge into a white line; >1 processing very slow. -->
@@ -59,10 +45,20 @@
     <outputs>
         <data name="output" format="png" label="${tool.name} on ${on_string}">
             <filter>image.ext != "pdf"</filter>
+            <actions>
+                <conditional name="out_ext">
+                    <when value="png">
+                        <action type="format" default="png"/>
+                    </when>
+                    <when value="tiff">
+                        <action type="format" default="tiff"/>
+                    </when>
+                </conditional>
+            </actions>
         </data>
         <collection name="pdf_output" type="list" label="${tool.name} pages on ${on_string}">
             <filter>image.ext == "pdf"</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;input\.pdf_[0-9]+)\.png$" format="png"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.(?P&lt;ext&gt;png|tiff)"/>
         </collection>
     </outputs>
     <tests>
@@ -92,7 +88,7 @@
         <test expect_failure="true">
             <param name="image" value="input_2pages.tiff" ftype="tiff"/>
             <assert_stderr>
-                <has_text text="Multi-page TIF(F) input is not supported"/>
+                <has_text text="multi-page TIF(F) input is not supported"/>
                 <has_text text="Detected 2 pages"/>
             </assert_stderr>
         </test>
