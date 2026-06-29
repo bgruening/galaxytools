@@ -6,15 +6,19 @@
     <expand macro="requirements"/>
     <expand macro="creators"/>
     <command detect_errors="exit_code"><![CDATA[
-        #if $format_type == '-h'
+        #if $output_format_flag == '-h'
             #set $out_ext = 'html'
-        #elif $format_type == '-n'
+        #elif $output_format_flag == '-n'
             #set $out_ext = 'json'
         #else
             #set $out_ext = 'xml'
         #end if
         @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
         @CREATE_SYMLINKS@
+        #if $segmenter.type == 'baseline' and $segmenter.model_source.source == "history"
+            #set $model_name = str($segmenter.model_source.model.name)
+            ln -s '$segmenter.model_source.model' '$model_name' &&
+        #end if
         #if $segmenter.type == 'boxes'
             #if $image.ext == 'pdf'
                 echo "The legacy box segmenter requires a binarized image input. PDF input seems to be not supported with the legacy box segmenter since its fails even for 1-bit bilevel PDFs. Please extract the PDF pages to binarized PNG/TIFF images first, or use the neural baseline segmenter." >&2;
@@ -27,12 +31,13 @@
                 fi &&
             #end if
         #end if
-        @TORCH_TMP_DIR@
         @RUN_KRAKEN@ segment
             #if $segmenter.type == 'baseline'
                 --baseline
-                #if $segmenter.model.fields.sort_key != '00-default'
-                    --model '$segmenter.model.fields.path'
+                #if $segmenter.model_source.source == "datatable"
+                    --model '${segmenter.model_source.model.fields.path}'
+                #elif $segmenter.model_source.source == "history"
+                    --model '$model_name'
                 #end if
             #else
                 --boxes
@@ -47,9 +52,10 @@
             --text-direction '$text_direction'
             --input-pad '$input_pad'
     ]]></command>
+    <expand macro="env_vars"/>
     <inputs>
         <expand macro="input_param"/>
-        <param name="format_type" type="select" label="Output format">
+        <param name="output_format_flag" type="select" label="Output format">
             <option value="-a" selected="true">ALTO XML</option>
             <option value="-x">PageXML</option>
             <option value="-h">hOCR</option>
@@ -62,16 +68,29 @@
                 <option value="boxes">Legacy box segmenter (requires binarized input image)</option>
             </param>
             <when value="baseline">
-                <param name="model" type="select" label="Segmentation model" help="Select a segmentation model to use. The default is kraken's internal stock model">
-                    <options from_data_table="ml_models">
-                        <column name="value" index="0"/>
-                        <column name="name" index="1"/>
-                        <column name="version" index="2"/>
-                        <column name="path" index="3"/>
-                        <column name="sort_key" index="4"/>
-                        <filter type="sort_by" column="4"/>
-                    </options>
-                </param>
+                <conditional name="model_source">
+                    <param name="source" type="select" label="Model source">
+                        <option value="default" selected="true">Kraken internal stock model (BLLA base)</option>
+                        <option value="datatable">Models served by Galaxy</option>
+                        <option value="history">Model from Galaxy history</option>
+                    </param>
+                    <when value="default"/>
+                    <when value="datatable">
+                        <param name="model" type="select" label="Segmentation model" help="Select a segmentation model to use. The default is kraken's internal stock model">
+                            <options from_data_table="ml_models">
+                                <column name="value" index="0"/>
+                                <column name="name" index="1"/>
+                                <column name="version" index="2"/>
+                                <column name="path" index="3"/>
+                                <column name="compatibility" index="4"/>
+                                <filter type="sort_by" column="2"/>
+                            </options>
+                        </param>
+                    </when>
+                    <when value="history">
+                        <param name="model" type="data" format="binary" label="Segmentation model from history"/>
+                    </when>
+                </conditional>
             </when>
             <when value="boxes">
                 <!-- in kraken unbounded - tested manually: <1; >100 lines is empty or the processing time is very long -->
@@ -106,7 +125,7 @@
         <data name="output" format="json" label="${tool.name} on ${on_string}">
             <filter>image.ext != "pdf"</filter>
             <actions>
-                <conditional name="format_type">
+                <conditional name="output_format_flag">
                     <when value="-a">
                         <action type="format" default="xml"/>
                     </when>
@@ -133,10 +152,8 @@
     <tests>
         <test expect_num_outputs="1">
             <param name="image" value="input.jpg" ftype="jpg"/>
-            <param name="format_type" value="-n"/>
-            <conditional name="segmenter">
-                <param name="type" value="baseline"/>
-            </conditional>
+            <param name="output_format_flag" value="-n"/>
+            <param name="segmenter|type" value="baseline"/>
             <output name="output" ftype="json">
                 <assert_contents>
                     <has_text text="&quot;type&quot;: &quot;baselines&quot;"/>
@@ -144,23 +161,25 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- <test expect_num_outputs="1">
+        <test expect_num_outputs="1">
             <param name="image" value="input.jpg" ftype="jpg"/>
-            <param name="format_type" value="-a"/>
-            <conditional name="segmenter">
-                <param name="type" value="baseline"/>
-                <param name="model" value="test_ml_model"/>
-            </conditional>
+            <param name="output_format_flag" value="-a"/>
+            <param name="segmenter|type" value="baseline"/>
+            <param name="segmenter|model_source|source" value="history"/>
+            <!-- The test model is too large (4.3 MB) to include in the repository.
+                 Thus pulled from a commit-pinned GitHub URL. Zenodo cannot be used here 
+                 because the model is only available inside a ZIP archive. -->
+            <param name="segmenter|model_source|model" value="bdd-segmentation-regions-1.0.mlmodel" location="https://raw.githubusercontent.com/michaelscho/bdd-segmentation-regions/b818488376bc635f1a121427979b33dfc11638df/bdd-segmentation-regions-1.0.mlmodel" ftype="binary"/>
             <output name="output" ftype="xml">
                 <assert_contents>
                     <has_text text="alto"/>
                     <has_text text="bdd-segmentation-regions-1.0.mlmodel"/>
                 </assert_contents>
             </output>
-        </test> -->
+        </test>
         <test expect_num_outputs="1">
             <param name="image" value="input_2pages.pdf" ftype="pdf"/>
-            <param name="format_type" value="-n"/>
+            <param name="output_format_flag" value="-n"/>
             <conditional name="segmenter">
                 <param name="type" value="baseline"/>
             </conditional>
@@ -179,7 +198,7 @@
         </test>
         <test expect_num_outputs="1">
             <param name="image" value="input_binarized.png" ftype="png"/>
-            <param name="format_type" value="-n"/>
+            <param name="output_format_flag" value="-n"/>
             <conditional name="segmenter">
                 <param name="type" value="boxes"/>
                 <param name="scale" value="10"/>
@@ -199,7 +218,7 @@
         </test>
         <test expect_num_outputs="1">
             <param name="image" value="input_binarized.png" ftype="png"/>
-            <param name="format_type" value="-a"/>
+            <param name="output_format_flag" value="-a"/>
             <conditional name="segmenter">
                 <param name="type" value="boxes"/>
             </conditional>
@@ -211,7 +230,7 @@
         </test>
         <test expect_num_outputs="1">
             <param name="image" value="input_binarized.png" ftype="png"/>
-            <param name="format_type" value="-h"/>
+            <param name="output_format_flag" value="-h"/>
             <conditional name="segmenter">
                 <param name="type" value="boxes"/>
             </conditional>
@@ -223,7 +242,7 @@
         </test>
         <test expect_failure="true">
             <param name="image" value="input.jpg" ftype="jpg"/>
-            <param name="format_type" value="-n"/>
+            <param name="output_format_flag" value="-n"/>
             <conditional name="segmenter">
                 <param name="type" value="boxes"/>
             </conditional>
@@ -235,7 +254,7 @@
         </test>
         <test expect_failure="true">
             <param name="image" value="input_2pages.pdf" ftype="pdf"/>
-            <param name="format_type" value="-n"/>
+            <param name="output_format_flag" value="-n"/>
             <conditional name="segmenter">
                 <param name="type" value="boxes"/>
             </conditional>
