@@ -1,0 +1,261 @@
+<tool id="kat_gcp" name="KAT GCP" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>GC vs Coverage analysis of k-mers</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <stdio>
+        <regex match="corrupted double-linked list" source="stderr" level="warning" description="KAT C++ heap corruption — output files were still produced correctly"/>
+        <exit_code range="2:133" level="fatal" description="Error occurred"/>
+        <exit_code range="135:" level="fatal" description="Error occurred"/>
+        <exit_code range=":-1" level="fatal" description="Error occurred"/>
+    </stdio>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command><![CDATA[
+        #if $input_type.type == 'fastx':
+            #for $i in range(len($input_type.input_files)):
+                #set $f = $input_type.input_files[$i]
+                @SET_EXT@
+                cp '$f' 'input_${i}${ext}' &&
+            #end for
+        #end if
+        kat gcp
+            -o kat-gcp
+            -t "\${GALAXY_SLOTS:-1}"
+            -x '$matrix_options.cvg_scale'
+            -y '$matrix_options.cvg_bins'
+            #if str($matrix_options.five_prime_trim).strip():
+                --5ptrim '$matrix_options.five_prime_trim'
+            #end if
+            -m '$kmer_options.mer_len'
+            -H '$kmer_options.hash_size'
+            $kmer_options.non_canonical
+            -v
+            -p '$output_options.output_type'
+            #if $input_type.type == 'fastx':
+                #for $i in range(len($input_type.input_files)):
+                    #set $f = $input_type.input_files[$i]
+                    @SET_EXT@
+                    'input_${i}${ext}'
+                #end for
+            #else:
+                '$input_type.jellyfish_hash'
+            #end if
+    ]]></command>
+    <inputs>
+        <conditional name="input_type">
+            <param name="type" type="select" label="Input type">
+                <option value="fastx" selected="true">FASTA/FASTQ files</option>
+                <option value="jellyfish">Jellyfish hash</option>
+            </param>
+            <when value="fastx">
+                <param name="input_files" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz" multiple="true" label="Input FASTA/FASTQ files" help="One or more sequence files to analyse"/>
+            </when>
+            <when value="jellyfish">
+                <param name="jellyfish_hash" type="data" format="jellyfish" label="Jellyfish hash" help="Pre-computed jellyfish k-mer hash file"/>
+            </when>
+        </conditional>
+        <section name="kmer_options" title="K-mer Options" expanded="false">
+            <param argument="-m" name="mer_len" type="integer" value="27" min="1" label="K-mer length" help="Larger values provide more discriminating power between k-mers but require additional memory and lower coverage"/>
+            <param argument="-H" name="hash_size" type="integer" value="100000000" min="1" label="Hash size" help="If k-mer counting is required, use this value as the hash size. The hash will be doubled and recounted if it is too small, increasing runtime and memory usage"/>
+            <param argument="-N" name="non_canonical" type="boolean" truevalue="--non_canonical" falsevalue="" checked="false" label="Non-canonical k-mers" help="Store explicit k-mer as found. By default, canonical k-mers are stored, meaning both strands are counted"/>
+        </section>
+        <section name="matrix_options" title="Matrix Options" expanded="false">
+            <param argument="-x" name="cvg_scale" type="float" value="1" min="0" label="Coverage scale" help="Number of bins for the GC data when creating the contamination matrix"/>
+            <param argument="-y" name="cvg_bins" type="integer" value="1000" min="1" label="Coverage bins" help="Number of bins for the coverage data when creating the contamination matrix"/>
+            <expand macro="five_prime_trim_param"/>
+        </section>
+        <section name="output_options" title="Output Options" expanded="false">
+            <expand macro="output_type_param"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_matrix" format="tabular" from_work_dir="kat-gcp.mx" label="${tool.name} on ${on_string}: GCP matrix"/>
+        <data name="output_plot" format="png" from_work_dir="kat-gcp.mx.png" label="${tool.name} on ${on_string}: GCP PNG Plot">
+            <filter>output_options['output_type'] == 'png'</filter>
+        </data>
+        <data name="output_pdf" format="pdf" from_work_dir="kat-gcp.mx.pdf" label="${tool.name} on ${on_string}: GCP PDF">
+            <filter>output_options['output_type'] == 'pdf'</filter>
+        </data>
+        <data name="output_stats" format="tabular" from_work_dir="kat-gcp.dist_analysis.json" label="${tool.name} on ${on_string}: JSON Stats"/>
+    </outputs>
+    <tests>
+        <!-- Test 01: Testing GCP matrix generation -->
+        <test expect_num_outputs="3">
+            <conditional name="input_type">
+                <param name="type" value="fastx"/>
+                <param name="input_files" location="https://zenodo.org/records/20347489/files/kat-input-subsampled.fastq.gz" ftype="fastqsanger.gz"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <output name="output_matrix" file="kat_gcp.mx">
+                <assert_contents>
+                    <has_text text="###"/>
+                    <has_text text="# Rows:27"/>
+                    <has_text text="27-mer frequency"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot" file="kat_gcp.mx.png">
+                <assert_contents>
+                    <has_size value="238000" delta="10000"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats" file="kat_gcp.dist_analysis.json">
+                <assert_contents>
+                    <has_size value="940"/>
+                    <has_text text="coverage"/>
+                    <has_text text="&quot;k&quot;: 27"/>
+                    <has_text text="nb_peaks"/>
+                    <has_text text="mean_gc"/>
+                    <has_text text="est_genome_size"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: Uncompressed FASTQ input with k-mer length 21 -->
+        <test expect_num_outputs="3">
+            <conditional name="input_type">
+                <param name="type" value="fastx"/>
+                <param name="input_files" value="read_1.fastq" ftype="fastqsanger"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="21"/>
+            </section>
+            <output name="output_matrix">
+                <assert_contents>
+                    <has_text text="###"/>
+                    <has_text text="# Rows:21"/>
+                    <has_text text="21-mer frequency"/>
+                    <has_text text="# Kmer value:21"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot">
+                <assert_contents>
+                    <has_size value="190500" delta="10000"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_size value="742"/>
+                    <has_text text="coverage"/>
+                    <has_text text="&quot;k&quot;: 21"/>
+                    <has_text text="nb_peaks"/>
+                    <has_text text="mean_gc"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 03: Multiple paired FASTQ inputs with non-canonical k-mers -->
+        <test expect_num_outputs="3">
+            <conditional name="input_type">
+                <param name="type" value="fastx"/>
+                <param name="input_files" value="read1.fastq.gz,read2.fastq.gz" ftype="fastqsanger.gz"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+                <param name="non_canonical" value="true"/>
+            </section>
+            <output name="output_matrix">
+                <assert_contents>
+                    <has_text text="###"/>
+                    <has_text text="# Rows:27"/>
+                    <has_text text="27-mer frequency"/>
+                    <has_text text="input_0.fastq.gz"/>
+                    <has_text text="input_1.fastq.gz"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot">
+                <assert_contents>
+                    <has_size value="241727"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_size value="745"/>
+                    <has_text text="coverage"/>
+                    <has_text text="&quot;k&quot;: 27"/>
+                    <has_text text="nb_peaks"/>
+                    <has_text text="mean_gc"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 04: Custom coverage bins and PDF output -->
+        <test expect_num_outputs="3">
+            <conditional name="input_type">
+                <param name="type" value="fastx"/>
+                <param name="input_files" value="read1.fastq.gz" ftype="fastqsanger.gz"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="matrix_options">
+                <param name="cvg_bins" value="500"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="pdf"/>
+            </section>
+            <output name="output_matrix">
+                <assert_contents>
+                    <has_text text="###"/>
+                    <has_text text="# Rows:27"/>
+                    <has_text text="# Columns:501"/>
+                </assert_contents>
+            </output>
+            <output name="output_pdf">
+                <assert_contents>
+                    <has_size value="23700" delta="2000"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_size value="742"/>
+                    <has_text text="coverage"/>
+                    <has_text text="&quot;k&quot;: 27"/>
+                    <has_text text="nb_peaks"/>
+                    <has_text text="mean_gc"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**KAT GCP - GC vs Coverage Analysis**
+
+KAT (K-mer Analysis Toolkit) GCP compares GC content and k-mer coverage from sequence data.
+
+-----
+
+**What it does**
+
+This tool counts GC nucleotides for each distinct k-mer in the input and builds a matrix
+of GC count vs k-mer coverage. This matrix is useful for:
+
+- Distinguishing legitimate genomic content from contamination
+- Identifying unexpected sequence content
+- Analysing biological composition of a sequencing library
+
+-----
+
+**Inputs**
+
+- **FastA/FastQ files**: One or more sequence files (optionally gzip-compressed). KAT will perform k-mer counting internally.
+- **Jellyfish hash**: A pre-computed k-mer hash produced by Jellyfish.
+
+-----
+
+**Outputs**
+
+- **GCP matrix** (`.mx`): Tab-separated matrix of GC count vs k-mer coverage bins. Each cell contains the count of distinct k-mers with that GC/coverage combination.
+- **GCP plot**: A 2D density plot visualising the matrix, useful for detecting contamination or ploidy signals.
+- **Stats**: A JSON file with summary statistics for the run.
+
+-----
+
+**Tips**
+
+- For contamination screening, look for distinct clusters in the GCP plot that sit away from the main genomic peak.
+- Increase `--mer_len` for more specific k-mer discrimination (at the cost of memory).
+
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>
