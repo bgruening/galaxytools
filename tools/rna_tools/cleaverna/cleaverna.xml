@@ -20,137 +20,180 @@
     #if $mode_selector.mode == "training"
         #set $model_name = $mode_selector.model_name
         mkdir -p input &&
-    #if $mode_selector.params_source.params_method == "upload"
-                cp "$mode_selector.params_source.params_csv" input/params.csv &&
-    #else
-        echo "LA,RA,CS,Tem,CA" > input/params.csv &&
-        echo '$mode_selector.params_source.la,$mode_selector.params_source.ra,"#echo ",".join($mode_selector.params_source.cs)#",$mode_selector.params_source.tem,$mode_selector.params_source.ca' >> input/params.csv &&
-    #end if
+        #if $mode_selector.params_source.params_method == "upload"
+            cp "$mode_selector.params_source.params_csv" input/params.csv &&
+        #else
+            echo "LA,RA,CS,Tem,CA" > input/params.csv &&
+            echo '$mode_selector.params_source.la,$mode_selector.params_source.ra,"#echo ",".join($mode_selector.params_source.cs)#",$mode_selector.params_source.tem,$mode_selector.params_source.ca' >> input/params.csv &&
+        #end if
         #for $f in $mode_selector.target_files_training
             #if $f.element_identifier.endswith('.fasta'):
-            cp "$f" input/${f.element_identifier} &&
+                cp "$f" input/${f.element_identifier} &&
             #else
-            cp "$f" input/${f.element_identifier}.fasta &&
+                cp "$f" input/${f.element_identifier}.fasta &&
             #end if
-    #end for
+        #end for
         cleaverna
             --params input/params.csv
             #for $f in $mode_selector.target_files_training
-            --target_files_training "input/${f.element_identifier}"
+                #if $f.element_identifier.endswith('.fasta'):
+                    --target_files_training "input/${f.element_identifier}"
+                #else
+                    --target_files_training "input/${f.element_identifier}.fasta"
+                #end if
             #end for
             --prediction_mode default
             --model_name "$model_name"
             --output_dir output &&
-            mv output/${model_name}_user_merged_num.csv output/training_output.csv
+        mv output/${model_name}_user_merged_num.csv output/training_output.csv
         
     #else
-            ## ---------- PREDICTION MODE ----------
-            #if $mode_selector.prediction_mode_selector.prediction_mode == "default"
-                ## PARAMS
-                #set $params_file = $mode_selector.prediction_mode_selector.params_csv
-                ## training file
-                #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
-                    #set $training_file = "$__tool_directory__/data/" + $mode_selector.prediction_mode_selector.training_file_source.training_builtin
+        ## ---------- PREDICTION MODE ----------
+                #if $mode_selector.prediction_mode_selector.prediction_mode == "default"
+            #set $model_name = str($mode_selector.prediction_mode_selector.model_name)
+            mkdir -p input &&
+            mkdir -p output &&
+            mkdir -p training_data &&
+            
+            ## PARAMS (upload or generate)
+            #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
+                cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
+            #else
+                echo "LA,RA,CS,Tem,CA" > input/params.csv &&
+                echo '$mode_selector.prediction_mode_selector.params_source.la,$mode_selector.prediction_mode_selector.params_source.ra,"#echo ",".join($mode_selector.prediction_mode_selector.params_source.cs)#",$mode_selector.prediction_mode_selector.params_source.tem,$mode_selector.prediction_mode_selector.params_source.ca' >> input/params.csv &&
+            #end if
+            
+            ## COPY TARGET FASTA FILES
+            #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
+                #if $f.element_identifier.endswith('.fasta'):
+                    cp "$f" input/${f.element_identifier} &&
                 #else
-                    #set $training_file = $mode_selector.prediction_mode_selector.training_file_source.training_upload
+                    cp "$f" input/${f.element_identifier}.fasta &&
                 #end if
-                ## training scores
-                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
-                    #set $training_scores = "$__tool_directory__/data/" + $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin
-                #else
-                    #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
-                #end if
-                cleaverna \
-                    --prediction_mode default \
-                    --params "$params_file"  \
-                    --model_name "$mode_selector.prediction_mode_selector.model_name" \
-                    #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
+            #end for
+            
+            ## TRAINING FILE
+            #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
+                #set $training_file = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_file_source.training_builtin)
+            #else
+                #set $training_file = str($mode_selector.prediction_mode_selector.training_file_source.training_upload)
+            #end if
+            
+            ## Extract training zip
+            unzip -q "$training_file" -d training_data &&
+    
+            ## Reorder training CSV columns in place while preserving original filename and all columns
+            printf 'import csv, glob, sys, os\nfiles = glob.glob("training_data/**/*.csv", recursive=True)\nif not files: sys.exit("No CSV found")\nin_csv = files[0]\nout_csv = "training_data/reordered_training.csv"\ndesired_cols = ["id2","seq2","E_1","ED1_1","ED2_1","Pu1_1","Pu2_1","E_hybrid_1","P_E_1","seedNumber_1","seedEbest_1","E_2","ED1_2","ED2_2","Pu1_2","Pu2_2","E_hybrid_2","P_E_2","seedNumber_2","seedEbest_2","E_3","ED1_3","ED2_3","Pu1_3","Pu2_3","E_hybrid_3","P_E_3","seedNumber_3","seedEbest_3","E_diff_12","pumin1_4u","pumin5_8u","pumin1_4d","pumin5_8d","target_file"]\nwith open(in_csv, newline=\"\") as fin:\n  reader = csv.DictReader(fin)\n  all_cols = reader.fieldnames or []\n  ordered = [c for c in desired_cols if c in all_cols]\n  remaining = [c for c in all_cols if c not in desired_cols]\n  cols = ordered + remaining\n  rows = list(reader)\nwith open(out_csv, \"w\", newline=\"\") as fout:\n  w = csv.DictWriter(fout, fieldnames=cols)\n  w.writeheader()\n  w.writerows(rows)\nprint(\"Created:\", out_csv)\nprint(\"Source:\", in_csv)\nprint(\"Columns:\", cols)\n' | python3 &&
+
+            ## TRAINING SCORES
+            #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
+                #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)
+            #else
+                #set $training_scores = str($mode_selector.prediction_mode_selector.training_scores_source.scores_upload)
+            #end if
+            
+            cleaverna 
+                --params input/params.csv 
+                #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
+                    #if $f.element_identifier.endswith('.fasta'):
+                        --target_files_prediction "input/${f.element_identifier}" 
+                    #else
+                        --target_files_prediction "input/${f.element_identifier}.fasta" 
+                    #end if
+                #end for
+                --prediction_mode default 
+                --model_name "$model_name" 
+                --training_file training_data/reordered_training.csv
+                --training_scores "$training_scores" 
+                --output_dir output &&
+            mv output/${model_name}_ML_train_feature_set.csv output/ml_train_feature_set.csv &&
+            mv output/${model_name}_ML_train.csv output/ml_train.csv &&
+            mv output/${model_name}_ML_metrics.csv output/ml_metrics.csv &&
+            mv output/${model_name}_CleaveRNA_output.csv output/cleaverna_output.csv &&
+            mv output/${model_name}_balanced_classification.csv output/balanced_classification.csv &&
+            mv output/parameters.cfg output/prediction_parameters.cfg
+
+        #elif $mode_selector.prediction_mode_selector.prediction_mode == "target_check"
+            ## params (multi-row repeat)
+            #set $params_file = $mode_selector.prediction_mode_selector.params_csv
+            ## training file
+            #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
+                #set $training_file = "$__tool_directory__/data/" + $mode_selector.prediction_mode_selector.training_file_source.training_builtin
+            #else
+                #set $training_file = $mode_selector.prediction_mode_selector.training_file_source.training_upload
+            #end if
+            ## training scores
+            #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
+                #set $training_scores = "$__tool_directory__/data/" + $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin
+            #else
+                #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
+            #end if
+            ## RUN
+            cleaverna \
+                --prediction_mode target_check \
+                --params "$params_file" \
+                --model_name "$mode_selector.prediction_mode_selector.model_name" \
+                #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
                     --target_files_prediction "$f" \
-                    #end for
-                    --training_file "$training_file"/*.csv \
-                    --training_scores "$training_scores" \
-                    --output_dir .
-            #elif $mode_selector.prediction_mode_selector.prediction_mode == "target_check"
-                ## params (multi-row repeat)
-                #set $params_file = $mode_selector.prediction_mode_selector.params_csv
-                ## training file
-                #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
-                    #set $training_file = "$__tool_directory__/data/" + $mode_selector.prediction_mode_selector.training_file_source.training_builtin
-                #else
-                    #set $training_file = $mode_selector.prediction_mode_selector.training_file_source.training_upload
-                #end if
-        
-                ## training scores
-                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
-                    #set $training_scores = "$__tool_directory__/data/" + $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin
-                #else
-                    #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
-                #end if
-        
-                ## RUN
-                cleaverna \
-                    --prediction_mode target_check \
-                    --params "$params_file" \
-                    --model_name "$mode_selector.prediction_mode_selector.model_name" \
-                    #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
+                #end for
+                --training_file "$training_file"/*.csv \
+                --training_scores "$training_scores" \
+                --output_dir .
+                
+        #elif $mode_selector.prediction_mode_selector.prediction_mode == "target_screen"
+            ## params
+            #set $params_file = $mode_selector.prediction_mode_selector.params_csv
+            ## training file
+            #if str($mode_selector.prediction_mode_selector.training_file_source.training_file_method) == "builtin"
+                #set $training_file = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_file_source.training_builtin)
+            #else
+                #set $training_file = $mode_selector.prediction_mode_selector.training_file_source.training_upload
+            #end if
+            ## training scores
+            #if str($mode_selector.prediction_mode_selector.training_scores_source.scores_method) == "builtin"
+                #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)    
+            #else
+                #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
+            #end if
+            cleaverna \
+                --prediction_mode target_screen \
+                --params "$params_file" \
+                --model_name "$mode_selector.prediction_mode_selector.model_name" \
+                #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
                     --target_files_prediction "$f" \
-                    #end for
-                    --training_file "$training_file"/*.csv \
-                    --training_scores "$training_scores" \
-                    --output_dir .
-            #elif $mode_selector.prediction_mode_selector.prediction_mode == "target_screen"
-                    ## params
-                #set $params_file = $mode_selector.prediction_mode_selector.params_csv
-                ## training file
-                #if str($mode_selector.prediction_mode_selector.training_file_source.training_file_method) == "builtin"
-                    #set $training_file = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_file_source.training_builtin)
-                #else
-                    #set $training_file = $mode_selector.prediction_mode_selector.training_file_source.training_upload
-                #end if
-                ## training scores
-                #if str($mode_selector.prediction_mode_selector.training_scores_source.scores_method) == "builtin"
-                    #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)    
-                #else
-                    #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
-                #end if
-                cleaverna \
-                    --prediction_mode target_screen \
-                    --params "$params_file" \
-                    --model_name "$mode_selector.prediction_mode_selector.model_name" \
-                    #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
+                #end for
+                --training_file "$training_file"/*.csv \
+                --training_scores "$training_scores" \
+                --output_dir .
+                
+        ## Specific_query
+        #elif $mode_selector.prediction_mode_selector.prediction_mode == "specific_query"    
+            ## params
+            #set $params_file = $mode_selector.prediction_mode_selector.params_csv
+            ## training file
+            #if str($mode_selector.prediction_mode_selector.training_file_source.training_file_method) == "builtin"
+                #set $training_file = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_file_source.training_builtin)
+            #else
+                #set $training_file = $mode_selector.prediction_mode_selector.training_file_source.training_upload
+            #end if
+            ## training scores
+            #if str($mode_selector.prediction_mode_selector.training_scores_source.scores_method) == "builtin"
+                #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)    
+            #else
+                #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
+            #end if
+            cleaverna \
+                --prediction_mode specific_query \
+                --params "$params_file" \
+                --model_name "$mode_selector.prediction_mode_selector.model_name" \
+                #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
                     --target_files_prediction "$f" \
-                    #end for
-                    --training_file "$training_file"/*.csv \
-                    --training_scores "$training_scores" \
-                    --output_dir .
-            ## Specific_query
-            #elif $mode_selector.prediction_mode_selector.prediction_mode == "specific_query"    
-                ## params
-                #set $params_file = $mode_selector.prediction_mode_selector.params_csv
-                ## training file
-                #if str($mode_selector.prediction_mode_selector.training_file_source.training_file_method) == "builtin"
-                    #set $training_file = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_file_source.training_builtin)
-                #else
-                    #set $training_file = $mode_selector.prediction_mode_selector.training_file_source.training_upload
-                #end if
-                ## training scores
-                #if str($mode_selector.prediction_mode_selector.training_scores_source.scores_method) == "builtin"
-                    #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)    
-                #else
-                    #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
-                #end if
-                cleaverna \
-                    --prediction_mode specific_query \
-                    --params "$params_file" \
-                    --model_name "$mode_selector.prediction_mode_selector.model_name" \
-                    #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
-                    --target_files_prediction "$f" \
-                    #end for
-                    --training_file "$training_file"/*.csv \
-                    --training_scores "$training_scores" \
-                    --output_dir .
-            #end if  
-        #end if
+                #end for
+                --training_file "$training_file"/*.csv \
+                --training_scores "$training_scores" \
+                --output_dir .
+        #end if  
+    #end if
     ]]></command>
     <inputs>
         <conditional name="mode_selector">
@@ -172,7 +215,7 @@
                         <option value="specific_query">Specific query</option>
                     </param>
                     <when value="default">
-                        <expand macro="params_selector"/>
+                        <expand macro="prediction_default_params_selector"/>
                         <expand macro="model_name"/>
                         <expand macro="target_files_prediction"/>
                         <expand macro="training_file_selector"/>
@@ -211,26 +254,27 @@
         <data name="training_cfg" format="txt" from_work_dir="output/parameters.cfg" label="${tool.name} on ${on_string}: Training Config">
             <filter>mode_selector['mode'] == 'training'</filter>
         </data>
-        <data name="prediction_cfg" format="txt" from_work_dir="parameters.cfg" label="${tool.name} on ${on_string}: Prediction Config">
+        <data name="prediction_cfg" format="txt" from_work_dir="output/prediction_parameters.cfg" label="${tool.name} on ${on_string}: Prediction Config">
             <filter>mode_selector['mode'] == 'prediction'</filter>
         </data>
-        <data name="ml_train_feature_set" format="csv" from_work_dir="${mode_selector.prediction_mode_selector.model_name}_ML_train_feature_set.csv" label="${tool.name} on ${on_string}: ML Feature Set">
+        <data name="ml_train_feature_set" format="csv" from_work_dir="output/ml_train_feature_set.csv" label="${tool.name} on ${on_string}: ML Feature Set">
             <filter>mode_selector['mode'] == 'prediction'</filter>
         </data>
-        <data name="ml_train" format="csv" from_work_dir="${mode_selector.prediction_mode_selector.model_name}_ML_train.csv" label="${tool.name} on ${on_string}: ML Train">
+        <data name="ml_train" format="csv" from_work_dir="output/ml_train.csv" label="${tool.name} on ${on_string}: ML Train">
             <filter>mode_selector['mode'] == 'prediction'</filter>
         </data>
-        <data name="ml_metrics" format="csv" from_work_dir="${mode_selector.prediction_mode_selector.model_name}_ML_metrics.csv" label="${tool.name} on ${on_string}: ML Metrics">
+        <data name="ml_metrics" format="csv" from_work_dir="output/ml_metrics.csv" label="${tool.name} on ${on_string}: ML Metrics">
             <filter>mode_selector['mode'] == 'prediction'</filter>
         </data>
-        <data name="cleaverna_output" format="csv" from_work_dir="${mode_selector.prediction_mode_selector.model_name}_CleaveRNA_output.csv" label="${tool.name} on ${on_string}: CleaveRNA Output">
+        <data name="cleaverna_output" format="csv" from_work_dir="output/cleaverna_output.csv" label="${tool.name} on ${on_string}: CleaveRNA Output">
             <filter>mode_selector['mode'] == 'prediction'</filter>
         </data>
-        <data name="balanced_classification" format="csv" from_work_dir="${mode_selector.prediction_mode_selector.model_name}_balanced_classification.csv" label="${tool.name} on ${on_string}: Balanced Classification">
+        <data name="balanced_classification" format="csv" from_work_dir="output/balanced_classification.csv" label="${tool.name} on ${on_string}: Balanced Classification">
             <filter>mode_selector['mode'] == 'prediction'</filter>
         </data>
     </outputs>
     <tests>
+        <!-- 
         <test expect_num_outputs="2">
             <conditional name="mode_selector">
                 <param name="mode" value="training"/>
@@ -262,11 +306,41 @@
                 <param name="model_name" value="test"/>
                 <param name="target_files_training" value="HPV.fasta,BCL-1.fasta" ftype="fasta"/>
             </conditional>
+            <output name="training_csv" file="expected_output.csv" ftype="csv"/>
             <output name="training_cfg">
                 <assert_contents>
                     <has_text text="temperature"/>
                 </assert_contents>
             </output>
+        </test>
+    -->
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="default"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="params.csv" ftype="csv"/>
+                    </conditional>
+                    <param name="model_name" value="HBV"/>
+                    <param name="target_files_prediction" value="HPV.fasta,BCL-1.fasta" ftype="fasta"/>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC_user_merged_num.zip"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target.csv"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg" file="prediction_parameters.cfg" ftype="txt"/>
+            <output name="ml_train_feature_set" file="ml_train_feature_set.csv" ftype="csv"/>
+            <output name="ml_train" file="ml_train.csv" ftype="csv"/>
+            <output name="ml_metrics" file="ml_metrics.csv" ftype="csv"/>
+            <output name="cleaverna_output" file="cleaverna_output.csv" ftype="csv"/>
+            <output name="balanced_classification" file="balanced_classification.csv" ftype="csv"/>
         </test>
     </tests>
     <help><![CDATA[
