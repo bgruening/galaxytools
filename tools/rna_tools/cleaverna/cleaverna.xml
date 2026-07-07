@@ -2,7 +2,7 @@
     <description>scoring candidate cleavage sites of DNAzyme</description>
     <creator>
         <person givenName="Reyhaneh" familyName="Tavakoli Koopaei" email="rey.ta.kop.biochem@gmail.com"/>
-        <person givenName="Björn" familyName="Gruening" email="bjoern.gruening@gmail.com"/>
+        <person givenName="Björn" familyName="Gruening" email="bgruening@informatik.uni-freiburg.de"/>
         <person givenName="Martin" familyName="Raden" email="martin.raden@uni-tuebingen.de"/>
     </creator>
     <macros>
@@ -10,21 +10,21 @@
     </macros>
     <expand macro="requirements"/>
     <required_files>
-        <include path="data/HPBC_user_merged_num.zip"/>
+        <include path="data/HPBC_user_merged_num.csv.zip"/>
         <include path="data/HPBC_target.csv"/>
-        <include path="data/SARS_user_merged_num.zip"/>
+        <include path="data/SARS_user_merged_num.csv.zip"/>
         <include path="data/SARS_target.csv"/>
     </required_files>
-    <expand macro="version_command"/>
+    <version_command>cleaverna --help | head -1</version_command>
     <command detect_errors="exit_code"><![CDATA[
     #if $mode_selector.mode == "training"
-        #set $model_name = $mode_selector.model_name
         mkdir -p input &&
         #if $mode_selector.params_source.params_method == "upload"
             cp "$mode_selector.params_source.params_csv" input/params.csv &&
         #else
-            echo "LA,RA,CS,Tem,CA" > input/params.csv &&
-            echo '$mode_selector.params_source.la,$mode_selector.params_source.ra,"#echo ",".join($mode_selector.params_source.cs)#",$mode_selector.params_source.tem,$mode_selector.params_source.ca' >> input/params.csv &&
+            cp $params_file_config input/params.csv &&
+            ## remove the first line
+            sed -i '1d' input/params.csv &&
         #end if
         #for $f in $mode_selector.target_files_training
             #if $f.element_identifier.endswith('.fasta'):
@@ -35,18 +35,11 @@
         #end for
         cleaverna
             --params input/params.csv
-            #for $f in $mode_selector.target_files_training
-                #if $f.element_identifier.endswith('.fasta'):
-                    --target_files_training "input/${f.element_identifier}"
-                #else
-                    --target_files_training "input/${f.element_identifier}.fasta"
-                #end if
-            #end for
+            --target_files_training input/*.fasta
             --prediction_mode default
-            --model_name "$model_name"
+            --model_name "$mode_selector.model_name"
             --output_dir output &&
-        mv output/${model_name}_user_merged_num.csv output/training_output.csv
-        
+        mv output/${mode_selector.model_name}_user_merged_num.csv output/training_output.csv
     #else
         ## ---------- PREDICTION MODE ----------
                 #if $mode_selector.prediction_mode_selector.prediction_mode == "default"
@@ -54,7 +47,7 @@
             mkdir -p input &&
             mkdir -p output &&
             mkdir -p training_data &&
-            
+
             ## PARAMS (upload or generate)
             #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
                 cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
@@ -62,7 +55,7 @@
                 echo "LA,RA,CS,Tem,CA" > input/params.csv &&
                 echo '$mode_selector.prediction_mode_selector.params_source.la,$mode_selector.prediction_mode_selector.params_source.ra,"#echo ",".join($mode_selector.prediction_mode_selector.params_source.cs)#",$mode_selector.prediction_mode_selector.params_source.tem,$mode_selector.prediction_mode_selector.params_source.ca' >> input/params.csv &&
             #end if
-            
+
             ## COPY TARGET FASTA FILES
             #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
                 #if $f.element_identifier.endswith('.fasta'):
@@ -71,14 +64,14 @@
                     cp "$f" input/${f.element_identifier}.fasta &&
                 #end if
             #end for
-            
+
             ## TRAINING FILE
             #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
                 #set $training_file = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_file_source.training_builtin)
             #else
                 #set $training_file = str($mode_selector.prediction_mode_selector.training_file_source.training_upload)
             #end if
-            
+
             ## Extract training zip
             unzip -q "$training_file" -d training_data &&
 
@@ -89,27 +82,27 @@
                 mv "\$ORIGINAL_CSV" "training_data/\${ZIP_BASE_NAME}.csv";
             fi &&
 
-    
+
             ## TRAINING SCORES
             #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
                 #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)
             #else
                 #set $training_scores = str($mode_selector.prediction_mode_selector.training_scores_source.scores_upload)
             #end if
-            
-            cleaverna 
-                --params input/params.csv 
+
+            cleaverna
+                --params input/params.csv
                 #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
                     #if $f.element_identifier.endswith('.fasta'):
-                        --target_files_prediction "input/${f.element_identifier}" 
+                        --target_files_prediction "input/${f.element_identifier}"
                     #else
-                        --target_files_prediction "input/${f.element_identifier}.fasta" 
+                        --target_files_prediction "input/${f.element_identifier}.fasta"
                     #end if
                 #end for
-                --prediction_mode default 
-                --model_name "$model_name" 
+                --prediction_mode default
+                --model_name "$model_name"
                 --training_file "training_data/\${ZIP_BASE_NAME}.csv"
-                --training_scores "$training_scores" 
+                --training_scores "$training_scores"
                 --output_dir output &&
             mv output/${model_name}_ML_train_feature_set.csv output/ml_train_feature_set.csv &&
             mv output/${model_name}_ML_train.csv output/ml_train.csv &&
@@ -144,7 +137,7 @@
                 --training_file "$training_file"/*.csv \
                 --training_scores "$training_scores" \
                 --output_dir .
-                
+
         #elif $mode_selector.prediction_mode_selector.prediction_mode == "target_screen"
             ## params
             #set $params_file = $mode_selector.prediction_mode_selector.params_csv
@@ -156,7 +149,7 @@
             #end if
             ## training scores
             #if str($mode_selector.prediction_mode_selector.training_scores_source.scores_method) == "builtin"
-                #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)    
+                #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)
             #else
                 #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
             #end if
@@ -170,9 +163,9 @@
                 --training_file "$training_file"/*.csv \
                 --training_scores "$training_scores" \
                 --output_dir .
-                
+
         ## Specific_query
-        #elif $mode_selector.prediction_mode_selector.prediction_mode == "specific_query"    
+        #elif $mode_selector.prediction_mode_selector.prediction_mode == "specific_query"
             ## params
             #set $params_file = $mode_selector.prediction_mode_selector.params_csv
             ## training file
@@ -183,7 +176,7 @@
             #end if
             ## training scores
             #if str($mode_selector.prediction_mode_selector.training_scores_source.scores_method) == "builtin"
-                #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)    
+                #set $training_scores = $__tool_directory__ + "/data/" + str($mode_selector.prediction_mode_selector.training_scores_source.scores_builtin)
             #else
                 #set $training_scores = $mode_selector.prediction_mode_selector.training_scores_source.scores_upload
             #end if
@@ -197,9 +190,17 @@
                 --training_file "$training_file"/*.csv \
                 --training_scores "$training_scores" \
                 --output_dir .
-        #end if  
+        #end if
     #end if
     ]]></command>
+    <configfiles>
+        <configfile name="params_file_config"><![CDATA[
+#if $mode_selector.params_source.params_method == "create"
+LA,RA,CS,Tem,CA
+$mode_selector.params_source.la,$mode_selector.params_source.ra,"#echo ",".join($mode_selector.params_source.cs)#",$mode_selector.params_source.tem,$mode_selector.params_source.ca
+#end if
+]]></configfile>
+    </configfiles>
     <inputs>
         <conditional name="mode_selector">
             <param name="mode" type="select" label="Select mode">
@@ -221,29 +222,29 @@
                     </param>
                     <when value="default">
                         <expand macro="prediction_default_params_selector"/>
-                        <expand macro="model_name"/>
-                        <expand macro="target_files_prediction"/>
+                        <expand macro="model_name_param"/>
+                        <expand macro="target_files_prediction_param"/>
                         <expand macro="training_file_selector"/>
                         <expand macro="training_scores_selector"/>
                     </when>
                     <when value="target_check">
                         <expand macro="params_selector_region"/>
-                        <expand macro="model_name"/>
-                        <expand macro="target_files_prediction"/>
+                        <expand macro="model_name_param"/>
+                        <expand macro="target_files_prediction_param"/>
                         <expand macro="training_file_selector"/>
                         <expand macro="training_scores_selector"/>
                     </when>
                     <when value="target_screen">
                         <expand macro="params_selector_screen"/>
-                        <expand macro="model_name"/>
-                        <expand macro="target_files_prediction"/>
+                        <expand macro="model_name_param"/>
+                        <expand macro="target_files_prediction_param"/>
                         <expand macro="training_file_selector"/>
                         <expand macro="training_scores_selector"/>
                     </when>
                     <when value="specific_query">
                         <expand macro="params_selector_specific_query"/>
-                        <expand macro="model_name"/>
-                        <expand macro="target_files_prediction"/>
+                        <expand macro="model_name_param"/>
+                        <expand macro="target_files_prediction_param"/>
                         <expand macro="training_file_selector"/>
                         <expand macro="training_scores_selector"/>
                     </when>
@@ -279,7 +280,6 @@
         </data>
     </outputs>
     <tests>
-        <!-- 
         <test expect_num_outputs="2">
             <conditional name="mode_selector">
                 <param name="mode" value="training"/>
@@ -290,10 +290,18 @@
                 <param name="model_name" value="test"/>
                 <param name="target_files_training" value="HPV.fasta,BCL-1.fasta" ftype="fasta"/>
             </conditional>
-            <output name="training_csv" file="expected_output.csv" ftype="csv"/>
+            <output name="training_csv">
+                <assert_contents>
+                    <has_text text="id2,seq2,E_1,ED1_1"/>
+                    <has_text text="AC-126-127,CAGUAACUGGGCUAGCUACAACGAUGCUUGCAG"/>
+                    <has_n_lines n="428"/>
+                </assert_contents>
+            </output>
             <output name="training_cfg">
                 <assert_contents>
-                    <has_text text="temperature"/>
+                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
+                    <has_n_lines n="9"/>
                 </assert_contents>
             </output>
         </test>
@@ -311,14 +319,21 @@
                 <param name="model_name" value="test"/>
                 <param name="target_files_training" value="HPV.fasta,BCL-1.fasta" ftype="fasta"/>
             </conditional>
-            <output name="training_csv" file="expected_output.csv" ftype="csv"/>
+            <output name="training_csv">
+                <assert_contents>
+                    <has_text text="id2,seq2,E_1,ED1_1"/>
+                    <has_text text="AU-102-103,ACAUUCUAAAAUUCCGCUAGCAUUAUAUCA"/>
+                    <has_n_lines n="247"/>
+                </assert_contents>
+            </output>
             <output name="training_cfg">
                 <assert_contents>
-                    <has_text text="temperature"/>
+                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
+                    <has_n_lines n="9"/>
                 </assert_contents>
             </output>
         </test>
-    -->
         <test expect_num_outputs="6">
             <conditional name="mode_selector">
                 <param name="mode" value="prediction"/>
@@ -332,7 +347,7 @@
                     <param name="target_files_prediction" value="BCL-2.fasta,BCL-3.fasta" ftype="fasta"/>
                     <conditional name="training_file_source">
                         <param name="training_file_method" value="builtin"/>
-                        <param name="training_builtin" value="HPBC_user_merged_num.zip"/>
+                        <param name="training_builtin" value="HPBC_user_merged_num.csv.zip"/>
                     </conditional>
                     <conditional name="training_scores_source">
                         <param name="scores_method" value="builtin"/>
