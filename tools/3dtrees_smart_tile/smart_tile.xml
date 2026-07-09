@@ -4,13 +4,13 @@
         <token name="@TOOL_VERSION@">2.3</token>
         <token name="@VERSION_SUFFIX@">0</token>
         <xml name="chunk_size">
-            <param argument="--chunk-size" type="integer" min="100000" max="200000000" value="20000000" label="Chunk size (points)"/>
+            <param argument="--chunk-size" type="integer" min="100000" max="200000000" value="20000000" label="Chunk size (points)" help="Maximum number of points read per processing chunk. Lower values reduce peak memory but increase overhead."/>
         </xml>
         <xml name="merged_resolution">
-            <param argument="--merged-resolutions" type="float" min="0.001" max="1.0" value="0.1" label="Prod-merged resolution (m)"/>
+            <param argument="--merged-resolutions" type="float" min="0.001" max="1.0" value="0.1" label="Prod-merged resolution (m)" help="Target spacing for prod-merged outputs in meters."/>
         </xml>
         <xml name="merged_format_options">
-            <option value="copc.laz" selected="true">COPC.LAZ</option>
+            <option value="copc.laz" selected="true">COPC LAZ</option>
             <option value="laz">LAZ</option>
             <option value="ply">PLY</option>
         </xml>
@@ -22,7 +22,7 @@
                 </param>
                 <when value="True">
                     <expand macro="merged_resolution"/>
-                    <param argument="--merged-output-formats" type="select" multiple="true" label="Prod-merged formats">
+                    <param argument="--merged-output-formats" type="select" multiple="true" label="Prod-merged formats" help="Select one or more output encodings for prod-merged products.">
                         <expand macro="merged_format_options"/>
                     </param>
                 </when>
@@ -33,34 +33,14 @@
     <requirements>
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees_smart_tile:@TOOL_VERSION@</container>
     </requirements>
-    <command detect_errors="exit_code"><![CDATA[
+        <command detect_errors="exit_code"><![CDATA[
         export NUMBA_CACHE_DIR="\${TMPDIR:-/tmp}/numba" &&
-        mkdir -p output_dir &&
-        link_laz_input() {
-            link_src="\$1";
-            link_dir="\$2";
-            link_name="\$3";
-            case "\$link_name" in
-                *.laz|*.las|*.LAZ|*.LAS) link_out="\$link_name" ;;
-                *) link_out="\$link_name.laz" ;;
-            esac;
-            ln -s "\$link_src" "\$link_dir/\$link_out";
-        } &&
-        link_text_input() {
-            link_src="\$1";
-            link_dir="\$2";
-            link_name="\$3";
-            case "\$link_name" in
-                *.txt|*.TXT) link_out="\$link_name" ;;
-                *) link_out="\$link_name.txt" ;;
-            esac;
-            ln -s "\$link_src" "\$link_dir/\$link_out";
-        } &&
+        mkdir -p "\$NUMBA_CACHE_DIR" output_dir &&
 
         #if $operation.task == 'tile':
             mkdir -p input_dir &&
             #for $f in $operation.input_files:
-                link_laz_input '$f' input_dir '${f.element_identifier}' &&
+                ln -s '$f' 'input_dir/${f.element_identifier}.${f.ext}' &&
             #end for
             python -u /src/run.py
                 --task tile
@@ -80,26 +60,26 @@
                 --workers 2
                 --tile-source-workers 2
                 --tile-writer-workers 2
-                --num-spatial-chunks \${GALAXY_SLOTS:-4}
-                --threads \${GALAXY_SLOTS:-4}
+                --num-spatial-chunks "\${GALAXY_SLOTS:-4}"
+                --threads "\${GALAXY_SLOTS:-4}"
 
         #elif $operation.task == 'merge':
             mkdir -p input_segmented input_res1 &&
             #for $f in $operation.input_segmented:
-                link_laz_input '$f' input_segmented '${f.element_identifier}' &&
+                ln -s '$f' 'input_segmented/${f.element_identifier}.${f.ext}' &&
             #end for
             #if $operation.tree_sidecars.mode == 'with_tree_files':
                 #for $f in $operation.tree_sidecars.input_tree_files:
-                    link_text_input '$f' input_segmented '${f.element_identifier}' &&
+                    ln -s '$f' 'input_segmented/${f.element_identifier}.${f.ext}' &&
                 #end for
             #end if
             #for $f in $operation.input_res1:
-                link_laz_input '$f' input_res1 '${f.element_identifier}' &&
+                ln -s '$f' 'input_res1/${f.element_identifier}.${f.ext}' &&
             #end for
             #if $operation.input_original_laz:
                 mkdir -p input_original_laz &&
                 #for $f in $operation.input_original_laz:
-                    link_laz_input '$f' input_original_laz '${f.element_identifier}' &&
+                    ln -s '$f' 'input_original_laz/${f.element_identifier}.${f.ext}' &&
                 #end for
             #end if
             python -u /src/run.py
@@ -109,7 +89,7 @@
                 --tile-bounds-json '$operation.tile_bounds_json'
                 --chunk-size '$operation.chunk_size'
                 --workers 2
-                --num-spatial-chunks \${GALAXY_SLOTS:-4}
+                --num-spatial-chunks "\${GALAXY_SLOTS:-4}"
                 #if $operation.input_original_laz:
                     --original-laz-input-dir input_original_laz
                     --original-laz-output-dir output_dir/original_with_predictions
@@ -157,7 +137,7 @@
         #elif $operation.task == 'remap':
             mkdir -p input_original_laz output_dir/original_with_predictions &&
             #for $f in $operation.original_files:
-                link_laz_input '$f' input_original_laz '${f.element_identifier}' &&
+                ln -s '$f' 'input_original_laz/${f.element_identifier}.${f.ext}' &&
             #end for
             #if $operation.remap_source.source == 'merged_file':
                 #if $operation.remap_source.merged_file_is_copc:
@@ -173,7 +153,7 @@
                     collection_dir="input_prediction_collections/collection_\${collection_idx}" &&
                     mkdir -p "\$collection_dir" &&
                     #for $f in $seg.collection:
-                        link_laz_input '$f' "\$collection_dir" '${f.element_identifier}' &&
+                        ln -s '$f' "\$collection_dir/${f.element_identifier}.${f.ext}" &&
                     #end for
                     if [ -z "\$segmented_folders" ]; then
                         segmented_folders="\$collection_dir";
@@ -200,7 +180,7 @@
                 --original-laz-input-dir input_original_laz
                 --original-laz-output-dir output_dir/original_with_predictions
                 --workers 2
-                --num-spatial-chunks \${GALAXY_SLOTS:-4}
+                --num-spatial-chunks "\${GALAXY_SLOTS:-4}"
                 #if $operation.prod_merged.create == 'True':
                     --transfer-original-dims-to-merged True
                     --merged-resolutions '$operation.prod_merged.merged_resolutions'
@@ -213,7 +193,7 @@
         #elif $operation.task == 'create_merged_file':
             mkdir -p original_with_predictions &&
             #for $f in $operation.original_with_predictions:
-                link_laz_input '$f' original_with_predictions '${f.element_identifier}' &&
+                ln -s '$f' 'original_with_predictions/${f.element_identifier}.${f.ext}' &&
             #end for
             python -u /src/run.py
                 --task create_merged_file
@@ -222,7 +202,7 @@
                 --merged-resolutions '$operation.merged_resolutions'
                 --merged-output-formats '$operation.merged_output_formats'
                 --workers 2
-                --num-spatial-chunks \${GALAXY_SLOTS:-4}
+                --num-spatial-chunks "\${GALAXY_SLOTS:-4}"
         #end if
     ]]></command>
     <inputs>
@@ -234,54 +214,56 @@
                 <option value="create_merged_file">Create prod-merged file</option>
             </param>
             <when value="tile">
-                <param name="input_files" type="data" format="laz,las" multiple="true" label="Input LAZ/LAS files"/>
-                <param argument="--tile-length" type="integer" min="1" max="10000" value="300" label="Tile length (m)"/>
-                <param argument="--tile-buffer" type="integer" min="0" max="10000" value="20" label="Tile buffer (m)"/>
-                <param argument="--tiling-threshold" type="float" min="0.1" max="50000" value="10000" optional="true" label="Tiling threshold (MB)"/>
-                <param argument="--resolution-1" type="float" min="0.001" max="1.0" value="0.01" label="Resolution 1 (m)"/>
-                <param argument="--resolution-2" type="float" min="0.001" max="1.0" value="0.1" label="Resolution 2 (m)"/>
-                <param argument="--subsampling-method" type="select" label="Subsampling method">
+                <param name="input_files" type="data" format="laz,las" multiple="true" label="Input LAZ/LAS files" help="One or more source point clouds to tile and subsample."/>
+                <param argument="--tile-length" type="integer" min="1" max="10000" value="300" label="Tile length (m)" help="Target tile edge length in meters."/>
+                <param argument="--tile-buffer" type="integer" min="0" max="10000" value="20" label="Tile buffer (m)" help="Overlap added around each tile in meters."/>
+                <param argument="--tiling-threshold" type="float" min="0.1" max="50000" value="10000" optional="true" label="Tiling threshold (MB)" help="Skip tiling for a single input below this size and still create normalized subsampled outputs."/>
+                <param argument="--resolution-1" type="float" min="0.001" max="1.0" value="0.01" label="Resolution 1 (m)" help="Fine subsampling resolution in meters."/>
+                <param argument="--resolution-2" type="float" min="0.001" max="1.0" value="0.1" label="Resolution 2 (m)" help="Coarse subsampling resolution in meters."/>
+                <param argument="--subsampling-method" type="select" label="Subsampling method" help="Point representative used when reducing each voxel.">
                     <option value="center-of-mass" selected="true">Center of mass</option>
                     <option value="nearest-to-centroid">Nearest to centroid</option>
                 </param>
-                <param argument="--output-copc-res1" type="boolean" truevalue="--output-copc-res1 True" falsevalue="--output-copc-res1 False" checked="true" label="Write resolution 1 as COPC LAZ"/>
-                <param argument="--output-copc-res2" type="boolean" truevalue="--output-copc-res2 True" falsevalue="--output-copc-res2 False" checked="false" label="Write resolution 2 as COPC LAZ"/>
-                <param name="return_original_copc" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Return COPC-normalized originals"/>
+                <param argument="--output-copc-res1" type="boolean" truevalue="--output-copc-res1 True" falsevalue="--output-copc-res1 False" checked="true" label="Write resolution 1 as COPC LAZ" help="Return the fine-resolution subsampled collection as COPC LAZ."/>
+                <param argument="--output-copc-res2" type="boolean" truevalue="--output-copc-res2 True" falsevalue="--output-copc-res2 False" checked="false" label="Write resolution 2 as COPC LAZ" help="Return the coarse-resolution subsampled collection as COPC LAZ."/>
+                <param name="return_original_copc" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Return COPC-normalized originals" help="Expose normalized original COPC files when tiling is skipped for a small single input."/>
                 <expand macro="chunk_size"/>
             </when>
             <when value="merge">
-                <param name="input_segmented" type="data" format="laz" multiple="true" label="Primary segmented files"/>
-                <param name="input_res1" type="data" format="laz" multiple="true" label="Target-resolution subsampled files"/>
-                <param name="input_original_laz" type="data" format="laz,las" multiple="true" optional="true" label="Original LAZ/LAS files"/>
-                <param name="tile_bounds_json" type="data" format="json" label="Tile bounds JSON"/>
+                <param name="input_segmented" type="data" format="laz" multiple="true" label="Primary segmented files" help="Segmented prediction files at the same tile layout as the target-resolution subsampled files."/>
+                <param name="input_res1" type="data" format="laz" multiple="true" label="Target-resolution subsampled files" help="Subsampled target files used as the merge geometry reference."/>
+                <param name="input_original_laz" type="data" format="laz,las" multiple="true" optional="true" label="Original LAZ/LAS files" help="Original uploaded files to enrich with predictions and use for prod-merged outputs."/>
+                <param name="tile_bounds_json" type="data" format="json" label="Tile bounds JSON" help="Tile bounds JSON emitted by the tile task for the same tiling run."/>
                 <expand macro="chunk_size"/>
-                <param argument="--instance-dimension" type="text" value="PredInstance" label="Instance dimension"/>
+                <param argument="--instance-dimension" type="text" value="PredInstance" label="Instance dimension" help="Name of the prediction instance dimension in segmented inputs.">
+                    <validator type="regex" message="Use letters, numbers, and underscores only; start with a letter or underscore.">^[A-Za-z_][A-Za-z0-9_]*$</validator>
+                </param>
                 <conditional name="tree_sidecars">
-                    <param name="mode" type="select" label="Tree sidecar files">
+                    <param name="mode" type="select" label="Tree sidecar files" help="Optionally pass RayCloudTools text sidecars through the same filtering step as the segmented point clouds.">
                         <option value="none" selected="true">No tree sidecars</option>
                         <option value="with_tree_files">Use primary tree sidecar files</option>
                     </param>
                     <when value="none">
                         <conditional name="cross_tile_matching">
-                            <param name="enabled" type="select" label="Cross-tile merging">
+                            <param name="enabled" type="select" label="Cross-tile merging" help="Merge matching instances that cross tile boundaries.">
                                 <option value="True" selected="true">Enabled</option>
                                 <option value="False">Disabled</option>
                             </param>
                             <when value="True">
-                                <param argument="--overlap-threshold" type="float" min="0" max="1" value="0.3" label="Overlap threshold"/>
-                                <param argument="--max-centroid-distance" type="float" min="0" max="100" value="3.0" label="Max centroid distance (m)"/>
+                                <param argument="--overlap-threshold" type="float" min="0" max="1" value="0.3" label="Overlap threshold" help="Minimum overlap ratio for cross-tile instance matching."/>
+                                <param argument="--max-centroid-distance" type="float" min="0" max="100" value="3.0" label="Max centroid distance (m)" help="Maximum centroid distance for cross-tile instance matching."/>
                                 <param argument="--border-zone-width" type="float" min="0" max="100" value="10.0" label="Border zone width (m)" help="Candidate band around tile-core edges; separate from the tile buffer in the tile bounds JSON."/>
                             </when>
                             <when value="False"/>
                         </conditional>
                         <conditional name="small_cluster_reassignment">
-                            <param name="enabled" type="select" label="Small cluster reassignment">
+                            <param name="enabled" type="select" label="Small cluster reassignment" help="Reassign small clusters to nearby larger instances.">
                                 <option value="True" selected="true">Enabled</option>
                                 <option value="False">Disabled</option>
                             </param>
                             <when value="True">
-                                <param argument="--max-volume-for-merge" type="float" min="0" max="100" value="4.0" label="Max volume for reassignment (m3)"/>
-                                <param argument="--min-cluster-size" type="integer" min="1" max="10000" value="300" label="Minimum cluster size"/>
+                                <param argument="--max-volume-for-merge" type="float" min="0" max="100" value="4.0" label="Max volume for reassignment (m3)" help="Clusters below this volume are eligible for reassignment."/>
+                                <param argument="--min-cluster-size" type="integer" min="1" max="10000" value="300" label="Minimum cluster size" help="Clusters below this point count are eligible for reassignment."/>
                             </when>
                             <when value="False"/>
                         </conditional>
@@ -299,24 +281,26 @@
                         <option value="merged_file">One merged file</option>
                     </param>
                     <when value="merged_file">
-                        <param name="merged_file" type="data" format="laz" label="Merged LAZ/COPC LAZ file"/>
-                        <param name="merged_file_is_copc" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Merged file is COPC LAZ"/>
+                        <param name="merged_file" type="data" format="laz" label="Merged LAZ/COPC LAZ file" help="Single merged prediction file whose extra dimensions should be transferred to originals."/>
+                        <param name="merged_file_is_copc" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Merged file is COPC LAZ" help="Preserve the .copc.laz suffix for tools that infer COPC status from the file name."/>
                     </when>
                     <when value="prediction_collections">
                         <repeat name="segmented_collections" title="Segmented collection" min="1">
-                            <param name="collection" type="data_collection" collection_type="list" format="laz,las" label="Segmented files collection"/>
+                            <param name="collection" type="data_collection" collection_type="list" format="laz,las" label="Segmented files collection" help="Collection of segmented prediction files to remap back to original files."/>
                         </repeat>
-                        <param argument="--remap-dims" type="text" optional="true" label="Dimension allowlist" help="Comma-separated extra dimensions to transfer; empty transfers all extra dimensions."/>
+                        <param argument="--remap-dims" type="text" optional="true" label="Dimension allowlist" help="Comma-separated extra dimensions to transfer; empty transfers all extra dimensions.">
+                            <validator type="regex" message="Use comma-separated dimension names containing only letters, numbers, and underscores.">^$|^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*$</validator>
+                        </param>
                     </when>
                 </conditional>
-                <param name="original_files" type="data" format="laz,las" multiple="true" label="Original LAZ/LAS files"/>
+                <param name="original_files" type="data" format="laz,las" multiple="true" label="Original LAZ/LAS files" help="Original uploaded files to enrich with remapped prediction dimensions."/>
                 <expand macro="prod_merged_controls"/>
                 <expand macro="chunk_size"/>
             </when>
             <when value="create_merged_file">
-                <param name="original_with_predictions" type="data" format="laz,las" multiple="true" label="Original-with-predictions files"/>
+                <param name="original_with_predictions" type="data" format="laz,las" multiple="true" label="Original-with-predictions files" help="Original files that already contain prediction dimensions."/>
                 <expand macro="merged_resolution"/>
-                <param argument="--merged-output-formats" type="select" multiple="true" label="Output formats">
+                <param argument="--merged-output-formats" type="select" multiple="true" label="Output formats" help="Select one or more output encodings for prod-merged products.">
                     <expand macro="merged_format_options"/>
                 </param>
             </when>
@@ -369,7 +353,7 @@
         <test expect_num_outputs="4">
             <conditional name="operation">
                 <param name="task" value="tile"/>
-                <param name="input_files" value="mikro"/>
+                <param name="input_files" value="mikro" ftype="laz"/>
                 <param name="tiling_threshold" value="10000"/>
                 <param name="resolution_1" value="0.01"/>
                 <param name="resolution_2" value="0.1"/>
@@ -391,7 +375,7 @@
         <test expect_num_outputs="5">
             <conditional name="operation">
                 <param name="task" value="tile"/>
-                <param name="input_files" value="mikro"/>
+                <param name="input_files" value="mikro" ftype="laz"/>
                 <param name="tiling_threshold" value="10000"/>
                 <param name="resolution_1" value="0.01"/>
                 <param name="resolution_2" value="0.1"/>
@@ -404,9 +388,9 @@
         <test expect_num_outputs="3">
             <conditional name="operation">
                 <param name="task" value="merge"/>
-                <param name="input_segmented" value="mikro_segmented"/>
-                <param name="input_res1" value="mikro_res1"/>
-                <param name="input_original_laz" value="mikro"/>
+                <param name="input_segmented" value="mikro_segmented" ftype="laz"/>
+                <param name="input_res1" value="mikro_res1" ftype="laz"/>
+                <param name="input_original_laz" value="mikro" ftype="laz"/>
                 <param name="tile_bounds_json" value="tile_bounds_tindex.json"/>
                 <conditional name="prod_merged">
                     <param name="create" value="True"/>
@@ -425,9 +409,9 @@
         <test expect_num_outputs="1">
             <conditional name="operation">
                 <param name="task" value="merge"/>
-                <param name="input_segmented" value="mikro_segmented"/>
-                <param name="input_res1" value="mikro_res1"/>
-                <param name="input_original_laz" value="mikro"/>
+                <param name="input_segmented" value="mikro_segmented" ftype="laz"/>
+                <param name="input_res1" value="mikro_res1" ftype="laz"/>
+                <param name="input_original_laz" value="mikro" ftype="laz"/>
                 <param name="tile_bounds_json" value="tile_bounds_tindex.json"/>
                 <conditional name="prod_merged">
                     <param name="create" value="False"/>
@@ -438,7 +422,7 @@
         <test expect_num_outputs="1">
             <conditional name="operation">
                 <param name="task" value="create_merged_file"/>
-                <param name="original_with_predictions" value="mikro_segmented"/>
+                <param name="original_with_predictions" value="mikro_segmented" ftype="laz"/>
                 <param name="merged_resolutions" value="0.1"/>
                 <param name="merged_output_formats" value="copc.laz"/>
             </conditional>
@@ -447,7 +431,7 @@
         <test expect_num_outputs="1">
             <conditional name="operation">
                 <param name="task" value="create_merged_file"/>
-                <param name="original_with_predictions" value="mikro_segmented"/>
+                <param name="original_with_predictions" value="mikro_segmented" ftype="laz"/>
                 <param name="merged_resolutions" value="0.1"/>
                 <param name="merged_output_formats" value="ply"/>
             </conditional>
@@ -458,9 +442,9 @@
                 <param name="task" value="remap"/>
                 <conditional name="remap_source">
                     <param name="source" value="merged_file"/>
-                    <param name="merged_file" value="mikro_segmented"/>
+                    <param name="merged_file" value="mikro_segmented" ftype="laz"/>
                 </conditional>
-                <param name="original_files" value="mikro"/>
+                <param name="original_files" value="mikro" ftype="laz"/>
                 <conditional name="prod_merged">
                     <param name="create" value="True"/>
                     <param name="merged_resolutions" value="0.1"/>
@@ -471,17 +455,13 @@
             <output_collection name="prod_merged_outputs" type="list" count="1"/>
         </test>
     </tests>
-    <help format="markdown"><![CDATA[
+<help format="markdown">
 SmartTile exposes four tasks: tile/subsample, merge segmented tiles, remap predictions to originals, and create prod-merged products from enriched originals.
 
 Merge requires the tile bounds JSON created by the tile task. Optional tree sidecar files must be the `*_trees.txt` and `*_trees_info.txt` outputs from `3dtrees_raycloudtools`; when supplied, SmartTile filters and returns them and keeps tile-local instance IDs.
 
 Prod-merged outputs can be LAZ, COPC LAZ, or binary PLY. COPC LAZ is selected with the SmartTile format token `copc.laz` and returned to Galaxy as `laz`; PLY is returned as `plybinary`.
-    ]]></help>
-    <creator>
-        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" identifier="0009-0002-5001-2571"/>
-        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
-    </creator>
+</help>
     <citations>
         <citation type="bibtex">
             @misc{3dtrees_smart_tile, title = {3D Trees SmartTile Tool}, author = {3D Trees Project}, year = {2026}}
