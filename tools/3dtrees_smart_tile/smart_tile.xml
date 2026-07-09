@@ -1,5 +1,5 @@
 <tool id="3dtrees_smart_tile" name="3DTrees: SmartTile" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
-    <description>Tile, merge, remap, and prod-merge point clouds</description>
+    <description>Tile, merge and remap point clouds</description>
     <macros>
         <token name="@TOOL_VERSION@">2.3</token>
         <token name="@VERSION_SUFFIX@">0</token>
@@ -220,7 +220,6 @@
                 </param>
                 <param argument="--output-copc-res1" type="boolean" truevalue="--output-copc-res1 True" falsevalue="--output-copc-res1 False" checked="true" label="Write resolution 1 as COPC LAZ" help="Return the fine-resolution subsampled collection as COPC LAZ."/>
                 <param argument="--output-copc-res2" type="boolean" truevalue="--output-copc-res2 True" falsevalue="--output-copc-res2 False" checked="false" label="Write resolution 2 as COPC LAZ" help="Return the coarse-resolution subsampled collection as COPC LAZ."/>
-                <param name="return_original_copc" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Return COPC-normalized originals" help="Expose normalized original COPC files when tiling is skipped for a small single input."/>
                 <expand macro="chunk_size"/>
             </when>
             <when value="merge">
@@ -235,7 +234,7 @@
                 <conditional name="tree_sidecars">
                     <param name="mode" type="select" label="Tree sidecar files" help="Optionally pass RayCloudTools text sidecars through the same filtering step as the segmented point clouds.">
                         <option value="none" selected="true">No tree sidecars</option>
-                        <option value="with_tree_files">Use primary tree sidecar files</option>
+                        <option value="with_tree_files">Use Tree sidecar files</option>
                     </param>
                     <when value="none">
                         <conditional name="cross_tile_matching">
@@ -315,10 +314,6 @@
         <data name="tile_bounds_json" format="json" label="${tool.name}: Tile bounds JSON" from_work_dir="output_dir/tile_bounds_tindex.json">
             <filter>operation['task'] == "tile"</filter>
         </data>
-        <collection name="Original_COPC" type="list" label="${tool.name}: COPC-normalized originals">
-            <filter>operation['task'] == "tile" and operation['return_original_copc'] in [True, "true", "True"]</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+\.la[sz])$" directory="output_dir/original_copc" format="laz" recurse="false"/>
-        </collection>
         <collection name="output_merge_tiles" type="list" label="${tool.name}: Merged target-resolution tiles">
             <filter>operation['task'] == "merge"</filter>
             <discover_datasets pattern="(?P&lt;designation&gt;.+\.la[sz])$" directory="output_dir/output_tiles" format="laz" recurse="false"/>
@@ -365,19 +360,6 @@
                     <has_json_property_with_value property="tile_buffer" value="20"/>
                 </assert_contents>
             </output>
-        </test>
-        <test expect_num_outputs="5">
-            <conditional name="operation">
-                <param name="task" value="tile"/>
-                <param name="input_files" value="mikro" ftype="laz"/>
-                <param name="tiling_threshold" value="10000"/>
-                <param name="resolution_1" value="0.01"/>
-                <param name="resolution_2" value="0.1"/>
-                <param name="return_original_copc" value="true"/>
-            </conditional>
-            <output_collection name="output_subsampled_res1" type="list" count="1"/>
-            <output_collection name="output_subsampled_res2" type="list" count="1"/>
-            <output_collection name="Original_COPC" type="list" count="1"/>
         </test>
         <test expect_num_outputs="3">
             <conditional name="operation">
@@ -450,11 +432,25 @@
         </test>
     </tests>
 <help format="markdown">
-SmartTile exposes four tasks: tile/subsample, merge segmented tiles, remap predictions to originals, and create prod-merged products from enriched originals.
+SmartTile prepares and post-processes point-cloud predictions for the 3Dtrees workflow. Select one task according to the stage of processing you want to run.
 
-Merge requires the tile bounds JSON created by the tile task. Optional tree sidecar files must be the `*_trees.txt` and `*_trees_info.txt` outputs from `3dtrees_raycloudtools`; when supplied, SmartTile filters and returns them and keeps tile-local instance IDs.
+**Tile and subsample**
 
-Prod-merged outputs can be LAZ, COPC LAZ, or binary PLY. COPC LAZ is selected with the SmartTile format token `copc.laz` and returned to Galaxy as `laz`; PLY is returned as `plybinary`.
+Splits one or more LAZ/LAS point clouds into buffered spatial tiles and writes two subsampled collections. The tile task also writes a tiling preview image and a tile bounds JSON file. Use the tile bounds JSON with the merge task so SmartTile can identify tile cores and buffers consistently.
+
+**Filter/Merge segmented tiles**
+
+Filters predictions back to tile cores, optionally matches instances across neighboring tiles, optionally reassigns small clusters, and writes merged target-resolution tiles. Provide the segmented prediction files, the target-resolution subsampled files, and the tile bounds JSON from the matching tiling run. If 3dtrees_raycloudtools tree sidecar files are supplied, SmartTile filters and returns those text files while keeping tile-local instance IDs; cross-tile matching and small-cluster reassignment are disabled for that mode.
+
+When original LAZ/LAS files are provided, the merge task can also transfer predictions back to the originals and create prod-merged products.
+
+**Remap predictions to originals**
+
+Transfers prediction dimensions from either one merged prediction file or one or more segmented prediction collections back onto the original uploaded LAZ/LAS files. Use the dimension allowlist only when you want to copy a selected set of prediction dimensions from segmented collections.
+
+**Create prod-merged file**
+
+Creates delivery-ready products from original-with-prediction files that already contain prediction dimensions. Prod-merged outputs can be LAZ, COPC LAZ, or binary PLY. COPC LAZ is selected with the format value `copc.laz` and is returned to Galaxy as `laz`; PLY is returned as `plybinary`.
 </help>
     <citations>
         <citation type="bibtex">
