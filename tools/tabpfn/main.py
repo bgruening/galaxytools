@@ -8,13 +8,20 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from sklearn.metrics import (
+    accuracy_score,
     average_precision_score,
+    balanced_accuracy_score,
+    f1_score,
     precision_recall_curve,
     r2_score,
     root_mean_squared_error,
 )
+from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.preprocessing import label_binarize
 from tabpfn import TabPFNClassifier, TabPFNRegressor
+
+MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES = 1000
+SEED = 42
 
 
 def separate_features_labels(data, header):
@@ -22,6 +29,19 @@ def separate_features_labels(data, header):
     labels = df.iloc[:, -1]
     features = df.iloc[:, :-1]
     return features, labels
+
+
+def make_estimator(selected_task, model_path, n_samples):
+    estimator_class = (
+        TabPFNClassifier if selected_task == "Classification" else TabPFNRegressor
+    )
+    kwargs = {
+        "random_state": SEED,
+        "model_path": model_path,
+    }
+    if n_samples > MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES:
+        kwargs["ignore_pretraining_limits"] = True
+    return estimator_class(**kwargs)
 
 
 def classification_plot(y_true, y_scores):
@@ -84,8 +104,6 @@ def train_evaluate(args):
     """
     Train TabPFN and predict
     """
-    MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES = 1000
-    SEED = 42
     # prepare train data
     tr_features, tr_labels = separate_features_labels(args["train_data"], args["train_header"])
     # prepare test data
@@ -96,10 +114,9 @@ def train_evaluate(args):
         te_labels = []
     s_time = time.time()
     if args["selected_task"] == "Classification":
-        if tr_features.shape[0] <= MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES:
-            classifier = TabPFNClassifier(random_state=SEED, model_path=args["model_path"])
-        else:
-            classifier = TabPFNClassifier(random_state=SEED, model_path=args["model_path"], ignore_pretraining_limits=True)
+        classifier = make_estimator(
+            args["selected_task"], args["model_path"], tr_features.shape[0]
+        )
         classifier.fit(tr_features, tr_labels)
         y_eval = classifier.predict(te_features)
         pred_probas_test = classifier.predict_proba(te_features)
@@ -110,10 +127,9 @@ def train_evaluate(args):
             "output_predicted_data", sep="\t", index=None
         )
     else:
-        if tr_features.shape[0] <= MAX_IGNORE_PRETRAINING_LIMITS_SAMPLES:
-            regressor = TabPFNRegressor(random_state=SEED, model_path=args["model_path"])
-        else:
-            regressor = TabPFNRegressor(random_state=SEED, model_path=args["model_path"], ignore_pretraining_limits=True)
+        regressor = make_estimator(
+            args["selected_task"], args["model_path"], tr_features.shape[0]
+        )
         regressor.fit(tr_features, tr_labels)
         y_eval = regressor.predict(te_features)
         if len(te_labels) > 0:
@@ -136,10 +152,115 @@ def train_evaluate(args):
     )
 
 
+def append_summary_rows(metrics_df, metric_columns):
+    summary_rows = []
+    for summary_name, summary_function in (("mean", "mean"), ("std", "std")):
+        row = {"fold": summary_name}
+        for metric_column in metric_columns:
+            row[metric_column] = getattr(metrics_df[metric_column], summary_function)()
+        summary_rows.append(row)
+    return pd.concat([metrics_df, pd.DataFrame(summary_rows)], ignore_index=True)
+
+
+def cross_validate(args):
+    """
+    Cross validate TabPFN and write out-of-fold predictions and metrics.
+    """
+    n_splits = int(args["n_splits"])
+    features, labels = separate_features_labels(args["train_data"], args["train_header"])
+    predictions = pd.Series(index=features.index, dtype=object)
+    fold_numbers = pd.Series(index=features.index, dtype="Int64")
+    metrics = []
+    s_time = time.time()
+
+    if args["selected_task"] == "Classification":
+        class_counts = labels.value_counts()
+        too_small_classes = class_counts[class_counts < n_splits]
+        if not too_small_classes.empty:
+            too_small_class_names = ", ".join(str(name) for name in too_small_classes.index)
+            raise ValueError(
+                "Cannot run stratified cross validation: each class must contain at "
+                f"least {n_splits} samples. Classes below that limit: "
+                f"{too_small_class_names}"
+            )
+        splitter = StratifiedKFold(
+            n_splits=n_splits, shuffle=True, random_state=SEED
+        )
+        split_iterator = splitter.split(features, labels)
+        for fold_index, (train_index, test_index) in enumerate(split_iterator, start=1):
+            estimator = make_estimator(
+                args["selected_task"], args["model_path"], len(train_index)
+            )
+            estimator.fit(features.iloc[train_index], labels.iloc[train_index])
+            fold_predictions = estimator.predict(features.iloc[test_index])
+            predictions.iloc[test_index] = fold_predictions
+            fold_numbers.iloc[test_index] = fold_index
+            metrics.append(
+                {
+                    "fold": fold_index,
+                    "accuracy": accuracy_score(labels.iloc[test_index], fold_predictions),
+                    "balanced_accuracy": balanced_accuracy_score(
+                        labels.iloc[test_index], fold_predictions
+                    ),
+                    "f1_weighted": f1_score(
+                        labels.iloc[test_index],
+                        fold_predictions,
+                        average="weighted",
+                        zero_division=0,
+                    ),
+                }
+            )
+        metric_columns = ["accuracy", "balanced_accuracy", "f1_weighted"]
+    else:
+        splitter = KFold(n_splits=n_splits, shuffle=True, random_state=SEED)
+        for fold_index, (train_index, test_index) in enumerate(
+            splitter.split(features), start=1
+        ):
+            estimator = make_estimator(
+                args["selected_task"], args["model_path"], len(train_index)
+            )
+            estimator.fit(features.iloc[train_index], labels.iloc[train_index])
+            fold_predictions = estimator.predict(features.iloc[test_index])
+            predictions.iloc[test_index] = fold_predictions
+            fold_numbers.iloc[test_index] = fold_index
+            metrics.append(
+                {
+                    "fold": fold_index,
+                    "rmse": root_mean_squared_error(
+                        labels.iloc[test_index], fold_predictions
+                    ),
+                    "r2": r2_score(labels.iloc[test_index], fold_predictions),
+                }
+            )
+        metric_columns = ["rmse", "r2"]
+
+    output_data = features.copy()
+    output_data["true_labels"] = labels
+    output_data["fold"] = fold_numbers
+    output_data["predicted_labels"] = predictions
+    output_data.to_csv("output_predicted_data", sep="\t", index=None)
+
+    metrics_df = pd.DataFrame(metrics)
+    metrics_df = append_summary_rows(metrics_df, metric_columns)
+    metrics_df.to_csv("cv_metrics.tsv", sep="\t", index=None)
+
+    e_time = time.time()
+    print(
+        f"Time taken by TabPFN for cross validation: {e_time - s_time} seconds"
+    )
+
+
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
+    arg_parser.add_argument(
+        "-evalmethod",
+        "--evaluation_method",
+        required=True,
+        choices=["train_test", "cross_validation"],
+        help="Evaluation method",
+    )
     arg_parser.add_argument("-trdata", "--train_data", required=True, help="Train data")
-    arg_parser.add_argument("-tedata", "--test_data", required=True, help="Test data")
+    arg_parser.add_argument("-tedata", "--test_data", help="Test data")
     arg_parser.add_argument(
         "-train_header",
         "--train_header",
@@ -149,14 +270,19 @@ if __name__ == "__main__":
     arg_parser.add_argument(
         "-test_header",
         "--test_header",
-        required=True,
         help="if test data contain header"
     )
     arg_parser.add_argument(
         "-testhaslabels",
         "--testhaslabels",
-        required=True,
         help="if test data contain labels",
+    )
+    arg_parser.add_argument(
+        "-nsplits",
+        "--n_splits",
+        type=int,
+        default=5,
+        help="Number of cross-validation folds",
     )
     arg_parser.add_argument(
         "-selectedtask",
@@ -172,4 +298,7 @@ if __name__ == "__main__":
     )
     # get argument values
     args = vars(arg_parser.parse_args())
-    train_evaluate(args)
+    if args["evaluation_method"] == "cross_validation":
+        cross_validate(args)
+    else:
+        train_evaluate(args)
