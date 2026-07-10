@@ -167,6 +167,7 @@ def cross_validate(args):
     Cross validate TabPFN and write out-of-fold predictions and metrics.
     """
     n_splits = int(args["n_splits"])
+    cv_strategy = args["cv_strategy"]
     features, labels = separate_features_labels(args["train_data"], args["train_header"])
     predictions = pd.Series(index=features.index, dtype=object)
     fold_numbers = pd.Series(index=features.index, dtype="Int64")
@@ -174,19 +175,25 @@ def cross_validate(args):
     s_time = time.time()
 
     if args["selected_task"] == "Classification":
-        class_counts = labels.value_counts()
-        too_small_classes = class_counts[class_counts < n_splits]
-        if not too_small_classes.empty:
-            too_small_class_names = ", ".join(str(name) for name in too_small_classes.index)
-            raise ValueError(
-                "Cannot run stratified cross validation: each class must contain at "
-                f"least {n_splits} samples. Classes below that limit: "
-                f"{too_small_class_names}"
+        if cv_strategy == "stratified":
+            class_counts = labels.value_counts()
+            too_small_classes = class_counts[class_counts < n_splits]
+            if not too_small_classes.empty:
+                too_small_class_names = ", ".join(
+                    str(name) for name in too_small_classes.index
+                )
+                raise ValueError(
+                    "Cannot run stratified cross validation: each class must contain at "
+                    f"least {n_splits} samples. Classes below that limit: "
+                    f"{too_small_class_names}"
+                )
+            splitter = StratifiedKFold(
+                n_splits=n_splits, shuffle=True, random_state=SEED
             )
-        splitter = StratifiedKFold(
-            n_splits=n_splits, shuffle=True, random_state=SEED
-        )
-        split_iterator = splitter.split(features, labels)
+            split_iterator = splitter.split(features, labels)
+        else:
+            splitter = KFold(n_splits=n_splits, shuffle=True, random_state=SEED)
+            split_iterator = splitter.split(features)
         for fold_index, (train_index, test_index) in enumerate(split_iterator, start=1):
             estimator = make_estimator(
                 args["selected_task"], args["model_path"], len(train_index)
@@ -212,6 +219,11 @@ def cross_validate(args):
             )
         metric_columns = ["accuracy", "balanced_accuracy", "f1_weighted"]
     else:
+        if cv_strategy == "stratified":
+            raise ValueError(
+                "Stratified cross validation is only available for classification. "
+                "Use kfold cross validation for regression."
+            )
         splitter = KFold(n_splits=n_splits, shuffle=True, random_state=SEED)
         for fold_index, (train_index, test_index) in enumerate(
             splitter.split(features), start=1
@@ -283,6 +295,13 @@ if __name__ == "__main__":
         type=int,
         default=5,
         help="Number of cross-validation folds",
+    )
+    arg_parser.add_argument(
+        "-cvstrategy",
+        "--cv_strategy",
+        choices=["kfold", "stratified"],
+        default="stratified",
+        help="Cross-validation splitting strategy",
     )
     arg_parser.add_argument(
         "-selectedtask",
