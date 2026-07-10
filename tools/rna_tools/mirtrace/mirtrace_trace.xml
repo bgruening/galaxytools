@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tool id="mirtrace_trace" name="miRTrace Trace" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>clade-specific miRNA profile for contamination detection</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="exit_code"><![CDATA[
+mkdir -p output &&
+
+## Build per-sample config file (filename,name,adapter)
+#for $s in $samples:
+    #set $fq = $s.fastq
+    #set $name = str($s.sample_name).strip() if str($s.sample_name).strip() else str($fq.element_identifier)
+    #set $adp = str($s.adapter).strip() if str($s.adapter).strip() else str($adapter).strip()
+    #if $adp:
+echo '${fq},${name},${adp}' >> config.csv &&
+    #else:
+echo '${fq},${name}' >> config.csv &&
+    #end if
+#end for
+true &&
+
+mirtrace trace
+    --config config.csv
+    --output-dir output
+    --force
+    #if str($protocol):
+        --protocol '$protocol'
+    #end if
+    #if $write_fasta:
+        --write-fasta
+        #if $uncollapse_fasta:
+            --uncollapse-fasta
+        #end if
+    #end if
+    #if str($title).strip():
+        --title '$title'
+    #end if
+    #if str($comment).strip():
+        --comment '$comment'
+    #end if
+    --num-threads \${GALAXY_SLOTS:-4}
+
+&&
+
+## Move output files
+cp output/mirtrace-report.html '$report_html' &&
+cp output/mirtrace-results.json '$results_json' &&
+cp output/mirtrace-stats-contamination_basic.tsv '$stats_contamination_basic' &&
+cp output/mirtrace-stats-contamination_detailed.tsv '$stats_contamination_detailed' &&
+
+## Collect FASTA outputs if requested
+#if $write_fasta:
+    tar -czf '$fasta_qc_passed' -C output qc_passed_reads.all.collapsed 2>/dev/null || true
+#end if
+    ]]></command>
+    <inputs>
+        <expand macro="common_input_params"/>
+        <expand macro="common_reporting_params"/>
+    </inputs>
+    <outputs>
+        <data name="report_html" format="html" label="${tool.name} on ${on_string}: HTML report"/>
+        <data name="results_json" format="json" label="${tool.name} on ${on_string}: JSON results"/>
+        <data name="stats_contamination_basic" format="tabular" label="${tool.name} on ${on_string}: Contamination basic (Matrix 6)"/>
+        <data name="stats_contamination_detailed" format="tabular" label="${tool.name} on ${on_string}: Contamination detailed (Matrix 7)"/>
+        <data name="fasta_qc_passed" format="tar.gz" label="${tool.name} on ${on_string}: QC-passed reads FASTA (tar.gz)">
+            <filter>write_fasta</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="sample" value="sample1.fastq.gz"/>
+            <param name="adapter" value="TGGAATTCTCGGGTGCCAAGG"/>
+            <output name="report_html">
+                <assert_contents>
+                    <has_text text="miRTrace"/>
+                </assert_contents>
+            </output>
+            <output name="stats_contamination_basic">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+**miRTrace Trace** detects clade-specific miRNA contamination in small RNA sequencing data.
+
+.. class:: infomark
+
+miRTrace is a tool for quality control and tracing of small RNA sequencing data.
+
+-----
+
+**Trace Mode**
+
+In Trace mode, miRTrace produces a clade-specific miRNA profile report. This is
+useful to identify potential cross-species or cross-sample contamination.
+
+**Output files:**
+
+- ``mirtrace-report.html`` – interactive HTML report with clade-specific miRNA profile
+- ``mirtrace-results.json`` – all results in JSON format
+- ``mirtrace-stats-contamination_basic.tsv`` – clade-specific miRNA counts (Matrix 6)
+- ``mirtrace-stats-contamination_detailed.tsv`` – detailed clade-specific miRNA counts (Matrix 7)
+
+-----
+
+**Use case example**
+
+If you suspect that your samples may be contaminated with RNAs from another species
+(e.g. rodent RNA in a human sample), Trace mode can quantify clade-specific
+miRNA fractions to confirm or rule out contamination.
+
+-----
+
+**References**
+
+Kang W et al. (2018) miRTrace reveals the organismal origins of microRNA sequencing data.
+*Genome Biology*, 19, 213. https://doi.org/10.1186/s13059-018-1588-9
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
