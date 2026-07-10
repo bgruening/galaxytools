@@ -1,6 +1,7 @@
 """
 Tabular data prediction using TabPFN
 """
+
 import argparse
 import time
 
@@ -77,9 +78,7 @@ def classification_plot(y_true, y_scores):
         plt.plot(
             recall, precision, linestyle="--", color="black", label="Micro-average"
         )
-        plt.title(
-            "Precision-Recall Curve (Multiclass Classification)"
-        )
+        plt.title("Precision-Recall Curve (Multiclass Classification)")
     plt.xlabel("Recall")
     plt.ylabel("Precision")
     plt.legend(loc="lower left")
@@ -105,12 +104,20 @@ def train_evaluate(args):
     Train TabPFN and predict
     """
     # prepare train data
-    tr_features, tr_labels = separate_features_labels(args["train_data"], args["train_header"])
+    tr_features, tr_labels = separate_features_labels(
+        args["train_data"], args["train_header"]
+    )
     # prepare test data
     if args["testhaslabels"] == "true":
-        te_features, te_labels = separate_features_labels(args["test_data"], args["test_header"])
+        te_features, te_labels = separate_features_labels(
+            args["test_data"], args["test_header"]
+        )
     else:
-        te_features = pd.read_csv(args["test_data"], sep="\t", header=0 if args["test_header"] == "true" else None)
+        te_features = pd.read_csv(
+            args["test_data"],
+            sep="\t",
+            header=0 if args["test_header"] == "true" else None,
+        )
         te_labels = []
     s_time = time.time()
     if args["selected_task"] == "Classification":
@@ -123,9 +130,7 @@ def train_evaluate(args):
         if len(te_labels) > 0:
             classification_plot(te_labels, pred_probas_test)
         te_features["predicted_labels"] = y_eval
-        te_features.to_csv(
-            "output_predicted_data", sep="\t", index=None
-        )
+        te_features.to_csv("output_predicted_data", sep="\t", index=None)
     else:
         regressor = make_estimator(
             args["selected_task"], args["model_path"], tr_features.shape[0]
@@ -143,9 +148,7 @@ def train_evaluate(args):
                 "Predicted values",
             )
     te_features["predicted_labels"] = y_eval
-    te_features.to_csv(
-        "output_predicted_data", sep="\t", index=None
-    )
+    te_features.to_csv("output_predicted_data", sep="\t", index=None)
     e_time = time.time()
     print(
         f"Time taken by TabPFN for training and prediction: {e_time - s_time} seconds"
@@ -164,11 +167,13 @@ def append_summary_rows(metrics_df, metric_columns):
 
 def cross_validate(args):
     """
-    Cross validate TabPFN and write out-of-fold predictions and metrics.
+    Evaluate TabPFN via cross-validation and export predictions and metrics.
     """
     n_splits = int(args["n_splits"])
     cv_strategy = args["cv_strategy"]
-    features, labels = separate_features_labels(args["train_data"], args["train_header"])
+    features, labels = separate_features_labels(
+        args["train_data"], args["train_header"]
+    )
     predictions = pd.Series(index=features.index, dtype=object)
     fold_numbers = pd.Series(index=features.index, dtype="Int64")
     metrics = []
@@ -205,7 +210,9 @@ def cross_validate(args):
             metrics.append(
                 {
                     "fold": fold_index,
-                    "accuracy": accuracy_score(labels.iloc[test_index], fold_predictions),
+                    "accuracy": accuracy_score(
+                        labels.iloc[test_index], fold_predictions
+                    ),
                     "balanced_accuracy": balanced_accuracy_score(
                         labels.iloc[test_index], fold_predictions
                     ),
@@ -257,9 +264,7 @@ def cross_validate(args):
     metrics_df.to_csv("cv_metrics.tsv", sep="\t", index=None)
 
     e_time = time.time()
-    print(
-        f"Time taken by TabPFN for cross validation: {e_time - s_time} seconds"
-    )
+    print(f"Time taken by TabPFN for cross validation: {e_time - s_time} seconds")
 
 
 if __name__ == "__main__":
@@ -277,12 +282,10 @@ if __name__ == "__main__":
         "-train_header",
         "--train_header",
         required=True,
-        help="if train data contain header"
+        help="if train data contain header",
     )
     arg_parser.add_argument(
-        "-test_header",
-        "--test_header",
-        help="if test data contain header"
+        "-test_header", "--test_header", help="if test data contain header"
     )
     arg_parser.add_argument(
         "-testhaslabels",
