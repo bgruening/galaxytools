@@ -52,7 +52,7 @@
             #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
                 cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
             #else
-                cp $prediction_params_file_config input/params.csv &&
+                cp "$prediction_params_file_config" input/params.csv &&
                 ## remove the first line
                 sed -i '1d' input/params.csv &&
             #end if
@@ -114,46 +114,35 @@
             mkdir -p input &&
             mkdir -p output &&
             mkdir -p training_data &&
-            ## PARAMS (upload only)
-            cp "$mode_selector.prediction_mode_selector.params_csv" input/params.csv &&
-            sed -i '1d' input/params.csv &&
-        
-            ## 2. Copy Target Fasta Files
+
+                    ## PARAMS
+            #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
+                cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
+            #else
+                cp "$target_check_params_config" input/params.csv &&
+                sed -i '1d' input/params.csv &&
+            #end if
+            ## FASTA FILES
             #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
-                #if $f.element_identifier.endswith('.fasta'):
-                    cp "$f" input/${f.element_identifier} &&
-                #else
-                    cp "$f" input/${f.element_identifier}.fasta &&
-                #end if
+                #set $fname = $f.element_identifier if $f.element_identifier.endswith('.fasta') else $f.element_identifier + '.fasta'
+                cp "$f" input/$fname &&
             #end for
         
-            ## TRAINING FILE
+            ## TRAINING DATA (Standardizing names for tool)
             #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
-                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "HPBC"
-                    unzip "$__tool_directory__/data/HPBC_user_merged_num.csv.zip" -d training_data &&
-                    mv training_data/HPBC_user_merged_num.csv training_data/training_data.csv &&
-                #end if
-                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "SARS"
-                    unzip "$__tool_directory__/data/SARS_user_merged_num.csv.zip" -d training_data &&
-                    mv training_data/SARS_user_merged_num.csv training_data/training_data.csv &&
-                #end if
+                unzip "$__tool_directory__/data/${mode_selector.prediction_mode_selector.training_file_source.training_builtin}_user_merged_num.csv.zip" -d training_data &&
+                mv training_data/*.csv training_data/training_data.csv &&
             #else
-                mv "$mode_selector.prediction_mode_selector.training_file_source.training_upload" training_data/training.csv &&
+                cp "$mode_selector.prediction_mode_selector.training_file_source.training_upload" training_data/training_data.csv &&
             #end if
-
+        
             ## TRAINING SCORES
             #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
-                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "HPBC_target"
-                    cp "$__tool_directory__/data/HPBC_target.csv" training_data/ &&
-                    mv training_data/HPBC_target.csv training_data/training_scores.csv &&
-                #end if
-                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "SARS_target"
-                    cp "$__tool_directory__/data/SARS_target.csv" training_data/ &&
-                    mv training_data/SARS_target.csv training_data/training_scores.csv &&
-                #end if
+                cp "$__tool_directory__/data/${mode_selector.prediction_mode_selector.training_scores_source.scores_builtin}.csv" training_data/training_scores.csv &&
             #else
-                mv "$mode_selector.prediction_mode_selector.training_scores_source.scores_upload" training_data/training_scores.csv &&
+                cp "$mode_selector.prediction_mode_selector.training_scores_source.scores_upload" training_data/training_scores.csv &&
             #end if
+
             cleaverna
                 --params input/params.csv
                 --target_files_prediction input/*.fasta
@@ -163,13 +152,12 @@
                 --training_scores "training_data/training_scores.csv"
                 --output_dir output &&
         
-            ## 6. Rename outputs to match <outputs> definitions
-            mv output/parameters.cfg output/prediction_parameters.cfg &&
             mv output/${model_name}_ML_train_feature_set.csv output/ml_train_feature_set.csv &&
             mv output/${model_name}_ML_train.csv output/ml_train.csv &&
             mv output/${model_name}_ML_metrics.csv output/ml_metrics.csv &&
             mv output/${model_name}_CleaveRNA_output.csv output/cleaverna_output.csv &&
-            mv output/${model_name}_balanced_classification.csv output/balanced_classification.csv
+            mv output/${model_name}_balanced_classification.csv output/balanced_classification.csv &&
+            mv output/parameters.cfg output/prediction_parameters.cfg
 
         #else if $mode_selector.prediction_mode_selector.prediction_mode == "target_screen"
             #set $model_name = str($mode_selector.prediction_mode_selector.model_name)
@@ -299,14 +287,22 @@
         #end if
     #end if
     ]]></command>
-    <configfiles>
-        <configfile name="params_file_config_train"><![CDATA[
+<configfiles>
+    <configfile name="params_file_config_train"><![CDATA[
 #if $mode_selector.params_source.params_method == "create"
 LA,RA,CS,Tem,CA
 $mode_selector.params_source.la,$mode_selector.params_source.ra,"#echo ",".join($mode_selector.params_source.cs)#",$mode_selector.params_source.tem,$mode_selector.params_source.ca
 #end if
 ]]></configfile>
-        <configfile name="target_check_params_config"><![CDATA[
+
+    <configfile name="prediction_params_file_config"><![CDATA[
+#if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "default" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
+LA,RA,CS,Tem,CA
+$mode_selector.prediction_mode_selector.params_source.la,$mode_selector.prediction_mode_selector.params_source.ra,"#echo ",".join($mode_selector.prediction_mode_selector.params_source.cs)#",$mode_selector.prediction_mode_selector.params_source.tem,$mode_selector.prediction_mode_selector.params_source.ca
+#end if
+]]></configfile>
+
+    <configfile name="target_check_params_config"><![CDATA[
 #if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "target_check" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
 LA,RA,CS,Start_End_Index,Tem,CA
 #for $row in $mode_selector.prediction_mode_selector.params_source.param_rows
@@ -314,13 +310,8 @@ $row.la,$row.ra,"#echo ",".join($row.cs)#","$row.target_region",$row.tem,$row.ca
 #end for
 #end if
 ]]></configfile>
-        <configfile name="prediction_params_file_config"><![CDATA[
-#if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "default" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
-LA,RA,CS,Tem,CA
-$mode_selector.prediction_mode_selector.params_source.la,$mode_selector.prediction_mode_selector.params_source.ra,"#echo ",".join($mode_selector.prediction_mode_selector.params_source.cs)#",$mode_selector.prediction_mode_selector.params_source.tem,$mode_selector.prediction_mode_selector.params_source.ca
-#end if
-]]></configfile>
-    </configfiles>
+</configfiles> 
+
     <inputs>
         <conditional name="mode_selector">
             <param name="mode" type="select" label="Select mode">
@@ -586,14 +577,16 @@ $mode_selector.prediction_mode_selector.params_source.la,$mode_selector.predicti
                 </assert_contents>
             </output>
         </test>
-        <!-- 
         <test expect_num_outputs="6">
             <conditional name="mode_selector">
                 <param name="mode" value="prediction"/>
                 <conditional name="prediction_mode_selector">
                     <param name="prediction_mode" value="target_check"/>
                     <param name="model_name" value="HBV"/>
-                    <param name="params_csv" value="target_check_params.csv" ftype="csv"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="target_check_params.csv"/>
+                    </conditional>
                     <param name="target_files_prediction" value="target_1.fasta,target_2.fasta"/>
                     <conditional name="training_file_source">
                         <param name="training_file_method" value="builtin"/>
@@ -607,7 +600,7 @@ $mode_selector.prediction_mode_selector.params_source.la,$mode_selector.predicti
             </conditional>
             <output name="prediction_cfg">
                 <assert_contents>
-                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
                 </assert_contents>
             </output>
             <output name="ml_train_feature_set">
@@ -627,7 +620,7 @@ $mode_selector.prediction_mode_selector.params_source.la,$mode_selector.predicti
             </output>
             <output name="cleaverna_output">
                 <assert_contents>
-                    <has_text text="GCATAGGCTAGCTACAACGAAG"/>
+                    <has_text text="AU-27-28,AGGCAGGCTAGCTACAACGAAT,target_1.fasta,1,0.636150936609462,1.6344380543832644"/>
                 </assert_contents>
             </output>
             <output name="balanced_classification">
@@ -635,6 +628,8 @@ $mode_selector.prediction_mode_selector.params_source.la,$mode_selector.predicti
                     <has_n_lines n="91"/>
                 </assert_contents>
             </output>
+        </test>
+        <!-- 
         </test>
         <test expect_num_outputs="6">
             <conditional name="mode_selector">
