@@ -5,7 +5,13 @@ import sys
 import time
 
 import yaml
-from openai import InternalServerError, OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 context_files = json.loads(sys.argv[1])
 question = sys.argv[2]
@@ -41,9 +47,17 @@ if not litellm_base_url:
         "LiteLLM base URL is not configured! Please set LITELLM_BASE_URL environment variable."
     )
 
+# LLM generation can be slow for large contexts; allow a generous, configurable
+# timeout. We disable the SDK's internal retries so the loop below owns backoff
+# and logging. Override via LITELLM_REQUEST_TIMEOUT / MAX_RETRIES / MAX_DELAY in
+# the config file or environment.
+request_timeout = float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600"))
+
 client = OpenAI(
     api_key=litellm_api_key,
     base_url=litellm_base_url,
+    timeout=request_timeout,
+    max_retries=0,
 )
 
 
@@ -124,8 +138,18 @@ if not contents:
 messages = [{"role": "user", "content": contents}]
 
 
-max_retries = config.get("MAX_RETRIES", 3)
-max_delay = config.get("MAX_DELAY", 900)
+max_retries = int(config.get("MAX_RETRIES", 3))
+max_delay = float(config.get("MAX_DELAY", 900))
+
+# Transient errors that are safe to retry: timeouts and connection failures
+# (network/proxy hiccups), rate limiting, and upstream 5xx.
+retryable_errors = (
+    APITimeoutError,
+    APIConnectionError,
+    RateLimitError,
+    InternalServerError,
+)
+
 for attempt in range(max_retries):
     try:
         api_params = {"model": model, "messages": messages}
@@ -136,11 +160,15 @@ for attempt in range(max_retries):
         with open("output.md", "w") as f:
             f.write(response.choices[0].message.content or "")
         break
-    except InternalServerError as e:
+    except retryable_errors as e:
         if attempt == max_retries - 1:
-            sys.exit("Max retries reached. Exiting.")
+            sys.exit(
+                f"Max retries ({max_retries}) reached. Last error: {type(e).__name__}: {e}"
+            )
         sleep_time = min(2**attempt + random.uniform(0, 1), max_delay)
-        print(
-            f"InternalServerError encountered ({e}). Retrying in {sleep_time:.2f} seconds..."
-        )
+        if isinstance(e, RateLimitError) and hasattr(e, "response") and e.response is not None:
+            retry_after = e.response.headers.get("retry-after")
+            if retry_after:
+                sleep_time = min(float(retry_after), max_delay)
+        print(f"{type(e).__name__} encountered ({e}). Retrying in {sleep_time:.2f} seconds...")
         time.sleep(sleep_time)
