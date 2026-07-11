@@ -165,9 +165,13 @@
             mkdir -p output &&
             mkdir -p training_data &&
         
-            ## PARAMS (upload only)
-            cp "$mode_selector.prediction_mode_selector.params_csv" input/params.csv &&
-            sed -i '1d' input/params.csv &&
+            ## PARAMS (upload or create)
+            #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
+                cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
+            #else
+                cp "$target_screen_params_config" input/params.csv &&
+                sed -i '1d' input/params.csv &&
+            #end if
         
             ## COPY TARGET FASTA FILES
             #for $f in $mode_selector.prediction_mode_selector.target_files_prediction
@@ -240,7 +244,6 @@
                     cp "$f" input/${f.element_identifier}.fasta &&
                 #end if
             #end for
-        
             ## TRAINING FILE
             #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
                 #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "HPBC"
@@ -287,22 +290,20 @@
         #end if
     #end if
     ]]></command>
-<configfiles>
-    <configfile name="params_file_config_train"><![CDATA[
+    <configfiles>
+        <configfile name="params_file_config_train"><![CDATA[
 #if $mode_selector.params_source.params_method == "create"
 LA,RA,CS,Tem,CA
 $mode_selector.params_source.la,$mode_selector.params_source.ra,"#echo ",".join($mode_selector.params_source.cs)#",$mode_selector.params_source.tem,$mode_selector.params_source.ca
 #end if
 ]]></configfile>
-
-    <configfile name="prediction_params_file_config"><![CDATA[
+        <configfile name="prediction_params_file_config"><![CDATA[
 #if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "default" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
 LA,RA,CS,Tem,CA
 $mode_selector.prediction_mode_selector.params_source.la,$mode_selector.prediction_mode_selector.params_source.ra,"#echo ",".join($mode_selector.prediction_mode_selector.params_source.cs)#",$mode_selector.prediction_mode_selector.params_source.tem,$mode_selector.prediction_mode_selector.params_source.ca
 #end if
 ]]></configfile>
-
-    <configfile name="target_check_params_config"><![CDATA[
+        <configfile name="target_check_params_config"><![CDATA[
 #if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "target_check" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
 LA,RA,CS,Start_End_Index,Tem,CA
 #for $row in $mode_selector.prediction_mode_selector.params_source.param_rows
@@ -310,8 +311,15 @@ $row.la,$row.ra,"#echo ",".join($row.cs)#","$row.target_region",$row.tem,$row.ca
 #end for
 #end if
 ]]></configfile>
-</configfiles> 
-
+        <configfile name="target_screen_params_config"><![CDATA[
+#if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "target_screen" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
+LA,RA,CS,CS_index,Tem,CA
+#for $row in $mode_selector.prediction_mode_selector.params_source.param_rows
+$row.la,$row.ra,$row.cs,"$row.cs_index",$row.tem,$row.ca
+#end for
+#end if
+]]></configfile>
+    </configfiles>
     <inputs>
         <conditional name="mode_selector">
             <param name="mode" type="select" label="Select mode">
@@ -621,6 +629,61 @@ $row.la,$row.ra,"#echo ",".join($row.cs)#","$row.target_region",$row.tem,$row.ca
             <output name="cleaverna_output">
                 <assert_contents>
                     <has_text text="AU-27-28,AGGCAGGCTAGCTACAACGAAT,target_1.fasta,1,0.636150936609462,1.6344380543832644"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="target_screen"/>
+                    <param name="model_name" value="HBV"/>
+                    <!-- Conditional block for parameters -->
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="target_screen_params.csv" ftype="csv"/>
+                    </conditional>
+                    <param name="target_files_prediction" value="target_1.fasta,target_2.fasta" ftype="fasta"/>
+                    <!-- Training reference setup -->
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <!-- Output assertions -->
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=23"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
                 </assert_contents>
             </output>
             <output name="balanced_classification">
