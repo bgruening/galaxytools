@@ -60,8 +60,12 @@ def download_untar_store(url, tmp_path, dest_path):
         for folder in os.listdir(extract_path):
             folder_path = os.path.join(extract_path, folder)
 
-            print(f"Copy data to {dest_path}")
-            shutil.copytree(folder_path, dest_path)
+            print(f"Move data to {dest_path}")
+            # folder_path and dest_path are both under workdir (same
+            # filesystem), so this is an atomic rename: no multi-GB duplicate
+            # copy, and no recursive delete of the freshly-written DB tree -
+            # which is what triggers the Lustre readdir/rmtree race below.
+            shutil.move(folder_path, dest_path)
             print("Done !")
 
     rmtree_tolerant(tmp_path)
