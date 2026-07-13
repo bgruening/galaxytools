@@ -7,9 +7,29 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import time
 from datetime import datetime
 
 import wget
+
+
+def rmtree_tolerant(path, retries=5, delay=2):
+    """Remove ``path`` recursively, tolerating the transient "Directory not
+    empty" (OSError errno 39) race that ``shutil.rmtree`` hits on parallel/network
+    filesystems (e.g. Lustre), where ``readdir`` can return stale entries
+    mid-walk. Retries a few times, then gives up quietly: ``path`` is scratch
+    space and the fetched DB has already been copied elsewhere, so a leftover
+    temp dir must never fail the job."""
+    for attempt in range(retries):
+        try:
+            shutil.rmtree(path)
+            return
+        except OSError:
+            if attempt == retries - 1:
+                shutil.rmtree(path, ignore_errors=True)
+                return
+            time.sleep(delay)
+
 
 version_mapping = {
     "3.1.0": "https://zenodo.org/records/7778108/files/db_mOTU_v3.1.0.tar.gz",
@@ -40,11 +60,15 @@ def download_untar_store(url, tmp_path, dest_path):
         for folder in os.listdir(extract_path):
             folder_path = os.path.join(extract_path, folder)
 
-            print(f"Copy data to {dest_path}")
-            shutil.copytree(folder_path, dest_path)
+            print(f"Move data to {dest_path}")
+            # folder_path and dest_path are both under workdir (same
+            # filesystem), so this is an atomic rename: no multi-GB duplicate
+            # copy, and no recursive delete of the freshly-written DB tree -
+            # which is what triggers the Lustre readdir/rmtree race below.
+            shutil.move(folder_path, dest_path)
             print("Done !")
 
-    shutil.rmtree(tmp_path)
+    rmtree_tolerant(tmp_path)
 
 
 def main():
