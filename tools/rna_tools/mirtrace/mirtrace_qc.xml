@@ -7,39 +7,50 @@
     <expand macro="xrefs"/>
     <expand macro="requirements"/>
     <expand macro="version_command"/>
-    <command detect_errors="exit_code"><![CDATA[
+    <command detect_errors="aggressive"><![CDATA[
+#set $input_files = []
+#for $s in $sample
+    #set $sample_name = str($s.element_identifier)
+    ln -s '$s' '$sample_name' &&
+    #silent $input_files.append($sample_name)
+#end for
+
 mirtrace qc
     --species '$species'
-    --output-dir .
+    --output-dir output
     --force
-    #if $adapter:
+    #if $adapter
         --adapter '$adapter'
     #end if
     --protocol '$protocol'
-    #if $write_fasta:
-        --write-fasta
-        #if $uncollapse_fasta:
-            --uncollapse-fasta
-        #end if
-    #end if
-    #if str($title).strip():
+    $write_fasta
+    $uncollapse_fasta
+    #if $title
         --title '$title'
     #end if
-    #if str($comment).strip():
+    #if $comment
         --comment '$comment'
     #end if
     --num-threads \${GALAXY_SLOTS:-4}
-    #echo ' '.join(map(str, $sample))#
-&&
+    $(' '.join(["'" + $f + "'" for $f in $input_files]))
+    &&
 
 ## Move output files
-cp mirtrace-report.html '$report_html' &&
-cp mirtrace-results.json '$results_json' &&
+cp output/mirtrace-report.html '$report_html' &&
+cp output/mirtrace-results.json '$results_json'
 
-## Collect FASTA outputs if requested
-#if $write_fasta:
-    tar -czf '$fasta_qc_passed' -C output qc_passed_reads.all.collapsed 2>/dev/null || true &&
-    tar -czf '$fasta_unknown' -C output qc_passed_reads.rnatype_unknown.collapsed 2>/dev/null || true
+## Collect FASTA outputs into collections if requested
+#if $write_fasta
+    && mkdir -p fasta_qc_passed fasta_unknown 
+    #if $uncollapse_fasta
+        && mv output/qc_passed_reads.all.uncollapsed/*.fasta fasta_qc_passed/
+        && mv output/qc_passed_reads.rnatype_unknown.uncollapsed/*.fasta fasta_unknown/
+    #else
+        && mv output/qc_passed_reads.all.collapsed/*.fasta fasta_qc_passed/
+        && mv output/qc_passed_reads.rnatype_unknown.collapsed/*.fasta fasta_unknown/
+    #end if
+    && gzip fasta_qc_passed/*.fasta
+    && gzip fasta_unknown/*.fasta
 #end if
     ]]></command>
     <inputs>
@@ -277,17 +288,85 @@ cp mirtrace-results.json '$results_json' &&
     <outputs>
         <data name="report_html" format="html" label="${tool.name} on ${on_string}: HTML report"/>
         <data name="results_json" format="json" label="${tool.name} on ${on_string}: JSON results"/>
-        <data name="fasta_qc_passed" format="fasta.gz" label="${tool.name} on ${on_string}: QC-passed reads FASTA">
+        <collection name="fasta_qc_passed" type="list" label="${tool.name} on ${on_string}: QC-passed reads FASTA" format="fasta.gz">
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.fasta\.gz" format="fasta.gz" directory="fasta_qc_passed"/>
             <filter>write_fasta</filter>
-        </data>
-        <data name="fasta_unknown" format="fasta.gz" label="${tool.name} on ${on_string}: Unknown reads FASTA">
+        </collection>
+        <collection name="fasta_unknown" type="list" label="${tool.name} on ${on_string}: Unknown reads FASTA" format="fasta.gz">
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.fasta\.gz" format="fasta.gz" directory="fasta_unknown"/>
             <filter>write_fasta</filter>
-        </data>
+        </collection>
     </outputs>
     <tests>
-        <test expect_num_outputs="9">
-            <param name="sample" value="sample1.fastq.gz"/>
+        <test expect_num_outputs="4">
+            <param name="sample" value="sample1.fastq-1.gz"/>
             <param name="species" value="hsa"/>
+            <param name="adapter" value="TGGAATTCT"/>
+            <param name="write_fasta" value="true"/>
+            <param name="uncollapse_fasta" value="true"/>
+            <output name="results_json">
+                <assert_contents>
+                        <has_json_property_with_text property="speciesVerbosename" text="Homo sapiens"/>
+                        <has_json_property_with_value property="rnaTypeRefSeqCounts" value="[1881,48,431,56,0]"/>
+                </assert_contents>
+            </output>
+            <output_collection name="fasta_qc_passed" type="list">
+                <element name="sample1.fastq-1.gz" ftype="fasta.gz">
+                    <assert_contents>
+                        <has_size size="297845" delta="3000"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="fasta_unknown" type="list">
+                <element name="sample1.fastq-1.gz" ftype="fasta.gz">
+                    <assert_contents>
+                        <has_size size="86037" delta="1000"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="4">
+            <param name="sample" value="sample1.fastq-1.gz,sample2.fastq-1.gz"/>
+            <param name="species" value="hsa"/>
+            <param name="adapter" value="TGGAATTCT"/>
+            <param name="title" value="Two sample report"/>
+            <param name="write_fasta" value="true"/>
+            <output name="results_json">
+                <assert_contents>
+                        <has_json_property_with_text property="reportTitle" text="Two sample report"/>
+                        <has_json_property_with_value property="statsRNAType" value="[55911,2244,1562,852,11912]"/>
+                </assert_contents>
+            </output>
+            <output_collection name="fasta_qc_passed" type="list">
+                <element name="sample1.fastq-1.gz" ftype="fasta.gz">
+                    <assert_contents>
+                        <has_size min="100"/>
+                    </assert_contents>
+                </element>
+                <element name="sample2.fastq-1.gz" ftype="fasta.gz">
+                    <assert_contents>
+                        <has_size min="100"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="fasta_unknown" type="list">
+                <element name="sample1.fastq-1.gz" ftype="fasta.gz">
+                    <assert_contents>
+                        <has_size min="100"/>
+                    </assert_contents>
+                </element>
+                <element name="sample2.fastq-1.gz" ftype="fasta.gz">
+                    <assert_contents>
+                        <has_size min="100"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="2">
+            <param name="sample" value="sample1.fastq-1.gz"/>
+            <param name="species" value="hsa"/>
+            <param name="adapter" value="TGGAATTCT"/>
+            <param name="write_fasta" value="false"/>
             <output name="report_html">
                 <assert_contents>
                     <has_text text="miRTrace"/>
@@ -295,15 +374,13 @@ cp mirtrace-results.json '$results_json' &&
             </output>
             <output name="results_json">
                 <assert_contents>
-                    <has_n_columns n="2"/>
+                    <has_json_property_with_text property="speciesVerbosename" text="Homo sapiens"/>
                 </assert_contents>
             </output>
         </test>
     </tests>
-    <help><![CDATA[
-**miRTrace QC** performs quality control of small RNA (sRNA) sequencing data.
-
-.. class:: infomark
+    <help format="markdown"><![CDATA[
+# miRTrace QC
 
 miRTrace is a tool for quality control and tracing of small RNA sequencing data.
 
@@ -313,14 +390,14 @@ rRNAs and sequencing artifacts) and the composition of clade-specific miRNAs.
 
 -----
 
-**QC Mode**
+## QC Mode
 
 **Output files:**
 
-- ``mirtrace-report.html`` – interactive HTML report
-- ``mirtrace-results.json`` – all results in JSON format
-- ``fasta_qc_passed`` – QC-passed reads in FASTA format
-- ``fasta_unknown`` – reads of unknown RNA type in FASTA format
+- `mirtrace-report.html` – interactive HTML report (single dataset)
+- `mirtrace-results.json` – all results in JSON format (single dataset)
+- `fasta_qc_passed` – QC-passed reads in FASTA format (list collection, one element per input sample)
+- `fasta_unknown` – reads of unknown RNA type in FASTA format (list collection, one element per input sample)
 
 
 In QC mode, miRTrace produces 6 output figures and 7 statistics matrices:
@@ -332,8 +409,9 @@ In QC mode, miRTrace produces 6 output figures and 7 statistics matrices:
 5. **miRNA complexity** – miRNA species accumulation curve (saturation analysis)
 6. **Clade-specific miRNA** – detection of miRNA from different clades (basic contamination)
 
+-----
 
-**References**
+## References
 
 Kang W et al. (2018) miRTrace reveals the organismal origins of microRNA sequencing data.
 *Genome Biology*, 19, 213. https://doi.org/10.1186/s13059-018-1588-9
