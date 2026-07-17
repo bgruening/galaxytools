@@ -4,7 +4,7 @@
 
   <macros>
     <token name="@TOOL_VERSION@">1.0.0</token>
-    <token name="@VERSION_SUFFIX@">1</token>
+    <token name="@VERSION_SUFFIX@">2</token>
     <token name="@CONTAINER_VERSION@">0.14.18</token>
   </macros>
 
@@ -29,9 +29,20 @@
 #if $model_source.source_type == "upload":
     mkdir -p ./local_model &&
     (tar -xf '$model_source.model_archive' -C ./local_model --strip-components=1 || tar -xf '$model_source.model_archive' -C ./local_model) &&
+    #set EMBED_SOURCE = "local"
     #set MODEL_PATH = "./local_model"
+    #set MODEL_VALUE = ""
+    #set PROVIDER = ""
+#else if $model_source.source_type == "litellm":
+    #set EMBED_SOURCE = "litellm"
+    #set MODEL_PATH = ""
+    #set MODEL_VALUE = str($model_source.embedding_model.fields.model_id)
+    #set PROVIDER = str($model_source.embedding_model.fields.provider)
 #else:
+    #set EMBED_SOURCE = "local"
     #set MODEL_PATH = str($model_source.embedding_model)
+    #set MODEL_VALUE = ""
+    #set PROVIDER = ""
 #end if
 
 #set LINKED = []
@@ -43,15 +54,28 @@
 #end for
 #set context_files = json.dumps($LINKED)
 
-python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$MODEL_PATH' '$top_k'
+python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$EMBED_SOURCE' '$MODEL_PATH' '$MODEL_VALUE' '$PROVIDER' '$top_k'
 ]]></command>
 
   <inputs>
     <conditional name="model_source">
       <param name="source_type" type="select" label="Embedding Model Source">
-        <option value="preinstalled">Use an installed model</option>
+        <option value="litellm" selected="true">Use a LiteLLM-hosted model</option>
+        <option value="preinstalled">Use an installed HuggingFace model</option>
         <option value="upload">Upload a custom model archive</option>
       </param>
+
+      <when value="litellm">
+        <param name="embedding_model" type="select" label="Select Embedding Model">
+          <options from_data_table="genai_models">
+            <column name="name" index="2" />
+            <column name="value" index="0" />
+            <filter type="static_value" value="embedding" column="3" />
+          </options>
+          <validator type="no_options"
+            message="No embedding models are configured. Ask your Galaxy admin to add domain=embedding entries to the genai_models data table." />
+        </param>
+      </when>
 
       <when value="preinstalled">
         <param name="embedding_model" type="select" label="Select Model">
@@ -123,6 +147,19 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$MOD
         <has_text text="Embedding model path does not exist: unknown" />
       </assert_stderr>
     </test>
+
+    <test expect_failure="true" expect_exit_code="1">
+      <conditional name="model_source">
+        <param name="source_type" value="litellm" />
+        <param name="embedding_model" value="unknown" />
+      </conditional>
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="How does it work?" />
+      <param name="top_k" value="2" />
+      <assert_stdout>
+        <has_text text="LiteLLM config file is not configured!"/>
+      </assert_stdout>
+    </test>
   </tests>
 
 
@@ -148,9 +185,10 @@ Usage
 
 1. **Embedding Model Source**
 
-   You can provide the embedding model in two ways:
-   
-   - **Use an installed model**: Select a model from a list provided by the administrator (configured via `.loc` files).
+   You can provide the embedding model in three ways:
+
+   - **Use a LiteLLM-hosted model**: Select an embedding model served through your Galaxy's LiteLLM proxy (e.g. BGE-M3, Qwen3 Embedding). These are configured by the administrator via the `genai_models` data table with `domain=embedding`.
+   - **Use an installed HuggingFace model**: Select a local model from a list provided by the administrator (configured via `.loc` files).
    - **Upload custom Model Archive**: Provide your own model as a **.tgz** or archive. This allows the tool to run offline using the provided model files (e.g., config.json, model weights).
 
 2. **Corpus Documents**
@@ -199,7 +237,8 @@ Notes
 - GPU acceleration is automatically used if available.
 - Retrieval quality strongly depends on the chosen embedding model.
 - Larger Top-K values provide more context but may introduce irrelevant information.
-- For the preinstalled models, the paths are managed via the `huggingface` data table.
+- For the preinstalled HuggingFace models, the paths are managed via the `huggingface` data table.
+- LiteLLM-hosted embedding models are managed via the `genai_models` data table (the same table used by the LLM Hub) and selected with `domain=embedding`.
 
 ]]></help>
 
