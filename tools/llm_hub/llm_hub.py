@@ -20,6 +20,11 @@ model_type = sys.argv[4]
 temperature_arg = sys.argv[5]
 temperature = float(temperature_arg) if temperature_arg else None
 provider = sys.argv[6]
+# Galaxy user id, for request attribution on the proxy. Empty (or the literal
+# "None") for anonymous sessions, in which case no `user` is sent.
+galaxy_user_id = sys.argv[7] if len(sys.argv) > 7 else ""
+if galaxy_user_id == "None":
+    galaxy_user_id = ""
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -174,6 +179,12 @@ def stream_completion():
     ignored since a Galaxy tool produces a single dataset.
     """
     api_params = {"model": model, "messages": messages, "stream": True}
+    # Attribute the request to the Galaxy user so proxies (e.g. LiteLLM) can
+    # meter usage and apply per-user budgets/rate limits. Sent as the standard
+    # OpenAI `user` field. The opaque numeric id is used rather than the email:
+    # this value is forwarded to the upstream provider.
+    if galaxy_user_id:
+        api_params["user"] = galaxy_user_id
     if temperature is not None:
         api_params["temperature"] = temperature
 
