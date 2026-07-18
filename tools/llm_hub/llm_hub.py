@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import random
@@ -25,6 +26,10 @@ provider = sys.argv[6]
 galaxy_user_id = sys.argv[7] if len(sys.argv) > 7 else ""
 if galaxy_user_id == "None":
     galaxy_user_id = ""
+# Galaxy instance URL ($__galaxy_url__), used to namespace the user id below.
+galaxy_url = sys.argv[8] if len(sys.argv) > 8 else ""
+if galaxy_url == "None":
+    galaxy_url = ""
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -180,11 +185,14 @@ def stream_completion():
     """
     api_params = {"model": model, "messages": messages, "stream": True}
     # Attribute the request to the Galaxy user so proxies (e.g. LiteLLM) can
-    # meter usage and apply per-user budgets/rate limits. Sent as the standard
-    # OpenAI `user` field. The opaque numeric id is used rather than the email:
-    # this value is forwarded to the upstream provider.
-    if galaxy_user_id:
-        api_params["user"] = galaxy_user_id
+    # meter usage and apply per-user budgets/rate limits, via the standard
+    # OpenAI `user` field. The id is namespaced by the Galaxy instance URL and
+    # hashed: the URL keeps ids unique when several Galaxy instances share one
+    # proxy (e.g. usegalaxy.eu), and hashing means no instance-identifying or
+    # personal data leaves for the provider. Anonymous users (no id) fall back
+    # to a per-instance shared "anonymous" bucket.
+    raw_user = galaxy_user_id or "anonymous"
+    api_params["user"] = hashlib.sha256(f"{galaxy_url}|{raw_user}".encode()).hexdigest()
     if temperature is not None:
         api_params["temperature"] = temperature
 
