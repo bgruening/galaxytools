@@ -95,7 +95,7 @@ class LiteLLMEmbedding(BaseEmbedding):
         batch = self.embed_batch_size or len(texts)
         out: list[list[float]] = []
         for i in range(0, len(texts), batch):
-            out.extend(self._embed(texts[i : i + batch]))
+            out.extend(self._embed(texts[i:i + batch]))
         return out
 
     async def _aget_query_embedding(self, query: str) -> list[float]:
