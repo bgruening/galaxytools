@@ -21,15 +21,13 @@ model_type = sys.argv[4]
 temperature_arg = sys.argv[5]
 temperature = float(temperature_arg) if temperature_arg else None
 provider = sys.argv[6]
-# Galaxy user id, for request attribution on the proxy. Empty (or the literal
-# "None") for anonymous sessions, in which case no `user` is sent.
+# Galaxy user id, for request attribution on the proxy. The literal
+# "Anonymous" for anonymous sessions, in which case no per-user id is sent.
 galaxy_user_id = sys.argv[7] if len(sys.argv) > 7 else ""
-if galaxy_user_id == "None":
+if galaxy_user_id == "Anonymous":
     galaxy_user_id = ""
 # Galaxy instance URL ($__galaxy_url__), used to namespace the user id below.
 galaxy_url = sys.argv[8] if len(sys.argv) > 8 else ""
-if galaxy_url == "None":
-    galaxy_url = ""
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
