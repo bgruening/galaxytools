@@ -1,13 +1,15 @@
 <macros>
     <token name="@TOOL_VERSION@">7.0.2</token>
-    <token name="@VERSION_SUFFIX@">0</token>
+    <token name="@VERSION_SUFFIX@">1</token>
     <token name="@PROFILE@">25.1</token>
-    <token name="@CREATE_SYMLINKS@"><![CDATA[
-        ln -s '$image' 'input.${image.ext}' &&
-
-        #if $image.ext != 'pdf'
-            ln -s '$output' 'kraken_output.${out_ext}' &&
-        #end if
+    <token name="@SET_OUTPUT_EXTENSION@"><![CDATA[
+        #set $output_extensions = {
+            '-a': 'alto',
+            '-x': 'page.xml',
+            '-h': 'html',
+            '-y': 'abbyy.xml',
+        }
+        #set $out_ext = $output_extensions.get(str($output_format_flag), $native_out_ext)
     ]]></token>
     <token name="@REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@"><![CDATA[
         #if $image.ext in ("tiff", "tif")
@@ -19,6 +21,13 @@
                     exit 1;
                 fi;
             } &&
+        #end if
+    ]]></token>
+    <token name="@CREATE_SYMLINKS@"><![CDATA[
+        ln -s '$image' 'input.${image.ext}' &&
+
+        #if $image.ext != 'pdf'
+            ln -s '$output' 'kraken_output.${out_ext}' &&
         #end if
     ]]></token>
     <token name="@RUN_KRAKEN@"><![CDATA[
@@ -85,5 +94,53 @@
     </xml>
     <macro name="input_param">
         <param name="image" type="data" format="jpg,png,tiff,pdf" label="Image or document" help="multipage is only supported for PDF inputs"/>
+    </macro>
+    <macro name="datatable_model" token_model_type="" token_label="" token_help="">
+        <param name="model" type="select" label="@LABEL@" help="@HELP@">
+            <options from_data_table="pretrained_mlmodels_various_sources">
+                <!-- returned value: .mlmodel path -->
+                <column name="value" index="8"/>
+                <!-- displayed model name -->
+                <column name="name" index="4"/>
+                <!-- filter by model type -->
+                <filter type="static_value" column="6" value="@MODEL_TYPE@"/>
+                <!-- sorting by explicit sort key -->
+                <filter type="sort_by" column="5"/>
+            </options>
+        </param>
+    </macro>
+    <macro name="segment_ocr_outputs" tokens="native_format,input_image">
+        <outputs>
+            <data name="output" format="@NATIVE_FORMAT@" label="${tool.name} on ${on_string}">
+                <filter>@INPUT_IMAGE@.ext != "pdf"</filter>
+                <actions>
+                    <conditional name="output_format_flag">
+                        <when value="-a">
+                            <action type="format" default="alto"/>
+                        </when>
+                        <when value="-x">
+                            <action type="format" default="page.xml"/>
+                        </when>
+                        <when value="-h">
+                            <action type="format" default="hocr"/>
+                        </when>
+                        <when value="-y">
+                            <action type="format" default="abbyy.xml"/>
+                        </when>
+                        <when value="-n">
+                            <action type="format" default="@NATIVE_FORMAT@"/>
+                        </when>
+                    </conditional>
+                </actions>
+            </data>
+            <collection name="pdf_output" type="list" label="${tool.name} pages on ${on_string}">
+                <filter>@INPUT_IMAGE@.ext == "pdf"</filter>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.alto$" format="alto"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.page\.xml$" format="page.xml"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.html$" format="hocr"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.abbyy\.xml$" format="abbyy.xml"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.@NATIVE_FORMAT@$" format="@NATIVE_FORMAT@"/>
+            </collection>
+        </outputs>
     </macro>
 </macros>
