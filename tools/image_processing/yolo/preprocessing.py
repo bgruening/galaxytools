@@ -38,16 +38,19 @@ def copy_pairs(pairs, image_src, label_src, image_dst, label_dst):
         copy_file(os.path.join(label_src, lbl), os.path.join(label_dst, lbl))
 
 
-def write_yolo_yaml(output_dir):
-
-    yolo_yaml_path = os.path.join(output_dir, "yolo.yml")
-    with open(yolo_yaml_path, 'w') as f:
-        f.write(f"path: {output_dir}\n")
-        f.write("train: train\n")
-        f.write("val: valid\n")
-        f.write("test: test\n")
-        f.write("\n")
-        f.write("names: ['dataset']\n")
+def write_yolo_yaml(output_dir, classes):
+    yaml_path = os.path.join(output_dir, "yolo.yml")
+    with open(yaml_path, "w") as f:
+        f.write("train: train/images\n")
+        f.write("val: valid/images\n")
+        f.write("test: test/images\n\n")
+        f.write(f"nc: {len(classes)}\n\n")
+        f.write("names:\n")
+        for i, name in enumerate(classes):
+            f.write(f"  {i}: {name}\n")
+    print("\n--- YAML CONTENT ---")
+    with open(yaml_path, "r") as f:
+        print(f.read())
 
 
 def main():
@@ -55,6 +58,7 @@ def main():
     parser.add_argument("-i", "--images", required=True)
     parser.add_argument("-y", "--labels", required=True)
     parser.add_argument("-o", "--output", required=True)
+    parser.add_argument("-c", "--classes", required=False, default="")
     parser.add_argument("-p", "--train_percent", type=int, default=70)
     args = parser.parse_args()
 
@@ -68,8 +72,8 @@ def main():
     copy_pairs(train_pairs, args.images, args.labels, os.path.join(args.output, "train/images"), os.path.join(args.output, "train/labels"))
     copy_pairs(val_pairs, args.images, args.labels, os.path.join(args.output, "valid/images"), os.path.join(args.output, "valid/labels"))
     copy_pairs(test_pairs, args.images, args.labels, os.path.join(args.output, "test/images"), os.path.join(args.output, "test/labels"))
-
-    write_yolo_yaml(args.output)
+    classes_list = [c.strip() for c in args.classes.split(",")]
+    write_yolo_yaml(args.output, classes_list)
 
 
 if __name__ == "__main__":

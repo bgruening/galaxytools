@@ -1,0 +1,146 @@
+<macros>
+    <token name="@TOOL_VERSION@">7.0.2</token>
+    <token name="@VERSION_SUFFIX@">1</token>
+    <token name="@PROFILE@">25.1</token>
+    <token name="@SET_OUTPUT_EXTENSION@"><![CDATA[
+        #set $output_extensions = {
+            '-a': 'alto',
+            '-x': 'page.xml',
+            '-h': 'html',
+            '-y': 'abbyy.xml',
+        }
+        #set $out_ext = $output_extensions.get(str($output_format_flag), $native_out_ext)
+    ]]></token>
+    <token name="@REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@"><![CDATA[
+        #if $image.ext in ("tiff", "tif")
+            {
+                pages=\$(tr -d '[] ' < '$image.metadata.offsets' | tr ',' '\n' | grep -c '[0-9]');
+
+                if [ "\$pages" -gt 1 ]; then
+                    echo "It seems like multi-page TIF(F) input is not supported by kraken 7. Detected \$pages pages. Please use PDF input or split it first." >&2;
+                    exit 1;
+                fi;
+            } &&
+        #end if
+    ]]></token>
+    <token name="@CREATE_SYMLINKS@"><![CDATA[
+        ln -s '$image' 'input.${image.ext}' &&
+
+        #if $image.ext != 'pdf'
+            ln -s '$output' 'kraken_output.${out_ext}' &&
+        #end if
+    ]]></token>
+    <token name="@RUN_KRAKEN@"><![CDATA[
+        KRAKEN_DEVICE="\${KRAKEN_DEVICE:-cpu}" &&
+        kraken
+            --device "\$KRAKEN_DEVICE"
+            --raise-on-error
+            $output_format_flag
+
+            #if $image.ext == 'pdf'
+                --format-type pdf
+                --batch-input 'input.${image.ext}'
+                --suffix .${out_ext}
+            #else
+                --input 'input.${image.ext}' 'kraken_output.${out_ext}'
+            #end if
+    ]]></token>
+    <token name="@RUN_KRAKEN_OCR@"><![CDATA[
+        KRAKEN_DEVICE="\${KRAKEN_DEVICE:-cpu}" &&
+        kraken
+            --device "\$KRAKEN_DEVICE"
+            --raise-on-error
+            $output_format_flag
+
+            #if $input_type.source == 'segmented'
+                --format-type '${segmentation_ext}'
+                --input 'segmentation.${segmentation_ext}' 'kraken_output.${out_ext}'
+            #else
+                #if $input_type.image.ext == 'pdf'
+                    --format-type pdf
+                    --batch-input 'input.${input_type.image.ext}'
+                    --suffix .${out_ext}
+                #else
+                    --input 'input.${input_type.image.ext}' 'kraken_output.${out_ext}'
+                #end if
+            #end if
+
+            ocr
+    ]]></token>
+    <xml name="requirements">
+        <requirements>
+            <requirement type="package" version="@TOOL_VERSION@">kraken-ocr</requirement>
+        </requirements>
+    </xml>
+    <xml name="creators">
+        <creator>
+            <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
+            <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
+        </creator>
+    </xml>
+    <xml name="env_vars">
+        <environment_variables>
+            <!-- kraken uses RichHandler for logging; "dumb" + FORCE_COLOR=0 prevents rich terminal
+                formatting/control sequences from breaking Galaxy's stdout/stderr rendering. -->
+            <environment_variable name="TERM">dumb</environment_variable>
+            <environment_variable name="FORCE_COLOR">0</environment_variable>
+            <environment_variable name="TORCHINDUCTOR_CACHE_DIR">\$_GALAXY_JOB_TMP_DIR</environment_variable>
+        </environment_variables>
+    </xml>
+    <xml name="citations">
+        <citations>
+            <citation type="doi">10.16995/dscn.8094</citation>
+        </citations>
+    </xml>
+    <macro name="input_param">
+        <param name="image" type="data" format="jpg,png,tiff,pdf" label="Image or document" help="multipage is only supported for PDF inputs"/>
+    </macro>
+    <macro name="datatable_model" token_model_type="" token_label="" token_help="">
+        <param name="model" type="select" label="@LABEL@" help="@HELP@">
+            <options from_data_table="pretrained_mlmodels_various_sources">
+                <!-- returned value: .mlmodel path -->
+                <column name="value" index="8"/>
+                <!-- displayed model name -->
+                <column name="name" index="4"/>
+                <!-- filter by model type -->
+                <filter type="static_value" column="6" value="@MODEL_TYPE@"/>
+                <!-- sorting by explicit sort key -->
+                <filter type="sort_by" column="5"/>
+            </options>
+        </param>
+    </macro>
+    <macro name="segment_ocr_outputs" tokens="native_format,input_image">
+        <outputs>
+            <data name="output" format="@NATIVE_FORMAT@" label="${tool.name} on ${on_string}">
+                <filter>@INPUT_IMAGE@.ext != "pdf"</filter>
+                <actions>
+                    <conditional name="output_format_flag">
+                        <when value="-a">
+                            <action type="format" default="alto"/>
+                        </when>
+                        <when value="-x">
+                            <action type="format" default="page.xml"/>
+                        </when>
+                        <when value="-h">
+                            <action type="format" default="hocr"/>
+                        </when>
+                        <when value="-y">
+                            <action type="format" default="abbyy.xml"/>
+                        </when>
+                        <when value="-n">
+                            <action type="format" default="@NATIVE_FORMAT@"/>
+                        </when>
+                    </conditional>
+                </actions>
+            </data>
+            <collection name="pdf_output" type="list" label="${tool.name} pages on ${on_string}">
+                <filter>@INPUT_IMAGE@.ext == "pdf"</filter>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.alto$" format="alto"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.page\.xml$" format="page.xml"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.html$" format="hocr"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.abbyy\.xml$" format="abbyy.xml"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.@NATIVE_FORMAT@$" format="@NATIVE_FORMAT@"/>
+            </collection>
+        </outputs>
+    </macro>
+</macros>

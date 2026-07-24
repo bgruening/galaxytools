@@ -1,0 +1,101 @@
+<tool id="3dtrees_forestmamba" name="3Dtrees: ForestMamba" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>
+        Forest instance and semantic segmentation of point clouds using the ForestMamba model.
+    </description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_forestmamba:@TOOL_VERSION@</container>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir -p output_dir work_dir &&
+        ln -s '$input' 'input.${input.ext}' &&
+        python -u /workspace/src/run.py
+            --dataset-path 'input.${input.ext}'
+            --output-dir output_dir
+            --work-dir work_dir
+            --repo-dir /workspace
+            --checkpoint /workspace/work_dirs/forestmamba_chm_radius16_qp300_2many_v6/v6_epoch_1500_fix.pth
+            --config-base /workspace/configs/ForAINetv2/forestmamba_chm_radius16_qp300_2many_v6.py
+            --preprocess-workers \${GALAXY_SLOTS:-1}
+            --chunk-size '$chunk_size'
+            --semantic-dim '$semantic_dim'
+            --instance-dim '$instance_dim'
+            --score-dim '$score_dim'
+            --bluepoint-iterations '$bluepoint_iterations'
+            #if $bluepoint_score_threshold:
+                --bluepoint-score-threshold '$bluepoint_score_threshold'
+            #end if
+            --bluepoint-second-pass-threshold '$bluepoint_second_pass_threshold'
+            --spatial-match-tolerance '$spatial_match_tolerance'
+    ]]></command>
+    <environment_variables>
+        <environment_variable name="NUMBA_CACHE_DIR">\$_GALAXY_JOB_TMP_DIR</environment_variable>
+        <environment_variable name="WANDB_MODE">disabled</environment_variable>
+    </environment_variables>
+    <inputs>
+        <param name="input" type="data" format="laz,las" label="Input LAZ/LAS point cloud" help="Point cloud to segment with ForestMamba."/>
+        <param argument="--bluepoint-iterations" type="integer" min="0" max="5" value="0" label="Bluepoint iterations" help="0 keeps standard one-pass inference. 2 enables the dense-forest first/second bluepoint pass."/>
+        <param argument="--bluepoint-score-threshold" type="float" min="0" max="1" value="" optional="true" label="Bluepoint score threshold" help="Optional model score_th override for bluepoint rounds."/>
+        <param argument="--bluepoint-second-pass-threshold" type="float" min="0" max="1" value="0.01" label="Second pass threshold" help="Run the second bluepoint pass only when more than this fraction of first-pass points are non-ground with raw instance_pred == -1. Default 0.01 = 1%."/>
+        <param argument="--spatial-match-tolerance" type="float" min="0" value="0.01" label="Spatial match tolerance" help="Maximum coordinate distance used when matching bluepoint predictions back to the input points."/>
+        <param argument="--chunk-size" type="integer" min="1" value="1000000" label="LAZ write chunk size" help="Number of points processed per streamed LAZ read/write chunk."/>
+        <param argument="--semantic-dim" type="text" value="PredSemantic_FM" label="Semantic prediction dimension" help="Output extra dimension name for ForestMamba semantic predictions.">
+            <validator type="regex" message="Only letters, numbers, and underscores are allowed">^[A-Za-z0-9_]+$</validator>
+        </param>
+        <param argument="--instance-dim" type="text" value="PredInstance_FM" label="Instance prediction dimension" help="Output extra dimension name for ForestMamba instance predictions.">
+            <validator type="regex" message="Only letters, numbers, and underscores are allowed">^[A-Za-z0-9_]+$</validator>
+        </param>
+        <param argument="--score-dim" type="text" value="PredScore_FM" label="Score prediction dimension" help="Output extra dimension name for ForestMamba confidence scores.">
+            <validator type="regex" message="Only letters, numbers, and underscores are allowed">^[A-Za-z0-9_]+$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="output" format="laz" from_work_dir="output_dir/input_forestmamba.laz" label="${tool.name} on ${on_string}: Segmented point cloud"/>
+        <data name="summary" format="json" from_work_dir="output_dir/summary.json" label="${tool.name}: summary"/>
+    </outputs>
+    <tests>
+        <!-- GitHub CI has no GPU, so this test is expected to fail there. -->
+        <test expect_failure="true">
+            <param name="input" value="mikro" ftype="laz"/>
+            <assert_stderr>
+                <has_text text="RuntimeError: No CUDA GPUs are available"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+## What it does
+
+This tool runs ForestMamba on one LAS/LAZ point cloud and writes a segmented
+LAZ output with ForestMamba prediction dimensions.
+
+## Parameters
+
+- **Input LAZ/LAS point cloud**: the point cloud to segment.
+- **Bluepoint iterations**: `0` runs the normal one-pass prediction. `2` enables
+  the dense-forest bluepoint flow: first pass, then an optional second pass on
+  points that remained unassigned.
+- **Bluepoint score threshold**: optional model confidence threshold override
+  for bluepoint runs. Leave empty to use the model/config default.
+- **Second pass threshold**: fraction of first-pass non-ground points with raw
+  `instance_pred == -1` required before the second bluepoint pass runs. The
+  default `0.01` means more than 1%.
+
+## Outputs
+
+- Segmented LAZ with `PredSemantic_FM`, `PredInstance_FM`, and `PredScore_FM`
+  by default.
+- JSON summary of the wrapper run.
+
+Valid ForestMamba instance IDs are preserved. Raw negative instance IDs are
+written as `0` in the final LAZ.
+    </help>
+    <creator>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="doi">10.48550/arXiv.2606.01549</citation>
+    </citations>
+</tool>
