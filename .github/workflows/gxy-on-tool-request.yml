@@ -1,0 +1,47 @@
+on:
+  issues:
+    types: [opened, labeled]
+
+jobs:
+  plan:
+    name: Plan Tool Request
+    if: |
+      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'tool-request')) ||
+      (github.event.action == 'labeled' && github.event.label.name == 'retry-plan')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Post status comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue comment ${{ github.event.issue.number }} --body "🔄 Planning started — [view progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --no-cache-dir gxy-tool-bot==0.1.0
+      - name: Remove retry-plan and generation-failed labels
+        if: github.event.action == 'labeled'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "retry-plan" || true
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "generation-failed" || true
+      - name: Generate plan
+        id: plan
+        env:
+          GXY_TOOL_BOT_API_KEY: ${{ secrets.GXY_TOOL_BOT_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gxy-tool-bot plan \
+            --issue ${{ github.event.issue.number }} \
+            --config .gxy-tool-bot.yml
+      - name: Add plan-ready label
+        if: steps.plan.outcome == 'success'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh issue edit ${{ github.event.issue.number }} \
+            --add-label "plan-ready"
