@@ -1,0 +1,219 @@
+<tool id="kraken_ocr" name="Kraken OCR" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>extract text from segmented or line document images</description>
+    <macros>
+        <import>macros.xml</import>
+        <import>macros_for_testing.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <creator>
+        <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
+        <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
+        <organization name="Ajax Multi-Commentary project" url="https://mromanello.github.io/ajax-multi-commentary"/>
+    </creator>
+    <command detect_errors="exit_code"><![CDATA[
+        #set $native_out_ext = 'txt'
+        @SET_OUTPUT_EXTENSION@
+        @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+
+        ln -s '$input_type.image' 'input.${input_type.image.ext}' &&
+        #if $input_type.source == 'segmented'
+           #set $segmentation_ext = 'xml'
+            ln -s '$input_type.segmentation' 'segmentation.${segmentation_ext}' &&
+        #end if
+
+        #if $input_type.image.ext != 'pdf'
+            ln -s '$output' 'kraken_output.${out_ext}' &&
+        #end if
+
+        #if $model_source.source == 'history'
+            #set $model_name = str($model_source.model.name)
+            ln -s '$model_source.model' '$model_name' &&
+        #end if
+
+        @RUN_KRAKEN_OCR@
+            #if $model_source.source == 'datatable'
+                --model '$model'
+            #else
+                --model '$model_name'
+            #end if
+            --pad '$pad'
+            --temperature '$temperature'
+            $reordering.mode
+            #if $reordering.mode == '--reorder'
+                --base-dir '$reordering.base_dir'
+            #end if
+            #if $input_type.source == 'line'
+                --no-segmentation
+            #end if
+            --text-direction '$text_direction'
+            #if $no_legacy_polygons
+                --no-legacy-polygons
+            #end if
+    ]]></command>
+    <expand macro="env_vars"/>
+    <inputs>
+        <conditional name="input_type">
+            <param name="source" type="select" label="Input type" help="Select whether the input is a pre-segmented image with text regions or a single line image">
+                <option value="segmented" selected="true">Pre-segmented image</option>
+                <option value="line">Single line image</option>
+            </param>
+            <when value="segmented">
+                <param name="image" type="data" format="jpg,png,tiff" label="Image"/>
+                <param name="segmentation" type="data" format="alto,page.xml" label="Segmentation XML" help="File containing pre-segmented text regions in ALTO or PAGE format"/>
+            </when>
+            <when value="line">
+                <param name="image" type="data" format="jpg,png,tiff,pdf" label="Line image"/>
+            </when>
+        </conditional>
+        <conditional name="model_source">
+            <param name="source" type="select" label="Model source" help="Select a model from the list or upload your own model file.">
+                <option value="datatable" selected="true">Models served by Galaxy</option>
+                <option value="history">Model from your Galaxy history</option>
+            </param>
+            <when value="datatable">
+                <expand macro="datatable_model" model_type="ocr" label="OCR model" help="Optical character recognition model used by Kraken."/>
+            </when>
+            <when value="history">
+                <param name="model" type="data" format="mlmodel,safetensors" label="OCR model" help="Kraken OCR model file from your history."/>
+            </when>
+        </conditional>
+        <param name="output_format_flag" type="select" label="Output format">
+            <option value="-a" selected="true">ALTO XML</option>
+            <option value="-x">PageXML</option>
+            <option value="-y">abbyyXML</option>
+            <option value="-h">hOCR</option>
+            <option value="-n">Text</option>
+        </param>
+        <!-- in kraken unbounded - tested manually: <1 does not make sense;  no real slowdown for larger values
+                arbitrary decision to put 1000 as the maximum -->
+        <param argument="--pad" type="integer" min="0" max="1000" value="16" label="Padding to add around line images for OCR" help="Increase this to give the model more margin around tightly cropped text; decrease it to add less extra whitespace. This reduces the image area processed by OCR."/>
+        <!-- in kraken unbounded - tested manually: <0 produces meaningless text, 0 returns an empty output; 
+             and values <10 flatten confidence scores toward similarly low values (about 0.005 with
+             the tested Model CATmuS-Print large) -->
+        <param argument="--temperature" type="float" min="0.01" max="10.0" value="1.0" label="Softmax temperature" help="Control how sharply Kraken converts model scores into character probabilities. Values below 1.0 produce sharper confidence scores, while values above 1.0 produce flatter confidence scores. The recognized text usually remains unchanged."/>
+        <conditional name="reordering">
+            <param name="mode" type="select" label="Output text in logical order using the Unicode BiDi algorithm" help="Choose whether Kraken should apply the Unicode bidirectional (BiDi) text algorithm to produce OCR output in logical text order. This is mainly relevant for right-to-left text, or mixed left-to-right and right-to-left text.">
+                <option value="--reorder" selected="true">Yes</option>
+                <option value="--no-reorder">No</option>
+            </param>
+            <when value="--reorder">
+                <param argument="--base-dir" type="select" label="Initial text direction for BiDi reordering" help="Choose the initial text direction used when Kraken applies the Unicode BiDi algorithm. Auto allows explicit text direction information in ALTO/PAGE XML input to take precedence when available. For single-line image input, or when no text direction is present in the XML input, select `Left-to-right` or `Right-to-left` as appropriate for the OCR model and text.">
+                    <option value="auto" selected="true">Auto</option>
+                    <option value="L">Left-to-right</option>
+                    <option value="R">Right-to-left</option>
+                </param>
+            </when>
+            <when value="--no-reorder"/>
+        </conditional>
+        <param argument="--text-direction" type="select" label="OCR text direction" help="Select `Horizontal, top-to-bottom` for horizontal text lines such as English, German, Greek, Arabic, or Hebrew; `Vertical, left-to-right` for vertical text with columns ordered left-to-right; or `Vertical, right-to-left` for vertical text with columns ordered right-to-left, such as traditional Chinese, Japanese, or Korean layouts.">
+            <option value="horizontal-tb" selected="true">Horizontal, top-to-bottom</option>
+            <option value="vertical-lr">Vertical, left-to-right</option>
+            <option value="vertical-rl">Vertical, right-to-left</option>
+        </param>
+        <param name="no_legacy_polygons" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disable legacy polygon output" help="Choose whether to support legacy polygon formats in segmentation input. Enable it for compatibility with older segmentation files."/>
+    </inputs>
+    <expand macro="segment_ocr_outputs" native_format="txt" input_image="input_type['image']"/>
+    <tests>
+        <expand macro="test_bidi_reordering" mode="--reorder" bidi_value="True">
+            <param name="base_dir" value="auto"/>
+        </expand>
+        <expand macro="test_bidi_reordering" mode="--reorder" bidi_value="L">
+            <param name="base_dir" value="L"/>
+        </expand>
+        <expand macro="test_bidi_reordering" mode="--no-reorder" bidi_value="False"/>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" segmentation="input_binarized_seg_page.xml" segmentation_ftype="page.xml"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-h"/>
+            <output name="output" ftype="hocr">
+                <assert_contents>
+                    <has_text text="ocr_line"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-n"/>
+            <param name="pad" value="0"/>
+            <param name="temperature" value="0.8"/>
+            <param name="text_direction" value="horizontal-tb"/>
+            <param name="no_legacy_polygons" value="true"/>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="HISTOIRE"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_line_input" image="input_line.tiff" image_ftype="tiff"/>
+            <expand macro="get_line_ocr_model"/>
+            <param name="output_format_flag" value="-x"/>
+            <output name="output" ftype="page.xml">
+                <assert_contents>
+                    <xml_element path="./@NS_PAGE@Page"/>
+                    <xml_element path=".//@NS_PAGE@TextEquiv/@NS_PAGE@Unicode[.='Pind.']"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_line_input" image="lines_2pages.pdf" image_ftype="pdf"/>
+            <expand macro="get_line_ocr_model"/>
+            <param name="output_format_flag" value="-y"/>
+            <output_collection name="pdf_output" type="list">
+                <element name="input.pdf_000000" ftype="abbyy.xml">
+                    <assert_contents>
+                        <xml_element path="./@NS_ABBYY@page"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='P']"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='i']"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='n']"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='d']"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='.']"/>
+                    </assert_contents>
+                </element>
+                <element name="input.pdf_000001" ftype="abbyy.xml">
+                    <assert_contents>
+                        <xml_element path="./@NS_ABBYY@page"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='d']"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='e']"/>
+                        <xml_element path=".//@NS_ABBYY@charParams[.='m']"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_failure="true">
+            <expand macro="use_line_input" image="input_2pages.tiff" image_ftype="tiff"/>
+            <expand macro="get_line_ocr_model"/>
+            <param name="output_format_flag" value="-n"/>
+            <assert_stderr>
+                <has_text text="multi-page TIF(F) input is not supported"/>
+                <has_text text="Detected 2 pages"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+**What it does**
+
+kraken is an open-source, turn-key automatic text recognition (ATR) 
+system optimized for historical and non-Latin script writing.
+This tool only exposes Kraken's OCR command.
+
+OCR is the process of extracting text from images. 
+Single-line images can be processed directly. 
+For document images, a segmentation file in [ALTO](https://www.loc.gov/standards/alto/) 
+or [PAGE XML](https://github.com/PRImA-Research-Lab/PAGE-XML/wiki) format is required. 
+This additional input file can be produced by the Kraken segmentation tool, 
+which is also available in the Kraken OCR suite.
+
+The OCR output can be returned in various formats, 
+including [ALTO](https://www.loc.gov/standards/alto/), 
+[PageXML](https://github.com/PRImA-Research-Lab/PAGE-XML/wiki), 
+[hOCR](https://kba.github.io/hocr-spec/1.2/), 
+[abbyyXML](https://support.abbyy.com/hc/en-us/articles/360017270080-Output-XML-document), and plain text.
+
+**License**
+
+Kraken is licensed under the Apache-2.0 license.
+    </help>
+    <expand macro="citations"/>
+</tool>

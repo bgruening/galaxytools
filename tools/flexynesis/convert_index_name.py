@@ -1,0 +1,49 @@
+#!/usr/bin/env python
+
+import sys
+from pathlib import Path
+
+
+def get_column_names(file_path, indices):
+    """
+    Get column names based on multiple indices from a tabular file.
+    """
+    file_ext = Path(file_path).suffix.lower()
+    sep = "," if file_ext == ".csv" else "\t"
+
+    with open(file_path) as fh:
+        header = fh.readline().rstrip("\n")
+
+    columns = header.split(sep)
+    num_cols = len(columns)
+
+    column_names = []
+    for index in indices:
+        zero_based_index = index - 1  # Convert to zero-based index
+        if zero_based_index < 0 or zero_based_index >= num_cols:
+            print(
+                f"Error: Index {index} is out of range. File has {num_cols} columns (1-{num_cols}).",
+                file=sys.stderr,
+            )
+            return None
+        column_names.append(columns[zero_based_index].strip())
+
+    return column_names
+
+
+if __name__ == "__main__":
+
+    file_path = sys.argv[1]
+    indices_str = sys.argv[2]
+
+    # Parse comma-separated indices
+    try:
+        indices = [int(i.strip()) for i in indices_str.split(",")]
+    except ValueError:
+        print("Error: All indices must be integers.", file=sys.stderr)
+        sys.exit(1)
+
+    result = get_column_names(file_path, indices)
+    if result is None:
+        sys.exit(1)
+    print(",".join(result))
