@@ -5,17 +5,18 @@
     </macros>
     <expand macro="bio_tools"/>
     <expand macro="requirements"/>
-    <expand macro="stdio"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
-## Symlink library to working directory
-ln -s '${library.fields.path}' working_lib &&
-
 mkdir -p output_dir &&
+
+## Build bowtie indexes if they don't exist (needed for test data)
+if [ ! -f '${library.fields.path}/$organism_name/$mir_db/hairpin.1.ebwt' ]; then
+    bowtie-build '${library.fields.path}/$organism_name/$mir_db/hairpin.fa' '${library.fields.path}/$organism_name/$mir_db/hairpin' 2>&1 ;
+fi &&
 
 miRge3.0
 -s '#echo ",".join([str($sample) for $sample in $samples])#'
--lib working_lib
+-lib '${library.fields.path}'
 -on '$organism_name'
 -db '$mir_db'
 -cpu \${GALAXY_SLOTS:-4}
@@ -79,34 +80,9 @@ $spikein
 
 -o output_dir
 -shh
-&&
 
-## Move output files to Galaxy outputs
-mv output_dir/run.log '$run_log' &&
-mv output_dir/miRge3_visualization.html '$html_report' &&
-mv output_dir/annotation.report.csv '$annotation_report_csv' &&
-mv output_dir/miR.Counts.csv '$mir_counts' &&
-mv output_dir/miR.RPM.csv '$mir_rpm' &&
-mv output_dir/mapped.csv '$mapped_csv' &&
-mv output_dir/unmapped.csv '$unmapped_csv'
-
-#if $gff_out:
-  && mv output_dir/sample_miRge3.gff '$gff_output'
-#end if
-#if $atoi:
-  && mv output_dir/a2IEditing.report.csv '$atoi_report'
-#end if
-#if $trna_frag:
-  && mv output_dir/tRFs.aligned.report.tsv '$trf_report'
-  && mv output_dir/tRF.Counts.csv '$trf_counts'
-#end if
 #if $novel.novel_selector == "yes":
-  && for f in output_dir/*_novel_miRNAs_miRge2.0.csv; do cat "$f" >> '$novel_mirnas_csv'; done
-#end if
-#if $diffex.diffex_selector == "yes":
-  && mv output_dir/miR.DiffExpn.txt '$diffex_results'
-  && mv output_dir/mirge_diffex.volcano.pdf '$diffex_volcano'
-  && mv output_dir/mirge_diffex.pca.pdf '$diffex_pca'
+  && shopt -s nullglob && for f in output_dir/*_novel_miRNAs_miRge2.0.csv; do cat "$f" >> 'novel_mirnas_combined.csv'; done
 #end if
     ]]></command>
     <inputs>
@@ -124,10 +100,12 @@ mv output_dir/unmapped.csv '$unmapped_csv'
             <option value="nematode">Nematode</option>
             <option value="fruitfly">Fruitfly</option>
             <option value="hamster">Hamster</option>
+            <validator type="regex">^[a-z]+$</validator>
         </param>
         <param name="mir_db" type="select" label="miRNA Database">
-            <option value="mirbase" selected="true">miRBase</option>
-            <option value="mirgenedb">MirGeneDB</option>
+            <option value="miRBase" selected="true">miRBase</option>
+            <option value="MirGeneDB">MirGeneDB</option>
+            <validator type="regex">^[a-zA-Z]+$</validator>
         </param>
         <section name="adapter_trimming" title="Adapter Trimming and Quality Filtering" expanded="false">
             <param name="adapter" argument="-a" type="text" value="illumina" label="3' Adapter Sequence" help="Adapter sequence or 'illumina' for standard Illumina small RNA adapter (TGGAATTCTCGGGTGCCAAGG)">
@@ -218,35 +196,35 @@ mv output_dir/unmapped.csv '$unmapped_csv'
         </conditional>
     </inputs>
     <outputs>
-        <data name="html_report" format="html" label="${tool.name} visualization report on ${on_string}"/>
-        <data name="annotation_report_csv" format="csv" label="${tool.name} annotation report on ${on_string}"/>
-        <data name="mir_counts" format="csv" label="${tool.name} miRNA counts on ${on_string}"/>
-        <data name="mir_rpm" format="csv" label="${tool.name} miRNA RPM on ${on_string}"/>
-        <data name="mapped_csv" format="csv" label="${tool.name} mapped reads on ${on_string}"/>
-        <data name="unmapped_csv" format="csv" label="${tool.name} unmapped reads on ${on_string}"/>
-        <data name="run_log" format="txt" label="${tool.name} run log on ${on_string}"/>
-        <data name="gff_output" format="gff" label="${tool.name} isomiR GFF on ${on_string}">
+        <data name="html_report" format="html" from_work_dir="output_dir/miRge3_visualization.html" label="${tool.name} visualization report on ${on_string}"/>
+        <data name="annotation_report_csv" format="csv" from_work_dir="output_dir/annotation.report.csv" label="${tool.name} annotation report on ${on_string}"/>
+        <data name="mir_counts" format="csv" from_work_dir="output_dir/miR.Counts.csv" label="${tool.name} miRNA counts on ${on_string}"/>
+        <data name="mir_rpm" format="csv" from_work_dir="output_dir/miR.RPM.csv" label="${tool.name} miRNA RPM on ${on_string}"/>
+        <data name="mapped_csv" format="csv" from_work_dir="output_dir/mapped.csv" label="${tool.name} mapped reads on ${on_string}"/>
+        <data name="unmapped_csv" format="csv" from_work_dir="output_dir/unmapped.csv" label="${tool.name} unmapped reads on ${on_string}"/>
+        <data name="run_log" format="txt" from_work_dir="output_dir/run.log" label="${tool.name} run log on ${on_string}"/>
+        <data name="gff_output" format="gff" from_work_dir="output_dir/sample_miRge3.gff" label="${tool.name} isomiR GFF on ${on_string}">
             <filter>gff_out</filter>
         </data>
-        <data name="atoi_report" format="csv" label="${tool.name} A-to-I editing on ${on_string}">
+        <data name="atoi_report" format="csv" from_work_dir="output_dir/a2IEditing.report.csv" label="${tool.name} A-to-I editing on ${on_string}">
             <filter>atoi</filter>
         </data>
-        <data name="trf_report" format="tsv" label="${tool.name} tRF report on ${on_string}">
+        <data name="trf_report" format="tsv" from_work_dir="output_dir/tRFs.aligned.report.tsv" label="${tool.name} tRF report on ${on_string}">
             <filter>trna_frag</filter>
         </data>
-        <data name="trf_counts" format="csv" label="${tool.name} tRF counts on ${on_string}">
+        <data name="trf_counts" format="csv" from_work_dir="output_dir/tRF.Counts.csv" label="${tool.name} tRF counts on ${on_string}">
             <filter>trna_frag</filter>
         </data>
-        <data name="novel_mirnas_csv" format="csv" label="${tool.name} novel miRNAs on ${on_string}">
+        <data name="novel_mirnas_csv" format="csv" from_work_dir="novel_mirnas_combined.csv" label="${tool.name} novel miRNAs on ${on_string}">
             <filter>novel['novel_selector'] == "yes"</filter>
         </data>
-        <data name="diffex_results" format="tabular" label="${tool.name} differential expression on ${on_string}">
+        <data name="diffex_results" format="tabular" from_work_dir="output_dir/miR.DiffExpn.txt" label="${tool.name} differential expression on ${on_string}">
             <filter>diffex['diffex_selector'] == "yes"</filter>
         </data>
-        <data name="diffex_volcano" format="pdf" label="${tool.name} volcano plot on ${on_string}">
+        <data name="diffex_volcano" format="pdf" from_work_dir="output_dir/mirge_diffex.volcano.pdf" label="${tool.name} volcano plot on ${on_string}">
             <filter>diffex['diffex_selector'] == "yes"</filter>
         </data>
-        <data name="diffex_pca" format="pdf" label="${tool.name} PCA plot on ${on_string}">
+        <data name="diffex_pca" format="pdf" from_work_dir="output_dir/mirge_diffex.pca.pdf" label="${tool.name} PCA plot on ${on_string}">
             <filter>diffex['diffex_selector'] == "yes"</filter>
         </data>
     </outputs>
@@ -255,7 +233,7 @@ mv output_dir/unmapped.csv '$unmapped_csv'
             <param name="samples" value="sample.fastq"/>
             <param name="library" value="test_human"/>
             <param name="organism_name" value="human"/>
-            <param name="mir_db" value="mirbase"/>
+            <param name="mir_db" value="miRBase"/>
             <output name="html_report" ftype="html">
                 <assert_contents>
                     <has_text text="miRge3"/>
@@ -269,9 +247,21 @@ mv output_dir/unmapped.csv '$unmapped_csv'
             <output name="mir_counts" ftype="csv">
                 <assert_contents>
                     <has_n_columns n="2"/>
+                    <has_text text="miR-21"/>
                 </assert_contents>
             </output>
             <output name="mir_rpm" ftype="csv">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="miR-21"/>
+                </assert_contents>
+            </output>
+            <output name="mapped_csv" ftype="csv">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                </assert_contents>
+            </output>
+            <output name="unmapped_csv" ftype="csv">
                 <assert_contents>
                     <has_n_columns n="2"/>
                 </assert_contents>
@@ -307,7 +297,7 @@ One or more FASTQ files from small RNA-seq experiments. Both uncompressed (`.fas
 ## Reference Libraries
 
 miRge3.0 requires organism-specific reference libraries. These must be pre-installed
-by a Galaxy administrator using the miRge3 data manager. Libraries are available for:
+by a Galaxy administrator. Libraries are available for:
 human, mouse, rat, zebrafish, nematode, fruitfly, and hamster.
 
 Each library contains bowtie indexes of miRNA hairpin sequences, mature miRNA annotations,
