@@ -53,4 +53,3 @@ if __name__ == "__main__":
     output_file_path = sys.argv[2]
     simple_name = sys.argv[3]
     identify_variants_with_genes(input_file_path, output_file_path, simple_name)
-
