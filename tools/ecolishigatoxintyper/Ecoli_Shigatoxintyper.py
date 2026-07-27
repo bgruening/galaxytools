@@ -9,40 +9,46 @@
 """
 
 import argparse
-import sys
+import datetime
 import os
-import subprocess
 import shutil
+import subprocess
+import sys
+
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'scripts'))
 try:
     import HTML
 except ImportError:
     import html as HTML
-import datetime
 
 TOOL_DIR = os.path.dirname(os.path.abspath(__file__))
+
 
 def insertFile(filename, report):
     with open(filename) as html_in:
         for line in html_in:
             report.write(line)
 
+
 def insertFileAsTable(filename, report, hasheader=False, tabclass="table table-rep"):
     with open(filename) as table_in:
         table_data = [[str(col) for col in row.split('\t')] for row in table_in]
     insertTable(table_data, report, hasheader, tabclass)
 
+
 def insertTable(table_data, report, hasheader=False, tabclass="table table-rep"):
     if hasheader:
-        htmlcode = HTML.table(table_data[1:], attribs={'class':tabclass}, header_row=table_data[0])
+        htmlcode = HTML.table(table_data[1:], attribs={'class': tabclass}, header_row=table_data[0])
     else:
-        htmlcode = HTML.table(table_data, attribs={'class':tabclass})
+        htmlcode = HTML.table(table_data, attribs={'class': tabclass})
     report.write(htmlcode)
+
 
 def openFileAsTable(filename):
     with open(filename) as table_in:
         table_data = [[str(col).rstrip() for col in row.split('\t')] for row in table_in]
     return table_data
+
 
 def __main__():
     parser = argparse.ArgumentParser()
@@ -129,13 +135,13 @@ def __main__():
     log.write("\n\nShigatoxinTyper\n===============\n")
     log.write(os.popen("blastn -version").read())
     log.write("parameters: evalue=0.001, strand=both, dust=yes, max_target_seqs=20, perc_identity=95.0\n\n")
-    log.write(os.popen("cat " +  TOOL_DIR + "/data/ShigatoxinTyping_db.txt").read())
+    log.write(os.popen("cat " + TOOL_DIR + "/data/ShigatoxinTyping_db.txt").read())
     log.close()
     try:
         report = open(args.output, 'w')
         # write head html
         insertFile(TOOL_DIR + "/scripts/report_head.html", report)
-        report.write("<td><h1><em>E coli</em> Shiga toxin typer</h1><h2>Report for %s</h2>%s</td>" % (args.input1_name, datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC"))) 
+        report.write("<td><h1><em>E coli</em> Shiga toxin typer</h1><h2>Report for %s</h2>%s</td>" % (args.input1_name, datetime.datetime.utcnow().strftime("%Y-%m-%d %H:%M UTC")))
         insertFile(TOOL_DIR + "/scripts/report_head2.html", report)
         # write results
         report.write("<h3>Summary</h3>\n")
@@ -144,7 +150,7 @@ def __main__():
         else:
             # get corresponding subtypes
             shigatoxin_subtypes = []
-            shigatoxin_subtypes_raw = []            
+            shigatoxin_subtypes_raw = []
             shigatoxin_types = openFileAsTable(TOOL_DIR + "/data/stx_subtypes")
             for subtype in shigatoxin_typing:
                 blast_pident_100 = float(subtype[1]) == 100
@@ -153,7 +159,7 @@ def __main__():
                         if item[0] == subtype[0] and item[1] not in shigatoxin_subtypes_raw:
                             shigatoxin_subtypes.append(item[1])
                             shigatoxin_subtypes_raw.append(item[1])
-           # partial matches
+            # partial matches
             for subtype in shigatoxin_typing:
                 for item in shigatoxin_types:
                     if item[0] == subtype[0] and item[1] not in shigatoxin_subtypes_raw:
@@ -181,7 +187,6 @@ def __main__():
     finally:
         report.close()
 
+
 if __name__ == "__main__":
     __main__()
-
-
