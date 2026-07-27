@@ -1,5 +1,6 @@
 import sys
 
+
 def identify_variants_with_genes(input_file_path, output_file_path, simple_name):
     # Define the genes of interest
     genes_of_interest = ['LMO0737', 'ORF2110', 'ORF2819']
@@ -20,7 +21,7 @@ def identify_variants_with_genes(input_file_path, output_file_path, simple_name)
 
     # Modify the header to include the new first column
     modified_header = f"FileName\t{lines[0]}"
-    
+
     # Initialize a list to hold the modified lines, starting with the modified header
     modified_lines = [modified_header]
 
@@ -41,6 +42,7 @@ def identify_variants_with_genes(input_file_path, output_file_path, simple_name)
         file.writelines(modified_lines)
 
     print(f'Results written to {output_file_path}')
+
 
 if __name__ == "__main__":
     if len(sys.argv) != 4:
