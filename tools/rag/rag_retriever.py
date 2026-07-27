@@ -2,34 +2,49 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import Any
 
 import torch
 import yaml
 from llama_index.core import Document, SimpleDirectoryReader, VectorStoreIndex
-from llama_index.core.embeddings import BaseEmbedding
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.readers.file import PDFReader
 from llama_index.readers.json import JSONReader
 
 
-def _load_litellm_config() -> dict:
-    """Read the LiteLLM YAML config and validate its presence.
+# --- LiteLLM proxy config resolution -------------------------------------
+# The LiteLLM proxy exposes an OpenAI-compatible /v1/embeddings endpoint. The
+# YAML config may be flat (global LITELLM_API_KEY / LITELLM_BASE_URL) or expose
+# a ``servers`` mapping that keys provider names to per-server credentials; the
+# ``provider`` argument selects which server to use.
 
-    Mirrors the resolution logic in tools/llm_hub/llm_hub.py so that RAG and
-    LLM Hub share the same server configuration.
+def load_litellm_config() -> dict:
+    """Read the LiteLLM YAML config referenced by ``LITELLM_CONFIG_FILE``.
+
+    Exits with a clear message if the env var is unset or the file is missing,
+    since neither is recoverable for a tool job.
     """
     config_file = os.environ.get("LITELLM_CONFIG_FILE")
     if not config_file:
-        sys.exit("LiteLLM config file is not configured! Please set the LITELLM_CONFIG_FILE environment variable.")
+        sys.exit("LITELLM_CONFIG_FILE environment variable is not set.")
     if not os.path.isfile(config_file):
         sys.exit(f"LiteLLM config file does not exist: {config_file}")
     with open(config_file, "r") as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    if not config:
+        sys.exit(
+            f"LiteLLM config file is empty or contains no entries: {config_file}"
+        )
+    return config
 
 
-def _resolve_server(config: dict, provider: str) -> dict:
-    """Resolve the server config for a provider from the YAML config."""
+def resolve_server(config: dict, provider: str) -> dict:
+    """Resolve the server config for ``provider`` and validate its credentials.
+
+    Returns the per-provider ``servers[provider]`` dict when a ``servers`` block
+    exists, otherwise the global config (backward compatibility). Exits with a
+    message if the provider is unknown or the API key / base URL is missing.
+    """
     servers = config.get("servers", {})
     if servers:
         if provider not in servers:
@@ -38,84 +53,23 @@ def _resolve_server(config: dict, provider: str) -> dict:
     else:
         source = config
     if not source.get("LITELLM_API_KEY"):
-        sys.exit("LiteLLM API key is not configured! Please set LITELLM_API_KEY in the configuration.")
+        sys.exit(
+            "LiteLLM API key is not configured! Please set LITELLM_API_KEY "
+            "in the configuration."
+        )
     if not source.get("LITELLM_BASE_URL"):
-        sys.exit("LiteLLM base URL is not configured! Please set LITELLM_BASE_URL in the configuration.")
+        sys.exit(
+            "LiteLLM base URL is not configured! Please set LITELLM_BASE_URL "
+            "in the configuration."
+        )
     return source
-
-
-class LiteLLMEmbedding(BaseEmbedding):
-    """Embedding model backed by an OpenAI-compatible LiteLLM `/v1/embeddings` endpoint.
-
-    The LiteLLM proxy (the same one used by the LLM Hub) exposes embedding
-    models such as BGE-M3, Qwen3-Embedding or nomic-embed-text. We call it
-    directly through the ``openai`` SDK rather than downloading a local
-    HuggingFace model, which keeps the corpus embeddings and the query
-    embedding consistent with a single server-side model.
-    """
-
-    def __init__(
-        self,
-        model: str,
-        api_key: str,
-        base_url: str,
-        embed_batch_size: int = 100,
-        **kwargs: Any,
-    ) -> None:
-        from openai import OpenAI
-
-        super().__init__(
-            model_name=model,
-            embed_batch_size=embed_batch_size,
-            **kwargs,
-        )
-        self._model = model
-        self._client = OpenAI(
-            api_key=api_key,
-            base_url=base_url,
-            timeout=float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600")),
-            max_retries=0,
-        )
-
-    def _embed(self, texts: list[str]) -> list[list[float]]:
-        # The OpenAI SDK normalises input to a list of strings and returns one
-        # embedding per input, preserving order.
-        response = self._client.embeddings.create(model=self._model, input=texts)
-        return [d.embedding for d in sorted(response.data, key=lambda x: x.index)]
-
-    def _get_query_embedding(self, query: str) -> list[float]:
-        return self._embed([query])[0]
-
-    def _get_text_embedding(self, text: str) -> list[float]:
-        return self._embed([text])[0]
-
-    def _get_text_embeddings(self, texts: list[str]) -> list[list[float]]:
-        if not texts:
-            return []
-        batch = self.embed_batch_size or len(texts)
-        out: list[list[float]] = []
-        for i in range(0, len(texts), batch):
-            out.extend(self._embed(texts[i:i + batch]))
-        return out
-
-    async def _aget_query_embedding(self, query: str) -> list[float]:
-        return self._get_query_embedding(query)
-
-    async def _aget_text_embedding(self, text: str) -> list[float]:
-        return self._get_text_embedding(text)
-
-    async def _aget_text_embeddings(self, texts: list[str]) -> list[list[float]]:
-        return self._get_text_embeddings(texts)
 
 
 def main():
     context_files = json.loads(sys.argv[1])
     question = (sys.argv[2] or "").strip()
-    embed_source = sys.argv[3]
-    model_path = sys.argv[4]
-    model_value = sys.argv[5]
-    provider = sys.argv[6]
-    top_k = int(sys.argv[7])
+    embed_cfg = json.loads(sys.argv[3])
+    top_k = int(sys.argv[4])
 
     if not question:
         sys.exit("Question is empty.")
@@ -124,21 +78,33 @@ def main():
     if top_k <= 0:
         sys.exit("Top K must be a positive integer.")
 
-    embed_model: BaseEmbedding
-    if embed_source == "litellm":
-        config = _load_litellm_config()
-        if not model_value:
+    if not isinstance(embed_cfg, dict) or "source" not in embed_cfg:
+        sys.exit("Invalid embedding configuration: expected a JSON object with a 'source' key.")
+
+    if embed_cfg["source"] == "litellm":
+        model = embed_cfg.get("model")
+        provider = embed_cfg.get("provider")
+        if not model:
             sys.exit("No LiteLLM embedding model selected.")
         if not provider:
             sys.exit("No LiteLLM provider selected.")
-        server = _resolve_server(config, provider)
-        embed_model = LiteLLMEmbedding(
-            model=model_value,
+        server = resolve_server(load_litellm_config(), provider)
+        # OpenAIEmbedding validates ``model`` against a hardcoded enum of OpenAI
+        # model names; passing the LiteLLM model id via ``model_name`` instead is
+        # the class's intended escape hatch (it overrides the enum-derived
+        # engine), so arbitrary proxy-hosted models (BGE-M3, nomic, Qwen3, ...)
+        # can be used with the framework's batching, retry and client handling.
+        embed_model = OpenAIEmbedding(
+            model_name=model,
             api_key=server["LITELLM_API_KEY"],
-            base_url=server["LITELLM_BASE_URL"],
+            api_base=server["LITELLM_BASE_URL"],
+            timeout=float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600")),
+            max_retries=int(os.environ.get("LITELLM_REQUEST_MAX_RETRIES", "3")),
+            embed_batch_size=100,
         )
     else:
         # Local HuggingFace model (preinstalled path or uploaded archive).
+        model_path = embed_cfg.get("path")
         if not model_path:
             sys.exit("No embedding model path given.")
         if not os.path.exists(model_path):
