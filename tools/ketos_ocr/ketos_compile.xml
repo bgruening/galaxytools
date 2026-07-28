@@ -30,9 +30,11 @@
                 ln -s '$image' 'ground_truth_${i}.${image.ext}' &&
                 ln -s '$annotation' 'ground_truth_${i}.gt.txt' &&
             #else
+                #set $image_filename = 'input.' + str($image.ext)
+
                 mkdir -p 'ground_truth_${i}' &&
-                ln -s '$image' 'ground_truth_${i}/${image.name}' &&
-                ln -s '$annotation' 'ground_truth_${i}/annotation.xml' &&
+                ln -s '$image' 'ground_truth_${i}/${image_filename}' &&
+                python '$__tool_directory__/replace_xml_image_filename.py' --format '$training_data.format_type' --input '$annotation' --output 'ground_truth_${i}/annotation.xml' --filename '$image_filename' &&
             #end if
         #end for
 
@@ -41,11 +43,16 @@
             --format-type '$training_data.format_type'
             $empty_lines
             --recordbatch-size '$recordbatch_size'
+
             #if str($force_type).strip() and str($force_type) != 'None'
                 --force-type '$force_type'
             #end if
 
             #if $training_data.format_type != 'path'
+                #if $training_data.linetype
+                    --linetype '$training_data.linetype'
+                #end if
+
                 #if $training_data.legacy_polygons
                     --legacy-polygons
                 #end if
@@ -75,8 +82,8 @@
             <expand macro="compile_training_data_inputs"/>
         </conditional>
         <param argument="--force-type" type="select" optional="true" label="Force dataset type" help="Forces the dataset type to a specific value. Can be used to 'convert' a line strip-type collection to a baseline-style dataset, e.g. to disable centerline normalization.">
-            <option value="bbox">Bounding boxes</option>
             <option value="baseline">Baselines</option>
+            <option value="bbox">Bounding boxes</option>
         </param>
         <param name="empty_lines" type="select" label="Empty text lines" help="Whether to keep or skip empty text lines. Text-less datasets are useful for unsupervised pretraining but loading datasets with many empty lines for recognition training is inefficient">
             <option value="--skip-empty-lines" selected="true">
@@ -117,9 +124,12 @@
         <expand macro="compile_repeat_test" format_type="alto" image="input_binarized.png" annotation="input_binarized_ocr_output.alto" annotation_ftype="alto">
             <token name="format_options">
                 <param name="legacy_polygons" value="true"/>
+                <param name="linetype" value="bbox"/>
             </token>
             <assert_command>
+                <has_text text="--filename 'input.png'"/>
                 <has_text text="--legacy-polygons"/>
+                <has_text text="--linetype 'bbox'"/>
             </assert_command>
         </expand>
         <!-- Test TIFF input with its referenced ALTO annotation in tiff format -->
@@ -170,35 +180,6 @@
             <assert_stderr>
                 <has_text text="Multi-page TIF(F) training images are not supported. Detected 2 pages."/>
             </assert_stderr>
-        </test>
-        <!-- Below is only a temporary test to illustrate the issue still needed to be fixed -->
-        <!-- Inspiration how to prevent this: https://github.com/galaxyproject/galaxy/blob/dev/lib/galaxy/datatypes/xml.py#L144 -->
-        <!-- The idea is to extract the referenced image file name and use it as the symlink name of the uploaded image file. 
-            This way the referenced image file name and the symlink name of the uploaded image file match. 
-        -->
-        <test expect_num_outputs="1">
-            <conditional name="training_data">
-                <param name="format_type" value="alto"/>
-                <conditional name="input_source">
-                    <param name="source" value="repeat"/>
-                    <repeat name="ground_truth_pairs">
-                        <param name="image" value="input_binarized.png" ftype="png"/>
-                        <param name="annotation" value="input_binarized_ocr_output_wrong_file_ref.alto" ftype="alto"/>
-                    </repeat>
-                </conditional>
-            </conditional>
-            <expand macro="compile_test_default_options"/>
-            <assert_stdout>
-                <has_text text="Could not open file"/>
-            </assert_stdout>
-            <output name="dataset" ftype="arrow">
-                <assert_contents>
-                    <has_size min="100"/>
-                    <has_text text="ARROW1" n="2"/>
-                    <not_has_text text="IHDR"/>
-                    <not_has_text text="IEND"/>
-                </assert_contents>
-            </output>
         </test>
     </tests>
     <help format="markdown">
