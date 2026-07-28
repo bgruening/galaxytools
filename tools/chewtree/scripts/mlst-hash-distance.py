@@ -1,3 +1,4 @@
+# flake8: noqa
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 import sys, getopt
