@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import sys
@@ -70,6 +71,14 @@ def main():
     question = (sys.argv[2] or "").strip()
     embed_cfg = json.loads(sys.argv[3])
     top_k = int(sys.argv[4])
+    # Galaxy user id + instance URL, for request attribution on the proxy.
+    # The literal "Anonymous" is rendered for anonymous sessions, in which
+    # case no per-user id is sent (the request falls back to a per-instance
+    # shared "anonymous" bucket).
+    galaxy_user_id = sys.argv[5] if len(sys.argv) > 5 else ""
+    if galaxy_user_id == "Anonymous":
+        galaxy_user_id = ""
+    galaxy_url = sys.argv[6] if len(sys.argv) > 6 else ""
 
     if not question:
         sys.exit("Question is empty.")
@@ -89,11 +98,27 @@ def main():
         if not provider:
             sys.exit("No LiteLLM provider selected.")
         server = resolve_server(load_litellm_config(), provider)
+        # Attribute the embedding request to the Galaxy user so proxies
+        # (e.g. LiteLLM) can meter usage and apply per-user budgets/rate
+        # limits, via the standard OpenAI ``user`` field. The id is
+        # namespaced by the Galaxy instance URL and hashed: the URL keeps
+        # ids unique when several Galaxy instances share one proxy (e.g.
+        # usegalaxy.eu), and hashing means no instance-identifying or
+        # personal data leaves for the provider. Anonymous users (no id)
+        # fall back to a per-instance shared "anonymous" bucket. Mirrors the
+        # attribution in llm_hub.py so both tools map one Galaxy user to one
+        # proxy identity.
+        raw_user = galaxy_user_id or "anonymous"
+        attribution_user = hashlib.sha256(
+            f"{galaxy_url}|{raw_user}".encode()
+        ).hexdigest()
         # OpenAIEmbedding validates ``model`` against a hardcoded enum of OpenAI
         # model names; passing the LiteLLM model id via ``model_name`` instead is
         # the class's intended escape hatch (it overrides the enum-derived
         # engine), so arbitrary proxy-hosted models (BGE-M3, nomic, Qwen3, ...)
         # can be used with the framework's batching, retry and client handling.
+        # ``additional_kwargs`` is forwarded as ``**kwargs`` to the OpenAI SDK's
+        # ``embeddings.create`` call, carrying the ``user`` field through.
         embed_model = OpenAIEmbedding(
             model_name=model,
             api_key=server["LITELLM_API_KEY"],
@@ -101,6 +126,7 @@ def main():
             timeout=float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600")),
             max_retries=int(os.environ.get("LITELLM_REQUEST_MAX_RETRIES", "3")),
             embed_batch_size=100,
+            additional_kwargs={"user": attribution_user},
         )
     else:
         # Local HuggingFace model (preinstalled path or uploaded archive).
