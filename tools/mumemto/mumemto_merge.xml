@@ -7,30 +7,66 @@
     <expand macro="stdio"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
-## Symlink all MUM files
-#for $i, $mf in enumerate($mum_files):
-    ln -s '$mf' 'mum_${i}.mums' &&
+## Each partition's companion files have to sit next to its MUMs file under a shared
+## basename: mumemto derives <prefix>.athresh and <prefix>.lengths from the path given.
+#for $i, $p in enumerate($partitions):
+    ln -s '$p.mums' 'part_${i}.mums' &&
+    ln -s '$p.athresh' 'part_${i}.athresh' &&
+    ln -s '$p.lengths' 'part_${i}.lengths' &&
 #end for
 
-mumemto merge #for $i, $mf in enumerate($mum_files):#if $i > 0:,#end ifmum_${i}.mums#end for
-#if $mums_of_mums:
-    --merged_mums '$mums_of_mums'
-#end if
+## The MUMs files are positional and space separated, not comma separated.
+mumemto merge
+#for $i, $p in enumerate($partitions):
+    'part_${i}.mums'
+#end for
 --output 'merged.mums'
 ]]></command>
     <inputs>
-        <param name="mum_files" type="data" format="txt" multiple="true" min="2" label="MUM files" help="Two or more .mums files to merge. Each must have an associated .thresh file."/>
-        <param argument="--merged_mums" type="data" format="txt" optional="true" label="MUMs-of-MUMs file" help="Optional MUMs-of-MUMs file for incremental merging."/>
+        <repeat name="partitions" title="Partition" min="2" default="2" help="One entry per mumemto partition to merge. All partitions must share the same anchor, i.e. the same first sequence.">
+            <param name="mums" type="data" format="txt" label="MUMs file" help="The .mums file for this partition"/>
+            <param name="athresh" type="data" format="binary" label="Anchor threshold file" help="The .athresh file produced alongside it, i.e. from a run with anchor-based merge metadata"/>
+            <param name="lengths" type="data" format="txt" label="Lengths file" help="The .lengths file produced alongside it"/>
+        </repeat>
     </inputs>
     <outputs>
-        <data name="merged_output" format="txt" from_work_dir="merged.mums"/>
+        <data name="merged_output" format="txt" from_work_dir="merged.mums" label="${tool.name} MUMs on ${on_string}"/>
+        <data name="merged_lengths" format="txt" from_work_dir="merged.lengths" label="${tool.name} lengths on ${on_string}"/>
+        <data name="merged_athresh" format="binary" from_work_dir="merged.athresh" label="${tool.name} anchor thresholds on ${on_string}"/>
     </outputs>
     <tests>
-        <test expect_num_outputs="1">
-            <param name="mum_files" value="test1.mums,test_collinear.mums" ftype="txt"/>
+        <!-- Fixtures produced with `mumemto -M -n -o pN anchor.fa partX.fa` over three
+             450 bp sequences sharing one 150 bp block. Each partition finds that block
+             plus one it does not share, so the merge keeps only the common block. -->
+        <test expect_num_outputs="3">
+            <repeat name="partitions">
+                <param name="mums" value="merge_p1.mums" ftype="txt"/>
+                <param name="athresh" value="merge_p1.athresh" ftype="binary"/>
+                <param name="lengths" value="merge_p1.lengths" ftype="txt"/>
+            </repeat>
+            <repeat name="partitions">
+                <param name="mums" value="merge_p2.mums" ftype="txt"/>
+                <param name="athresh" value="merge_p2.athresh" ftype="binary"/>
+                <param name="lengths" value="merge_p2.lengths" ftype="txt"/>
+            </repeat>
             <output name="merged_output" ftype="txt">
                 <assert_contents>
-                    <has_line_matching expression="."/>
+                    <has_n_lines n="1"/>
+                    <has_line line="150&#9;0,150,150&#9;+,+,+"/>
+                </assert_contents>
+            </output>
+            <!-- The anchor appears in both partitions but only once in the merged set -->
+            <output name="merged_lengths" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="6"/>
+                    <has_line line="anchor.fa * 450"/>
+                    <has_line line="partA.fa sampleA 450"/>
+                    <has_line line="partB.fa sampleB 450"/>
+                </assert_contents>
+            </output>
+            <output name="merged_athresh" ftype="binary">
+                <assert_contents>
+                    <has_size size="902"/>
                 </assert_contents>
             </output>
         </test>
@@ -38,18 +74,33 @@ mumemto merge #for $i, $mf in enumerate($mum_files):#if $i > 0:,#end ifmum_${i}.
     <help format="markdown"><![CDATA[
 **What it does**
 
-Merges multiple MUM partition files into a single consolidated MUMs file.
-This is used when mumemto was run in partition mode (with `-M`) to produce
-`.thresh` files alongside each `.mums` file.
+Combines multi-MUMs computed over separate partitions of a collection into a
+single set spanning every sequence. Splitting a large collection into partitions
+and merging afterwards is much cheaper than indexing everything at once.
+
+Each partition must have been run with **anchor-based merging** — `mumemto -M -n` —
+and all partitions must share the same anchor, which is the first sequence given to
+each run. Only matches that survive in every partition end up in the merged set.
 
 **Input**
 
-- Two or more `.mums` files (each with an associated `.thresh` file)
-- Optionally, a MUMs-of-MUMs file for incremental merging
+Per partition, the three files mumemto writes with a shared prefix:
+
+- `<prefix>.mums`
+- `<prefix>.athresh`
+- `<prefix>.lengths`
+
+Add one *Partition* block per partition; at least two are required.
 
 **Output**
 
-A merged `.mums` file combining all partitions.
+- The merged `.mums` file, with one column of coordinates per sequence across all
+  partitions
+- The merged `.lengths` file, listing every sequence with the anchor appearing once
+  rather than once per partition. Downstream tools need this rather than any
+  individual partition's lengths file.
+- The merged `.athresh` file, which lets the result be merged again with further
+  partitions
     ]]></help>
     <expand macro="citations"/>
 </tool>

@@ -7,17 +7,15 @@
     <expand macro="stdio"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
-## Prepare input
-#if str($input_selector.mode) == "direct":
-    #for $i, $fasta in enumerate($input_selector.input_fasta):
-        ln -s '$fasta' 'seq_${i}.fa' &&
-    #end for
-    #for $i, $fasta in enumerate($input_selector.input_fasta):
-        echo 'seq_${i}.fa' >> filelist.txt &&
-    #end for
-#else:
-    ln -s '$input_selector.filelist_input' filelist.txt &&
-#end if
+#import re
+## The file list is built here rather than taken from the user: mumemto resolves the
+## paths inside it, and any path a user could supply would point outside the job.
+## names.tsv maps the path mumemto will record to the dataset name, see the awk below.
+#for $i, $fasta in enumerate($input_fasta):
+    ln -s '$fasta' 'seq_${i}.fa' &&
+    echo 'seq_${i}.fa' >> filelist.txt &&
+    printf '%s\t%s\n' "\$(readlink -f 'seq_${i}.fa')" '${re.sub("[^\w.-]", "_", str($fasta.element_identifier))}' >> names.tsv &&
+#end for
 
 mumemto
 -i filelist.txt
@@ -26,42 +24,64 @@ mumemto
 #if str($k):
     -k $k
 #end if
--f $f
 #if str($F):
     -F $F
 #end if
 $no_revcomp
-$b
-$M
-#if str($M) == '-M' and str($n) == '-n':
-    -n
+#if str($matches.match_type) == "mum":
+    ## -f 1 is what makes a match unique, i.e. a MUM rather than a MEM
+    -f 1
+    $matches.b
+    #if str($matches.merge.mode) != "none":
+        -M
+        #if str($matches.merge.mode) == "anchor":
+            -n
+        #end if
+    #end if
+#else:
+    -f $matches.f
 #end if
 -w $advanced.w
 -m $advanced.m
 $advanced.g
 $advanced.K
+&&
+
+## mumemto records each input's canonicalised path in the .lengths file, which resolves
+## the symlinks above to opaque Galaxy dataset paths. Substitute the dataset names back:
+## the rest of the suite reads this column for sequence labels, and mumemto merge matches
+## partitions by the basename on its first line.
+awk 'NR == FNR { name[\$1] = \$2; next } \$1 in name { \$1 = name[\$1] } { print }' names.tsv output.lengths > relabelled.lengths &&
+mv relabelled.lengths output.lengths
 ]]></command>
     <inputs>
-        <conditional name="input_selector">
-            <param name="mode" type="select" label="Input mode">
-                <option value="direct">Select FASTA files directly</option>
-                <option value="filelist">Provide a file list</option>
+        <param name="input_fasta" type="data" format="fasta,fasta.gz" multiple="true" min="2" label="Input FASTA files" help="Two or more genome sequences, one dataset per genome or haplotype. Their order here becomes the column order in the output."/>
+        <param argument="-l" type="integer" value="20" min="1" label="Minimum match length" help="Minimum length of a match to report"/>
+        <param argument="-k" type="integer" optional="true" label="Minimum genomes" help="Minimum number of sequences a match must appear in. Negative values are relative to the number of sequences, so -1 means all but one. Leave empty to require every sequence."/>
+        <param argument="-F" type="integer" optional="true" label="Maximum total frequency" help="Maximum total occurrences across all sequences. Negative values are relative to the number of sequences. Leave empty for no limit."/>
+        <param argument="--no-revcomp" type="boolean" truevalue="-r" falsevalue="" checked="false" label="Exclude reverse complement matches" help="By default matches on the reverse strand are included"/>
+        <conditional name="matches">
+            <param name="match_type" type="select" label="Match type" help="Unique matches are the usual starting point for pangenome analysis; the rest of the suite is built around them.">
+                <option value="mum" selected="true">Multi-MUMs - each match occurs at most once per sequence</option>
+                <option value="mem">Multi-MEMs - a match may repeat within a sequence</option>
             </param>
-            <when value="direct">
-                <param name="input_fasta" type="data" format="fasta,fasta.gz" multiple="true" min="2" label="Input FASTA files" help="Select two or more genome sequences (one per genome/haplotype)"/>
+            <when value="mum">
+                <param argument="-b" type="boolean" truevalue="-b" falsevalue="" checked="false" label="Write the binary BUMbl format instead of text" help="Replaces the text .mums output with a compact binary .bumbl file that downstream tools load faster. You do not get both."/>
+                <conditional name="merge">
+                    <param name="mode" type="select" label="Also write metadata for merging partitions" help="Needed only if this run is one partition of a larger collection that will later be combined with the mumemto merge tool.">
+                        <option value="none" selected="true">No</option>
+                        <option value="anchor">Yes, for anchor-based merging</option>
+                        <option value="string">Yes, for string-based merging</option>
+                    </param>
+                    <when value="none"/>
+                    <when value="anchor"/>
+                    <when value="string"/>
+                </conditional>
             </when>
-            <when value="filelist">
-                <param name="filelist_input" type="data" format="txt" label="File list" help="Text file with one FASTA path per line"/>
+            <when value="mem">
+                <param argument="-f" type="integer" value="0" min="0" label="Maximum occurrences per sequence" help="0 for no limit. Any value other than 1 produces multi-MEMs."/>
             </when>
         </conditional>
-        <param argument="-l" type="integer" value="20" min="1" label="Minimum match length" help="Minimum length of a match to report"/>
-        <param argument="-k" type="integer" optional="true" label="Minimum genomes" help="Minimum number of sequences a match must appear in. Negative values are relative to N (e.g. -1 = all but one). Default: all sequences."/>
-        <param argument="-f" type="integer" value="1" min="0" label="Maximum per-sequence frequency" help="Maximum occurrences of a match per sequence. 0 = unlimited. Default: 1 (unique matches)."/>
-        <param argument="-F" type="integer" optional="true" label="Maximum total frequency" help="Maximum total occurrences across all sequences. Negative values are relative to N. Default: unlimited."/>
-        <param argument="--no-revcomp" type="boolean" truevalue="-r" falsevalue="" label="Exclude reverse complement matches" help="By default, mumemto includes reverse complement matches. Enable this to exclude them."/>
-        <param argument="-b" type="boolean" truevalue="-b" falsevalue="" label="Output binary BUMbl format" help="Produce a .bumbl binary file in addition to the text .mums file. Note: only available for strict multi-MUMs (f=1)."/>
-        <param argument="-M" type="boolean" truevalue="-M" falsevalue="" label="Output mergeable metadata" help="Produce .thresh files for downstream partition merging. Note: only available for strict multi-MUMs (f=1)."/>
-        <param argument="-n" type="boolean" truevalue="-n" falsevalue="" label="Anchor-based merging" help="Use anchor-based merging (requires mergeable output above)."/>
         <section name="advanced" title="Advanced options" expanded="false">
             <param argument="-w" type="integer" value="10" min="1" label="PFP window size" help="Prefix-free parsing window size."/>
             <param argument="-m" type="integer" value="100" min="1" label="PFP hash modulus" help="Prefix-free parsing hash modulus."/>
@@ -70,54 +90,67 @@ $advanced.K
         </section>
     </inputs>
     <outputs>
-        <data name="mums_output" format="txt" from_work_dir="output.mums" label="${tool.name} MUMs on ${on_string}"/>
         <data name="lengths_output" format="txt" from_work_dir="output.lengths" label="${tool.name} lengths on ${on_string}"/>
-        <data name="bumbl_output" format="txt" from_work_dir="output.bumbl" label="${tool.name} BUMbl on ${on_string}">
-            <filter>b</filter>
+        <!-- mumemto writes .mums only for unique matches, and swaps it for .bumbl when the
+             binary format is requested, so this is not an unconditional output. -->
+        <data name="mums_output" format="txt" from_work_dir="output.mums" label="${tool.name} MUMs on ${on_string}">
+            <filter>matches['match_type'] == 'mum' and not matches['b']</filter>
         </data>
-        <data name="thresh_output" format="txt" from_work_dir="output.thresh" label="${tool.name} threshold on ${on_string}">
-            <filter>M</filter>
+        <data name="bumbl_output" format="binary" from_work_dir="output.bumbl" label="${tool.name} BUMbl on ${on_string}">
+            <filter>matches['match_type'] == 'mum' and matches['b']</filter>
         </data>
-        <data name="thresh_rev_output" format="txt" from_work_dir="output.thresh_rev" label="${tool.name} threshold rev on ${on_string}">
-            <filter>M</filter>
+        <!-- Any -f other than 1 makes mumemto write .mems instead, with an extra column -->
+        <data name="mems_output" format="txt" from_work_dir="output.mems" label="${tool.name} MEMs on ${on_string}">
+            <filter>matches['match_type'] == 'mem'</filter>
         </data>
-        <data name="athresh_output" format="txt" from_work_dir="output.athresh" label="${tool.name} anchor threshold on ${on_string}">
-            <filter>M and n</filter>
+        <data name="thresh_output" format="binary" from_work_dir="output.thresh" label="${tool.name} thresholds on ${on_string}">
+            <filter>matches['match_type'] == 'mum' and matches['merge']['mode'] == 'string'</filter>
+        </data>
+        <data name="thresh_rev_output" format="binary" from_work_dir="output.thresh_rev" label="${tool.name} reverse thresholds on ${on_string}">
+            <filter>matches['match_type'] == 'mum' and matches['merge']['mode'] == 'string'</filter>
+        </data>
+        <!-- Anchor mode replaces the two .thresh files with a single .athresh -->
+        <data name="athresh_output" format="binary" from_work_dir="output.athresh" label="${tool.name} anchor thresholds on ${on_string}">
+            <filter>matches['match_type'] == 'mum' and matches['merge']['mode'] == 'anchor'</filter>
         </data>
     </outputs>
     <tests>
-        <!-- Test 1: Basic strict multi-MUMs with 2 FASTA files -->
+        <!-- Strict multi-MUMs: seq1 and seq2 share one 200 bp block -->
         <test expect_num_outputs="2">
-            <conditional name="input_selector">
-                <param name="mode" value="direct"/>
-                <param name="input_fasta" value="seq1.fa,seq2.fa"/>
-            </conditional>
+            <param name="input_fasta" value="seq1.fa,seq2.fa" ftype="fasta"/>
             <param name="l" value="10"/>
-            <param name="f" value="1"/>
             <output name="mums_output" ftype="txt">
                 <assert_contents>
                     <has_n_lines n="1"/>
-                    <has_line_matching expression="^\d+\t"/>
+                    <has_line line="200&#9;40,50&#9;+,+"/>
                 </assert_contents>
             </output>
+            <!-- The record names and totals come from the FASTA itself, so they are stable.
+                 No "/" anywhere proves the dataset paths mumemto writes were relabelled. -->
             <output name="lengths_output" ftype="txt">
                 <assert_contents>
                     <has_n_lines n="4"/>
+                    <has_line_matching expression="^\S+ \* 240$"/>
+                    <has_line_matching expression="^\S+ seq1 240$"/>
+                    <has_line_matching expression="^\S+ seq2 299$"/>
+                    <not_has_text text="/"/>
                 </assert_contents>
             </output>
         </test>
-        <!-- Test 2: Multi-MEMs with relaxed frequency (f=0 = unlimited) -->
+        <!-- Multi-MEMs: a fourth column of sequence indices appears, and the reverse
+             strand copy of the same block shows up as a second match -->
         <test expect_num_outputs="2">
-            <conditional name="input_selector">
-                <param name="mode" value="direct"/>
-                <param name="input_fasta" value="seq1.fa,seq2.fa"/>
+            <param name="input_fasta" value="seq1.fa,seq2.fa" ftype="fasta"/>
+            <param name="l" value="200"/>
+            <conditional name="matches">
+                <param name="match_type" value="mem"/>
+                <param name="f" value="0"/>
             </conditional>
-            <param name="l" value="10"/>
-            <param name="k" value="2"/>
-            <param name="f" value="0"/>
-            <output name="mums_output" ftype="txt">
+            <output name="mems_output" ftype="txt">
                 <assert_contents>
-                    <has_line_matching expression="^\d+\t"/>
+                    <has_n_lines n="2"/>
+                    <has_line line="200&#9;40,50&#9;0,1&#9;+,+"/>
+                    <has_line line="200&#9;50,41&#9;1,0&#9;-,-"/>
                 </assert_contents>
             </output>
             <output name="lengths_output" ftype="txt">
@@ -126,19 +159,17 @@ $advanced.K
                 </assert_contents>
             </output>
         </test>
-        <!-- Test 3: Binary output with strict MUMs -->
-        <test expect_num_outputs="3">
-            <conditional name="input_selector">
-                <param name="mode" value="direct"/>
-                <param name="input_fasta" value="seq1.fa,seq2.fa"/>
-            </conditional>
+        <!-- Binary output replaces the text MUMs file, so only two outputs appear -->
+        <test expect_num_outputs="2">
+            <param name="input_fasta" value="seq1.fa,seq2.fa" ftype="fasta"/>
             <param name="l" value="10"/>
-            <param name="f" value="1"/>
-            <param name="b" value="true"/>
-            <output name="mums_output" ftype="txt">
+            <conditional name="matches">
+                <param name="match_type" value="mum"/>
+                <param name="b" value="true"/>
+            </conditional>
+            <output name="bumbl_output" ftype="binary">
                 <assert_contents>
-                    <has_n_lines n="1"/>
-                    <has_line_matching expression="^\d+\t"/>
+                    <has_size size="39"/>
                 </assert_contents>
             </output>
             <output name="lengths_output" ftype="txt">
@@ -146,25 +177,21 @@ $advanced.K
                     <has_n_lines n="4"/>
                 </assert_contents>
             </output>
-            <output name="bumbl_output" ftype="txt">
-                <assert_contents>
-                    <has_size value="32"/>
-                </assert_contents>
-            </output>
         </test>
-        <!-- Test 4: Mergeable output with strict MUMs -->
+        <!-- String-based merge metadata: two threshold files alongside the MUMs -->
         <test expect_num_outputs="4">
-            <conditional name="input_selector">
-                <param name="mode" value="direct"/>
-                <param name="input_fasta" value="seq1.fa,seq2.fa"/>
-            </conditional>
+            <param name="input_fasta" value="seq1.fa,seq2.fa" ftype="fasta"/>
             <param name="l" value="10"/>
-            <param name="f" value="1"/>
-            <param name="M" value="true"/>
+            <conditional name="matches">
+                <param name="match_type" value="mum"/>
+                <conditional name="merge">
+                    <param name="mode" value="string"/>
+                </conditional>
+            </conditional>
             <output name="mums_output" ftype="txt">
                 <assert_contents>
                     <has_n_lines n="1"/>
-                    <has_line_matching expression="^\d+\t"/>
+                    <has_line line="200&#9;40,50&#9;+,+"/>
                 </assert_contents>
             </output>
             <output name="lengths_output" ftype="txt">
@@ -172,14 +199,42 @@ $advanced.K
                     <has_n_lines n="4"/>
                 </assert_contents>
             </output>
-            <output name="thresh_output" ftype="txt">
+            <output name="thresh_output" ftype="binary">
                 <assert_contents>
-                    <has_line_matching expression="."/>
+                    <has_size size="402"/>
                 </assert_contents>
             </output>
-            <output name="thresh_rev_output" ftype="txt">
+            <output name="thresh_rev_output" ftype="binary">
                 <assert_contents>
-                    <has_line_matching expression="."/>
+                    <has_size size="402"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Anchor-based merge metadata: a single .athresh instead of the two above,
+             which is what the mumemto merge tool consumes -->
+        <test expect_num_outputs="3">
+            <param name="input_fasta" value="seq1.fa,seq2.fa" ftype="fasta"/>
+            <param name="l" value="10"/>
+            <conditional name="matches">
+                <param name="match_type" value="mum"/>
+                <conditional name="merge">
+                    <param name="mode" value="anchor"/>
+                </conditional>
+            </conditional>
+            <output name="mums_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line line="200&#9;40,50&#9;+,+"/>
+                </assert_contents>
+            </output>
+            <output name="lengths_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                </assert_contents>
+            </output>
+            <output name="athresh_output" ftype="binary">
+                <assert_contents>
+                    <has_size size="482"/>
                 </assert_contents>
             </output>
         </test>
@@ -191,37 +246,49 @@ Mumemto finds maximal unique matches (multi-MUMs) and maximal exact matches
 (multi-MEMs) across a collection of genome sequences (a pangenome). It uses
 prefix-free parsing (PFP) for efficient computation.
 
-By default, mumemto computes strict multi-MUMs — matches that appear exactly
-once in every input sequence. You can relax this with:
+By default it computes strict multi-MUMs: matches that appear exactly once in
+every input sequence. Two settings relax that requirement:
 
-- **Minimum genomes (-k):** Require matches in fewer than all sequences.
-  Negative values are relative to N (e.g., -k -1 = all but one).
-- **Per-sequence frequency (-f):** Allow matches to appear multiple times
-  per sequence (0 = unlimited).
-- **Max total frequency (-F):** Cap the total number of occurrences across
-  all sequences.
+- **Minimum genomes:** accept matches present in only some of the sequences.
+  Negative values count back from the total, so -1 means all but one.
+- **Match type:** switching to multi-MEMs lets a match repeat within a sequence.
+
+-----
 
 **Input**
 
-Provide a collection of FASTA files (one per genome/haplotype). You can
-either select multiple FASTA datasets directly or provide a file-list
-(one path per line).
+Two or more FASTA datasets, one per genome or haplotype. The order you select
+them in is the order of the coordinate columns in the output, and the first one
+becomes the anchor for anchor-based merging.
+
+-----
 
 **Output**
 
-The tool produces:
+Always a `.lengths` file recording each input file and the length of every record
+in it. Downstream tools in this suite need it alongside the matches.
 
-- A `.mums` file: tab-separated with columns: match length, comma-separated
-  start positions per sequence, comma-separated strand indicators (+/-)
-- A `.lengths` file: sequence lengths
-- Optionally a `.bumbl` binary file for faster loading in downstream tools
-- Optionally `.thresh` files for partition merging
+Then, depending on the settings, exactly one file of matches:
+
+- **`.mums`** — tab separated: match length, then one start position per sequence,
+  then one strand per sequence
+- **`.bumbl`** — the same information packed into binary, chosen instead of `.mums`
+  rather than in addition to it
+- **`.mems`** — written when the match type is multi-MEMs. It carries an extra
+  column between the positions and the strands giving the sequence each position
+  belongs to, because a match may occur several times in one sequence.
+
+Requesting merge metadata adds either `.thresh` and `.thresh_rev` (string-based)
+or a single `.athresh` (anchor-based). Only anchor-based output can be combined
+by the *mumemto merge* tool.
+
+-----
 
 **Downstream tools**
 
-Use the mumemto tool suite for visualization, coverage analysis,
-collinear block detection, format conversion, sequence extraction,
-BED conversion, partition merging, and inversion detection.
+The rest of the suite consumes the `.mums` and `.lengths` pair: synteny plots,
+coverage, collinear blocks, inversions, BED conversion, MUM sequence extraction,
+format conversion and partition merging.
     ]]></help>
     <expand macro="citations"/>
 </tool>

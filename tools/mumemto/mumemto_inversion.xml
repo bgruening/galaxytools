@@ -9,62 +9,142 @@
     <command detect_errors="aggressive"><![CDATA[
 ln -s '$m' input.mums &&
 ln -s '$l' input.lengths &&
-ln -s '$agp_filelist' input.agp &&
 #if $f:
     ln -s '$f' input.filelist &&
+#end if
+#if $scaffold.use_agp == 'yes':
+    ## Stage the AGP datasets and build the filelist here: mumemto reads the paths
+    ## listed in that file, and a user-supplied list would point outside the job dir.
+    #for $i, $agp in enumerate($scaffold.agp_files):
+        ln -s '$agp' 'agp_${i}.agp' && echo 'agp_${i}.agp' >> agp_list.txt &&
+    #end for
+    ## AGP files are matched against the non-reference sequences only, so one too many
+    ## runs off the end of mumemto's list with an opaque IndexError.
+    nseq=\$(awk '{ if (\$2 == "*") n++ } END { print (n ? n : NR) }' input.lengths) &&
+    { [ \$(wc -l < agp_list.txt) -lt \$nseq ] ||
+      { echo "Error: \$(wc -l < agp_list.txt) AGP files given for \$nseq sequences - supply at most one per non-reference sequence." >&2; exit 1; }; } &&
 #end if
 
 mumemto inversion
 --mums input.mums
---agp-filelist input.agp
---chr '$chr'
+## Sequence names come from the filelist; mumemto falls back to <prefix>.lengths, but
+## pass it explicitly so the link above is doing visible work.
 #if $f:
     --filelist input.filelist
+#else:
+    --filelist input.lengths
 #end if
---margin $margin
 --max-block-gap-len $g
+#if str($max_length):
+    --max-length $max_length
+#end if
+#if $scaffold.use_agp == 'yes':
+    --agp-filelist agp_list.txt
+    --chr '$scaffold.chr'
+    --margin $scaffold.margin
+#end if
 > 'inversions.tsv'
 ]]></command>
     <inputs>
         <expand macro="input_mums"/>
         <expand macro="input_lengths"/>
-        <param argument="--agp-filelist" type="data" format="txt" label="AGP file list" help="Text file with paths to AGP files (one per sequence)."/>
-        <param argument="--chr" type="text" label="Chromosome" help="Chromosome name to analyze (required when using AGP files)."/>
         <expand macro="input_filelist"/>
-        <param argument="--margin" type="float" value="0.01" min="0" max="1" label="Margin" help="Fractional margin for inversion boundary detection."/>
         <expand macro="param_max_gap"/>
+        <param argument="--max-length" type="integer" optional="true" min="0" label="Maximum inversion length" help="Leave empty to report inversions of any length. Otherwise inversions spanning more than this many bases are dropped."/>
+        <conditional name="scaffold">
+            <param name="use_agp" type="select" label="Check whether inversions are flanked by scaffold breaks" help="Requires an AGP file for each non-reference assembly.">
+                <option value="no" selected="true">No, just report inversions</option>
+                <option value="yes">Yes, cross-reference AGP scaffold breaks</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="agp_files" type="data" format="agp,tabular" multiple="true" min="1" label="AGP files" help="One per non-reference sequence, in the same order as the sequences in the lengths file. The first sequence is the reference and has no AGP file."/>
+                <param argument="--chr" type="text" label="Chromosome identifier" help="Without the 'chr' prefix - enter 1 for chr1. mumemto prepends 'chr' when matching AGP records, so passing 'chr1' here matches nothing and aborts.">
+                    <validator type="empty_field"/>
+                    <validator type="regex" message="Use only letters, digits, dots, underscores or hyphens">^[A-Za-z0-9._-]+$</validator>
+                </param>
+                <param argument="--margin" type="float" value="0.01" min="0" max="1" label="Scaffold break margin" help="A scaffold break counts as flanking an inversion when it falls within this fraction of the inversion's length from either end."/>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-        <data name="inversions_output" format="tabular" from_work_dir="inversions.tsv"/>
+        <data name="inversions_output" format="tabular" from_work_dir="inversions.tsv" label="${tool.name} inversions on ${on_string}"/>
     </outputs>
     <tests>
+        <!-- Two collinear blocks that appear in reverse order and on the minus strand in
+             the second sequence, i.e. one inversion spanning 0-5200 -->
         <test expect_num_outputs="1">
-            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="m" value="test_inversion.mums" ftype="txt"/>
             <param name="l" value="test1.lengths" ftype="txt"/>
-            <param name="agp_filelist" value="test_agp_list.txt" ftype="txt"/>
-            <param name="chr" value="chr1"/>
-            <param name="f" value="test_filelist.txt" ftype="txt"/>
-            <output name="inversions_output" ftype="tabular"/>
+            <output name="inversions_output" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_line line="hap_id&#9;start&#9;end&#9;ref_start&#9;ref_end"/>
+                    <has_line line="seq2.fa&#9;0&#9;5200&#9;5200&#9;100"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Same inversion cross-referenced against AGP files: ctg1 of the second
+             assembly ends at 5200, which is the inversion boundary -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test_inversion.mums" ftype="txt"/>
+            <param name="l" value="test1.lengths" ftype="txt"/>
+            <conditional name="scaffold">
+                <param name="use_agp" value="yes"/>
+                <param name="agp_files" value="test_inversion_1.agp,test_inversion_2.agp" ftype="agp"/>
+                <param name="chr" value="1"/>
+            </conditional>
+            <output name="inversions_output" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_line line="hap_id&#9;start&#9;end&#9;ref_start&#9;ref_end&#9;scaffold_break&#9;contig"/>
+                    <has_line line="seq2.fa&#9;0&#9;5200&#9;5200&#9;100&#9;True&#9;ctg1"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- The inversion spans 5200 bp, so a 1000 bp ceiling drops it and only the
+             header is left -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test_inversion.mums" ftype="txt"/>
+            <param name="l" value="test1.lengths" ftype="txt"/>
+            <param name="max_length" value="1000"/>
+            <output name="inversions_output" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line line="hap_id&#9;start&#9;end&#9;ref_start&#9;ref_end"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
 
-Detects inversions from mumemto MUMs output by identifying collinear blocks
-with reversed orientation. Optionally checks if inversions are flanked by
-scaffold breaks using AGP files.
+Detects inversions from mumemto MUMs output by finding runs of collinear blocks
+that appear in reverse order and on the opposite strand in one assembly relative
+to the first. The first sequence of the run is always treated as the reference.
+
+Optionally cross-references each inversion against AGP files, reporting whether a
+scaffold break falls near either boundary — a hint that the apparent inversion is
+an assembly artefact rather than real biology.
 
 **Input**
 
-- A `.mums` or `.bumbl` file from mumemto
-- A `.lengths` file from mumemto
-- An AGP file list (one AGP path per sequence)
-- A chromosome name to analyze
-- Optionally, the original file list
+- A `.mums` file from mumemto
+- The `.lengths` file from that run, which also supplies the sequence names
+- For the scaffold check, one AGP file per **non-reference** sequence, in the same
+  order as the sequences in the lengths file
+
+Enter the chromosome as the bare identifier, for example `1` rather than `chr1`:
+mumemto prepends `chr` itself when matching AGP records.
 
 **Output**
 
-A tab-separated file listing detected inversions with coordinates.
+A tab-separated file, one row per inversion, with a header. Columns are the
+assembly name, the inversion's start and end in that assembly, and the
+corresponding reference coordinates. With the scaffold check enabled, two further
+columns report whether a break was found and which contigs it belongs to.
+
+A file containing only the header means no inversions were detected.
     ]]></help>
     <expand macro="citations"/>
 </tool>

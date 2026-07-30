@@ -8,52 +8,94 @@
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
 ln -s '$m' input.mums &&
-#for $i, $fa in enumerate($fasta_files):
-    ln -s '$fa' 'seq_${i}.fa' &&
-#end for
+ln -s '$reference' reference.fa &&
 
-## Rewrite length file to use seq_0.fa, seq_1.fa, ... names
-awk '{print "seq_" (NR-1) ".fa", \$2}' '$l' > input.lengths &&
+## extract_mums only reads the first line of the lengths file and only to pick up the
+## FASTA path, so synthesise it rather than rewriting the run's own lengths file.
+echo 'reference.fa' > input.lengths &&
 
 mumemto extract
 -m input.mums
 -l input.lengths
 -o 'output.fa'
+## inverted on purpose: -t is what suppresses the terminator
+$add_terminator
 ]]></command>
     <inputs>
         <expand macro="input_mums"/>
-        <param argument="-l" type="data" format="txt" label="Lengths file" help="The .lengths file from the mumemto run."/>
-        <param name="fasta_files" type="data" format="fasta,fasta.gz" multiple="true" min="1" label="Original FASTA files" help="The FASTA files used to generate the MUMs, in the same order as the original run."/>
+        <param name="reference" type="data" format="fasta,fasta.gz" label="Reference FASTA" help="The first FASTA file from the mumemto run. MUM coordinates are taken from this sequence, so it must be the same file that came first in the original run."/>
+        <param name="add_terminator" type="boolean" truevalue="" falsevalue="-t" checked="false" label="Append a # terminator to each sequence" help="mumemto appends '#' after every MUM sequence by default, which is not valid FASTA. Leave this off unless a downstream tool expects the terminator."/>
     </inputs>
     <outputs>
-        <data name="extracted_fasta" format="fasta" from_work_dir="output.fa"/>
+        <data name="extracted_fasta" format="fasta" from_work_dir="output.fa" label="${tool.name} FASTA on ${on_string}"/>
     </outputs>
     <tests>
+        <!-- The single MUM starts at 0 in seq1.fa and is 100 bp long -->
         <test expect_num_outputs="1">
             <param name="m" value="test1.mums" ftype="txt"/>
-            <param name="l" value="test1.lengths" ftype="txt"/>
-            <param name="fasta_files" value="seq1.fa" ftype="fasta"/>
-            <param name="fasta_files" value="seq2.fa" ftype="fasta"/>
-            <param name="fasta_files" value="seq3.fa" ftype="fasta"/>
-            <output name="extracted_fasta" ftype="fasta"/>
+            <param name="reference" value="seq1.fa" ftype="fasta"/>
+            <output name="extracted_fasta" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_line line="&gt;mum_0"/>
+                    <has_line line="AAAAAAAAAATTTTTTTTTTGGGGGGGGGGCCCCCCCCCCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Same run with the terminator kept, as mumemto emits it by default -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="reference" value="seq1.fa" ftype="fasta"/>
+            <param name="add_terminator" value="true"/>
+            <output name="extracted_fasta" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_line line="AAAAAAAAAATTTTTTTTTTGGGGGGGGGGCCCCCCCCCCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGC#"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Three MUMs at offsets 0, 120 and 200 of the same reference, so the second and
+             third records also pin down that the offsets are read from the first column -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1_blocks.mums" ftype="txt"/>
+            <param name="reference" value="seq1.fa" ftype="fasta"/>
+            <output name="extracted_fasta" ftype="fasta">
+                <assert_contents>
+                    <has_n_lines n="6"/>
+                    <has_line line="&gt;mum_0"/>
+                    <has_line line="&gt;mum_1"/>
+                    <has_line line="&gt;mum_2"/>
+                    <has_line line="ATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCATGCAT"/>
+                    <has_line line="ATGCATGCATGCATGCATGCATGCATGCAT"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
 
-Extracts the actual DNA sequences of MUMs from the original FASTA files.
-Requires the original FASTA files from the mumemto run, provided in the
-same order as they were used to generate the MUMs.
+Extracts the actual DNA sequence of every MUM from the original FASTA.
+
+Each MUM's coordinates are read from the **first** sequence of the mumemto run,
+so the FASTA supplied here has to be the file that came first in that run. Only
+that one file is needed — the sequences of the other genomes are identical by
+definition, since a MUM matches everywhere.
+
+If the FASTA holds several records they are concatenated in file order before
+the coordinates are applied, matching how mumemto indexed them.
 
 **Input**
 
-- A `.mums` or `.bumbl` file from mumemto
-- The `.lengths` file from the mumemto run
-- The original FASTA files used to generate the MUMs
+- A `.mums` file from mumemto
+- The first FASTA file from that run, plain or gzipped
 
 **Output**
 
-A FASTA file containing the extracted MUM sequences.
+A FASTA file with one record per MUM, named `mum_0`, `mum_1`, and so on in the
+order they appear in the MUMs file.
+
+By default mumemto appends a `#` terminator to every sequence, which is not valid
+FASTA; this wrapper suppresses it unless you ask for it back.
     ]]></help>
     <expand macro="citations"/>
 </tool>
