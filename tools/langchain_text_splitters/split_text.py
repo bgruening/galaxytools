@@ -38,7 +38,9 @@ CUSTOM_SEPARATOR_ESCAPE_PATTERN = re.compile(
     r"\\(?:[\\nrt]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})"
 )
 
+
 def parse_args():
+
     parser = argparse.ArgumentParser(
         description="Split text with langchain-text-splitters."
     )
@@ -102,7 +104,7 @@ def build_tiktoken_counter(
 
     if allowed_special is None:
         allowed_special = set()
-    
+
     # Note: below needs either the TIKTOKEN_CACHE_DIR environment variable set
     # respectively the directory populated with `python3 get_encodings.py` in the folder dev_utils.
     # or internet access to download the encodings from the OpenAI servers.
@@ -122,8 +124,8 @@ def build_tiktoken_counter(
 
     return count_tokens
 
+
 def decode_custom_separator(value):
-    """Decode supported escape notation without altering literal Unicode."""
     simple_escapes = {
         r"\n": "\n",
         r"\r": "\r",
@@ -201,7 +203,7 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
                 f"{separator!r} was not found in the input text. "
                 "Select a separator that occurs in the input or use the "
                 "recursive character splitter."
-         )
+            )
 
         return CharacterTextSplitter(
             **character_options,
