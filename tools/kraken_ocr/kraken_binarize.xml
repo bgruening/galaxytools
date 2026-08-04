@@ -1,0 +1,125 @@
+<tool id="kraken_binarize" name="Kraken Binarize" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>binarise document images</description>
+    <macros>
+        <import>macros.xml</import>
+        <import>macros_for_testing.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="creators"/>
+    <command detect_errors="exit_code"><![CDATA[
+        #set $output_format_flag = '-n' 
+        @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+        @CREATE_SYMLINKS@
+        @RUN_KRAKEN@ binarize
+            --threshold '$threshold'
+            --zoom '$zoom'
+            --escale '$escale'
+            --border '$border'
+            --perc '$perc'
+            --range '$range'
+            --low '$low'
+            --high '$high'
+    ]]></command>
+    <expand macro="env_vars"/>
+    <inputs>
+        <expand macro="input_param"/>
+        <param name="out_ext" type="select" label="Output format">
+            <option value="png" selected="true">png</option>
+            <option value="tiff">tiff</option>
+        </param>
+        <!-- in kraken unbounded - tested manually: <0 output completely white; >0.999 output completely black. -->
+        <param argument="--threshold" type="float" value="0.5" min="0" max="0.999" label="Black-and-white threshold" help="Cutoff used to classify pixels as black or white after background correction and brightness normalization. Increase it to classify more pixels as black, which may recover faint text but add noise; decrease it to keep more pixels white, which may reduce noise but remove faint strokes."/>
+        <section name="background_estimation" title="Background estimation" expanded="false" help="Controls how Kraken estimates the local page background. Adjust these settings for uneven illumination, shadows, paper texture, or faint text.">
+            <!-- in kraken unbounded - tested manually: <0.1 turning the right edge into a white line; >1 processing very slow. -->
+            <param argument="--zoom" type="float" value="0.5" min="0.1" max="1.0" label="Zoom (scale factor)" help="Lower values downsample the page more strongly, producing a smoother and faster background estimate; higher values retain more image detail but require more processing time."/>
+            <!-- in kraken bounded -->
+            <param argument="--perc" type="integer" min="1" max="100" value="80" label="Brightness percentile" help="Control how the local page background is estimated from nearby pixel brightness values to correct uneven illumination and shadows. Higher values use brighter pixels for this estimate and may preserve faint text, but can retain more noise. Lower values may suppress noise but can also remove faint strokes."/>
+            <!-- in kraken unbounded - tested manually: <1 errors out; >100 processing very slow. -->
+            <param argument="--range" type="integer" value="20" min="1" max="100" label="Window size" help="Control the size of the surrounding area used to estimate the local page background. Increase it for a smoother background-brightness estimate that is less sensitive to noise and paper texture, but less responsive to small illumination changes. Decrease it to follow local changes more closely, although text strokes, noise, or texture may then influence the estimate."/>
+        </section>
+        <section name="brightness_normalization" title="Brightness normalization" expanded="false" help="Control which parts of the page are sampled and which brightness values are treated as black and white when normalizing the image after background correction. Border areas excluded from estimation are not cropped from the output.">
+            <!-- in kraken unbounded - tested manually: <0.02 errors out; >10 processing very slow. -->
+            <param argument="--escale" type="float" value="1.0" min="0.02" max="10.0" label="Text-region estimation scale" help="Control the scale used to identify areas with brightness variation that are likely to contain text. Increase it for larger text or broader foreground features; decrease it for smaller text or finer details."/>
+            <!-- in kraken unbounded - tested manually: <0 does not change anything; >0.499 errors out. -->
+            <param argument="--border" type="float" value="0.1" min="0" max="0.499" label="Border fraction excluded from estimation" help="Fraction excluded at each page edge when estimating the black and white brightness values. Increase it to reduce the influence of scanner borders, shadows, or dark margins; decrease it to sample more of the page edges. This does not crop the output image."/>
+            <!-- both low/high are in kraken bounded -->
+            <param argument="--low" type="integer" min="1" max="100" value="5" label="Percentile for black estimation" help="Percentile used to select the brightness value treated as black. Increase it to reduce the influence of extremely dark speckles or stains and map more pixels toward black. Decrease it to let darker pixels determine the black reference, which can make faint strokes lighter after normalization."/>
+            <param argument="--high" type="integer" min="1" max="100" value="90" label="Percentile for white estimation" help="Percentile used to select the brightness value treated as white. Increase it to use a brighter white reference, which may preserve faint strokes but can be influenced by glare or other bright artifacts. Decrease it to reduce the influence of the brightest pixels, but this can make faint strokes lighter after normalization."/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output" format="png" label="${tool.name} on ${on_string}">
+            <filter>image.ext != "pdf"</filter>
+            <actions>
+                <conditional name="out_ext">
+                    <when value="png">
+                        <action type="format" default="png"/>
+                    </when>
+                    <when value="tiff">
+                        <action type="format" default="tiff"/>
+                    </when>
+                </conditional>
+            </actions>
+        </data>
+        <collection name="pdf_output" type="list" label="${tool.name} pages on ${on_string}">
+            <filter>image.ext == "pdf"</filter>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.(?P&lt;ext&gt;png|tiff)"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="image" value="input.jpg" ftype="jpg"/>
+            <output name="output" ftype="png">
+                <expand macro="assert_binarized"/>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="image" value="input.tiff" ftype="tiff"/>
+            <output name="output" ftype="png">
+                <expand macro="assert_binarized"/>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="image" value="input_2pages.pdf" ftype="pdf"/>
+            <output_collection name="pdf_output" type="list" count="2">
+                <element name="input.pdf_000000" ftype="png">
+                    <expand macro="assert_binarized_pdf"/>
+                </element>
+                <element name="input.pdf_000001" ftype="png">
+                    <expand macro="assert_binarized_pdf"/>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_failure="true">
+            <param name="image" value="input_2pages.tiff" ftype="tiff"/>
+            <assert_stderr>
+                <has_text text="multi-page TIF(F) input is not supported"/>
+                <has_text text="Detected 2 pages"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+**What it does**
+
+Kraken is an open-source, turn-key automatic text recognition (ATR) 
+system optimized for historical and non-Latin script writing.
+This tool only exposes Kraken's binarization command.
+
+Binarization converts the input image/document into a binary image 
+suitable for downstream segmentation and OCR steps.
+
+For PDF inputs, this tool returns a Galaxy list collection 
+of PNG images, one for each page.
+
+**License**
+
+Kraken is licensed under the Apache-2.0 license.
+
+**Algorithmic background**
+
+kraken's ``binarize`` command is derived from OCRopus/ocropy's 
+``nlbin``, a preprocessing script designed for degraded and 
+historical book pages.
+    </help>
+    <expand macro="citations"/>
+</tool>
