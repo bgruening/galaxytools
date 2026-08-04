@@ -146,6 +146,74 @@ if not contents:
 messages = [{"role": "user", "content": contents}]
 
 
+# Upfront input-side overflow check: estimate the input token count and compare
+# it to the selected model's context window (max_context, from the genai_models
+# data table, passed as sys.argv[9]). This is a WARN-ONLY check -- it never
+# blocks the job; the request always proceeds. Counting is local tiktoken
+# (cl100k_base), offline, no proxy calls; cost scales linearly with input size.
+# Near-exact for gpt-oss/Qwen/Llama, approximate for Gemma/GLM/Mistral --
+# acceptable since we never reject. Image tokens are not counted (no reliable
+# local estimate), so the count is a lower bound for multimodal inputs.
+# If anything in the check fails (tiktoken unavailable, network-restricted node
+# unable to fetch the BPE vocab on first use, malformed max_context), we skip
+# the check silently rather than abort the job -- it is advisory only.
+max_context_arg = sys.argv[9] if len(sys.argv) > 9 else ""
+cleaned_arg = max_context_arg.replace(",", "").strip()
+max_context = int(cleaned_arg) if cleaned_arg.isdigit() else 0
+
+
+def estimate_input_tokens(messages):
+    """Estimate input token count with tiktoken (cl100k_base). Offline.
+
+    Counts text content only; image tokens are not counted (no reliable local
+    estimate), so the count is a lower bound for multimodal inputs.
+    Returns (token_count, has_image), or None on failure.
+    """
+    try:
+        import tiktoken
+
+        enc = tiktoken.get_encoding("cl100k_base")
+    except Exception:
+        return None
+    total = 0
+    has_image = False
+    try:
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, str):
+                total += len(enc.encode(content, disallowed_special=()))
+            elif isinstance(content, list):  # multimodal: list of content blocks
+                for block in content:
+                    if block.get("type") == "text":
+                        total += len(enc.encode(block.get("text", ""), disallowed_special=()))
+                    elif block.get("type") == "image_url":
+                        has_image = True
+    except Exception:
+        return None
+    return total, has_image
+
+
+if max_context:
+    result = estimate_input_tokens(messages)
+    if result is not None:
+        input_tokens, has_image = result
+        if input_tokens > max_context:
+            img_note = (
+                " (image tokens not counted; actual usage may be higher)"
+                if has_image
+                else ""
+            )
+            print(
+                f"WARNING: estimated input is ~{input_tokens} tokens, which exceeds the "
+                f"selected model's context window ({max_context} tokens){img_note}. "
+                f"The output will likely be truncated. Consider splitting the input "
+                f"into smaller chunks and re-running.",
+                file=sys.stderr,
+            )
+# max_context == 0 (unknown) or estimate failed: skip silently. The check is
+# advisory; we never block or noisily log when we cannot run it.
+
+
 max_retries = int(config.get("MAX_RETRIES", 3))
 max_delay = float(config.get("MAX_DELAY", 900))
 
