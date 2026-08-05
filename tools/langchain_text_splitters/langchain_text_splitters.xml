@@ -37,12 +37,8 @@
             --length-mode '$splitter.length.length_mode'
 
             #if str($splitter.length.length_mode) == "token"
-                #if str($splitter.length.tiktoken_options.tokenizer.tokenizer_selection_method) == "model"
-                    --model-name '$splitter.length.tiktoken_options.tokenizer.model_name'
-                #else
-                    --encoding-name '$splitter.length.tiktoken_options.tokenizer.encoding_name'
-                #end if
-                --allowed-special '$splitter.length.tiktoken_options.allowed_special'
+                #set $tiktoken_options = $splitter.length.tiktoken_options
+                @TIKTOKEN_ARGS@
             #end if
 
             #if $splitter.character_splitter.type == "recursive"
@@ -58,7 +54,8 @@
                 #end if
             #else
                 #if $splitter.character_splitter.separator_definition.sep_opt == "custom"
-                    --separator '$splitter.character_splitter.separator_definition.value'
+                    ## Passed as a single token so that a separator starting with a dash is not read as an option.
+                    --separator='$splitter.character_splitter.separator_definition.value'
                 #else
                     --separator-name '$splitter.character_splitter.separator_definition.sep_opt.value'
                 #end if
@@ -67,12 +64,8 @@
         #else
             --splitter-type token
             --length-mode token
-            #if str($splitter.tiktoken_options.tokenizer.tokenizer_selection_method) == "model"
-                --model-name '$splitter.tiktoken_options.tokenizer.model_name'
-            #else
-                --encoding-name '$splitter.tiktoken_options.tokenizer.encoding_name'
-            #end if
-            --allowed-special '$splitter.tiktoken_options.allowed_special'
+            #set $tiktoken_options = $splitter.tiktoken_options
+            @TIKTOKEN_ARGS@
         #end if
 ]]></command>
     <inputs>
@@ -537,9 +530,13 @@
                     <has_json_property_with_value property="chunk_size" value="4"/>
                     <has_json_property_with_value property="chunk_overlap" value="1"/>
                     <has_json_property_with_value property="number_of_chunks" value="3"/>
-                    <not_has_text text="&quot;start_index&quot;: null"/>
+                    <!-- Overlapping token-based splitting also triggers the upstream invalid start-index bug. -->
+                    <has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text text="WARNING: Potential upstream langchain-text-splitters bug: invalid start index returned for chunk(s): 2 (start_index: -1)"/>
+            </assert_stdout>
             <expand macro="assert_chunks_tsv"/>
             <output_collection name="chunks_collection" type="list" count="3">
                 <element name="chunk_0001">
@@ -579,12 +576,18 @@
                     <has_json_property_with_text property="length_unit" text="tokens"/>
                     <has_json_property_with_text property="length_function" text="tiktoken:gpt-5"/>
                     <has_json_property_with_text property="splitter_type" text="token"/>
+                    <!-- The token splitter never strips whitespace, which has to be visible in the metadata. -->
+                    <has_json_property_with_value property="strip_whitespace" value="false"/>
                     <has_json_property_with_value property="chunk_size" value="4"/>
                     <has_json_property_with_value property="chunk_overlap" value="1"/>
                     <has_json_property_with_value property="number_of_chunks" value="3"/>
-                    <not_has_text text="&quot;start_index&quot;: null"/>
+                    <!-- Overlapping token-based splitting also triggers the upstream invalid start-index bug. -->
+                    <has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text text="WARNING: Potential upstream langchain-text-splitters bug: invalid start index returned for chunk(s): 2 (start_index: -1)"/>
+            </assert_stdout>
             <expand macro="assert_chunks_tsv"/>
             <output_collection name="chunks_collection" type="list" count="3">
                 <element name="chunk_0001">
@@ -660,11 +663,16 @@
                     <not_has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
             </output>
-            <output name="chunks_tsv" file="tsv_escape_expected.tsv" ftype="tabular"/>
+            <output name="chunks_tsv" file="tsv_escape_expected.tsv" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="3"/>
+                    <has_n_lines n="1"/>
+                </assert_contents>
+            </output>
             <output_collection name="chunks_collection" type="list" count="1">
                 <element name="chunk_0001">
                     <assert_contents>
-                        <has_text_matching expression="\Aalpha&#9;beta&#10;omega&#10;\Z"/>
+                        <has_text_matching expression="\Aalpha&#9;beta&#10;C:\\path&#10;omega&#10;\Z"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -787,12 +795,145 @@
             <output name="chunks_json">
                 <assert_contents>
                     <has_json_property_with_value property="number_of_chunks" value="3"/>
-                    <has_json_property_with_text property="start_index" text="Potential upstream langchain-text-splitters bug: received invalid start index -1"/>
+                    <!-- An invalid start index is reported as null so that the field keeps a single JSON type. -->
+                    <has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
             </output>
             <assert_stdout>
                 <has_text text="WARNING: Potential upstream langchain-text-splitters bug: invalid start index returned for chunk(s): 2 (start_index: -1)"/>
             </assert_stdout>
+        </test>
+        <!-- A custom separator that starts with dashes must not be read as a command line option. -->
+        <test>
+            <param name="input" value="dash_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="custom"/>
+                        <param name="value" value="---"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Cover the predefined branch of the recursive separator repeat. -->
+        <test>
+            <param name="input" value="simple_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="custom"/>
+                        <repeat name="separators">
+                            <conditional name="separator_definition">
+                                <param name="sep_opt" value="ascii_full_stop"/>
+                            </conditional>
+                        </repeat>
+                    </conditional>
+                    <param name="keep_separator" value="end"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="6"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="recursive_character"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- An input without any content to split is rejected instead of producing empty outputs. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="whitespace_only.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="100"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The input dataset is empty or contains only whitespace."/>
+            </assert_stderr>
+        </test>
+        <!-- Reject a tiktoken special token on the character splitter as well, not only on the token splitter. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="special_token.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="token"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="0"/>
+                    <section name="tiktoken_options">
+                        <conditional name="tokenizer">
+                            <param name="tokenizer_selection_method" value="encoding"/>
+                            <param name="encoding_name" value="gpt2"/>
+                        </conditional>
+                        <param name="allowed_special" value="none"/>
+                    </section>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The input contains a special token string that is rejected by the selected tokenizer."/>
+                <has_text text="Encountered text corresponding to disallowed special token"/>
+            </assert_stderr>
         </test>
     </tests>
     <help format="markdown">
@@ -811,13 +952,28 @@ and other LLM workflows where long text needs to be bounded by a chunk size.
 
 **Used Library for Token Counting**
 
-OpenAI's fast Byte-Pair Encoding (BPE) tokenizer `tiktoken` library is used 
-to determine the number of tokens in a chunk. 
+OpenAI's fast Byte-Pair Encoding (BPE) tokenizer `tiktoken` library is used
+to determine the number of tokens in a chunk.
+
+`tiktoken` does not ship the encoding files. On first use it downloads them from
+the OpenAI servers, so a Galaxy instance without outgoing internet access on its
+compute nodes has to provide them locally by pointing the `TIKTOKEN_CACHE_DIR`
+environment variable at a directory that already contains the encoding files.
+Without either, any run that counts tokens fails.
+
+**Inputs**
+
+The input dataset has to be UTF-8 encoded text. Line endings are preserved as
+they are, so a dataset with Windows (`\r\n`) line endings keeps them in the
+chunks.
 
 **Outputs**
 
-- Text and JSON file with input/chunk metadata, where each chunk comes along with its size and start index in the input text. 
-- TSV file with the following columns: chunk number, content, size in characters or tokens
+- Text and JSON file with input/chunk metadata, where each chunk comes along with its size and start index in the input text.
+  The chunk size is reported in the `length` field, and `length_unit` states whether it counts characters or tokens.
+  A `start_index` of `null` means that the splitter returned an invalid position for that chunk; a warning is written to the tool log in that case.
+- TSV file with the following columns: chunk number, content, size in characters or tokens.
+  So that every chunk stays on a single row, backslash, tab, carriage return and newline in the content are escaped as `\\`, `\t`, `\r` and `\n`. Reverse the escaping to recover the exact chunk content, or use the collection below, which holds the raw text.
 - Galaxy collection of text files, with one raw chunk per file
 
 **License**

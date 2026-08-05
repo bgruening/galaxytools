@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import csv
 import json
 import re
 import sys
@@ -38,6 +37,21 @@ CUSTOM_SEPARATOR_ESCAPE_PATTERN = re.compile(
     r"\\(?:[\\nrt]|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8})"
 )
 
+MAX_UNICODE_CODE_POINT = 0x10FFFF
+SURROGATE_RANGE = range(0xD800, 0xE000)
+
+# The chunk text is stored in a single TSV cell, so every character that would
+# otherwise start a new row or a new column has to be escaped. The backslash is
+# escaped first so that the transformation stays reversible.
+TSV_ESCAPES = (
+    ("\\", r"\\"),
+    ("\t", r"\t"),
+    ("\r", r"\r"),
+    ("\n", r"\n"),
+)
+
+LENGTH_KEY = "length"
+
 
 def parse_args():
 
@@ -61,8 +75,9 @@ def parse_args():
         choices=("characters", "token"),
         default="characters",
     )
-    parser.add_argument("--encoding-name", default="gpt2")
-    parser.add_argument("--model-name", default="")
+    tokenizer_group = parser.add_mutually_exclusive_group()
+    tokenizer_group.add_argument("--encoding-name", default="gpt2")
+    tokenizer_group.add_argument("--model-name", default="")
     parser.add_argument(
         "--allowed-special",
         choices=("none", "all"),
@@ -83,6 +98,21 @@ def parse_args():
     return parser.parse_args()
 
 
+def read_input_text(input_path):
+    # The bytes are decoded explicitly instead of using Path.read_text(), which
+    # would apply universal newline translation and silently rewrite \r\n and \r
+    # line endings as \n. That would change both the chunk content and the
+    # reported start indices with respect to the input dataset.
+    try:
+        return input_path.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as error:
+        sys.exit(
+            "The input dataset is not valid UTF-8 text "
+            f"(invalid byte at offset {error.start}). "
+            "Convert the dataset to UTF-8 before splitting it."
+        )
+
+
 def get_tiktoken_options(args):
     allow_all_special = args.allowed_special == "all"
 
@@ -92,6 +122,20 @@ def get_tiktoken_options(args):
         "allowed_special": "all" if allow_all_special else set(),
         "disallowed_special": () if allow_all_special else "all",
     }
+
+
+def fail_on_disallowed_special_token(error):
+    # Raised by tiktoken when the input contains a special token string such as
+    # <|endoftext|> while the user asked for those strings to be rejected.
+    if "disallowed special token" not in str(error):
+        raise error
+
+    sys.exit(
+        "The input contains a special token string that is rejected by the "
+        "selected tokenizer. Set the special token handling to allow all "
+        "special token strings, or remove the special token from the input.\n"
+        f"Original error: {error}"
+    )
 
 
 def build_tiktoken_counter(
@@ -105,22 +149,27 @@ def build_tiktoken_counter(
     if allowed_special is None:
         allowed_special = set()
 
-    # Note: below needs either the TIKTOKEN_CACHE_DIR environment variable set
-    # respectively the directory populated with `python3 get_encodings.py` in the folder dev_utils.
-    # or internet access to download the encodings from the OpenAI servers.
+    # Note: below needs either internet access to download the encodings from
+    # the OpenAI servers, or the TIKTOKEN_CACHE_DIR environment variable
+    # pointing to a directory that already holds the encoding files. The
+    # tiktoken conda package does not ship them.
     if model_name:
         encoding = tiktoken.encoding_for_model(model_name)
     else:
         encoding = tiktoken.get_encoding(encoding_name)
 
     def count_tokens(text):
-        return len(
-            encoding.encode(
+        try:
+            tokens = encoding.encode(
                 text,
                 allowed_special=allowed_special,
                 disallowed_special=disallowed_special,
             )
-        )
+        except ValueError as error:
+            fail_on_disallowed_special_token(error)
+            raise
+
+        return len(tokens)
 
     return count_tokens
 
@@ -133,15 +182,45 @@ def decode_custom_separator(value):
         r"\\": "\\",
     }
 
-    def replace_escape(match):
+    decoded = []
+    position = 0
+
+    while position < len(value):
+        character = value[position]
+
+        if character != "\\":
+            decoded.append(character)
+            position += 1
+            continue
+
+        match = CUSTOM_SEPARATOR_ESCAPE_PATTERN.match(value, position)
+
+        if match is None:
+            sys.exit(
+                "The custom separator contains an unsupported escape sequence "
+                f"at position {position}: {value[position:position + 10]!r}. "
+                r"Supported escapes are \\, \n, \r, \t, "
+                r"\uXXXX (4 hex digits) and \UXXXXXXXX (8 hex digits)."
+            )
+
         escape = match.group(0)
 
         if escape in simple_escapes:
-            return simple_escapes[escape]
+            decoded.append(simple_escapes[escape])
+        else:
+            code_point = int(escape[2:], 16)
 
-        return chr(int(escape[2:], 16))
+            if code_point > MAX_UNICODE_CODE_POINT or code_point in SURROGATE_RANGE:
+                sys.exit(
+                    f"The custom separator escape {escape} is not a valid "
+                    "Unicode character."
+                )
 
-    return CUSTOM_SEPARATOR_ESCAPE_PATTERN.sub(replace_escape, value)
+            decoded.append(chr(code_point))
+
+        position = match.end()
+
+    return "".join(decoded)
 
 
 def resolve_separator(
@@ -211,11 +290,7 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
         )
 
     if args.separator_specs is not None:
-        separators = (
-            resolve_separator_specs(args.separator_specs)
-            if args.separator_specs is not None
-            else None
-        )
+        separators = resolve_separator_specs(args.separator_specs)
         # Append an empty string as the final fallback separator to ensure that the text can always be split,
         # even if none of the tried separators before were able to split the text without exceeding the chunk size.
         character_options["separators"] = [*separators, ""]
@@ -227,7 +302,6 @@ def write_text_output(
     output_path,
     metadata,
     chunks,
-    count_key,
     length_label,
 ):
     lines = [
@@ -246,14 +320,14 @@ def write_text_output(
             [
                 (
                     f"--- Chunk {chunk['index']}: "
-                    f"{chunk[count_key]} {length_label}, "
+                    f"{chunk[LENGTH_KEY]} {length_label}, "
                     f"start={chunk['start_index']} ---"
                 ),
                 chunk["text"],
                 "",
             ]
         )
-    output_path.write_text("\n".join(lines))
+    output_path.write_text("\n".join(lines), encoding="utf-8")
 
 
 def write_chunk_files(chunks_dir, chunks):
@@ -263,26 +337,30 @@ def write_chunk_files(chunks_dir, chunks):
         chunk_path = chunks_dir / f"chunk_{chunk['index']:04d}.txt"
         chunk_path.write_text(
             chunk["text"],
+            encoding="utf-8",
         )
 
 
-def write_tsv_output(output_path, chunks, count_key):
-    with output_path.open("w") as handle:
-        writer = csv.writer(
-            handle,
-            delimiter="\t",
-            lineterminator="\n",
-        )
+def escape_tsv_text(text):
+    for raw, escaped in TSV_ESCAPES:
+        text = text.replace(raw, escaped)
 
+    return text
+
+
+def write_tsv_output(output_path, chunks):
+    # The rows are written without the csv module on purpose. Its writer would
+    # additionally apply CSV quoting to any chunk containing a double quote,
+    # which the documented escaping above cannot undo. escape_tsv_text() already
+    # removes every character that could break the column or row structure.
+    with output_path.open("w", encoding="utf-8", newline="") as handle:
         for chunk in chunks:
-            table_text = chunk["text"].replace("\t", r"\t").replace("\n", r"\n")
-            writer.writerow(
-                [
-                    chunk["index"],
-                    table_text,
-                    chunk[count_key],
-                ]
-            )
+            fields = [
+                str(chunk["index"]),
+                escape_tsv_text(chunk["text"]),
+                str(chunk[LENGTH_KEY]),
+            ]
+            handle.write("\t".join(fields) + "\n")
 
 
 def main():
@@ -291,7 +369,13 @@ def main():
     if args.chunk_overlap >= args.chunk_size:
         sys.exit("Chunk overlap must be smaller than chunk size.")
 
-    input_text = args.input.read_text()
+    input_text = read_input_text(args.input)
+
+    if not input_text.strip():
+        sys.exit(
+            "The input dataset is empty or contains only whitespace. "
+            "There is nothing to split."
+        )
 
     length_mode = "token" if args.splitter_type == "token" else args.length_mode
 
@@ -299,13 +383,11 @@ def main():
 
     if length_mode == "token":
         length_function = build_tiktoken_counter(**tiktoken_options)
-        count_key = "token_count"
         length_label = "tokens"
         tokenizer_label = args.model_name or args.encoding_name
         length_function_label = f"tiktoken:{tokenizer_label}"
     else:
         length_function = len
-        count_key = "character_count"
         length_label = "characters"
         length_function_label = "characters"
 
@@ -315,7 +397,12 @@ def main():
         length_function,
         tiktoken_options,
     )
-    documents = splitter.create_documents([input_text])
+
+    try:
+        documents = splitter.create_documents([input_text])
+    except ValueError as error:
+        fail_on_disallowed_special_token(error)
+        raise
 
     chunks = []
     start_index_warnings = []
@@ -336,16 +423,15 @@ def main():
             # Target chunk size should be determined by the number of tokens
             # Target chunk size: 100
             # Chunk overlap: 20
+            # The invalid index is reported as null so that the JSON keeps a
+            # single type for the field. The warning below carries the detail.
             start_index_warnings.append((chunk_number, start_index))
-            start_index = (
-                "Potential upstream langchain-text-splitters bug: "
-                f"received invalid start index {start_index!r}"
-            )
+            start_index = None
 
         chunks.append(
             {
                 "index": chunk_number,
-                count_key: length_function(raw_chunk_text),
+                LENGTH_KEY: length_function(raw_chunk_text),
                 "start_index": start_index,
                 "text": raw_chunk_text,
             }
@@ -358,7 +444,8 @@ def main():
         )
         print(
             "WARNING: Potential upstream langchain-text-splitters bug: "
-            f"invalid start index returned for chunk(s): {affected_chunks}",
+            f"invalid start index returned for chunk(s): {affected_chunks}. "
+            "The start index of these chunks is reported as null.",
             flush=True,
         )
 
@@ -373,7 +460,11 @@ def main():
         "number_of_chunks": len(chunks),
     }
 
-    if args.splitter_type != "token":
+    if args.splitter_type == "token":
+        # The token splitter has no separators and never strips whitespace, so
+        # the value is reported as false regardless of what was requested.
+        metadata["strip_whitespace"] = False
+    else:
         metadata.update(
             {
                 "keep_separator": args.keep_separator,
@@ -393,13 +484,11 @@ def main():
         args.output_text,
         metadata,
         chunks,
-        count_key,
         length_label,
     )
     write_tsv_output(
         args.output_tsv,
         chunks,
-        count_key,
     )
     write_chunk_files(
         args.chunks_dir,
