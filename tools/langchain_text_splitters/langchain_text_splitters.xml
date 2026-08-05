@@ -10,7 +10,7 @@
     </required_files>
     <command detect_errors="exit_code"><![CDATA[
 
-    #if str($splitter.method) == "character"
+    #if str($splitter.method) in ["character", "sentence"]
         #set $chunk_size = $splitter.length.chunk_size
         #set $chunk_overlap = $splitter.length.chunk_overlap
     #else
@@ -61,6 +61,21 @@
                 #end if
             #end if
             $splitter.strip_whitespace
+        #elif str($splitter.method) == "sentence"
+            --splitter-type '$splitter.sentence_splitter.type'
+            --length-mode '$splitter.length.length_mode'
+
+            #if str($splitter.sentence_splitter.type) == "nltk"
+                --sentence-language '$splitter.sentence_splitter.language'
+            #else
+                --spacy-pipeline '$splitter.sentence_splitter.pipeline'
+                --spacy-max-length '$splitter.sentence_splitter.max_length'
+            #end if
+
+            #if str($splitter.length.length_mode) == "token"
+                #set $tiktoken_options = $splitter.length.tiktoken_options
+                @TIKTOKEN_ARGS@
+            #end if
         #else
             --splitter-type token
             --length-mode token
@@ -74,6 +89,9 @@
             <param name="method" type="select" label="Text splitting boundaries" help="Choose where the input should be split. Recommended is on a character level, by paragraphs, lines, spaces etc. In between token can be useful for a LLM workflow which expects a specific token count per chunk.">
                 <option value="character" selected="true">    
                     Character
+                </option>
+                <option value="sentence">
+                    Sentence
                 </option>
                 <option value="token">
                     Between tokens
@@ -121,6 +139,53 @@
                 <param name="strip_whitespace" type="boolean" checked="true" truevalue="--strip-whitespace" falsevalue="" label="Strip whitespace around chunks" help="Remove leading and trailing whitespace from each generated chunk. Whitespace within chunks is preserved."/>
                 <conditional name="length">
                     <param name="length_mode" type="select" label="Target chunk size should be determined by the count of" help="Choose whether the target chunk size should be determined by characters or token count.">
+                        <option value="characters" selected="true">Characters</option>
+                        <option value="token">Tokens</option>
+                    </param>
+                    <when value="characters">
+                        <expand macro="chunk_params"/>
+                    </when>
+                    <when value="token">
+                        <expand macro="chunk_params"/>
+                        <expand macro="tiktoken_options"/>
+                    </when>
+                </conditional>
+            </when>
+            <when value="sentence">
+                <conditional name="sentence_splitter">
+                    <param name="type" type="select" label="Sentence boundary detector" help="Detect sentence boundaries with NLTK or spaCy. Complete sentences are subsequently merged until the target chunk size is reached.">
+                        <option value="nltk" selected="true">
+                NLTK Punkt sentence tokenizer
+            </option>
+                        <option value="spacy">
+                spaCy sentence segmentation
+            </option>
+                    </param>
+                    <when value="nltk">
+                        <param name="language" type="select" label="Language">
+                            <option value="english" selected="true">English</option>
+                            <option value="german">German</option>
+                            <option value="spanish">Spanish</option>
+                            <option value="french">French</option>
+                            <option value="italian">Italian</option>
+                            <option value="portuguese">Portuguese</option>
+                            <!-- Add the other installed Punkt languages. -->
+                        </param>
+                    </when>
+                    <when value="spacy">
+                        <param name="pipeline" type="select" label="spaCy pipeline">
+                            <option value="sentencizer" selected="true">
+                    Rule-based sentencizer (fast, no model required)
+                </option>
+                            <option value="en_core_web_sm">
+                    English model (en_core_web_sm)
+                </option>
+                        </param>
+                        <param name="max_length" type="integer" value="1000000" min="1" label="Maximum input length" help="Maximum number of input characters accepted by the spaCy pipeline."/>
+                    </when>
+                </conditional>
+                <conditional name="length">
+                    <param name="length_mode" type="select" label="Target chunk size should be determined by the count of">
                         <option value="characters" selected="true">Characters</option>
                         <option value="token">Tokens</option>
                     </param>
@@ -949,6 +1014,8 @@ and other LLM workflows where long text needs to be bounded by a chunk size.
     - `RecursiveCharacterTextSplitter`: Recommended for most use cases as it attempts to preserve larger text units by trying an ordered list of separators, from coarser boundaries such as paragraph breaks to finer boundaries such as line breaks, or spaces, down to individual characters.
     - `CharacterTextSplitter`: Splits text using one defined separator or character sequence, such as a paragraph break, line break, space, or custom separator.
 - **Token-based splitting:** The `TokenTextSplitter` ignores any potential text structure and simply creates chunks of a specified token length.
+
+<!-- TODO add sentences describing spaCy/NLTK Text Splitting -->
 
 **Used Library for Token Counting**
 

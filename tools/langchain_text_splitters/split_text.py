@@ -8,7 +8,9 @@ from pathlib import Path
 
 from langchain_text_splitters import (
     CharacterTextSplitter,
+    NLTKTextSplitter,
     RecursiveCharacterTextSplitter,
+    SpacyTextSplitter,
     TokenTextSplitter,
 )
 
@@ -65,9 +67,21 @@ def parse_args():
     parser.add_argument("--chunks-dir", type=Path, required=True)
     parser.add_argument(
         "--splitter-type",
-        choices=("recursive_character", "character", "token"),
+        choices=("recursive_character", "character", "nltk", "spacy", "token"),
         default="recursive_character",
     )
+    parser.add_argument("--sentence-language", default="english")
+    parser.add_argument(
+        "--spacy-pipeline",
+        choices=("sentencizer", "en_core_web_sm"),
+        default="sentencizer",
+    )
+    parser.add_argument(
+        "--spacy-max-length",
+        type=int,
+        default=1_000_000,
+    )
+
     parser.add_argument("--chunk-size", type=int, required=True)
     parser.add_argument("--chunk-overlap", type=int, default=0)
     parser.add_argument(
@@ -263,10 +277,32 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
             **tiktoken_options,
         )
 
-    character_options = {
+    length_options = {
         **common_options,
-        "strip_whitespace": args.strip_whitespace,
         "length_function": length_function,
+    }
+
+    if args.splitter_type == "nltk":
+        return NLTKTextSplitter(
+            **length_options,
+            language=args.sentence_language,
+            separator="",
+            use_span_tokenize=True,
+            strip_whitespace=False,
+        )
+
+    if args.splitter_type == "spacy":
+        return SpacyTextSplitter(
+            **length_options,
+            pipeline=args.spacy_pipeline,
+            max_length=args.spacy_max_length,
+            separator="",
+            strip_whitespace=False,
+        )
+
+    character_options = {
+        **length_options,
+        "strip_whitespace": args.strip_whitespace,
         "keep_separator": KEEP_SEPARATOR_VALUES[args.keep_separator],
     }
 
@@ -391,15 +427,42 @@ def main():
         length_label = "characters"
         length_function_label = "characters"
 
-    splitter = build_splitter(
-        args,
-        input_text,
-        length_function,
-        tiktoken_options,
-    )
+    try:
+        splitter = build_splitter(
+            args,
+            input_text,
+            length_function,
+            tiktoken_options,
+        )
+    except OSError as error:
+        if args.splitter_type == "spacy":
+            sys.exit(
+                f"The selected spaCy pipeline {args.spacy_pipeline!r} "
+                "is not installed in the tool environment.\n"
+                f"Original error: {error}"
+            )
+        raise
 
     try:
         documents = splitter.create_documents([input_text])
+    except LookupError as error:
+        if args.splitter_type == "nltk":
+            # nltk is searching for the punkt_tab data by default here:
+            # -/usr/share/nltk_data
+            # -/usr/local/share/nltk_data
+            # -/usr/lib/nltk_data
+            # -/usr/local/lib/nltk_data
+            # alternative conda package:
+            # https://anaconda.org/channels/conda-forge/packages/nltk_data/overview
+            # but it is from 2022.05.27 so quite outdated
+            # here is the feedstock https://github.com/conda-forge/nltk_data-feedstock
+            sys.exit(
+                "The NLTK Punkt data required for the selected language is not "
+                "installed. The Galaxy tool environment must provide the "
+                "'punkt_tab' NLTK resource.\n"
+                f"Original error: {error}"
+            )
+        raise
     except ValueError as error:
         fail_on_disallowed_special_token(error)
         raise
@@ -464,11 +527,28 @@ def main():
         # The token splitter has no separators and never strips whitespace, so
         # the value is reported as false regardless of what was requested.
         metadata["strip_whitespace"] = False
-    else:
+
+    elif args.splitter_type in ("character", "recursive_character"):
         metadata.update(
             {
                 "keep_separator": args.keep_separator,
                 "strip_whitespace": args.strip_whitespace,
+            }
+        )
+
+    elif args.splitter_type == "nltk":
+        metadata.update(
+            {
+                "sentence_language": args.sentence_language,
+                "strip_whitespace": False,
+            }
+        )
+
+    elif args.splitter_type == "spacy":
+        metadata.update(
+            {
+                "spacy_pipeline": args.spacy_pipeline,
+                "strip_whitespace": False,
             }
         )
 
