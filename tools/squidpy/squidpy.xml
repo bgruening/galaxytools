@@ -1,0 +1,154 @@
+<tool id="squidpy" name="squidpy" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" python_template_version="3.5" profile="21.05">
+    <description> Squidpy framework for spatial omics analysis </description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.2.2</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="1.2.2">squidpy</requirement>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        mkdir visium_out &&
+        tar -xzf ${visium} -C visium_out --strip-components=1 &&
+        python '$__tool_directory__/scanpy_preprocess.py'
+            -v visium_out
+            -c V1_Human_Lymph_Node_filtered_feature_bc_matrix.h5
+            #if $genome:
+                -g ${genome}
+            #end if
+            #if $library:
+                -l ${library}
+            #else:
+                -l 'None'
+            #end if
+            -s spatial/tissue_hires_image.png 
+            -x "${prefix}"
+            -m ${min_counts}
+            -M ${max_counts}
+            -p ${pct_counts}
+            -e ${min_cells}
+            -n ${n_top_genes}
+        && python '$__tool_directory__/squidpy_run.py'
+         -a squidpy_input.h5ad
+        #if $library:
+            -l ${library}
+        #else:
+            -l 'None'
+        #end if
+    ]]></command>
+    <inputs>
+        <!-- CHANGE FORMAT LATER -->
+        <param argument="--visium" type="data" format="visium.tar.gz" label="Visium dataset tarball"/>
+        <param argument="--library" type="text" label="Library ID" optional="true" help="Optional visium data library ID"/>
+        <param argument="--prefix" type="text"  label="Prefix label by which data will be separated" help="ex. 'mt-'"/>
+        <param argument="--genome" type="text" optional="true" label="Genome data is based on" help="ex. GRCh38. The available genomes are specific to the internal dataset"/>
+        <param argument="--min-counts" type="integer" value="5000" min="0" label="Minimum cells to filter for"/>
+        <param argument="--max-counts" type="integer" value="35000"  min="0" label="Maximum cells to filter for"/>
+        <param argument="--pct-counts" type="integer" value="20" min="0" max="100" label="Percent of cells meeting minimum counts"/>
+        <param argument="--min-cells" type="integer" value="10" min="0" label="Minimum cells required to pass"/>
+        <param argument="--n-top-genes" type="integer" value="2000" min="0" label="Number of top genes to keep"/>
+        <param argument="--output-type" type="boolean" truevalue="all" falsevalue=""  label="Output collection of graphs and individual images"/>
+    </inputs>
+    <outputs>
+        <data name="all_out" format="pdf" from_work_dir="combined.pdf" label="${tool.name} on ${on_string}: All graphs output"/>
+        <collection name="individual_out" type="list" label="${tool.name} on ${on_string}: Individual graphs output">
+            <discover_datasets pattern="__name_and_ext__" directory="figures"/>
+            <filter>output_type</filter>
+        </collection>
+    </outputs>
+    <tests>
+        <!-- Test 1: Defaults and single outputs -->
+        <test expect_num_outputs="1">
+            <param name="visium" value="test.visium.tar.gz" ftype="visium.tar.gz"/>
+            <param name="prefix" value="mt-"/>
+            <param name="output_type" value=""/>
+            <output name="all_out" value="test_1_out.pdf" compare="sim_size" delta="5000"/>
+            
+                
+        </test>
+        <!-- Test 2: Custom values and all outputs -->
+        <test expect_num_outputs="2">
+            <param name="visium" value="test.visium.tar.gz" ftype="visium.tar.gz"/>
+            <param name="library" value="tumor" />
+            <param name="prefix" value="mt-"/>
+            <param name="genome" value="GRCh38"/>
+            <param name="min_counts" value="300"/>
+            <param name="max_counts" value="45000"/>
+            <param name="pct_counts" value="12"/>
+            <param name="min_cells" value="14"/>
+            <param name="output_type" value="all"/>
+            <output_collection name="individual_out" type="list" count="19"/>
+            <output name="all_out" value="test_2_out.pdf" compare="sim_size" delta="5000"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+.. class:: infomark
+
+**What it does**
+
+-------------------
+
+    Squidpy is a tool for the analysis and visualization of spatial molecular data. It builds on top of scanpy and anndata, from which it inherits modularity and scalability. 
+    It provides analysis tools that leverages the spatial coordinates of the data, as well as tissue images if available.
+
+    **Author**: Palla Spitzer et al.
+
+    **Squidpy repository** https://github.com/scverse/squidpy
+    
+    **Required**
+
+    .. class:: warningmark
+
+    You currently need to have a completed 10x visium run to utilize this tool.
+
+-------------------
+
+**Parameter List**
+
+    - Visium
+        The file system given by 10x genomics resulting from a visium experiment. This file should consist of a tar-compressed and gzipped input that unpacks into the file format shown below.
+            - Analysis/
+            - filtered_feature_bc_matrix/
+            - raw_feature_bc_matrix/
+            - spatial/
+            - web_summary.html
+            - molecule_info.h5
+            - filtered_feature_bc_matrix.h5
+            - raw_feature_bc_matrix.h5
+            - metrics_summary.csv
+
+    - Genome 
+        The name of the genome that is assoicated with the visium dataset internally.
+            
+    - Library ID
+        An optional unique ID that will be prepended to the file system of the anndata object in squidpy.
+
+    - Filter Pattern
+        A pattern used to help filter out certain cells for data preprocessing. Commonly mitochondrial genes prefixed with "mt-" are used for this.
+
+    - Minimum Reads-Per-Cell Filter
+        Filter out cells with RNA seq counts lower than the selected integer. 
+
+    - Maximum Reads-Per-Cell Filter
+        Filter out cells from the data sest with RNA seq counts higher than the selected integer.
+
+    - Percent Cell Filter
+        An integer percentage (ex. 20%) used with the filter pattern variable to remove cells that have more than "percent cell filter" reads that start with the filter pattern. 
+
+    - Minimum Cell Count 
+        Filter out genes that are deteced in fewer than the specified number of cells.
+
+    - Gene Number Cutoff
+        Value used for normalizing highly-variable genes that determines the number of said genes to keep. 
+
+**Outputs**
+
+    - PDF with all generated graphs and figures knitted together.
+
+    - Collection containing all graphs and figures as separate png images.
+
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1038/s41592-021-01358-2</citation>
+    </citations>
+</tool>
