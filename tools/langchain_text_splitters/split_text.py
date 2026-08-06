@@ -54,6 +54,10 @@ TSV_ESCAPES = (
 
 LENGTH_KEY = "length"
 
+# Reasons why a chunk cannot be traced back to the input, see diagnose_chunk().
+CHUNK_TEXT_ALTERED = "chunk_text_altered"
+START_INDEX_INVALID = "start_index_invalid"
+
 
 def parse_args():
 
@@ -138,13 +142,17 @@ def get_tiktoken_options(args):
     }
 
 
-def fail_on_disallowed_special_token(error):
-    # Raised by tiktoken when the input contains a special token string such as
-    # <|endoftext|> while the user asked for those strings to be rejected.
-    if "disallowed special token" not in str(error):
-        raise error
+def special_token_error(error):
+    """Return the error to raise for a ValueError coming from tiktoken.
 
-    sys.exit(
+    tiktoken raises when the input contains a special token string such as
+    <|endoftext|> while the user asked for those strings to be rejected. Any
+    other ValueError is handed back unchanged.
+    """
+    if "disallowed special token" not in str(error):
+        return error
+
+    return SystemExit(
         "The input contains a special token string that is rejected by the "
         "selected tokenizer. Set the special token handling to allow all "
         "special token strings, or remove the special token from the input.\n"
@@ -180,8 +188,7 @@ def build_tiktoken_counter(
                 disallowed_special=disallowed_special,
             )
         except ValueError as error:
-            fail_on_disallowed_special_token(error)
-            raise
+            raise special_token_error(error)
 
         return len(tokens)
 
@@ -348,6 +355,33 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
     return RecursiveCharacterTextSplitter(**character_options)
 
 
+def diagnose_chunk(
+    start_index,
+    chunk_text,
+    input_text,
+    previous_start_index,
+):
+    """Return None when the chunk and its reported position are sound.
+
+    Otherwise return the reason, so that the two very different causes can be
+    reported separately: text the splitter altered, and a position the splitter
+    got wrong.
+    """
+    if (
+        start_index >= 0
+        and (previous_start_index is None or start_index > previous_start_index)
+        and input_text.startswith(chunk_text, start_index)
+    ):
+        return None
+
+    # Only reached when something is already wrong, so scanning the whole input
+    # once more is acceptable here.
+    if chunk_text not in input_text:
+        return CHUNK_TEXT_ALTERED
+
+    return START_INDEX_INVALID
+
+
 def write_text_output(
     output_path,
     metadata,
@@ -499,11 +533,12 @@ def main():
     try:
         documents = splitter.create_documents([input_text])
     except ValueError as error:
-        fail_on_disallowed_special_token(error)
-        raise
+        raise special_token_error(error)
 
     chunks = []
     start_index_warnings = []
+    altered_text_warnings = []
+    previous_start_index = None
     empty_chunks = 0
 
     for document in documents:
@@ -520,20 +555,41 @@ def main():
 
         chunk_number = len(chunks) + 1
 
-        if start_index is not None and start_index < 0:
-            # TODO: report upstream to langchain-text-splitters as a bug, since this should not happen.
-            # Potential cause: langchain text splitters might calculate the start index based on the length of the chunk in characters, even though the chunk size is measured in tokens.
-            # reproduce with Character splitter recursive
-            # input: test-data/langchain_docs_sample.txt
-            # Text splitting separators and their order of use: default
-            # Place separator at start of the following chunk start → ["First paragraph.", "\n\nSecond paragraph."]
-            # Strip whitespace around chunks: true
-            # Target chunk size should be determined by the number of tokens
-            # Target chunk size: 100
-            # Chunk overlap: 20
-            # The invalid index is reported as null so that the JSON keeps a
-            # single type for the field. The warning below carries the detail.
-            start_index_warnings.append((chunk_number, start_index))
+        # TODO: report the invalid start index upstream to langchain-text-splitters, since this
+        # should not happen. Note that the invalid indices are not always negative: once one chunk
+        # gets a negative index, the positions derived from it stay positive but point at the wrong
+        # place, which is why diagnose_chunk() also checks the order and the content.
+        # Potential cause: langchain text splitters might calculate the start index based on the length of the chunk in characters, even though the chunk size is measured in tokens.
+        # reproduce with Character splitter recursive
+        # input: test-data/langchain_docs_sample.txt
+        # Text splitting separators and their order of use: default
+        # Place separator at start of the following chunk start → ["First paragraph.", "\n\nSecond paragraph."]
+        # Strip whitespace around chunks: true
+        # Target chunk size should be determined by the number of tokens
+        # Target chunk size: 100
+        # Chunk overlap: 20
+        problem = (
+            None
+            if start_index is None
+            else diagnose_chunk(
+                start_index,
+                raw_chunk_text,
+                input_text,
+                previous_start_index,
+            )
+        )
+
+        if problem is None:
+            if start_index is not None:
+                previous_start_index = start_index
+        else:
+            # The position is reported as null so that the JSON field keeps a
+            # single type. The warnings below carry the detail.
+            if problem == CHUNK_TEXT_ALTERED:
+                altered_text_warnings.append(chunk_number)
+            else:
+                start_index_warnings.append((chunk_number, start_index))
+
             start_index = None
 
         chunks.append(
@@ -543,6 +599,17 @@ def main():
                 "start_index": start_index,
                 "text": raw_chunk_text,
             }
+        )
+
+    if altered_text_warnings:
+        print(
+            "WARNING: The text of the following chunk(s) does not occur in the "
+            f"input: {', '.join(str(number) for number in altered_text_warnings)}. "
+            "Splitting between tokens cuts the text at token boundaries, which "
+            "can fall inside a character that is encoded in several bytes and "
+            "replaces it with the Unicode replacement character. Use one of the "
+            "character based splitters for text that is not plain ASCII.",
+            flush=True,
         )
 
     if start_index_warnings:
@@ -630,6 +697,7 @@ def main():
             indent=2,
         )
         + "\n",
+        encoding="utf-8",
     )
 
     write_text_output(
