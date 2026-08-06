@@ -283,6 +283,10 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
     }
 
     if args.splitter_type == "nltk":
+        # separator="" together with strip_whitespace=False keeps the chunk text
+        # identical to the matching slice of the input, so the reported start
+        # indices stay usable. Note that the span based tokenizer drops whatever
+        # follows the last sentence, see the warning in main().
         return NLTKTextSplitter(
             **length_options,
             language=args.sentence_language,
@@ -292,13 +296,23 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
         )
 
     if args.splitter_type == "spacy":
-        return SpacyTextSplitter(
+        splitter = SpacyTextSplitter(
             **length_options,
             pipeline=args.spacy_pipeline,
             max_length=args.spacy_max_length,
             separator="",
             strip_whitespace=False,
         )
+        # langchain only forwards max_length to the pipelines it loads with
+        # spacy.load(). The sentencizer is built from English() instead and
+        # silently keeps the spaCy default of one million characters, so it is
+        # applied here for both. Guarded because _tokenizer is private API.
+        tokenizer = getattr(splitter, "_tokenizer", None)
+
+        if hasattr(tokenizer, "max_length"):
+            tokenizer.max_length = args.spacy_max_length
+
+        return splitter
 
     character_options = {
         **length_options,
@@ -413,6 +427,17 @@ def main():
             "There is nothing to split."
         )
 
+    # Checked before the tokenizer is built so that a job that cannot run does
+    # not first pay for loading the tiktoken encoding.
+    if args.splitter_type == "spacy" and len(input_text) > args.spacy_max_length:
+        sys.exit(
+            f"The input dataset holds {len(input_text)} characters, which is "
+            "more than the configured spaCy maximum input length of "
+            f"{args.spacy_max_length}. Raise 'Maximum input length' or split "
+            "the dataset into smaller parts first. Mind the memory cost per "
+            "input character stated in the help of that setting."
+        )
+
     length_mode = "token" if args.splitter_type == "token" else args.length_mode
 
     tiktoken_options = get_tiktoken_options(args)
@@ -442,37 +467,57 @@ def main():
                 f"Original error: {error}"
             )
         raise
-
-    try:
-        documents = splitter.create_documents([input_text])
     except LookupError as error:
-        if args.splitter_type == "nltk":
-            # nltk is searching for the punkt_tab data by default here:
-            # -/usr/share/nltk_data
-            # -/usr/local/share/nltk_data
-            # -/usr/lib/nltk_data
-            # -/usr/local/lib/nltk_data
-            # alternative conda package:
-            # https://anaconda.org/channels/conda-forge/packages/nltk_data/overview
-            # but it is from 2022.05.27 so quite outdated
-            # here is the feedstock https://github.com/conda-forge/nltk_data-feedstock
+        # NLTKTextSplitter loads the punkt_tab data in its constructor, so this
+        # has to be caught around build_splitter() and not around
+        # create_documents().
+        # nltk is searching for the punkt_tab data by default here:
+        # -/usr/share/nltk_data
+        # -/usr/local/share/nltk_data
+        # -/usr/lib/nltk_data
+        # -/usr/local/lib/nltk_data
+        # alternative conda package:
+        # https://anaconda.org/channels/conda-forge/packages/nltk_data/overview
+        # but it is from 2022.05.27 and ships 'punkt' instead of 'punkt_tab'
+        # here is the feedstock https://github.com/conda-forge/nltk_data-feedstock
+        # KeyError and IndexError also derive from LookupError, so they are
+        # excluded to keep an unrelated failure from being reported as missing
+        # Punkt data.
+        if args.splitter_type == "nltk" and not isinstance(
+            error, (KeyError, IndexError)
+        ):
             sys.exit(
                 "The NLTK Punkt data required for the selected language is not "
                 "installed. The Galaxy tool environment must provide the "
-                "'punkt_tab' NLTK resource.\n"
+                "'punkt_tab' NLTK resource, for example below a directory "
+                "listed in the NLTK_DATA environment variable. Use the spaCy "
+                "sentence splitter if the data cannot be installed.\n"
                 f"Original error: {error}"
             )
         raise
+
+    try:
+        documents = splitter.create_documents([input_text])
     except ValueError as error:
         fail_on_disallowed_special_token(error)
         raise
 
     chunks = []
     start_index_warnings = []
+    empty_chunks = 0
 
     for document in documents:
         raw_chunk_text = document.page_content
         start_index = document.metadata.get("start_index")
+
+        # A chunk that holds nothing but whitespace carries no content for a
+        # downstream step to work on. The sentence splitters produce one for the
+        # trailing line break of the input, because they keep the whitespace
+        # between the sentences and never strip a chunk.
+        if not raw_chunk_text.strip():
+            empty_chunks += 1
+            continue
+
         chunk_number = len(chunks) + 1
 
         if start_index is not None and start_index < 0:
@@ -511,6 +556,33 @@ def main():
             "The start index of these chunks is reported as null.",
             flush=True,
         )
+
+    # The NLTK splitter builds the chunks from the sentence spans reported by
+    # punkt, which end at the last sentence. Punkt trims trailing whitespace, so
+    # whatever follows is dropped and the chunks no longer add up to the input.
+    # The first span always starts at offset 0, so nothing is lost in front.
+    # The spaCy splitter keeps everything.
+    if empty_chunks:
+        print(
+            f"WARNING: {empty_chunks} chunk(s) held nothing but whitespace and "
+            "were left out of the outputs.",
+            flush=True,
+        )
+
+    if args.splitter_type == "nltk" and chunks:
+        last_text = chunks[-1]["text"]
+        last_start = input_text.rfind(last_text)
+        dropped = (
+            len(input_text) - (last_start + len(last_text)) if last_start >= 0 else 0
+        )
+
+        if dropped > 0:
+            print(
+                f"WARNING: The NLTK sentence splitter dropped the {dropped} "
+                "character(s) after the last sentence. Use the spaCy sentence "
+                "splitter to keep the complete input.",
+                flush=True,
+            )
 
     metadata = {
         "input_characters": len(input_text),

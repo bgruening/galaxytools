@@ -181,7 +181,10 @@
                     English model (en_core_web_sm)
                 </option>
                         </param>
-                        <param name="max_length" type="integer" value="1000000" min="1" label="Maximum input length" help="Maximum number of input characters accepted by the spaCy pipeline."/>
+                        <!-- The upper bound keeps a single job from exhausting the
+                             memory of a shared compute node, see the per-character
+                             cost quoted in the help below. -->
+                        <param name="max_length" type="integer" value="1000000" min="1" max="10000000" label="Maximum input length" help="Maximum number of input characters accepted by the spaCy pipeline. The tool stops with an error if the input is longer. Raising this costs memory: the English model needs roughly 3.5 kB per input character, the rule-based sentencizer roughly 0.2 kB."/>
                     </when>
                 </conditional>
                 <conditional name="length">
@@ -710,7 +713,9 @@
                 </element>
             </output_collection>
         </test>
-        <!-- NLTK overlap is applied at complete-sentence granularity. -->
+        <!-- NLTK overlap is applied at complete-sentence granularity. The chunk
+             size must fit the overlapping sentence plus the following one,
+             otherwise the overlap is dropped again to make room. -->
         <test>
             <param name="input" value="sentence_overlap.txt" ftype="txt"/>
             <conditional name="splitter">
@@ -721,14 +726,14 @@
                 </conditional>
                 <conditional name="length">
                     <param name="length_mode" value="characters"/>
-                    <param name="chunk_size" value="23"/>
-                    <param name="chunk_overlap" value="12"/>
+                    <param name="chunk_size" value="25"/>
+                    <param name="chunk_overlap" value="13"/>
                 </conditional>
             </conditional>
             <output name="chunks_json">
                 <assert_contents>
-                    <has_json_property_with_value property="chunk_size" value="23"/>
-                    <has_json_property_with_value property="chunk_overlap" value="12"/>
+                    <has_json_property_with_value property="chunk_size" value="25"/>
+                    <has_json_property_with_value property="chunk_overlap" value="13"/>
                     <has_json_property_with_value property="number_of_chunks" value="3"/>
                     <not_has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
@@ -787,12 +792,13 @@
                 </element>
                 <element name="chunk_0002">
                     <assert_contents>
-                        <has_text_matching expression="\A&#10;ASecond sentence is also short\.\Z"/>
+                        <has_text_matching expression="\A&#10;Second sentence is also short\.\Z"/>
                     </assert_contents>
                 </element>
                 <element name="chunk_0003">
                     <assert_contents>
-                        <has_text_matching expression="\A&#10;Third sentence ends here\.\Z"/>
+                        <!-- Galaxy's upload appends a trailing newline to the input file. -->
+                        <has_text_matching expression="\A&#10;Third sentence ends here\.&#10;\Z"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -867,25 +873,33 @@
                     <has_json_property_with_text property="spacy_pipeline" text="sentencizer"/>
                     <has_json_property_with_value property="chunk_size" value="4"/>
                     <has_json_property_with_value property="chunk_overlap" value="0"/>
+                    <!-- The sentencizer reports the trailing newline that Galaxy's
+                         upload appends as a fourth sentence. It holds nothing but
+                         whitespace and is left out of the outputs. -->
                     <has_json_property_with_value property="number_of_chunks" value="3"/>
                     <not_has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
             </output>
+            <assert_stdout>
+                <has_text text="WARNING: 1 chunk(s) held nothing but whitespace and were left out of the outputs."/>
+            </assert_stdout>
             <expand macro="assert_chunks_tsv"/>
             <output_collection name="chunks_collection" type="list" count="3">
                 <element name="chunk_0001">
                     <assert_contents>
-                        <has_text_matching expression="\Aone two\.&#10;\Z"/>
+                        <has_text_matching expression="\Aone two\.\Z"/>
                     </assert_contents>
                 </element>
+                <!-- The sentence separator stays at the start of the following
+                     chunk because strip_whitespace is disabled. -->
                 <element name="chunk_0002">
                     <assert_contents>
-                        <has_text_matching expression="\Athree four\.&#10;\Z"/>
+                        <has_text_matching expression="\A&#10;three four\.\Z"/>
                     </assert_contents>
                 </element>
                 <element name="chunk_0003">
                     <assert_contents>
-                        <has_text_matching expression="\Afive six\.&#10;\Z"/>
+                        <has_text_matching expression="\A&#10;five six\.\Z"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -1283,8 +1297,26 @@ and other LLM workflows where long text needs to be bounded by a chunk size.
     - `RecursiveCharacterTextSplitter`: Recommended for most use cases as it attempts to preserve larger text units by trying an ordered list of separators, from coarser boundaries such as paragraph breaks to finer boundaries such as line breaks, or spaces, down to individual characters.
     - `CharacterTextSplitter`: Splits text using one defined separator or character sequence, such as a paragraph break, line break, space, or custom separator.
 - **Token-based splitting:** The `TokenTextSplitter` ignores any potential text structure and simply creates chunks of a specified token length.
+- **Sentence-based splitting:** Detects sentence boundaries first and then fills the chunks with whole sentences, so a chunk never ends in the middle of a sentence. Pick this for prose. A single sentence that is already longer than the target chunk size becomes an oversized chunk of its own, because the sentence is never cut.
+    - `NLTKTextSplitter`: Uses NLTK's Punkt sentence tokenizer, which is trained per language and therefore handles language-specific abbreviations such as `Dr.` in English or `z.B.` in German. Select the language of the input.
+    - `SpacyTextSplitter`: Uses spaCy. The rule-based sentencizer is fast and needs no model, but it applies English tokenization rules. The `en_core_web_sm` model is more accurate on English text, and is roughly five times slower and needs about ten times more memory.
 
-<!-- TODO add sentences describing spaCy/NLTK Text Splitting -->
+Both sentence splitters keep the whitespace between the sentences, so a chunk
+starts with the line break that follows the previous sentence. The chunk overlap
+is applied in whole sentences: an overlapping sentence is only carried over if it
+fits into the next chunk together with the following sentence, otherwise the
+overlap is silently smaller than requested.
+
+The NLTK splitter drops the text after the last detected sentence, usually the
+trailing line break, so its chunks do not always add up to the complete input; a
+warning is written to the tool log when that happens. The spaCy splitter keeps
+everything.
+
+The NLTK splitter needs the `punkt_tab` resource for the selected language. It is
+not part of the `nltk` package, so a Galaxy instance has to provide it locally,
+for example below a directory listed in the `NLTK_DATA` environment variable.
+Without it, any run of the NLTK splitter fails. The spaCy splitter has no such
+requirement.
 
 **Used Library for Token Counting**
 
