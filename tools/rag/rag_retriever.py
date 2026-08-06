@@ -1,35 +1,144 @@
+import hashlib
 import json
 import os
 import sys
 from pathlib import Path
 
 import torch
+import yaml
 from llama_index.core import Document, SimpleDirectoryReader, VectorStoreIndex
 from llama_index.embeddings.huggingface import HuggingFaceEmbedding
+from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.readers.file import PDFReader
 from llama_index.readers.json import JSONReader
+
+
+# --- LiteLLM proxy config resolution -------------------------------------
+# The LiteLLM proxy exposes an OpenAI-compatible /v1/embeddings endpoint. The
+# YAML config may be flat (global LITELLM_API_KEY / LITELLM_BASE_URL) or expose
+# a ``servers`` mapping that keys provider names to per-server credentials; the
+# ``provider`` argument selects which server to use.
+
+def load_litellm_config() -> dict:
+    """Read the LiteLLM YAML config referenced by ``LITELLM_CONFIG_FILE``.
+
+    Exits with a clear message if the env var is unset or the file is missing,
+    since neither is recoverable for a tool job.
+    """
+    config_file = os.environ.get("LITELLM_CONFIG_FILE")
+    if not config_file:
+        sys.exit("LITELLM_CONFIG_FILE environment variable is not set.")
+    if not os.path.isfile(config_file):
+        sys.exit(f"LiteLLM config file does not exist: {config_file}")
+    with open(config_file, "r") as f:
+        config = yaml.safe_load(f)
+    if not config:
+        sys.exit(
+            f"LiteLLM config file is empty or contains no entries: {config_file}"
+        )
+    return config
+
+
+def resolve_server(config: dict, provider: str) -> dict:
+    """Resolve the server config for ``provider`` and validate its credentials.
+
+    Returns the per-provider ``servers[provider]`` dict when a ``servers`` block
+    exists, otherwise the global config (backward compatibility). Exits with a
+    message if the provider is unknown or the API key / base URL is missing.
+    """
+    servers = config.get("servers", {})
+    if servers:
+        if provider not in servers:
+            sys.exit(f"Provider '{provider}' not found in LiteLLM configuration.")
+        source = servers[provider]
+    else:
+        source = config
+    if not source.get("LITELLM_API_KEY"):
+        sys.exit(
+            "LiteLLM API key is not configured! Please set LITELLM_API_KEY "
+            "in the configuration."
+        )
+    if not source.get("LITELLM_BASE_URL"):
+        sys.exit(
+            "LiteLLM base URL is not configured! Please set LITELLM_BASE_URL "
+            "in the configuration."
+        )
+    return source
 
 
 def main():
     context_files = json.loads(sys.argv[1])
     question = (sys.argv[2] or "").strip()
-    embedding_model = sys.argv[3]
+    embed_cfg = json.loads(sys.argv[3])
     top_k = int(sys.argv[4])
+    # Galaxy user id + instance URL, for request attribution on the proxy.
+    # The literal "Anonymous" is rendered for anonymous sessions, in which
+    # case no per-user id is sent (the request falls back to a per-instance
+    # shared "anonymous" bucket).
+    galaxy_user_id = sys.argv[5] if len(sys.argv) > 5 else ""
+    if galaxy_user_id == "Anonymous":
+        galaxy_user_id = ""
+    galaxy_url = sys.argv[6] if len(sys.argv) > 6 else ""
 
     if not question:
         sys.exit("Question is empty.")
     if not context_files:
         sys.exit("No input files given.")
-    if not os.path.exists(embedding_model):
-        sys.exit(f"Embedding model path does not exist: {embedding_model}")
     if top_k <= 0:
         sys.exit("Top K must be a positive integer.")
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if not isinstance(embed_cfg, dict) or "source" not in embed_cfg:
+        sys.exit("Invalid embedding configuration: expected a JSON object with a 'source' key.")
 
-    embed_model = HuggingFaceEmbedding(
-        model_name=embedding_model, normalize=True, device=device
-    )
+    if embed_cfg["source"] == "litellm":
+        model = embed_cfg.get("model")
+        provider = embed_cfg.get("provider")
+        if not model:
+            sys.exit("No LiteLLM embedding model selected.")
+        if not provider:
+            sys.exit("No LiteLLM provider selected.")
+        server = resolve_server(load_litellm_config(), provider)
+        # Attribute the embedding request to the Galaxy user so proxies
+        # (e.g. LiteLLM) can meter usage and apply per-user budgets/rate
+        # limits, via the standard OpenAI ``user`` field. The id is
+        # namespaced by the Galaxy instance URL and hashed: the URL keeps
+        # ids unique when several Galaxy instances share one proxy (e.g.
+        # usegalaxy.eu), and hashing means no instance-identifying or
+        # personal data leaves for the provider. Anonymous users (no id)
+        # fall back to a per-instance shared "anonymous" bucket. Mirrors the
+        # attribution in llm_hub.py so both tools map one Galaxy user to one
+        # proxy identity.
+        raw_user = galaxy_user_id or "anonymous"
+        attribution_user = hashlib.sha256(
+            f"{galaxy_url}|{raw_user}".encode()
+        ).hexdigest()
+        # OpenAIEmbedding validates ``model`` against a hardcoded enum of OpenAI
+        # model names; passing the LiteLLM model id via ``model_name`` instead is
+        # the class's intended escape hatch (it overrides the enum-derived
+        # engine), so arbitrary proxy-hosted models (BGE-M3, nomic, Qwen3, ...)
+        # can be used with the framework's batching, retry and client handling.
+        # ``additional_kwargs`` is forwarded as ``**kwargs`` to the OpenAI SDK's
+        # ``embeddings.create`` call, carrying the ``user`` field through.
+        embed_model = OpenAIEmbedding(
+            model_name=model,
+            api_key=server["LITELLM_API_KEY"],
+            api_base=server["LITELLM_BASE_URL"],
+            timeout=float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600")),
+            max_retries=int(os.environ.get("LITELLM_REQUEST_MAX_RETRIES", "3")),
+            embed_batch_size=100,
+            additional_kwargs={"user": attribution_user},
+        )
+    else:
+        # Local HuggingFace model (preinstalled path or uploaded archive).
+        model_path = embed_cfg.get("path")
+        if not model_path:
+            sys.exit("No embedding model path given.")
+        if not os.path.exists(model_path):
+            sys.exit(f"Embedding model path does not exist: {model_path}")
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        embed_model = HuggingFaceEmbedding(
+            model_name=model_path, normalize=True, device=device
+        )
 
     docs: list[Document] = []
 
