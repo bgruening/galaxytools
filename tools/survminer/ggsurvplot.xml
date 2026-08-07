@@ -1,0 +1,387 @@
+<tool id="ggsurvplot" name="ggsurvplot" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Create publication-ready Kaplan-Meier survival curves</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+Rscript '$rscript' &&
+#if $output_format == "pdf":
+    mv output.pdf '$output_plot'
+#else:
+    mv output.png '$output_plot'
+#end if
+    ]]></command>
+    <configfiles>
+        <configfile name="rscript"><![CDATA[
+suppressWarnings(suppressMessages({
+    library(survival)
+    library(survminer)
+}))
+
+data <- read.delim("${input_data}", sep = "\t", stringsAsFactors = TRUE)
+
+## Convert grouping column to factor if numeric
+#if str($group_col).strip():
+if (!is.factor(data[["${group_col}"]])) {
+    data[["${group_col}"]] <- as.factor(data[["${group_col}"]])
+}
+#end if
+
+## Ensure status and time are numeric
+data[["${status_col}"]] <- as.numeric(as.character(data[["${status_col}"]]))
+data[["${time_col}"]] <- as.numeric(as.character(data[["${time_col}"]]))
+
+#set $po = $sec_plot_options
+#set $ap = $sec_appearance
+
+#if str($group_col).strip():
+fit <- survfit(Surv(${time_col}, ${status_col}) ~ ${group_col}, data = data)
+#else:
+fit <- survfit(Surv(${time_col}, ${status_col}) ~ 1, data = data)
+#end if
+
+p <- ggsurvplot(
+  fit, data = data,
+  conf.int = ${po.conf_int},
+  pval = ${po.pval},
+  pval.method = ${po.pval_method},
+  risk.table = ${po.risk_table},
+  cumevents = ${po.cumevents},
+  cumcensor = ${po.cumcensor},
+  ncensor.plot = ${po.ncensor_plot},
+  surv.median.line = "${po.surv_median_line}",
+#if str($po.fun) != "default":
+  fun = "${po.fun}",
+#end if
+  palette = "${ap.palette}",
+#if str($ap.legend_title).strip():
+  legend.title = "${ap.legend_title}",
+#end if
+#if str($ap.legend_labs).strip():
+  legend.labs = c(strsplit("${ap.legend_labs}", ",")[[1]]),
+#end if
+  xlab = "${ap.xlab}",
+  ylab = "${ap.ylab}",
+#if str($ap.break_time_by).strip():
+  break.time.by = as.numeric("${ap.break_time_by}"),
+#end if
+#if str($ap.xlim_max).strip():
+  xlim = c(0, as.numeric("${ap.xlim_max}")),
+#end if
+  ggtheme = ${ap.ggtheme}(),
+#if str($ap.log_rank_weights) != "1":
+  log.rank.weights = "${ap.log_rank_weights}",
+#end if
+  tables.theme = theme_cleantable()
+)
+
+#if $output_format == "pdf":
+pdf("output.pdf", width = ${ap.plot_width}, height = ${ap.plot_height})
+#else:
+png("output.png", width = ${ap.plot_width} * 300, height = ${ap.plot_height} * 300, res = 300)
+#end if
+print(p)
+dev.off()
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param name="input_data" type="data" format="tabular" label="Input survival data (TSV)"/>
+        <param name="time_col" type="text" label="Column name for survival time" help="Name of the column containing survival/follow-up time"/>
+        <param name="status_col" type="text" label="Column name for event status" help="Name of the column containing event status (0 = censored, 1 = event)"/>
+        <param name="group_col" type="text" optional="true" label="Column name for grouping variable" help="Leave empty for a single survival curve (~ 1)"/>
+        <param name="output_format" type="select" label="Output image format">
+            <option value="png" selected="true">PNG</option>
+            <option value="pdf">PDF</option>
+        </param>
+        <section name="sec_plot_options" expanded="true" title="Plot Options">
+            <param name="conf_int" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show confidence intervals"/>
+            <param name="pval" type="boolean" checked="true" truevalue="TRUE" falsevalue="FALSE" label="Add log-rank p-value"/>
+            <param name="pval_method" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show test name"/>
+            <param name="risk_table" type="boolean" checked="true" truevalue="TRUE" falsevalue="FALSE" label="Show number-at-risk table"/>
+            <param name="cumevents" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show cumulative events table"/>
+            <param name="cumcensor" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show cumulative censoring table"/>
+            <param name="ncensor_plot" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show censoring count plot"/>
+            <param name="surv_median_line" type="select" label="Median survival line">
+                <option value="none" selected="true">none</option>
+                <option value="hv">hv (horizontal + vertical)</option>
+                <option value="h">h (horizontal)</option>
+                <option value="v">v (vertical)</option>
+            </param>
+            <param name="fun" type="select" label="Transformation of survival curve">
+                <option value="default" selected="true">survival (no transformation)</option>
+                <option value="event">cumulative events</option>
+                <option value="cumhaz">cumulative hazard</option>
+                <option value="pct">survival in percent</option>
+            </param>
+        </section>
+        <section name="sec_appearance" expanded="false" title="Appearance Options">
+            <param name="palette" type="select" label="Color palette">
+                <option value="hue" selected="true">hue (default)</option>
+                <option value="grey">grey</option>
+                <option value="npg">npg</option>
+                <option value="aaas">aaas</option>
+                <option value="lancet">lancet</option>
+                <option value="jco">jco</option>
+                <option value="ucscgb">ucscgb</option>
+                <option value="d3">d3</option>
+                <option value="locuszoom">locuszoom</option>
+                <option value="startrek">startrek</option>
+                <option value="futurama">futurama</option>
+                <option value="igv">igv</option>
+                <option value="gsea">gsea</option>
+                <option value="simpsons">simpsons</option>
+            </param>
+            <param name="legend_title" type="text" optional="true" label="Legend title"/>
+            <param name="legend_labs" type="text" optional="true" label="Legend labels" help="Comma-separated labels for each group (e.g. Male,Female)"/>
+            <param name="xlab" type="text" value="Time" label="X-axis label"/>
+            <param name="ylab" type="text" value="Survival probability" label="Y-axis label"/>
+            <param name="break_time_by" type="integer" optional="true" label="X-axis break interval" help="Break the x-axis at regular intervals"/>
+            <param name="xlim_max" type="integer" optional="true" label="X-axis upper limit"/>
+            <param name="ggtheme" type="select" label="ggplot2 theme">
+                <option value="theme_survminer" selected="true">theme_survminer</option>
+                <option value="theme_bw">theme_bw</option>
+                <option value="theme_minimal">theme_minimal</option>
+                <option value="theme_light">theme_light</option>
+                <option value="theme_classic">theme_classic</option>
+            </param>
+            <param name="plot_width" type="integer" value="7" min="3" max="20" label="Plot width (inches)"/>
+            <param name="plot_height" type="integer" value="7" min="3" max="20" label="Plot height (inches)"/>
+            <param name="log_rank_weights" type="select" label="Log-rank test weights">
+                <option value="1" selected="true">1 (log-rank)</option>
+                <option value="n">n (Gehan-Breslow)</option>
+                <option value="sqrtN">sqrtN (Tarone-Ware)</option>
+                <option value="S1">S1 (Peto-Peto)</option>
+                <option value="S2">S2 (modified Peto-Peto)</option>
+                <option value="FH">FH (Fleming-Harrington)</option>
+            </param>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_plot" format="png">
+            <change_format>
+                <when input="output_format" value="pdf" format="pdf"/>
+            </change_format>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 1: Basic grouped survival curve with risk table and p-value -->
+        <test expect_num_outputs="1">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="time"/>
+            <param name="status_col" value="status"/>
+            <param name="group_col" value="sex"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_plot_options">
+                <param name="conf_int" value="False"/>
+                <param name="pval" value="True"/>
+                <param name="pval_method" value="False"/>
+                <param name="risk_table" value="True"/>
+                <param name="cumevents" value="False"/>
+                <param name="cumcensor" value="False"/>
+                <param name="ncensor_plot" value="False"/>
+                <param name="surv_median_line" value="none"/>
+                <param name="fun" value="default"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="hue"/>
+                <param name="xlab" value="Time"/>
+                <param name="ylab" value="Survival probability"/>
+                <param name="ggtheme" value="theme_survminer"/>
+                <param name="plot_width" value="7"/>
+                <param name="plot_height" value="7"/>
+                <param name="log_rank_weights" value="1"/>
+            </section>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 2: Single-group survival curve -->
+        <test expect_num_outputs="1">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="time"/>
+            <param name="status_col" value="status"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_plot_options">
+                <param name="conf_int" value="False"/>
+                <param name="pval" value="False"/>
+                <param name="pval_method" value="False"/>
+                <param name="risk_table" value="False"/>
+                <param name="cumevents" value="False"/>
+                <param name="cumcensor" value="False"/>
+                <param name="ncensor_plot" value="False"/>
+                <param name="surv_median_line" value="none"/>
+                <param name="fun" value="default"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="hue"/>
+                <param name="xlab" value="Time"/>
+                <param name="ylab" value="Survival probability"/>
+                <param name="ggtheme" value="theme_survminer"/>
+                <param name="plot_width" value="7"/>
+                <param name="plot_height" value="7"/>
+                <param name="log_rank_weights" value="1"/>
+            </section>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 3: With confidence intervals and median line -->
+        <test expect_num_outputs="1">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="time"/>
+            <param name="status_col" value="status"/>
+            <param name="group_col" value="sex"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_plot_options">
+                <param name="conf_int" value="True"/>
+                <param name="pval" value="True"/>
+                <param name="pval_method" value="False"/>
+                <param name="risk_table" value="False"/>
+                <param name="cumevents" value="False"/>
+                <param name="cumcensor" value="False"/>
+                <param name="ncensor_plot" value="False"/>
+                <param name="surv_median_line" value="hv"/>
+                <param name="fun" value="default"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="npg"/>
+                <param name="xlab" value="Time"/>
+                <param name="ylab" value="Survival probability"/>
+                <param name="ggtheme" value="theme_bw"/>
+                <param name="plot_width" value="7"/>
+                <param name="plot_height" value="7"/>
+                <param name="log_rank_weights" value="1"/>
+            </section>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 4: PDF output -->
+        <test expect_num_outputs="1">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="time"/>
+            <param name="status_col" value="status"/>
+            <param name="group_col" value="sex"/>
+            <param name="output_format" value="pdf"/>
+            <section name="sec_plot_options">
+                <param name="conf_int" value="False"/>
+                <param name="pval" value="True"/>
+                <param name="pval_method" value="False"/>
+                <param name="risk_table" value="True"/>
+                <param name="cumevents" value="False"/>
+                <param name="cumcensor" value="False"/>
+                <param name="ncensor_plot" value="False"/>
+                <param name="surv_median_line" value="none"/>
+                <param name="fun" value="default"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="hue"/>
+                <param name="xlab" value="Time"/>
+                <param name="ylab" value="Survival probability"/>
+                <param name="ggtheme" value="theme_survminer"/>
+                <param name="plot_width" value="7"/>
+                <param name="plot_height" value="7"/>
+                <param name="log_rank_weights" value="1"/>
+            </section>
+            <output name="output_plot" ftype="pdf">
+                <assert_contents>
+                    <has_text text="%PDF"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 5: Custom palette and legend labels -->
+        <test expect_num_outputs="1">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="time"/>
+            <param name="status_col" value="status"/>
+            <param name="group_col" value="sex"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_plot_options">
+                <param name="conf_int" value="False"/>
+                <param name="pval" value="True"/>
+                <param name="pval_method" value="False"/>
+                <param name="risk_table" value="True"/>
+                <param name="cumevents" value="False"/>
+                <param name="cumcensor" value="False"/>
+                <param name="ncensor_plot" value="False"/>
+                <param name="surv_median_line" value="none"/>
+                <param name="fun" value="default"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="jco"/>
+                <param name="legend_title" value="Sex"/>
+                <param name="legend_labs" value="Male,Female"/>
+                <param name="xlab" value="Time"/>
+                <param name="ylab" value="Survival probability"/>
+                <param name="ggtheme" value="theme_survminer"/>
+                <param name="plot_width" value="7"/>
+                <param name="plot_height" value="7"/>
+                <param name="log_rank_weights" value="1"/>
+            </section>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+This tool creates publication-ready survival curves (Kaplan-Meier plots) using
+the R **survminer** package's `ggsurvplot()` function.
+
+**Input**
+
+A tabular file (TSV) containing at minimum:
+
+- A **time** column (numeric survival/follow-up time)
+- A **status/event** column (0 = censored, 1 = event occurred)
+- Optionally, a **grouping** column (categorical variable for stratified curves)
+
+Leave the grouping column empty to fit a single overall survival curve.
+
+**Output**
+
+A PNG or PDF image containing:
+
+- Kaplan-Meier survival curve(s)
+- Optional number-at-risk table
+- Optional cumulative events/censoring tables
+- Optional confidence intervals
+- Optional log-rank test p-value
+- Optional median survival indicator lines
+
+**Example**
+
+Input data (subset of the R `lung` dataset):
+
+| time | status | sex |
+|------|--------|-----|
+| 306  | 2      | 1   |
+| 455  | 2      | 1   |
+| ...  | ...    | ... |
+
+Set **time_col** = `time`, **status_col** = `status`, **group_col** = `sex`.
+
+:::note
+**Status encoding:** The R `survival` package uses 1 = event, 0 = censored by
+default. Some datasets (e.g. `lung`) use 2 = event. The function automatically
+treats any non-zero value as an event.
+:::
+
+**Attribution**
+
+This tool relies on the survminer R package by Alboukadel Kassambara
+(https://github.com/kassambara/survminer).
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
