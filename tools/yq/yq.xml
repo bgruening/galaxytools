@@ -7,13 +7,13 @@
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
 yq
-#if $mode == "eval-all":
+#if $operation.mode == "eval-all":
   ea
 #else:
   e
 #end if
-## Null-input is automatically enabled when no input file is provided
-#if not $input_file:
+## Null-input mode for creating documents from scratch
+#if $operation.mode == "create":
   -n
 #end if
 #if str($sec_format.input_format) != "auto":
@@ -40,32 +40,55 @@ yq
   -f '$sec_options.front_matter'
 #end if
 ## Expression: from file or inline text (written to configfile to avoid sanitization/escaping issues)
-#if $expression_from_file:
-  --from-file '$expression_from_file'
+#if $expression_source.source == "file":
+  --from-file '$expression_source.expression_file'
 #else:
   --from-file '$expr_file'
 #end if
-## Input files (if any provided)
-#if $input_file:
-  #for $f in $input_file:
+## Input files
+#if $operation.mode == "eval":
+  '$operation.input_file'
+#elif $operation.mode == "eval-all":
+  #for $f in $operation.input_file:
     '$f'
   #end for
 #end if
 > '$output_file'
     ]]></command>
     <configfiles>
-        <configfile name="expr_file">$expression</configfile>
+        <configfile name="expr_file">#if $expression_source.source == "text"
+$expression_source.expression
+#end if</configfile>
     </configfiles>
     <inputs>
-        <param name="input_file" type="data" format="yaml,json,xml,csv,tsv,txt" optional="true" multiple="true" label="Input file(s)" help="The data file(s) to process. Multiple files can be selected (useful with eval-all mode to merge documents across files). When no file is provided, null-input mode (-n) is automatically enabled to create documents from scratch."/>
-        <param name="expression" type="text" area="true" optional="true" label="Expression" help="The jq-like expression to evaluate (e.g. .a.b[0].c). Leave empty if loading the expression from a file.">
-            <sanitizer sanitize="false"/>
-        </param>
-        <param name="expression_from_file" type="data" format="txt" optional="true" label="Expression from file" help="Load the expression from a file instead of typing it above. Overrides the expression text field."/>
-        <param name="mode" type="select" label="Mode" help="eval processes each document in each file in sequence; eval-all loads all documents of all files and runs the expression once.">
-            <option value="eval" selected="true">eval (default)</option>
-            <option value="eval-all">eval-all (merge all documents)</option>
-        </param>
+        <conditional name="expression_source">
+            <param name="source" type="select" label="Expression source" help="Choose whether to type the expression directly or load it from a file.">
+                <option value="text" selected="true">Text input</option>
+                <option value="file">From file</option>
+            </param>
+            <when value="text">
+                <param name="expression" type="text" area="true" optional="false" label="Expression" help="The jq-like expression to evaluate (e.g. .a.b[0].c).">
+                    <sanitizer sanitize="false"/>
+                </param>
+            </when>
+            <when value="file">
+                <param name="expression_file" type="data" format="txt" label="Expression file" help="A text file containing the jq-like expression to evaluate."/>
+            </when>
+        </conditional>
+        <conditional name="operation">
+            <param name="mode" type="select" label="Operation mode" help="eval processes a single input file; eval-all loads all documents from one or more files and runs the expression once on the combined set; create builds a new document from scratch without any input file.">
+                <option value="eval" selected="true">Process a single input file</option>
+                <option value="eval-all">Merge all documents (from one or more files)</option>
+                <option value="create">Create a new document (no input)</option>
+            </param>
+            <when value="eval">
+                <param name="input_file" type="data" format="yaml,json,xml,csv,tsv,txt" label="Input file" help="The data file to process."/>
+            </when>
+            <when value="eval-all">
+                <param name="input_file" type="data" format="yaml,json,xml,csv,tsv,txt" multiple="true" label="Input file(s)" help="One or more data files. All documents from all files are loaded together."/>
+            </when>
+            <when value="create"/>
+        </conditional>
         <section name="sec_format" expanded="true" title="Input/Output Format">
             <param name="input_format" type="select" label="Input format" help="Force the input format (default auto-detected from file extension).">
                 <option value="auto" selected="true">auto</option>
@@ -123,8 +146,14 @@ yq
     </outputs>
     <tests>
         <test expect_num_outputs="1">
-            <param name="input_file" value="simple.yaml" ftype="yaml"/>
-            <param name="expression_from_file" value="expr_read.txt" ftype="txt"/>
+            <conditional name="expression_source">
+                <param name="source" value="file"/>
+                <param name="expression_file" value="expr_read.txt" ftype="txt"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="eval"/>
+                <param name="input_file" value="simple.yaml" ftype="yaml"/>
+            </conditional>
             <output name="output_file" ftype="txt">
                 <assert_contents>
                     <has_text text="1"/>
@@ -132,8 +161,14 @@ yq
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="input_file" value="simple.yaml" ftype="yaml"/>
-            <param name="expression_from_file" value="expr_identity.txt" ftype="txt"/>
+            <conditional name="expression_source">
+                <param name="source" value="file"/>
+                <param name="expression_file" value="expr_identity.txt" ftype="txt"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="eval"/>
+                <param name="input_file" value="simple.yaml" ftype="yaml"/>
+            </conditional>
             <section name="sec_format">
                 <param name="output_format" value="json"/>
             </section>
@@ -148,8 +183,14 @@ yq
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="input_file" value="sample.json" ftype="json"/>
-            <param name="expression_from_file" value="expr_identity.txt" ftype="txt"/>
+            <conditional name="expression_source">
+                <param name="source" value="file"/>
+                <param name="expression_file" value="expr_identity.txt" ftype="txt"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="eval"/>
+                <param name="input_file" value="sample.json" ftype="json"/>
+            </conditional>
             <section name="sec_format">
                 <param name="output_format" value="yaml"/>
                 <param name="pretty_print" value="true"/>
@@ -163,7 +204,13 @@ yq
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="expression_from_file" value="expr_create.txt" ftype="txt"/>
+            <conditional name="expression_source">
+                <param name="source" value="file"/>
+                <param name="expression_file" value="expr_create.txt" ftype="txt"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="create"/>
+            </conditional>
             <output name="output_file" ftype="txt">
                 <assert_contents>
                     <has_text text="a:"/>
@@ -173,9 +220,14 @@ yq
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="input_file" value="multi_doc.yaml" ftype="yaml"/>
-            <param name="expression_from_file" value="expr_merge.txt" ftype="txt"/>
-            <param name="mode" value="eval-all"/>
+            <conditional name="expression_source">
+                <param name="source" value="file"/>
+                <param name="expression_file" value="expr_merge.txt" ftype="txt"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="eval-all"/>
+                <param name="input_file" value="multi_doc.yaml" ftype="yaml"/>
+            </conditional>
             <output name="output_file" ftype="txt">
                 <assert_contents>
                     <has_text text="a: 1"/>
@@ -185,8 +237,14 @@ yq
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="input_file" value="simple.xml" ftype="xml"/>
-            <param name="expression_from_file" value="expr_identity.txt" ftype="txt"/>
+            <conditional name="expression_source">
+                <param name="source" value="file"/>
+                <param name="expression_file" value="expr_identity.txt" ftype="txt"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="eval"/>
+                <param name="input_file" value="simple.xml" ftype="xml"/>
+            </conditional>
             <section name="sec_format">
                 <param name="input_format" value="xml"/>
                 <param name="output_format" value="yaml"/>
@@ -198,14 +256,34 @@ yq
             </output>
         </test>
         <test expect_num_outputs="1">
-            <param name="input_file" value="simple.yaml,simple2.yaml" ftype="yaml"/>
-            <param name="expression_from_file" value="expr_merge.txt" ftype="txt"/>
-            <param name="mode" value="eval-all"/>
+            <conditional name="expression_source">
+                <param name="source" value="file"/>
+                <param name="expression_file" value="expr_merge.txt" ftype="txt"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="eval-all"/>
+                <param name="input_file" value="simple.yaml,simple2.yaml" ftype="yaml"/>
+            </conditional>
             <output name="output_file" ftype="txt">
                 <assert_contents>
                     <has_text text="a:"/>
                     <has_text text="c: 3"/>
                     <has_text text="d: 4"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="expression_source">
+                <param name="source" value="text"/>
+                <param name="expression" value=".a.b[0]"/>
+            </conditional>
+            <conditional name="operation">
+                <param name="mode" value="eval"/>
+                <param name="input_file" value="simple.yaml" ftype="yaml"/>
+            </conditional>
+            <output name="output_file" ftype="txt">
+                <assert_contents>
+                    <has_text text="1"/>
                 </assert_contents>
             </output>
         </test>
@@ -217,9 +295,13 @@ yq
 
 **Usage**
 
-Provide a `jq`-like expression and an input file (or leave the input empty to create documents from scratch). `yq` will evaluate the expression and produce the output in the selected format.
+Select an expression source (text input or file) and an operation mode:
 
-When no input file is provided, null-input mode (`-n`) is automatically enabled so expressions can build new documents from scratch. Multiple input files can be selected; with eval-all mode, documents from all files are merged.
+- **Process a single input file** (`eval`): Evaluate the expression on a single input file. Each document in the file is processed in sequence.
+- **Merge all documents** (`eval-all`): Load all documents from one or more input files and run the expression once on the combined set. Useful for merging multiple files or multi-document YAML.
+- **Create a new document** (`create`): Build a new document from scratch without any input file. Null-input mode (`-n`) is automatically enabled.
+
+`yq` will evaluate the expression and produce the output in the selected format.
 
 **Expression**
 
@@ -235,8 +317,8 @@ The expression uses `jq`-like syntax. Here are some quick examples:
 - **Read a value**: Expression `.a.b[0]` on a YAML file returns the first element of `b` under `a`.
 - **Convert YAML to JSON**: Set output format to `json`.
 - **Convert JSON to YAML**: Set input format to `json` and output format to `yaml` with pretty print.
-- **Create from scratch**: Leave the input file empty and use expression `.a.b = "value"`.
-- **Merge files**: Select multiple files, use eval-all mode with `. as $item ireduce ({}; . * $item)`.
+- **Create from scratch**: Select "Create a new document" mode and use expression `.a.b = "value"`.
+- **Merge files**: Select "Merge all documents" mode with multiple files and expression `. as $item ireduce ({}; . * $item)`.
 
 **Security**
 
