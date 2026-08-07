@@ -1,0 +1,345 @@
+<tool id="mirge3" name="miRge3.0" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>comprehensive small RNA-seq analysis</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+#set $sample_list = []
+#for $i, $sample in enumerate($samples):
+  #set $link = 'input_' + str($i) + '.fastq'
+  ln -s '${sample}' '${link}' &&
+  #silent $sample_list.append($link)
+#end for
+
+miRge3.0
+-s '#echo ",".join($sample_list)#'
+-lib '${library.fields.path}'
+-on '$organism_name'
+-db '$mir_db'
+-cpu "\${GALAXY_SLOTS:-4}"
+-o .
+-onam output_dir
+-cuv 4
+
+#if $adapter_trimming.adapter:
+  -a '$adapter_trimming.adapter'
+#end if
+#if $adapter_trimming.front_adapter:
+  -g '$adapter_trimming.front_adapter'
+#end if
+-q $adapter_trimming.quality_cutoff
+-m $adapter_trimming.minimum_length
+$adapter_trimming.phred64
+$adapter_trimming.trim_n
+#if str($adapter_trimming.nextseq_trim):
+  -nxt $adapter_trimming.nextseq_trim
+#end if
+-ex $advanced.cr_threshold
+-cms $advanced.chunkmbs
+
+## Analysis flags
+$atoi
+$trna_frag
+$isoform_entropy
+$gff_out
+$bam_out
+$spikein
+
+## UMI
+#if $umi.umi_selector == "yes":
+  -umi '$umi.uniq_mol_ids'
+  $umi.umi_dedup
+  $umi.qiagen_umi
+#end if
+
+## miREC error correction
+#if $mirec.mirec_selector == "yes":
+  -mEC
+  -kh $mirec.threshold
+  -ks $mirec.kmer_start
+  -ke $mirec.kmer_end
+#end if
+
+## Novel miRNA prediction
+#if $novel.novel_selector == "yes":
+  -nmir
+  -minl $novel.min_length
+  -maxl $novel.max_length
+  -c $novel.min_read_counts
+  -mloc $novel.max_mapping_loci
+  -sl $novel.seed_length
+  -olc $novel.overlap_len_cutoff
+  -clc $novel.cluster_length
+#end if
+
+## Differential expression
+#if $diffex.diffex_selector == "yes":
+  -dex
+  -mdt '$diffex.metadata'
+#end if
+
+-shh
+
+#if $novel.novel_selector == "yes":
+  && shopt -s nullglob && for f in output_dir/*_novel_miRNAs_miRge2.0.csv; do cat "\$f" >> 'novel_mirnas_combined.csv'; done
+#end if
+    ]]></command>
+    <inputs>
+        <param name="samples" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" multiple="true" label="Input FASTQ files" help="One or more small RNA-seq FASTQ files"/>
+        <param name="library" type="select" label="Reference Library" help="Pre-installed miRge3 reference library for your organism">
+            <options from_data_table="mirge3_libraries">
+                <filter type="sort_by" column="0"/>
+            </options>
+        </param>
+        <param name="organism_name" type="text" value="human" label="Organism Name" help="Organism name (e.g., human, mouse, rat)">
+            <validator type="regex" message="Organism name must contain only letters">^[a-zA-Z]+$</validator>
+        </param>
+        <param name="mir_db" type="select" label="miRNA Database">
+            <option value="miRBase" selected="true">miRBase</option>
+            <option value="MirGeneDB">MirGeneDB</option>
+        </param>
+        <section name="adapter_trimming" title="Adapter Trimming and Quality Filtering" expanded="false">
+            <param name="adapter" argument="-a" type="text" value="illumina" label="3' Adapter Sequence" help="Adapter sequence or 'illumina' for standard Illumina small RNA adapter (TGGAATTCTCGGGTGCCAAGG)">
+                <validator type="regex" message="Adapter must be 'illumina' or contain only RNA bases (A,C,G,T,U)">^(illumina|[ACGTUacgtu]+)$</validator>
+            </param>
+            <param name="front_adapter" argument="-g" type="text" optional="true" label="5' Adapter Sequence" help="Optional 5' adapter sequence to trim">
+                <validator type="regex" message="Front adapter must contain only RNA bases (A,C,G,T,U)">^[ACGTUacgtu]*$</validator>
+            </param>
+            <param name="quality_cutoff" argument="-q" type="integer" value="10" min="0" max="40" label="Quality Cutoff" help="Trim low-quality bases from 3' end (default: 10)"/>
+            <param name="minimum_length" argument="-m" type="integer" value="16" min="1" label="Minimum Read Length" help="Discard reads shorter than this length after trimming (default: 16)"/>
+            <param name="phred64" argument="-phr" type="boolean" truevalue="-phr" falsevalue="" label="Phred+64 Encoding" help="Use Phred+64 quality encoding instead of Phred+33"/>
+            <param name="trim_n" argument="-NX" type="boolean" truevalue="-NX" falsevalue="" label="Trim Ns from Ends" help="Remove N bases from read ends"/>
+            <param name="nextseq_trim" argument="-nxt" type="integer" optional="true" min="0" label="NextSeq Quality Trimming" help="NextSeq-specific quality trim cutoff"/>
+        </section>
+        <section name="advanced" title="Advanced Options" expanded="false">
+            <param name="cr_threshold" argument="-ex" type="float" value="0.1" min="0.0" max="1.0" label="Canonical Read Threshold" help="Minimum fraction of reads matching canonical miRNA sequence (default: 0.1)"/>
+            <param name="chunkmbs" argument="-cms" type="integer" value="256" min="64" label="Bowtie Chunk Memory (MB)" help="Memory allocated per bowtie thread (default: 256)"/>
+        </section>
+        <param name="atoi" argument="-ai" type="boolean" truevalue="-ai" falsevalue="" label="Enable A-to-I Editing Detection" help="Detect A-to-I RNA editing events in miRNA sequences"/>
+        <param name="trna_frag" argument="-trf" type="boolean" truevalue="-trf" falsevalue="" label="Enable tRNA Fragment Analysis" help="Analyze tRNA-derived fragments (human only)"/>
+        <param name="isoform_entropy" argument="-ie" type="boolean" truevalue="-ie" falsevalue="" label="Enable IsomiR Entropy Calculation" help="Calculate isomiR entropy for each miRNA"/>
+        <param name="gff_out" argument="-gff" type="boolean" truevalue="-gff" falsevalue="" label="Output IsomiR GFF File" help="Generate a GFF file with isomiR annotations"/>
+        <param name="bam_out" argument="-bam" type="boolean" truevalue="-bam" falsevalue="" label="Output BAM Files" help="Generate BAM alignment files"/>
+        <param name="spikein" argument="-spk" type="boolean" truevalue="-spk" falsevalue="" label="Enable Spike-in Annotation" help="Annotate spike-in sequences"/>
+        <conditional name="umi">
+            <param name="umi_selector" type="select" label="UMI Processing">
+                <option value="no" selected="true">No UMI processing</option>
+                <option value="yes">Enable UMI processing</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="uniq_mol_ids" argument="-umi" type="text" value="4,4" label="UMI Pattern" help="UMI base positions (e.g., '4,4' for 4bp on each end, '0,12' for 12bp at 3' end)">
+                    <validator type="regex" message="UMI pattern must be two comma-separated numbers (e.g., '4,4')">^\d+,\d+$</validator>
+                </param>
+                <param name="umi_dedup" argument="-udd" type="boolean" truevalue="-udd" falsevalue="" label="PCR Duplicate Removal" help="Remove PCR duplicates using UMI sequences"/>
+                <param name="qiagen_umi" argument="-qumi" type="boolean" truevalue="-qumi" falsevalue="" label="Qiagen UMI Mode" help="Use Qiagen-specific UMI processing"/>
+            </when>
+        </conditional>
+        <conditional name="mirec">
+            <param name="mirec_selector" type="select" label="miREC Error Correction">
+                <option value="no" selected="true">Disabled</option>
+                <option value="yes">Enable miREC error correction</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="threshold" argument="-kh" type="integer" value="5" min="1" label="Frequency Threshold" help="Minimum read frequency for error correction (default: 5)"/>
+                <param name="kmer_start" argument="-ks" type="integer" value="15" min="1" label="K-mer Start" help="Starting k-mer size (default: 15)"/>
+                <param name="kmer_end" argument="-ke" type="integer" value="20" min="1" label="K-mer End" help="Ending k-mer size (default: 20)"/>
+            </when>
+        </conditional>
+        <conditional name="novel">
+            <param name="novel_selector" type="select" label="Novel miRNA Prediction">
+                <option value="no" selected="true">Disabled</option>
+                <option value="yes">Enable novel miRNA prediction</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="min_length" argument="-minl" type="integer" value="16" min="10" max="30" label="Minimum Read Length" help="Minimum read length for novel miRNA prediction (default: 16)"/>
+                <param name="max_length" argument="-maxl" type="integer" value="25" min="15" max="35" label="Maximum Read Length" help="Maximum read length for novel miRNA prediction (default: 25)"/>
+                <param name="min_read_counts" argument="-c" type="integer" value="2" min="1" label="Minimum Read Counts" help="Minimum read count for novel miRNA candidates (default: 2)"/>
+                <param name="max_mapping_loci" argument="-mloc" type="integer" value="3" min="1" label="Maximum Mapping Loci" help="Maximum genomic loci a read can map to (default: 3)"/>
+                <param name="seed_length" argument="-sl" type="integer" value="25" min="10" label="Bowtie Seed Length" help="Seed length for bowtie alignment (default: 25)"/>
+                <param name="overlap_len_cutoff" argument="-olc" type="integer" value="14" min="1" label="Overlap Length Cutoff" help="Minimum overlap for read clustering (default: 14)"/>
+                <param name="cluster_length" argument="-clc" type="integer" value="30" min="10" label="Cluster Maximum Length" help="Maximum cluster length (default: 30)"/>
+            </when>
+        </conditional>
+        <conditional name="diffex">
+            <param name="diffex_selector" type="select" label="Differential Expression Analysis">
+                <option value="no" selected="true">Disabled</option>
+                <option value="yes">Enable DESeq2 differential expression</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="metadata" argument="-mdt" type="data" format="csv,txt,tabular" label="Metadata File" help="CSV file with sample metadata for DESeq2 (required for differential expression)"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="html_report" format="html" from_work_dir="output_dir/miRge3_visualization.html" label="${tool.name} visualization report on ${on_string}"/>
+        <data name="annotation_report_csv" format="csv" from_work_dir="output_dir/annotation.report.csv" label="${tool.name} annotation report on ${on_string}"/>
+        <data name="mir_counts" format="csv" from_work_dir="output_dir/miR.Counts.csv" label="${tool.name} miRNA counts on ${on_string}"/>
+        <data name="mir_rpm" format="csv" from_work_dir="output_dir/miR.RPM.csv" label="${tool.name} miRNA RPM on ${on_string}"/>
+        <data name="mapped_csv" format="csv" from_work_dir="output_dir/mapped.csv" label="${tool.name} mapped reads on ${on_string}"/>
+        <data name="unmapped_csv" format="csv" from_work_dir="output_dir/unmapped.csv" label="${tool.name} unmapped reads on ${on_string}"/>
+        <data name="run_log" format="txt" from_work_dir="output_dir/run.log" label="${tool.name} run log on ${on_string}"/>
+        <data name="gff_output" format="gff" from_work_dir="output_dir/sample_miRge3.gff" label="${tool.name} isomiR GFF on ${on_string}">
+            <filter>gff_out</filter>
+        </data>
+        <data name="atoi_report" format="csv" from_work_dir="output_dir/a2IEditing.report.csv" label="${tool.name} A-to-I editing on ${on_string}">
+            <filter>atoi</filter>
+        </data>
+        <data name="trf_report" format="tsv" from_work_dir="output_dir/tRFs.aligned.report.tsv" label="${tool.name} tRF report on ${on_string}">
+            <filter>trna_frag</filter>
+        </data>
+        <data name="trf_counts" format="csv" from_work_dir="output_dir/tRF.Counts.csv" label="${tool.name} tRF counts on ${on_string}">
+            <filter>trna_frag</filter>
+        </data>
+        <data name="novel_mirnas_csv" format="csv" from_work_dir="novel_mirnas_combined.csv" label="${tool.name} novel miRNAs on ${on_string}">
+            <filter>novel['novel_selector'] == "yes"</filter>
+        </data>
+        <data name="diffex_results" format="tabular" from_work_dir="output_dir/miR.DiffExpn.txt" label="${tool.name} differential expression on ${on_string}">
+            <filter>diffex['diffex_selector'] == "yes"</filter>
+        </data>
+        <data name="diffex_volcano" format="pdf" from_work_dir="output_dir/mirge_diffex.volcano.pdf" label="${tool.name} volcano plot on ${on_string}">
+            <filter>diffex['diffex_selector'] == "yes"</filter>
+        </data>
+        <data name="diffex_pca" format="pdf" from_work_dir="output_dir/mirge_diffex.pca.pdf" label="${tool.name} PCA plot on ${on_string}">
+            <filter>diffex['diffex_selector'] == "yes"</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="7">
+            <param name="samples" value="sample.fastq"/>
+            <param name="library" value="test_human"/>
+            <param name="organism_name" value="human"/>
+            <param name="mir_db" value="miRBase"/>
+            <output name="html_report" ftype="html">
+                <assert_contents>
+                    <has_text text="miRge3.0"/>
+                    <has_text text="miRNA"/>
+                    <has_text text="Read Length Distribution"/>
+                    <has_text text="annotation"/>
+                </assert_contents>
+            </output>
+            <output name="annotation_report_csv" ftype="csv">
+                <assert_contents>
+                    <has_text text="miRNA"/>
+                    <has_text text="miR-21"/>
+                    <has_text text="hsa-let-7a"/>
+                    <has_n_columns n="4"/>
+                    <has_n_lines n="2"/>
+                </assert_contents>
+            </output>
+            <output name="mir_counts" ftype="csv">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="miR-21"/>
+                    <has_text text="hsa-let-7a"/>
+                    <has_n_lines n="3"/>
+                </assert_contents>
+            </output>
+            <output name="mir_rpm" ftype="csv">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="miR-21"/>
+                    <has_text text="hsa-let-7a"/>
+                    <has_n_lines n="3"/>
+                </assert_contents>
+            </output>
+            <output name="mapped_csv" ftype="csv">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="Sequence"/>
+                    <has_text text="TGAGGTAGTAGGTTGTATAGTT"/>
+                    <has_text text="TAGCTTATCAGACTGATGTTGA"/>
+                    <has_text text="TAGCAGCACGTAAATATTGGCG"/>
+                    <has_n_lines n="3"/>
+                </assert_contents>
+            </output>
+            <output name="unmapped_csv" ftype="csv">
+                <assert_contents>
+                    <has_n_columns n="2"/>
+                    <has_text text="Sequence"/>
+                </assert_contents>
+            </output>
+            <output name="run_log" ftype="txt">
+                <assert_contents>
+                    <has_text text="miRge"/>
+                    <has_text text="completed"/>
+                    <has_n_lines n="1"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# miRge3.0 - Comprehensive Small RNA-seq Analysis
+
+## What it does
+
+miRge3.0 is a comprehensive pipeline for small RNA-seq data analysis. It performs:
+
+- **Adapter trimming and quality filtering** (via cutadapt)
+- **Read collapsing** and alignment against miRNA reference libraries (via bowtie)
+- **Known miRNA quantification** and isomiR analysis
+- **A-to-I RNA editing detection**
+- **tRNA fragment (tRF) analysis** (human only)
+- **Novel miRNA prediction** using a machine learning model
+- **UMI processing** and PCR duplicate removal
+- **Differential expression analysis** (via DESeq2)
+- **Interactive HTML visualization report**
+
+## Input
+
+One or more FASTQ files from small RNA-seq experiments. Both uncompressed (`.fastq`) and gzip-compressed (`.fastq.gz`) files are accepted.
+
+## Reference Libraries
+
+miRge3.0 requires organism-specific reference libraries. These must be pre-installed
+by a Galaxy administrator. Libraries are available for:
+human, mouse, rat, zebrafish, nematode, fruitfly, and hamster.
+
+Each library contains bowtie indexes of miRNA hairpin sequences, mature miRNA annotations,
+and genomic coordinates for isomiR analysis.
+
+## Output
+
+The primary output is an interactive HTML report with visualization of read distributions,
+miRNA expression, isomiR variants, and more.
+
+Tabular outputs include:
+
+- **miRNA Counts** (`miR.Counts.csv`) - raw read counts per miRNA
+- **miRNA RPM** (`miR.RPM.csv`) - reads per million normalized counts
+- **Annotation Report** (`annotation.report.csv`) - detailed alignment statistics
+- **Mapped Reads** - reads that aligned to miRNA references
+- **Unmapped Reads** - reads that did not align
+
+Optional outputs (when enabled):
+
+- **IsomiR GFF** - genomic coordinates of isomiR variants
+- **A-to-I Editing Report** - detected RNA editing events
+- **tRF Report** - tRNA fragment analysis results
+- **Novel miRNA Predictions** - predicted novel miRNAs
+- **Differential Expression** - DESeq2 results with volcano and PCA plots
+
+## Adapter Trimming
+
+By default, miRge3.0 uses the standard Illumina small RNA 3' adapter
+(`TGGAATTCTCGGGTGCCAAGG`). You can specify a custom adapter sequence or use
+the `illumina` shorthand for the standard adapter.
+
+## Notes
+
+- **tRF analysis** is only available for human samples
+- **Differential expression** requires a metadata CSV file with sample group assignments
+- **Novel miRNA prediction** requires a genome reference library with genomic coordinates
+- The HTML report uses interactive JavaScript visualizations (HighCharts, DataTables)
+
+For more details, see the miRge3.0 documentation:
+https://mirge3.readthedocs.io/
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
