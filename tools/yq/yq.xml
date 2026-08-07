@@ -12,7 +12,8 @@ yq
 #else:
   e
 #end if
-#if $sec_options.null_input:
+## Null-input is automatically enabled when no input file is provided
+#if not $input_file:
   -n
 #end if
 #if str($sec_format.input_format) != "auto":
@@ -33,12 +34,8 @@ yq
 #if $sec_options.no_doc_separators:
   -N
 #end if
-#if $sec_options.security_disable_file_ops:
-  --security-disable-file-ops
-#end if
-#if $sec_options.security_disable_env_ops:
-  --security-disable-env-ops
-#end if
+--security-disable-file-ops
+--security-disable-env-ops
 #if str($sec_options.front_matter) != "none":
   -f '$sec_options.front_matter'
 #end if
@@ -48,9 +45,11 @@ yq
 #else:
   --from-file '$expr_file'
 #end if
-## Input file (if not null-input)
-#if not $sec_options.null_input and $input_file:
-  '$input_file'
+## Input files (if any provided)
+#if $input_file:
+  #for $f in $input_file:
+    '$f'
+  #end for
 #end if
 > '$output_file'
     ]]></command>
@@ -58,7 +57,7 @@ yq
         <configfile name="expr_file">$expression</configfile>
     </configfiles>
     <inputs>
-        <param name="input_file" type="data" format="yaml,json,xml,csv,tsv,txt" optional="true" label="Input file" help="The data file to process. Leave empty when using null-input mode to create documents from scratch."/>
+        <param name="input_file" type="data" format="yaml,json,xml,csv,tsv,txt" optional="true" multiple="true" label="Input file(s)" help="The data file(s) to process. Multiple files can be selected (useful with eval-all mode to merge documents across files). When no file is provided, null-input mode (-n) is automatically enabled to create documents from scratch."/>
         <param name="expression" type="text" area="true" optional="true" label="Expression" help="The jq-like expression to evaluate (e.g. .a.b[0].c). Leave empty if loading the expression from a file.">
             <sanitizer sanitize="false"/>
         </param>
@@ -104,14 +103,11 @@ yq
         <section name="sec_options" expanded="false" title="Advanced Options">
             <param name="unwrap_scalar" type="boolean" checked="true" truevalue="-r" falsevalue="" label="Unwrap scalars" help="Unwrap scalar values in the output (default true)."/>
             <param name="no_doc_separators" type="boolean" checked="false" truevalue="-N" falsevalue="" label="No document separators" help="Do not print --- document separators between YAML documents."/>
-            <param name="null_input" type="boolean" checked="false" truevalue="-n" falsevalue="" label="Null input" help="Do not read input; evaluate the expression from scratch (creates a new document)."/>
             <param name="front_matter" type="select" label="Front matter" help="Extract or process YAML front matter (e.g. in Markdown files).">
                 <option value="none" selected="true">none</option>
                 <option value="extract">extract</option>
                 <option value="process">process</option>
             </param>
-            <param name="security_disable_file_ops" type="boolean" checked="true" truevalue="--security-disable-file-ops" falsevalue="" label="Disable file operations" help="Disable yq file operations (e.g. load()). Recommended for Galaxy safety."/>
-            <param name="security_disable_env_ops" type="boolean" checked="true" truevalue="--security-disable-env-ops" falsevalue="" label="Disable environment operations" help="Disable yq environment operations (e.g. env). Recommended for Galaxy safety."/>
         </section>
     </inputs>
     <outputs>
@@ -168,9 +164,6 @@ yq
         </test>
         <test expect_num_outputs="1">
             <param name="expression_from_file" value="expr_create.txt" ftype="txt"/>
-            <section name="sec_options">
-                <param name="null_input" value="true"/>
-            </section>
             <output name="output_file" ftype="txt">
                 <assert_contents>
                     <has_text text="a:"/>
@@ -204,6 +197,18 @@ yq
                 </assert_contents>
             </output>
         </test>
+        <test expect_num_outputs="1">
+            <param name="input_file" value="simple.yaml,simple2.yaml" ftype="yaml"/>
+            <param name="expression_from_file" value="expr_merge.txt" ftype="txt"/>
+            <param name="mode" value="eval-all"/>
+            <output name="output_file" ftype="txt">
+                <assert_contents>
+                    <has_text text="a:"/>
+                    <has_text text="c: 3"/>
+                    <has_text text="d: 4"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
@@ -212,7 +217,9 @@ yq
 
 **Usage**
 
-Provide a `jq`-like expression and an input file (or use null-input mode to create documents from scratch). `yq` will evaluate the expression and produce the output in the selected format.
+Provide a `jq`-like expression and an input file (or leave the input empty to create documents from scratch). `yq` will evaluate the expression and produce the output in the selected format.
+
+When no input file is provided, null-input mode (`-n`) is automatically enabled so expressions can build new documents from scratch. Multiple input files can be selected; with eval-all mode, documents from all files are merged.
 
 **Expression**
 
@@ -228,12 +235,12 @@ The expression uses `jq`-like syntax. Here are some quick examples:
 - **Read a value**: Expression `.a.b[0]` on a YAML file returns the first element of `b` under `a`.
 - **Convert YAML to JSON**: Set output format to `json`.
 - **Convert JSON to YAML**: Set input format to `json` and output format to `yaml` with pretty print.
-- **Create from scratch**: Enable null-input, use expression `.a.b = "value"`.
-- **Merge files**: Use eval-all mode with `. as $item ireduce ({}; . * $item)`.
+- **Create from scratch**: Leave the input file empty and use expression `.a.b = "value"`.
+- **Merge files**: Select multiple files, use eval-all mode with `. as $item ireduce ({}; . * $item)`.
 
 **Security**
 
-For safety in Galaxy, file operations and environment operations are disabled by default. If you need features like `load()` or `env`, you can disable these protections in the Advanced Options section.
+For safety in Galaxy, file operations (`load()`, `load_base64()`, etc.) and environment variable access (`env`) are always disabled and cannot be turned off by the user.
 
 **Documentation**
 
