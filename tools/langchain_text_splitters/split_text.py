@@ -122,13 +122,25 @@ def read_input_text(input_path):
     # line endings as \n. That would change both the chunk content and the
     # reported start indices with respect to the input dataset.
     try:
-        return input_path.read_bytes().decode("utf-8")
+        text = input_path.read_bytes().decode("utf-8")
     except UnicodeDecodeError as error:
         sys.exit(
             "The input dataset is not valid UTF-8 text "
             f"(invalid byte at offset {error.start}). "
             "Convert the dataset to UTF-8 before splitting it."
         )
+
+    # When a file without an empty last line gets uploaded to Galaxy,
+    # an \n will be append automatically see convert_newlines() in galaxy/lib/galaxy/datatypes/sniff.py
+
+    # TODO: Thus, we need a way to address this in a robust way just
+    # return text.removesuffix("\n") leads to 6 six failing tests (6,12,14,15,16,17)
+
+    # if we just keep the \n we face in the NLTK splitter case the warning below.
+    # WARNING: The NLTK sentence splitter dropped the 1 character(s) after the last sentence [...]
+    # To reproduce use sentence_nltk_english.txt, with target chunk size in characters: 30
+    # Or run planemo test --test_index 9
+    return text
 
 
 def get_tiktoken_options(args):
@@ -308,7 +320,7 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
             pipeline=args.spacy_pipeline,
             max_length=args.spacy_max_length,
             separator="",
-            strip_whitespace=False,
+            strip_whitespace=args.strip_whitespace,
         )
         # langchain only forwards max_length to the pipelines it loads with
         # spacy.load(). The sentencizer is built from English() instead and
@@ -687,7 +699,7 @@ def main():
         metadata.update(
             {
                 "spacy_pipeline": args.spacy_pipeline,
-                "strip_whitespace": False,
+                "strip_whitespace": args.strip_whitespace,
             }
         )
 

@@ -70,6 +70,7 @@
             #else
                 --spacy-pipeline '$splitter.sentence_splitter.pipeline'
                 --spacy-max-length '$splitter.sentence_splitter.max_length'
+                $splitter.strip_whitespace
             #end if
 
             #if str($splitter.length.length_mode) == "token"
@@ -136,7 +137,7 @@
                     </when>
                 </conditional>
                 <!-- I have the impression strip_whitespace should be in use for the token-based splitter as well but looks to me it is never called, maybe worth creating an upstream issue (?) -->
-                <param name="strip_whitespace" type="boolean" checked="true" truevalue="--strip-whitespace" falsevalue="" label="Strip whitespace around chunks" help="Remove leading and trailing whitespace from each generated chunk. Whitespace within chunks is preserved."/>
+                <expand macro="strip_whitespace"/>
                 <conditional name="length">
                     <param name="length_mode" type="select" label="Target chunk size should be determined by the count of" help="Choose whether the target chunk size should be determined by characters or token count.">
                         <option value="characters" selected="true">Characters</option>
@@ -153,38 +154,51 @@
             </when>
             <when value="sentence">
                 <conditional name="sentence_splitter">
-                    <param name="type" type="select" label="Sentence boundary detector" help="Detect sentence boundaries with NLTK or spaCy. Complete sentences are subsequently merged until the target chunk size is reached.">
-                        <option value="nltk" selected="true">
-                NLTK Punkt sentence tokenizer
-            </option>
-                        <option value="spacy">
-                spaCy sentence segmentation
-            </option>
+                    <param name="type" type="select" label="Sentence boundary detector" help="Detect sentence boundaries with NLTK or spaCy. Complete sentences are subsequently merged until the target chunk size is reached. If you want to remove the outputs chunk's leading/trailing whitespace use spaCy. For NLTK we cannot offer this feature as this might lead to invalid start_index values in the chunk metadata.">
+                        <option value="nltk">
+                            NLTK Punkt sentence tokenizer
+                        </option>
+                        <option value="spacy" selected="true">
+                            spaCy sentence segmentation
+                        </option>
                     </param>
                     <when value="nltk">
                         <param name="language" type="select" label="Language">
+                            <option value="czech">Czech</option>
+                            <option value="danish">Danish</option>
+                            <option value="dutch">Dutch</option>
                             <option value="english" selected="true">English</option>
-                            <option value="german">German</option>
-                            <option value="spanish">Spanish</option>
+                            <option value="estonian">Estonian</option>
+                            <option value="finnish">Finnish</option>
                             <option value="french">French</option>
+                            <option value="german">German</option>
+                            <option value="greek">Greek</option>
                             <option value="italian">Italian</option>
+                            <option value="malayalam">Malayalam</option>
+                            <option value="norwegian">Norwegian</option>
+                            <option value="polish">Polish</option>
                             <option value="portuguese">Portuguese</option>
-                            <!-- Add the other installed Punkt languages. -->
+                            <option value="russian">Russian</option>
+                            <option value="slovene">Slovene</option>
+                            <option value="spanish">Spanish</option>
+                            <option value="swedish">Swedish</option>
+                            <option value="turkish">Turkish</option>
                         </param>
                     </when>
                     <when value="spacy">
                         <param name="pipeline" type="select" label="spaCy pipeline">
                             <option value="sentencizer" selected="true">
-                    Rule-based sentencizer (fast, no model required)
-                </option>
+                                Rule-based sentencizer (fast, no model required)
+                            </option>
                             <option value="en_core_web_sm">
-                    English model (en_core_web_sm)
-                </option>
+                                English model (en_core_web_sm)
+                            </option>
                         </param>
                         <!-- The upper bound keeps a single job from exhausting the
                              memory of a shared compute node, see the per-character
                              cost quoted in the help below. -->
                         <param name="max_length" type="integer" value="1000000" min="1" max="10000000" label="Maximum input length" help="Maximum number of input characters accepted by the spaCy pipeline. The tool stops with an error if the input is longer. Raising this costs memory: the English model needs roughly 3.5 kB per input character, the rule-based sentencizer roughly 0.2 kB."/>
+                        <expand macro="strip_whitespace" checked="false"/>
                     </when>
                 </conditional>
                 <conditional name="length">
@@ -625,6 +639,11 @@
             </output_collection>
         </test>
         <!-- NLTK keeps the abbreviation "Dr." inside the first sentence. -->
+        <!-- 
+            This test (Number: 9) is expected to fail so we remember to address 
+            the automatic additon of \n for a file without a trailing newline
+            by convert_newlines() in galaxy/lib/galaxy/datatypes/sniff.py
+          -->
         <test>
             <param name="input" value="sentence_nltk_english.txt" ftype="txt"/>
             <conditional name="splitter">
@@ -670,6 +689,9 @@
                     </assert_contents>
                 </element>
             </output_collection>
+            <assert_stdout>
+                <not_has_text text="WARNING: The NLTK sentence splitter dropped"/>
+            </assert_stdout>
         </test>
         <!-- Exercise NLTK's language selection with the German Punkt model. -->
         <test>
@@ -766,6 +788,7 @@
                     <param name="type" value="spacy"/>
                     <param name="pipeline" value="sentencizer"/>
                     <param name="max_length" value="1000000"/>
+                    <param name="strip_whitespace" value="false"/>
                 </conditional>
                 <conditional name="length">
                     <param name="length_mode" value="characters"/>
@@ -812,6 +835,7 @@
                     <param name="type" value="spacy"/>
                     <param name="pipeline" value="en_core_web_sm"/>
                     <param name="max_length" value="1000000"/>
+                    <param name="strip_whitespace" value="true"/>
                 </conditional>
                 <conditional name="length">
                     <param name="length_mode" value="characters"/>
@@ -832,12 +856,12 @@
             <output_collection name="chunks_collection" type="list" count="2">
                 <element name="chunk_0001">
                     <assert_contents>
-                        <has_text_matching expression="\AFirst sentence is short\.&#10;Second sentence is also short\.&#10;\Z"/>
+                        <has_text_matching expression="\AFirst sentence is short\.&#10;Second sentence is also short\.\Z"/>
                     </assert_contents>
                 </element>
                 <element name="chunk_0002">
                     <assert_contents>
-                        <has_text_matching expression="\AThird sentence ends here\.&#10;\Z"/>
+                        <has_text_matching expression="\AThird sentence ends here\.\Z"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -851,6 +875,7 @@
                     <param name="type" value="spacy"/>
                     <param name="pipeline" value="sentencizer"/>
                     <param name="max_length" value="1000000"/>
+                    <param name="strip_whitespace" value="false"/>
                 </conditional>
                 <conditional name="length">
                     <param name="length_mode" value="token"/>
@@ -1340,9 +1365,10 @@ and other LLM workflows where long text needs to be bounded by a chunk size.
     - `NLTKTextSplitter`: Uses NLTK's Punkt sentence tokenizer, which is trained per language and therefore handles language-specific abbreviations such as `Dr.` in English or `z.B.` in German. Select the language of the input.
     - `SpacyTextSplitter`: Uses spaCy. The rule-based sentencizer is fast and needs no model, but it applies English tokenization rules. The `en_core_web_sm` model is more accurate on English text, and is roughly five times slower and needs about ten times more memory.
 
-Both sentence splitters keep the whitespace between the sentences, so a chunk
-starts with the line break that follows the previous sentence. The chunk overlap
-is applied in whole sentences: an overlapping sentence is only carried over if it
+Both sentence splitters preserve whitespace between sentences by default, 
+in that case a chunk starts with the line break that follows the previous sentence.
+For spaCy, leading and trailing whitespace can optionally be removed from each returned chunk.
+The chunk overlap is applied in whole sentences: an overlapping sentence is only carried over if it
 fits into the next chunk together with the following sentence, otherwise the
 overlap is silently smaller than requested.
 
