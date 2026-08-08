@@ -1,0 +1,1139 @@
+<tool id="cleaverna" name="CleaveRNA" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Machine learning scoring of candidate DNAzyme cleavage sites</description>
+    <creator>
+        <person givenName="Reyhaneh" familyName="Tavakoli Koopaei" email="rey.ta.kop.biochem@gmail.com"/>
+        <person givenName="Björn" familyName="Gruening" email="bgruening@informatik.uni-freiburg.de"/>
+        <person givenName="Martin" familyName="Raden" email="martin.raden@uni-tuebingen.de"/>
+    </creator>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <required_files>
+        <include path="data/HPBC_user_merged_num.csv.zip"/>
+        <include path="data/HPBC_target.csv"/>
+        <include path="data/SARS_user_merged_num.csv.zip"/>
+        <include path="data/SARS_target.csv"/>
+    </required_files>
+    <version_command>cleaverna --help | head -1</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+    #if $mode_selector.mode == "training"
+        mkdir -p input &&
+        #if $mode_selector.params_source.params_method == "upload"
+            ln -s "$mode_selector.params_source.params_csv" input/params.csv &&
+        #else
+            cp $params_file_config_train input/params.csv &&
+            ## remove the first line
+            sed -i '1d' input/params.csv &&
+        #end if
+        ## COPY OR GENERATE TARGET FASTA FILES
+        #if $mode_selector.target_source.target_method == "upload"
+            #for $f in $mode_selector.target_source.target_files_training
+                #if $f.element_identifier.endswith('.fasta'):
+                    cp "$f" input/${f.element_identifier} &&
+                #else
+                    cp "$f" input/${f.element_identifier}.fasta &&
+                #end if
+            #end for
+        #else
+            #for $row in $mode_selector.target_source.target_seq_rows
+                echo ">${row.seq_name}" > input/${row.seq_name}.fasta &&
+                echo "${row.sequence}" >> input/${row.seq_name}.fasta &&
+            #end for
+            cat input/*.fasta > output/generated_targets.fasta &&
+        #end if
+        cleaverna
+            --params input/params.csv
+            --target_files_training input/*.fasta
+            --prediction_mode default
+            --model_name "$mode_selector.model_name"
+            --output_dir output &&
+        mv output/${mode_selector.model_name}_user_merged_num.csv output/training_output.csv
+    #else
+        ## ---------- PREDICTION MODE ----------
+        #if $mode_selector.prediction_mode_selector.prediction_mode == "default"
+            #set $model_name = str($mode_selector.prediction_mode_selector.model_name)
+            mkdir -p input &&
+            mkdir -p output &&
+            mkdir -p training_data &&
+
+            ## PARAMS (upload or generate)
+            #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
+                cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
+            #else
+                cp "$prediction_params_file_config" input/params.csv &&
+                ## remove the first line
+                sed -i '1d' input/params.csv &&
+            #end if
+
+            ## COPY OR GENERATE TARGET FASTA FILES
+            #if $mode_selector.target_source.target_method == "upload"
+                #for $f in $mode_selector.target_source.target_files_prediction
+                    #if $f.element_identifier.endswith('.fasta'):
+                        cp "$f" input/${f.element_identifier} &&
+                    #else
+                        cp "$f" input/${f.element_identifier}.fasta &&
+                    #end if
+                #end for
+            #else
+                #for $row in $mode_selector.target_source.target_seq_rows
+                    echo ">${row.seq_name}" > input/${row.seq_name}.fasta &&
+                    echo "${row.sequence}" >> input/${row.seq_name}.fasta &&
+                #end for
+                cat input/*.fasta > input/generated_targets.fasta &&
+            #end if
+
+
+            ## TRAINING FILE
+            #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
+                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "HPBC"
+                    unzip "$__tool_directory__/data/HPBC_user_merged_num.csv.zip" -d training_data &&
+                    mv training_data/HPBC_user_merged_num.csv training_data/training_data.csv &&
+                #end if
+                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "SARS"
+                    unzip "$__tool_directory__/data/SARS_user_merged_num.csv.zip" -d training_data &&
+                    mv training_data/SARS_user_merged_num.csv training_data/training_data.csv &&
+                #end if
+            #else
+                mv "$mode_selector.prediction_mode_selector.training_file_source.training_upload" training_data/training.csv &&
+            #end if
+
+            ## TRAINING SCORES
+            #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
+                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "HPBC_target"
+                    cp "$__tool_directory__/data/HPBC_target.csv" training_data/ &&
+                    mv training_data/HPBC_target.csv training_data/training_scores.csv &&
+                #end if
+                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "SARS_target"
+                    cp "$__tool_directory__/data/SARS_target.csv" training_data/ &&
+                    mv training_data/SARS_target.csv training_data/training_scores.csv &&
+                #end if
+            #else
+                mv "$mode_selector.prediction_mode_selector.training_scores_source.scores_upload" training_data/training_scores.csv &&
+            #end if
+            cleaverna
+                --params input/params.csv
+                --target_files_prediction input/*.fasta
+                --prediction_mode default
+                --model_name "$mode_selector.prediction_mode_selector.model_name"
+                --training_file "training_data/training_data.csv"
+                --training_scores "training_data/training_scores.csv"
+                --output_dir output &&
+            mv output/${model_name}_ML_train_feature_set.csv output/ml_train_feature_set.csv &&
+            mv output/${model_name}_ML_train.csv output/ml_train.csv &&
+            mv output/${model_name}_ML_metrics.csv output/ml_metrics.csv &&
+            mv output/${model_name}_CleaveRNA_output.csv output/cleaverna_output.csv &&
+            mv output/${model_name}_balanced_classification.csv output/balanced_classification.csv &&
+            mv output/parameters.cfg output/prediction_parameters.cfg
+
+
+        #else if $mode_selector.prediction_mode_selector.prediction_mode == "target_check"
+            #set $model_name = str($mode_selector.prediction_mode_selector.model_name)
+            mkdir -p input &&
+            mkdir -p output &&
+            mkdir -p training_data &&
+
+                    ## PARAMS
+            #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
+                cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
+            #else
+                cp "$target_check_params_config" input/params.csv &&
+                sed -i '1d' input/params.csv &&
+            #end if
+            ## COPY OR GENERATE TARGET FASTA FILES
+            #if $mode_selector.target_source.target_method == "upload"
+                #for $f in $mode_selector.target_source.target_files_prediction
+                    #set $fname = $f.element_identifier if $f.element_identifier.endswith('.fasta') else $f.element_identifier + '.fasta'
+                    cp "$f" input/$fname &&
+                #end for
+            #else
+                #for $row in $mode_selector.target_source.target_seq_rows
+                    echo ">${row.seq_name}" > input/${row.seq_name}.fasta &&
+                    echo "${row.sequence}" >> input/${row.seq_name}.fasta &&
+                #end for
+                cat input/*.fasta > input/generated_targets.fasta &&
+            #end if
+            ## TRAINING DATA (Standardizing names for tool)
+            #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
+                unzip "$__tool_directory__/data/${mode_selector.prediction_mode_selector.training_file_source.training_builtin}_user_merged_num.csv.zip" -d training_data &&
+                mv training_data/*.csv training_data/training_data.csv &&
+            #else
+                cp "$mode_selector.prediction_mode_selector.training_file_source.training_upload" training_data/training_data.csv &&
+            #end if
+
+            ## TRAINING SCORES
+            #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
+                cp "$__tool_directory__/data/${mode_selector.prediction_mode_selector.training_scores_source.scores_builtin}.csv" training_data/training_scores.csv &&
+            #else
+                cp "$mode_selector.prediction_mode_selector.training_scores_source.scores_upload" training_data/training_scores.csv &&
+            #end if
+
+            cleaverna
+                --params input/params.csv
+                --target_files_prediction input/*.fasta
+                --prediction_mode target_check
+                --model_name "$mode_selector.prediction_mode_selector.model_name"
+                --training_file "training_data/training_data.csv"
+                --training_scores "training_data/training_scores.csv"
+                --output_dir output &&
+
+            mv output/${model_name}_ML_train_feature_set.csv output/ml_train_feature_set.csv &&
+            mv output/${model_name}_ML_train.csv output/ml_train.csv &&
+            mv output/${model_name}_ML_metrics.csv output/ml_metrics.csv &&
+            mv output/${model_name}_CleaveRNA_output.csv output/cleaverna_output.csv &&
+            mv output/${model_name}_balanced_classification.csv output/balanced_classification.csv &&
+            mv output/parameters.cfg output/prediction_parameters.cfg
+
+        #else if $mode_selector.prediction_mode_selector.prediction_mode == "target_screen"
+            #set $model_name = str($mode_selector.prediction_mode_selector.model_name)
+            mkdir -p input &&
+            mkdir -p output &&
+            mkdir -p training_data &&
+
+            ## PARAMS (upload or create)
+            #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
+                cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
+            #else
+                cp "$target_screen_params_config" input/params.csv &&
+                sed -i '1d' input/params.csv &&
+            #end if
+
+            ## COPY OR GENERATE TARGET FASTA FILES
+            #if $mode_selector.target_source.target_method == "upload"
+                #for $f in $mode_selector.target_source.target_files_prediction
+                    #if $f.element_identifier.endswith('.fasta'):
+                        cp "$f" input/${f.element_identifier} &&
+                    #else
+                        cp "$f" input/${f.element_identifier}.fasta &&
+                    #end if
+                #end for
+            #else
+                #for $row in $mode_selector.target_source.target_seq_rows
+                    echo ">${row.seq_name}" > input/${row.seq_name}.fasta &&
+                    echo "${row.sequence}" >> input/${row.seq_name}.fasta &&
+                #end for
+                cat input/*.fasta > input/generated_targets.fasta &&
+            #end if
+
+            ## TRAINING FILE
+            #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
+                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "HPBC"
+                    unzip "$__tool_directory__/data/HPBC_user_merged_num.csv.zip" -d training_data &&
+                    mv training_data/HPBC_user_merged_num.csv training_data/training_data.csv &&
+                #end if
+                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "SARS"
+                    unzip "$__tool_directory__/data/SARS_user_merged_num.csv.zip" -d training_data &&
+                    mv training_data/SARS_user_merged_num.csv training_data/training_data.csv &&
+                #end if
+            #else
+                mv "$mode_selector.prediction_mode_selector.training_file_source.training_upload" training_data/training_data.csv &&
+            #end if
+
+            ## TRAINING SCORES
+            #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
+                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "HPBC_target"
+                    cp "$__tool_directory__/data/HPBC_target.csv" training_data/ &&
+                    mv training_data/HPBC_target.csv training_data/training_scores.csv &&
+                #end if
+                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "SARS_target"
+                    cp "$__tool_directory__/data/SARS_target.csv" training_data/ &&
+                    mv training_data/SARS_target.csv training_data/training_scores.csv &&
+                #end if
+            #else
+                mv "$mode_selector.prediction_mode_selector.training_scores_source.scores_upload" training_data/training_scores.csv &&
+            #end if
+
+            cleaverna
+                --params input/params.csv
+                --target_files_prediction input/*.fasta
+                --prediction_mode target_screen
+                --model_name "$mode_selector.prediction_mode_selector.model_name"
+                --training_file "training_data/training_data.csv"
+                --training_scores "training_data/training_scores.csv"
+                --output_dir output &&
+
+            mv output/${model_name}_ML_train_feature_set.csv output/ml_train_feature_set.csv &&
+            mv output/${model_name}_ML_train.csv output/ml_train.csv &&
+            mv output/${model_name}_ML_metrics.csv output/ml_metrics.csv &&
+            mv output/${model_name}_CleaveRNA_output.csv output/cleaverna_output.csv &&
+            mv output/${model_name}_balanced_classification.csv output/balanced_classification.csv &&
+            mv output/parameters.cfg output/prediction_parameters.cfg
+
+        ## Specific_query
+        #else if $mode_selector.prediction_mode_selector.prediction_mode == "specific_query"
+            #set $model_name = str($mode_selector.prediction_mode_selector.model_name)
+            mkdir -p input &&
+            mkdir -p output &&
+            mkdir -p training_data &&
+
+            ## PARAMS (upload or create)
+            #if $mode_selector.prediction_mode_selector.params_source.params_method == "upload"
+                cp "$mode_selector.prediction_mode_selector.params_source.params_csv" input/params.csv &&
+            #else
+                cp "$specific_query_params_config" input/params.csv &&
+                sed -i '1d' input/params.csv &&
+            #end if
+            ## COPY OR GENERATE TARGET FASTA FILES
+            #if $mode_selector.target_source.target_method == "upload"
+                #for $f in $mode_selector.target_source.target_files_prediction
+                    #if $f.element_identifier.endswith('.fasta'):
+                        cp "$f" input/${f.element_identifier} &&
+                    #else
+                        cp "$f" input/${f.element_identifier}.fasta &&
+                    #end if
+                #end for
+            #else
+                #for $row in $mode_selector.target_source.target_seq_rows
+                    echo ">${row.seq_name}" > input/${row.seq_name}.fasta &&
+                    echo "${row.sequence}" >> input/${row.seq_name}.fasta &&
+                #end for
+                cat input/*.fasta > input/generated_targets.fasta &&
+            #end if
+            ## TRAINING FILE
+            #if $mode_selector.prediction_mode_selector.training_file_source.training_file_method == "builtin"
+                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "HPBC"
+                    unzip "$__tool_directory__/data/HPBC_user_merged_num.csv.zip" -d training_data &&
+                    mv training_data/HPBC_user_merged_num.csv training_data/training_data.csv &&
+                #end if
+                #if $mode_selector.prediction_mode_selector.training_file_source.training_builtin == "SARS"
+                    unzip "$__tool_directory__/data/SARS_user_merged_num.csv.zip" -d training_data &&
+                    mv training_data/SARS_user_merged_num.csv training_data/training_data.csv &&
+                #end if
+            #else
+                mv "$mode_selector.prediction_mode_selector.training_file_source.training_upload" training_data/training_data.csv &&
+            #end if
+
+            ## TRAINING SCORES
+            #if $mode_selector.prediction_mode_selector.training_scores_source.scores_method == "builtin"
+                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "HPBC_target"
+                    cp "$__tool_directory__/data/HPBC_target.csv" training_data/ &&
+                    mv training_data/HPBC_target.csv training_data/training_scores.csv &&
+                #end if
+                #if $mode_selector.prediction_mode_selector.training_scores_source.scores_builtin == "SARS_target"
+                    cp "$__tool_directory__/data/SARS_target.csv" training_data/ &&
+                    mv training_data/SARS_target.csv training_data/training_scores.csv &&
+                #end if
+            #else
+                mv "$mode_selector.prediction_mode_selector.training_scores_source.scores_upload" training_data/training_scores.csv &&
+            #end if
+
+            cleaverna
+                --params input/params.csv
+                --target_files_prediction input/*.fasta
+                --prediction_mode specific_query
+                --model_name "$mode_selector.prediction_mode_selector.model_name"
+                --training_file "training_data/training_data.csv"
+                --training_scores "training_data/training_scores.csv"
+                --output_dir output &&
+
+            mv output/${model_name}_ML_train_feature_set.csv output/ml_train_feature_set.csv &&
+            mv output/${model_name}_ML_train.csv output/ml_train.csv &&
+            mv output/${model_name}_ML_metrics.csv output/ml_metrics.csv &&
+            mv output/${model_name}_CleaveRNA_output.csv output/cleaverna_output.csv &&
+            mv output/${model_name}_balanced_classification.csv output/balanced_classification.csv &&
+            mv output/parameters.cfg output/prediction_parameters.cfg
+        #end if
+    #end if
+    ]]></command>
+    <configfiles>
+        <configfile name="params_file_config_train"><![CDATA[
+#if $mode_selector.mode == "training" and $mode_selector.params_source.params_method == "create"
+LA,RA,CS,Tem,CA
+$mode_selector.params_source.la,$mode_selector.params_source.ra,"#echo ",".join($mode_selector.params_source.cs)#",$mode_selector.params_source.tem,$mode_selector.params_source.ca
+#end if
+]]></configfile>
+        <configfile name="prediction_params_file_config"><![CDATA[
+#if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "default" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
+LA,RA,CS,Tem,CA
+$mode_selector.prediction_mode_selector.params_source.la,$mode_selector.prediction_mode_selector.params_source.ra,"#echo ",".join($mode_selector.prediction_mode_selector.params_source.cs)#",$mode_selector.prediction_mode_selector.params_source.tem,$mode_selector.prediction_mode_selector.params_source.ca
+#end if
+]]></configfile>
+        <configfile name="target_check_params_config"><![CDATA[
+#if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "target_check" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
+LA,RA,CS,Start_End_Index,Tem,CA
+#for $row in $mode_selector.prediction_mode_selector.params_source.param_rows
+$row.la,$row.ra,"#echo ",".join($row.cs)#","$row.target_region",$row.tem,$row.ca
+#end for
+#end if
+]]></configfile>
+        <configfile name="target_screen_params_config"><![CDATA[
+#if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "target_screen" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
+LA,RA,CS,CS_index,Tem,CA
+#for $row in $mode_selector.prediction_mode_selector.params_source.param_rows
+$row.la,$row.ra,$row.cs,"$row.cs_index",$row.tem,$row.ca
+#end for
+#end if
+]]></configfile>
+        <configfile name="specific_query_params_config"><![CDATA[
+#if $mode_selector.mode == "prediction" and $mode_selector.prediction_mode_selector.prediction_mode == "specific_query" and $mode_selector.prediction_mode_selector.params_source.params_method == "create"
+LA_seq,RA_seq,CS,CS_Index_query,Tem,CA
+#for $row in $mode_selector.prediction_mode_selector.params_source.param_rows
+$row.la_seq,$row.ra_seq,$row.cs,"$row.cs_index_query",$row.tem,$row.ca
+#end for
+#end if
+]]></configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="mode_selector">
+            <param name="mode" type="select" label="Select Analysis Mode">
+                <option value="prediction" selected="true">AI-Based Cleavage Site Scoring (Default Training Dataset)</option>
+                <option value="training">Generate Training Dataset (Custom Dataset)</option>
+            </param>
+            <when value="training">
+                <expand macro="training_params_selector"/>
+                <expand macro="target_files_param" upload_name="target_files_training" upload_label="Training FASTA files"/>
+                <expand macro="model_name_param"/>
+            </when>
+            <when value="prediction">
+                <expand macro="target_files_param" upload_name="target_files_prediction" upload_label="Prediction FASTA files"/>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" type="select" label="Candidate Site Selection" help="Define which candidate cleavage sites should be evaluated by the AI-based scoring model.">
+                        <option value="default" selected="true"> All Candidate Sites</option>
+                        <option value="target_check">Candidate Sites Within Defined Region</option>
+                        <option value="target_screen"> User-Defined Candidate Sites</option>
+                        <option value="specific_query"> User-Defined DNAzyme Candidates</option>
+                    </param>
+                    <when value="default">
+                        <expand macro="prediction_default_params_selector"/>
+                        <expand macro="training_file_selector"/>
+                        <expand macro="training_scores_selector"/>
+                        <expand macro="model_name_param"/>
+                    </when>
+                    <when value="target_check">
+                        <expand macro="params_selector_target_check"/>
+                        <expand macro="training_file_selector"/>
+                        <expand macro="training_scores_selector"/>
+                        <expand macro="model_name_param"/>
+                    </when>
+                    <when value="target_screen">
+                        <expand macro="params_selector_screen"/>
+                        <expand macro="training_file_selector"/>
+                        <expand macro="training_scores_selector"/>
+                        <expand macro="model_name_param"/>
+                    </when>
+                    <when value="specific_query">
+                        <expand macro="params_selector_specific_query"/>
+                        <expand macro="training_file_selector"/>
+                        <expand macro="training_scores_selector"/>
+                        <expand macro="model_name_param"/>
+                    </when>
+                </conditional>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <!-- Training outputs -->
+        <data name="training_csv" format="csv" from_work_dir="output/training_output.csv" label="${tool.name} on ${on_string}: Training CSV">
+            <filter>mode_selector['mode'] == 'training'</filter>
+        </data>
+        <data name="training_cfg" format="txt" from_work_dir="output/parameters.cfg" label="${tool.name} on ${on_string}: Training Config">
+            <filter>mode_selector['mode'] == 'training'</filter>
+        </data>
+        <data name="prediction_cfg" format="txt" from_work_dir="output/prediction_parameters.cfg" label="${tool.name} on ${on_string}: Prediction Config">
+            <filter>mode_selector['mode'] == 'prediction'</filter>
+        </data>
+        <data name="ml_train_feature_set" format="csv" from_work_dir="output/ml_train_feature_set.csv" label="${tool.name} on ${on_string}: ML Feature Set">
+            <filter>mode_selector['mode'] == 'prediction'</filter>
+        </data>
+        <data name="ml_train" format="csv" from_work_dir="output/ml_train.csv" label="${tool.name} on ${on_string}: ML Train">
+            <filter>mode_selector['mode'] == 'prediction'</filter>
+        </data>
+        <data name="ml_metrics" format="csv" from_work_dir="output/ml_metrics.csv" label="${tool.name} on ${on_string}: ML Metrics">
+            <filter>mode_selector['mode'] == 'prediction'</filter>
+        </data>
+        <data name="cleaverna_output" format="csv" from_work_dir="output/cleaverna_output.csv" label="${tool.name} on ${on_string}: CleaveRNA Output">
+            <filter>mode_selector['mode'] == 'prediction'</filter>
+        </data>
+        <data name="balanced_classification" format="csv" from_work_dir="output/balanced_classification.csv" label="${tool.name} on ${on_string}: Balanced Classification">
+            <filter>mode_selector['mode'] == 'prediction'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="2">
+            <conditional name="mode_selector">
+                <param name="mode" value="training"/>
+                <conditional name="params_source">
+                    <param name="params_method" value="upload"/>
+                    <param name="params_csv" value="params.csv" ftype="csv"/>
+                </conditional>
+                <param name="model_name" value="test"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_training" value="HPV.fasta,BCL-1.fasta" ftype="fasta"/>
+                </conditional>
+            </conditional>
+            <output name="training_csv">
+                <assert_contents>
+                    <has_text text="id2,seq2,E_1,ED1_1"/>
+                    <has_text text="AC-126-127,CAGUAACUGGGCUAGCUACAACGAUGCUUGCAG"/>
+                    <has_n_lines n="428"/>
+                </assert_contents>
+            </output>
+            <output name="training_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
+                    <has_n_lines n="9"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="mode_selector">
+                <param name="mode" value="training"/>
+                <conditional name="params_source">
+                    <param name="params_method" value="create"/>
+                    <param name="la" value="9"/>
+                    <param name="ra" value="9"/>
+                    <param name="cs" value="AU,UG"/>
+                    <param name="tem" value="37"/>
+                    <param name="ca" value="AATTCCGCTAGC"/>
+                </conditional>
+                <param name="model_name" value="test"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_training" value="HPV.fasta,BCL-1.fasta" ftype="fasta"/>
+                </conditional>
+            </conditional>
+            <output name="training_csv">
+                <assert_contents>
+                    <has_text text="id2,seq2,E_1,ED1_1"/>
+                    <has_text text="AU-102-103,ACAUUCUAAAAUUCCGCUAGCAUUAUAUCA"/>
+                    <has_n_lines n="247"/>
+                </assert_contents>
+            </output>
+            <output name="training_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
+                    <has_n_lines n="9"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="BCL-2.fasta,BCL-3.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="default"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="params.csv" ftype="csv"/>
+                    </conditional>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
+                    <has_n_lines n="9"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_text text="E_1,Pu1_1,Pu2_1,E_hybrid_1,seedNumber_1,seedEbest_1,seedNumber_3,pumin1_4u,pumin1_4d,ML_training_score"/>
+                    <has_text text="-0.3418339619998953,0.1255802923082923"/>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_text text="id2_x,ML_training_score,id2_y,seq2,E_1,ED1_1,ED2_1,Pu1_1"/>
+                    <has_text text="AU-126-127,0,AU-126-127,UUUUUAUAAGGCUAGCUACAACGAAGGGAUGGG"/>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_text text="Metric,Mean,Std"/>
+                    <has_text text="Accuracy,0.722"/>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
+                    <has_text text="AC-884-885,AGGATGTGGGGCTAGCTACAACGAGGAGCAGAG,BCL-2"/>
+                    <has_n_lines n="917"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_text text="id2,Dz_seq,ML_training_score"/>
+                    <has_text text="AU-126-127,UUUUUAUAAGGCUAGCUACAACGAAGGGAUGGG"/>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="BCL-2.fasta,BCL-3.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="default"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="create"/>
+                        <param name="la" value="9"/>
+                        <param name="ra" value="9"/>
+                        <param name="cs" value="AU,GU,AC,GC"/>
+                        <param name="tem" value="37"/>
+                        <param name="ca" value="ggcuagcuacaacga"/>
+                    </conditional>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
+                    <has_n_lines n="9"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_text text="E_1,Pu1_1,Pu2_1,E_hybrid_1,seedNumber_1,seedEbest_1,seedNumber_3,pumin1_4u,pumin1_4d,ML_training_score"/>
+                    <has_text text="-0.3418339619998953,0.1255802923082923"/>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_text text="id2_x,ML_training_score,id2_y,seq2,E_1,ED1_1,ED2_1,Pu1_1"/>
+                    <has_text text="AU-126-127,0,AU-126-127,UUUUUAUAAGGCUAGCUACAACGAAGGGAUGGG"/>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_text text="Metric,Mean,Std"/>
+                    <has_text text="Accuracy,0.722"/>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_text text="id2,Dz_seq,ML_training_score"/>
+                    <has_text text="GU-455-456,CCCAGUUCAGGCUAGCUACAACGACCCGUCCCU,0"/>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="target_1.fasta,target_2.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="target_check"/>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="target_check_params.csv"/>
+                    </conditional>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="accW=150"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="AU-27-28"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="target_1.fasta,target_2.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="target_check"/>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="create"/>
+                        <repeat name="param_rows">
+                            <param name="la" value="9"/>
+                            <param name="ra" value="9"/>
+                            <param name="cs" value="AU,GC"/>
+                            <param name="target_region" value="target_1.fasta:20-100"/>
+                            <param name="tem" value="37"/>
+                            <param name="ca" value="GGCTAGCTACAACGA"/>
+                        </repeat>
+                        <repeat name="param_rows">
+                            <param name="la" value="10"/>
+                            <param name="ra" value="15"/>
+                            <param name="cs" value="AC,AU"/>
+                            <param name="target_region" value="target_2.fasta:50-100"/>
+                            <param name="tem" value="37"/>
+                            <param name="ca" value="GGCTAGCTACAACGA"/>
+                        </repeat>
+                    </conditional>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="target_1.fasta"/>
+                    <has_text text="target_2.fasta"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="target_1.fasta,target_2.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="target_screen"/>
+                    <param name="model_name" value="HBV"/>
+                    <!-- Conditional block for parameters -->
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="target_screen_params.csv" ftype="csv"/>
+                    </conditional>
+                    <!-- Training reference setup -->
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <!-- Output assertions -->
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=23"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="target_1.fasta,target_2.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="specific_query"/>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="test_specific_params.csv" ftype="csv"/>
+                    </conditional>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- NEW: target_screen with params created via repeat rows -->
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="target_1.fasta,target_2.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="target_screen"/>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="create"/>
+                        <repeat name="param_rows">
+                            <param name="la" value="2"/>
+                            <param name="ra" value="3"/>
+                            <param name="cs" value="UA"/>
+                            <param name="cs_index" value="target_1.fasta:17-18"/>
+                            <param name="tem" value="23"/>
+                            <param name="ca" value="GGCTAGCTACAACGA"/>
+                        </repeat>
+                        <repeat name="param_rows">
+                            <param name="la" value="8"/>
+                            <param name="ra" value="4"/>
+                            <param name="cs" value="CA"/>
+                            <param name="cs_index" value="target_2.fasta:15-16"/>
+                            <param name="tem" value="23"/>
+                            <param name="ca" value="GGCTAGCTACAACGA"/>
+                        </repeat>
+                    </conditional>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="accW=150"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- NEW: specific_query with params created via repeat rows -->
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="upload"/>
+                    <param name="target_files_prediction" value="target_1.fasta,target_2.fasta" ftype="fasta"/>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="specific_query"/>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="create"/>
+                        <repeat name="param_rows">
+                            <param name="la_seq" value="AGACCAU"/>
+                            <param name="ra_seq" value="UUAAAAU"/>
+                            <param name="cs" value="UA"/>
+                            <param name="cs_index_query" value="target_1.fasta:17-18"/>
+                            <param name="tem" value="37"/>
+                            <param name="ca" value="GGCTAGCTACAACGA"/>
+                        </repeat>
+                    </conditional>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_n_lines n="91"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- NEW: default prediction mode, target FASTA generated from pasted sequence(s) in Galaxy -->
+        <test expect_num_outputs="6">
+            <conditional name="mode_selector">
+                <param name="mode" value="prediction"/>
+                <conditional name="target_source">
+                    <param name="target_method" value="create"/>
+                    <repeat name="target_seq_rows">
+                        <param name="seq_name" value="BCL-2"/>
+                        <param name="sequence" value="AGCUAGCUAGCUAGGCUAGCUACAACGAAGCUAGCUAGCUAGCUAGCUAGCUAGCUAGCUAGCUAGCUAGCUAGCUAGCUAGCU"/>
+                    </repeat>
+                    <repeat name="target_seq_rows">
+                        <param name="seq_name" value="BCL-3"/>
+                        <param name="sequence" value="UGCAUGCAUGGGCUAGCUACAACGAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCAUGCA"/>
+                    </repeat>
+                </conditional>
+                <conditional name="prediction_mode_selector">
+                    <param name="prediction_mode" value="default"/>
+                    <conditional name="params_source">
+                        <param name="params_method" value="upload"/>
+                        <param name="params_csv" value="params.csv" ftype="csv"/>
+                    </conditional>
+                    <param name="model_name" value="HBV"/>
+                    <conditional name="training_file_source">
+                        <param name="training_file_method" value="builtin"/>
+                        <param name="training_builtin" value="HPBC"/>
+                    </conditional>
+                    <conditional name="training_scores_source">
+                        <param name="scores_method" value="builtin"/>
+                        <param name="scores_builtin" value="HPBC_target"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <output name="prediction_cfg">
+                <assert_contents>
+                    <has_text text="temperature=37"/>
+                    <has_text text="accW=150"/>
+                    <has_n_lines n="9"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train_feature_set">
+                <assert_contents>
+                    <has_text text="E_1,Pu1_1,Pu2_1,E_hybrid_1,seedNumber_1,seedEbest_1,seedNumber_3,pumin1_4u,pumin1_4d,ML_training_score"/>
+                </assert_contents>
+            </output>
+            <output name="ml_train">
+                <assert_contents>
+                    <has_text text="id2_x,ML_training_score,id2_y,seq2,E_1,ED1_1,ED2_1,Pu1_1"/>
+                </assert_contents>
+            </output>
+            <output name="ml_metrics">
+                <assert_contents>
+                    <has_text text="Metric,Mean,Std"/>
+                </assert_contents>
+            </output>
+            <output name="cleaverna_output">
+                <assert_contents>
+                    <has_text text="CS_Index,Dz_Seq,CS_Target_File,Classification_score,reliability_score,decision_score"/>
+                </assert_contents>
+            </output>
+            <output name="balanced_classification">
+                <assert_contents>
+                    <has_text text="id2,Dz_seq,ML_training_score"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+<help><![CDATA[
+**CleaveRNA** is a machine learning–based computational tool for scoring candidate DNAzyme cleavage sites in RNA substrates. It evaluates candidate sites based on sequence and DNAzyme parameters and ranks them according to their predicted cleavage scores.
+
+### Analysis Modes
+
+CleaveRNA provides two main analysis modes:
+
+**1. AI-Based Cleavage Site Scoring**
+
+Score and rank candidate DNAzyme cleavage sites using either a predefined training dataset or a custom training dataset.
+
+* Upload RNA substrate FASTA file(s) or generate FASTA file(s) directly from RNA sequence(s) in Galaxy.
+* Select one of the following candidate site evaluation modes:
+
+  * **All Candidate Sites:** Evaluates and ranks all candidate cleavage sites identified in the input RNA substrate(s).
+  * **Candidate Sites Within Defined Region:** Evaluates candidate cleavage sites only within a user-defined region of the RNA substrate.
+  * **User-Defined Candidate Sites:** Evaluates only specific cleavage sites defined by the user.
+  * **User-Defined DNAzyme Candidates:** Evaluates a specific DNAzyme candidate defined by the user for a selected cleavage site.
+
+* Provide DNAzyme parameters by either uploading a parameter CSV file or creating the parameters directly in Galaxy.
+
+* Select the training dataset. This version of CleaveRNA provides two predefined training datasets:
+
+  * **HPV_BCL:** A training dataset based on experimental DNAzyme cleavage assays targeting HPV and human BCL mRNA.
+  * **SARS_CoV_2:** A training dataset based on experimental DNAzyme cleavage assays targeting SARS-CoV-2 RNA.
+
+* Select the corresponding scoring dataset. The scoring dataset must match the selected training dataset. The predefined scoring datasets contain experimentally measured cleavage scores corresponding to the HPV_BCL and SARS_CoV_2 training datasets.
+
+* Alternatively, users can upload a custom training dataset together with its corresponding training score file for model training and prediction.
+
+**2. Generate Training Dataset**
+
+Generate a training dataset from user-defined RNA substrates and DNAzyme parameters for subsequent machine learning model training.
+
+* Upload RNA substrate FASTA file(s) or generate FASTA file(s) directly from RNA sequence(s) in Galaxy.
+* Provide DNAzyme parameters by either uploading a parameter CSV file or creating the parameters directly in Galaxy.
+* Generate the training dataset using the selected RNA substrate sequences and DNAzyme parameters.
+* Use the generated training dataset for subsequent model training and AI-Based Cleavage Site Scoring.
+
+### Outputs
+
+Depending on the selected analysis mode, CleaveRNA can generate:
+
+* Training datasets and parameter/configuration files.
+* Predicted cleavage site scores and candidate site rankings.
+* Machine learning feature tables.
+* Model performance metrics and classification reports.
+
+For parameter templates and example input files, use the download links provided with the corresponding input parameters.
+]]></help>
+
+    <expand macro="citations"/>
+</tool>
