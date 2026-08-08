@@ -4,16 +4,14 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="xrefs"/>
-    <expand macro="requirements" />
+    <expand macro="requirements"/>
     <version_command>
         trim_galore --version
     </version_command>
     <command detect_errors="aggressive"><![CDATA[
-        #set compressed = 'no'
         #if $singlePaired.sPaired == "single":
             #if $singlePaired.input_singles.is_of_type("fastq.gz"):
                 #set read1 = 'input_1.fastq.gz'
-                #set compressed = 'gz'
             #else
                 #set read1 = 'input_1.fastq'
             #end if
@@ -21,7 +19,6 @@
         #elif $singlePaired.sPaired == "paired":
             #if $singlePaired.input_mate1.is_of_type("fastq.gz"):
                 #set read1 = 'input_1.fastq.gz'
-                #set compressed = 'gz'
             #else
                 #set read1 = 'input_1.fastq'
             #end if
@@ -36,7 +33,6 @@
         #else:
             #if $singlePaired.input_mate_pairs.forward.is_of_type("fastq.gz"):
                 #set read1 = 'input_1.fastq.gz'
-                #set compressed = 'gz'
             #else
                 #set read1 = 'input_1.fastq'
             #end if
@@ -60,8 +56,12 @@
 
         #if $params.settingsType == "custom":
 
-            ## default 20
-            --quality $params.quality
+            ## Quality trimming settings - choose between standard quality or NextSeq 2-colour trimming
+            #if str($params.quality_trimming.quality_select) == "standard":
+                --quality $params.quality_trimming.quality
+            #elif str($params.quality_trimming.quality_select) == "nextseq":
+                --nextseq $params.quality_trimming.nextseq
+            #end if
 
             ## default 1
             --stringency $params.stringency
@@ -71,6 +71,26 @@
 
             ## default 20
             --length $params.min_length
+
+            #if str($params.max_length):
+                --max_length $params.max_length
+            #end if
+
+            #if str($params.max_n):
+                --max_n $params.max_n
+            #end if
+
+            #if str($params.trim_n) == "true":
+                --trim_n
+            #end if
+
+            #if str($params.discard_untrimmed) == "true":
+                --discard_untrimmed
+            #end if
+
+            #if str($params.times):
+                --times $params.times
+            #end if
 
             #if $params.clip_R1:
                 --clip_R1 $params.clip_R1
@@ -88,15 +108,19 @@
 
         #end if
 
-        ## RBBS specific options.
+        ## RRBS specific options.
         #if $rrbs.settingsType == "custom":
-            $rrbs.rrbs
-            $rrbs.non_directional
+            #if str($rrbs.rrbs) == "true":
+                --rrbs
+            #end if
+            #if str($rrbs.non_directional) == "true":
+                --non_directional
+            #end if
         #end if
 
         --output_dir ./
 
-        #if $params.settingsType == "custom" and not $params.report:
+        #if $params.settingsType == "custom" and str($params.report) == "false":
             --no_report_file
         #end if
 
@@ -136,56 +160,87 @@
             ${read2}
         #end if
 
-        #if $compressed == 'no':
-            --dont_gzip
-        #end if
-
         ## Trimming settings
         #if $trimming.settingsType == 'custom'
-            #if $trimming.hardtrim5
+            #if $trimming.hardtrim5:
                 --hardtrim5 $trimming.hardtrim5
             #end if
-            #if $trimming.hardtrim3 
+            #if $trimming.hardtrim3:
                 --hardtrim3 $trimming.hardtrim3
             #end if
-            $trimming.clock 
-            $trimming.polyA
+            #if str($trimming.poly_g_select) == 'force':
+                --poly_g
+            #elif str($trimming.poly_g_select) == 'disable':
+                --no_poly_g
+            #end if
+            #if str($trimming.polyA) == "true":
+                --polyA
+            #end if
+            #if str($trimming.clock) == "true":
+                --clock
+            #end if
         #end if
 
-        ##  Trim Galore is finished, rename the output if compressed
-        &&
-        if [ -f input_1_trimmed.fq.gz ] ; then mv input_1_trimmed.fq.gz input_1_trimmed.fq ; fi
-        &&
-        if [ -f input_1_val_1.fq.gz ] ; then mv input_1_val_1.fq.gz input_1_val_1.fq ; fi
-        &&
-        if [ -f input_2_val_2.fq.gz ] ; then mv input_2_val_2.fq.gz input_2_val_2.fq ; fi
-        &&
-        if [ -f input_1_unpaired_1.fq.gz ] ; then mv input_1_unpaired_1.fq.gz input_1_unpaired_1.fq ; fi
-        &&
-        if [ -f input_2_unpaired_2.fq.gz ] ; then mv input_2_unpaired_2.fq.gz input_2_unpaired_2.fq ; fi
-        &&
-        if [ -f input_1.clock_UMI.R1.fq.gz ] ; then mv input_1.clock_UMI.R1.fq.gz input_1.clock_UMI.R1.fq ; fi
-        &&
-        if [ -f input_2.clock_UMI.R2.fq.gz ] ; then mv input_2.clock_UMI.R2.fq.gz input_2.clock_UMI.R2.fq ; fi
+        ## Poly-G trimming (can be used even when trimming is default)
+        #if $trimming.settingsType == 'default' and str($trimming.poly_g_select) == 'force':
+            --poly_g
+        #elif $trimming.settingsType == 'default' and str($trimming.poly_g_select) == 'disable':
+            --no_poly_g
+        #end if
+
+        ## Performance and compression options
+        --compression 1
         
+        #if $clumpify:
+            --clumpify
+        #end if
+
+        #if str($memory):
+            --memory '$memory'
+        #end if
+
+        ## FastQC integration
+        #if $fastqc:
+            --fastqc
+            #if str($fastqc_args):
+                --fastqc_args '$fastqc_args'
+            #end if
+        #end if
+
+        ## Compress FASTQ outputs produced from uncompressed inputs.
+        &&
+        if [ -f input_1_trimmed.fq ] ; then gzip -n -c input_1_trimmed.fq > input_1_trimmed.fq.gz ; fi
+        &&
+        if [ -f input_1_val_1.fq ] ; then gzip -n -c input_1_val_1.fq > input_1_val_1.fq.gz ; fi
+        &&
+        if [ -f input_2_val_2.fq ] ; then gzip -n -c input_2_val_2.fq > input_2_val_2.fq.gz ; fi
+        &&
+        if [ -f input_1_unpaired_1.fq ] ; then gzip -n -c input_1_unpaired_1.fq > input_1_unpaired_1.fq.gz ; fi
+        &&
+        if [ -f input_2_unpaired_2.fq ] ; then gzip -n -c input_2_unpaired_2.fq > input_2_unpaired_2.fq.gz ; fi
+        &&
+        if [ -f input_1.clock_UMI.R1.fq ] ; then gzip -n -c input_1.clock_UMI.R1.fq > input_1.clock_UMI.R1.fq.gz ; fi
+        &&
+        if [ -f input_2.clock_UMI.R2.fq ] ; then gzip -n -c input_2.clock_UMI.R2.fq > input_2.clock_UMI.R2.fq.gz ; fi
+
         ## Rename hardtrimmed files
         #if $trimming.settingsType == 'custom'
             &&
-            if [ -f input_1.${trimming.hardtrim5}bp_5prime.fq.gz ] ; then mv input_1.${trimming.hardtrim5}bp_5prime.fq.gz input_1_hardtrim.fq ; fi
+            if ls input_1.*bp_5prime.fq.gz >/dev/null 2>&1 ; then mv input_1.*bp_5prime.fq.gz input_1_hardtrim.fq.gz ; fi
             &&
-            if [ -f input_2.${trimming.hardtrim5}bp_5prime.fq.gz ] ; then mv input_2.${trimming.hardtrim5}bp_5prime.fq.gz input_2_hardtrim.fq ; fi
+            if ls input_2.*bp_5prime.fq.gz >/dev/null 2>&1 ; then mv input_2.*bp_5prime.fq.gz input_2_hardtrim.fq.gz ; fi
             &&
-            if [ -f input_1.${trimming.hardtrim3}bp_3prime.fq.gz ] ; then mv input_1.${trimming.hardtrim3}bp_3prime.fq.gz input_1_hardtrim.fq ; fi
+            if ls input_1.*bp_3prime.fq.gz >/dev/null 2>&1 ; then mv input_1.*bp_3prime.fq.gz input_1_hardtrim.fq.gz ; fi
             &&
-            if [ -f input_2.${trimming.hardtrim3}bp_3prime.fq.gz ] ; then mv input_2.${trimming.hardtrim3}bp_3prime.fq.gz input_2_hardtrim.fq ; fi
+            if ls input_2.*bp_3prime.fq.gz >/dev/null 2>&1 ; then mv input_2.*bp_3prime.fq.gz input_2_hardtrim.fq.gz ; fi
             &&
-            if [ -f input_1.${trimming.hardtrim5}bp_5prime.fq ] ; then mv input_1.${trimming.hardtrim5}bp_5prime.fq input_1_hardtrim.fq ; fi
+            if ls input_1.*bp_5prime.fq >/dev/null 2>&1 ; then gzip -n -c input_1.*bp_5prime.fq > input_1_hardtrim.fq.gz ; fi
             &&
-            if [ -f input_2.${trimming.hardtrim5}bp_5prime.fq ] ; then mv input_2.${trimming.hardtrim5}bp_5prime.fq input_2_hardtrim.fq ; fi
+            if ls input_2.*bp_5prime.fq >/dev/null 2>&1 ; then gzip -n -c input_2.*bp_5prime.fq > input_2_hardtrim.fq.gz ; fi
             &&
-            if [ -f input_1.${trimming.hardtrim3}bp_3prime.fq ] ; then mv input_1.${trimming.hardtrim3}bp_3prime.fq input_1_hardtrim.fq ; fi
+            if ls input_1.*bp_3prime.fq >/dev/null 2>&1 ; then gzip -n -c input_1.*bp_3prime.fq > input_1_hardtrim.fq.gz ; fi
             &&
-            if [ -f input_2.${trimming.hardtrim3}bp_3prime.fq ] ; then mv input_2.${trimming.hardtrim3}bp_3prime.fq input_2_hardtrim.fq ; fi
+            if ls input_2.*bp_3prime.fq >/dev/null 2>&1 ; then gzip -n -c input_2.*bp_3prime.fq > input_2_hardtrim.fq.gz ; fi
         #end if
 
         ##  Trim Galore! run is finished. Move the report files to the proper place
@@ -193,7 +248,6 @@
             &&
             cat ./*_trimming_report.txt > '$report_file'
         #end if
-        && ls -lah
     ]]></command>
     <inputs>
         <!-- Input Parameters -->
@@ -204,9 +258,8 @@
                 <option value="paired_collection">Paired Collection</option>
             </param>
             <when value="single">
-                <param name="input_singles" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format" />
+                <param name="input_singles" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format"/>
                 <expand macro="adapter_trimming"/>
-
                 <param name="three_prime_clip_R1" type="integer" value="" optional="True" label="Remove N bp from the 3' end">
                     <help>Instructs Trim Galore! to remove N bp from the 3' end of read 1 after adapter/quality trimming has been performed.
                         This may remove some unwanted bias from the 3' end that is not directly related to adapter sequence or basecall quality.
@@ -214,406 +267,406 @@
                 </param>
             </when>
             <when value="paired">
-                <param name="input_mate1" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format" />
-                <param name="input_mate2" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format" />
-                <expand macro="paired_adapter_trimming" />
+                <param name="input_mate1" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format"/>
+                <param name="input_mate2" type="data" format="fastqsanger,fastqsanger.gz" label="Reads in FASTQ format"/>
+                <expand macro="paired_adapter_trimming"/>
             </when>
             <when value="paired_collection">
-                <param name="input_mate_pairs" format="fastqsanger,fastqsanger.gz" type="data_collection" collection_type="paired"
-                    label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
-                <expand macro="paired_adapter_trimming" />
+                <param name="input_mate_pairs" format="fastqsanger,fastqsanger.gz" type="data_collection" collection_type="paired" label="Select a paired collection" help="See help section for an explanation of dataset collections"/>
+                <expand macro="paired_adapter_trimming"/>
             </when>
         </conditional>
-
         <conditional name="params">
             <param name="settingsType" type="select" label="Advanced settings" help="You can use the default settings or set custom values for any of Trim Galore!'s parameters.">
-              <option value="default">Use defaults</option>
-              <option value="custom">Full parameter list</option>
-            </param>
-            <when value="default" />
-            <!-- Full/advanced params. -->
-            <when value="custom">
-                <param name="quality" type="integer" value="20" label="Trim low-quality ends from reads in addition to adapter removal (Enter phred quality score threshold)"
-                    help="For more information please see below." />
-                <param name="stringency" type="integer" value="1" label="Overlap with adapter sequence required to trim a sequence" />
-                <param name="error_rate" type="float" value="0.1" label="Maximum allowed error rate" />
-                <param name="min_length" type="integer" value="20" label="Discard reads that became shorter than length N" />
-
-                <param name="clip_R1" type="integer" optional="True" min="0" label="Instructs Trim Galore! to remove N bp from the 5' end of read 1" />
-                <param name="clip_R2" type="integer" optional="True" min="0" label="Instructs Trim Galore! to remove N bp from the 5' end of read 2 (Only for paired-end reads)" />
-
-                <param name="report" type="boolean" truevalue="true" falsevalue="false" checked="False" label="Generate a report file" help="" />
-
-                <conditional name="retain_unpaired">
-                    <param name="retain_unpaired_select" type="select" label="specify if you would like to retain unpaired reads">
-                      <option value="no_output">Do not output unpaired reads</option>
-                      <option value="retain_unpaired_output">Output unpaired reads</option>
-                    </param>
-                    <when value="no_output" />
-                    <!-- Output params. -->
-                    <when value="retain_unpaired_output">
-                        <param name="length_1" type="integer" value="35" label="Unpaired single-end read length cutoff needed for read 1 to be written" />
-                        <param name="length_2" type="integer" value="35" label="Unpaired single-end read length cutoff needed for read 2 to be written" />
-                    </when>  <!-- output -->
-                </conditional>  <!-- retain_unpaired -->
-
-            </when>  <!-- full -->
-        </conditional>  <!-- params -->
-
-        <conditional name="rrbs">
-            <param name="settingsType" type="select" label="RRBS specific settings" help="You can use the default settings or set custom values for any of Trim Galore!'s parameters.">
-              <option value="default">Use defaults (no RRBS)</option>
-              <option value="custom">Full parameter list</option>
-            </param>
-            <when value="default" />
-            <!-- Full/advanced params. -->
-            <when value="custom">
-                <param name="rrbs" type="boolean" truevalue="--rrbs" falsevalue="" checked="True"
-                    label="Specifies that the input file was an MspI digested RRBS sample" />
-                <param name="non_directional" type="boolean" truevalue="--non_directional" falsevalue="" checked="False"
-                    label="Screen quality-trimmed sequences for 'CAA' or 'CGA' at the start of the read and, if found, removes the first two basepairs" />
-            </when>  <!-- full -->
-        </conditional>  <!-- params -->
-        <!--Trimming options-->
-        <conditional name="trimming">
-            <param name="settingsType" type="select" label="Trimming settings" help="You can use the default settings or set custom values for any of Trim Galore!'s parameters.">
                 <option value="default">Use defaults</option>
                 <option value="custom">Full parameter list</option>
             </param>
-            <when value="default" />
+            <when value="default"/>
+            <!-- Full/advanced params. -->
             <when value="custom">
-                <param argument="--hardtrim5" type="integer" min="1" optional="true" label="Hard-trimm 5' ends" help="Instead of performing adapter-/quality trimming, this option will simply hard-trim sequences to N bp at the 5'-end. Once hard-trimming of files is complete, it will exit" />
-                <param argument="--hardtrim3" type="integer" min="1" optional="true" label="Hard-trimm 3' ends" help="Instead of performing adapter-/quality trimming, this option will simply hard-trim sequences to N bp at the 3'-end. Once hard-trimming of files is complete, it will exit" />
-                <param argument="--clock" type="boolean" truevalue="--clock" falsevalue="" label="Mouse epigenetic clock mode" help="In this mode, reads are trimmed in a specific way that is currently used for the Mouse Epigenetic Clock"/>
-                <param argument="--polyA" type="boolean" truevalue="--polyA" falsevalue="" label="Remove polyA tails" help="This is a new, still experimental, trimming mode to identify and remove poly-A tails from sequences" />
+                <section name="quality_trimming" title="Quality trimming options" expanded="true">
+                    <conditional name="quality_trimming">
+                        <param name="quality_select" type="select" label="Quality trimming mode">
+                            <option value="standard" selected="true">Standard quality trimming (Phred33)</option>
+                            <option value="nextseq">NextSeq 2-colour trimming</option>
+                        </param>
+                        <when value="standard">
+                            <param name="quality" type="integer" value="20" min="0" max="40" label="Quality score threshold" help="Trim low-quality ends from reads (default: 20)"/>
+                        </when>
+                        <when value="nextseq">
+                            <param name="nextseq" type="integer" value="20" min="1" max="199" label="NextSeq quality threshold" help="2-colour quality trimming for NextSeq/NovaSeq instruments"/>
+                        </when>
+                    </conditional>
+                </section>
+                <param argument="--stringency" type="integer" value="1" min="1" label="Adapter overlap stringency (bp)" help="Minimum overlap with adapter sequence required to trim (default: 1)"/>
+                <param name="error_rate" argument="-e" type="float" value="0.1" min="0" max="1" label="Adapter matching error rate" help="Maximum allowed error rate (mismatches/length) for adapter matching (default: 0.1)"/>
+                <param name="min_length" argument="--length" type="integer" value="20" min="0" label="Minimum read length" help="Discard reads shorter than this after trimming (default: 20)"/>
+                <param argument="--max_length" type="integer" optional="true" min="1" label="Maximum read length" help="Discard reads longer than this (useful for removing non-target sequences)"/>
+                <param argument="--max_n" type="text" optional="true" label="Maximum number of N bases" help="Discard reads with more N bases than this (e.g. '5' for count, '0.1' for fraction)"/>
+                <param argument="--trim_n" type="boolean" truevalue="--trim_n" falsevalue="" checked="false" label="Trim N from both ends" help="Remove N bases from the start and end of reads"/>
+                <param argument="--times" type="integer" value="1" min="1" max="10" label="Adapter trimming passes" help="Number of times to run adapter trimming per read (default: 1)"/>
+                <param argument="--discard_untrimmed" type="boolean" truevalue="--discard_untrimmed" falsevalue="" checked="false" label="Keep only trimmed reads" help="Only output reads where at least one adapter was found and removed"/>
+                <param argument="--clip_R1" type="integer" optional="true" min="0" label="5' end clipping - Read 1 (bp)" help="Remove N bases from the 5' end of read 1 (before quality/adapter trimming)"/>
+                <param argument="--clip_R2" type="integer" optional="true" min="0" label="5' end clipping - Read 2 (bp)" help="Remove N bases from the 5' end of read 2 (before quality/adapter trimming, paired-end only)"/>
+                <param name="report" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Generate a report file" help=""/>
+                <conditional name="retain_unpaired">
+                    <param name="retain_unpaired_select" type="select" label="Retain unpaired reads">
+                        <option value="no_output" selected="true">Do not output unpaired reads</option>
+                        <option value="retain_unpaired_output">Output unpaired reads</option>
+                    </param>
+                    <when value="no_output"/>
+                    <!-- Output params. -->
+                    <when value="retain_unpaired_output">
+                        <param name="length_1" type="integer" value="35" label="Unpaired single-end read length cutoff needed for read 1 to be written"/>
+                        <param name="length_2" type="integer" value="35" label="Unpaired single-end read length cutoff needed for read 2 to be written"/>
+                    </when>
+                    <!-- output -->
+                </conditional>
+                <!-- retain_unpaired -->
+            </when>
+            <!-- full -->
+        </conditional>
+        <!-- params -->
+        <conditional name="rrbs">
+            <param name="settingsType" type="select" label="RRBS specific settings" help="You can use the default settings or set custom values for any of Trim Galore!'s parameters.">
+                <option value="default" selected="true">Use defaults (no RRBS)</option>
+                <option value="custom">Full parameter list</option>
+            </param>
+            <when value="default"/>
+            <!-- Full/advanced params. -->
+            <when value="custom">
+                <param argument="--rrbs" type="boolean" truevalue="--rrbs" falsevalue="" checked="true" label="MspI-digested RRBS mode" help="Input is an MspI digested RRBS sample; removes 2bp MspI end-repair artifacts from 3' end"/>
+                <param argument="--non_directional" type="boolean" truevalue="--non_directional" falsevalue="" checked="false" label="Non-directional RRBS" help="Trims 2bp from 5' end of reads starting with CAA/CGA (non-directional RRBS)"/>
+            </when>
+            <!-- full -->
+        </conditional>
+        <!-- params -->
+        <!--Trimming options-->
+        <conditional name="trimming">
+            <param name="settingsType" type="select" label="Trimming settings" help="You can use the default settings or set custom values for any of Trim Galore!'s parameters.">
+                <option value="default" selected="true">Use defaults</option>
+                <option value="custom">Full parameter list</option>
+            </param>
+            <when value="default">
+                <param name="poly_g_select" type="select" label="Poly-G trimming (2-colour instrument auto-detection)">
+                    <option value="auto" selected="true">Auto-detect (default)</option>
+                    <option value="force">Force enable poly-G trimming</option>
+                    <option value="disable">Disable poly-G trimming</option>
+                </param>
+            </when>
+            <when value="custom">
+                <param argument="--hardtrim5" type="integer" min="1" optional="true" label="Hard-trim 5' end (bp)" help="Keep only the first N bases from 5' end; bypasses normal trimming"/>
+                <param argument="--hardtrim3" type="integer" min="1" optional="true" label="Hard-trim 3' end (bp)" help="Keep only the last N bases from 3' end; bypasses normal trimming"/>
+                <param name="poly_g_select" type="select" label="Poly-G trimming">
+                    <option value="auto" selected="true">Auto-detect (default)</option>
+                    <option value="force">Force enable poly-G trimming</option>
+                    <option value="disable">Disable poly-G trimming</option>
+                </param>
+                <param argument="--polyA" type="boolean" truevalue="--polyA" falsevalue="" checked="false" label="Remove polyA tails" help="Trim poly-A tails from 3' end (experimental, for mRNA/RNA-seq)"/>
+                <param argument="--clock" type="boolean" truevalue="--clock" falsevalue="" checked="false" label="Mouse epigenetic clock mode" help="Extract UMI and trim for Mouse Epigenetic Clock (paired-end only)"/>
             </when>
         </conditional>
+        <!-- Compression and FastQC options -->
+        <param argument="--clumpify" type="boolean" truevalue="--clumpify" falsevalue="" checked="false" label="Clumpify reads (v2.2.0)" help="Reorder reads by 16-mer minimizer for better compression (15-55% savings on fragment-clustered data; requires --cores >= 2)"/>
+        <param argument="--memory" type="text" optional="true" label="Memory budget for clumpify" help="Total memory budget for clumpify (e.g. '512M', '2G', '8G'); improves compression at cost of memory"/>
+        <param argument="--fastqc" type="boolean" truevalue="--fastqc" falsevalue="" checked="false" label="Run FastQC on trimmed output" help="Built-in FastQC analysis (no Java/external dependencies required)"/>
+        <param argument="--fastqc_args" type="text" optional="true" label="Additional FastQC arguments" help="Arguments passed to FastQC (e.g. '--nogroup --quiet'); supports: --nogroup, --expgroup, --quiet, --svg, --nano, --nofilter, --casava, -t/--threads, -o/--outdir"/>
     </inputs>
-
     <outputs>
-        <data format_source="singlePaired|input_singles" default_identifier_source="singlePaired|input_singles" name="trimmed_reads_single" from_work_dir="input_1_trimmed.fq" label="${tool.name} on ${on_string}: trimmed reads">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_singles" name="trimmed_reads_single" from_work_dir="input_1_trimmed.fq.gz" label="${tool.name} on ${on_string}: trimmed reads">
             <filter>singlePaired['sPaired'] == "single"</filter>
-            <filter>trimming['hardtrim3'] == '' and trimming['hardtrim5'] == ''</filter>
+            <filter>trimming['settingsType'] == "default" or (trimming['hardtrim3'] == '' and trimming['hardtrim5'] == '')</filter>
         </data>
-
-        <data format_source="singlePaired|input_singles" name="hardtrim_reads_single" from_work_dir="input_1_hardtrim.fq" label="${tool.name} on ${on_string}: hard-trimmed reads">
+        <data format="fastqsanger.gz" name="hardtrim_reads_single" from_work_dir="input_1_hardtrim.fq.gz" label="${tool.name} on ${on_string}: hard-trimmed reads">
             <filter>singlePaired['sPaired'] == "single"</filter>
             <filter>trimming['settingsType'] == "custom"</filter>
             <filter>trimming['hardtrim3'] != '' or trimming['hardtrim5'] != ''</filter>
         </data>
-
         <!--Trimmed reads paired collection-->
         <collection name="trimmed_reads_paired_collection" type="paired" label="${tool.name} on ${on_string}: paired reads">
-            <data name="forward" format_source="input_mate_pairs['forward']" from_work_dir="input_1_val_1.fq" />
-            <data name="reverse" format_source="input_mate_pairs['forward']" from_work_dir="input_2_val_2.fq" />
+            <data name="forward" format="fastqsanger.gz" from_work_dir="input_1_val_1.fq.gz"/>
+            <data name="reverse" format="fastqsanger.gz" from_work_dir="input_2_val_2.fq.gz"/>
             <filter>singlePaired['sPaired'] == "paired_collection"</filter>
-            <filter>trimming['hardtrim3'] == '' and trimming['hardtrim5'] == ''</filter>
-            <filter>trimming['clock'] == False</filter>
+            <filter>trimming['settingsType'] == "default" or (trimming['hardtrim3'] == '' and trimming['hardtrim5'] == '')</filter>
+            <filter>trimming['settingsType'] == "default" or trimming['clock'] == False</filter>
         </collection>
-        
         <!--Unpaired reads collection-->
         <collection name="trimmed_reads_unpaired_collection" type="paired" label="${tool.name} on ${on_string}: unpaired reads">
-            <data name="forward" format_source="input_mate_pairs['forward']" from_work_dir="input_1_unpaired_1.fq" />
-            <data name="reverse" format_source="input_mate_pairs['forward']" from_work_dir="input_2_unpaired_2.fq" />
+            <data name="forward" format="fastqsanger.gz" from_work_dir="input_1_unpaired_1.fq.gz"/>
+            <data name="reverse" format="fastqsanger.gz" from_work_dir="input_2_unpaired_2.fq.gz"/>
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
             <filter>singlePaired['sPaired'] == "paired_collection"</filter>
-            <filter>trimming['hardtrim3'] == '' and trimming['hardtrim5'] == ''</filter>
+            <filter>trimming['settingsType'] == "default" or (trimming['hardtrim3'] == '' and trimming['hardtrim5'] == '')</filter>
         </collection>
-
         <!--Hard-trimmed reads paired collection-->
         <collection name="hardtrimmed_reads_paired_collection" type="paired" label="${tool.name} on ${on_string}: hard-trimmed paired reads">
-            <data name="forward" format_source="input_mate_pairs['forward']" from_work_dir="input_1_hardtrim.fq" />
-            <data name="reverse" format_source="input_mate_pairs['forward']" from_work_dir="input_2_hardtrim.fq" />
+            <data name="forward" format="fastqsanger.gz" from_work_dir="input_1_hardtrim.fq.gz"/>
+            <data name="reverse" format="fastqsanger.gz" from_work_dir="input_2_hardtrim.fq.gz"/>
             <filter>singlePaired['sPaired'] == "paired_collection"</filter>
             <filter>trimming['settingsType'] == "custom"</filter>
             <filter>trimming['hardtrim3'] or trimming['hardtrim5']</filter>
         </collection>
-
         <!--Mouse epigenetic reads paired collection-->
         <collection name="mouse_reads_paired_collection" type="paired" label="${tool.name} on ${on_string}: MEC paired reads">
-            <data name="forward" format_source="input_mate_pairs['forward']" from_work_dir="input_1.clock_UMI.R1.fq" />
-            <data name="reverse" format_source="input_mate_pairs['forward']" from_work_dir="input_2.clock_UMI.R2.fq" />
+            <data name="forward" format="fastqsanger.gz" from_work_dir="input_1.clock_UMI.R1.fq.gz"/>
+            <data name="reverse" format="fastqsanger.gz" from_work_dir="input_2.clock_UMI.R2.fq.gz"/>
             <filter>singlePaired['sPaired'] == "paired_collection"</filter>
             <filter>trimming['settingsType'] == "custom"</filter>
             <filter>trimming['clock']</filter>
         </collection>
-
-
-        <data format_source="singlePaired|input_mate1" default_identifier_source="singlePaired|input_mate1" name="trimmed_reads_pair1" from_work_dir="input_1_val_1.fq"
-            label="${tool.name} on ${on_string}: trimmed reads pair 1">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate1" name="trimmed_reads_pair1" from_work_dir="input_1_val_1.fq.gz" label="${tool.name} on ${on_string}: trimmed reads pair 1">
             <filter>singlePaired['sPaired'] == "paired"</filter>
-            <filter>trimming['hardtrim3'] == '' and trimming['hardtrim5'] == ''</filter>
-            <filter>trimming['clock'] == False</filter>
+            <filter>trimming['settingsType'] == "default" or (trimming['hardtrim3'] == '' and trimming['hardtrim5'] == '')</filter>
+            <filter>trimming['settingsType'] == "default" or trimming['clock'] == False</filter>
         </data>
-
-        <data format_source="singlePaired|input_mate2" default_identifier_source="singlePaired|input_mate2" name="trimmed_reads_pair2" from_work_dir="input_2_val_2.fq"
-            label="${tool.name} on ${on_string}: trimmed reads pair 2">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate2" name="trimmed_reads_pair2" from_work_dir="input_2_val_2.fq.gz" label="${tool.name} on ${on_string}: trimmed reads pair 2">
             <filter>singlePaired['sPaired'] == "paired"</filter>
-            <filter>trimming['hardtrim3'] == '' and trimming['hardtrim5'] == ''</filter>
-            <filter>trimming['clock'] == False</filter>
+            <filter>trimming['settingsType'] == "default" or (trimming['hardtrim3'] == '' and trimming['hardtrim5'] == '')</filter>
+            <filter>trimming['settingsType'] == "default" or trimming['clock'] == False</filter>
         </data>
-
-        <data format_source="singlePaired|input_mate1" default_identifier_source="singlePaired|input_mate1" name="unpaired_reads_1" from_work_dir="input_1_unpaired_1.fq"
-            label="${tool.name} on ${on_string}: unpaired reads (1)">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate1" name="unpaired_reads_1" from_work_dir="input_1_unpaired_1.fq.gz" label="${tool.name} on ${on_string}: unpaired reads (1)">
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
             <filter>singlePaired['sPaired'] == "paired"</filter>
+            <filter>trimming['settingsType'] == "default" or (trimming['hardtrim3'] == '' and trimming['hardtrim5'] == '')</filter>
         </data>
-
-        <data format_source="singlePaired|input_mate2" default_identifier_source="singlePaired|input_mate2" name="unpaired_reads_2" from_work_dir="input_2_unpaired_2.fq"
-            label="${tool.name} on ${on_string}: unpaired reads (2)">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate2" name="unpaired_reads_2" from_work_dir="input_2_unpaired_2.fq.gz" label="${tool.name} on ${on_string}: unpaired reads (2)">
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['retain_unpaired']['retain_unpaired_select'] == "retain_unpaired_output"</filter>
             <filter>singlePaired['sPaired'] == "paired"</filter>
+            <filter>trimming['settingsType'] == "default" or (trimming['hardtrim3'] == '' and trimming['hardtrim5'] == '')</filter>
         </data>
-
         <!--Hard-trimmed paired reads-->
-        <data format_source="singlePaired|input_mate1" default_identifier_source="singlePaired|input_mate1" name="hardtrimmed_reads_pair1" from_work_dir="input_1_hardtrim.fq"
-            label="${tool.name} on ${on_string}: hard-trimmed reads pair 1">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate1" name="hardtrimmed_reads_pair1" from_work_dir="input_1_hardtrim.fq.gz" label="${tool.name} on ${on_string}: hard-trimmed reads pair 1">
             <filter>singlePaired['sPaired'] == "paired"</filter>
             <filter>trimming['settingsType'] == 'custom'</filter>
             <filter>trimming['hardtrim3'] or trimming['hardtrim5']</filter>
         </data>
-
-        <data format_source="singlePaired|input_mate2" default_identifier_source="singlePaired|input_mate2" name="hardtrimmed_reads_pair2" from_work_dir="input_2_hardtrim.fq"
-            label="${tool.name} on ${on_string}: hard-trimmed reads pair 2">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate2" name="hardtrimmed_reads_pair2" from_work_dir="input_2_hardtrim.fq.gz" label="${tool.name} on ${on_string}: hard-trimmed reads pair 2">
             <filter>singlePaired['sPaired'] == "paired"</filter>
             <filter>trimming['settingsType'] == 'custom'</filter>
             <filter>trimming['hardtrim3'] or trimming['hardtrim5']</filter>
         </data>
-
         <!--Mouse epigenetic mode paired reads-->
-        <data format_source="singlePaired|input_mate1" default_identifier_source="singlePaired|input_mate1" name="mec_reads_pair1" from_work_dir="input_1.clock_UMI.R1.fq"
-            label="${tool.name} on ${on_string}: MEC reads pair 1">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate1" name="mec_reads_pair1" from_work_dir="input_1.clock_UMI.R1.fq.gz" label="${tool.name} on ${on_string}: MEC reads pair 1">
             <filter>singlePaired['sPaired'] == "paired"</filter>
             <filter>trimming['settingsType'] == 'custom'</filter>
             <filter>trimming['clock']</filter>
         </data>
-
-        <data format_source="singlePaired|input_mate2" default_identifier_source="singlePaired|input_mate2" name="mec_reads_pair2" from_work_dir="input_2.clock_UMI.R2.fq"
-            label="${tool.name} on ${on_string}: MEC reads pair 2">
+        <data format="fastqsanger.gz" default_identifier_source="singlePaired|input_mate2" name="mec_reads_pair2" from_work_dir="input_2.clock_UMI.R2.fq.gz" label="${tool.name} on ${on_string}: MEC reads pair 2">
             <filter>singlePaired['sPaired'] == "paired"</filter>
             <filter>trimming['settingsType'] == 'custom'</filter>
             <filter>trimming['clock']</filter>
         </data>
-
         <data format="txt" name="report_file" label="${tool.name} on ${on_string}: report file">
             <filter>params['settingsType'] == "custom"</filter>
             <filter>params['report'] == True</filter>
         </data>
     </outputs>
-
     <tests>
         <test expect_num_outputs="2">
             <conditional name="singlePaired">
-                <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
-                <param name="sPaired" value="single" />
+                <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger"/>
+                <param name="sPaired" value="single"/>
             </conditional>
             <conditional name="params">
-                <param name="settingsType" value="custom" />
-                <param name="report" value="true" />
+                <param name="settingsType" value="custom"/>
+                <param name="report" value="true"/>
             </conditional>
-            <output name="trimmed_reads_single" file="sanger_full_range_results1.fastqsanger" ftype="fastqsanger"/>
-            <output name="report_file" file="sanger_full_range_report_results1.txt" ftype="txt" lines_diff="13" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results1.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="report_file" file="sanger_full_range_report_results1.txt" ftype="txt" lines_diff="13"/>
         </test>
         <test expect_num_outputs="2">
             <conditional name="singlePaired">
-                <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz" />
-                <param name="sPaired" value="single" />
+                <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz"/>
+                <param name="sPaired" value="single"/>
             </conditional>
             <conditional name="params">
-                <param name="settingsType" value="custom" />
-                <param name="report" value="true" />
+                <param name="settingsType" value="custom"/>
+                <param name="report" value="true"/>
             </conditional>
-            <output name="trimmed_reads_single" file="sanger_full_range_results1.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
-            <output name="report_file" file="sanger_full_range_report_results1gz.txt" ftype="txt" lines_diff="10" />
-        </test>
-
-        <test expect_num_outputs="1">
-            <conditional name="singlePaired">
-                <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
-                <param name="sPaired" value="single" />
-                <conditional name="trimming">
-                    <param name="trimming_select" value="--illumina" />
-                </conditional>
-            </conditional>
-            <output name="trimmed_reads_single" file="sanger_full_range_results2.fastqsanger" ftype="fastqsanger"/>
+            <output name="trimmed_reads_single" file="sanger_full_range_results1.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="report_file" file="sanger_full_range_report_results1gz.txt" ftype="txt" lines_diff="10"/>
         </test>
         <test expect_num_outputs="1">
             <conditional name="singlePaired">
-                <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz" />
-                <param name="sPaired" value="single" />
+                <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger"/>
+                <param name="sPaired" value="single"/>
                 <conditional name="trimming">
-                    <param name="trimming_select" value="--illumina" />
+                    <param name="trimming_select" value="--illumina"/>
                 </conditional>
             </conditional>
-            <output name="trimmed_reads_single" file="sanger_full_range_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
-        </test>
-
-        <test expect_num_outputs="1">
-            <conditional name="singlePaired">
-                <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger" />
-                <param name="sPaired" value="single" />
-                <conditional name="trimming">
-                    <param name="trimming_select" value="user" />
-                    <param name="adapter" value="AAAGAGC" />
-                </conditional>
-            </conditional>
-            <output name="trimmed_reads_single" file="sanger_full_range_results3.fastqsanger" ftype="fastqsanger"/>
+            <output name="trimmed_reads_single" file="sanger_full_range_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
         </test>
         <test expect_num_outputs="1">
             <conditional name="singlePaired">
-                <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz" />
-                <param name="sPaired" value="single" />
+                <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz"/>
+                <param name="sPaired" value="single"/>
                 <conditional name="trimming">
-                    <param name="trimming_select" value="user" />
-                    <param name="adapter" value="AAAGAGC" />
+                    <param name="trimming_select" value="--illumina"/>
                 </conditional>
             </conditional>
-            <output name="trimmed_reads_single" file="sanger_full_range_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
         </test>
-
-        <test expect_num_outputs="3">
+        <test expect_num_outputs="1">
             <conditional name="singlePaired">
-                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
-                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
-                <param name="sPaired" value="paired" />
+                <param name="input_singles" value="sanger_full_range_original_sanger.fastqsanger" ftype="fastqsanger"/>
+                <param name="sPaired" value="single"/>
+                <conditional name="trimming">
+                    <param name="trimming_select" value="user"/>
+                    <param name="adapter" value="AAAGAGC"/>
+                </conditional>
             </conditional>
-            <conditional name="params">
-                <param name="settingsType" value="custom" />
-                <param name="report" value="true" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="singlePaired">
+                <param name="input_singles" value="sanger_full_range_original_sanger.fastq.gz" ftype="fastqsanger.gz"/>
+                <param name="sPaired" value="single"/>
+                <conditional name="trimming">
+                    <param name="trimming_select" value="user"/>
+                    <param name="adapter" value="AAAGAGC"/>
+                </conditional>
             </conditional>
-            <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastqsanger" ftype="fastqsanger"/>
-            <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastqsanger" ftype="fastqsanger"/>
-            <output name="report_file" file="paired_example_results2.txt" ftype="txt" lines_diff="20" />
+            <output name="trimmed_reads_single" file="sanger_full_range_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
         </test>
         <test expect_num_outputs="3">
             <conditional name="singlePaired">
-                <param name="input_mate1" value="bwa-mem-fastq1.fq.gz" ftype="fastqsanger.gz" />
-                <param name="input_mate2" value="bwa-mem-fastq2.fq.gz" ftype="fastqsanger.gz" />
-                <param name="sPaired" value="paired" />
+                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger"/>
+                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger"/>
+                <param name="sPaired" value="paired"/>
             </conditional>
             <conditional name="params">
-                <param name="settingsType" value="custom" />
-                <param name="report" value="true" />
+                <param name="settingsType" value="custom"/>
+                <param name="report" value="true"/>
             </conditional>
-            <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
-            <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
-            <output name="report_file" file="paired_example_results2gz.txt" ftype="txt" lines_diff="20" />
+            <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="report_file" file="paired_example_results2.txt" ftype="txt" lines_diff="20"/>
         </test>
-
+        <test expect_num_outputs="3">
+            <conditional name="singlePaired">
+                <param name="input_mate1" value="bwa-mem-fastq1.fq.gz" ftype="fastqsanger.gz"/>
+                <param name="input_mate2" value="bwa-mem-fastq2.fq.gz" ftype="fastqsanger.gz"/>
+                <param name="sPaired" value="paired"/>
+            </conditional>
+            <conditional name="params">
+                <param name="settingsType" value="custom"/>
+                <param name="report" value="true"/>
+            </conditional>
+            <output name="trimmed_reads_pair1" file="paired_example_pair1_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="trimmed_reads_pair2" file="paired_example_pair2_results2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="report_file" file="paired_example_results2gz.txt" ftype="txt" lines_diff="20"/>
+        </test>
         <test expect_num_outputs="7">
             <conditional name="singlePaired">
                 <param name="input_mate_pairs">
                     <collection type="paired">
-                        <element name="forward" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
-                        <element name="reverse" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
+                        <element name="forward" value="bwa-mem-fastq1.fq" ftype="fastqsanger"/>
+                        <element name="reverse" value="bwa-mem-fastq2.fq" ftype="fastqsanger"/>
                     </collection>
                 </param>
-                <param name="sPaired" value="paired_collection" />
+                <param name="sPaired" value="paired_collection"/>
             </conditional>
             <conditional name="params">
-                <param name="settingsType" value="custom" />
-                <param name="report" value="true" />
+                <param name="settingsType" value="custom"/>
+                <param name="report" value="true"/>
                 <conditional name="retain_unpaired">
-                    <param name="retain_unpaired_select" value="retain_unpaired_output" />
+                    <param name="retain_unpaired_select" value="retain_unpaired_output"/>
                 </conditional>
             </conditional>
-            <output name="report_file" file="paired_collection_example_results3.txt" ftype="txt" lines_diff="20" />
+            <output name="report_file" file="paired_collection_example_results3.txt" ftype="txt" lines_diff="20"/>
             <output_collection name="trimmed_reads_paired_collection" type="paired">
-                <element name="forward" file="paired_collection_example_pair1_results3.fastqsanger" ftype="fastqsanger"/>
-                <element name="reverse" file="paired_collection_example_pair2_results3.fastqsanger" ftype="fastqsanger"/>
+                <element name="forward" file="paired_collection_example_pair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+                <element name="reverse" file="paired_collection_example_pair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
             </output_collection>
-
             <output_collection name="trimmed_reads_unpaired_collection" type="paired">
-                <element name="forward" file="paired_collection_example_unpair1_results3.fastqsanger" ftype="fastqsanger"/>
-                <element name="reverse" file="paired_collection_example_unpair2_results3.fastqsanger" ftype="fastqsanger"/>
+                <element name="forward" file="paired_collection_example_unpair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+                <element name="reverse" file="paired_collection_example_unpair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
             </output_collection>
         </test>
         <test expect_num_outputs="7">
             <conditional name="singlePaired">
                 <param name="input_mate_pairs">
                     <collection type="paired">
-                        <element name="forward" value="bwa-mem-fastq1.fq.gz" ftype="fastqsanger.gz" />
-                        <element name="reverse" value="bwa-mem-fastq2.fq.gz" ftype="fastqsanger.gz" />
+                        <element name="forward" value="bwa-mem-fastq1.fq.gz" ftype="fastqsanger.gz"/>
+                        <element name="reverse" value="bwa-mem-fastq2.fq.gz" ftype="fastqsanger.gz"/>
                     </collection>
                 </param>
-                <param name="sPaired" value="paired_collection" />
+                <param name="sPaired" value="paired_collection"/>
             </conditional>
             <conditional name="params">
-                <param name="settingsType" value="custom" />
-                <param name="report" value="true" />
+                <param name="settingsType" value="custom"/>
+                <param name="report" value="true"/>
                 <conditional name="retain_unpaired">
-                    <param name="retain_unpaired_select" value="retain_unpaired_output" />
+                    <param name="retain_unpaired_select" value="retain_unpaired_output"/>
                 </conditional>
             </conditional>
-            <output name="report_file" file="paired_collection_example_results3gz.txt" ftype="txt" lines_diff="20" />
+            <output name="report_file" file="paired_collection_example_results3gz.txt" ftype="txt" lines_diff="20"/>
             <output_collection name="trimmed_reads_paired_collection" type="paired">
-                <element name="forward" file="paired_collection_example_pair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
-                <element name="reverse" file="paired_collection_example_pair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+                <element name="forward" file="paired_collection_example_pair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+                <element name="reverse" file="paired_collection_example_pair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
             </output_collection>
-
             <output_collection name="trimmed_reads_unpaired_collection" type="paired">
-                <element name="forward" file="paired_collection_example_unpair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
-                <element name="reverse" file="paired_collection_example_unpair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true" />
+                <element name="forward" file="paired_collection_example_unpair1_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+                <element name="reverse" file="paired_collection_example_unpair2_results3.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
             </output_collection>
         </test>
         <!--Test hard-trim option-->
         <test expect_num_outputs="2">
             <conditional name="singlePaired">
-                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
-                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
-                <param name="sPaired" value="paired" />
+                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger"/>
+                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger"/>
+                <param name="sPaired" value="paired"/>
             </conditional>
             <conditional name="trimming">
-                <param name="settingsType" value="custom" />
+                <param name="settingsType" value="custom"/>
                 <param name="hardtrim3" value="20"/>
             </conditional>
-            <output name="hardtrimmed_reads_pair1" file="paired_hardtrimmed3_pair1_.fastqsanger" ftype="fastqsanger"/>
-            <output name="hardtrimmed_reads_pair1" file="paired_hardtrimmed3_pair2_.fastqsanger" ftype="fastqsanger"/>
+            <output name="hardtrimmed_reads_pair1" file="paired_hardtrimmed3_pair1_.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="hardtrimmed_reads_pair2" file="paired_hardtrimmed3_pair2_.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
         </test>
         <test expect_num_outputs="2">
             <conditional name="singlePaired">
-                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
-                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
-                <param name="sPaired" value="paired" />
+                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger"/>
+                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger"/>
+                <param name="sPaired" value="paired"/>
             </conditional>
             <conditional name="trimming">
-                <param name="settingsType" value="custom" />
+                <param name="settingsType" value="custom"/>
                 <param name="hardtrim5" value="20"/>
             </conditional>
-            <output name="hardtrimmed_reads_pair1" file="paired_hardtrimmed5_pair1_.fastqsanger" ftype="fastqsanger"/>
-            <output name="hardtrimmed_reads_pair1" file="paired_hardtrimmed5_pair2_.fastqsanger" ftype="fastqsanger"/>
+            <output name="hardtrimmed_reads_pair1" file="paired_hardtrimmed5_pair1_.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="hardtrimmed_reads_pair2" file="paired_hardtrimmed5_pair2_.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
         </test>
-
         <!--Test mouse epigenetic clock option-->
         <test expect_num_outputs="2">
             <conditional name="singlePaired">
-                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
-                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
-                <param name="sPaired" value="paired" />
+                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger"/>
+                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger"/>
+                <param name="sPaired" value="paired"/>
             </conditional>
             <conditional name="trimming">
-                <param name="settingsType" value="custom" />
+                <param name="settingsType" value="custom"/>
                 <param name="clock" value="true"/>
             </conditional>
-            <output name="mec_reads_pair1" file="mec_reads_pair1.fastqsanger" ftype="fastqsanger"/>
-            <output name="mec_reads_pair2" file="mec_reads_pair2.fastqsanger" ftype="fastqsanger"/>
+            <output name="mec_reads_pair1" file="mec_reads_pair1.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="mec_reads_pair2" file="mec_reads_pair2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
         </test>
         <!--Test polyA option-->
         <test expect_num_outputs="2">
             <conditional name="singlePaired">
-                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger" />
-                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger" />
-                <param name="sPaired" value="paired" />
+                <param name="input_mate1" value="bwa-mem-fastq1.fq" ftype="fastqsanger"/>
+                <param name="input_mate2" value="bwa-mem-fastq2.fq" ftype="fastqsanger"/>
+                <param name="sPaired" value="paired"/>
             </conditional>
             <conditional name="trimming">
-                <param name="settingsType" value="custom" />
+                <param name="settingsType" value="custom"/>
                 <param name="polyA" value="true"/>
             </conditional>
-            <output name="trimmed_reads_pair1" file="trimmed_polyA_reads_pair1.fastqsanger" ftype="fastqsanger"/>
-            <output name="trimmed_reads_pair1" file="trimmed_polyA_reads_pair2.fastqsanger" ftype="fastqsanger"/>
+            <output name="trimmed_reads_pair1" file="trimmed_polyA_reads_pair1.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
+            <output name="trimmed_reads_pair2" file="trimmed_polyA_reads_pair2.fastq.gz" ftype="fastqsanger.gz" decompress="true"/>
         </test>
     </tests>
     <help><![CDATA[
@@ -815,5 +868,5 @@ It is developed by Felix Krueger at the Babraham Institute.
 .. _Multi-tissue DNA methylation age predictor in mouse: https://genomebiology.biomedcentral.com/articles/10.1186/s13059-017-1203-5
 
     ]]></help>
-    <expand macro="citations" />
+    <expand macro="citations"/>
 </tool>
