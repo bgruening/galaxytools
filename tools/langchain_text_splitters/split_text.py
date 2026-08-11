@@ -130,16 +130,17 @@ def read_input_text(input_path):
             "Convert the dataset to UTF-8 before splitting it."
         )
 
-    # When a file without an empty last line gets uploaded to Galaxy,
-    # an \n will be append automatically see convert_newlines() in galaxy/lib/galaxy/datatypes/sniff.py
-
-    # TODO: Thus, we need a way to address this in a robust way just
-    # return text.removesuffix("\n") leads to 6 six failing tests (6,12,14,15,16,17)
-
-    # if we just keep the \n we face in the NLTK splitter case the warning below.
-    # WARNING: The NLTK sentence splitter dropped the 1 character(s) after the last sentence [...]
-    # To reproduce use sentence_nltk_english.txt, with target chunk size in characters: 30
-    # Or run planemo test --test_index 9
+    # Galaxy appends a newline to an uploaded file that has none, see
+    # convert_newlines() in galaxy/lib/galaxy/datatypes/sniff.py. It is
+    # deliberately kept here. An uploaded "abc" and an uploaded "abc\n" both
+    # arrive as "abc\n", so the two cases cannot be told apart, and removing the
+    # newline would cut a real character off every input that legitimately ends
+    # in one, which is the common case. The chunks would then no longer add up
+    # to the input, and the character based splitters would become lossy for no
+    # gain. It would not even settle the NLTK case, because punkt discards all
+    # trailing whitespace, so an input ending in a blank line still loses more
+    # than the one appended character. What NLTK drops is reported instead, see
+    # the warning at the end of main().
     return text
 
 
@@ -315,12 +316,16 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
         )
 
     if args.splitter_type == "spacy":
+        # strip_whitespace is handled on the finished chunks in main() instead of
+        # here. langchain strips every sentence before joining them, and
+        # separator="" joins with nothing, so letting it strip would also delete
+        # the space *between* two sentences and produce "mat.The".
         splitter = SpacyTextSplitter(
             **length_options,
             pipeline=args.spacy_pipeline,
             max_length=args.spacy_max_length,
             separator="",
-            strip_whitespace=args.strip_whitespace,
+            strip_whitespace=False,
         )
         # langchain only forwards max_length to the pipelines it loads with
         # spacy.load(). The sentencizer is built from English() instead and
@@ -517,15 +522,14 @@ def main():
         # NLTKTextSplitter loads the punkt_tab data in its constructor, so this
         # has to be caught around build_splitter() and not around
         # create_documents().
-        # nltk is searching for the punkt_tab data by default here:
+        # The data comes from the nltk_data requirement, so this is reached only
+        # on an environment that does not provide it, or provides it outside the
+        # directories nltk searches:
         # -/usr/share/nltk_data
         # -/usr/local/share/nltk_data
         # -/usr/lib/nltk_data
         # -/usr/local/lib/nltk_data
-        # alternative conda package:
-        # https://anaconda.org/channels/conda-forge/packages/nltk_data/overview
-        # but it is from 2022.05.27 and ships 'punkt' instead of 'punkt_tab'
-        # here is the feedstock https://github.com/conda-forge/nltk_data-feedstock
+        # -any directory listed in NLTK_DATA
         # KeyError and IndexError also derive from LookupError, so they are
         # excluded to keep an unrelated failure from being reported as missing
         # Punkt data.
@@ -557,13 +561,30 @@ def main():
         raw_chunk_text = document.page_content
         start_index = document.metadata.get("start_index")
 
-        # A chunk that holds nothing but whitespace carries no content for a
-        # downstream step to work on. The sentence splitters produce one for the
-        # trailing line break of the input, because they keep the whitespace
-        # between the sentences and never strip a chunk.
-        if not raw_chunk_text.strip():
-            empty_chunks += 1
-            continue
+        if args.strip_whitespace:
+            # Only the outer whitespace of the finished chunk is removed, which
+            # is what the option promises. The chunk therefore stays a verbatim
+            # slice of the input and its start index stays valid, so it only has
+            # to move by whatever came off the front.
+            #
+            # The splitter has already packed the chunks at this point, counting
+            # the whitespace that is removed here, so a stripped chunk can come
+            # out shorter than the requested size. That is the conservative
+            # direction, and measuring the stripped text instead would mean
+            # stripping before the packing, which is exactly what produces
+            # "mat.The".
+            leading = len(raw_chunk_text) - len(raw_chunk_text.lstrip())
+            raw_chunk_text = raw_chunk_text.strip()
+
+            if start_index is not None and start_index >= 0:
+                start_index += leading
+
+            # Nothing is left for a downstream step to work on. Reachable only
+            # when the user asked for stripping, so no content is lost: without
+            # it every chunk is kept, whitespace included.
+            if not raw_chunk_text:
+                empty_chunks += 1
+                continue
 
         chunk_number = len(chunks) + 1
 
@@ -617,10 +638,12 @@ def main():
         print(
             "WARNING: The text of the following chunk(s) does not occur in the "
             f"input: {', '.join(str(number) for number in altered_text_warnings)}. "
-            "Splitting between tokens cuts the text at token boundaries, which "
-            "can fall inside a character that is encoded in several bytes and "
-            "replaces it with the Unicode replacement character. Use one of the "
-            "character based splitters for text that is not plain ASCII.",
+            "The splitter returned text it had modified, so no position in the "
+            "input describes it and the start index is reported as null. The "
+            "known cause is splitting between tokens: a cut can fall inside a "
+            "character that is encoded in several bytes, which then becomes the "
+            "Unicode replacement character. Use one of the character based "
+            "splitters for text that is not plain ASCII.",
             flush=True,
         )
 
@@ -636,21 +659,30 @@ def main():
             flush=True,
         )
 
+    if empty_chunks:
+        print(
+            f"WARNING: {empty_chunks} chunk(s) held nothing but whitespace and "
+            "were left out of the outputs, because stripping the whitespace "
+            "around the chunks left them empty.",
+            flush=True,
+        )
+
     # The NLTK splitter builds the chunks from the sentence spans reported by
     # punkt, which end at the last sentence. Punkt trims trailing whitespace, so
     # whatever follows is dropped and the chunks no longer add up to the input.
     # The first span always starts at offset 0, so nothing is lost in front.
     # The spaCy splitter keeps everything.
-    if empty_chunks:
-        print(
-            f"WARNING: {empty_chunks} chunk(s) held nothing but whitespace and "
-            "were left out of the outputs.",
-            flush=True,
-        )
+    if args.splitter_type == "nltk" and chunks and not args.strip_whitespace:
+        last_chunk = chunks[-1]
+        last_text = last_chunk["text"]
+        # The validated start index is preferred over searching for the text:
+        # rfind() returns the *last* occurrence, so it would report no loss
+        # whenever the dropped text happens to repeat the final chunk.
+        last_start = last_chunk["start_index"]
 
-    if args.splitter_type == "nltk" and chunks:
-        last_text = chunks[-1]["text"]
-        last_start = input_text.rfind(last_text)
+        if last_start is None:
+            last_start = input_text.rfind(last_text)
+
         dropped = (
             len(input_text) - (last_start + len(last_text)) if last_start >= 0 else 0
         )
@@ -672,36 +704,21 @@ def main():
         "chunk_size": args.chunk_size,
         "chunk_overlap": args.chunk_overlap,
         "number_of_chunks": len(chunks),
+        # Reported from the argument rather than per splitter, because the
+        # stripping is done above for whichever splitter produced the chunks.
+        # A splitter that does not offer the option never receives it, so the
+        # value stays false for it without having to be hardcoded here.
+        "strip_whitespace": args.strip_whitespace,
     }
 
-    if args.splitter_type == "token":
-        # The token splitter has no separators and never strips whitespace, so
-        # the value is reported as false regardless of what was requested.
-        metadata["strip_whitespace"] = False
-
-    elif args.splitter_type in ("character", "recursive_character"):
-        metadata.update(
-            {
-                "keep_separator": args.keep_separator,
-                "strip_whitespace": args.strip_whitespace,
-            }
-        )
+    if args.splitter_type in ("character", "recursive_character"):
+        metadata["keep_separator"] = args.keep_separator
 
     elif args.splitter_type == "nltk":
-        metadata.update(
-            {
-                "sentence_language": args.sentence_language,
-                "strip_whitespace": False,
-            }
-        )
+        metadata["sentence_language"] = args.sentence_language
 
     elif args.splitter_type == "spacy":
-        metadata.update(
-            {
-                "spacy_pipeline": args.spacy_pipeline,
-                "strip_whitespace": args.strip_whitespace,
-            }
-        )
+        metadata["spacy_pipeline"] = args.spacy_pipeline
 
     args.output_json.write_text(
         json.dumps(
