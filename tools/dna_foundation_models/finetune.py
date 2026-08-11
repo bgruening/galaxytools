@@ -246,7 +246,7 @@ def make_compute_metrics(problem_type: str):
 def get_texts(data_path: str):
     texts = []
     with open(data_path, "r") as f:
-        reader = csv.reader(f)
+        reader = csv.reader(f, delimiter="\t")
         next(reader, None)
         for row in reader:
             texts.append(row[0])
