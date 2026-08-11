@@ -59,6 +59,22 @@ fit <- survfit(as.formula(paste0("Surv(`", time_col_name, "`, `", status_col_nam
 summary <- surv_summary(fit, data = data)
 write.table(summary, file = "surv_summary.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
 
+#if $pairwise_comparison:
+    #if $group_col:
+if (nlevels(data[[group_col_name]]) >= 2) {
+    pw_formula <- as.formula(paste0("Surv(`", time_col_name, "`, `", status_col_name, "`) ~ `", group_col_name, "`"))
+    pw_res <- pairwise_survdiff(pw_formula, data = data, p.adjust.method = "BH")
+    pw_pvalues <- as.data.frame(pw_res\$p.value)
+    pw_pvalues\$comparison <- rownames(pw_pvalues)
+    write.table(pw_pvalues, file = "pairwise_survdiff.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+} else {
+    print("Pairwise comparison skipped: grouping column has fewer than 2 levels.")
+}
+    #else:
+print("Pairwise comparison skipped: no grouping column selected.")
+    #end if
+#end if
+
 p <- ggsurvplot(
   fit, data = data,
   conf.int = ${po.conf_int},
@@ -125,6 +141,7 @@ dev.off()
             <option value="month">Months</option>
             <option value="year">Years</option>
         </param>
+        <param name="pairwise_comparison" type="boolean" checked="false" truevalue="true" falsevalue="false" label="Output pairwise group comparison table?" help="Run pairwise_survdiff() to compare survival curves between all pairs of groups (only available when a grouping column is selected)."/>
         <section name="sec_plot_options" expanded="true" title="Plot Options">
             <param name="conf_int" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Plot confidence intervals?"/>
             <param name="pval" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Add log-rank p-value?"/>
@@ -209,6 +226,9 @@ dev.off()
             </change_format>
         </data>
         <data name="surv_summary" from_work_dir="surv_summary.tsv" format="tabular" label="${tool.name} on ${on_string}: Survival summary table"/>
+        <data name="pairwise_survdiff" from_work_dir="pairwise_survdiff.tsv" format="tabular" label="${tool.name} on ${on_string}: Pairwise comparison table">
+            <filter>pairwise_comparison</filter>
+        </data>
     </outputs>
     <tests>
         <!-- Test 1: Basic grouped survival curve with risk table and p-value -->
@@ -385,6 +405,45 @@ dev.off()
                 <assert_contents>
                     <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
                     <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 6: Pairwise group comparison table -->
+        <test expect_num_outputs="3">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="group_col" value="4"/>
+            <param name="output_format" value="png"/>
+            <param name="pairwise_comparison" value="True"/>
+            <section name="sec_plot_options">
+                <param name="pval" value="True"/>
+                <param name="risk_table" value="True"/>
+            </section>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using group column: multi"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1053,1050" eps="50"/>
+                    <has_image_channels channels="3"/>
+                    <has_image_height height="2100"/>
+                    <has_image_width width="2100"/>
+                    <has_size value="120000" delta="95000"/>
+                </assert_contents>
+            </output>
+            <output name="surv_summary">
+                <assert_contents>
+                    <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
+                    <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+            <output name="pairwise_survdiff">
+                <assert_contents>
+                    <has_text_matching expression="a\tb\tc\td\tcomparison"/>
+                    <has_n_lines n="5"/>
                 </assert_contents>
             </output>
         </test>
