@@ -1,9 +1,34 @@
-<tool id="grapetreetool" name="grapetree" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@" license="GPL-3.0-only">
+<tool id="grapetree" name="GrapeTree" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@" license="GPL-3.0-only">
     <description>visualization of core genomic relationships among 100,000 bacterial pathogens</description>
     <macros>
         <token name="@TOOL_VERSION@">2.1</token>
         <token name="@VERSION_SUFFIX@">0</token>
         <token name="@PROFILE@">25.0</token>
+        <xml name="matrix_options" token_sym="false" token_asym="false">
+            <option value="symmetric" selected="@SYM@">symmetric (default for MSTree and NJ)</option>
+            <option value="asymmetric" selected="@ASYM@">asymmetric (default for MSTreeV2)</option>
+        </xml>
+        <xml name="missing_options" token_default="false">
+            <option value="0" selected="@DEFAULT@">Ignore missing data in pairwise comparisons</option>
+            <option value="1">Remove columns with missing data</option>
+            <option value="2">Treat missing data as an allele</option>
+            <option value="3">Absolute number of allelic differences</option>
+        </xml>
+        <xml name="heuristic_options" token_eburst="false" token_harmonic="false">
+            <help>Used only by MSTree and MSTreeV2.</help>
+            <option value="eBurst" selected="@EBURST@">eBurst (default for MSTree)</option>
+            <option value="harmonic" selected="@HARMONIC@">harmonic (default for MSTreeV2)</option>
+        </xml>
+        <xml name="recraft_wgmlst_params" token_checked="false" token_optional="true">
+            <param argument="--recraft" type="boolean" optional="@OPTIONAL@" checked="@CHECKED@" truevalue="true" falsevalue="false" label="Recraft branches" help="Triggers local branch recrafting. [DEFAULT: MSTreeV2]"/>
+            <param argument="--wgMLST" type="boolean" optional="true" checked="false" truevalue="true" falsevalue="false" label="Use wgMLST mode" help="[EXPERIMENTAL] A better support of wgMLST schemes."/>
+        </xml>
+        <xml name="profile_test_input" tokens="file">
+            <conditional name="input_type">
+                <param name="input_selector" value="profile"/>
+                <param name="input" value="@FILE@"/>
+            </conditional>
+        </xml>
     </macros>
     <requirements>
         <requirement type="package" version="2.1">grapetree</requirement>
@@ -11,25 +36,296 @@
         <requirement type="package" version="3.12">python</requirement>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-        grapetree -p '$input' -m '$method' > '$output1'
+        grapetree --profile '$input_type.input' --method '$method_cond.method'
+        #if $method_cond.matrix
+            --matrix '$method_cond.matrix'
+        #end if
+        #if $method_cond.missing
+            --missing '$method_cond.missing'
+        #end if
+        #if $method_cond.heuristic
+            --heuristic '$method_cond.heuristic'
+        #end if
+        #if $method_cond.recraft
+            --recraft
+        #end if
+        #if $method_cond.wgMLST
+            --wgMLST
+        #end if
+        #if $method_cond.method == 'distance'
+            > '$output_distance'
+        #else
+            > '$output1'
+        #end if
     ]]></command>
     <inputs>
-        <param format="tabular" name="input" type="data" label="Tabular file" multiple="false" display="checkboxes"/>
-        <param name="method" type="select" label="Method">
-            <option value="MSTreeV2" selected="true">MSTreeV2</option>
-            <option value="MSTree">MSTree</option>
-            <option value="NJ">FastME V2 NJ tree</option>
-            <option value="RapidNJ">RapidNJ for very large datasets</option>
-            <option value="distance">p-distance matrix in PHYLIP format</option>
-        </param>
+        <conditional name="input_type">
+            <param name="input_selector" type="select" label="Input type">
+                <option value="profile" selected="true">Tabular profile (MLST or SNP character data)</option>
+                <option value="fasta">Aligned FASTA sequences</option>
+            </param>
+            <when value="profile">
+                <param name="input" format="tabular" type="data" label="Tabular profile" multiple="false" display="checkboxes" help="Tab-delimited file with strain identifiers in the first column and allele calls in the remaining columns. The first row is a header starting with '#'."/>
+            </when>
+            <when value="fasta">
+                <param name="input" format="fasta" type="data" label="Aligned FASTA" multiple="false" display="checkboxes" help="Multi-FASTA file of aligned sequences of equal length. GrapeTree computes p-distances for FASTA input."/>
+            </when>
+        </conditional>
+        <conditional name="method_cond">
+            <param argument="--method" type="select" label="Method">
+                <option value="MSTreeV2" selected="true">MSTreeV2</option>
+                <option value="MSTree">MSTree</option>
+                <option value="NJ">FastME V2 NJ tree</option>
+                <option value="RapidNJ">RapidNJ for very large datasets</option>
+                <option value="distance">p-distance matrix in PHYLIP format</option>
+            </param>
+            <when value="MSTreeV2">
+                <param argument="--matrix" type="select" label="Distance matrix type">
+                    <expand macro="matrix_options" asym="true"/>
+                </param>
+                <param argument="--missing" type="select" optional="true" label="Missing data handling" help="Only applies to a symmetric distance matrix.">
+                    <expand macro="missing_options"/>
+                </param>
+                <param argument="--heuristic" type="select" label="Tiebreak heuristic">
+                    <expand macro="heuristic_options" harmonic="true"/>
+                </param>
+                <expand macro="recraft_wgmlst_params" checked="true" optional="false"/>
+            </when>
+            <when value="MSTree">
+                <param argument="--matrix" type="select" label="Distance matrix type">
+                    <expand macro="matrix_options" sym="true"/>
+                </param>
+                <param argument="--missing" type="select" label="Missing data handling">
+                    <expand macro="missing_options" default="true"/>
+                </param>
+                <param argument="--heuristic" type="select" label="Tiebreak heuristic">
+                    <expand macro="heuristic_options" eburst="true"/>
+                </param>
+                <expand macro="recraft_wgmlst_params"/>
+            </when>
+            <when value="NJ">
+                <param argument="--matrix" type="select" label="Distance matrix type">
+                    <expand macro="matrix_options" sym="true"/>
+                </param>
+                <param argument="--missing" type="select" label="Missing data handling">
+                    <expand macro="missing_options" default="true"/>
+                </param>
+                <param argument="--heuristic" type="select" optional="true" label="Tiebreak heuristic">
+                    <expand macro="heuristic_options"/>
+                </param>
+                <expand macro="recraft_wgmlst_params"/>
+            </when>
+            <when value="RapidNJ">
+                <param argument="--matrix" type="select" optional="true" label="Distance matrix type">
+                    <expand macro="matrix_options"/>
+                </param>
+                <param argument="--missing" type="select" optional="true" label="Missing data handling" help="Only applies to a symmetric distance matrix.">
+                    <expand macro="missing_options"/>
+                </param>
+                <param argument="--heuristic" type="select" optional="true" label="Tiebreak heuristic">
+                    <expand macro="heuristic_options"/>
+                </param>
+                <expand macro="recraft_wgmlst_params"/>
+            </when>
+            <when value="distance">
+                <param argument="--matrix" type="select" optional="true" label="Distance matrix type">
+                    <expand macro="matrix_options"/>
+                </param>
+                <param argument="--missing" type="select" optional="true" label="Missing data handling" help="Only applies to a symmetric distance matrix.">
+                    <expand macro="missing_options"/>
+                </param>
+                <param argument="--heuristic" type="select" optional="true" label="Tiebreak heuristic">
+                    <expand macro="heuristic_options"/>
+                </param>
+                <expand macro="recraft_wgmlst_params"/>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-        <data format="newick" name="output1" label="labelled newick tree"/>
+        <data name="output1" format="newick" label="labelled newick tree">
+            <filter>method_cond['method'] != 'distance'</filter>
+        </data>
+        <data name="output_distance" format="phylip" label="distance matrix in PHYLIP format">
+            <filter>method_cond['method'] == 'distance'</filter>
+        </data>
     </outputs>
     <tests>
         <test expect_num_outputs="1">
-            <param name="input" value="simuled-data.profile"/>
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="MSTreeV2"/>
+            </conditional>
             <output name="output1" file="output1.nwk"/>
+            <assert_command>
+                <has_text text="--method 'MSTreeV2'"/>
+                <has_text text="--matrix 'asymmetric'"/>
+                <has_text text="--heuristic 'harmonic'"/>
+                <has_text text="--recraft"/>
+                <not_has_text text="--missing '"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="MSTreeV2"/>
+                <param name="wgMLST" value="true"/>
+            </conditional>
+            <output name="output1" file="output1.nwk"/>
+            <assert_command>
+                <has_text text="--method 'MSTreeV2'"/>
+                <has_text text="--matrix 'asymmetric'"/>
+                <has_text text="--heuristic 'harmonic'"/>
+                <has_text text="--recraft"/>
+                <has_text text="--wgMLST"/>
+                <not_has_text text="--missing '"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="MSTreeV2"/>
+                <param name="missing" value="3"/>
+            </conditional>
+            <output name="output1" file="output1.nwk"/>
+            <assert_command>
+                <has_text text="--method 'MSTreeV2'"/>
+                <has_text text="--matrix 'asymmetric'"/>
+                <has_text text="--missing '3'"/>
+                <has_text text="--heuristic 'harmonic'"/>
+                <has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="MSTree"/>
+            </conditional>
+            <output name="output1" file="output6.nwk"/>
+            <assert_command>
+                <has_text text="--method 'MSTree'"/>
+                <has_text text="--matrix 'symmetric'"/>
+                <has_text text="--missing '0'"/>
+                <has_text text="--heuristic 'eBurst'"/>
+                <not_has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="MSTree"/>
+                <param name="matrix" value="asymmetric"/>
+            </conditional>
+            <output name="output1" file="output6.nwk"/>
+            <assert_command>
+                <has_text text="--method 'MSTree'"/>
+                <has_text text="--matrix 'asymmetric'"/>
+                <has_text text="--missing '0'"/>
+                <has_text text="--heuristic 'eBurst'"/>
+                <not_has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="MSTree"/>
+                <param name="heuristic" value="harmonic"/>
+                <param name="recraft" value="true"/>
+            </conditional>
+            <output name="output1" file="output9.nwk"/>
+            <assert_command>
+                <has_text text="--method 'MSTree'"/>
+                <has_text text="--matrix 'symmetric'"/>
+                <has_text text="--missing '0'"/>
+                <has_text text="--heuristic 'harmonic'"/>
+                <has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="NJ"/>
+                <param name="matrix" value="symmetric"/>
+                <param name="missing" value="0"/>
+                <param name="heuristic" value="eBurst"/>
+            </conditional>
+            <output name="output1" file="output2.nwk"/>
+            <assert_command>
+                <has_text text="--method 'NJ'"/>
+                <has_text text="--matrix 'symmetric'"/>
+                <has_text text="--missing '0'"/>
+                <has_text text="--heuristic 'eBurst'"/>
+                <not_has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="NJ"/>
+                <param name="missing" value="2"/>
+            </conditional>
+            <output name="output1" file="output2.nwk"/>
+            <assert_command>
+                <has_text text="--method 'NJ'"/>
+                <has_text text="--matrix 'symmetric'"/>
+                <has_text text="--missing '2'"/>
+                <not_has_text text="--heuristic '"/>
+                <not_has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="RapidNJ"/>
+            </conditional>
+            <output name="output1" file="output12.nwk"/>
+            <assert_command>
+                <has_text text="--method 'RapidNJ'"/>
+                <not_has_text text="--matrix '"/>
+                <not_has_text text="--missing '"/>
+                <not_has_text text="--heuristic '"/>
+                <not_has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="distance"/>
+                <param name="matrix" value="symmetric"/>
+                <param name="missing" value="0"/>
+            </conditional>
+            <output name="output_distance" file="output3.phy"/>
+            <assert_command>
+                <has_text text="--method 'distance'"/>
+                <has_text text="--matrix 'symmetric'"/>
+                <has_text text="--missing '0'"/>
+                <not_has_text text="--heuristic '"/>
+                <not_has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="profile_test_input" file="simuled-data.profile"/>
+            <conditional name="method_cond">
+                <param name="method" value="distance"/>
+                <param name="matrix" value="asymmetric"/>
+            </conditional>
+            <output name="output_distance" file="output3.phy"/>
+            <assert_command>
+                <has_text text="--method 'distance'"/>
+                <has_text text="--matrix 'asymmetric'"/>
+                <not_has_text text="--missing '"/>
+                <not_has_text text="--heuristic '"/>
+                <not_has_text text="--recraft"/>
+                <not_has_text text="--wgMLST"/>
+            </assert_command>
         </test>
     </tests>
     <help><![CDATA[
@@ -40,11 +336,28 @@ GrapeTree is a tool for visualizing core genomic relationships among bacterial p
 
 **Input**
 
-Tabular profile file containing allele calls for each sample.
+Either a tabular profile file containing allele calls for each sample, or a Multi-FASTA file of aligned sequences.
 
-**Output**
+**Methods**
 
-Newick tree file with the phylogenetic relationships.
+- ``MSTreeV2`` (default): minimum spanning tree with an asymmetric distance matrix and local branch recrafting
+- ``MSTree``: minimum spanning tree
+- ``NJ``: FastME V2 NJ tree
+- ``RapidNJ``: RapidNJ for very large datasets
+- ``distance``: allelic distance matrix in PHYLIP format (no tree is computed)
+
+**Options**
+
+- *Distance matrix type*: ``symmetric`` (default for MSTree and NJ) or ``asymmetric`` (default for MSTreeV2); not applicable for RapidNJ and ``distance``
+- *Missing data handling*: ignore missing data (default), remove columns with missing data, treat missing data as an allele, or use the absolute number of allelic differences (symmetric distance matrix only)
+- *Tiebreak heuristic*: ``eBurst`` or ``harmonic`` (MSTree and MSTreeV2 only)
+- *Recraft branches*: trigger local branch recrafting (on by default for MSTreeV2)
+- *wgMLST mode*: optional experimental support for wgMLST schemes
+
+**Outputs**
+
+- Newick tree file with the phylogenetic relationships (all methods except ``distance``)
+- Allelic distance matrix in PHYLIP format (``distance`` method only)
 
 For full documentation, please go to the GrapeTree wiki (https://github.com/achtman-lab/GrapeTree)
     ]]></help>
