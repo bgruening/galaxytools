@@ -378,16 +378,17 @@ def train():
         else:
             trainer.save_model(model_dir)
 
-        trainer.save_state()
+    # ii) save trainer state
+    trainer.save_state()
 
-    # ii) output test evaluation metrics
+    # iii) output test evaluation metrics
     if training_args.eval_and_save_results:
         test_metrics = trainer.evaluate(eval_dataset=test_dataset)
         metrics_path = os.path.join(training_args.output_dir, "evaluation.json")
         with open(metrics_path, "w") as f:
             json.dump(test_metrics, f, indent=2)
 
-    # iii) output test labels and predictions
+    # iv) output test labels and predictions
     texts = get_texts(data_path=data_args.test_file)  
     dump_test_predictions(
         trainer=trainer,
