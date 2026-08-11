@@ -147,8 +147,9 @@ messages = [{"role": "user", "content": contents}]
 
 
 # Upfront input-side overflow check: estimate the input token count and compare
-# it to the selected model's context window (max_context, from the genai_models
-# data table, passed as sys.argv[9]). This is a WARN-ONLY check -- it never
+# it to the selected model's context window (max_context, from the
+# genai_models_extended data table, passed as sys.argv[9]). This is a WARN-ONLY
+# check -- it never
 # blocks the job; the request always proceeds. Counting is local tiktoken
 # (cl100k_base), offline, no proxy calls; cost scales linearly with input size.
 # Near-exact for gpt-oss/Qwen/Llama, approximate for Gemma/GLM/Mistral --
