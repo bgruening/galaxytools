@@ -1,0 +1,190 @@
+<tool id="rbpbench_searchrna" name="RBPBench Search Transcript" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@profile@">
+    <description>search motifs in transcript sites or full-length spliced transcripts</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+        @PREPARE_REF@
+        #if $action_type.action_type_selector == 'searchrna':
+            rbpbench searchrna
+                --in '$action_type.input_bed'
+                --gtf '$gtf_file'
+                --genome reference.fa
+                --out ./
+                @RBP_LIST@
+                @USER_RBP@
+                --ext $search_options.search_ext
+                --bed-score-col $search_options.search_bed_score_col
+                #if $search_options.search_bed_score_thr:
+                    --bed-sc-thr $search_options.search_bed_score_thr
+                #end if
+                #if $search_options.search_regex:
+                    --regex '$search_options.search_regex'
+                #end if
+                @COMMON_PARAMS_RNA@
+                @SORT_JS@
+                @PLOTLY_JS@
+        #elif $action_type.action_type_selector == 'searchlongrna':
+            rbpbench searchlongrna
+                --gtf '$gtf_file'
+                $action_type.mrna_only
+                #if $action_type.tr_list:
+                    --tr-list '$action_type.tr_list'
+                #end if
+                --genome reference.fa
+                --out ./
+                @RBP_LIST@
+                @USER_RBP@
+                @COMMON_PARAMS_RNA@
+                @SORT_JS@
+        #end if
+    ]]>    </command>
+    <inputs>
+        <conditional name="action_type">
+            <param name="action_type_selector" type="select" label="Select RBPBench program mode">
+                <option value="searchrna" selected="true">Search RBP binding motifs in transcript sites (searchrna)</option>
+                <option value="searchlongrna">Search RBP binding motifs in full spliced transcripts (searchlongrna)</option>
+            </param>
+            <when value="searchrna">
+                <param name="input_bed" type="data" format="bed" label="Transcript sites (BED format)" help="Column 1 is transcript ID (ID needs to be in --gtf), column 2 and 3 are start and end coordinates of site on the transcript."/>
+                <param name="gtf_file" type="data" format="gtf" label="GTF annotation file" help="GTF file used to extract spliced transcript sequences."/>
+                <expand macro="reference_genome"/>
+                <expand macro="select_rbp_db"/>
+                <expand macro="user_rbp"/>
+                <expand macro="search_rna_options"/>
+                <section name="output_options" title="Output options">
+                    <param name="motif_hits_bed_out" type="boolean" checked="False" label="Output motif hits BED file" help="Output motif hits BED file containing motif hits in provided genomic regions for selected RBPs"/>
+                    <param name="sites_bed_fasta_out" type="boolean" checked="False" label="Output filtered genomic regions BED + FASTA files" help="Output filtered genomic regions BED/FASTA file used for motif search. Filtered means that the actual regions used for motif search can differ from the input genomic regions, e.g. through default filtering by chromsome ID (only regions with valid IDs), removal of duplicated regions, or through optional extension of the regions"/>
+                </section>
+                <section name="advanced_html_output_options" title="Advanced HTML output options">
+                    <expand macro="advanced_html_output_options_sort_js"/>
+                    <expand macro="advanced_html_output_options_plotly_js"/>
+                </section>
+            </when>
+            <when value="searchlongrna">
+                <param name="gtf_file" type="data" format="gtf" label="GTF annotation file" help="GTF file used to extract spliced transcript sequences."/>
+                <param name="mrna_only" type="boolean" truevalue="--mrna-only" falsevalue="" checked="False" label="Use only mRNAs from GTF file" help="Set if only mRNAs should be extracted from --gtf file for motif search and plotting of mRNA region occupancies. To look only at specific mRNAs, use --tr-list and --mrna-only (default: False)"/>
+                <param name="tr_list" type="data" format="txt,tabular" optional="True" label="Specific mRNAs to use from GTF file" help="Supply file with transcript IDs (one ID per row) to define which transcripts to use from --gtf"/>
+                <expand macro="reference_genome"/>
+                <expand macro="select_rbp_db"/>
+                <expand macro="user_rbp"/>
+                <expand macro="search_longrna_options"/>
+                <section name="output_options" title="Output options">
+                    <param name="motif_hits_bed_out" type="boolean" checked="False" label="Output motif hits BED file" help="Output motif hits BED file containing motif hits in provided genomic regions for selected RBPs"/>
+                </section>
+                <section name="advanced_html_output_options" title="Advanced HTML output options">
+                    <expand macro="advanced_html_output_options_sort_js"/>
+                </section>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <!--common outputs-->
+        <data name="rbp_hit_stats_file" format="tabular" from_work_dir="rbp_hit_stats.tsv" label="${tool.name} on ${on_string}: RBP hit statistics table">
+        </data>
+        <data name="motif_hit_stats_file" format="tabular" from_work_dir="motif_hit_stats.tsv" label="${tool.name} on ${on_string}: Motif hit statistics table">
+        </data>
+        <!-- outputs for searchrna-->
+        <data name="searchrna_report_html" format="html" from_work_dir="report.rbpbench_searchrna.html" label="${tool.name} on ${on_string}: SearchRNA report HTML">
+            <filter>action_type["action_type_selector"] == "searchrna"</filter>
+        </data>
+        <data name="searchrna_motif_hits_bed_file" format="bed" from_work_dir="motif_hits.rbpbench_searchrna.bed" label="${tool.name} on ${on_string}: Motif hits on transcript sites BED">
+            <filter>action_type["action_type_selector"] == "searchrna" and action_type["output_options"]["motif_hits_bed_out"]</filter>
+        </data>
+
+        <data name="in_sites_bed_file" format="bed" from_work_dir="in_sites.filtered.bed" label="${tool.name} on ${on_string}: Genomic regions used for motif search BED">
+            <filter>action_type["action_type_selector"] == "searchrna" and action_type["output_options"]["sites_bed_fasta_out"]</filter>
+        </data>
+        <data name="in_sites_fa_file" format="fasta" from_work_dir="in_sites.filtered.fa" label="${tool.name} on ${on_string}: Genomic regions used for motif search FASTA">
+            <filter>action_type["action_type_selector"] == "searchrna" and action_type["output_options"]["sites_bed_fasta_out"]</filter>
+        </data>
+        <!-- outputs for searchlongrna-->
+        <data name="searchlongrna_report_html" format="html" from_work_dir="motif_plots.rbpbench_searchlongrna.html" label="${tool.name} on ${on_string}: SearchLongRNA report HTML">
+            <filter>action_type["action_type_selector"] == "searchlongrna"</filter>
+        </data>
+        <data name="searchlongrna_motif_hits_bed_file" format="bed" from_work_dir="motif_hits.rbpbench_searchlongrna.bed" label="${tool.name} on ${on_string}: Motif hits on full transcript BED">
+            <filter>action_type["action_type_selector"] == "searchlongrna" and action_type["output_options"]["motif_hits_bed_out"]</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test for searchrna mode -->
+        <test expect_num_outputs="3">
+            <conditional name="action_type">
+                <param name="action_type_selector" value="searchrna"/>
+                <param name="input_bed" value="in.searchrna.bed"/>
+                <param name="gtf_file" value="in.test_search.gtf"/>
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history"/>
+                    <param name="history_genome" value="in.ref.fa"/>
+                </conditional>
+                <conditional name="select_db">
+                    <param name="select_db_selector" value="default_db"/>
+                    <conditional name="select_rbps">
+                        <param name="select_rbps_selector" value="list_db_rbps"/>
+                        <param name="database" value="PUM1"/>
+                    </conditional>
+                </conditional>
+                <section name="output_options">
+                    <param name="motif_hits_bed_out" value="false"/>
+                    <param name="sites_bed_fasta_out" value="false"/>
+                </section>
+            </conditional>
+            <output name="rbp_hit_stats_file" file="out.rbp_hit_stats.rbpbench_searchrna.tsv" compare="sim_size"/>
+            <output name="motif_hit_stats_file" file="out.motif_hit_stats.rbpbench_searchrna.tsv" compare="sim_size"/>
+            <output name="searchrna_report_html" file="out.rbpbench_searchrna.html" compare="sim_size"/>
+        </test>
+        <!-- Test for searchlongrna mode -->
+        <test expect_num_outputs="3">
+            <conditional name="action_type">
+                <param name="action_type_selector" value="searchlongrna"/>
+                <param name="gtf_file" value="in.test_search.gtf"/>
+                <param name="mrna_only" value="true"/>
+                <param name="tr_list" value="in.trlist.txt"/>
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history"/>
+                    <param name="history_genome" value="in.ref.fa"/>
+                </conditional>
+                <conditional name="select_db">
+                    <param name="select_db_selector" value="default_db"/>
+                    <conditional name="select_rbps">
+                        <param name="select_rbps_selector" value="list_db_rbps"/>
+                        <param name="database" value="PUM1"/>
+                    </conditional>
+                </conditional>
+                <section name="output_options">
+                    <param name="motif_hits_bed_out" value="false"/>
+                </section>
+            </conditional>
+            <output name="rbp_hit_stats_file" file="out.rbp_hit_stats.rbpbench_searchlongrna.tsv" compare="sim_size"/>
+            <output name="motif_hit_stats_file" file="out.motif_hit_stats.rbpbench_searchlongrna.tsv" compare="sim_size"/>
+            <output name="searchlongrna_report_html" file="out.rbpbench_searchlongrna.html" compare="sim_size"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+@HELP_HEADER@
+
+-----
+
+**RBPBench program modes**
+
+*RBPBench Search Transcript* on Galaxy provides the following main functions (choose on top via "Select RBPBench program mode"): 
+
+- Search RBP binding motifs in transcript sites (searchrna)  
+- Search RBP binding motifs in full spliced transcripts (searchlongrna)  
+
+
+**Search RBP binding motifs in transcript sites (searchrna)**
+
+This mode allows searching RBP motifs in defined transcript regions. Input is a BED file where Column 1 is a transcript ID (must be present in the GTF file), Columns 2 and 3 define start and end positions on the transcript. The tool reconstructs transcript sequences based on a provided GTF annotation and genome FASTA. You can use a built-in database of human RBP binding motifs, or supply your own RBP motif database and/or user-defined motifs. Both sequence motifs (in MEME/DREME XML format) and structure motifs (in covariance model format) are supported. The tool outputs RBP-level and motif-level hit statistics; BED and FASTA files of the used transcript regions; optional motif hit BED file, an interactive HTML report showing motif enrichment, co-occurrence, and region-level plots. Motif search options include filtering input sites, upstream/downstream extension, and restricting the search to specific sequence motifs (via regex). Use the outputs with subtool *RBPBench Compare* to benchmark motif enrichment across datasets or methods.
+
+
+**Search RBP binding motifs in full spliced transcripts (searchlongrna)**
+
+In this mode, the tool reconstructs full spliced transcript sequences based on the GTF annotation and genome FASTA. It then performs motif scanning across the entire spliced sequence per transcript. By default, all transcripts from the GTF file are included. You can restrict to protein-coding mRNAs with the *--mrna-only* option, and provide a list of specific transcript IDs using the *"Specific mRNAs to use from GTF"* input. As in *searchrna*, you can choose from built-in or custom motif databases, and optionally add user-defined motifs. The tool outputs RBP- and motif-level hit statistics; optional BED file with motif hits; an HTML report with RBP-level motif occupancy across transcript features (e.g., 5'UTR, CDS, 3'UTR). This mode is particularly suited for global motif profiling and occupancy analysis across full transcript structures.
+
+    ]]>    </help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>
