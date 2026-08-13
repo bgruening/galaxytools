@@ -1,0 +1,534 @@
+<tool id="mirge3" name="miRge3.0" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>comprehensive small RNA-seq analysis</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+#set $sample_list = []
+#for $i, $sample in enumerate($samples):
+  #set $link = 'input_' + str($i) + '.fastq'
+  ln -s '${sample}' '${link}' &&
+  #silent $sample_list.append($link)
+#end for
+
+miRge3.0
+-s '#echo ",".join($sample_list)#'
+-cpu "\${GALAXY_SLOTS:-4}"
+-lib '$organism_name.fields.path'
+-on  '$organism_name.fields.organism'
+-o .
+-db '$mir_db'
+-ex ${ex}
+-phr ${phr}
+${additional_outputs.ie}
+${additional_outputs.ai}
+${additional_outputs.tcf}
+${additional_outputs.gff}
+${additional_outputs.bam}
+${additional_outputs.trf}
+${dex}
+#if $pre_data.a:
+  -a '$pre_data.a'
+#end if
+#if $pre_data.g:
+  -g '$pre_data.g'
+#end if
+#if $pre_data.u:
+  -u ${pre_data.u}
+#end if
+#if $pre_data.nxt:
+  -nxt ${pre_data.nxt}
+#end if
+#if '$pre_data.cutoff.is_select' == 'only_3':
+  -q ${pre_data.cutoff.quality_cutoff2}
+#else if'$pre_data.cutoff.is_select' == 'both':
+  -q ${pre_data.cutoff.quality_cutoff1},${pre_data.cutoff.quality_cutoff2}
+#end if
+#if $pre_data.l:
+  -l ${pre_data.l}
+#end if
+${pre_data.NX}
+-m ${pre_data.m}
+#if '$pre_data.umi_options.is_select' == 'only_3':
+  -umi 0,${pre_data.umi_options.umi1}
+  ${pre_data.umi_options.qumi}
+#else if '$pre_data.umi_options.is_select' == 'only_5':
+  -umi ${pre_data.umi_options.umi2},0
+  ${pre_data.umi_options.qumi}
+#else if '$pre_data.umi_options.is_select' == 'both':
+  -umi ${pre_data,umi_options.umi2},${pre_data.umi_options.umi1}
+  ${pre_data.umi_options.qumi}
+#end if
+#if '$enabled_error_correction.is_select' == 'yes':
+  -mEC
+  -kh ${enabled_error_correction.kh}
+  -ks ${enabled_error_correction.ks}
+  -ke ${enabled_error_correction.ke}
+#end if
+#if '$novel_mirna.is_select' == 'yes':
+  -nmri
+  -minl ${novel_mirna.minl}
+  -maxl ${novel_mirna.maxl}
+  -c ${novel_mirna.c}
+  -mloc ${novel_mirna.mloc}
+  -sl ${novel_mirna.sl}
+  -olc ${novel_mirna.olc}
+  -clc ${novel_mirna.clc}
+#end if
+
+&& mv miRge*/* .
+    ]]></command>
+    <inputs>
+        <param name="samples" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" multiple="true" label="Input FASTQ files" help="One or more small RNA-seq FASTQ files"/>
+        <param name="organism_name" type="select" label="Reference Library" help="Pre-installed miRge3 reference library for your organism">
+            <options from_data_table="mirge3_libraries">
+                <filter type="sort_by" column="2"/>
+            </options>
+        </param>
+        <param name="mir_db" type="select" label="miRNA Database">
+            <option value="miRBase" selected="true">miRBase</option>
+            <option value="MirGeneDB">MirGeneDB</option>
+        </param>
+        <param argument="-ex" type="float" min="0" value="0.1" optional="true" label="Set threshold of proportion of canonical reads" help="The threshold of the proportion of canonical reads for the miRNAs to retain. Range for ex (0 - 0.5)"/>
+        <param argument="-phr" type="integer" value="33" optional="true" label="Set phred64 format"/>
+        <param argument="-dex" type="boolean" optional="true" truevalue="-dex" falsevalue="" checked="false" label="Enabled DESeq2 differential expression"/>
+        <section name="pre_data" title="Data pre-processing options" expanded="false">
+            <param argument="-a" type="text" value="" optional="true" label="Enter sequence of a 3` adapter" help="Sequence of a 3' adapter. The adapter and subsequent bases are trimmed">
+                <validator type="regex" message="Adapter must contain only A, C, G, T, or N.">^[ACGTN]+$</validator>
+            </param>
+            <param argument="-g" type="text" value="" optional="true" label="Enter sequence of a 5` adapter" help="Sequence of a 5' adapter. The adapter and any preceding bases are trimmed">
+                <validator type="regex" message="Adapter must contain only A, C, G, T, or N.">^[ACGTN]+$</validator>
+            </param>
+            <param argument="-u" type="integer" value="" optional="true" label="Remove set bases from each read" help=" Remove bases from each read. If LENGTH is positive, remove bases from the beginning. If LENGTH is negative, remove bases from the end"/>
+            <param argument="-nxt" type="integer" value="" optional="true" label="NextSeq-specific quality trimming for each read" help="NextSeq-specific quality trimming (each read). Trims also dark cycles appearing as high-quality G bases"/>
+            <conditional name="cutoff" label="Trim bases from 3` only, from 3` and 5` or no trimming">
+                <param name="is_select" type="select" label="Select option">
+                    <option value="only_3" selected="true">Only 3`</option>
+                    <option value="both">Both</option>
+                    <option value="none">No cutoff</option>
+                </param>
+                <when value="only_3">
+                    <param name="quality_cutoff2" type="integer" value="" label="Set quality cutoff"/>
+                </when>
+                <when value="both">     
+                    <param name="quality_cutoff1" type="integer" value="" label="Set quality cutoff for 5`"/>
+                    <param name="quality_cutoff2" type="integer" value="" label="Set quality cutoff for 3`"/>
+                </when>
+                <when value="none"/>
+            </conditional>
+            <param argument="-l" type="integer" value="" optional="true" label="Shorten reads to set length" help=" Shorten reads to LENGTH. Positive values remove bases at the end while negative ones remove bases at the beginning. This and the following modifications are applied after adapter trimming"/>
+            <param argument="-NX" type="boolean" optional="true" truevalue="-NX" falsevalue="" checked="false" label="Remove N`s bases on ends of reads"/>
+            <param argument="-m" type="integer" optional="true" value="16" label="Set threshold how long reads should be"/>
+            <conditional name="umi_options" label="Set Trim nucleotides of specific length at 5’ and 3’ (UMI)">
+                <param name="is_select" type="select" label="How to use this">
+                    <option value="none" selected="true">Do not use this option</option>
+                    <option value="only_3">Only for 3`</option>
+                    <option value="only_5">Only for 5`</option>
+                    <option value="both">For both ends</option>
+                </param>
+                <when value="only_3">
+                    <param name="umi1" type="integer" min="1" value="" label="Set how many nucleotides should be trimmed from 3`"/>
+                    <param argument="-udd" type="boolean" truevalue="-udd" falsevalue="" checked="false" label="Remove PCR duplicates and UMI" help="if TRUE it will remove UMI and remove PCR duplicates otherwise it only remove UMI and keep the raw count"/>
+                    <param argument="-qumi" type="boolean" falsevalue="" truevalue="-qumi" checked="false" label="Removes PCR duplicates of reads obtained from Qiagen platform" help="default: Illumina Mode"/>
+                </when>
+                <when value="only_5">
+                    <param name="umi2" type="integer" min="1" value="" label="Set how many nucleotides should be trimmed from 5`"/>
+                    <param argument="-udd" type="boolean" truevalue="-udd" falsevalue="" checked="false" label="Remove PCR duplicates and UMI" help="if TRUE it will remove UMI and remove PCR duplicates otherwise it only remove UMI and keep the raw count"/>
+                    <param argument="-qumi" type="boolean" falsevalue="" truevalue="-qumi" checked="false" label="Removes PCR duplicates of reads obtained from Qiagen platform" help="default: Illumina Mode"/>
+                </when>
+                <when value="both">
+                    <param name="umi1" type="integer" min="1" value="" label="Set how many nucleotides should be trimmed from 3`"/>
+                    <param name="umi2" type="integer" min="1" value="" label="Set how many nucleotides should be trimmed from 5`"/>
+                    <param argument="-udd" type="boolean" truevalue="-udd" falsevalue="" checked="false" label="Remove PCR duplicates and UMI" help="if TRUE it will remove UMI and remove PCR duplicates otherwise it only remove UMI and keep the raw count"/>
+                    <param argument="-qumi" type="boolean" falsevalue="" truevalue="-qumi" checked="false" label="Removes PCR duplicates of reads obtained from Qiagen platform" help="default: Illumina Mode"/>
+                </when> 
+                <when value="none"/>
+            </conditional>
+        </section>
+        <conditional name="enabled_error_correction" label="miRNA error correction step">
+            <param name="is_select" type="select" label="Enabled this step">
+                <option value="yes">Yes</option>
+                <option value="no" selected="true">No</option>
+            </param>
+            <when value="yes">
+                <param argument="-kh" type="integer" value="5" label="Set the tau threshold"/>
+                <param argument="-ks" type="integer" value="15" label="kmer range start"/>
+                <param argument="ke" type="integer" value="20" label="kmer range end" help="Set the number higher than the kmer ranger start!!!"/> 
+            </when>
+            <when value="no"/>
+        </conditional>
+        <conditional name="novel_mirna" label="Novel miRNA">
+            <param name="is_select" type="select" label="Include prediction of novel miRNAs">
+                <option value="yes">Yes</option>
+                <option value="no" selected="true">No</option>
+            </param>
+            <when value="yes">
+                <param argument="-minl" type="integer" value="16" label="Min length for novel miRNA detection" help="The minimum length of the retained reads for novel miRNA detection"/>
+                <param argument="-maxl" type="integer" value="25" label="Max length for novel miRNA detection" help="The maximum length of the retained reads for novel miRNA detection"/>
+                <param argument="-c" type="integer" value="2" label="Min read count for novel miRNA detection" help="The minimum read counts supporting novel miRNA detection"/>
+                <param argument="mloc" type="integer" value="3" label="Max number of mapping loci for novel miRNA detection" help="The maximum number of mapping loci for the retained reads for novel miRNA detection"/>
+                <param argument="-sl" type="integer" value="25" label="Seed length for Bowtie for novel miRNA detection" help="The seed length when invoking Bowtie for novel miRNA detection"/>
+                <param argument="-olc" type="integer" value="14" label="Length of overlapped sequence for novel miRNA detection" help="The length of overlapped seqence when joining reads into longer sequences based on the coordinate on the genome for novel miRNA detection"/>
+                <param argument="-clc" type="integer" value="30" label="Max length of clustered sequences for novel miRNA"/>
+            </when>
+            <when value="no"/>  
+        </conditional>
+        <section name="additional_outputs" title="Additional analysis and outputs" expanded="false">
+            <param argument="-ie" type="boolean" truevalue="-ie" falsevalue="" checked="false" label="Calculation isomir entropy"/>
+            <param argument="-ai" type="boolean" truevalue="-ai" falsevalue="" checked="false" label="A to I editing"/>
+            <param argument="-tcf" type="boolean" truevalue="-tcf" falsevalue="" checked="false" label="Write trimmed and collapsed fasta files"/>
+            <param argument="-gff" type="boolean" truevalue="-gff" falsevalue="" checked="false" label="IsomiR result output in gff format"/>
+            <param argument="-bam" type="boolean" truevalue="-bam" falsevalue="" checked="false" label="BAM format result output"/>
+            <param argument="-trf" type="boolean" truevalue="-trf" falsevalue="" checked="false" label="tRNA analyze fragment and halves"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="anno_report" format="csv" from_work_dir="annotation.report.csv" label="${tool.name} on ${on_string}: Annotation report (CSV)"/>
+        <data name="anno_html" format="html" from_work_dir="annotation.report.html" label="${tool.name} on ${on_string}: Annotation report (HTML)"/>
+        <data name="mapped" format="csv" from_work_dir="mapped.csv" label="${tool.name} on ${on_string}: Mapped report"/>
+        <data name="mir" format="csv" from_work_dir="miR.Counts.csv" label="${tool.name} on ${on_string}: miRNA count"/>
+        <data name="mir_rpm" format="csv" from_work_dir="miR.RPM.csv" label="${tool.name} on ${on_string}: miRNA RPM"/>
+        <data name="visualization" format="html" from_work_dir="miRge3_visualization.html" label="${tool.name} on ${on_string}: miRge3 visualization"/>
+        <data name="unmapped" format="csv" from_work_dir="unmapped.csv" label="${tool.name} on ${on_string}: Unmapped"/>
+        <data name="gff_output" format="gff" from_work_dir="sample_miRge3.gff" label="${tool.name} on ${on_string}: GFF output">
+            <filter>additional_outputs['gff']</filter>
+        </data>
+        <collection name="bam" format="bam" type="list" label="${tool.name} on ${on_string}: BAM files">
+            <discover_datasets pattern="(?P&lt;identifier_0&gt;[^_]+)\.bam" recurse="true"/>
+            <filter>additional_outputs['bam']</filter>
+        </collection>
+        <collection name="bam_sorted" format="bam" type="list" label="${tool.name} on ${on_string}: BAM files (sorted)">
+            <discover_datasets pattern="(?P&lt;identifier_0&gt;[^_]+)_sorted\.bam" recurse="true"/>
+            <filter>additional_outputs['bam']</filter>
+        </collection>
+        <collection name="bai_sorted" format="bai" type="list" label="${tool.name} on ${on_string}: BAI files (sorted)">
+            <discover_datasets pattern="(?P&lt;identifier_0&gt;[^_]+)_sorted\.bai" recurse="true"/>
+            <filter>additional_outputs['bam']</filter>
+        </collection>
+        <collection name="trim_fa" format="fasta" type="list" label="${tool.name} on ${on_string}: Trimmed FASTA output">
+            <discover_datasets pattern="(?P&lt;identifier_0&gt;[^_]+)\.trim\.collapse\.fa" recurse="true"/>
+            <filter>additional_outputs['tcf']</filter>
+        </collection>
+        <data name="discarded_reads" format="csv" from_work_dir="discarded.reads.summary.assigningtRFs.csv" label="${tool.name} on ${on_string}: Discarded reads summary">
+            <filter>additional_outputs['trf']</filter>
+        </data>
+        <data name="trf_count" format="csv" from_work_dir="tRF.Counts.csv" label="${tool.name} on ${on_string}: TRF count">
+            <filter>additional_outputs['trf']</filter>
+        </data>
+        <data name="trf_rpk" format="csv" from_work_dir="tRF.RP100K.csv" label="${tool.name} on ${on_string}: TRF RP100K">
+            <filter>additional_outputs['trf']</filter>
+        </data>
+        <data name="trf_summary" format="tabular" from_work_dir="tRF.aligned.report.tsv" label="${tool.name} on ${on_string}: TRF aligned report">
+            <filter>additional_outputs['trf']</filter>
+        </data>
+        <data name="a2i_report" format="csv" from_work_dir="a2IEditiing.report.csv" label="${tool.name} on ${on_string}: A2I report">
+            <filter>additional_outputs['ai']</filter>
+        </data>
+        <data name="a2i_new_report" format="csv" from_work_dir="a2IEditiing.report.newform.csv" label="${tool.name} on ${on_string} A2I report (new form)">
+            <filter>additional_outputs['ai']</filter>
+        </data>
+        <data name="isomir" format="csv" from_work_dir="isomir.csv" label="${tool.name} on ${on_string}: IsomiR output">
+            <filter>additional_outputs['ie']</filter>
+        </data>
+        <data name="isomir_sample" format="csv" from_work_dir="isomir.samples.csv" label="${tool.name} on ${on_string}: IsomiR samples output">
+            <filter>additional_outputs['ie']</filter>
+        </data>
+        <collection name="novel_pdfs" format="pdf" type="list" label="${tool.name} on ${on_string}: Novel miRNA PDFs">
+            <discover_datasets pattern="(?P&lt;identifier_0&gt;[^_]+)\.pdf" recurse="true" directory="novel_miRNAs"/>
+            <filter>novel_mirna['is_select'] == 'yes'</filter>
+        </collection>
+        <collection name="novel_report" format="csv" type="list" label="${tool.name} on ${on_string}: Novel miRNA reports ">
+            <discover_datasets pattern="(?P&lt;identifier_0&gt;[^_]+)_novel_miRNAs_report\.csv" recurse="true" directory="novel_miRNAs"/>
+            <filter>novel_mirna['is_select'] == 'yes'</filter>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <section name="additional_outputs">
+                <param name="gff" value="true"/>
+            </section>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <section name="additional_outputs">
+                <param name="bam" value="true"/>
+            </section>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <section name="additional_outputs">
+                <param name="tcf" value="true"/>
+            </section>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <section name="additional_outputs">
+                <param name="trf" value="true"/>
+            </section>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <section name="additional_outputs">
+                <param name="ai" value="true"/>
+            </section>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <section name="additional_outputs">
+                <param name="ie" value="true"/>
+            </section>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="yes"/>
+            </conditional>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="yes"/>
+            </conditional>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="no"/>
+            </conditional>
+        </test>
+        <test expect_exit_code="1" expect_failure="true">
+            <param name="samples" ftype="fastq" value="sample.fastq"/>
+            <param name="organism_name" value="test_human"/>
+            <param name="mir_db" value="miRBase"/>
+            <conditional name="novel_mirna">
+                <param name="is_select" value="yes"/>
+            </conditional>
+            <conditional name="enabled_error_correction">
+                <param name="is_select" value="yes"/>
+            </conditional>
+            <section name="additional_outputs">
+                <param name="ie" value="true"/>
+                <param name="ai" value="true"/>
+                <param name="tcf" value="true"/>
+                <param name="gff" value="true"/>
+                <param name="bam" value="true"/>
+                <param name="trf" value="true"/>
+            </section>
+            <section name="pre_data">
+                <conditional name="cutoff">
+                    <param name="is_select" value="none"/>
+                </conditional>
+                <conditional name="umi_options">
+                    <param name="is_select" value="none"/>
+                </conditional>
+            </section>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# miRge3.0 - Comprehensive Small RNA-seq Analysis
+
+## What it does
+
+miRge3.0 is a comprehensive pipeline for small RNA-seq data analysis. It performs:
+
+- **Adapter trimming and quality filtering** (via cutadapt)
+- **Read collapsing** and alignment against miRNA reference libraries (via bowtie)
+- **Known miRNA quantification** and isomiR analysis
+- **A-to-I RNA editing detection**
+- **tRNA fragment (tRF) analysis** (human only)
+- **Novel miRNA prediction** using a machine learning model
+- **UMI processing** and PCR duplicate removal
+- **Differential expression analysis** (via DESeq2)
+- **Interactive HTML visualization report**
+
+## Input
+
+One or more FASTQ files from small RNA-seq experiments. Both uncompressed (`.fastq`) and gzip-compressed (`.fastq.gz`) files are accepted.
+
+## Reference Libraries
+
+miRge3.0 requires organism-specific reference libraries. These must be pre-installed
+by a Galaxy administrator. Libraries are available for:
+human, mouse, rat, zebrafish, nematode, fruitfly, and hamster.
+
+Each library contains bowtie indexes of miRNA hairpin sequences, mature miRNA annotations,
+and genomic coordinates for isomiR analysis.
+
+## Output
+
+The primary output is an interactive HTML report with visualization of read distributions,
+miRNA expression, isomiR variants, and more.
+
+Tabular outputs include:
+
+- **miRNA Counts** (`miR.Counts.csv`) - raw read counts per miRNA
+- **miRNA RPM** (`miR.RPM.csv`) - reads per million normalized counts
+- **Annotation Report** (`annotation.report.csv`) - detailed alignment statistics
+- **Mapped Reads** - reads that aligned to miRNA references
+- **Unmapped Reads** - reads that did not align
+
+Optional outputs (when enabled):
+
+- **IsomiR GFF** - genomic coordinates of isomiR variants
+- **A-to-I Editing Report** - detected RNA editing events
+- **tRF Report** - tRNA fragment analysis results
+- **Novel miRNA Predictions** - predicted novel miRNAs
+- **Differential Expression** - DESeq2 results with volcano and PCA plots
+
+## Adapter Trimming
+
+By default, miRge3.0 uses the standard Illumina small RNA 3' adapter
+(`TGGAATTCTCGGGTGCCAAGG`). You can specify a custom adapter sequence or use
+the `illumina` shorthand for the standard adapter.
+
+## Notes
+
+- **tRF analysis** is only available for human samples
+- **Differential expression** requires a metadata CSV file with sample group assignments
+- **Novel miRNA prediction** requires a genome reference library with genomic coordinates
+- The HTML report uses interactive JavaScript visualizations (HighCharts, DataTables)
+
+For more details, see the miRge3.0 documentation:
+https://mirge3.readthedocs.io/
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
