@@ -1,0 +1,177 @@
+<macros>
+    <token name="@TOOL_VERSION@">7.0.3</token>
+    <token name="@VERSION_SUFFIX@">0</token>
+    <token name="@PROFILE@">25.1</token>
+    <token name="@REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@"><![CDATA[
+    #if $image.ext in ("tiff", "tif")
+        #set $offsets_file = $image.metadata.offsets
+        {
+            pages=\$(tr -d '[] ' < '$offsets_file' |
+                tr ',' '\n' |
+                grep -c '[0-9]');
+
+            if [ "\$pages" -gt 1 ]; then
+                echo "Multi-page TIF(F) training images are not supported. Detected \$pages pages. Please use a single-page image or split the TIFF first." >&2;
+                exit 1;
+            fi;
+        } &&
+    #end if
+    ]]></token>
+    <xml name="requirements">
+        <requirements>
+            <requirement type="package" version="@TOOL_VERSION@">kraken-ocr</requirement>
+            <yield/>
+        </requirements>
+    </xml>
+    <xml name="creators">
+        <creator>
+            <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
+            <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
+        </creator>
+    </xml>
+    <xml name="env_vars">
+        <environment_variables>
+            <environment_variable name="TERM">dumb</environment_variable>
+            <environment_variable name="FORCE_COLOR">0</environment_variable>
+        </environment_variables>
+    </xml>
+    <xml name="citations">
+        <citations>
+            <citation type="doi">10.16995/dscn.8094</citation>
+        </citations>
+    </xml>
+    <xml name="compile_training_data_input" tokens="format_type,pair_label,annotation_format,annotation_label">
+        <when value="@FORMAT_TYPE@">
+            <conditional name="input_source">
+                <param name="source" type="select" label="Input method">
+                    <option value="repeat" selected="true">
+                        Select individual @PAIR_LABEL@ pairs
+                    </option>
+                    <option value="collection">
+                        List of paired datasets
+                    </option>
+                </param>
+                <when value="repeat">
+                    <repeat name="ground_truth_pairs" title="Ground-truth pair" min="1">
+                        <param name="image" type="data" format="jpg,png,tiff" label="Source image"/>
+                        <param name="annotation" type="data" format="@ANNOTATION_FORMAT@" label="@ANNOTATION_LABEL@"/>
+                    </repeat>
+                </when>
+                <when value="collection">
+                    <param name="ground_truth_collection" type="data_collection" collection_type="list:paired" format="jpg,png,tiff,@ANNOTATION_FORMAT@" label="@PAIR_LABEL@ pairs" help="For every pair, the forward element must be the source image and the reverse element must be its corresponding annotation or transcription."/>
+                </when>
+            </conditional>
+            <yield/>
+        </when>
+    </xml>
+    <xml name="compile_xml_extraction_options">
+        <param argument="--linetype" type="select" optional="true" label="Line type" help="Select the type of line data to be extracted">
+            <option value="baselines" selected="true">
+                baselines (use for polygon-dewarped line images)
+            </option>
+            <option value="bbox">
+                bbox (use for plain bounding-box crops)
+            </option>
+        </param>
+        <param argument="--legacy-polygons" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use legacy polygon extractor"/>
+    </xml>
+    <xml name="compile_training_data_inputs">
+        <expand macro="compile_training_data_input" format_type="path" pair_label="line image/transcription" annotation_format="txt" annotation_label="Ground-truth transcription"/>
+        <expand macro="compile_training_data_input" format_type="alto" pair_label="page image/ALTO" annotation_format="alto" annotation_label="ALTO annotation">
+            <expand macro="compile_xml_extraction_options"/>
+        </expand>
+        <expand macro="compile_training_data_input" format_type="page" pair_label="page image/PAGE" annotation_format="page.xml" annotation_label="PAGE annotation">
+            <expand macro="compile_xml_extraction_options"/>
+        </expand>
+    </xml>
+    <xml name="training_inputs">
+        <section name="train_opts" title="Training options" expanded="false">
+            <conditional name="initialization">
+                <param name="source" type="select" label="Initialization">
+                    <option value="new" selected="true">Train a new model</option>
+                    <option value="load">Load existing weights/checkpoint for a fresh run</option>
+                    <option value="resume">Resume a checkpointed run</option>
+                </param>
+                <when value="new"/>
+                <when value="load">
+                    <param name="model" type="data" format="binary,safetensors" label="Existing model or checkpoint"/>
+                </when>
+                <when value="resume">
+                    <param name="checkpoint" type="data" format="binary" label="Checkpoint to resume"/>
+                </when>
+            </conditional>
+            <param argument="--batch-size" type="integer" optional="true" min="1" label="Batch sample size"/>
+            <param argument="--freq" type="float" optional="true" min="0" label="Validation/report frequency in epochs"/>
+            <param argument="--quit" type="select" optional="true" label="Stop condition">
+                <option value="" selected="true">Use Ketos default</option>
+                <option value="early">Early stopping</option>
+                <option value="fixed">Fixed epoch count</option>
+                <option value="aneal">Aneal</option>
+            </param>
+            <param argument="--epochs" type="integer" optional="true" min="1" label="Epochs"/>
+            <param argument="--min-epochs" type="integer" optional="true" min="0" label="Minimum epochs"/>
+            <param argument="--lag" type="integer" optional="true" min="0" label="Early stopping lag"/>
+            <param argument="--min-delta" type="float" optional="true" min="0" label="Minimum validation improvement"/>
+            <param argument="--optimizer" type="select" optional="true" label="Optimizer">
+                <option value="" selected="true">Use Ketos default</option>
+                <option value="Adam">Adam</option>
+                <option value="SGD">SGD</option>
+                <option value="RMSprop">RMSprop</option>
+                <option value="Lamb">Lamb</option>
+                <option value="AdamW">AdamW</option>
+            </param>
+            <param argument="--lrate" type="float" optional="true" min="0" label="Learning rate"/>
+            <param argument="--momentum" type="float" optional="true" min="0" label="Momentum"/>
+            <param argument="--weight-decay" type="float" optional="true" min="0" label="Weight decay"/>
+            <param argument="--gradient-clip-val" type="float" optional="true" min="0" label="Gradient clip value"/>
+            <param argument="--accumulate-grad-batches" type="integer" optional="true" min="1" label="Gradient accumulation batches"/>
+            <param argument="--warmup" type="integer" optional="true" min="0" label="Warmup steps/samples"/>
+            <param argument="--schedule" type="select" optional="true" label="Learning-rate schedule">
+                <option value="" selected="true">Use Ketos default</option>
+                <option value="constant">constant</option>
+                <option value="1cycle">1cycle</option>
+                <option value="exponential">exponential</option>
+                <option value="step">step</option>
+                <option value="reduceonplateau">reduceonplateau</option>
+                <option value="cosine">cosine</option>
+                <option value="cosine_warm_restarts">cosine_warm_restarts</option>
+            </param>
+            <param argument="--gamma" type="float" optional="true" min="0" label="Schedule decay factor"/>
+            <param argument="--step-size" type="float" optional="true" min="0" label="Schedule step size"/>
+            <param argument="--sched-patience" type="integer" optional="true" min="0" label="Reduce-on-plateau patience"/>
+            <param argument="--cos-max" type="integer" optional="true" min="0" label="Cosine schedule max epoch"/>
+            <param argument="--cos-min-lr" type="float" optional="true" min="0" label="Cosine schedule minimum learning rate"/>
+            <param argument="--partition" type="float" optional="true" min="0" max="1" label="Training/validation partition"/>
+            <param name="augment" type="select" label="Image augmentation">
+                <option value="" selected="true">Use Ketos default</option>
+                <option value="--augment">Enable</option>
+                <option value="--no-augment">Disable</option>
+            </param>
+            <conditional name="logger">
+                <param name="enabled" type="select" label="Metric logger">
+                    <option value="no" selected="true">Disabled</option>
+                    <option value="yes">Enabled</option>
+                </param>
+                <when value="no"/>
+                <when value="yes">
+                    <param name="kind" type="select" label="Logger backend">
+                        <option value="tensorboard" selected="true">tensorboard</option>
+                        <option value="wandb">wandb</option>
+                    </param>
+                </when>
+            </conditional>
+        </section>
+    </xml>
+    <xml name="training_data_inputs">
+        <param name="ground_truth" type="data" multiple="true" optional="true" format="txt,xml,alto,json,jpg,png,tiff,binary" label="Ground-truth files passed as positional arguments"/>
+        <param name="training_data" type="data" multiple="true" optional="true" format="txt" label="Training manifest files" help="Passed with --training-data."/>
+        <param name="evaluation_data" type="data" multiple="true" optional="true" format="txt" label="Evaluation manifest files" help="Passed with --evaluation-data."/>
+    </xml>
+    <xml name="training_outputs">
+        <data name="best_model" format="binary" from_work_dir="best_model.weights" label="${tool.name} on ${on_string}: best model"/>
+        <data name="report" format="txt" from_work_dir="training_report.txt" label="${tool.name} on ${on_string}: report"/>
+        <collection name="checkpoints" type="list" label="${tool.name} on ${on_string}: checkpoints">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.ckpt" directory="model" format="binary"/>
+        </collection>
+    </xml>
+</macros>
