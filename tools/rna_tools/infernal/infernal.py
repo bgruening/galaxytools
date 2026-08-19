@@ -1,10 +1,9 @@
-# -*- coding: utf-8 -*-
-
 import logging
 import os
 import subprocess
 
-from galaxy.datatypes.data import get_file_peek, Text
+from galaxy.datatypes.data import get_file_peek
+from galaxy.datatypes.data import Text
 from galaxy.datatypes.metadata import MetadataElement
 
 
@@ -21,7 +20,7 @@ def count_special_lines(word, filename, invert=False):
         cmd.extend([word, filename])
         out = subprocess.Popen(cmd, stdout=subprocess.PIPE)
         return int(out.communicate()[0].split()[0])
-    except Exception:
+    except (IOError, ValueError):
         pass
     return 0
 
@@ -32,13 +31,11 @@ def count_lines(filename, non_empty=False):
     """
     try:
         if non_empty:
-            out = subprocess.Popen(
-                ["grep", "-cve", "^\s*$", filename], stdout=subprocess.PIPE  # noqa W605
-            )
+            out = subprocess.Popen(['grep', '-cve', r'^\s*$', filename], stdout=subprocess.PIPE)r
         else:
             out = subprocess.Popen(["wc", "-l", filename], stdout=subprocess.PIPE)
         return int(out.communicate()[0].split()[0])
-    except Exception:
+    except (IOError, ValueError):
         pass
     return 0
 
@@ -137,7 +134,6 @@ class Infernal_CM_1_1(Text):
             raise
 
     split = classmethod(split)
-
 
 if __name__ == "__main__":
     Infernal_CM_1_1()
