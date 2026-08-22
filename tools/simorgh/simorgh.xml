@@ -7,6 +7,41 @@
     <expand macro="requirements"/>
     <expand macro="creators"/>
     <command detect_errors="aggressive"><![CDATA[
+        ln -s '$pdb' input.pdb
+        #if str($bbflow_condi.bbflow) == 'yes':
+            && bbflow_sample
+                --input_path input.pdb
+                --output_path bbflow.pdb
+                --output_format pdb
+                --num_samples $bbflow_condi.num_samples
+                #if str($bbflow_condi.batch_size) != ''
+                    --batch_size $bbflow_condi.batch_size
+                #end if
+                --device cpu
+                --timesteps $bbflow_condi.timesteps
+                --tag latest
+                #if $bbflow_condi.advanced.gamma_trans:
+                    --gamma_trans $bbflow_condi.advanced.gamma_trans
+                #end if
+                #if $bbflow_condi.advanced.gamma_rots:
+                    --gamma_rots $bbflow_condi.advanced.gamma_rots
+                #end if
+        #end if
+        && python inference.py
+                #if str($bbflow_condi.bbflow) == 'yes':
+                    -i bbflow.pdb
+                #else
+                    -i input.pdb
+                #end if
+                -o predicted.pdb
+                --model1 Model/model_4.pt --model2 Model/model_44.pt
+                #if str($cluster_condi.cluster) == 'yes':
+                    --cluster
+                    --cutoff $cluster_condi.cutoff
+                    --min-cluster-size $cluster_condi.min_cluster_size
+                    --min-samples $cluster_condi.min_samples
+                    --alpha $cluster_condi.alpha
+                #end if
 
     ]]></command>
     <configfiles>
@@ -14,16 +49,162 @@
         ]]></configfile>
     </configfiles>
     <inputs>
-
+        <param name="pdb" type="data" format="pdb" label="PDB file"/>
+        <conditional name="bbflow_condi">
+            <param name="bbflow" type="select" label="Run BBflow?" help="It runs a structure-based conformational ensemble prediction with flow matching">
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="--num_samples" type="integer" value="100" min="1" label="Number of conformations to sample"/>
+                <param argument="--timesteps" type="integer" value="20" min="1" label="Number of sampling timesteps"/>
+                <param argument="--batch_size" type="integer" optional="true" min="1" label="Batch size" help="Leave blank to estimate automatically"/>
+                <section name="advanced" title="Advanced prior parameters" expanded="false">
+                    <param argument="--gamma_trans" type="float" optional="true" label="Gamma (translational)" help="Conditional prior parameter for the translational part. Leave blank to use the training configuration's value."/>
+                    <param argument="--gamma_rots" type="float" optional="true" label="Gamma (rotational)" help="Conditional prior parameter for the rotational part. Leave blank to use the training configuration's value."/>
+                </section>
+            </when>
+        </conditional>
+        <conditional name="cluster_condi">
+            <param name="cluster" type="select" label="Run Clustering on predictions?" help="It runs HDBSCAN clustering on predictions">
+                <option value="no">No</option>
+                <option value="yes" selected="true">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="--cutoff" type="float" value="0.4" label="Probability cutoff for clustering"/>
+                <param argument="--min-cluster-size" type="integer" value="25" label="HDBSCAN min_cluster_size"/>
+                <param argument="--min-samples" type="integer" value="10" label="HDBSCAN min_samples"/>
+                <param argument="--alpha" type="float" value="1.5" label="Probability weight in custom distance metric"/>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-
+        <data name="pdb_out" from_work_dir="predicted.pdb" format="pdb" label="${tool.name} on ${on_string}: Predicted Structure"/>
+        <data name="bbflow_pdb" from_work_dir="input1.pdb" format="pdb" label="${tool.name} on ${on_string}: BBflow Structure">
+            <filter>bbflow</filter>
+        </data>
     </outputs>
     <tests>
-
+        <!-- basic run: no BBflow, no clustering -->
+        <test expect_num_outputs="1">
+            <param name="pdb" value="input_test.pdb" ftype="pdb"/>
+            <conditional name="bbflow_condi">
+                <param name="bbflow" value="no"/>
+            </conditional>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="no"/>
+            </conditional>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- with clustering enabled -->
+        <test expect_num_outputs="1">
+            <param name="pdb" value="input_test.pdb" ftype="pdb"/>
+            <conditional name="bbflow_condi">
+                <param name="bbflow" value="no"/>
+            </conditional>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="yes"/>
+                <param name="cutoff" value="0.4"/>
+                <param name="min_cluster_size" value="25"/>
+                <param name="min_samples" value="10"/>
+                <param name="alpha" value="1.5"/>
+            </conditional>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- with BBflow conformational sampling enabled -->
+        <test expect_num_outputs="2">
+            <param name="pdb" value="input_test.pdb" ftype="pdb"/>
+            <conditional name="bbflow_condi">
+                <param name="bbflow" value="yes"/>
+                <param name="num_samples" value="5"/>
+                <param name="timesteps" value="5"/>
+            </conditional>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="no"/>
+            </conditional>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                </assert_contents>
+            </output>
+            <output name="bbflow_pdb" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
-    <help>
+    <help><![CDATA[
+What it does
+-------------
 
-    </help>
+SIMORGH predicts apo-state and cryptic ligand-binding sites from a single
+protein structure. Given an input PDB file, it scores residues (or surface
+regions) for their likelihood of forming a cryptic or apo-state binding
+pocket, using an ensemble of two trained models, and writes out a PDB file
+with these predictions.
+
+Because cryptic pockets are often only visible in specific, transiently
+sampled conformations, SIMORGH can optionally first generate an ensemble of
+alternative backbone conformations with BBflow before scoring — this can
+improve sensitivity to pockets that are not visible in the input structure
+as given, at the cost of longer runtime.
+
+Predicted site scores can optionally be grouped into discrete pockets with
+HDBSCAN density-based clustering, which is useful when you want candidate
+binding sites as separate clusters rather than a per-residue/per-point
+probability map.
+
+Inputs
+-------
+
+* **PDB file**: the input protein structure to analyze.
+
+* **Run BBflow?**: if enabled, samples alternative backbone conformations of
+  the input structure before prediction.
+
+  * **Number of conformations to sample**: how many backbone conformations
+    BBflow generates.
+  * **Number of sampling timesteps**: number of integration steps used by
+    the BBflow sampler; more timesteps can improve sample quality at the
+    cost of runtime.
+  * **Batch size**: number of conformations sampled per batch; left blank,
+    it is estimated automatically.
+  * **Advanced prior parameters (gamma_trans / gamma_rots)**: control how
+    closely the sampling prior sticks to the input (equilibrium) structure.
+    Left blank, the values from the model's training configuration are used.
+
+* **Run Clustering on predictions?**: if enabled, groups predicted site
+  points into clusters using HDBSCAN.
+
+  * **Probability cutoff for clustering**: minimum predicted probability
+    for a point to be considered when forming clusters.
+  * **HDBSCAN min_cluster_size**: minimum number of points required to form
+    a cluster.
+  * **HDBSCAN min_samples**: HDBSCAN density parameter; higher values yield
+    more conservative (less noisy) clustering.
+  * **Probability weight in custom distance metric**: weight given to the
+    predicted probability, relative to spatial distance, when computing
+    the distance metric used for clustering.
+
+Outputs
+--------
+
+* **Predicted Structure**: the input structure (or the BBflow-sampled
+  conformation, if BBflow was run) annotated with predicted binding-site
+  scores.
+* **BBflow Structure**: only produced if BBflow sampling was enabled; the
+  backbone conformation(s) sampled by BBflow prior to prediction.
+    ]]></help>
     <expand macro="citations"/>
 </tool>
