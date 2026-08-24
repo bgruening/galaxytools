@@ -68,8 +68,8 @@
             #if str($splitter.sentence_splitter.type) == "nltk"
                 --sentence-language '$splitter.sentence_splitter.language'
             #else
-                --spacy-pipeline '$splitter.sentence_splitter.pipeline'
-                --spacy-max-length '$splitter.sentence_splitter.max_length'
+                --spacy-pipeline '$splitter.sentence_splitter.pipeline_settings.pipeline'
+                --spacy-max-length '$splitter.sentence_splitter.pipeline_settings.max_length'
                 $splitter.strip_whitespace
             #end if
 
@@ -136,7 +136,8 @@
                         </param>
                     </when>
                 </conditional>
-                <!-- I have the impression strip_whitespace should be in use for the token-based splitter as well but looks to me it is never called, maybe worth creating an upstream issue (?) -->
+                <!-- The token splitter does not offer this option, so it never
+                     receives the flag and reports strip_whitespace as false. -->
                 <expand macro="strip_whitespace"/>
                 <conditional name="length">
                     <param name="length_mode" type="select" label="Target chunk size should be determined by the count of" help="Choose whether the target chunk size should be determined by characters or token count.">
@@ -186,18 +187,29 @@
                         </param>
                     </when>
                     <when value="spacy">
-                        <param name="pipeline" type="select" label="spaCy pipeline">
-                            <option value="sentencizer" selected="true">
-                                Rule-based sentencizer (fast, no model required)
-                            </option>
-                            <option value="en_core_web_sm">
-                                English model (en_core_web_sm)
-                            </option>
-                        </param>
-                        <!-- The upper bound keeps a single job from exhausting the
-                             memory of a shared compute node, see the per-character
-                             cost quoted in the help below. -->
-                        <param name="max_length" type="integer" value="1000000" min="1" max="10000000" label="Maximum input length" help="Maximum number of input characters accepted by the spaCy pipeline. The tool stops with an error if the input is longer. Raising this costs memory: the English model needs roughly 3.5 kB per input character, the rule-based sentencizer roughly 0.2 kB."/>
+                        <!-- The upper bound of the input length keeps a single job
+                             from exhausting the memory of a shared compute node.
+                             The two pipelines cannot share one bound: the model
+                             keeps a dependency parser and costs more than twenty
+                             times as much per character as the sentencizer, so a
+                             limit that is safe for the model would needlessly
+                             stop the sentencizer on inputs it handles easily. -->
+                        <conditional name="pipeline_settings">
+                            <param name="pipeline" type="select" label="spaCy pipeline">
+                                <option value="sentencizer" selected="true">
+                                    Rule-based sentencizer (fast, no model required)
+                                </option>
+                                <option value="en_core_web_sm">
+                                    English model (en_core_web_sm)
+                                </option>
+                            </param>
+                            <when value="sentencizer">
+                                <param name="max_length" type="integer" value="1000000" min="1" max="20000000" label="Maximum input length" help="Maximum number of input characters. The tool stops with an error if the input is longer. The rule-based sentencizer needs roughly 0.2 kB per input character, so the maximum of 20 million characters needs in the order of 4 GB."/>
+                            </when>
+                            <when value="en_core_web_sm">
+                                <param name="max_length" type="integer" value="1000000" min="1" max="2000000" label="Maximum input length" help="Maximum number of input characters. The tool stops with an error if the input is longer. The English model keeps a dependency parser and needs roughly 4 kB per input character, so the maximum of 2 million characters already needs in the order of 9 GB. Select the rule-based sentencizer for larger inputs."/>
+                            </when>
+                        </conditional>
                         <expand macro="strip_whitespace" checked="false"/>
                     </when>
                 </conditional>
@@ -638,12 +650,16 @@
                 </element>
             </output_collection>
         </test>
-        <!-- NLTK keeps the abbreviation "Dr." inside the first sentence. -->
-        <!-- 
-            This test (Number: 9) is expected to fail so we remember to address 
-            the automatic additon of \n for a file without a trailing newline
-            by convert_newlines() in galaxy/lib/galaxy/datatypes/sniff.py
-          -->
+        <!-- NLTK keeps the abbreviation "Dr." inside the first sentence.
+
+             The warning about the dropped character is expected and is pinned
+             below. convert_newlines() in galaxy/lib/galaxy/datatypes/sniff.py
+             appends a newline to an uploaded file that has none, and punkt
+             reports sentence spans with the trailing whitespace trimmed, so
+             that one character falls outside the last span. The tool reports
+             what it dropped rather than hiding it; stripping the newline off
+             the input instead would silently change the result for every input
+             that legitimately ends in one. -->
         <test>
             <param name="input" value="sentence_nltk_english.txt" ftype="txt"/>
             <conditional name="splitter">
@@ -690,7 +706,7 @@
                 </element>
             </output_collection>
             <assert_stdout>
-                <not_has_text text="WARNING: The NLTK sentence splitter dropped"/>
+                <has_text text="WARNING: The NLTK sentence splitter dropped the 1 character(s) after the last sentence."/>
             </assert_stdout>
         </test>
         <!-- Exercise NLTK's language selection with the German Punkt model. -->
@@ -786,8 +802,10 @@
                 <param name="method" value="sentence"/>
                 <conditional name="sentence_splitter">
                     <param name="type" value="spacy"/>
-                    <param name="pipeline" value="sentencizer"/>
-                    <param name="max_length" value="1000000"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="sentencizer"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
                     <param name="strip_whitespace" value="false"/>
                 </conditional>
                 <conditional name="length">
@@ -833,8 +851,10 @@
                 <param name="method" value="sentence"/>
                 <conditional name="sentence_splitter">
                     <param name="type" value="spacy"/>
-                    <param name="pipeline" value="en_core_web_sm"/>
-                    <param name="max_length" value="1000000"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="en_core_web_sm"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
                     <param name="strip_whitespace" value="true"/>
                 </conditional>
                 <conditional name="length">
@@ -866,6 +886,55 @@
                 </element>
             </output_collection>
         </test>
+        <!-- Stripping must remove only the whitespace around a chunk, never the
+             whitespace between two sentences inside it. Every other sentence
+             fixture separates its sentences with a line break, which the
+             splitter attaches to the following sentence, so only a fixture with
+             space separated sentences can catch that. -->
+        <test>
+            <param name="input" value="sentence_spacy_prose.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="spacy"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="sentencizer"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
+                    <param name="strip_whitespace" value="true"/>
+                </conditional>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="50"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="strip_whitespace" value="true"/>
+                    <has_json_property_with_value property="number_of_chunks" value="2"/>
+                    <!-- A stripped chunk stays a verbatim slice of the input, so
+                         its position remains known. -->
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                    <has_json_property_with_value property="start_index" value="47"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="2">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <!-- The space after "mat." must survive. -->
+                        <has_text_matching expression="\AThe cat sat on the mat\. The dog barked loudly\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <!-- The trailing line break of the input is gone. -->
+                        <has_text_matching expression="\ABirds flew away\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
         <!-- Sentence boundaries with tiktoken determining the target length. -->
         <test>
             <param name="input" value="sentence_tokens.txt" ftype="txt"/>
@@ -873,8 +942,10 @@
                 <param name="method" value="sentence"/>
                 <conditional name="sentence_splitter">
                     <param name="type" value="spacy"/>
-                    <param name="pipeline" value="sentencizer"/>
-                    <param name="max_length" value="1000000"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="sentencizer"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
                     <param name="strip_whitespace" value="false"/>
                 </conditional>
                 <conditional name="length">
@@ -899,17 +970,18 @@
                     <has_json_property_with_value property="chunk_size" value="4"/>
                     <has_json_property_with_value property="chunk_overlap" value="0"/>
                     <!-- The sentencizer reports the trailing newline that Galaxy's
-                         upload appends as a fourth sentence. It holds nothing but
-                         whitespace and is left out of the outputs. -->
-                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                         upload appends as a fourth sentence. Whitespace-only
+                         chunks are kept when stripping is off, so that the
+                         chunks still add up to the whole input. -->
+                    <has_json_property_with_value property="number_of_chunks" value="4"/>
                     <not_has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
             </output>
             <assert_stdout>
-                <has_text text="WARNING: 1 chunk(s) held nothing but whitespace and were left out of the outputs."/>
+                <not_has_text text="held nothing but whitespace"/>
             </assert_stdout>
             <expand macro="assert_chunks_tsv"/>
-            <output_collection name="chunks_collection" type="list" count="3">
+            <output_collection name="chunks_collection" type="list" count="4">
                 <element name="chunk_0001">
                     <assert_contents>
                         <has_text_matching expression="\Aone two\.\Z"/>
@@ -925,6 +997,11 @@
                 <element name="chunk_0003">
                     <assert_contents>
                         <has_text_matching expression="\A&#10;five six\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0004">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;\Z"/>
                     </assert_contents>
                 </element>
             </output_collection>
@@ -1377,11 +1454,8 @@ trailing line break, so its chunks do not always add up to the complete input; a
 warning is written to the tool log when that happens. The spaCy splitter keeps
 everything.
 
-The NLTK splitter needs the `punkt_tab` resource for the selected language. It is
-not part of the `nltk` package, so a Galaxy instance has to provide it locally,
-for example below a directory listed in the `NLTK_DATA` environment variable.
-Without it, any run of the NLTK splitter fails. The spaCy splitter has no such
-requirement.
+The NLTK splitter needs the `punkt_tab` resource for the selected language. It
+comes with the `nltk_data` requirement, so there is nothing to set up.
 
 **Used Library for Token Counting**
 
