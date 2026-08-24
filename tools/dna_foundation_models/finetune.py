@@ -299,9 +299,6 @@ def train():
         trust_remote_code=True,
     )
 
-    if "InstaDeepAI" in model_args.model_name_or_path:
-        tokenizer.eos_token = tokenizer.pad_token
-
     train_dataset = SupervisedDataset(
         tokenizer=tokenizer,
         data_path=data_args.train_file,
