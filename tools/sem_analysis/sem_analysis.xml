@@ -1,0 +1,175 @@
+<tool id="sem_analysis" name="SEM fiber analysis" version="1.0+galaxy1" profile="24.2">
+    <description>segment fibers and measure their diameters with DiameterJ</description>
+    <requirements>
+        <container type="docker">sem-diameterj:1.0</container>
+    </requirements>
+    <version_command><![CDATA[
+echo 'sem-diameterj 1.0'
+    ]]></version_command>
+    <command detect_errors="exit_code"><![CDATA[
+export PUID="\$(stat -c %u ..)" &&
+export PGID="\$(stat -c %g ..)" &&
+mkdir -p results runtime_tmp &&
+chown "\${PUID}:\${PGID}" results runtime_tmp &&
+export TMPDIR="\$(pwd)/runtime_tmp" &&
+ln -s '$input_image' input.tif &&
+export ANALYSIS_RESULTS_DIR='results' &&
+/usr/local/bin/sem-analysis
+    --input input.tif
+    --output results
+    --method '$method'
+    --crop-bottom '$advanced.crop_bottom'
+#if $calibration.source == 'pixel_size':
+    --pixel-size-um '$calibration.pixel_size_um'
+#else:
+    --hfw-um '$calibration.hfw_um'
+#end if
+    --sigma '$advanced.sigma'
+    --min-object-px '$advanced.min_object_px'
+    --min-hole-px '$advanced.min_hole_px'
+#if $advanced.invert:
+    --invert
+#end if
+#if $analysis_mode == 'qc':
+    --skip-diameterj
+#end if
+&& mv "results/input__${method}.tif" results/mask.tif
+&& mv "results/input__${method}_overlay.png" results/overlay.png
+&& mv "results/input__${method}_diameters.csv" results/qc_diameters.csv
+#if $analysis_mode == 'diameterj':
+&& mv "results/input__${method}_Total Summary.csv" results/diameterj_summary.csv
+&& mv "results/input__${method}_Compare.png" results/diameterj_comparison.png
+&& mv "results/input__${method}_Pore Data.csv" results/pore_data.csv
+&& mv "results/input__${method}_Radius Plot.tif" results/radius_plot.tif
+&& mv "results/input__${method}_Radius Histo.csv" results/radius_histogram.csv
+&& mv "results/input__${method}_Char Lengths.csv" results/characteristic_lengths.csv
+#end if
+    ]]></command>
+    <inputs>
+        <param name="input_image" type="data" format="tiff" label="SEM micrograph" help="A 2-D TIFF image. RGB TIFFs are converted to grayscale."/>
+        <param name="method" type="select" label="Global threshold method">
+            <option value="otsu" selected="true">Otsu</option>
+            <option value="li">Li</option>
+            <option value="yen">Yen</option>
+            <option value="triangle">Triangle</option>
+        </param>
+        <param name="analysis_mode" type="select" label="Analysis mode">
+            <option value="diameterj" selected="true">Full DiameterJ analysis</option>
+            <option value="qc">Segmentation and Python QC only</option>
+        </param>
+        <conditional name="calibration">
+            <param name="source" type="select" label="Pixel calibration">
+                <option value="hfw" selected="true">Derive from horizontal field width</option>
+                <option value="pixel_size">Specify pixel size directly</option>
+            </param>
+            <when value="hfw">
+                <param name="hfw_um" type="float" value="27.04" min="0" exclude_min="true" label="Horizontal field width (µm)"/>
+            </when>
+            <when value="pixel_size">
+                <param name="pixel_size_um" type="float" value="0.02640625" min="0" exclude_min="true" label="Pixel size (µm/pixel)"/>
+            </when>
+        </conditional>
+        <section name="advanced" title="Segmentation options" expanded="false">
+            <param name="crop_bottom" type="integer" value="59" min="0" label="Crop from bottom (pixels)" help="Removes the SEM instrument footer before analysis."/>
+            <param name="sigma" type="float" value="1.0" min="0" label="Gaussian denoising sigma"/>
+            <param name="min_object_px" type="integer" value="25" min="0" label="Minimum fiber object area (pixels)"/>
+            <param name="min_hole_px" type="integer" value="25" min="0" label="Minimum filled-hole area (pixels)"/>
+            <param name="invert" type="boolean" checked="false" truevalue="true" falsevalue="false" label="Fibers are darker than the background"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="mask" format="tiff" from_work_dir="results/mask.tif" label="${tool.name}: binary mask of ${on_string}"/>
+        <data name="overlay" format="png" from_work_dir="results/overlay.png" label="${tool.name}: segmentation overlay of ${on_string}"/>
+        <data name="qc_diameters" format="csv" from_work_dir="results/qc_diameters.csv" label="${tool.name}: QC diameter samples of ${on_string}"/>
+        <data name="qc_summary" format="csv" from_work_dir="results/python_qc_summary.csv" label="${tool.name}: QC summary of ${on_string}"/>
+        <data name="diameterj_summary" format="csv" from_work_dir="results/diameterj_summary.csv" label="${tool.name}: DiameterJ summary of ${on_string}">
+            <filter>analysis_mode == 'diameterj'</filter>
+        </data>
+        <data name="diameterj_comparison" format="png" from_work_dir="results/diameterj_comparison.png" label="${tool.name}: DiameterJ comparison of ${on_string}">
+            <filter>analysis_mode == 'diameterj'</filter>
+        </data>
+        <data name="pore_data" format="csv" from_work_dir="results/pore_data.csv" label="${tool.name}: DiameterJ pore data of ${on_string}">
+            <filter>analysis_mode == 'diameterj'</filter>
+        </data>
+        <data name="radius_plot" format="tiff" from_work_dir="results/radius_plot.tif" label="${tool.name}: DiameterJ radius plot of ${on_string}">
+            <filter>analysis_mode == 'diameterj'</filter>
+        </data>
+        <data name="radius_histogram" format="csv" from_work_dir="results/radius_histogram.csv" label="${tool.name}: DiameterJ radius histogram of ${on_string}">
+            <filter>analysis_mode == 'diameterj'</filter>
+        </data>
+        <data name="characteristic_lengths" format="csv" from_work_dir="results/characteristic_lengths.csv" label="${tool.name}: DiameterJ characteristic lengths of ${on_string}">
+            <filter>analysis_mode == 'diameterj'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <param name="method" value="otsu"/>
+            <param name="analysis_mode" value="qc"/>
+            <output name="mask">
+                <assert_contents><has_size min="800000"/></assert_contents>
+            </output>
+            <output name="overlay">
+                <assert_contents><has_size min="900000"/></assert_contents>
+            </output>
+            <output name="qc_diameters">
+                <assert_contents><has_text text="diameter_px,diameter_um"/></assert_contents>
+            </output>
+            <output name="qc_summary">
+                <assert_contents>
+                    <has_text text="pixel_size_um"/>
+                    <has_text text="fiber_area_fraction"/>
+                    <has_text text="qc_mean_diameter_um"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="10">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <param name="method" value="otsu"/>
+            <param name="analysis_mode" value="diameterj"/>
+            <output name="diameterj_summary">
+                <assert_contents><has_size min="500"/></assert_contents>
+            </output>
+            <output name="diameterj_comparison">
+                <assert_contents><has_size min="200000"/></assert_contents>
+            </output>
+            <output name="pore_data">
+                <assert_contents><has_size min="5000"/></assert_contents>
+            </output>
+            <output name="radius_plot">
+                <assert_contents><has_size min="150000"/></assert_contents>
+            </output>
+            <output name="radius_histogram">
+                <assert_contents><has_size min="500"/></assert_contents>
+            </output>
+            <output name="characteristic_lengths">
+                <assert_contents><has_size min="30000"/></assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+This tool prepares an SEM micrograph for DiameterJ, creates a binary fiber mask,
+and computes an independent Python diameter quality-control estimate. In full
+mode it also runs the validated DiameterJ 1.018 workflow under a virtual display.
+
+The input is cropped at the bottom to remove an instrument footer, contrast is
+enhanced, the selected global threshold is applied, and small objects and holes
+are cleaned. Enable inversion when fibers are darker than their background.
+
+**Calibration and interpretation**
+
+The Python QC measurements are reported in pixels and micrometres. Pixel size is
+either supplied directly or calculated as horizontal field width divided by the
+uncropped image width. DiameterJ itself runs in its validated pixel mode; use the
+``pixel_size_um`` value in the QC summary when converting DiameterJ measurements.
+
+The QC diameter samples are distance-transform measurements on skeleton pixels.
+They are intended as an independent quality check; DiameterJ output is the
+primary result in full-analysis mode.
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1016/j.micron.2014.02.020</citation>
+    </citations>
+</tool>
