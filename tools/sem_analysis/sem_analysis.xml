@@ -4,7 +4,7 @@
         <token name="@TOOL_VERSION@">1-018</token>
         <token name="@VERSION_SUFFIX@">0</token>
         <token name="@PROFILE@">24.2</token>
-        <token name="@CONTAINER_VERSION@">0.1</token>
+        <token name="@CONTAINER_VERSION@">0.2</token>
     </macros>
     <requirements>
         <container type="docker">quay.io/galaxy/sem-analysis-fiji-diameterj:@CONTAINER_VERSION@</container>
@@ -16,34 +16,43 @@ ln -s '$input_image' input.tif &&
 /usr/local/bin/sem-analysis
     --input input.tif
     --output results
-    --method '$method'
+    --segmentation '$segmentation.workflow'
+#if $segmentation.workflow in ('mixed', 'srm', 'all'):
+    --srm-q '$segmentation.srm_q'
+#end if
     --crop-bottom '$advanced.crop_bottom'
 #if $calibration.source == 'pixel_size':
     --pixel-size-um '$calibration.pixel_size_um'
 #else:
     --hfw-um '$calibration.hfw_um'
 #end if
-    --sigma '$advanced.sigma'
-    --min-object-px '$advanced.min_object_px'
-    --min-hole-px '$advanced.min_hole_px'
-#if $advanced.invert:
-    --invert
-#end if
 #if $analysis_mode == 'qc':
     --skip-diameterj
 #end if
 #if $analysis_mode == 'diameterj':
-&& python3 -c "from pathlib import Path; from PIL import Image; source = Path('results/input__${method}_Radius Plot.tif'); Image.open(source).save(source.with_suffix('.png')); source.unlink()"
+&& python3 '$__tool_directory__/convert_radius_plots.py' results
 #end if
     ]]></command>
     <inputs>
         <param name="input_image" type="data" format="tiff" label="SEM micrograph" help="A 2-D TIFF image. RGB TIFFs are converted to grayscale."/>
-        <param name="method" type="select" label="Global threshold method">
-            <option value="otsu" selected="true">Otsu</option>
-            <option value="li">Li</option>
-            <option value="yen">Yen</option>
-            <option value="triangle">Triangle</option>
-        </param>
+        <conditional name="segmentation">
+            <param name="workflow" type="select" label="Segmentation workflow">
+                <option value="traditional" selected="true">Traditional</option>
+                <option value="mixed">Mixed</option>
+                <option value="srm">Statistical Region Merging</option>
+                <option value="all">All segmentation families</option>
+            </param>
+            <when value="traditional"/>
+            <when value="mixed">
+                <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
+            </when>
+            <when value="srm">
+                <param name="srm_q" type="integer" value="100" min="1" label="Starting SRM granularity (q)"/>
+            </when>
+            <when value="all">
+                <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
+            </when>
+        </conditional>
         <param name="analysis_mode" type="select" label="Analysis mode">
             <option value="diameterj" selected="true">Full DiameterJ analysis</option>
             <option value="qc">Segmentation and Python QC only</option>
@@ -66,10 +75,6 @@ ln -s '$input_image' input.tif &&
         </conditional>
         <section name="advanced" title="Segmentation options" expanded="false">
             <param name="crop_bottom" type="integer" value="59" min="0" label="Crop from bottom (pixels)" help="Removes the SEM instrument footer before analysis."/>
-            <param name="sigma" type="float" value="1.0" min="0" label="Gaussian denoising sigma"/>
-            <param name="min_object_px" type="integer" value="25" min="0" label="Minimum fiber object area (pixels)"/>
-            <param name="min_hole_px" type="integer" value="25" min="0" label="Minimum filled-hole area (pixels)"/>
-            <param name="invert" type="boolean" checked="false" truevalue="true" falsevalue="false" label="Fibers are darker than the background"/>
         </section>
     </inputs>
     <outputs>
@@ -80,33 +85,20 @@ ln -s '$input_image' input.tif &&
     <tests>
         <test expect_num_outputs="1">
             <param name="input_image" value="PVA-A_004.tif"/>
-            <param name="method" value="otsu"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="traditional"/>
+            </conditional>
             <param name="analysis_mode" value="qc"/>
-            <output_collection name="results_collection" type="list" count="4"/>
+            <output_collection name="results_collection" type="list" count="34"/>
         </test>
         <test expect_num_outputs="1">
             <param name="input_image" value="PVA-A_004.tif"/>
-            <param name="method" value="otsu"/>
-            <param name="analysis_mode" value="diameterj"/>
-            <output_collection name="results_collection" type="list" count="10"/>
-        </test>
-        <test expect_num_outputs="1">
-            <param name="input_image" value="PVA-A_004.tif"/>
-            <param name="method" value="li"/>
-            <param name="analysis_mode" value="diameterj"/>
-            <output_collection name="results_collection" type="list" count="10"/>
-        </test>
-        <test expect_num_outputs="1">
-            <param name="input_image" value="PVA-A_004.tif"/>
-            <param name="method" value="yen"/>
-            <param name="analysis_mode" value="diameterj"/>
-            <output_collection name="results_collection" type="list" count="10"/>
-        </test>
-        <test expect_num_outputs="1">
-            <param name="input_image" value="PVA-A_004.tif"/>
-            <param name="method" value="triangle"/>
-            <param name="analysis_mode" value="diameterj"/>
-            <output_collection name="results_collection" type="list" count="10"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="mixed"/>
+                <param name="srm_q" value="80"/>
+            </conditional>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="34"/>
         </test>
     </tests>
     <help><![CDATA[
@@ -116,9 +108,9 @@ This tool prepares an SEM micrograph for DiameterJ, creates a binary fiber mask,
 and computes an independent Python diameter quality-control estimate. In full
 mode it also runs the validated DiameterJ 1.018 workflow under a virtual display.
 
-Processing consists of optional footer removal, adaptive contrast enhancement,
-Gaussian smoothing, global thresholding, removal of small objects, filling of
-small holes, skeletonization, and distance-transform diameter measurement.
+The tool reproduces DiameterJ's Traditional, Mixed, and Statistical Region
+Merging (SRM) segmentation families.
+Every generated mask receives an independent skeleton/distance-transform QC.
 
 **Input image**
 
@@ -127,30 +119,25 @@ directly. An RGB TIFF is converted to grayscale by averaging its first three
 channels. Other dimensional layouts, such as image stacks or time series, are
 not supported.
 
-**Global threshold method**
+**Segmentation workflow**
 
-The threshold separates fibers from the background after contrast enhancement
-and smoothing. No one method is optimal for every micrograph.
-
-* **Otsu** minimizes variance within the foreground and background classes. It
-  is a useful default for images with two reasonably distinct intensity groups.
-* **Li** iteratively minimizes cross-entropy. It can work well when the two
-  intensity classes overlap or the histogram is asymmetric.
-* **Yen** maximizes a histogram-based correlation criterion. It may preserve
-  bright, fine structures but can select more foreground in noisy images.
-* **Triangle** estimates a threshold from the shape of a skewed histogram. It
-  is often useful when fibers occupy a relatively small fraction of the image.
-
-Inspect the binary mask and overlay when selecting a method. The same method is
-used in both QC-only and full DiameterJ modes.
+* **DiameterJ Traditional** generates the eight original masks: Huang,
+  Percentile, MinError(I), Triangle, Li, Otsu, MaxEntropy, and RenyiEntropy.
+* **DiameterJ Mixed** creates eight masks. Four apply SRM at the selected ``q``
+  before Huang, MinError(I), Percentile, and Triangle thresholding; four apply
+  those thresholds directly as companion masks.
+* **DiameterJ Statistical Region Merging** generates eight masks using two
+  recursive SRM sequences derived from the starting ``q``. With ``q=100``, the
+  sequences are 100/50/25/12 and 50/10; each is followed by four thresholds.
+* **All DiameterJ segmentation families** runs Traditional, Mixed, and SRM and
+  therefore creates twenty-four candidate masks.
 
 **Analysis mode**
 
-* **Full DiameterJ analysis** creates the Python segmentation and QC results,
-  then runs DiameterJ 1.018. This is the primary analysis mode and produces ten
-  result files.
-* **Segmentation and Python QC only** skips DiameterJ. It is faster and produces
-  four files, making it useful for testing thresholds and cleanup parameters.
+* **Full DiameterJ analysis** creates the selected segmentation masks and QC
+  results, then runs DiameterJ 1.018 on every mask. This is the primary mode.
+* **Segmentation and Python QC only** skips DiameterJ analysis. It is faster and
+  is useful for comparing candidate masks before a full run.
 
 **Calibration and interpretation**
 
@@ -175,30 +162,33 @@ measurements to physical units.
 * **Crop from bottom** removes a fixed number of pixel rows before analysis. The
   default of 59 is intended for an SEM annotation or instrument footer. Set it
   to 0 when the image contains no footer. It must be smaller than image height.
-* **Gaussian denoising sigma** controls smoothing before thresholding. A larger
-  value suppresses more fine-scale noise but may merge nearby fibers or erase
-  thin structures. A value of 0 disables Gaussian smoothing.
-* **Minimum fiber object area** removes connected foreground regions smaller
-  than the specified number of pixels. Increase it to reject isolated specks;
-  decrease it to retain small fibers.
-* **Minimum filled-hole area** fills background holes within the fiber mask up
-  to the specified pixel area. Increase it to close more small gaps, but avoid
-  values that fill genuine pores.
-* **Fibers are darker than the background** reverses the threshold comparison.
-  Leave it disabled for bright fibers on a dark background; enable it for dark
-  fibers on a bright background.
-
-Object and hole limits are areas in pixels, not linear dimensions. Their
-physical effect therefore depends on image calibration and magnification.
+* **SRM granularity (q)** controls region merging in Mixed, SRM, and All modes.
+  It must be positive. Larger values generally preserve more, smaller regions;
+  lower values generally merge regions more aggressively. The default is 100.
 
 **Outputs**
 
 All generated files are returned as one list collection in the Galaxy history.
-Dataset names retain the input stem and threshold method. QC-only mode includes
-the mask TIFF, segmentation overlay PNG, diameter samples CSV, and Python QC
-summary CSV. Full mode additionally includes the DiameterJ total summary,
-comparison image, pore data, radius histogram, characteristic lengths, and the
-radius plot converted to PNG.
+Each workflow produces one PNG montage containing the cropped original image
+and every segmentation candidate. It also produces each candidate as a
+separate, display-ready PNG and as a matching TIFF used for DiameterJ analysis.
+Thus Traditional, Mixed, and SRM each produce eight separate segmented PNG
+images, while All produces twenty-four.
+
+Dataset names retain the input stem, segmentation family, SRM settings where
+applicable, and threshold method. For each mask, QC-only mode also includes a
+boundary-overlay PNG and diameter-samples CSV; the collection contains one
+Python QC summary CSV. Full mode adds the DiameterJ total summary, comparison
+image, pore data, radius histogram, characteristic lengths, and radius plot for
+each mask. Every DiameterJ radius-plot TIFF is converted to PNG before Galaxy
+discovers the collection.
+
+The resulting collection size depends on the workflow and analysis mode:
+
+* Traditional: 34 QC-only or 82 full results.
+* Mixed: 34 QC-only or 82 full results.
+* SRM: 34 QC-only or 82 full results.
+* All DiameterJ segmentation families: 98 QC-only or 242 full results.
 
 The QC diameter samples are distance-transform measurements on skeleton pixels.
 They are intended as an independent quality check; DiameterJ output is the
