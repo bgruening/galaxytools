@@ -1,11 +1,14 @@
-<tool id="sem_analysis" name="SEM fiber analysis" version="1.0+galaxy4" profile="24.2">
-    <description>segment fibers and measure their diameters with DiameterJ</description>
+<tool id="sem_analysis" name="SEM fiber analysis" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>segment fibers and measure their diameters with FIJI and DiameterJ</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1-018</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">24.2</token>
+        <token name="@CONTAINER_VERSION@">0.1</token>
+    </macros>
     <requirements>
-        <container type="docker">quay.io/galaxy/sem-analysis-fiji-diameterj:0.1</container>
+        <container type="docker">quay.io/galaxy/sem-analysis-fiji-diameterj:@CONTAINER_VERSION@</container>
     </requirements>
-    <version_command><![CDATA[
-echo 'sem-diameterj 1.0'
-    ]]></version_command>
     <command detect_errors="exit_code"><![CDATA[
 mkdir -p results &&
 export ANALYSIS_RESULTS_DIR='results' &&
@@ -113,22 +116,95 @@ This tool prepares an SEM micrograph for DiameterJ, creates a binary fiber mask,
 and computes an independent Python diameter quality-control estimate. In full
 mode it also runs the validated DiameterJ 1.018 workflow under a virtual display.
 
-The input is cropped at the bottom to remove an instrument footer, contrast is
-enhanced, the selected global threshold is applied, and small objects and holes
-are cleaned. Enable inversion when fibers are darker than their background.
+Processing consists of optional footer removal, adaptive contrast enhancement,
+Gaussian smoothing, global thresholding, removal of small objects, filling of
+small holes, skeletonization, and distance-transform diameter measurement.
+
+**Input image**
+
+The input must be a TIFF image. A two-dimensional grayscale image is used
+directly. An RGB TIFF is converted to grayscale by averaging its first three
+channels. Other dimensional layouts, such as image stacks or time series, are
+not supported.
+
+**Global threshold method**
+
+The threshold separates fibers from the background after contrast enhancement
+and smoothing. No one method is optimal for every micrograph.
+
+* **Otsu** minimizes variance within the foreground and background classes. It
+  is a useful default for images with two reasonably distinct intensity groups.
+* **Li** iteratively minimizes cross-entropy. It can work well when the two
+  intensity classes overlap or the histogram is asymmetric.
+* **Yen** maximizes a histogram-based correlation criterion. It may preserve
+  bright, fine structures but can select more foreground in noisy images.
+* **Triangle** estimates a threshold from the shape of a skewed histogram. It
+  is often useful when fibers occupy a relatively small fraction of the image.
+
+Inspect the binary mask and overlay when selecting a method. The same method is
+used in both QC-only and full DiameterJ modes.
+
+**Analysis mode**
+
+* **Full DiameterJ analysis** creates the Python segmentation and QC results,
+  then runs DiameterJ 1.018. This is the primary analysis mode and produces ten
+  result files.
+* **Segmentation and Python QC only** skips DiameterJ. It is faster and produces
+  four files, making it useful for testing thresholds and cleanup parameters.
 
 **Calibration and interpretation**
 
-The Python QC measurements are reported in pixels and micrometres. Pixel size is
-either supplied directly or calculated as horizontal field width divided by the
-uncropped image width. DiameterJ itself runs in its validated pixel mode; use the
-``pixel_size_um`` value in the QC summary when converting DiameterJ measurements.
+Python QC measurements are reported in pixels and micrometres. Choose one of the
+following calibration sources:
+
+* **Horizontal field width** is the physical width represented by the entire
+  uncropped image. Pixel size is calculated as ``HFW / image width in pixels``.
+  The default is 27.04 µm and should be replaced with the value recorded by the
+  microscope for the input image.
+* **Pixel size** directly specifies micrometres per pixel. Use this when the
+  calibrated pixel spacing is already known.
+
+Cropping the bottom does not change image width, so it does not alter an
+HFW-derived pixel size. DiameterJ runs in its validated native-pixel mode because
+physical calibration can change its legacy particle-size filtering. Use the
+``pixel_size_um`` field in ``python_qc_summary.csv`` when converting DiameterJ
+measurements to physical units.
+
+**Segmentation options**
+
+* **Crop from bottom** removes a fixed number of pixel rows before analysis. The
+  default of 59 is intended for an SEM annotation or instrument footer. Set it
+  to 0 when the image contains no footer. It must be smaller than image height.
+* **Gaussian denoising sigma** controls smoothing before thresholding. A larger
+  value suppresses more fine-scale noise but may merge nearby fibers or erase
+  thin structures. A value of 0 disables Gaussian smoothing.
+* **Minimum fiber object area** removes connected foreground regions smaller
+  than the specified number of pixels. Increase it to reject isolated specks;
+  decrease it to retain small fibers.
+* **Minimum filled-hole area** fills background holes within the fiber mask up
+  to the specified pixel area. Increase it to close more small gaps, but avoid
+  values that fill genuine pores.
+* **Fibers are darker than the background** reverses the threshold comparison.
+  Leave it disabled for bright fibers on a dark background; enable it for dark
+  fibers on a bright background.
+
+Object and hole limits are areas in pixels, not linear dimensions. Their
+physical effect therefore depends on image calibration and magnification.
+
+**Outputs**
+
+All generated files are returned as one list collection in the Galaxy history.
+Dataset names retain the input stem and threshold method. QC-only mode includes
+the mask TIFF, segmentation overlay PNG, diameter samples CSV, and Python QC
+summary CSV. Full mode additionally includes the DiameterJ total summary,
+comparison image, pore data, radius histogram, characteristic lengths, and the
+radius plot converted to PNG.
 
 The QC diameter samples are distance-transform measurements on skeleton pixels.
 They are intended as an independent quality check; DiameterJ output is the
 primary result in full-analysis mode.
     ]]></help>
     <citations>
-        <citation type="doi">10.1016/j.micron.2014.02.020</citation>
+        <citation type="doi">10.1016/j.biomaterials.2015.05.015</citation>
     </citations>
 </tool>
