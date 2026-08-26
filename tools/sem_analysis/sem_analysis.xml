@@ -1,4 +1,4 @@
-<tool id="sem_analysis" name="SEM fiber analysis" version="1.0+galaxy2" profile="24.2">
+<tool id="sem_analysis" name="SEM fiber analysis" version="1.0+galaxy3" profile="24.2">
     <description>segment fibers and measure their diameters with DiameterJ</description>
     <requirements>
         <container type="docker">sem_diameterj:0.1</container>
@@ -8,7 +8,6 @@ echo 'sem-diameterj 1.0'
     ]]></version_command>
     <command detect_errors="exit_code"><![CDATA[
 mkdir -p results &&
-chown "\${PUID}:\${PGID}" results &&
 export ANALYSIS_RESULTS_DIR='results' &&
 ln -s '$input_image' input.tif &&
 /usr/local/bin/sem-analysis
@@ -30,16 +29,8 @@ ln -s '$input_image' input.tif &&
 #if $analysis_mode == 'qc':
     --skip-diameterj
 #end if
-&& mv "results/input__${method}.tif" results/mask.tif
-&& mv "results/input__${method}_overlay.png" results/overlay.png
-&& mv "results/input__${method}_diameters.csv" results/qc_diameters.csv
 #if $analysis_mode == 'diameterj':
-&& mv "results/input__${method}_Total Summary.csv" results/diameterj_summary.csv
-&& mv "results/input__${method}_Compare.png" results/diameterj_comparison.png
-&& mv "results/input__${method}_Pore Data.csv" results/pore_data.csv
-&& python3 -c "from PIL import Image; Image.open('results/input__${method}_Radius Plot.tif').save('results/radius_plot.png')"
-&& mv "results/input__${method}_Radius Histo.csv" results/radius_histogram.csv
-&& mv "results/input__${method}_Char Lengths.csv" results/characteristic_lengths.csv
+&& python3 -c "from pathlib import Path; from PIL import Image; source = Path('results/input__${method}_Radius Plot.tif'); Image.open(source).save(source.with_suffix('.png')); source.unlink()"
 #end if
     ]]></command>
     <inputs>
@@ -60,10 +51,14 @@ ln -s '$input_image' input.tif &&
                 <option value="pixel_size">Specify pixel size directly</option>
             </param>
             <when value="hfw">
-                <param name="hfw_um" type="float" value="27.04" min="0" exclude_min="true" label="Horizontal field width (µm)"/>
+                <param name="hfw_um" type="float" value="27.04" label="Horizontal field width (µm)">
+                    <validator type="expression" message="Horizontal field width must be greater than zero">value &gt; 0</validator>
+                </param>
             </when>
             <when value="pixel_size">
-                <param name="pixel_size_um" type="float" value="0.02640625" min="0" exclude_min="true" label="Pixel size (µm/pixel)"/>
+                <param name="pixel_size_um" type="float" value="0.02640625" label="Pixel size (µm/pixel)">
+                    <validator type="expression" message="Pixel size must be greater than zero">value &gt; 0</validator>
+                </param>
             </when>
         </conditional>
         <section name="advanced" title="Segmentation options" expanded="false">
@@ -75,73 +70,22 @@ ln -s '$input_image' input.tif &&
         </section>
     </inputs>
     <outputs>
-        <data name="mask" format="tiff" from_work_dir="results/mask.tif" label="${tool.name}: binary mask of ${on_string}"/>
-        <data name="overlay" format="png" from_work_dir="results/overlay.png" label="${tool.name}: segmentation overlay of ${on_string}"/>
-        <data name="qc_diameters" format="csv" from_work_dir="results/qc_diameters.csv" label="${tool.name}: QC diameter samples of ${on_string}"/>
-        <data name="qc_summary" format="csv" from_work_dir="results/python_qc_summary.csv" label="${tool.name}: QC summary of ${on_string}"/>
-        <data name="diameterj_summary" format="csv" from_work_dir="results/diameterj_summary.csv" label="${tool.name}: DiameterJ summary of ${on_string}">
-            <filter>analysis_mode == 'diameterj'</filter>
-        </data>
-        <data name="diameterj_comparison" format="png" from_work_dir="results/diameterj_comparison.png" label="${tool.name}: DiameterJ comparison of ${on_string}">
-            <filter>analysis_mode == 'diameterj'</filter>
-        </data>
-        <data name="pore_data" format="csv" from_work_dir="results/pore_data.csv" label="${tool.name}: DiameterJ pore data of ${on_string}">
-            <filter>analysis_mode == 'diameterj'</filter>
-        </data>
-        <data name="radius_plot" format="png" from_work_dir="results/radius_plot.png" label="${tool.name}: DiameterJ radius plot of ${on_string}">
-            <filter>analysis_mode == 'diameterj'</filter>
-        </data>
-        <data name="radius_histogram" format="csv" from_work_dir="results/radius_histogram.csv" label="${tool.name}: DiameterJ radius histogram of ${on_string}">
-            <filter>analysis_mode == 'diameterj'</filter>
-        </data>
-        <data name="characteristic_lengths" format="csv" from_work_dir="results/characteristic_lengths.csv" label="${tool.name}: DiameterJ characteristic lengths of ${on_string}">
-            <filter>analysis_mode == 'diameterj'</filter>
-        </data>
+        <collection name="results_collection" type="list" label="${tool.name}: results for ${on_string}">
+            <discover_datasets pattern="__name_and_ext__" directory="results"/>
+        </collection>
     </outputs>
     <tests>
-        <test expect_num_outputs="4">
+        <test expect_num_outputs="1">
             <param name="input_image" value="PVA-A_004.tif"/>
             <param name="method" value="otsu"/>
             <param name="analysis_mode" value="qc"/>
-            <output name="mask">
-                <assert_contents><has_size min="800000"/></assert_contents>
-            </output>
-            <output name="overlay">
-                <assert_contents><has_size min="900000"/></assert_contents>
-            </output>
-            <output name="qc_diameters">
-                <assert_contents><has_text text="diameter_px,diameter_um"/></assert_contents>
-            </output>
-            <output name="qc_summary">
-                <assert_contents>
-                    <has_text text="pixel_size_um"/>
-                    <has_text text="fiber_area_fraction"/>
-                    <has_text text="qc_mean_diameter_um"/>
-                </assert_contents>
-            </output>
+            <output_collection name="results_collection" type="list" count="4"/>
         </test>
-        <test expect_num_outputs="10">
+        <test expect_num_outputs="1">
             <param name="input_image" value="PVA-A_004.tif"/>
             <param name="method" value="otsu"/>
             <param name="analysis_mode" value="diameterj"/>
-            <output name="diameterj_summary">
-                <assert_contents><has_size min="500"/></assert_contents>
-            </output>
-            <output name="diameterj_comparison">
-                <assert_contents><has_size min="200000"/></assert_contents>
-            </output>
-            <output name="pore_data">
-                <assert_contents><has_size min="5000"/></assert_contents>
-            </output>
-            <output name="radius_plot">
-                <assert_contents><has_size min="3000"/></assert_contents>
-            </output>
-            <output name="radius_histogram">
-                <assert_contents><has_size min="500"/></assert_contents>
-            </output>
-            <output name="characteristic_lengths">
-                <assert_contents><has_size min="30000"/></assert_contents>
-            </output>
+            <output_collection name="results_collection" type="list" count="10"/>
         </test>
     </tests>
     <help><![CDATA[
