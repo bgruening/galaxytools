@@ -14,7 +14,8 @@ mkdir -p results &&
 export ANALYSIS_RESULTS_DIR='results' &&
 ln -s '$input_image' input.tif &&
 set -- --input input.tif --output results --segmentation '$segmentation.workflow' &&
-#if $segmentation.workflow in ('recursive-srm', 'srm-auto-thresholding', 'all'):
+set -- "\$@" --threshold-methods '#echo ",".join($threshold_methods)#' &&
+#if $segmentation.workflow in ('recursive-srm', 'srm-auto-thresholding'):
 set -- "\$@" --srm-q '$segmentation.srm_q' &&
 #end if
 #if $calibration.source == 'pixel_size':
@@ -40,7 +41,6 @@ python3 '$__tool_directory__/convert_radius_plots.py' results
                 <option value="auto-thresholding" selected="true">Auto Thresholding (Traditional)</option>
                 <option value="recursive-srm">Recursive SRM with Auto Thresholding (SRM)</option>
                 <option value="srm-auto-thresholding">SRM with Auto Thresholding (Mixed)</option>
-                <option value="all">All</option>
             </param>
             <when value="auto-thresholding"/>
             <when value="recursive-srm">
@@ -49,10 +49,26 @@ python3 '$__tool_directory__/convert_radius_plots.py' results
             <when value="srm-auto-thresholding">
                 <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
             </when>
-            <when value="all">
-                <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
-            </when>
         </conditional>
+        <param name="threshold_methods" type="select" multiple="true" optional="false" label="Thresholding methods" help="Select one or more Fiji Auto Threshold methods. Each selected method produces a separate segmentation candidate.">
+            <option value="default" selected="true">Default</option>
+            <option value="huang" selected="true">Huang</option>
+            <option value="huang2" selected="true">Huang2</option>
+            <option value="intermodes" selected="true">Intermodes</option>
+            <option value="isodata" selected="true">IsoData</option>
+            <option value="li" selected="true">Li</option>
+            <option value="maxentropy" selected="true">MaxEntropy</option>
+            <option value="mean" selected="true">Mean</option>
+            <option value="minerror" selected="true">MinError(I)</option>
+            <option value="minimum" selected="true">Minimum</option>
+            <option value="moments" selected="true">Moments</option>
+            <option value="otsu" selected="true">Otsu</option>
+            <option value="percentile" selected="true">Percentile</option>
+            <option value="renyientropy" selected="true">RenyiEntropy</option>
+            <option value="shanbhag" selected="true">Shanbhag</option>
+            <option value="triangle" selected="true">Triangle</option>
+            <option value="yen" selected="true">Yen</option>
+        </param>
         <param name="analysis_mode" type="select" label="Analysis mode">
             <option value="diameterj" selected="true">Full DiameterJ analysis</option>
             <option value="qc">Segmentation and Python QC only</option>
@@ -83,6 +99,15 @@ python3 '$__tool_directory__/convert_radius_plots.py' results
         </collection>
     </outputs>
     <tests>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="auto-thresholding"/>
+            </conditional>
+            <param name="analysis_mode" value="qc"/>
+            <param name="threshold_methods" value="default,otsu"/>
+            <output_collection name="results_collection" type="list" count="11"/>
+        </test>
         <test expect_num_outputs="1">
             <param name="input_image" value="PVA-A_004.tif"/>
             <conditional name="segmentation">
@@ -130,19 +155,21 @@ not supported.
 
 **Segmentation workflow**
 
-* **Auto Thresholding** applies all 17 concrete Fiji Auto Threshold v1.18.0
-  methods directly to the cropped image: Default, Huang, Huang2, Intermodes,
+* **Auto Thresholding** applies the selected Fiji Auto Threshold v1.18.0
+  methods directly to the cropped image. The available methods are Default,
+  Huang, Huang2, Intermodes,
   IsoData, Li, MaxEntropy, Mean, MinError(I), Minimum, Moments, Otsu,
   Percentile, RenyiEntropy, Shanbhag, Triangle, and Yen.
 * **SRM with Auto Thresholding** applies one Statistical Region Merging pass at
-  the selected ``q``, converts the result to 8-bit, and applies all 17 Auto
-  Threshold methods.
+  the selected ``q``, converts the result to 8-bit, and applies the selected
+  Auto Threshold methods.
 * **Recursive SRM** runs exactly one recursive workflow. It successively applies
   SRM at ``q``, ``q/2``, ``q/4``, and ``q/8`` (with a minimum of 1), then
-  applies all 17 threshold methods to the final SRM image. It therefore reports
-  exactly 17 segmentations
-* **All Fiji segmentation workflows** runs all three workflows and produces 51
-  candidate masks.
+  applies the selected threshold methods to the final SRM image.
+
+Use **Thresholding methods** to choose one or more of these methods. The same
+selection is applied after SRM for either SRM-based workflow. All 17 methods are
+selected by default.
 
 **Analysis mode**
 
@@ -176,8 +203,8 @@ measurements to physical units.
 * **Crop from bottom** removes a fixed number of pixel rows before analysis. The
   default of 59 is intended for an SEM annotation or instrument footer. Set it
   to 0 when the image contains no footer. It must be smaller than image height.
-* **SRM granularity (q)** controls region merging in SRM with Auto Thresholding,
-  Recursive SRM, and All modes. It must be positive. Larger values generally
+* **SRM granularity (q)** controls region merging in SRM with Auto Thresholding
+  and Recursive SRM modes. It must be positive. Larger values generally
   preserve more, smaller regions; lower values generally merge regions more
   aggressively. The default is 100.
 
@@ -188,7 +215,8 @@ Each workflow produces two PNG review sheets: a segmentation montage containing
 the cropped original and every binary mask, and an overlay montage containing
 the original and every boundary overlay. It also produces each candidate as a
 separate, display-ready PNG and as a matching TIFF used for DiameterJ analysis.
-Each individual workflow produces 17 segmented PNG images; All produces 51.
+Each workflow produces one segmented PNG and one matching TIFF per selected
+threshold method.
 
 Dataset names retain the input stem, segmentation family, SRM settings where
 applicable, and threshold method. For each mask, QC-only mode also includes a
@@ -198,15 +226,12 @@ image, pore data, radius histogram, characteristic lengths, and radius plot for
 each mask. Every DiameterJ radius-plot TIFF is converted to PNG before Galaxy
 discovers the collection.
 
-The resulting collection size depends on the workflow and analysis mode.
+The resulting collection size depends on the number of selected threshold
+methods and the analysis mode. With all 17 methods selected, each workflow
+produces 71 QC-only results or at most 173 full-analysis results.
 Full-analysis counts are maximums: if legacy DiameterJ stops producing files
 for a problematic threshold candidate, completed results are retained and the
-stalled Fiji process is terminated rather than leaving the Galaxy job running:
-
-* Auto Thresholding: 71 QC-only or 173 full results.
-* SRM with Auto Thresholding: 71 QC-only or 173 full results.
-* Recursive SRM: 71 QC-only or 173 full results.
-* All Fiji segmentation workflows: 207 QC-only or 513 full results.
+stalled Fiji process is terminated rather than leaving the Galaxy job running.
 
 The QC diameter samples are distance-transform measurements on skeleton pixels.
 They are intended as an independent quality check; DiameterJ output is the

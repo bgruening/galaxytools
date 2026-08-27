@@ -13,3 +13,8 @@ planemo test --docker sem_analysis.xml
 
 The bundled tests exercise the Fiji segmentation and Python-QC paths. Full mode
 launches DiameterJ 1.018 through the image's Xvfb-backed entrypoint.
+
+The Galaxy form exposes the container's three segmentation workflows and all
+17 Fiji threshold methods. Threshold methods are a required multi-select; all
+methods are selected by default and are passed to the container as one
+comma-separated `--threshold-methods` value.
