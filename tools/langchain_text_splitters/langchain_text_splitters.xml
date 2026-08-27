@@ -70,8 +70,8 @@
             #else
                 --spacy-pipeline '$splitter.sentence_splitter.pipeline_settings.pipeline'
                 --spacy-max-length '$splitter.sentence_splitter.pipeline_settings.max_length'
-                $splitter.strip_whitespace
             #end if
+            $splitter.strip_whitespace
 
             #if str($splitter.length.length_mode) == "token"
                 #set $tiktoken_options = $splitter.length.tiktoken_options
@@ -155,7 +155,7 @@
             </when>
             <when value="sentence">
                 <conditional name="sentence_splitter">
-                    <param name="type" type="select" label="Sentence boundary detector" help="Detect sentence boundaries with NLTK or spaCy. Complete sentences are subsequently merged until the target chunk size is reached. If you want to remove the outputs chunk's leading/trailing whitespace use spaCy. For NLTK we cannot offer this feature as this might lead to invalid start_index values in the chunk metadata.">
+                    <param name="type" type="select" label="Sentence boundary detector" help="Detect sentence boundaries with NLTK or spaCy. Complete sentences are subsequently merged until the target chunk size is reached.">
                         <option value="nltk">
                             NLTK Punkt sentence tokenizer
                         </option>
@@ -210,9 +210,9 @@
                                 <param name="max_length" type="integer" value="1000000" min="1" max="2000000" label="Maximum input length" help="Maximum number of input characters. The tool stops with an error if the input is longer. The English model keeps a dependency parser and needs roughly 4 kB per input character, so the maximum of 2 million characters already needs in the order of 9 GB. Select the rule-based sentencizer for larger inputs."/>
                             </when>
                         </conditional>
-                        <expand macro="strip_whitespace" checked="false"/>
                     </when>
                 </conditional>
+                <expand macro="strip_whitespace" checked="false"/>
                 <conditional name="length">
                     <param name="length_mode" type="select" label="Target chunk size should be determined by the count of">
                         <option value="characters" selected="true">Characters</option>
@@ -709,6 +709,49 @@
                 <has_text text="WARNING: The NLTK sentence splitter dropped the 1 character(s) after the last sentence."/>
             </assert_stdout>
         </test>
+        <!-- Main() in our python wrapper strips whitespace only after NLTK has assembled the
+             finished chunks. This must keep the whitespace between sentences
+             in a chunk and adjust the start index by the whitespace removed
+             from its beginning. -->
+        <test>
+            <param name="input" value="sentence_spacy_prose.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="nltk"/>
+                    <param name="language" value="english"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="50"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="nltk"/>
+                    <has_json_property_with_value property="strip_whitespace" value="true"/>
+                    <has_json_property_with_value property="number_of_chunks" value="2"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                    <has_json_property_with_value property="start_index" value="47"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="2">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <!-- The space between the sentences must survive. -->
+                        <has_text_matching expression="\AThe cat sat on the mat\. The dog barked loudly\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\ABirds flew away\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
         <!-- Exercise NLTK's language selection with the German Punkt model. -->
         <test>
             <param name="input" value="sentence_nltk_german.txt" ftype="txt"/>
@@ -806,8 +849,8 @@
                         <param name="pipeline" value="sentencizer"/>
                         <param name="max_length" value="1000000"/>
                     </conditional>
-                    <param name="strip_whitespace" value="false"/>
                 </conditional>
+                <param name="strip_whitespace" value="false"/>
                 <conditional name="length">
                     <param name="length_mode" value="characters"/>
                     <param name="chunk_size" value="31"/>
@@ -855,8 +898,8 @@
                         <param name="pipeline" value="en_core_web_sm"/>
                         <param name="max_length" value="1000000"/>
                     </conditional>
-                    <param name="strip_whitespace" value="true"/>
                 </conditional>
+                <param name="strip_whitespace" value="true"/>
                 <conditional name="length">
                     <param name="length_mode" value="characters"/>
                     <param name="chunk_size" value="56"/>
@@ -901,8 +944,8 @@
                         <param name="pipeline" value="sentencizer"/>
                         <param name="max_length" value="1000000"/>
                     </conditional>
-                    <param name="strip_whitespace" value="true"/>
                 </conditional>
+                <param name="strip_whitespace" value="true"/>
                 <conditional name="length">
                     <param name="length_mode" value="characters"/>
                     <param name="chunk_size" value="50"/>
@@ -946,8 +989,8 @@
                         <param name="pipeline" value="sentencizer"/>
                         <param name="max_length" value="1000000"/>
                     </conditional>
-                    <param name="strip_whitespace" value="false"/>
                 </conditional>
+                <param name="strip_whitespace" value="false"/>
                 <conditional name="length">
                     <param name="length_mode" value="token"/>
                     <param name="chunk_size" value="4"/>
@@ -1442,9 +1485,15 @@ and other LLM workflows where long text needs to be bounded by a chunk size.
     - `NLTKTextSplitter`: Uses NLTK's Punkt sentence tokenizer, which is trained per language and therefore handles language-specific abbreviations such as `Dr.` in English or `z.B.` in German. Select the language of the input.
     - `SpacyTextSplitter`: Uses spaCy. The rule-based sentencizer is fast and needs no model, but it applies English tokenization rules. The `en_core_web_sm` model is more accurate on English text, and is roughly five times slower and needs about ten times more memory.
 
-Both sentence splitters preserve whitespace between sentences by default, 
-in that case a chunk starts with the line break that follows the previous sentence.
-For spaCy, leading and trailing whitespace can optionally be removed from each returned chunk.
+Both sentence splitters preserve whitespace between sentences by default; in
+that case a chunk starts with the line break that follows the previous sentence.
+Leading and trailing whitespace can optionally be removed from each returned
+chunk. However, for this we do not use the strip_whitespace option of the underlying splitters, 
+since in spaCy it would also delete the whitespace between sentences and in NLTK it could
+cause the start index of a chunk to be reported incorrectly. Instead our python wrapper applies 
+the whitespace stripping only after LangChain has assembled a finished chunk.
+Thus, preventing the two issues stated above.
+
 The chunk overlap is applied in whole sentences: an overlapping sentence is only carried over if it
 fits into the next chunk together with the following sentence, otherwise the
 overlap is silently smaller than requested.

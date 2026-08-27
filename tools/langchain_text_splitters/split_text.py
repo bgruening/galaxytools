@@ -303,7 +303,8 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
     }
 
     if args.splitter_type == "nltk":
-        # separator="" together with strip_whitespace=False keeps the chunk text
+        # strip_whitespace is handled on the finished chunks in main() instead of
+        # here. separator="" together with strip_whitespace=False keeps the chunk text
         # identical to the matching slice of the input, so the reported start
         # indices stay usable. Note that the span based tokenizer drops whatever
         # follows the last sentence, see the warning in main().
