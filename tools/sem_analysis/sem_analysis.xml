@@ -17,7 +17,7 @@ ln -s '$input_image' input.tif &&
     --input input.tif
     --output results
     --segmentation '$segmentation.workflow'
-#if $segmentation.workflow in ('mixed', 'srm', 'all'):
+#if $segmentation.workflow in ('recursive-srm', 'srm-auto-thresholding', 'all'):
     --srm-q '$segmentation.srm_q'
 #end if
     --crop-bottom '$advanced.crop_bottom'
@@ -37,17 +37,17 @@ ln -s '$input_image' input.tif &&
         <param name="input_image" type="data" format="tiff" label="SEM micrograph" help="A 2-D TIFF image. RGB TIFFs are converted to grayscale."/>
         <conditional name="segmentation">
             <param name="workflow" type="select" label="Segmentation workflow">
-                <option value="traditional" selected="true">Traditional</option>
-                <option value="mixed">Mixed</option>
-                <option value="srm">Statistical Region Merging</option>
-                <option value="all">All segmentation families</option>
+                <option value="auto-thresholding" selected="true">Auto Thresholding</option>
+                <option value="srm-auto-thresholding">SRM with Auto Thresholding</option>
+                <option value="recursive-srm">Recursive SRM (one workflow, 17 segmentations)</option>
+                <option value="all">All Fiji segmentation workflows</option>
             </param>
-            <when value="traditional"/>
-            <when value="mixed">
-                <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
-            </when>
-            <when value="srm">
+            <when value="auto-thresholding"/>
+            <when value="recursive-srm">
                 <param name="srm_q" type="integer" value="100" min="1" label="Starting SRM granularity (q)"/>
+            </when>
+            <when value="srm-auto-thresholding">
+                <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
             </when>
             <when value="all">
                 <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
@@ -86,19 +86,28 @@ ln -s '$input_image' input.tif &&
         <test expect_num_outputs="1">
             <param name="input_image" value="PVA-A_004.tif"/>
             <conditional name="segmentation">
-                <param name="workflow" value="traditional"/>
+                <param name="workflow" value="auto-thresholding"/>
             </conditional>
             <param name="analysis_mode" value="qc"/>
-            <output_collection name="results_collection" type="list" count="34"/>
+            <output_collection name="results_collection" type="list" count="71"/>
         </test>
         <test expect_num_outputs="1">
             <param name="input_image" value="PVA-A_004.tif"/>
             <conditional name="segmentation">
-                <param name="workflow" value="mixed"/>
+                <param name="workflow" value="srm-auto-thresholding"/>
                 <param name="srm_q" value="80"/>
             </conditional>
             <param name="analysis_mode" value="qc"/>
-            <output_collection name="results_collection" type="list" count="34"/>
+            <output_collection name="results_collection" type="list" count="71"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="recursive-srm"/>
+                <param name="srm_q" value="100"/>
+            </conditional>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="71"/>
         </test>
     </tests>
     <help><![CDATA[
@@ -108,9 +117,9 @@ This tool prepares an SEM micrograph for DiameterJ, creates a binary fiber mask,
 and computes an independent Python diameter quality-control estimate. In full
 mode it also runs the validated DiameterJ 1.018 workflow under a virtual display.
 
-The tool reproduces DiameterJ's Traditional, Mixed, and Statistical Region
-Merging (SRM) segmentation families.
-Every generated mask receives an independent skeleton/distance-transform QC.
+The tool provides Fiji Auto Thresholding, SRM with Auto Thresholding, and
+Recursive SRM workflows. Every generated mask receives an independent
+skeleton/distance-transform QC.
 
 **Input image**
 
@@ -121,16 +130,19 @@ not supported.
 
 **Segmentation workflow**
 
-* **DiameterJ Traditional** generates the eight original masks: Huang,
-  Percentile, MinError(I), Triangle, Li, Otsu, MaxEntropy, and RenyiEntropy.
-* **DiameterJ Mixed** creates eight masks. Four apply SRM at the selected ``q``
-  before Huang, MinError(I), Percentile, and Triangle thresholding; four apply
-  those thresholds directly as companion masks.
-* **DiameterJ Statistical Region Merging** generates eight masks using two
-  recursive SRM sequences derived from the starting ``q``. With ``q=100``, the
-  sequences are 100/50/25/12 and 50/10; each is followed by four thresholds.
-* **All DiameterJ segmentation families** runs Traditional, Mixed, and SRM and
-  therefore creates twenty-four candidate masks.
+* **Auto Thresholding** applies all 17 concrete Fiji Auto Threshold v1.18.0
+  methods directly to the cropped image: Default, Huang, Huang2, Intermodes,
+  IsoData, Li, MaxEntropy, Mean, MinError(I), Minimum, Moments, Otsu,
+  Percentile, RenyiEntropy, Shanbhag, Triangle, and Yen.
+* **SRM with Auto Thresholding** applies one Statistical Region Merging pass at
+  the selected ``q``, converts the result to 8-bit, and applies all 17 Auto
+  Threshold methods.
+* **Recursive SRM** runs exactly one recursive workflow. It successively applies
+  SRM at ``q``, ``q/2``, ``q/4``, and ``q/8`` (with a minimum of 1), then
+  applies all 17 threshold methods to the final SRM image. It therefore reports
+  exactly 17 segmentations
+* **All Fiji segmentation workflows** runs all three workflows and produces 51
+  candidate masks.
 
 **Analysis mode**
 
@@ -162,18 +174,19 @@ measurements to physical units.
 * **Crop from bottom** removes a fixed number of pixel rows before analysis. The
   default of 59 is intended for an SEM annotation or instrument footer. Set it
   to 0 when the image contains no footer. It must be smaller than image height.
-* **SRM granularity (q)** controls region merging in Mixed, SRM, and All modes.
-  It must be positive. Larger values generally preserve more, smaller regions;
-  lower values generally merge regions more aggressively. The default is 100.
+* **SRM granularity (q)** controls region merging in SRM with Auto Thresholding,
+  Recursive SRM, and All modes. It must be positive. Larger values generally
+  preserve more, smaller regions; lower values generally merge regions more
+  aggressively. The default is 100.
 
 **Outputs**
 
 All generated files are returned as one list collection in the Galaxy history.
-Each workflow produces one PNG montage containing the cropped original image
-and every segmentation candidate. It also produces each candidate as a
+Each workflow produces two PNG review sheets: a segmentation montage containing
+the cropped original and every binary mask, and an overlay montage containing
+the original and every boundary overlay. It also produces each candidate as a
 separate, display-ready PNG and as a matching TIFF used for DiameterJ analysis.
-Thus Traditional, Mixed, and SRM each produce eight separate segmented PNG
-images, while All produces twenty-four.
+Each individual workflow produces 17 segmented PNG images; All produces 51.
 
 Dataset names retain the input stem, segmentation family, SRM settings where
 applicable, and threshold method. For each mask, QC-only mode also includes a
@@ -185,10 +198,10 @@ discovers the collection.
 
 The resulting collection size depends on the workflow and analysis mode:
 
-* Traditional: 34 QC-only or 82 full results.
-* Mixed: 34 QC-only or 82 full results.
-* SRM: 34 QC-only or 82 full results.
-* All DiameterJ segmentation families: 98 QC-only or 242 full results.
+* Auto Thresholding: 71 QC-only or 173 full results.
+* SRM with Auto Thresholding: 71 QC-only or 173 full results.
+* Recursive SRM: 71 QC-only or 173 full results.
+* All Fiji segmentation workflows: 207 QC-only or 513 full results.
 
 The QC diameter samples are distance-transform measurements on skeleton pixels.
 They are intended as an independent quality check; DiameterJ output is the
