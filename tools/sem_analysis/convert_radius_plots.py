@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """Convert all DiameterJ radius-plot TIFFs in a result directory to PNG."""
-
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from PIL import Image
 
