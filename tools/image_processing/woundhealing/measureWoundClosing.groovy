@@ -181,7 +181,7 @@ if ( saveResults ) {
     rt.save(new File(outputDir, datasetId + ".csv").toString());
     // save binned image with ROI
     binnedImp.setRoi(scratchROI, false)
-    IJ.save(binnedImp, new File(outputDir, datasetId + ".tif").toString());
+    IJ.save(binnedImp, new File(outputDir, datasetId + ".tiff").toString());
 }
 
 println("Analysis of "+datasetId+" is done!")

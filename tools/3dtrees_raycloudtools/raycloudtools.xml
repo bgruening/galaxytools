@@ -1,0 +1,149 @@
+<tool id="3dtrees_raycloudtools" name="3Dtrees: RayCloudTools" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1" license="BSD-3-Clause">
+    <description>Tree instance segmentation</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.2.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <container type="docker">
+            ghcr.io/3dtrees-earth/3dtrees_rct:@TOOL_VERSION@
+        </container>
+    </requirements>
+
+    <command detect_errors="exit_code"><![CDATA[
+    #set $input_name = str($input.element_identifier)
+        ln -sf '$input' '${input_name}.${input.ext}' &&
+        python3 -u /src/run.py
+        --dataset-path '${input_name}.${input.ext}'
+        --output-dir 'out'
+        --gradient '$gradient'
+        --max-diameter '$max_diameter'
+        --crop-length '$crop_length'
+        --distance-limit '$distance_limit'
+        --height-min '$height_min'
+        --girth-height-ratio '$girth_height_ratio'
+        --global-taper '$global_taper'
+        --global-taper-factor '$global_taper_factor'
+        --gravity-factor '$gravity_factor'
+        $branch_segmentation
+        $treeinfo
+        $branch_data
+        &&
+        ## Mesh artifacts can be absent depending on the run
+        mv "out/${input_name}_segmented.laz" '$segmented_laz' &&
+        if [ -f "out/${input_name}_trees_mesh.ply" ]; then mv "out/${input_name}_trees_mesh.ply" '$tree_mesh_ply'; fi &&
+        if [ -f "out/${input_name}_mesh.ply" ]; then mv "out/${input_name}_mesh.ply" '$terrain_mesh_ply'; fi &&
+        #if $treeinfo
+            mv "out/${input_name}_trees_info.txt" '$tree_info_txt'
+        #else
+            mv "out/${input_name}_trees.txt" '$tree_model_txt'
+        #end if
+        ]]>
+    </command>
+
+    <inputs>
+        <param name="input" type="data" format="laz" label="Input point cloud (.laz)" help="Input LAZ file."/>
+        <!-- rayextract terrain -->
+        <param argument="--gradient" type="float" min="0.001" max="1000" value="1" label="Gradient" help="Gradient threshold for terrain extraction"/>
+        <!-- rayextract trees -->
+        <param argument="--max-diameter" type="float" min="0.01" max="100" value="0.9" label="Maximum diameter" help="maximum trunk diameter in segmenting trees (m)"/>
+        <param argument="--crop-length" type="float" min="0.01" max="100" value="1" label="Crop length" help="Crops branches up to this distance from tip (m)."/>
+        <param argument="--distance-limit" type="float" min="0.01" max="10" value="1" label="Distance limit" help="Maximum distance between neighbour points in a tree (m)"/>
+        <param argument="--height-min" type="float" min="0.01" max="1000" value="2" label="Minimum tree height" help="Minimum height counted as a tree (m)"/>
+        <param argument="--girth-height-ratio" type="float" min="0.001" max="0.5" value="0.12" label="Girth height ratio" help="Amount up tree's height to estimate trunk girth"/>
+        <param argument="--global-taper" type="float" min="0" max="1" value="0.024" label="Global taper" help="Force taper value (diameter per length) for trees under global_taper_factor of max tree height - use 0 to estimate global taper from the data"/>
+        <param argument="--global-taper-factor" type="float" min="0" max="1" value="0.3" label="Global taper factor" help="1 estimates same taper for whole scan, 0 is per-tree tapering, values between 0 and 1 produce soft cutoff at this amount of max tree height"/>
+        <param argument="--gravity-factor" type="float" min="0" max="1" value="0.3" label="Gravity factor" help="Larger values preference vertical trees"/>
+        <param argument="--branch-segmentation" type="boolean" checked="false" truevalue="--branch-segmentation" falsevalue="" label="Branch segmentation" help="Segments per branch segment - assigns IDs per branch segment instead of per tree instance"/>
+        <!-- treeinfo -->
+        <param argument="--treeinfo" type="boolean" checked="false" truevalue="--treeinfo" falsevalue="" label="Treeinfo" help="Calculate tree attributes - dbh, height, crown radius, volume, ..."/>
+        <param argument="--branch-data" type="boolean" checked="false" truevalue="--branch-data" falsevalue="" label="Branch data" help="Calculate branch attributes - branch number, segment_length, branch order number, extension and position in branch integers per-segment"/>
+    </inputs>
+
+    <outputs>
+        <data name="segmented_laz" format="laz" label="RCT: Segmented point cloud"/>
+        <data name="tree_model_txt" format="txt" label="RCT: Tree-file">
+            <filter>not treeinfo</filter>
+        </data>
+        <data name="tree_info_txt" format="txt" label="RCT: Tree-file incl. treeinfo">
+            <filter>treeinfo</filter>
+        </data>
+        <data name="tree_mesh_ply" format="plybinary" label="RCT: Tree-mesh"/>
+        <data name="terrain_mesh_ply" format="plybinary" label="RCT: Terrain-mesh"/>
+    </outputs>
+
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
+            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
+            <output name="tree_model_txt" file="Example_Tree_RCT_trees.txt" compare="contains" ftype="txt"/>
+            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+        </test>
+        <!-- Test 2: treeinfo enabled -->
+        <test expect_num_outputs="4">
+            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
+            <param name="treeinfo" value="true"/>
+            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
+            <output name="tree_info_txt" file="Example_Tree_RCT_trees_info.txt" compare="contains" ftype="txt"/>
+            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+        </test>
+    </tests>
+
+    <help format="markdown">
+**What it does**
+
+This tool performs graph-based tree instance segmentation on LiDAR point clouds using the **RayExtract** algorithm (Devereux et al., 2026) implemented as part of **RayCloudTools** (Lowe &amp; Stepanas, 2021).
+It is platform-agnostic and works across airborne (ULS), terrestrial (TLS), and mobile (MLS) laser scanning data, as long as trees are well-represented by points along the entire tree length.
+
+-----
+
+**Processing Steps**
+
+- Convert input point cloud to LAZ 1.2
+- Import point cloud as ray cloud
+- Extract terrain
+- Extract trees
+- Convert point color (segmentation result) to instance IDs
+- Add instance IDs back to input point cloud
+- Optional: Calculate tree attributes (dbh, height, crown radius, volume, ...)
+
+-----
+
+**Outputs**
+
+- **Segmented point cloud (LAZ):** instance dimension `PredInstance_RCT`
+- **Tree info (TXT):** produced when `treeinfo` is disabled
+- **Tree info (TXT):** produced when `treeinfo` is enabled
+- **Tree meshes (PLY)**
+- **Terrain meshes (PLY)**
+
+This wrapper processes one input file per job. If you pass a collection in Galaxy workflows, Galaxy will iterate the tool over the collection and can parallelize those jobs.
+
+***Tip:** We recommend using the '3DTrees: Tile and Merge' or '3DTrees: Smart Tile' tool to process large point clouds (workflow: tile → segment → merge)!*
+
+-----
+
+**Third-Party Components**
+
+You agree to comply with the licence terms for these components as part of accessing the tool.
+
+**RayCloudTools:** Copyright (c) 2020, Commonwealth Scientific and Industrial Research Organisation (CSIRO) ABN 41 687 119 230 | [CSIRO-Open Source Software License (variation of the BSD / MIT License)](https://github.com/csiro-robotics/raycloudtools);
+**PDAL:** Copyright (c) 2025, Hobu, Inc. (howard@hobu.co) | [pdal License (BSD)](https://github.com/PDAL/PDAL?tab=License-1-ov-file#readme);
+**NumPy:** Copyright (c) 2005-2025, NumPy Developers | [numpy License (BSD)](https://github.com/numpy/numpy?tab=License-1-ov-file#readme);
+**LasPy:** Copyright (c) 2012, Grant Brown, grant.brown73 at gmail.com, Copyright (c) 2012, Howard Butler, hobu.inc at gmail.com, Copyright (c) 2020, Thomas Montaigu, thomas.montaigu at laposte.net | [laspy License](https://github.com/laspy/laspy?tab=License-1-ov-file#readme);
+**Open3D:** Copyright (c) 2018-2023 www.open3d.org | [Open3D License (MIT)](https://github.com/isl-org/Open3D?tab=License-1-ov-file#readme).
+    </help>
+    <creator>
+        <person name="Hannah Greven" email="hannah.greven@hnee.de"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="doi">10.1016/j.rse.2025.115162</citation>
+        <citation type="doi">10.1109/ACCESS.2021.3084954</citation>
+        <citation type="bibtex">
+            @misc{3dtrees_raycloudtools, title = {3Dtrees: RayCloudTools}, author = {3Dtrees-Project}, year = {2025}}
+        </citation>
+    </citations>
+</tool>

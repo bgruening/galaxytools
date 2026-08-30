@@ -108,8 +108,9 @@ if __name__ == "__main__":
     # check if image dimensions are reversed
     reversed_order = list(reversed(range(exp_test_data.dim())))
     exp_test_data_T = exp_test_data.permute(*reversed_order)
-    if exp_test_data_T.shape == target_image_dim:
+    if exp_test_data_T.shape == target_image_dim and exp_test_data.shape != target_image_dim:
         exp_test_data = exp_test_data_T
+    # check if image dimensions are not equal to target image dimensions
     if exp_test_data.shape != target_image_dim:
         for i in range(len(target_image_dim) - exp_test_data.dim()):
             exp_test_data = exp_test_data.unsqueeze(i)
@@ -141,4 +142,4 @@ if __name__ == "__main__":
     pred_numpy = pred_data.detach().numpy()
 
     # write predicted TIF image to file
-    imageio.v3.imwrite("output_predicted_image.tif", pred_numpy, extension=".tif")
+    imageio.v3.imwrite("output_predicted_image.tiff", pred_numpy, extension=".tiff")

@@ -1,0 +1,233 @@
+<tool id="sylph_query" name="sylph query" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
+    <description>compare metagenome similarity to a reference genome</description>
+    <macros>
+       <import>macros.xml</import> 
+    </macros>
+    <expand macro='requirements'/>
+    <command detect_errors='exit_code'><![CDATA[
+#import re
+##SYMLINK SYLPH DB
+      ##SYMLINK SYLPH DB
+@DB_SELECTOR@
+##Single input
+        #if $sketch_reads.type_reads == 'single_fastq':
+            @SINGLE_INPUT_FASTQ@
+##Single group
+        #else if $sketch_reads.type_reads == 'single_group_fastq':
+            @SINGLE_GROUP_FASTQ@
+##Paired input
+        #else if $sketch_reads.type_reads == 'paired':
+            @PAIRED@
+##Paired  group
+        #else if $sketch_reads.type_reads == 'paired_group':
+            @PAIRED_GROUP@
+        #end if
+##SKETCHING_READS
+        sylph sketch
+        #if $sketch_reads.type_reads == 'single_fastq':
+            $input
+        #else if $sketch_reads.type_reads == 'single_group_fastq':
+            -r $input
+        #else if $sketch_reads.type_reads == 'paired': 
+            -1 $read1
+            -2 $read2
+        #else if $sketch_reads.type_reads == 'paired_group': 
+            -1 $read1
+            -2 $read2
+        #end if
+        -t \${GALAXY_SLOTS:-4}
+        -d sylph_sketches &&
+
+##Single fasta input
+    #if $database_select.select == 'custom':
+        #if $database_select.type_fasta == 'single_fasta':
+            @SINGLE_INPUT_FASTA@
+##Single fasta group
+        #else if $database_select.type_fasta == 'single_group_fasta':
+            @SINGLE_GROUP_FASTA@
+        #end if
+##SKETCHING_FASTA
+        sylph sketch
+        #if $database_select.type_fasta == 'single_fasta':
+            $input
+        #else if $database_select.type_fasta == 'single_group_fasta':
+            -r $input
+        #end if
+        -t \${GALAXY_SLOTS:-4}
+        -c $compression
+        #if str($database_select.grouped_genomes) == 'Yes':
+            -i
+        #end if
+        -o custom_database &&
+    #end if
+##QUERY COMMAND
+        sylph query
+        -t \${GALAXY_SLOTS:-4}
+        #if $database_select.select == 'cached':
+            cached_database.syldb
+        #else if $database_select.select == 'custom':
+            custom_database.syldb
+        #end if        
+        sylph_sketches/*.sylsp
+        -o '$output'
+
+    ]]></command>
+    <inputs>
+        <conditional name="sketch_reads">
+            <param name="type_reads" type="select" label="Select the type of reads used">
+                <option value="single_fastq">Individual single-end reads</option>
+                <option value="single_group_fastq">Group of single-ended reads</option>
+                <option value="paired">One set of paired-end reads</option>
+                <option value="paired_group"> Group of paired-ended reads</option>
+            </param>
+        <!-- Only permitting fastq as tool input only allows fastq and fastq.gz as file ext -->
+            <when value="single_fastq">
+                <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads"/>
+            </when>
+            <when value="single_group_fastq">
+                <param name="input" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Single-end input reads" multiple="true"/>
+            </when>            
+            <when value="paired">
+                <param name="input_1" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Paired-end input reads 1"/>
+                <param name="input_2" type="data" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Paired-end input reads 2"/>
+            </when>
+            <when value="paired_group">
+                <param name="input" type="data_collection" format="fastq,fastq.gz,fastqsanger,fastqsanger.gz" label="Paired-end input reads" collection_type="paired"/>
+            </when>
+        </conditional>
+        <conditional name="database_select">
+            <param name="select" type="select" label="Choose the source for databases and metadata">
+                <option value="cached">Cached data</option>
+                <option value="custom">Custom</option>
+                <option value="cached_and_custom">Cached and custom databases</option>
+            </param>
+            <when value="cached">
+                <param label="Select a sylph database" name="sylph_database" type="select" multiple="true" optional="false">
+                    <options from_data_table="sylph_databases">
+                        <filter type="static_value" value="1" column="version"/>
+                        <validator message="No Sylph databases are available" type="no_options" />
+                    </options>
+                </param>
+            </when>
+            <expand macro="input_database"/>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="tabular" name="output" label="${tool.name} on ${on_string}"/>
+    </outputs>
+    <tests>
+        <!-- Test 1 Single-end Read ANI -->
+        <test expect_num_outputs="1">
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>            
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_fastq"/>
+                <param name="input" value="single_1.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <output name="output" value="output_query_1.tabular"/>
+        </test>
+        <!-- Test 2 Group of single Read ANI -->
+        <test expect_num_outputs="1">
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
+                <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <output name="output" value="output_query_2.tabular" compare="sim_size"/>
+        </test>
+        <!-- 3 and 4 have the same generated command and output, it's testing if the wrapper is handling data properly. -->
+        <!-- Test 3 paired-end Read ANI -->
+        <test expect_num_outputs="1">
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>            
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired"/>
+                <param name="input_1" value="test_R1.fq" ftype="fastq"/>
+                <param name="input_2" value="test_R2.fq" ftype="fastqsanger"/>
+            </conditional>
+            <output name="output" value="output_query_3_4.tabular"/>
+        </test>
+        <!-- Test 4 paired-end collection read ANI -->
+        <test expect_num_outputs="1">
+            <conditional name="database_select">
+                <param name="select" value="custom"/>
+                    <conditional name="sketch_fasta">
+                        <param name="type_fasta" value="single_fasta"/>
+                        <param name="input" location="https://zenodo.org/records/15348961/files/e.coli-o157.fasta.gz" ftype="fasta"/>
+                    </conditional>
+            </conditional>            
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired_group"/>
+                <param name="input">
+                    <collection type="paired" name="test_R1.fq">
+                        <element name="forward" ftype="fastq" value="test_R1.fq"/>
+                        <element name="reverse" ftype="fastq" value="test_R2.fq"/>
+                    </collection>
+                </param>
+            </conditional>
+            <output name="output" value="output_query_3_4.tabular"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What is sylph?**
+
+Sylph is an extremely fast and memory efficient program for profiling and searching metagenomic samples against databases. It is 10-100x faster than other popular software such as MetaPhlAn or Kraken and more memory efficient too. 
+
+**What can sylph do?**
+
+- Profile metagenomes: sylph can calculate the abundances of genomes in a sample using a reference database. This is the same type of output as Kraken or MetaPhlAn. 
+- Search genomes against metagenomes: sylph can check if a genome is contained in your sample (e.g. is this E. coli genome in my sample?).
+- ANI querying: sylph can estimate the containment average nucleotide identity (ANI) of a reference genome to the genomes in your sample.
+- Use custom reference databases: Eukaryotes, viruses, and any collections of fasta files are ok.
+- Long-reads are usable: sylph is primarily optimized for short-reads, but it can utilize nanopore or PacBio reads with high precision.
+- Calculate coverage: sylph can estimate the coverage (not just the abundance) of genomes in your database.
+
+`[See here for more information on what sylph can and can not do]. <https://github.com/bluenote-1577/sylph/wiki/Introduction:-what-is-sylph-and-how-does-it-work%3F>`_
+
+----
+
+**Output**
+
+Sylph Query outputs a TSV (tab-separated values) file. Each row is one genome detected in the metagenome sample.
+    - Sample_file: the filename of the reads/sample.
+    - Genome_file: the filename of the detected genome.
+    - Adjusted_ANI: adjusted containment ANI estimate.
+        - If coverage adjustment is possible (cov is < 3x cov): returns coverage-adjusted ANI
+        - If coverage is too low/high: returns Naive_ANI (see below)
+    - Eff_cov/True_cov: an estimate of the effective, or if -u specified, the true coverage. Always a decimal number.
+    - ANI_5-95_percentile: [5%,95%] confidence intervals. Not always a decimal number.
+        - If coverage adjustment is possible: float-float e.g. 98.52-99.55
+        - If coverage is too low/high: NA-NA is given.
+    - Eff_lambda: estimate of the effective coverage parameter. Not always a decimal number.
+        - If coverage adjustment is possible: lambda estimate is given
+        - If coverage is too low/high: LOW or HIGH is output
+    - Lambda_5-95_percentile: [5%, 95%] confidence intervals for lambda. Same format rules as ANI_5-95_percentile.
+    - Median_cov: median k-mer multiplicity for k-mers with >= 1 multiplicity.
+    - Mean_cov_geq1: mean k-mer multiplicity for k-mers with >= 1 multiplicity.
+    - Containment_ind: int/int showing the containment index (number of k-mers found in sample divided by total k-mers), e.g. 959/1053.
+    - Naive_ANI: containment ANI without coverage adjustment.
+    - Contig_name: name of the first contig in the genome
+
+Additional files are able to be output. The metaphlan-style output is formatted similarly to that output by the `[Metaphlan <toolshed.g2.bx.psu.edu/repos/iuc/metaphlan/metaphlan/4.1.1+galaxy3>`_ 
+This output is *NOT* compatible with Krona directly. For that, please select the Krona-style output option.
+
+
+    ]]></help>
+    <expand macro="citation"/>
+</tool>

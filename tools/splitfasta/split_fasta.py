@@ -32,8 +32,7 @@ if not record_count and (num_chunks != 0 or record_limit):
 
 if num_chunks != 0:
     records_per_chunk = round(float(record_count) / num_chunks)
-
-if record_limit and record_count > record_limit:
+elif record_limit and record_count > record_limit:
     exit(f"ERROR: Number of sequences {record_count} exceeds limit {record_limit}")
 
 count = 1
