@@ -4,18 +4,34 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="render_requirements"/>
+    <required_files>
+        <include path="datavzrd_config.py"/>
+    </required_files>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
 ## Symlink the input tables into the working directory using safe names
-## so that they can be referenced from the datavzrd configuration file.
+## derived from the dataset names, so that they can be referenced from
+## the datavzrd configuration file.
+#import re
 #set $data_files = []
 #set $suggest_args = []
+#set $used = []
 #for $i, $data_file in enumerate($input_data):
-    #set $ext = str($data_file.ext)
-    #if $ext == 'tsv' or $ext == 'tabular':
+    #if $data_file.is_of_type('json'):
+        #set $ext = 'json'
+    #elif $data_file.is_of_type('parquet'):
+        #set $ext = 'parquet'
+    #elif $data_file.is_of_type('csv'):
+        #set $ext = 'csv'
+    #else:
         #set $ext = 'tsv'
     #end if
-    #set $fname = 'input_' + str($i) + '.' + $ext
+    #set $stem = re.sub('[^\w\-]', '_', str($data_file.element_identifier).rsplit('.', 1)[0])
+    #if $stem in $used:
+        #set $stem = $stem + '_' + str($i)
+    #end if
+    #silent $used.append($stem)
+    #set $fname = $stem + '.' + $ext
     #silent $data_files.append($fname)
     ln -s '${data_file}' '${fname}' &&
     #if $ext == 'tsv':
@@ -40,19 +56,12 @@
 #if $adv.max_in_memory_rows:
     #silent $adv_args.append('max-in-memory-rows=' + str($adv.max_in_memory_rows))
 #end if
-#if $adv.webview_controls:
-    #silent $adv_args.append('webview-controls=true')
-#end if
 #if $adv_args:
     python '$__tool_directory__/datavzrd_config.py' set config.yaml --output config.yaml #echo ' '.join($adv_args)# &&
 #end if
 
 ## Render the report
-#set $overwrite_flag = ''
-#if $adv.overwrite_output:
-    #set $overwrite_flag = '--overwrite-output'
-#end if
-datavzrd config.yaml --output report_output $overwrite_flag &&
+datavzrd config.yaml --output report_output --overwrite-output &&
 
 ## Collect the output
 #if $output_format == 'html':
@@ -85,9 +94,7 @@ datavzrd config.yaml --output report_output $overwrite_flag &&
             <option value="zip">Zipped report directory</option>
         </param>
         <section name="adv" title="Advanced options" expanded="false">
-            <param name="max_in_memory_rows" type="integer" optional="true" min="1" label="Maximum in-memory rows" help="Maximum number of rows of a table that are rendered into a single page (default: 20000). Tables with more rows are split into searchable pages."/>
-            <param name="webview_controls" type="boolean" checked="false" label="Enable webview sharing controls" help="Adds sharing controls to the report that allow exporting the displayed data to datavzrd's webview host (https://datavzrd.github.io/view/)."/>
-            <param name="overwrite_output" type="boolean" checked="true" truevalue="--overwrite-output" falsevalue="" label="Overwrite output directory" help="Use the --overwrite-output flag of datavzrd."/>
+            <param name="max_in_memory_rows" type="integer" value="20000" min="1" label="Maximum in-memory rows" help="Maximum number of rows of a table that are rendered into a single page (default: 20000). Tables with more rows are split into searchable pages."/>
         </section>
     </inputs>
     <outputs>
@@ -144,7 +151,7 @@ datavzrd config.yaml --output report_output $overwrite_flag &&
                 </assert_contents>
             </output>
             <assert_command>
-                <has_text text="--overwrite-output"/>
+                <has_text text="max-in-memory-rows=500"/>
             </assert_command>
         </test>
         <!-- Test 04: TSV input with auto-generated configuration -->
@@ -174,9 +181,13 @@ datavzrd config.yaml --output report_output $overwrite_flag &&
             <param name="output_format" value="zip"/>
             <assert_command>
                 <has_text text="zip -q -r ../report.zip"/>
-                <not_has_text text="webview-controls"/>
             </assert_command>
-            <output name="output_zip" ftype="zip"/>
+            <output name="output_zip" ftype="zip">
+                <assert_contents>
+                    <has_archive_member path="index.html"/>
+                    <has_archive_member path="static/bundle.js"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help format="markdown"><![CDATA[
@@ -199,7 +210,6 @@ The interactive HTML report can be displayed directly in Galaxy (choose *Interac
 ## Advanced options
 
 - **Maximum in-memory rows**: number of rows up to which a table is rendered as a single page (default 20000). Larger tables are split into pages with a search dialog.
-- **Webview sharing controls**: adds controls that allow sharing the displayed data with datavzrd's webview host (https://datavzrd.github.io/view/).
 
 ## Credits
 
