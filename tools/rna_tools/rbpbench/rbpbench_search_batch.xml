@@ -1,0 +1,509 @@
+<tool id="rbpbench_search_batch" name="RBPBench Search" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@profile@">
+    <description>single or batch RBP binding motifs in genomic regions</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $action_type.action_type_selector == 'search_motifs':
+            @PREPARE_REF@
+            rbpbench search
+                --in '$action_type.search_bed_file'
+                --out ./
+                --genome reference.fa
+                --method-id '$action_type.search_method_id'
+                --data-id '$action_type.search_data_id'
+                @RBP_LIST@
+                @USER_RBP@
+                $action_type.search_output_options.search_plot_motifs
+                #if $action_type.report_plotting_options.gtf_file:
+                    --gtf '$action_type.report_plotting_options.gtf_file'
+                #end if
+                #if $action_type.report_plotting_options.tr_list_file:
+                    --tr-list '$action_type.report_plotting_options.tr_list_file'
+                #end if
+                #if $action_type.report_plotting_options.list_tr_biotypes:
+                    --tr-types '$action_type.report_plotting_options.list_tr_biotypes'
+                #end if
+                #if $action_type.report_plotting_options.set_rbp_id:
+                    --set-rbp-id '$action_type.report_plotting_options.set_rbp_id'
+                #end if
+                --motif-distance-plot-range $action_type.report_plotting_options.motif_distance_plot_range
+                --motif-min-pair-count $action_type.report_plotting_options.motif_min_pair_count
+                --rbp-min-pair-count $action_type.report_plotting_options.rbp_min_pair_count
+                --upset-plot-min-degree $action_type.report_plotting_options.upset_plot_min_degree
+                #if $action_type.report_plotting_options.upset_plot_max_degree:
+                    --upset-plot-max-degree '$action_type.report_plotting_options.upset_plot_max_degree'
+                #end if
+                --upset-plot-min-subset-size $action_type.report_plotting_options.upset_plot_min_subset_size
+                @COMMON_PARAMS@
+                @SORT_JS@
+                @PLOTLY_JS@
+        #elif $action_type.action_type_selector == 'batch_search_motifs':
+            @PREPARE_REF@
+            rbpbench batch
+                --out ./
+                --genome reference.fa
+                --bed 
+                #for $i in $action_type.dataset_inputs:
+                    $i.dataset_bed_file
+                #end for
+                --rbp-list 
+                #for $i in $action_type.dataset_inputs:
+                    $i.dataset_rbp_id 
+                #end for
+                --data-list 
+                #for $i in $action_type.dataset_inputs:
+                    $i.dataset_data_id 
+                #end for
+                --method-list 
+                #for $i in $action_type.dataset_inputs:
+                    $i.dataset_method_id 
+                #end for
+                @COMMON_PARAMS@
+                @SORT_JS@
+                @PLOTLY_JS@
+        #elif $action_type.action_type_selector == 'batch_table_search_motifs':
+            @PREPARE_REF@
+            batch_table_wrapper_rbpbench.py
+                --out ./
+                --genome reference.fa
+                --table '$action_type.batch_table_file'
+                --paths 
+                #for $i in $action_type.batch_table_bed_collection:
+                    $i
+                #end for
+                --ids 
+                #for $i in $action_type.batch_table_bed_collection:
+                    $i.element_identifier
+                #end for
+                @COMMON_PARAMS@
+        #end if
+    ]]>    </command>
+    <inputs>
+        <conditional name="action_type">
+            <param name="action_type_selector" type="select" label="Select RBPBench program mode">
+                <option value="search_motifs" selected="true">Search RBP binding motifs in genomic regions (search)</option>
+                <option value="batch_search_motifs">Search RBP binding motifs in genomic regions (batch, multiple inputs)</option>
+                <option value="batch_table_search_motifs">Search RBP binding motifs in genomic regions (batch, data collection input)</option>
+            </param>
+            <!-- rbpbench search -->
+            <when value="search_motifs">
+                <param name="search_bed_file" type="data" format="bed" label="Genomic regions BED file" help="Genomic regions (e.g. RBP binding sites) in BED format (>= 6-columns) for RBP binding motif search" />
+                <param name="search_method_id" type="text" value="method_id" label="Method ID" help="Method ID which can be used to describe the peak calling method (e.g. clipper_idr). This ID (together with data ID and set RBP ID(s)) defines which search results get compared in RBPBench's comparison mode (see Help below for more details)."/>
+                <param name="search_data_id" type="text" value="data_id" label="Data ID" help="Data ID which can be used to describe from which cell type and/or CLIP-seq protocol the data originates (e.g. k562_eclip or pum2_k562_eclip). This ID (together with method ID and set RBP ID(s)) defines which search results get compared in RBPBench's comparison mode (see Help below for more details)."/>
+                <expand macro="select_rbp_db"/>
+                <expand macro="user_rbp"/>
+                <expand macro="reference_genome"/>
+                <expand macro="search_options"/>
+                <section name="report_plotting_options" title="HTML report options">
+                    <param name="gtf_file" type="data" format="gtf" optional="True" label="GTF file to add genomic annotations to input regions" help="Provide GTF file with genomic annotations to add to HTML report plots (e.g. from GENCODE or Ensembl). By default, the most prominent transcripts will be extracted and used for functional annotation. Alternatively, provide a list of expressed transcripts via --tr-list option (together with --gtf containing the transcripts). Note that currently only features on standard chromosomes (1,2,..,X,Y,MT) are used for annotation"/>
+                    <param name="tr_list_file" type="data" format="txt" optional="True" label="Transcript IDs file" help="Supply file with transcript IDs (one ID per row) to define which transcripts to use from GTF file for adding functional annotations to HTML report plots"/>
+                    <param name="list_tr_biotypes" type="text" optional="True" label="List of transcript biotypes" help="List of transcript biotypes to consider from GTF file. By default an internal selection of transcript biotypes is used (in addition to intron, CDS, UTR, intergenic). Provide a list of IDs separated by spaces. Note that provided biotype IDs need to be in GTF file!"/>
+                    <param name="upset_plot_min_degree" type="integer" value="2" label="Upset plot minimum degree parameter" help="Upset plot minimum degree parameter for HTML report upset plot. This defines the minimum number of RBPs for a combination to be included (default: 2)"/>
+                    <param name="upset_plot_max_degree" type="integer" value="" optional="True" label="Upset plot maximum degree parameter" help="Upset plot maximum degree parameter for HTML report upset plot. By default no maximum degree is set. Useful together with minimum degree to look at specific degrees (e.g. only 2, or between 2 and 3) (default: None)"/>
+                    <param name="upset_plot_min_subset_size" type="integer" value="5" label="Upset plot minimum subset size parameter" help="Upset plot minimum subset size parameter for HTML report upset plot. This defines the minimum number of hits for a specific RBP combination to be included (default: 5)"/>
+                    <param name="set_rbp_id" type="text" optional="True" label="Set reference RBP ID for plotting motif distances" help="Set reference RBP ID to plot motif distances relative to motifs from this RBP (--set-rbp-id). Motif plot will be centered on best scoring motif of the RBP for each region. Note that set RBP ID needs to be one of the above selected RBP IDs!"/>
+                    <param name="motif_distance_plot_range" type="integer" value="60" label="BED score column used for p-value calculations" help="Set range of motif distance plot. I.e., centered on the set RBP (--set-rbp-id) motifs, motifs within minus and plus --motif-distance-plot-range will be plotted (default: 60)"/>
+                    <param name="motif_min_pair_count" type="integer" value="10" label="Motif co-occurrence minimum pair count" help="Minimum count of co-occurrences of a motif with set RBP ID (--set-rbp-id) motif to be reported and plotted (default: 10)"/>
+                    <param name="rbp_min_pair_count" type="integer" value="10" label="RBP co-occurrence minimum pair count" help="Minimum amount of co-occurrences of motifs for an RBP ID compared to set RBP ID (--set-rbp-id) motifs to be reported and plotted (default: 10)"/>
+                </section>
+                <section name="search_output_options" title="Output options">
+                    <param name="search_report" type="boolean" checked="True" label="Output HTML report?" help="Generate an HTML report containing RBP co-occurrence + combination + distance statistics and plots (default: True)"/>
+                    <param name="search_plot_motifs" type="boolean" truevalue="--plot-motifs" falsevalue="" checked="False" label="Plot RBP motifs?" help="Visualize selected RBP motifs, by outputting sequence logos and motif hit statistics into a separate HTML file (default: False)"/>
+                    <param name="sites_bed_fasta_out" type="boolean" checked="False" label="Output filtered genomic regions BED + FASTA files" help="Output filtered genomic regions BED/FASTA file used for motif search. Filtered means that the actual regions used for motif search can differ from the input genomic regions, e.g. through default filtering by chromsome ID (only regions with valid IDs), removal of duplicated regions, or through optional extension of the regions"/>
+                    <param name="motif_hits_bed_out" type="boolean" checked="False" label="Output motif hits BED file" help="Output motif hits BED file containing motif hits in provided genomic regions for selected RBPs"/>
+                    <param name="region_annotations_out" type="boolean" checked="False" label="Output genomic region annotations table file?" help="Output genomic region annotations table file containing assigned annotations for each BED input region. Note that a GTF file has to be provided (default: False)"/>
+                </section>
+                <section name="advanced_html_output_options" title="Advanced HTML output options">
+                    <expand macro="advanced_html_output_options_sort_js"/>
+                    <expand macro="advanced_html_output_options_plotly_js"/>
+                </section>
+            </when>
+            <!-- rbpbench batch -->
+            <when value="batch_search_motifs">
+                <repeat name="dataset_inputs" min="1" title="Dataset">
+                    <param name="dataset_bed_file" type="data" format="bed" label="Genomic regions BED file" help="Genomic regions (e.g. RBP binding sites) in BED format (>= 6-columns) for RBP binding motif search"/>
+                    <param name="dataset_method_id" type="text" value="method_id" label="Method ID" help="Method ID which can be used to describe the peak calling method (e.g. clipper_idr). This ID (together with data ID and set RBP ID) defines which search results get compared in RBPBench's comparison mode (see Help below for more details)."/>
+                    <param name="dataset_data_id" type="text" value="data_id" label="Data ID" help="Data ID which can be used to describe from which cell type and/or CLIP-seq protocol the data originates (e.g. k562_eclip or pum2_k562_eclip). This ID (together with method ID set RBP ID) defines which search results get compared in RBPBench's comparison mode (see Help below for more details)."/>
+                    <param name="dataset_rbp_id" type="select" label="Select RBP for motif search">
+                        <options from_data_table='rbp_ids_table' />
+                    </param>
+                </repeat>
+                <expand macro="reference_genome"/>
+                <expand macro="search_options"/>
+                <section name="search_output_options" title="Output options">
+                    <param name="batch_report" type="boolean" checked="True" label="Output HTML report?" help="Generate an HTML report containing comparative plots and statistics (default: True)"/>
+                    <param name="batch_motif_hits_bed_out" type="boolean" checked="False" label="Output motif hits BED file" help="Output motif hits BED file containing motif hits for all input datasets"/>
+                </section>
+                <section name="advanced_html_output_options" title="Advanced HTML output options">
+                    <expand macro="advanced_html_output_options_sort_js"/>
+                    <expand macro="advanced_html_output_options_plotly_js"/>
+                </section>
+            </when>
+            <!-- rbpbench batch data collection + table -->
+            <when value="batch_table_search_motifs">
+                <param name="batch_table_bed_collection" type="data_collection" format="bed" label="Data collection containing genomic regions BED files" help="Data collection containing genomic regions BED files to be processed. Note that dataset names inside collection must correspond to names given in the batch processing table file below" collection_type="list"/>
+                <param name="batch_table_file" type="data" format="txt,tabular" label="Provide batch processing table file" help="Provide batch processing table file with one row for each batch job. Each row contains the tab-delimited information: RBP ID (RBP name), method ID, data ID, dataset name. The dataset name must be present in the supplied data collection of BED files"/>
+                <expand macro="reference_genome"/>
+                <expand macro="search_options"/>
+                <section name="search_output_options" title="Output options">
+                    <param name="batch_table_report" type="boolean" checked="True" label="Output HTML report?" help="Generate an HTML report containing comparative plots and statistics (default: True)"/>
+                    <param name="batch_table_motif_hits_bed_out" type="boolean" checked="False" label="Output motif hits BED file" help="Output motif hits BED file containing motif hits for all input datasets"/>
+                </section>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <!-- rbpbench search outputs -->
+        <data name="rbp_hit_stats_file" format="tabular" from_work_dir="rbp_hit_stats.tsv" label="${tool.name} on ${on_string}: RBP hit statistics table">
+            <filter>action_type["action_type_selector"] == "search_motifs"</filter>
+        </data>
+        <data name="motif_hit_stats_file" format="tabular" from_work_dir="motif_hit_stats.tsv" label="${tool.name} on ${on_string}: Motif hit statistics table">
+            <filter>action_type["action_type_selector"] == "search_motifs"</filter>
+        </data>
+        <data name="search_report_html_file" format="html" from_work_dir="report.rbpbench_search.html" label="${tool.name} on ${on_string}: Search report HTML">
+            <filter>action_type["action_type_selector"] == "search_motifs" and action_type["search_output_options"]["search_report"]</filter>
+        </data>
+        <data name="motif_plots_html_file" format="html" from_work_dir="motif_plots.rbpbench_search.html" label="${tool.name} on ${on_string}: Motif plots HTML">
+            <filter>action_type["action_type_selector"] == "search_motifs" and action_type["search_output_options"]["search_plot_motifs"]</filter>
+        </data>
+        <data name="in_sites_bed_file" format="bed" from_work_dir="in_sites.filtered.bed" label="${tool.name} on ${on_string}: Genomic regions used for motif search BED">
+            <filter>action_type["action_type_selector"] == "search_motifs" and action_type["search_output_options"]["sites_bed_fasta_out"]</filter>
+        </data>
+        <data name="in_sites_fa_file" format="fasta" from_work_dir="in_sites.filtered.fa" label="${tool.name} on ${on_string}: Genomic regions used for motif search FASTA">
+            <filter>action_type["action_type_selector"] == "search_motifs" and action_type["search_output_options"]["sites_bed_fasta_out"]</filter>
+        </data>
+        <data name="motif_hits_bed_file" format="bed" from_work_dir="motif_hits.rbpbench_search.bed" label="${tool.name} on ${on_string}: Motif hits on genomic regions BED">
+            <filter>action_type["action_type_selector"] == "search_motifs" and action_type["search_output_options"]["motif_hits_bed_out"]</filter>
+        </data>
+        <data name="region_annotations_file" format="tabular" from_work_dir="region_annotations.tsv" label="${tool.name} on ${on_string}: genomic region annotations table">
+            <filter>action_type["action_type_selector"] == "search_motifs" and action_type["search_output_options"]["region_annotations_out"] and action_type["report_plotting_options"]["gtf_file"]</filter>
+        </data>
+        <!-- rbpbench batch outputs -->
+        <data name="batch_rbp_hit_stats_file" format="tabular" from_work_dir="rbp_hit_stats.tsv" label="${tool.name} on ${on_string}: Batch RBP hit statistics table">
+            <filter>action_type["action_type_selector"] == "batch_search_motifs"</filter>
+        </data>
+        <data name="batch_motif_hit_stats_file" format="tabular" from_work_dir="motif_hit_stats.tsv" label="${tool.name} on ${on_string}: Batch motif hit statistics table">
+            <filter>action_type["action_type_selector"] == "batch_search_motifs"</filter>
+        </data>
+        <data name="batch_motif_hits_bed_file" format="bed" from_work_dir="motif_hits.rbpbench_batch.bed" label="${tool.name} on ${on_string}: Batch motif hits on genomic regions BED">
+            <filter>action_type["action_type_selector"] == "batch_search_motifs" and action_type["search_output_options"]["batch_motif_hits_bed_out"]</filter>
+        </data>
+        <data name="batch_report_html_file" format="html" from_work_dir="report.rbpbench_batch.html" label="${tool.name} on ${on_string}: Batch report HTML">
+            <filter>action_type["action_type_selector"] == "batch_search_motifs" and action_type["search_output_options"]["batch_report"]</filter>
+        </data>
+        <!-- rbpbench batch table outputs -->
+        <data name="batch_table_rbp_hit_stats_file" format="tabular" from_work_dir="rbp_hit_stats.tsv" label="${tool.name} on ${on_string}: Batch data collection RBP hit statistics table">
+            <filter>action_type["action_type_selector"] == "batch_table_search_motifs"</filter>
+        </data>
+        <data name="batch_table_motif_hit_stats_file" format="tabular" from_work_dir="motif_hit_stats.tsv" label="${tool.name} on ${on_string}: Batch data collection motif hit statistics table">
+            <filter>action_type["action_type_selector"] == "batch_table_search_motifs"</filter>
+        </data>
+        <data name="batch_table_motif_hits_bed_file" format="bed" from_work_dir="motif_hits.rbpbench_batch.bed" label="${tool.name} on ${on_string}: Motif hits on genomic regions BED from data collection">
+            <filter>action_type["action_type_selector"] == "batch_table_search_motifs" and action_type["search_output_options"]["batch_table_motif_hits_bed_out"]</filter>
+        </data>
+        <data name="batch_table_report_html_file" format="html" from_work_dir="report.rbpbench_batch.html" label="${tool.name} on ${on_string}: Batch data collection report HTML">
+            <filter>action_type["action_type_selector"] == "batch_table_search_motifs" and action_type["search_output_options"]["batch_table_report"]</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- test 1: rbpbench search tests -->
+        <test expect_num_outputs="6">
+            <conditional name="action_type">
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history" />
+                    <param name="history_genome" value="in.ref.fa" />
+                </conditional>
+                <param name="action_type_selector" value="search_motifs"/>
+                <param name="search_bed_file" value="in.bed" ftype="bed"/>
+                <conditional name="select_db">
+                    <param name="select_db_selector" value="default_db"/>
+                    <conditional name="select_rbps">
+                        <param name="select_rbps_selector" value="list_db_rbps"/>
+                        <param name="database" value="PUM1,PUM2" />
+                    </conditional>
+                </conditional>
+                <section name="search_output_options">
+                    <param name="search_report" value="True"/>
+                    <param name="search_plot_motifs" value="True"/>
+                    <param name="sites_bed_fasta_out" value="True"/>
+                    <param name="motif_hits_bed_out" value="False"/>
+                </section>
+            </conditional>
+            <output name="rbp_hit_stats_file" file="out.rbp_hit_stats.rbpbench_search.tsv" compare="sim_size"/>
+            <output name="motif_hit_stats_file" file="out.motif_hit_stats.rbpbench_search.tsv" compare="sim_size"/>
+            <output name="search_report_html_file" file="out.report.rbpbench_search.html" compare="sim_size"/>
+            <output name="motif_plots_html_file" file="out.motif_plots.rbpbench_search.html" compare="sim_size"/>
+            <output name="in_sites_bed_file" file="out.in_sites.filtered.rbpbench_search.bed"/>
+            <output name="in_sites_fa_file" file="out.in_sites.filtered.rbpbench_search.fa"/>
+        </test>
+        <!-- test 2 -->
+        <test expect_num_outputs="2">
+            <conditional name="action_type">
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history" />
+                    <param name="history_genome" value="in.ref.fa" />
+                </conditional>
+                <param name="action_type_selector" value="search_motifs"/>
+                <param name="search_bed_file" value="in.bed" ftype="bed"/>
+                <conditional name="select_db">
+                    <param name="select_db_selector" value="default_db"/>
+                    <conditional name="select_rbps">
+                        <param name="select_rbps_selector" value="list_db_rbps"/>
+                        <param name="database" value="PUM1,PUM2" />
+                    </conditional>
+                </conditional>
+                <conditional name="user_rbp">
+                    <param name="user_rbp_selector" value="structure"/>
+                    <param name="cm_model_file" value="in.SLBP_USER.cm" />
+                    <param name="str_rbp_id" value="SLBP_USER" />
+                </conditional>
+                <section name="search_output_options">
+                    <param name="search_report" value="False"/>
+                </section>
+            </conditional>
+            <output name="rbp_hit_stats_file" file="out.rbp_hit_stats.rbpbench_search.slbp_user.tsv" compare="sim_size"/>
+            <output name="motif_hit_stats_file" file="out.motif_hit_stats.rbpbench_search.slbp_user.tsv" compare="sim_size"/>
+        </test>
+        <!-- test 3 -->
+        <test expect_num_outputs="3">
+            <conditional name="action_type">
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history" />
+                    <param name="history_genome" value="in.ref.fa" />
+                </conditional>
+                <param name="action_type_selector" value="search_motifs"/>
+                <param name="search_bed_file" value="in.bed" ftype="bed"/>
+                <conditional name="select_db">
+                    <param name="select_db_selector" value="default_db"/>
+                    <conditional name="select_rbps">
+                        <param name="select_rbps_selector" value="all_db_rbps"/>
+                    </conditional>
+                </conditional>
+                <section name="search_output_options">
+                    <param name="search_report" value="False"/>
+                    <param name="search_plot_motifs" value="False"/>
+                    <param name="sites_bed_fasta_out" value="False"/>
+                    <param name="motif_hits_bed_out" value="True"/>
+                </section>
+            </conditional>
+            <output name="motif_hits_bed_file" file="out.motif_hits.rbpbench_search.test_all.bed"/>
+        </test>
+        <!-- test 4 -->
+        <test expect_num_outputs="4">
+            <conditional name="action_type">
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history" />
+                    <param name="history_genome" value="in.ref.fa" />
+                </conditional>
+                <param name="action_type_selector" value="search_motifs"/>
+                <param name="search_bed_file" value="in.bed" ftype="bed"/>
+                <section name="report_plotting_options">
+                    <param name="gtf_file" value="in.test_search.gtf" ftype="gtf"/>
+                </section>
+                <conditional name="select_db">
+                    <param name="select_db_selector" value="default_db"/>
+                    <conditional name="select_rbps">
+                        <param name="select_rbps_selector" value="all_db_rbps"/>
+                    </conditional>
+                </conditional>
+                <section name="search_output_options">
+                    <param name="search_report" value="True"/>
+                    <param name="search_plot_motifs" value="False"/>
+                    <param name="sites_bed_fasta_out" value="False"/>
+                    <param name="motif_hits_bed_out" value="False"/>
+                    <param name="region_annotations_out" value="True"/>
+                </section>
+            </conditional>
+            <output name="region_annotations_file" file="out.rbpbench_search.gtf.region_annotations.tsv"/>
+        </test>
+        <!-- test 5 -->
+        <test expect_num_outputs="3">
+            <conditional name="action_type">
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history" />
+                    <param name="history_genome" value="in.ref.fa" />
+                </conditional>
+                <param name="action_type_selector" value="search_motifs"/>
+                <param name="search_bed_file" value="in.bed" ftype="bed"/>
+                <conditional name="select_db">
+                    <param name="select_db_selector" value="custom_db"/>
+                    <param name="custom_db_id" value="custom_yo" />
+                    <param name="custom_db_info_file" value="in.test_custom.info.txt" />
+                    <param name="custom_db_meme_xml_file" value="in.test_custom.seq_motifs.meme" />
+                    <param name="custom_db_cm_model_file" value="in.test_custom.str_motifs.cm" />
+                    <param name="custom_db_rbp_ids_list" value="PUM1 PUM2 SLBP" />
+                </conditional>
+                <section name="search_output_options">
+                    <param name="search_report" value="False"/>
+                    <param name="search_plot_motifs" value="False"/>
+                    <param name="sites_bed_fasta_out" value="False"/>
+                    <param name="motif_hits_bed_out" value="True"/>
+                    <param name="region_annotations_out" value="False"/>
+                </section>
+            </conditional>
+            <output name="rbp_hit_stats_file" file="out.rbp_hit_stats.rbpbench_search.custom_db_rbp.tsv" compare="sim_size"/>
+            <output name="motif_hit_stats_file" file="out.motif_hit_stats.rbpbench_search.custom_db_rbp.tsv" compare="sim_size"/>
+        </test>
+        <!-- test 6: rbpbench batch tests -->
+        <test expect_num_outputs="4">
+            <conditional name="action_type">
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history" />
+                    <param name="history_genome" value="in.test.fa" />
+                </conditional>
+                <param name="action_type_selector" value="batch_search_motifs"/>
+                <repeat name="dataset_inputs">
+                    <param name="dataset_bed_file" value="in.test.bed"/>
+                    <param name="dataset_method_id" value="method-id1" />
+                    <param name="dataset_data_id" value="data-id1" />
+                    <param name="dataset_rbp_id" value="PUM1" />
+                </repeat>
+                <repeat name="dataset_inputs">
+                    <param name="dataset_bed_file" value="in.test.bed"/>
+                    <param name="dataset_method_id" value="method-id2" />
+                    <param name="dataset_data_id" value="data-id2" />
+                    <param name="dataset_rbp_id" value="PUM2" />
+                </repeat>
+                <section name="search_output_options">
+                    <param name="batch_motif_hits_bed_out" value="True"/>
+                </section>
+            </conditional>
+            <output name="batch_rbp_hit_stats_file" file="out.rbp_hit_stats.rbpbench_batch.tsv" compare="sim_size"/>
+            <output name="batch_motif_hit_stats_file" file="out.motif_hit_stats.rbpbench_batch.tsv" compare="sim_size"/>
+            <output name="batch_motif_hits_bed_file" file="out.motif_hits.rbpbench_batch.bed"/>
+        </test>
+        <!-- test 7: rbpbench batch table tests -->
+        <test expect_num_outputs="4">
+            <conditional name="action_type">
+                <conditional name="reference_genome">
+                    <param name="reference_genome_selector" value="history" />
+                    <param name="history_genome" value="in.test.fa" />
+                </conditional>
+                <param name="action_type_selector" value="batch_table_search_motifs"/>
+                <param name="batch_table_bed_collection">
+                    <collection type="list">
+                        <element name="test1.bed" value="in.test1.bed"/>
+                        <element name="test2.bed" value="in.test2.bed"/>
+                    </collection>
+                </param>
+                <param name="batch_table_file" value="in.test_table.txt"/>
+                <section name="search_output_options">
+                    <param name="batch_table_motif_hits_bed_out" value="True"/>
+                </section>
+            </conditional>
+            <output name="batch_table_rbp_hit_stats_file" file="out.rbp_hit_stats.rbpbench_batch.table_test.tsv" compare="sim_size"/>
+            <output name="batch_table_motif_hit_stats_file" file="out.motif_hit_stats.rbpbench_batch.table_test.tsv" compare="sim_size"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+@HELP_HEADER@
+
+-----
+
+**RBPBench program modes**
+
+*RBPBench Search* on Galaxy provides the following main functions (choose on top via "Select RBPBench program mode"): 
+
+- Search RBP binding motifs in genomic regions (search)
+- Search RBP binding motifs in genomic regions (batch, multiple inputs)
+- Search RBP binding motifs in genomic regions (batch, data collection input)
+
+
+**Search RBP binding motifs in genomic regions (search)**
+
+In this mode we can select any number of RBPs of interest and search for RBP binding motifs in a given 
+set of genomic regions (*Genomic regions BED file*). A built-in high-quality database of human RBP binding motifs 
+(currently containing 259 RBPs and 605 motifs) is used by default. Moreover, users can add own motifs 
+(*Add user-supplied motifs*), as well as defining their own database (*Provide a custom RBP motif database*).
+Both sequence (MEME/DREME XML format) and structure motifs (covariance models) are supported.
+Comprehensive hit statistics (both on RBP and single motif level) are output as table files, 
+together with an informative HTML report containing various plots and tables 
+(see Output options to control what files are output). 
+Hit statistics output table formats are described in the RBPBench documentation_.
+The HTML report includes statistics for each RBP on enrichment of motifs in higher scoring regions, 
+as well as a heatmap of RBP co-occurrences in genomic regions, and an upset plot 
+on present RBP combinations (*HTML report options* for finetuning).
+If a GTF file is provided (*HTML report options -> GTF file*), genomic region annotations are also added to the regions and plots.
+Furthermore, motif distances (RBP and motif level) can be plotted relative to a set reference RBP 
+(*HTML report options -> Set reference RBP ID*).
+Motif search settings can be adapted, e.g. to apply up- and/or downstream extension to the genomic regions
+before search. Motifs for selected RBPs can also be plotted in a separate HTML file (*Output options -> Plot RBP motifs*).
+To compare motif search results (subtool *RBPBench Compare*), 
+data ID and method ID can be set accordingly (more details in sections 2, 3, and in subtool *RBPBench Compare*).
+
+
+**Search RBP binding motifs in genomic regions (batch, multiple inputs)**
+
+This mode allows the input of more than one set of genomic regions (via *+ Insert Dataset*). 
+For each input, an RBP for motif search needs to be selected. Optionally (for comparing 
+different search results), descriptive data + method IDs can be added (also see subtool *RBPBench Compare*).
+For example, if two different peak calling methods (method1, method2) have been used to 
+extract RBP binding regions from CLIP-seq data of RBP RBPX, and we want to compare these two methods later on, we would:
+*+ Insert Dataset*: input the set (i.e., BED file) produced by method1, choose the CLIP-ped RBP (RBPX) + add method ID "method1". 
+*+ Insert Dataset*: input the set produced by method2, again choose RBPX, and add method ID "method2". 
+The data ID we keep constant, ideally choosing an ID that describes the data (e.g. cell type, CLIP-seq protocol, CLIP-ped RBP).
+For example, if the cell type is K562, and the CLIP-seq protocol is eCLIP, we could specify 
+the data ID "K562_eCLIP" or "RBPX_K562_eCLIP". We can repeat this for other proteins by 
+adding the respective inputs. Finally, for comparing the two methods,
+all we need to do is to use the two produced hit statistics output tables (RBP + motif hit statistics) 
+as inputs in subtool *RBPBench Compare*.
+The same also works the other way around, by keeping the method ID constant and changing the data ID.
+For example, if we want to compare motif search results across different cell types, we can use 
+different data IDs while keeping the method ID.
+
+
+**Search RBP binding motifs in genomic regions (batch, data collection input)**
+
+This mode is identical to the previous one (multiple inputs), except that instead of 
+manually defining each input (dataset, RBP, method ID, data ID), we simply
+input a table containing all the information, as well as a dataset collection containing the datasets. 
+It is thus the preferable mode if we want to compare a large number of datasets 
+(concept of comparing sets via method ID and data ID described in the previous section).
+The input table (batch processing table file) has the following format 
+(tab-separated columns: RBP ID, method ID, data ID, BED genomic regions file name):
+
+========== ============ =============== =============================
+PUM1       method1      K562_eCLIP      PUM1.K562_eclip.method1.bed
+PUM1       method2      K562_eCLIP      PUM1.K562_eclip.method2.bed
+PUM1       method3      K562_eCLIP      PUM1.K562_eclip.method3.bed
+PUM2       method1      K562_eCLIP      PUM2.K562_eclip.method1.bed
+PUM2       method2      K562_eCLIP      PUM2.K562_eclip.method2.bed
+PUM2       method3      K562_eCLIP      PUM2.K562_eclip.method3.bed
+SLBP       method1      K562_eCLIP      SLBP.K562_eclip.method1.bed
+SLBP       method2      K562_eCLIP      SLBP.K562_eclip.method2.bed
+SLBP       method3      K562_eCLIP      SLBP.K562_eclip.method3.bed
+========== ============ =============== =============================
+
+NOTE that the table file name needs to correspond to the name of the dataset inside the 
+dataset collection. Conveniently, if you upload files to Galaxy and make a dataset collection out of them, 
+the dataset names will correspond to the uploaded file names.
+In the above table, we would produce search results for three different 
+methods, on three different RBPs. 
+Likewise, if we would want to compare motif search results across cell types, 
+the table could look like this:
+
+========== ============ =============== =============================
+PUM1       method1      K562_eCLIP      PUM1.K562_eclip.method1.bed
+PUM1       method1      HepG2_eCLIP     PUM1.HepG2_eclip.method1.bed
+PUM2       method1      K562_eCLIP      PUM2.K562_eclip.method1.bed
+PUM2       method1      HepG2_eCLIP     PUM2.HepG2_eclip.method1.bed
+SLBP       method1      K562_eCLIP      SLBP.K562_eclip.method1.bed
+SLBP       method1      HepG2_eCLIP     SLBP.HepG2_eclip.method1.bed
+========== ============ =============== =============================
+
+Here we would create motif search results across cell types K562 and HepG2, while keeping the peak calling 
+method ID constant ("method1").
+As with the two already discussed search modes, 
+the resulting hit statistics output table files (RBP + motif hit statistics) 
+can subsequently serve as inputs to RBPBench's comparison mode (subtool *RBPBench Compare*).
+
+
+.. _documentation: https://github.com/michauhl/RBPBench#hit-statistics-table-files
+
+    ]]>    </help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>
