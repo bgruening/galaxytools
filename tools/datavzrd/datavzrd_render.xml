@@ -1,0 +1,212 @@
+<tool id="datavzrd_render" name="datavzrd" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Render visual and interactive HTML reports from tabular data</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="render_requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+## Symlink the input tables into the working directory using safe names
+## so that they can be referenced from the datavzrd configuration file.
+#set $data_files = []
+#set $suggest_args = []
+#for $i, $data_file in enumerate($input_data):
+    #set $ext = str($data_file.ext)
+    #if $ext == 'tsv' or $ext == 'tabular':
+        #set $ext = 'tsv'
+    #end if
+    #set $fname = 'input_' + str($i) + '.' + $ext
+    #silent $data_files.append($fname)
+    ln -s '${data_file}' '${fname}' &&
+    #if $ext == 'tsv':
+        #silent $suggest_args.append("-f '" + $fname + "' -s $'\\t'")
+    #else:
+        #silent $suggest_args.append("-f '" + $fname + "' -s ','")
+    #end if
+#end for
+
+## Build the datavzrd configuration file
+#if $config_mode.config_mode_selector == 'auto':
+    ## Let datavzrd suggest a configuration from the given input tables
+    datavzrd suggest #echo ' '.join($suggest_args)# --name '${config_mode.report_name}' > config.yaml &&
+#else:
+    ## Rewrite the dataset paths of the user-provided configuration file
+    ## to point to the input tables of this job
+    python '$__tool_directory__/datavzrd_config.py' rewrite '${config_mode.config_file}' --inputs '#echo ','.join($data_files)#' --output config.yaml &&
+#end if
+
+## Apply advanced options to the configuration file
+#set $adv_args = []
+#if $adv.max_in_memory_rows:
+    #silent $adv_args.append('max-in-memory-rows=' + str($adv.max_in_memory_rows))
+#end if
+#if $adv.webview_controls:
+    #silent $adv_args.append('webview-controls=true')
+#end if
+#if $adv_args:
+    python '$__tool_directory__/datavzrd_config.py' set config.yaml --output config.yaml #echo ' '.join($adv_args)# &&
+#end if
+
+## Render the report
+#set $webview_flag = ''
+#if str($adv.webview_url):
+    #set $webview_flag = "--webview-url '" + str($adv.webview_url) + "'"
+#end if
+datavzrd config.yaml --output report_output ${adv.overwrite_output} $webview_flag &&
+
+## Collect the output
+#if $output_format == 'html':
+    mkdir -p '${output_html.files_path}' &&
+    mv report_output/index.html '${output_html}' &&
+    mv report_output/* '${output_html.files_path}/'
+#else:
+    cd report_output &&
+    zip -q -r ../report.zip . &&
+    cd .. &&
+    mv report.zip '${output_zip}'
+#end if
+    ]]></command>
+    <inputs>
+        <param name="input_data" type="data" format="csv,tsv,tabular,json,parquet" multiple="true" label="Input table(s)" help="One or more tabular datasets (CSV, TSV, JSON or Parquet) to include in the report. When using a custom configuration file, provide the tables in the same order as the datasets defined in that configuration file."/>
+        <conditional name="config_mode">
+            <param name="config_mode_selector" type="select" label="Configuration">
+                <option value="auto" selected="true">Auto-generate the configuration from the input tables</option>
+                <option value="provide">Provide a datavzrd configuration file</option>
+            </param>
+            <when value="auto">
+                <expand macro="report_name"/>
+            </when>
+            <when value="provide">
+                <param name="config_file" type="data" format="yaml" label="datavzrd configuration file" help="A datavzrd YAML configuration file. The dataset 'path' entries are rewritten to the input tables above (matched in the order in which the datasets appear in the configuration file), so any path can be used there. Note that relative references to external files (spec-path, script-path, custom-path, render-img paths) are not supported - use the inline 'spec' or 'custom' fields instead."/>
+            </when>
+        </conditional>
+        <param name="output_format" type="select" label="Output format">
+            <option value="html" selected="true">Interactive HTML report (displayed in Galaxy)</option>
+            <option value="zip">Zipped report directory</option>
+        </param>
+        <section name="adv" title="Advanced options" expanded="false">
+            <param name="max_in_memory_rows" type="integer" optional="true" min="1" label="Maximum in-memory rows" help="Maximum number of rows of a table that are rendered into a single page (default: 20000). Tables with more rows are split into searchable pages."/>
+            <param name="webview_controls" type="boolean" checked="false" label="Enable webview sharing controls" help="Adds sharing controls to the report that allow exporting the displayed data to datavzrd's webview host."/>
+            <param name="webview_url" type="text" optional="true" label="Webview host URL" help="URL of the webview host used for sharing controls (default: https://datavzrd.github.io/view/).">
+                <validator type="regex" message="URL must not contain whitespace or quotes">^[^\s'"]*$</validator>
+            </param>
+            <param name="overwrite_output" type="boolean" checked="true" truevalue="--overwrite-output" falsevalue="" label="Overwrite output directory" help="Use the --overwrite-output flag of datavzrd."/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_html" format="html" label="${tool.name} on ${on_string}: interactive report">
+            <filter>output_format == 'html'</filter>
+        </data>
+        <data name="output_zip" format="zip" label="${tool.name} on ${on_string}: zipped report">
+            <filter>output_format == 'zip'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 01: auto-generated configuration from a single CSV -->
+        <test expect_num_outputs="1">
+            <param name="input_data" value="oscars.csv" ftype="csv"/>
+            <conditional name="config_mode">
+                <param name="config_mode_selector" value="auto"/>
+                <param name="report_name" value="Oscars Report"/>
+            </conditional>
+            <param name="output_format" value="html"/>
+            <output name="output_html" ftype="html">
+                <assert_contents>
+                    <has_text text="Oscars Report"/>
+                    <has_text text="static/bundle.js"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: auto-generated configuration from multiple CSVs -->
+        <test expect_num_outputs="1">
+            <param name="input_data" value="oscars.csv,movies.csv" ftype="csv"/>
+            <conditional name="config_mode">
+                <param name="config_mode_selector" value="auto"/>
+            </conditional>
+            <param name="output_format" value="html"/>
+            <output name="output_html" ftype="html">
+                <assert_contents>
+                    <has_text text="Datavzrd Report"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 03: user-provided configuration file with advanced options -->
+        <test expect_num_outputs="1">
+            <param name="input_data" value="oscars.csv,movies.csv" ftype="csv"/>
+            <conditional name="config_mode">
+                <param name="config_mode_selector" value="provide"/>
+                <param name="config_file" value="example-config.yaml" ftype="yaml"/>
+            </conditional>
+            <section name="adv">
+                <param name="max_in_memory_rows" value="500"/>
+            </section>
+            <param name="output_format" value="html"/>
+            <output name="output_html" ftype="html">
+                <assert_contents>
+                    <has_text text="My oscar report"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--overwrite-output"/>
+            </assert_command>
+        </test>
+        <!-- Test 04: TSV input with auto-generated configuration -->
+        <test expect_num_outputs="1">
+            <param name="input_data" value="genes.tsv" ftype="tsv"/>
+            <conditional name="config_mode">
+                <param name="config_mode_selector" value="auto"/>
+                <param name="report_name" value="Gene Report"/>
+            </conditional>
+            <param name="output_format" value="html"/>
+            <output name="output_html" ftype="html">
+                <assert_contents>
+                    <has_text text="Gene Report"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="-s $'\t'"/>
+            </assert_command>
+        </test>
+        <!-- Test 05: zipped report output -->
+        <test expect_num_outputs="1">
+            <param name="input_data" value="oscars.csv" ftype="csv"/>
+            <conditional name="config_mode">
+                <param name="config_mode_selector" value="auto"/>
+                <param name="report_name" value="Oscars Report"/>
+            </conditional>
+            <param name="output_format" value="zip"/>
+            <assert_command>
+                <has_text text="zip -q -r ../report.zip"/>
+                <not_has_text text="--webview-url"/>
+            </assert_command>
+            <output name="output_zip" ftype="zip"/>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# Datavzrd
+
+Datavzrd creates visual and interactive HTML reports from collections of tabular data (CSV, TSV, JSON or Parquet). Reports include automatically generated plots per column and can be fully customized via a YAML configuration file.
+
+## Configuration modes
+
+1. **Auto-generate the configuration from the input tables**: datavzrd inspects each input table and generates a suitable default configuration, with one table view per input file. Each view provides per-column plots, searching, sorting and filtering. This is the easiest way to get an interactive report.
+
+2. **Provide a datavzrd configuration file**: supply your own YAML configuration file for full control over report layout, column rendering (ticks, bars, heatmaps, pills, custom plots), linkouts and inter-table linking. See the datavzrd documentation at https://datavzrd.github.io/docs/configuration.html for a full description of the configuration format.
+
+When a configuration file is provided, the `path` of each dataset in its `datasets` section is rewritten to the input tables of this job: datasets are matched to the input tables **in the order in which they appear in the configuration file**, so provide exactly one input table per dataset, in that order. Relative references to external files in the configuration (such as `spec-path`, `script-path`, `custom-path` or `render-img` paths) are not supported by this wrapper - use the inline `spec` or `custom` fields instead.
+
+## Output
+
+The interactive HTML report can be displayed directly in Galaxy (choose *Interactive HTML report*). All report files (tables, plots and data) are stored alongside the displayed `index.html`. Alternatively, the whole report directory can be returned as a zip archive, e.g. for sharing or archiving of large reports.
+
+## Advanced options
+
+- **Maximum in-memory rows**: number of rows up to which a table is rendered as a single page (default 20000). Larger tables are split into pages with a search dialog.
+- **Webview sharing controls**: adds controls that allow sharing the displayed data with datavzrd's webview host (https://datavzrd.github.io/view/).
+
+## Credits
+
+Datavzrd was developed by Felix Wiegand, Johannes Köster and colleagues. Source code and documentation are available at https://github.com/datavzrd/datavzrd.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
