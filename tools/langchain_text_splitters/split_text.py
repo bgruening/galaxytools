@@ -113,6 +113,7 @@ def parse_args():
     parser.add_argument("--separator")
     parser.add_argument("--separator-specs", nargs="+", default=None)
     parser.add_argument("--strip-whitespace", action="store_true")
+    parser.add_argument("--max-chunk-files", required=True)
     return parser.parse_args()
 
 
@@ -289,6 +290,10 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
         "chunk_size": args.chunk_size,
         "chunk_overlap": args.chunk_overlap,
         "add_start_index": True,
+        # Never let langchain strip; main() does it once on the finished chunks.
+        # langchain would strip each sentence before joining them, welding
+        # "mat." to "The", and would misreport the start index. Defaults to True.
+        "strip_whitespace": False,
     }
 
     if args.splitter_type == "token":
@@ -303,30 +308,22 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
     }
 
     if args.splitter_type == "nltk":
-        # strip_whitespace is handled on the finished chunks in main() instead of
-        # here. separator="" together with strip_whitespace=False keeps the chunk text
-        # identical to the matching slice of the input, so the reported start
-        # indices stay usable. Note that the span based tokenizer drops whatever
-        # follows the last sentence, see the warning in main().
+        # separator="" keeps the chunk text identical to the matching slice of
+        # the input, so the reported start indices stay usable. The span based
+        # tokenizer drops whatever follows the last sentence, see main().
         return NLTKTextSplitter(
             **length_options,
             language=args.sentence_language,
             separator="",
             use_span_tokenize=True,
-            strip_whitespace=False,
         )
 
     if args.splitter_type == "spacy":
-        # strip_whitespace is handled on the finished chunks in main() instead of
-        # here. langchain strips every sentence before joining them, and
-        # separator="" joins with nothing, so letting it strip would also delete
-        # the space *between* two sentences and produce "mat.The".
         splitter = SpacyTextSplitter(
             **length_options,
             pipeline=args.spacy_pipeline,
             max_length=args.spacy_max_length,
             separator="",
-            strip_whitespace=False,
         )
         # langchain only forwards max_length to the pipelines it loads with
         # spacy.load(). The sentencizer is built from English() instead and
@@ -341,7 +338,6 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
 
     character_options = {
         **length_options,
-        "strip_whitespace": args.strip_whitespace,
         "keep_separator": KEEP_SEPARATOR_VALUES[args.keep_separator],
     }
 
@@ -373,6 +369,35 @@ def build_splitter(args, input_text, length_function, tiktoken_options):
     return RecursiveCharacterTextSplitter(**character_options)
 
 
+def altered_text_cause(args):
+    """Name the cause that fits this run instead of guessing a single one.
+
+    The two causes produce the same symptom but have opposite remedies, and
+    naming the wrong one sends the user in a circle.
+    """
+    if args.splitter_type == "token" or args.length_mode == "token":
+        return (
+            "A cut between two tokens can fall inside a character that is "
+            "encoded in several bytes, which then becomes the Unicode "
+            "replacement character. Use one of the character based splitters "
+            "for text that is not plain ASCII."
+        )
+
+    if args.keep_separator == "false":
+        return (
+            "Discarding the separator drops the empty pieces between two "
+            "adjacent separators, so a run of separators is rebuilt as a "
+            "single one and the characters in between are lost. Choose a "
+            "setting that keeps the separator, or split on a separator that "
+            "does not occur several times in a row."
+        )
+
+    return (
+        "The splitter did not return the input unchanged; the chunks can "
+        "therefore no longer be traced back to a position in it."
+    )
+
+
 def diagnose_chunk(
     start_index,
     chunk_text,
@@ -387,7 +412,9 @@ def diagnose_chunk(
     """
     if (
         start_index >= 0
-        and (previous_start_index is None or start_index > previous_start_index)
+        # Two chunks may legitimately begin at the same offset when the overlap
+        # repeats a whole split, so only a *backwards* jump is a real defect.
+        and (previous_start_index is None or start_index >= previous_start_index)
         and input_text.startswith(chunk_text, start_index)
     ):
         return None
@@ -434,9 +461,13 @@ def write_text_output(
 
 def write_chunk_files(chunks_dir, chunks):
     chunks_dir.mkdir(parents=True, exist_ok=True)
+    # Galaxy sorts the discovered elements lexically by file name, so the pad
+    # has to be wide enough for the largest index or chunk_10000 would sort
+    # between chunk_1000 and chunk_1001.
+    width = max(4, len(str(len(chunks))))
 
     for chunk in chunks:
-        chunk_path = chunks_dir / f"chunk_{chunk['index']:04d}.txt"
+        chunk_path = chunks_dir / f"chunk_{chunk['index']:0{width}d}.txt"
         chunk_path.write_text(
             chunk["text"],
             encoding="utf-8",
@@ -640,11 +671,8 @@ def main():
             "WARNING: The text of the following chunk(s) does not occur in the "
             f"input: {', '.join(str(number) for number in altered_text_warnings)}. "
             "The splitter returned text it had modified, so no position in the "
-            "input describes it and the start index is reported as null. The "
-            "known cause is splitting between tokens: a cut can fall inside a "
-            "character that is encoded in several bytes, which then becomes the "
-            "Unicode replacement character. Use one of the character based "
-            "splitters for text that is not plain ASCII.",
+            "input describes it and the start index is reported as null. "
+            + altered_text_cause(args),
             flush=True,
         )
 
@@ -654,10 +682,27 @@ def main():
             for chunk_number, start_index in start_index_warnings
         )
         print(
-            "WARNING: Potential upstream langchain-text-splitters bug: "
-            f"invalid start index returned for chunk(s): {affected_chunks}. "
+            "WARNING: The reported position of the following chunk(s) does not "
+            f"describe where their text sits in the input: {affected_chunks}. "
             "The start index of these chunks is reported as null.",
             flush=True,
+        )
+
+    # Stop here, not after writing: Galaxy fails the job on the file count anyway.
+    # "None" means the admin set no limit, so isdigit() instead of int().
+    max_chunk_files = (
+        int(args.max_chunk_files) if args.max_chunk_files.isdigit() else 0
+    )
+
+    if max_chunk_files and len(chunks) > max_chunk_files:
+        sys.exit(
+            f"The selected settings produce {len(chunks)} chunks. The tool "
+            "writes one dataset per chunk, and this Galaxy instance refuses a "
+            f"job that produces more than {max_chunk_files} datasets, so the "
+            "job would be failed after the split had already run. Raise the "
+            f"target chunk size: the input holds {len(input_text)} characters, "
+            f"so a chunk size above {len(input_text) // max_chunk_files + 1} "
+            "keeps the count under the limit."
         )
 
     if empty_chunks:
@@ -673,6 +718,10 @@ def main():
     # whatever follows is dropped and the chunks no longer add up to the input.
     # The first span always starts at offset 0, so nothing is lost in front.
     # The spaCy splitter keeps everything.
+    # Only reported when the chunks were not stripped. Punkt leaves nothing but
+    # whitespace after the last span, so with stripping on this could only ever
+    # report whitespace the user asked to discard, inflated by whatever strip()
+    # itself took off the end of the last chunk.
     if args.splitter_type == "nltk" and chunks and not args.strip_whitespace:
         last_chunk = chunks[-1]
         last_text = last_chunk["text"]
