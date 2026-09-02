@@ -26,6 +26,9 @@
         --chunks-dir chunks
         --chunk-size '$chunk_size'
         --chunk-overlap '$chunk_overlap'
+        ## The instance's own ceiling on datasets discovered per job, so the tool
+        ## stops early instead of being failed by Galaxy after all the work.
+        --max-chunk-files '$__app__.config.max_discovered_files'
         #if $splitter.method == "character"
             #if $splitter.character_splitter.type == "recursive"
                 --splitter-type recursive_character
@@ -44,7 +47,7 @@
             #if $splitter.character_splitter.type == "recursive"
                 #if $splitter.character_splitter.separator_settings.mode == "custom"
                     --separator-specs
-                    #for $separator in $splitter.character_splitter.separator_settings.separators                   
+                    #for $separator in $splitter.character_splitter.separator_settings.separators
                         #if $separator.separator_definition.sep_opt == "custom"
                             'custom:$separator.separator_definition.value'
                         #else
@@ -88,7 +91,7 @@
         <param name="input" type="data" format="txt" label="Input text dataset"/>
         <conditional name="splitter">
             <param name="method" type="select" label="Text splitting boundaries" help="Choose where the input should be split. Recommended is on a character level, by paragraphs, lines, spaces etc. In between token can be useful for a LLM workflow which expects a specific token count per chunk.">
-                <option value="character" selected="true">    
+                <option value="character" selected="true">
                     Character
                 </option>
                 <option value="sentence">
@@ -629,7 +632,8 @@
                 </assert_contents>
             </output>
             <assert_stdout>
-                <has_text text="WARNING: Potential upstream langchain-text-splitters bug: invalid start index returned for chunk(s): 2 (start_index: -1)"/>
+                <!-- Depends on https://github.com/langchain-ai/langchain/issues/29884 ; revisit on a version bump. -->
+                <has_text text="WARNING: The reported position of the following chunk(s)"/>
             </assert_stdout>
             <expand macro="assert_chunks_tsv"/>
             <output_collection name="chunks_collection" type="list" count="3">
@@ -1079,7 +1083,8 @@
                 </assert_contents>
             </output>
             <assert_stdout>
-                <has_text text="WARNING: Potential upstream langchain-text-splitters bug: invalid start index returned for chunk(s): 2 (start_index: -1)"/>
+                <!-- Depends on https://github.com/langchain-ai/langchain/issues/29884 ; revisit on a version bump. -->
+                <has_text text="WARNING: The reported position of the following chunk(s)"/>
             </assert_stdout>
             <expand macro="assert_chunks_tsv"/>
             <output_collection name="chunks_collection" type="list" count="3">
@@ -1288,12 +1293,19 @@
             <output name="chunks_json">
                 <assert_contents>
                     <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <!-- The position of the last chunk. Unlike the chunk texts and the
+                         first chunk's offset, this changes as soon as the splitting does,
+                         so it is what catches a regression here. -->
+                    <has_json_property_with_value property="start_index" value="663"/>
                     <!-- An invalid start index is reported as null so that the field keeps a single JSON type. -->
                     <has_text text="&quot;start_index&quot;: null"/>
                 </assert_contents>
             </output>
+            <expand macro="assert_chunks_tsv" min_lines="3"/>
+            <output_collection name="chunks_collection" type="list" count="3"/>
             <assert_stdout>
-                <has_text text="WARNING: Potential upstream langchain-text-splitters bug: invalid start index returned for chunk(s): 2 (start_index: -1)"/>
+                <!-- Depends on https://github.com/langchain-ai/langchain/issues/29884 ; revisit on a version bump. -->
+                <has_text text="WARNING: The reported position of the following chunk(s)"/>
             </assert_stdout>
         </test>
         <!-- A custom separator that starts with dashes must not be read as a command line option. -->
@@ -1472,7 +1484,7 @@
 **What it does**
 
 This tool splits a text dataset into chunks with `langchain-text-splitters`.
-It is useful before retrieval-augmented generation, embedding, summarization, 
+It is useful before retrieval-augmented generation, embedding, summarization,
 and other LLM workflows where long text needs to be bounded by a chunk size.
 
 **Leveraged Methods of `langchain-text-splitters`**
@@ -1488,11 +1500,11 @@ and other LLM workflows where long text needs to be bounded by a chunk size.
 Both sentence splitters preserve whitespace between sentences by default; in
 that case a chunk starts with the line break that follows the previous sentence.
 Leading and trailing whitespace can optionally be removed from each returned
-chunk. However, for this we do not use the strip_whitespace option of the underlying splitters, 
-since in spaCy it would also delete the whitespace between sentences and in NLTK it could
-cause the start index of a chunk to be reported incorrectly. Instead our python wrapper applies 
-the whitespace stripping only after LangChain has assembled a finished chunk.
-Thus, preventing the two issues stated above.
+chunk. Whitespace between two sentences *inside* the same chunk is preserved;
+whitespace that falls on a chunk boundary is removed together with the chunk's
+own leading and trailing whitespace. Where the position of a chunk in the input
+cannot be established reliably, the start index is reported as null and a
+warning is written to the job log.
 
 The chunk overlap is applied in whole sentences: an overlapping sentence is only carried over if it
 fits into the next chunk together with the following sentence, otherwise the
@@ -1533,7 +1545,7 @@ chunks.
 - Galaxy collection of text files, with one raw chunk per file
 
 **License**
-Langchain-Text-Splitters is licensed under the MIT License. 
+Langchain-Text-Splitters is licensed under the MIT License.
     </help>
     <citations>
         <citation type="bibtex">
