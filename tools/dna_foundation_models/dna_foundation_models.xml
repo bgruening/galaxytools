@@ -1,0 +1,402 @@
+<tool id="dna_foundation_models" name="DNA Foundation Models" version="0.1.0+galaxy0" profile="21.05">
+    <description>
+        for generating embeddings or fine-tuning models on labeled datasets
+    </description>
+    <macros/>
+    <requirements>
+        <requirement type="package" version="2.6.0">pytorch</requirement>
+        <requirement type="package" version="4.57.6">transformers</requirement>
+        <requirement type="package" version="2.2.6">numpy</requirement>
+        <requirement type="package" version="0.8.2">einops</requirement>
+        <requirement type="package" version="0.19.1">peft</requirement>
+        <requirement type="package" version="2.3.0">omegaconf</requirement>
+        <requirement type="package" version="1.7.2">scikit-learn</requirement>
+        <requirement type="package" version="1.13.0">accelerate</requirement>
+        <requirement type="package" version="0.4.6">evaluate</requirement>
+        <requirement type="package" version="6.9.0">plotly</requirement>
+        <requirement type="package" version="3.1.5">openpyxl</requirement>
+        <requirement type="package" version="1.4.1">bertviz</requirement>
+        <requirement type="package" version="2.3.3">pandas</requirement>
+        <requirement type="package" version="2.7.4">flash-attn</requirement>
+    </requirements>
+
+    <command detect_errors="exit_code">
+        <![CDATA[
+            mkdir -p results;
+            mkdir -p results/model;
+            #set $model_clean = str($selected_model).replace('__dq__', '')
+
+            #if $tasks.selected_task == 'finetune'
+                python '$__tool_directory__/finetune.py'
+                    --train_file '$tasks.train_dataset'
+                    --eval_file '$tasks.dev_dataset'
+                    --test_file '$tasks.test_dataset'
+                    --model_max_length '$tasks.training_params.model_max_length'
+                    --per_device_train_batch_size '$tasks.training_params.batch_train'
+                    --per_device_eval_batch_size '$tasks.training_params.batch_eval'
+                    --gradient_accumulation_steps '$tasks.training_params.grad_acc'
+                    --learning_rate '$tasks.training_params.lr'
+                    --weight_decay '$tasks.training_params.weight_decay'
+                    --num_train_epochs '$tasks.training_params.epochs'
+                    --seed '$tasks.training_params.seed'
+                    --fp16
+                    --save_steps '$tasks.training_params.eval_steps'
+                    --eval_steps '$tasks.training_params.eval_steps'
+                    --warmup_steps '$tasks.training_params.warmup_steps'
+                    --logging_steps '$tasks.training_params.logging_steps'
+                    --problem_type '$tasks.problem_type'
+                    --model_name_or_path '$model_clean'
+                    --output_dir 'results'
+                    --save_strategy 'steps'
+                    --eval_strategy 'steps'
+                    --eval_and_save_results 'true'
+                    #if $tasks.save_model == 'true'
+                        --save_model
+                    #end if
+                    #if $tasks.lora_section.use_lora == 'true'
+                        --use_lora
+                        --lora_r '$tasks.lora_section.lora_r'
+                        --lora_alpha '$tasks.lora_section.lora_alpha'
+                        --lora_dropout '$tasks.lora_section.lora_dropout'
+                        --lora_target_modules '$tasks.lora_section.target_modules'
+                    #end if
+                ;
+
+                #if $tasks.save_model == 'true'
+                    tar -czf results/model.tar.gz -C results model;
+                #end if
+
+            #elif $tasks.selected_task == 'embed'
+                python '$__tool_directory__/embed_sequence.py'
+                    --model '$model_clean'
+                    --fasta '$tasks.fasta_file'
+                    --batch_size '$tasks.batch_size'
+                    --pooling '$tasks.pooling'
+                    --output results/embeddings.tsv
+                #if $tasks.attn_vis == 'true'
+                    --attn_vis
+                    --viz_dir results/attn_vis
+                    --attn_ids all
+                #end if
+                ;
+            #else
+                echo 'Unknown task: $tasks.selected_task'
+                exit 1
+            #end if
+        ]]>
+    </command>
+
+    <inputs>
+        <param name="selected_model" type="select" label="Select model">
+            <options from_data_table="huggingface">
+                <column name="name" index="1"/>
+                <column name="value" index="6"/>
+                <filter type="static_value" value="dnabert2" column="4"/>
+                <filter type="static_value" value="1" column="5"/>
+            </options>
+            <validator type="no_options" message="No pretrained DNABERT models are installed on this Galaxy instance."/>
+        </param>
+
+        <conditional name="tasks">
+            <param name="selected_task" type="select" multiple="false" label="Select a task">
+                <option value="embed" selected="true">Predict DNA embeddings</option>
+                <option value="finetune">Fine-tune</option>
+            </param>
+
+            <when value="embed">
+                <param name="fasta_file" type="data" format="fasta"
+                       label="Input" refresh_on_change="true"
+                       help="FASTA file containing the DNA sequences to embed. Each FASTA record is processed 
+                       as one sequence."/>
+                <param name="pooling" type="select" label="Pooling strategy"
+                       help="Select how token-level representations are combined into one embedding vector 
+                       for each input sequence.">
+                    <option value="cls" selected="true">CLS</option>
+                    <option value="mean">mean</option>
+                    <option value="max">maximum</option>
+                </param>
+                <param name="batch_size" type="integer" value="4" min="4" max="512"
+                       label="Batch size"
+                       help="Number of sequences processed simultaneously."/>
+
+                <param name="attn_vis" type="boolean" truevalue="true" falsevalue="false" 
+                       checked="false" label="Visualize attention"
+                       help="Generate attention visualizations for all sequences in the input file."/>
+            </when>
+
+            <when value="finetune">
+                <param name="problem_type" type="select" label="Problem type">
+                    <option value="classification" selected="true">Classification</option>
+                    <option value="regression">Regression</option>
+                </param>
+
+                <conditional name="lora_section">
+                    <param name="use_lora" type="select" multiple="false" label="Use LoRA"
+                           help="Enable Low-Rank Adaptation (LoRA) to fine-tune a smaller set of adapter parameters 
+                           instead of updating all model parameters. This can reduce memory and storage requirements.">
+                        <option value="false" selected="true">Do Full-Finetuning</option>
+                        <option value="true">Use Low-Rank Adaptation</option>
+                    </param>
+                    <when value="true">
+                        <param name="lora_r" type="integer" value="8" label="LoRA rank (r)" min="1" max="256"
+                               help="Rank of the LoRA update matrices. Higher values provide more adaptation capacity 
+                               but use more trainable parameters and memory."/>
+                        <param name="lora_alpha" type="integer" value="16" label="LoRA alpha" min="1" max="512"
+                               help="Scaling factor applied to the LoRA updates. The magnitude of the adaptation's 
+                               contribution to the model's output is scaled by alpha/r."/>
+                        <param name="lora_dropout" type="float" value="0.1" label="LoRA dropout" min="0.0" max="0.8"
+                               help="Dropout probability applied to the LoRA layers during training. Increasing 
+                               this value can provide additional regularization."/>
+                        <param name="target_modules" type="select" multiple="true" label="LoRA target modules" optional="false"
+                               help="Select which modules LoRA should be applied to. At least one must be selected.">
+                            <option value="Wqkv" selected="true">Wqkv (query/key/value projection)</option>
+                            <option value="wo">wo (output projection)</option>
+                        </param>
+                    </when>
+                    <when value="false"/>
+                </conditional>
+
+                <param name="train_dataset" type="data" format="tabular" label="Training dataset"
+                       help="Tabular file used to train the model. Must contain two columns: sequence, label."/>
+                <param name="dev_dataset" type="data" format="tabular" label="Validation dataset"
+                       help="Tabular file used to evaluate the model during training. Same format as the training 
+                       dataset."/>
+                <param name="test_dataset" type="data" format="tabular" label="Test dataset"
+                       help="Tabular file used for final evaluation after training. Same format as training data. 
+                            This dataset should not be used during training to ensure unbiased performance estimates."/>
+
+                <section name="training_params" title="Training parameters" expanded="true">
+                    <param name="model_max_length" type="integer" value="128" min="16" max="4096"
+                           label="Model max length"
+                           help="Maximum sequence length after tokenization."/>
+                    <param name="batch_train" type="integer" value="8" min="1" max="256"
+                           label="Train batch size"
+                           help="Number of samples processed per device in one training step."/>
+                    <param name="batch_eval" type="integer" value="8" min="1" max="256"
+                           label="Eval batch size"
+                           help="Batch size used during validation and testing. Can usually be larger than 
+                           training batch size."/>
+                    <param name="grad_acc" type="integer" value="1" min="1" max="128"
+                           label="Gradient accumulation steps"
+                           help="Accumulates gradients over multiple steps before updating weights. 
+                                Effective batch size = train_batch_size × gradient_accumulation_steps."/>
+                    <param name="lr" type="float" value="5e-5" min="1e-7" max="1e-2"
+                           label="Learning rate"
+                           help="Controls how much model weights change at each step."/>
+                    <param name="weight_decay" type="float" value="0.01" min="0.0" max="1.0"
+                           label="Weight decay"
+                           help="L2 regularization strength to reduce overfitting. 
+                                Common values: 0.0 (none), 0.01 (standard), 0.1 (strong regularization)."/>
+                    <param name="epochs" type="integer" value="3" min="1" max="100"
+                           label="Number of epochs"
+                            help="Number of times the model iterates over the entire training dataset."/>
+                    <param name="eval_steps" type="integer" value="500" min="1" max="100000"
+                           label="Eval steps"
+                           help="Number of update steps between evaluations on the validation dataset."/>
+                    <param name="warmup_steps" type="integer" value="0" min="0" max="100000"
+                           label="Warmup steps"
+                           help="Number of initial steps during which the learning rate is gradually increased from zero. 
+                                Helps stabilize training, especially for large models."/>
+                    <param name="logging_steps" type="integer" value="100" min="1" max="100000"
+                           label="Logging steps"
+                           help="Number of update steps between logging training metrics."/>
+                    <param name="seed" type="integer" value="42" label="Random seed" min="0"
+                           help="Random seed for reproducibility."/>
+                </section>
+
+                <param name="save_model" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Save model"
+                       help="Save the fine-tuned model as a compressed archive."/>
+            </when>
+        </conditional>
+    </inputs>
+
+    <outputs>
+        <data name="embeddings_tsv"
+              format="tabular"
+              from_work_dir="results/embeddings.tsv"
+              label="Generated embeddings">
+            <filter>tasks['selected_task'] == "embed"</filter>
+        </data>
+
+        <collection name="attention_outputs"
+                    type="list:list"
+                    label="Attention visualizations">
+            <filter>tasks['selected_task'] == "embed"</filter>
+            <filter>tasks['attn_vis']</filter>
+            <discover_datasets 
+                pattern="vis_(?P&lt;identifier_0&gt;.+)_(?P&lt;identifier_1&gt;layer-avg-attention|attention-statistics|attn-avrg|bertviz-head-view|bertviz-model-view)\.(?P&lt;ext&gt;html|xlsx)"
+                directory="results/attn_vis" />
+        </collection>
+
+        <data name="trained_model"
+            format="tgz"
+            from_work_dir="results/model.tar.gz"
+            label="Fine-tuned model">
+            <filter>tasks['selected_task'] == "finetune"</filter>
+            <filter>tasks['save_model']</filter>
+        </data>
+
+        <data name="eval_metrics"
+              format="json"
+              from_work_dir="results/evaluation.json"
+              label="Evaluation metrics">
+            <filter>tasks['selected_task'] == "finetune"</filter>
+        </data>
+
+        <data name="trainer_state"
+              format="json"
+              from_work_dir="results/trainer_state.json"
+              label="Trainer state">
+            <filter>tasks['selected_task'] == "finetune"</filter>
+        </data>
+
+        <data name="labels_preds"
+              format="csv"
+              from_work_dir="results/test_predictions.csv"
+              label="Labels and predictions">
+            <filter>tasks['selected_task'] == "finetune"</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <!-- Embed: unknown model path -->
+        <test expect_failure="true" expect_exit_code="5">
+            <param name="selected_model" value="unknown"/>
+            <conditional name="tasks">
+                <param name="selected_task" value="embed"/>
+                <param name="fasta_file" value="example.fasta" ftype="fasta"/>
+                <param name="pooling" value="mean"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+
+            <assert_stderr>
+                <has_text_matching expression="Parameter 'selected_model': requires a value, but no legal values defined"/>
+            </assert_stderr>
+        </test>
+
+        <!-- Fine-tune: unknown model path -->
+        <test expect_failure="true" expect_exit_code="5">
+            <param name="selected_model" value="unknown"/>
+            <conditional name="tasks">
+                <param name="selected_task" value="finetune"/>
+                <param name="problem_type" value="classification"/>
+
+                <conditional name="lora_section">
+                    <param name="use_lora" value="false"/>
+                </conditional>
+
+                <param name="train_dataset" value="example-train.tsv" ftype="tabular"/>
+                <param name="dev_dataset" value="example-dev.tsv" ftype="tabular"/>
+                <param name="test_dataset" value="example-test.tsv" ftype="tabular"/>
+
+                <section name="training_params">
+                    <param name="model_max_length" value="128"/>
+                    <param name="batch_train" value="8"/>
+                    <param name="batch_eval" value="8"/>
+                    <param name="grad_acc" value="1"/>
+                    <param name="lr" value="5e-5"/>
+                    <param name="weight_decay" value="0.01"/>
+                    <param name="epochs" value="1"/>
+                    <param name="save_steps" value="50"/>
+                    <param name="eval_steps" value="50"/>
+                    <param name="warmup_steps" value="0"/>
+                    <param name="logging_steps" value="10"/>
+                </section>
+
+                <param name="save_model" value="false"/>
+            </conditional>
+
+            <assert_stderr>
+                <has_text_matching expression="Parameter 'selected_model': requires a value, but no legal values defined"/>
+            </assert_stderr>
+        </test>
+
+    </tests>
+
+    <help>
+
+What it does
+.....
+
+* **Predict DNA embeddings**: Generates sequence embeddings from a FASTA file.
+* **Fine-tune**: Fine-tunes DNABERT-2 on user-provided datasets for classification or regression tasks.
+
+Predict DNA embeddings
+.....
+
+**Input**
+
+- **Input file**: A FASTA file containing the DNA sequences to be processed.
+- **Pooling strategy**: Determines how the token representations from the last hidden layer are aggregated into a sequence-level vector embedding.
+
+    * **Mean pooling**: Computes an attention-mask-aware mean over non-special tokens.
+    * **Max pooling**: Selects the maximum value at each embedding dimension across non-special tokens, emphasizing the most prominent signals.
+    * **CLS pooling**: Uses the embedding of the summary ([CLS]) token. BERT-like models prepend this token to each tokenized sequence and train it to represent the sequence as a whole.
+- **Batch size**: Specifies how many sequences are processed simultaneously in a single forward pass.
+
+**Output**
+
+The tool produces a tabular file with a header containing the embedding of each sequence in the input FASTA file.
+Each row contains:
+
+1. The sequence ID from the FASTA header.
+2. The corresponding 768-dimensional vector representation of the input sequence.
+
+**Attention visualization**
+
+If **Visualize Attention** is selected, the tool additionally produces a collection of attention visualizations 
+and data files:
+
+* **Head View**: Visualizes the attention patterns of individual attention heads within a selected layer.
+* **Model View**: Provides a global overview of attention patterns across all layers and heads. The attention heads are arranged in a grid, with each cell representing a specific layer-head pair.
+* **Attention Heatmap**: Visualizes attention relationships between *attending* (query) and *attended-to* (key) token pairs. Attention values are averaged across heads within the selected layer.
+* **Excel workbook**: Contains 12 tabs, one for each layer, with attention values averaged across heads for each query-key pair.
+* **Attention statistics**: Provides additional token-level visualizations and statistics, including token centrality (average incoming attention), attention entropy, and incoming attention from the [CLS] token.
+
+Fine-tune
+.....
+
+**Input**
+
+The tool expects tabular labeled data separated into **training**, **validation**, and **test** datasets.
+Each dataset must contain a header and two columns: *sequence* and *label*.
+
+**Problem type** 
+ 
+The tool supports both:
+
+- **Classification**: Predicts a class or category.
+- **Regression**: Predicts a numerical value.
+
+**LoRA**
+
+LoRA (Low-Rank Adaptation) is a parameter-efficient fine-tuning method that represents weight updates 
+as the product of two low-rank matrices. Only these matrices are updated during training, while the remaining 
+model parameters are kept frozen.
+This significantly reduces the number of trainable parameters and memory requirements. Depending on the 
+configuration, it can also reduce training time while achieving performance comparable to full fine-tuning.
+
+**Output**
+
+The tool produces:
+
+* **Evaluation metrics**: Measures the model's performance on the test dataset.
+* **Labels vs. predictions**: A CSV file containing each test sequence, its true label, and its predicted label.
+* **Trainer state**: A JSON file recording the training state at the specified logging intervals.
+* **Fine-tuned model**: An archive containing the trained model weights in safetensors format and the associated tokenizer and configuration files.
+    </help>
+
+    <citations>
+        <citation type="bibtex">
+        @misc{zhou2024dnabert2efficientfoundationmodel,
+        title={DNABERT-2: Efficient Foundation Model and Benchmark For Multi-Species Genome},
+        author={Zhihan Zhou and Yanrong Ji and Weijian Li and Pratik Dutta and Ramana Davuluri and Han Liu},
+        year={2024},
+        eprint={2306.15006},
+        archivePrefix={arXiv},
+        primaryClass={q-bio.GN},
+        url={https://arxiv.org/abs/2306.15006}
+        }
+        </citation>
+    </citations>
+</tool>
