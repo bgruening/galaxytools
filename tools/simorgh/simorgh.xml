@@ -47,13 +47,18 @@
                     --min-samples $cluster_condi.min_samples
                     --alpha $cluster_condi.alpha
                 #end if
+                #if str($viz_condi.visualize) == 'yes':
+                    --visualize
+                    --viz-style "$viz_condi.viz_style"
+                    --viz-output predicted.html
+                #end if
 
     ]]></command>
     <inputs>
         <param name="pdb" type="data" format="pdb" label="PDB file"/>
         <conditional name="bbflow_condi">
             <param name="bbflow" type="select" label="Run BBflow?" help="It runs a structure-based conformational ensemble prediction with flow matching">
-                <option value="no">No</option>
+                <option value="no" selected="true">No</option>
                 <option value="yes">Yes</option>
             </param>
             <when value="no"/>
@@ -87,19 +92,42 @@
                 <param argument="--alpha" type="float" value="1.5" label="Probability weight in custom distance metric"/>
             </when>
         </conditional>
+        <conditional name="viz_condi">
+            <param name="visualize" type="select" label="Create visualizations?" help="It visualizes the predicted binding sites in PyMOL in HTML format">
+                <option value="no">No</option>
+                <option value="yes" selected="true">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="--viz-style" type="select" label="Visualization Style">
+                    <option value="sphere">sphere</option>
+                    <option value="surface">surface</option>
+                    <option value="cartoon">cartoon</option>
+                </param>
+            </when>
+        </conditional>
     </inputs>
     <outputs>
-        <data name="pdb_out" from_work_dir="predicted.pdb" format="pdb" label="${tool.name} on ${on_string}: Predicted Structure"/>
+        <data name="pdb_out" from_work_dir="predicted.pdb" format="pdb" label="${tool.name} on ${on_string}: Predicted Structure, B-factor"/>
+        <data name="pdb_out_cluster" from_work_dir="predicted_clusters.pdb" format="pdb" label="${tool.name} on ${on_string}: Predicted Structure, clusters">
+            <filter>cluster_condi['cluster'] == 'yes'</filter>
+        </data>
         <data name="bbflow_pdb" from_work_dir="bbflow_aligned.pdb" format="pdb" label="${tool.name} on ${on_string}: BBflow Structure">
             <filter>bbflow_condi['bbflow'] == 'yes'</filter>
         </data>
+        <data name="viz_out" from_work_dir="predicted_clusters.html" format="html" label="${tool.name} on ${on_string}: Visualization">
+            <filter>viz_condi['visualize'] == 'yes'</filter>
+        </data>
     </outputs>
     <tests>
-        <!-- test1: multi_model pdb, no BBflow, no clustering -->
+        <!-- test1: multi_model pdb, no BBflow, no clustering, no visualization -->
         <test expect_num_outputs="1">
             <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
             <conditional name="cluster_condi">
                 <param name="cluster" value="no"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
             </conditional>
             <assert_command>
                 <not_has_text text="bbflow_sample"/>
@@ -117,11 +145,11 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- test2: multi_model pdb, no BBflow, with clustering -->
-        <test expect_num_outputs="1">
+        <!-- test2: multi_model pdb, no BBflow, with clustering, no visualization -->
+        <test expect_num_outputs="2">
             <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
-            <conditional name="bbflow_condi">
-                <param name="bbflow" value="no"/>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
             </conditional>
             <assert_command>
                 <not_has_text text="bbflow_sample"/>
@@ -138,8 +166,16 @@
                     <has_text text="MODEL      25"/>
                 </assert_contents>
             </output>
+            <output name="pdb_out_cluster" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- test3: single_model pdb, with BBflow, no clustering -->
+        <!-- test3: single_model pdb, with BBflow, no clustering, no visualization -->
         <test expect_num_outputs="2">
             <param name="pdb" value="single_model.pdb" ftype="pdb"/>
             <conditional name="bbflow_condi">
@@ -150,6 +186,9 @@
             </conditional>
             <conditional name="cluster_condi">
                 <param name="cluster" value="no"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
             </conditional>
             <assert_command>
                 <has_text text="bbflow_sample"/>
@@ -177,7 +216,7 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- test4: single_model pdb, with BBflow, with clustering -->
+        <!-- test4: single_model pdb, with BBflow, with clustering, no visualization -->
         <test expect_num_outputs="2">
             <param name="pdb" value="single_model.pdb" ftype="pdb"/>
             <conditional name="bbflow_condi">
@@ -185,6 +224,9 @@
                 <param name="num_samples" value="1"/>
                 <param name="timesteps" value="1"/>
                 <param name="batch_size" value="1"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
             </conditional>
             <assert_command>
                 <has_text text="bbflow_sample"/>
@@ -202,11 +244,85 @@
                     <has_n_lines n="1066"/>
                 </assert_contents>
             </output>
+            <output name="pdb_out_cluster" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
             <output name="bbflow_pdb" ftype="pdb">
                 <assert_contents>
                     <has_text text="ATOM"/>
                     <has_text text="END"/>
                     <has_n_lines n="1066"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test5: multi_model pdb, no BBflow, with clustering, with visualization -->
+        <test expect_num_outputs="2">
+            <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <assert_command>
+                <not_has_text text="bbflow_sample"/>
+                <has_text text="--cluster"/>
+                <has_text text="--visualize"/>
+                <has_text_matching expression="--viz-style &quot;sphere&quot;"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+            <output name="pdb_out_cluster" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+            <output name="viz_out" ftype="html">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test6: multi_model pdb, no BBflow, no clustering, with visualization -->
+        <test expect_num_outputs="2">
+            <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="no"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="yes"/>
+            </conditional>
+            <assert_command>
+                <not_has_text text="bbflow_sample"/>
+                <not_has_text text="--cluster"/>
+                <has_text text="--visualize"/>
+                <has_text text="--viz-style sphere"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+            <output name="viz_out" ftype="html">
+                <assert_contents>
+                    <has_size min="1"/>
                 </assert_contents>
             </output>
         </test>
