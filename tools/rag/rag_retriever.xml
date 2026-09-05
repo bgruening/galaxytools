@@ -4,7 +4,7 @@
 
   <macros>
     <token name="@TOOL_VERSION@">1.0.0</token>
-    <token name="@VERSION_SUFFIX@">1</token>
+    <token name="@VERSION_SUFFIX@">2</token>
     <token name="@CONTAINER_VERSION@">0.14.18</token>
   </macros>
 
@@ -29,9 +29,11 @@
 #if $model_source.source_type == "upload":
     mkdir -p ./local_model &&
     (tar -xf '$model_source.model_archive' -C ./local_model --strip-components=1 || tar -xf '$model_source.model_archive' -C ./local_model) &&
-    #set MODEL_PATH = "./local_model"
+    #set EMBED = {"source": "local", "path": "./local_model"}
+#else if $model_source.source_type == "litellm":
+    #set EMBED = {"source": "litellm", "model": str($model_source.embedding_model.fields.model_id), "provider": str($model_source.embedding_model.fields.provider)}
 #else:
-    #set MODEL_PATH = str($model_source.embedding_model)
+    #set EMBED = {"source": "local", "path": str($model_source.embedding_model)}
 #end if
 
 #set LINKED = []
@@ -43,15 +45,30 @@
 #end for
 #set context_files = json.dumps($LINKED)
 
-python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$MODEL_PATH' '$top_k'
+python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$json.dumps($EMBED)' '$top_k' '$__user_id__' '$__galaxy_url__'
 ]]></command>
 
   <inputs>
     <conditional name="model_source">
       <param name="source_type" type="select" label="Embedding Model Source">
-        <option value="preinstalled">Use an installed model</option>
+        <option value="litellm" selected="true">Use a LiteLLM-hosted model</option>
+        <option value="preinstalled">Use an installed HuggingFace model</option>
         <option value="upload">Upload a custom model archive</option>
       </param>
+
+      <when value="litellm">
+        <param name="embedding_model" type="select" label="Select Embedding Model">
+          <options from_data_table="genai_models">
+            <column name="name" index="2" />
+            <column name="value" index="0" />
+            <column name="model_id" index="1" />
+            <column name="provider" index="4" />
+            <filter type="static_value" value="embedding" column="3" />
+          </options>
+          <validator type="no_options"
+            message="No embedding models are configured on this Galaxy instance. Ask your Galaxy admin to make an embedding model available." />
+        </param>
+      </when>
 
       <when value="preinstalled">
         <param name="embedding_model" type="select" label="Select Model">
@@ -123,6 +140,19 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$MOD
         <has_text text="Embedding model path does not exist: unknown" />
       </assert_stderr>
     </test>
+
+    <test expect_failure="true" expect_exit_code="1">
+      <conditional name="model_source">
+        <param name="source_type" value="litellm" />
+        <param name="embedding_model" value="unknown" />
+      </conditional>
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="How does it work?" />
+      <param name="top_k" value="2" />
+      <assert_stderr>
+        <has_text text="LITELLM_CONFIG_FILE environment variable is not set."/>
+      </assert_stderr>
+    </test>
   </tests>
 
 
@@ -132,7 +162,7 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$MOD
 **What it does**
 
 This tool performs **Retrieval-Augmented Generation (RAG) document retrieval**.
-It extracts relevant text passages from a set of input files using **semantic search with HuggingFace embeddings**.
+It extracts relevant text passages from a set of input files using **semantic search with embedding models**.
 
 The retrieved passages are written to a text file which can then be used as **context input for an LLM** (for example with the LLM Hub tool).
 
@@ -148,9 +178,10 @@ Usage
 
 1. **Embedding Model Source**
 
-   You can provide the embedding model in two ways:
-   
-   - **Use an installed model**: Select a model from a list provided by the administrator (configured via `.loc` files).
+   You can provide the embedding model in three ways:
+
+   - **Use a hosted embedding model**: Select an embedding model made available by your Galaxy administrator (e.g. BGE-M3, Qwen3 Embedding).
+   - **Use an installed HuggingFace model**: Select a local model from a list provided by your Galaxy administrator (configured via `.loc` files).
    - **Upload custom Model Archive**: Provide your own model as a **.tgz** or archive. This allows the tool to run offline using the provided model files (e.g., config.json, model weights).
 
 2. **Corpus Documents**
@@ -199,7 +230,6 @@ Notes
 - GPU acceleration is automatically used if available.
 - Retrieval quality strongly depends on the chosen embedding model.
 - Larger Top-K values provide more context but may introduce irrelevant information.
-- For the preinstalled models, the paths are managed via the `huggingface` data table.
 
 ]]></help>
 
