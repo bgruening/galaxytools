@@ -1,0 +1,402 @@
+<tool id="simorgh" name="SIMORGH" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Deep learning framework for apo-state and cryptic pocket prediction</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="edam"/>
+    <expand macro="requirements"/>
+    <expand macro="creators"/>
+    <command detect_errors="aggressive"><![CDATA[
+        export DEVICE=`python -c "import torch; print('cuda' if torch.cuda.is_available() else 'cpu')"`
+        && echo "Using device: \$DEVICE"
+        && ln -s '$pdb' input.pdb
+        #if str($bbflow_condi.bbflow) == 'yes':
+            && bbflow_sample
+                --input_path input.pdb
+                --output_path bbflow.pdb
+                --output_format pdb
+                --num_samples $bbflow_condi.num_samples
+                #if str($bbflow_condi.batch_size) != '':
+                    --batch_size $bbflow_condi.batch_size
+                #end if
+                --device \$DEVICE
+                --timesteps $bbflow_condi.timesteps
+                --tag $bbflow_condi.advanced.tag
+                #if str($bbflow_condi.advanced.gamma_trans) != '':
+                    --gamma_trans $bbflow_condi.advanced.gamma_trans
+                #end if
+                #if str($bbflow_condi.advanced.gamma_rots) != '':
+                    --gamma_rots $bbflow_condi.advanced.gamma_rots
+                #end if
+            && python /opt/SIMORGH/Model/realign.py
+                -i bbflow.pdb
+                -o bbflow_aligned.pdb
+        #end if
+        && python /opt/SIMORGH/Model/inference.py
+                #if str($bbflow_condi.bbflow) == 'yes':
+                    -i bbflow_aligned.pdb
+                #else
+                    -i input.pdb
+                #end if
+                -o predicted.pdb
+                --model1 /opt/SIMORGH/Model/model_4.pt --model2 /opt/SIMORGH/Model/model_44.pt
+                #if str($cluster_condi.cluster) == 'yes':
+                    --cluster
+                    --cutoff $cluster_condi.cutoff
+                    --min-cluster-size $cluster_condi.min_cluster_size
+                    --min-samples $cluster_condi.min_samples
+                    --alpha $cluster_condi.alpha
+                #end if
+                #if str($viz_condi.visualize) == 'yes':
+                    --visualize
+                    --viz-style "$viz_condi.viz_style"
+                    --viz-output predicted.html
+                #end if
+
+    ]]></command>
+    <inputs>
+        <param name="pdb" type="data" format="pdb" label="PDB file"/>
+        <conditional name="bbflow_condi">
+            <param name="bbflow" type="select" label="Run BBflow?" help="It runs a structure-based conformational ensemble prediction with flow matching">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="--num_samples" type="integer" value="25" min="1" label="Number of conformations to sample"/>
+                <param argument="--timesteps" type="integer" value="20" min="1" label="Number of sampling timesteps"/>
+                <param argument="--batch_size" type="integer" optional="true" min="1" label="Batch size" help="Leave blank to estimate automatically"/>
+                <section name="advanced" title="Advanced prior parameters" expanded="false">
+                    <param argument="--tag" type="select" label="Tag of the model to use">
+                        <option value="bbflow-0.1">bbflow-0.1</option>
+                        <option value="bbflow-0.1-old">bbflow-0.1-old</option>
+                        <option value="bbflow-mini-0.1">bbflow-mini-0.1</option>
+                        <option value="bbflow-multimer-0.1">bbflow-multimer-0.1</option>
+                        <option value="bbflow-multimer-0.2" selected="true">bbflow-multimer-0.2 [latest]</option>
+                    </param>
+                    <param argument="--gamma_trans" type="float" optional="true" label="Gamma (translational)" help="Conditional prior parameter for the translational part. Leave blank to use the training configuration's value."/>
+                    <param argument="--gamma_rots" type="float" optional="true" label="Gamma (rotational)" help="Conditional prior parameter for the rotational part. Leave blank to use the training configuration's value."/>
+                </section>
+            </when>
+        </conditional>
+        <conditional name="cluster_condi">
+            <param name="cluster" type="select" label="Run Clustering on predictions?" help="It runs HDBSCAN clustering on predictions">
+                <option value="no">No</option>
+                <option value="yes" selected="true">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="--cutoff" type="float" value="0.4" label="Probability cutoff for clustering"/>
+                <param argument="--min-cluster-size" type="integer" value="25" label="HDBSCAN min_cluster_size"/>
+                <param argument="--min-samples" type="integer" value="10" label="HDBSCAN min_samples"/>
+                <param argument="--alpha" type="float" value="1.5" label="Probability weight in custom distance metric"/>
+            </when>
+        </conditional>
+        <conditional name="viz_condi">
+            <param name="visualize" type="select" label="Create visualizations?" help="It visualizes the predicted binding sites in PyMOL in HTML format">
+                <option value="no">No</option>
+                <option value="yes" selected="true">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="--viz-style" type="select" label="Visualization Style">
+                    <option value="sphere">sphere</option>
+                    <option value="surface">surface</option>
+                    <option value="cartoon">cartoon</option>
+                </param>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="pdb_out" from_work_dir="predicted.pdb" format="pdb" label="${tool.name} on ${on_string}: Predicted Structure, B-factor"/>
+        <data name="pdb_out_cluster" from_work_dir="predicted_clusters.pdb" format="pdb" label="${tool.name} on ${on_string}: Predicted Structure, clusters">
+            <filter>cluster_condi['cluster'] == 'yes'</filter>
+        </data>
+        <data name="bbflow_pdb" from_work_dir="bbflow_aligned.pdb" format="pdb" label="${tool.name} on ${on_string}: BBflow Structure">
+            <filter>bbflow_condi['bbflow'] == 'yes'</filter>
+        </data>
+        <data name="viz_out" from_work_dir="predicted.html" format="html" label="${tool.name} on ${on_string}: Visualization">
+            <filter>viz_condi['visualize'] == 'yes'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- test1: multi_model pdb, no BBflow, no clustering, no visualization -->
+        <test expect_num_outputs="1">
+            <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="no"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
+            </conditional>
+            <assert_command>
+                <not_has_text text="bbflow_sample"/>
+                <not_has_text text="--cluster"/>
+                <not_has_text text="--visualize"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test2: multi_model pdb, no BBflow, with clustering, no visualization -->
+        <test expect_num_outputs="2">
+            <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
+            </conditional>
+            <assert_command>
+                <not_has_text text="bbflow_sample"/>
+                <has_text text="--cluster"/>
+                <not_has_text text="--visualize"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+            <output name="pdb_out_cluster" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test3: single_model pdb, with BBflow, no clustering, no visualization -->
+        <test expect_num_outputs="2">
+            <param name="pdb" value="single_model.pdb" ftype="pdb"/>
+            <conditional name="bbflow_condi">
+                <param name="bbflow" value="yes"/>
+                <param name="num_samples" value="2"/>
+                <param name="timesteps" value="1"/>
+                <param name="batch_size" value="1"/>
+            </conditional>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="no"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
+            </conditional>
+            <assert_command>
+                <has_text text="bbflow_sample"/>
+                <has_text text="realign.py"/>
+                <not_has_text text="--cluster"/>
+                <not_has_text text="--visualize"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Sampling 2 confs for 1 input PDB files"/>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="2135"/>
+                    <has_text text="MODEL      2"/>
+                </assert_contents>
+            </output>
+            <output name="bbflow_pdb" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="2135"/>
+                    <has_text text="MODEL      2"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test4: single_model pdb, with BBflow, with clustering, no visualization -->
+        <test expect_num_outputs="3">
+            <param name="pdb" value="single_model.pdb" ftype="pdb"/>
+            <conditional name="bbflow_condi">
+                <param name="bbflow" value="yes"/>
+                <param name="num_samples" value="1"/>
+                <param name="timesteps" value="1"/>
+                <param name="batch_size" value="1"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="no"/>
+            </conditional>
+            <assert_command>
+                <has_text text="bbflow_sample"/>
+                <has_text text="realign.py"/>
+                <has_text text="--cluster"/>
+                <not_has_text text="--visualize"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Sampling 1 confs for 1 input PDB files"/>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="1066"/>
+                </assert_contents>
+            </output>
+            <output name="pdb_out_cluster" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="1066"/>
+                </assert_contents>
+            </output>
+            <output name="bbflow_pdb" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="1066"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test5: multi_model pdb, no BBflow, with clustering, with visualization -->
+        <test expect_num_outputs="3">
+            <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <assert_command>
+                <not_has_text text="bbflow_sample"/>
+                <has_text text="--cluster"/>
+                <has_text text="--visualize"/>
+                <has_text_matching expression="--viz-style &quot;sphere&quot;"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+            <output name="pdb_out_cluster" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+            <output name="viz_out" ftype="html">
+                <assert_contents>
+                    <has_text_matching expression="&lt;h3 style=&quot;text-align:center;&quot;&gt;Predicted Probability&lt;/h3&gt;"/>
+                    <has_text_matching expression="&lt;h3 style=&quot;text-align:center;&quot;&gt;Clusters&lt;/h3&gt;"/>
+                    <has_size min="1"/>
+                    <has_n_lines n="110"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- test6: multi_model pdb, no BBflow, no clustering, with visualization -->
+        <test expect_num_outputs="2">
+            <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="no"/>
+            </conditional>
+            <conditional name="viz_condi">
+                <param name="visualize" value="yes"/>
+            </conditional>
+            <assert_command>
+                <not_has_text text="bbflow_sample"/>
+                <not_has_text text="--cluster"/>
+                <has_text text="--visualize"/>
+                <has_text_matching expression="--viz-style &quot;sphere&quot;"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Using device: cpu"/>
+            </assert_stdout>
+            <output name="pdb_out" ftype="pdb">
+                <assert_contents>
+                    <has_text text="ATOM"/>
+                    <has_text text="END"/>
+                    <has_n_lines n="10976"/>
+                    <has_text text="MODEL      25"/>
+                </assert_contents>
+            </output>
+            <output name="viz_out" ftype="html">
+                <assert_contents>
+                    <has_text_matching expression="&lt;h3 style=&quot;text-align:center;&quot;&gt;Predicted Probability&lt;/h3&gt;"/>
+                    <has_size min="1"/>
+                    <has_n_lines n="61"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+What it does
+-------------
+
+SIMORGH predicts apo-state and cryptic ligand-binding sites from a single protein structure. Given an input PDB file, it outputs a residue-level predicted probability of ligand binding for each residue, using two trained models — a geometric encoder and an ensemble aggregator — and writes the predictions to an output PDB file.
+
+Apo-state structures lack ligand-induced pocket organization, which poses a bigger challenge for pocket prediction. This challenge is more pronounced for cryptic pockets. To address this, we can optionally generate an ensemble of alternative backbone conformations using BBflow, capturing greater conformational heterogeneity and improving sensitivity to pockets not visible in the input structure.
+
+Predicted site scores can also optionally be clustered using HDBSCAN — useful when you want to detect multiple binding sites separately and remove the noise, rather than just a general per-residue probability map.
+
+
+Inputs
+-------
+
+* **PDB file**: the input protein structure to analyze.
+
+* **Run BBflow?**: if enabled, samples alternative backbone conformations of
+  the input structure before prediction.
+
+  * **Number of conformations to sample**: how many backbone conformations
+    BBflow generates.
+  * **Number of sampling timesteps**: number of integration steps used by
+    the BBflow sampler; more timesteps can improve sample quality at the
+    cost of runtime.
+  * **Batch size**: number of conformations sampled per batch; left blank,
+    it is estimated automatically.
+  * **Advanced prior parameters (gamma_trans / gamma_rots)**: control how
+    closely the sampling prior sticks to the input (equilibrium) structure.
+    Left blank, the values from the model's training configuration are used.
+  * **Tag of the model to use**: checkpoint/architecture variant for BBflow 
+      sampling (e.g., single-chain vs. multimer versions).
+
+  * **Create visualizations?**: if enabled, generates an interactive 3D HTML 
+    visualization showing predicted binding probabilities and clusters.
+
+    * **Visualization Style**: molecular representation style used for the 
+      structure rendering (sphere, surface, or cartoon).
+* **Run Clustering on predictions?**: if enabled, groups predicted site
+  points into clusters using HDBSCAN.
+
+  * **Probability cutoff for clustering**: minimum predicted probability
+    for a point to be considered when forming clusters.
+  * **HDBSCAN min_cluster_size**: minimum number of points required to form
+    a cluster.
+  * **HDBSCAN min_samples**: HDBSCAN density parameter; higher values yield
+    more conservative (less noisy) clustering.
+  * **Probability weight in custom distance metric**: weight given to the
+    predicted probability, relative to spatial distance, when computing
+    the distance metric used for clustering.
+
+Outputs
+--------
+
+* **Predicted Structure**: the input structure (or the BBflow-sampled
+  conformation, if BBflow was run) annotated with predicted binding-site
+  scores in b-factor column.
+* **BBflow Structure**: only produced if BBflow sampling was enabled; the
+  backbone conformations sampled by BBflow prior to prediction.
+* **Predicted Structure, clusters**: only produced if clustering is enabled; 
+  a PDB structure containing the cluster assignments.
+* **Visualization**: only produced if visualization is enabled; an interactive 
+  standalone HTML file for inspecting residue predictions and clustered pockets.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
