@@ -1,5 +1,5 @@
 <tool id="chatgpt_openai_api" name="chatGPT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
-    <description>Integrating OpenAI's ChatGPT into Galaxy</description>
+    <description>Query OpenAI or any OpenAI-compatible LLM server</description>
     <macros>
         <token name="@TOOL_VERSION@">2026</token>
         <token name="@VERSION_SUFFIX@">0</token>
@@ -8,11 +8,11 @@
     <requirements>
         <requirement type="package" version="3.13">python</requirement>
         <requirement type="package" version="2.38.0">openai</requirement>
-        <credentials name="openai_credentials" version="1.0" label="OpenAI Credentials" description="Credentials for accessing OpenAI's API.">
-            <secret name="openai_api_key" inject_as_env="OPENAI_API_KEY" optional="true" label="OpenAI API Key" description="Required when using the OpenAI server type. You can obtain it from your OpenAI account dashboard."/>
+        <credentials name="openai_credentials" version="1.0" optional="true" label="OpenAI Credentials" description="Credentials for accessing OpenAI's API.">
+            <secret name="openai_api_key" inject_as_env="OPENAI_API_KEY" optional="false" label="OpenAI API Key" description="Required when using the OpenAI server type. You can obtain it from your OpenAI account dashboard."/>
         </credentials>
-        <credentials name="custom_server_credentials" version="1.1" label="Custom Server Credentials" description="Credentials for accessing a custom OpenAI-compatible server.">
-            <variable name="custom_server_url" inject_as_env="CUSTOM_SERVER_URL" optional="true" label="Server URL" description="Base URL of the OpenAI-compatible API (e.g. http://localhost:8000/v1, https://my-server.com/v1)."/>
+        <credentials name="custom_server_credentials" version="1.0" optional="true" label="Custom Server Credentials" description="Credentials for accessing a custom OpenAI-compatible server.">
+            <variable name="custom_server_url" inject_as_env="CUSTOM_SERVER_URL" optional="false" label="Server URL" description="Base URL of the OpenAI-compatible API (e.g. http://localhost:8000/v1, https://my-server.com/v1)."/>
             <secret name="custom_server_api_key" inject_as_env="CUSTOM_SERVER_API_KEY" optional="true" label="Custom Server API Key" description="Only needed if your custom server requires authentication. Leave empty for servers without API key requirements (e.g., local vLLM or Ollama)."/>
         </credentials>
     </requirements>
@@ -44,14 +44,18 @@
 
 python '$__tool_directory__/chatgpt.py'
 '$context_files'
-'$prompt'
+'$prompt_file'
 '$model'
 '$server_type.server_type_selection'
 '$advanced.temperature'
 '$advanced.max_tokens'
 '$advanced.top_p'
-'$advanced.system_message'
+'$system_message_file'
     ]]></command>
+    <configfiles>
+        <configfile name="prompt_file">$prompt</configfile>
+        <configfile name="system_message_file">#if str($advanced.system_message) != 'None'#$advanced.system_message#end if#</configfile>
+    </configfiles>
     <inputs>
         <conditional name="server_type">
             <param name="server_type_selection" type="select" label="Server" help="Choose where to send your request.">
@@ -70,23 +74,27 @@ python '$__tool_directory__/chatgpt.py'
             <when value="custom">
                 <param name="custom_model" type="text" optional="false" label="Model" help="Model identifier as recognized by the server (e.g. llama-3.2-8b, gpt-4o).">
                     <validator type="empty_field"/>
+                    <sanitizer><valid initial="string.printable"><remove value="&apos;"/></valid></sanitizer>
                 </param>
             </when>
         </conditional>
-        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional context data that will be uploaded for processing."/>
+        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional context data that will be uploaded for processing. Images are limited to 20MB each."/>
         <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want the model to perform." area="true">
             <validator type="empty_field"/>
+            <sanitizer sanitize="false"/>
         </param>
         <section name="advanced" title="Advanced Options" expanded="false">
-            <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Controls randomness in the output. Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model's default temperature will be used."/>
-            <param name="max_tokens" type="integer" optional="true" min="1" max="128000" label="Max tokens" help="Maximum number of tokens in the response. If not set, the model's default is used."/>
-            <param name="top_p" type="float" optional="true" min="0.0" max="1.0" label="Top P" help="Nucleus sampling threshold. If not set, the model's default is used."/>
-            <param name="system_message" type="text" optional="true" label="System message" help="Optional system prompt to set the model's behavior. If not set, no system message is sent." area="true"/>
+            <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Controls randomness in the output. Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model's default temperature will be used. On the OpenAI server type only gpt-4.1 and gpt-4o accept it; the gpt-5 models reject it, so it is dropped with a note in the job log."/>
+            <param name="max_tokens" type="integer" optional="true" min="1" max="128000" label="Max tokens" help="Maximum number of tokens in the response. If not set, the model's default is used. For OpenAI models this is sent as max_completion_tokens and also covers hidden reasoning tokens, so a low value on a gpt-5 model can be consumed entirely by reasoning and return no answer."/>
+            <param name="top_p" type="float" optional="true" min="0.0" max="1.0" label="Top P" help="Nucleus sampling threshold. If not set, the model's default is used. On the OpenAI server type only gpt-4.1 and gpt-4o accept it; the gpt-5 models reject it, so it is dropped with a note in the job log."/>
+            <param name="system_message" type="text" optional="true" label="System message" help="Optional system prompt to set the model's behavior. If not set, no system message is sent." area="true">
+                <sanitizer sanitize="false"/>
+            </param>
 
         </section>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} (#if $server_type.server_type_selection == 'openai' then $server_type.model else $server_type.custom_model#) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" label="${tool.name} (#if $server_type.server_type_selection == 'openai' then $server_type.model else $server_type.custom_model#)#if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
     </outputs>
     <tests>
         <test expect_failure="true" expect_exit_code="1">
@@ -124,6 +132,48 @@ python '$__tool_directory__/chatgpt.py'
                 <has_text text="Custom server URL is not provided in credentials!"/>
             </assert_stdout>
         </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="server_type">
+                <param name="server_type_selection" value="openai"/>
+                <param name="model" value="gpt-5"/>
+            </conditional>
+            <param name="prompt" value=" "/>
+            <assert_stdout>
+                <has_text text="The prompt is empty!"/>
+            </assert_stdout>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="server_type">
+                <param name="server_type_selection" value="custom"/>
+                <param name="custom_model" value="llama-3.2-8b"/>
+            </conditional>
+            <param name="prompt" value="Hello"/>
+            <section name="advanced">
+                <param name="temperature" value="0.5"/>
+                <param name="max_tokens" value="100"/>
+                <param name="top_p" value="0.9"/>
+                <param name="system_message" value="You are a helpful assistant."/>
+            </section>
+            <assert_command>
+                <has_text text="'llama-3.2-8b' 'custom' '0.5' '100' '0.9'"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Custom server URL is not provided in credentials!"/>
+            </assert_stdout>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="server_type">
+                <param name="server_type_selection" value="openai"/>
+                <param name="model" value="gpt-4o"/>
+            </conditional>
+            <param name="prompt" value="Hello"/>
+            <assert_command>
+                <has_text text="'gpt-4o' 'openai' '' '' ''"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="OpenAI API key is not provided in credentials!"/>
+            </assert_stdout>
+        </test>
     </tests>
     <help><![CDATA[
 
@@ -145,7 +195,7 @@ You can choose from two server types:
 **Credentials**
 
 - **OpenAI API Key**: Required when using the OpenAI server type. Enter your key in the Galaxy credentials section.
-- **Custom Server URL**: Required when using the Custom server type. The base URL of the OpenAI-compatible API (e.g. ``https://api.example.com/v1``).
+- **Custom Server URL**: Required when using the Custom server type. The base URL of the OpenAI-compatible API — your server's address plus the API path, which for most servers ends in ``/v1``. It must begin with an ``http`` or ``https`` scheme. Concrete examples are given in the credentials form itself.
 - **Custom Server API Key**: Optional. Only needed if your custom server requires authentication. Leave empty for servers without API key requirements (e.g., local vLLM or Ollama).
 
 **Usage**
@@ -160,11 +210,11 @@ You can choose from two server types:
 
 **Advanced Options**
 
-- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature.
+- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only gpt-4.1 and gpt-4o accept it; the gpt-5 models reject it outright, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
 
-- **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used.
+- **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used. For the OpenAI server type this is sent as ``max_completion_tokens``, which also covers the hidden reasoning tokens of the reasoning models -- setting it too low there can consume the whole budget on reasoning and return an empty answer. For custom servers it is sent as ``max_tokens``, which is what Ollama and older vLLM builds accept.
 
-- **Top P**: Nucleus sampling threshold. If not set, the model's default is used.
+- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only gpt-4.1 and gpt-4o accept it on the OpenAI server type.
 
 - **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
 

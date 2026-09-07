@@ -17,11 +17,12 @@ Make sure to set up a payment method: https://platform.openai.com/settings/organ
 
 ### Custom OpenAI-compatible server
 
-Connect to any server that implements the OpenAI Chat Completions API (e.g., vLLM, Ollama, LiteLLM proxy, Mistral, local deployments). Provide the server URL and model name. Authentication is optional — many local servers do not require an API key.
+Connect to any server that implements the OpenAI Chat Completions API (e.g., vLLM, Ollama, LiteLLM proxy, Mistral, local deployments). The server URL is configured once in the Custom Server Credentials section; only the model name is specified per run. Authentication is optional — many local servers do not require an API key.
 
 ## Credentials
 
 - **OpenAI API Key**: Required when using the OpenAI server type. Enter your key in the Galaxy credentials section.
+- **Custom Server URL**: Required when using the Custom server type. The base URL of the OpenAI-compatible API (e.g. `https://api.example.com/v1`, `http://localhost:8000/v1`). It must start with `http://` or `https://`.
 - **Custom Server API Key**: Optional. Only needed if your custom server requires authentication. Leave empty for servers without API key requirements (e.g., local vLLM or Ollama).
 
 ## Usage
@@ -30,7 +31,7 @@ Connect to any server that implements the OpenAI Chat Completions API (e.g., vLL
 
 1. **Select a Server Type**: Choose between OpenAI or Custom.
 
-2. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOCX, HTML, JSON, PDF, TXT, JPG, PNG, or GIF. This context data serves as the input for the prompt you wish to execute. If no context is provided, the model will respond based solely on the prompt.
+2. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOCX, HTML, JSON, PDF, TXT, JPG, PNG, or GIF. Individual images are limited to 20MB. This context data serves as the input for the prompt you wish to execute. If no context is provided, the model will respond based solely on the prompt.
 
 3. **Provide a Prompt**: Provide a prompt or task for the model to execute. The more specific the prompt, the more tailored the response will be.
 
@@ -40,11 +41,11 @@ Connect to any server that implements the OpenAI Chat Completions API (e.g., vLL
 
 ### Advanced Options
 
-- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature.
+- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only `gpt-4.1` and `gpt-4o` accept it; the gpt-5 models reject it outright, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
 
-- **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used.
+- **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used. For the OpenAI server type it is sent as `max_completion_tokens`, which also covers the hidden reasoning tokens of the gpt-5 models — setting it too low there can consume the whole budget on reasoning and return an empty answer. For custom servers it is sent as `max_tokens`, which Ollama and older vLLM builds still require.
 
-- **Top P**: Nucleus sampling threshold. If not set, the model's default is used.
+- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only `gpt-4.1` and `gpt-4o` accept it on the OpenAI server type.
 
 - **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
 
@@ -56,6 +57,6 @@ This response is saved in a Markdown file.
 ## Privacy note
 
 When you run this tool, your input data is sent to the configured server using the provided credentials.
-For the OpenAI server type, files uploaded as context are processed by OpenAI's servers and are not stored beyond their necessary use.
-You can check your OpenAI storage at https://platform.openai.com/storage/.
-For custom servers, data handling depends on the server's policies.
+Context files are embedded directly in the chat completion request — text files inline, images as base64 `data:` URIs — so they are not uploaded to OpenAI's Files/storage API and there is nothing to delete afterwards.
+For the OpenAI server type, the request is subject to OpenAI's data usage policies.
+For custom servers, data handling depends on the server's policies, and the Custom Server URL you configure determines which host the Galaxy job connects to.

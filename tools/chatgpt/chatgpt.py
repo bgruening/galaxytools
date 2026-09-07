@@ -10,7 +10,13 @@ from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast, ClassVar, TypeAlias
 
-from openai import AuthenticationError, InternalServerError, OpenAI, RateLimitError
+from openai import (
+    APIConnectionError,
+    AuthenticationError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion_content_part_image_param import (
     ChatCompletionContentPartImageParam,
@@ -34,7 +40,10 @@ MessageContentItem: TypeAlias = ChatCompletionContentPartParam
 ContextFile: TypeAlias = tuple[str, str]
 
 MAX_RETRIES = 3
-MAX_DELAY = 900
+
+BILLING_URL = "https://platform.openai.com/settings/organization/billing"
+
+MAX_ERROR_CHARS = 300
 
 
 def resolve_api_key(server_type: str) -> str | None:
@@ -76,7 +85,7 @@ def build_client(base_url: str | None, api_key: str | None) -> OpenAI:
         kwargs["api_key"] = "not-needed"
     if base_url:
         kwargs["base_url"] = base_url
-    return OpenAI(**kwargs)
+    return OpenAI(max_retries=0, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -108,15 +117,23 @@ class MessageBuilder:
 
     def _build_image_content(self, path: str) -> ChatCompletionContentPartImageParam:
         """Encode an image context file for model consumption."""
-        if os.path.getsize(path) > self._MAX_IMAGE_BYTES:
+        try:
+            size = os.path.getsize(path)
+        except OSError as exc:
+            raise ValueError(f"Error reading file {path}: {exc}") from exc
+
+        if size > self._MAX_IMAGE_BYTES:
             raise ValueError(
                 f"File {path} exceeds the 20MB limit and will not be processed."
             )
 
         _, ext = os.path.splitext(path)
         media_type = self._MEDIA_TYPE_MAP.get(ext.lower(), "image/jpeg")
-        with open(path, "rb") as img_file:
-            image_data = base64.standard_b64encode(img_file.read()).decode("utf-8")
+        try:
+            with open(path, "rb") as img_file:
+                image_data = base64.standard_b64encode(img_file.read()).decode("utf-8")
+        except OSError as exc:
+            raise ValueError(f"Error reading file {path}: {exc}") from exc
 
         image_url_payload = ImageURL(
             url=f"data:{media_type};base64,{image_data}", detail="auto"
@@ -127,17 +144,22 @@ class MessageBuilder:
 
     def _build_text_content(self, path: str) -> ChatCompletionContentPartTextParam:
         """Read a text context file and wrap it in a templated message."""
-        try:
-            with open(path, "r", encoding="utf-8", errors="ignore") as text_file:
-                file_content = text_file.read()
-        except OSError as exc:
-            raise ValueError(f"Error reading file {path}: {exc}") from exc
+        file_content = read_text_file(path)
 
         basename = os.path.basename(path)
         return ChatCompletionContentPartTextParam(
             type="text",
             text=f"--- Content of {basename} ---\n{file_content}\n",
         )
+
+
+def read_text_file(path: str) -> str:
+    """Read a UTF-8 text file, reporting a tool-level error on failure."""
+    try:
+        with open(path, "r", encoding="utf-8", errors="ignore") as text_file:
+            return text_file.read()
+    except OSError as exc:
+        raise ValueError(f"Error reading file {path}: {exc}") from exc
 
 
 def parse_context_files(raw: str) -> list[ContextFile]:
@@ -194,54 +216,145 @@ def build_messages(
     return messages
 
 
-def call_chat_completion(
-    client: OpenAI,
+# OpenAI models offered by this tool that accept temperature/top_p on Chat
+# Completions. Determined empirically against the live API on 2026-09-07: every
+# other model in the option list answers a request carrying temperature with
+# 400 unsupported_value, and one carrying top_p with 400 unsupported_parameter.
+# Keep an explicit set rather than a prefix rule, and re-check it when adding
+# an option. Anything not listed is treated as refusing the parameters:
+# sending one to a model that refuses it fails the job, omitting it only
+# costs a note.
+SAMPLING_MODELS = frozenset({"gpt-4.1", "gpt-4o"})
+
+
+def uses_fixed_sampling(model: str) -> bool:
+    """Whether an OpenAI model refuses temperature/top_p."""
+    return model not in SAMPLING_MODELS
+
+
+def build_api_params(
     model: str,
     messages: list[ChatCompletionMessageParam],
+    server_type: str,
     temperature: float | None = None,
     max_tokens: int | None = None,
     top_p: float | None = None,
-) -> ChatCompletion:
-    """Request a chat completion with optional parameters."""
+) -> dict:
+    """Assemble the request parameters, adapted to the target server."""
     api_params: dict = {"model": model, "messages": messages}
-    if temperature is not None:
-        api_params["temperature"] = temperature
-    if max_tokens is not None:
-        api_params["max_tokens"] = max_tokens
-    if top_p is not None:
-        api_params["top_p"] = top_p
+    fixed_sampling = server_type == "openai" and uses_fixed_sampling(model)
 
+    for name, value in (("temperature", temperature), ("top_p", top_p)):
+        if value is None:
+            continue
+        if fixed_sampling:
+            if value != 1.0:
+                print(
+                    f"Note: {name} is not sent for '{model}' -- reasoning "
+                    f"models on the OpenAI API reject it; the requested value "
+                    f"{value} was ignored."
+                )
+            continue
+        api_params[name] = value
+
+    if max_tokens is not None:
+        # OpenAI deprecated ``max_tokens`` and rejects it outright on the gpt-5
+        # family; ``max_completion_tokens`` is accepted by every current OpenAI
+        # model. Custom servers are the mirror image -- Ollama's OpenAI shim
+        # still only understands ``max_tokens``.
+        if server_type == "openai":
+            api_params["max_completion_tokens"] = max_tokens
+        else:
+            api_params["max_tokens"] = max_tokens
+
+    return api_params
+
+
+def call_chat_completion(client: OpenAI, api_params: dict) -> ChatCompletion:
+    """Request a chat completion with the prepared parameters."""
     return client.chat.completions.create(**api_params)
+
+
+def describe_error(exc: Exception) -> str:
+    """Summarise an API error without echoing the server's raw response.
+
+    The custom server URL comes from the user, so the job node can be pointed
+    at any host it can reach; copying the response body into the job log would
+    turn that into a way to read those hosts. Only the HTTP status and the
+    parsed OpenAI-style error fields are reported, and a body that is not a
+    JSON error object is never shown.
+    """
+    parts: list[str] = []
+
+    status = getattr(exc, "status_code", None)
+    if status:
+        parts.append(f"HTTP {status}")
+
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        code = body.get("code")
+        if code:
+            parts.append(f"code {code}")
+        message = body.get("message")
+        if isinstance(message, str) and message.strip():
+            parts.append(message.strip()[:MAX_ERROR_CHARS])
+    elif body is not None:
+        parts.append("the server returned an unexpected non-JSON response")
+
+    if not parts:
+        parts.append(type(exc).__name__)
+    return "; ".join(parts)
+
+
+def is_quota_error(exc: Exception) -> bool:
+    """Whether a rate limit error is really an exhausted account balance."""
+    for attr in ("code", "type"):
+        if getattr(exc, attr, None) == "insufficient_quota":
+            return True
+    if isinstance(getattr(exc, "body", None), dict):
+        return False
+    return "insufficient_quota" in str(exc)
 
 
 def _call_with_retries(
     client: OpenAI,
-    model: str,
-    messages: list[ChatCompletionMessageParam],
-    temperature: float | None,
-    max_tokens: int | None,
-    top_p: float | None,
+    api_params: dict,
+    server_type: str,
 ) -> ChatCompletion | None:
     """Call chat completion with exponential backoff retry on server errors."""
     for attempt in range(MAX_RETRIES):
         try:
-            return call_chat_completion(
-                client, model, messages, temperature, max_tokens, top_p
-            )
-        except (InternalServerError, RateLimitError) as exc:
-            if attempt == MAX_RETRIES - 1:
-                print(f"Max retries reached. Last error: {exc}")
+            return call_chat_completion(client, api_params)
+        except (APIConnectionError, InternalServerError, RateLimitError) as exc:
+            # An exhausted balance is reported as a rate limit, but retrying it
+            # is pointless and hides a billing problem behind a server error.
+            if is_quota_error(exc):
+                if server_type == "openai":
+                    print(
+                        "Insufficient quota!\n"
+                        "Please ensure that your OpenAI account has sufficient credits.\n"
+                        f"You can check your balance here: {BILLING_URL}"
+                    )
+                else:
+                    print(
+                        "Insufficient quota reported by the configured server: "
+                        f"{describe_error(exc)}"
+                    )
                 return None
-            sleep_time = min(2**attempt + random.uniform(0, 1), MAX_DELAY)
+            if attempt == MAX_RETRIES - 1:
+                print(f"Max retries reached. Last error: {describe_error(exc)}")
+                return None
+            sleep_time = 2**attempt + random.uniform(0, 1)
             print(
-                f"Server error encountered ({exc}). Retrying in {sleep_time:.2f}s..."
+                f"Server error encountered ({describe_error(exc)}). "
+                f"Retrying in {sleep_time:.2f}s..."
             )
             time.sleep(sleep_time)
         except AuthenticationError as exc:
-            print(f"Authentication error: {exc}")
+            print(f"Authentication error: {describe_error(exc)}")
             return None
         except Exception as exc:  # noqa: BLE001 - keep reporting unexpected errors
-            print(f"An error occurred: {exc}")
+            print(f"An error occurred: {describe_error(exc)}")
             return None
     return None
 
@@ -249,8 +362,8 @@ def _call_with_retries(
 def main(argv: Sequence[str]) -> int:
     if len(argv) < 9:
         print(
-            "Usage: chatgpt.py <context_files_json> <question> <model> "
-            "<server_type> <temperature> <max_tokens> <top_p> <system_message>"
+            "Usage: chatgpt.py <context_files_json> <prompt_file> <model> "
+            "<server_type> <temperature> <max_tokens> <top_p> <system_message_file>"
         )
         return 1
 
@@ -260,18 +373,30 @@ def main(argv: Sequence[str]) -> int:
         print(str(exc))
         return 1
 
-    question = argv[2].replace("__cn__", "\n")
     model = argv[3]
     server_type = argv[4]
     temperature_arg = argv[5]
     max_tokens_arg = argv[6]
     top_p_arg = argv[7]
-    system_message_arg = argv[8]
+
+    # The prompt and the system message are passed as files rather than on the
+    # command line so that Galaxy's parameter sanitizer can be turned off for
+    # them: on the command line an apostrophe would break the shell quoting and
+    # every non-ASCII character would be replaced with a literal "X".
+    try:
+        question = read_text_file(argv[2])
+        system_message = read_text_file(argv[8]).strip() or None
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    if not question.strip():
+        print("The prompt is empty!")
+        return 1
 
     temperature = float(temperature_arg) if temperature_arg and temperature_arg != "None" else None
     max_tokens = int(max_tokens_arg) if max_tokens_arg and max_tokens_arg != "None" else None
     top_p = float(top_p_arg) if top_p_arg and top_p_arg != "None" else None
-    system_message = system_message_arg.replace("__cn__", "\n") if system_message_arg and system_message_arg != "None" else None
 
     try:
         api_key = resolve_api_key(server_type)
@@ -297,28 +422,40 @@ def main(argv: Sequence[str]) -> int:
         print(str(exc))
         return 1
 
-    response = _call_with_retries(client, model, messages, temperature, max_tokens, top_p)
+    api_params = build_api_params(
+        model, messages, server_type, temperature, max_tokens, top_p
+    )
+    response = _call_with_retries(client, api_params, server_type)
     if response is None:
         return 1
 
-    if not response.choices:
-        server_label = server_type if server_type != "openai" else "OpenAI"
-        print(
-            f"No output was generated!\n"
-            f"Please ensure that your {server_label} account has sufficient credits "
-            f"or that the model '{model}' is available on the configured server."
-        )
-        return 1
-
-    message = response.choices[0].message
-    content = getattr(message, "content", None)
+    choice = response.choices[0] if response.choices else None
+    message = choice.message if choice else None
+    content = getattr(message, "content", None) if message else None
     if not content:
-        server_label = server_type if server_type != "openai" else "OpenAI"
-        print(
-            f"No output was generated!\n"
-            f"Please ensure that your {server_label} account has sufficient credits "
-            f"or that the model '{model}' is available on the configured server."
-        )
+        refusal = getattr(message, "refusal", None) if message else None
+        if refusal:
+            print(f"The model declined to answer: {refusal}")
+        elif choice is not None and choice.finish_reason == "length":
+            print(
+                "No output was generated!\n"
+                "The response hit the 'Max tokens' limit before any answer was "
+                "produced. On the gpt-5 models that budget also covers hidden "
+                "reasoning tokens, so raise Max tokens or leave it unset."
+            )
+        elif server_type == "openai":
+            print(
+                "No output was generated!\n"
+                "Please ensure that your OpenAI account has sufficient credits "
+                f"or that the model '{model}' is available.\n"
+                f"You can check your balance here: {BILLING_URL}"
+            )
+        else:
+            print(
+                "No output was generated!\n"
+                f"Please ensure that the model '{model}' is available on the "
+                "configured server."
+            )
         return 1
 
     print(
