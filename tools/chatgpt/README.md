@@ -10,7 +10,9 @@ The tool supports two server types — the official OpenAI API and custom OpenAI
 
 ### OpenAI (official API)
 
-Connect directly to OpenAI's API using your OpenAI API key. Select from the available OpenAI models (gpt-5, gpt-5-mini, gpt-5-nano, gpt-4.1, gpt-4o).
+Connect directly to OpenAI's API using your OpenAI API key. Select from the available OpenAI models: the current generation (`gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-6-astra`, `gpt-5.5`, `gpt-5.4`), the non-reasoning `gpt-4.1` and `gpt-4o`, and the legacy `gpt-5`/`gpt-5-mini`/`gpt-5-nano` (kept so existing histories stay reproducible; OpenAI retires their snapshots on 2026-12-11).
+
+The list is restricted to models that OpenAI serves on the Chat Completions endpoint. The `*-pro`, `*-codex` and `gpt-5.6-cyber` models are Responses-API-only and are therefore not offered. Verified against the OpenAI model catalogue on 2026-09-07.
 
 To obtain an API key, visit https://platform.openai.com/account/api-keys.
 Make sure to set up a payment method: https://platform.openai.com/settings/organization/billing/
@@ -41,11 +43,11 @@ Connect to any server that implements the OpenAI Chat Completions API (e.g., vLL
 
 ### Advanced Options
 
-- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only `gpt-4.1` and `gpt-4o` accept it; the gpt-5 models reject it outright, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
+- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only `gpt-4.1`, `gpt-4o` and `gpt-5.4` accept it; every other model in the list rejects it outright, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
 
 - **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used. For the OpenAI server type it is sent as `max_completion_tokens`, which also covers the hidden reasoning tokens of the gpt-5 models — setting it too low there can consume the whole budget on reasoning and return an empty answer. For custom servers it is sent as `max_tokens`, which Ollama and older vLLM builds still require.
 
-- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only `gpt-4.1` and `gpt-4o` accept it on the OpenAI server type.
+- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only `gpt-4.1`, `gpt-4o` and `gpt-5.4` accept it on the OpenAI server type.
 
 - **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
 

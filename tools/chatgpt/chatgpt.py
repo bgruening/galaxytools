@@ -220,11 +220,13 @@ def build_messages(
 # Completions. Determined empirically against the live API on 2026-09-07: every
 # other model in the option list answers a request carrying temperature with
 # 400 unsupported_value, and one carrying top_p with 400 unsupported_parameter.
-# Keep an explicit set rather than a prefix rule, and re-check it when adding
-# an option. Anything not listed is treated as refusing the parameters:
+# gpt-5.4 accepts both because its default reasoning effort is "none".
+# A prefix rule cannot express this -- "gpt-6-astra" does not start with
+# "gpt-5", and "gpt-5.4" does -- so keep an explicit set, and re-check it when
+# adding an option. Anything not listed is treated as refusing the parameters:
 # sending one to a model that refuses it fails the job, omitting it only
 # costs a note.
-SAMPLING_MODELS = frozenset({"gpt-4.1", "gpt-4o"})
+SAMPLING_MODELS = frozenset({"gpt-4.1", "gpt-4o", "gpt-5.4"})
 
 
 def uses_fixed_sampling(model: str) -> bool:
