@@ -68,7 +68,15 @@ def resolve_base_url(server_type: str) -> str | None:
             raise ValueError("Custom server URL is not provided in credentials!")
         if not url.startswith(("http://", "https://")):
             raise ValueError(
-                f"Custom server URL must start with http:// or https://, got: {url}"
+                "Custom server URL must start with http:// or https://"
+            )
+        # The SDK appends "chat/completions" to the base URL's path *and* its
+        # query string, so a trailing "?" makes the query swallow the suffix
+        # and leaves the request path entirely under the credential's control
+        # -- turning an LLM endpoint setting into an arbitrary POST target.
+        if "?" in url or "#" in url:
+            raise ValueError(
+                "Custom server URL must not contain a query string or fragment."
             )
         return url
     return None
@@ -295,8 +303,8 @@ def describe_error(exc: Exception) -> str:
     body = getattr(exc, "body", None)
     if isinstance(body, dict):
         code = body.get("code")
-        if code:
-            parts.append(f"code {code}")
+        if isinstance(code, (str, int)) and str(code).strip():
+            parts.append(f"code {str(code).strip()[:MAX_ERROR_CHARS]}")
         message = body.get("message")
         if isinstance(message, str) and message.strip():
             parts.append(message.strip()[:MAX_ERROR_CHARS])
@@ -432,10 +440,16 @@ def main(argv: Sequence[str]) -> int:
         return 1
 
     choice = response.choices[0] if response.choices else None
-    message = choice.message if choice else None
-    content = getattr(message, "content", None) if message else None
+    message = getattr(choice, "message", None)
+    content = getattr(message, "content", None)
+    if content is not None and not isinstance(content, str):
+        print(
+            "The server returned a response in an unexpected format; this tool "
+            "expects an OpenAI-compatible chat completion."
+        )
+        return 1
     if not content:
-        refusal = getattr(message, "refusal", None) if message else None
+        refusal = getattr(message, "refusal", None)
         if refusal:
             print(f"The model declined to answer: {refusal}")
         elif choice is not None and choice.finish_reason == "length":
@@ -460,11 +474,12 @@ def main(argv: Sequence[str]) -> int:
             )
         return 1
 
+    with open("output.md", "w", encoding="utf-8") as file_handle:
+        file_handle.write(content)
+
     print(
         f"Successfully generated response for:\n{question[:100]}{'...' if len(question) > 100 else ''}"
     )
-    with open("output.md", "w", encoding="utf-8") as file_handle:
-        file_handle.write(content)
     return 0
 
 
