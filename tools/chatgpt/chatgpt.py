@@ -170,6 +170,19 @@ def read_text_file(path: str) -> str:
         raise ValueError(f"Error reading file {path}: {exc}") from exc
 
 
+def load_fixture(path: str) -> ChatCompletion:
+    """Replay a recorded chat completion instead of calling a server.
+
+    Used only by the tool's own tests: an API-backed tool otherwise has no way
+    to exercise its success path in CI, where no credentials exist.
+    """
+    try:
+        payload = json.loads(read_text_file(path))
+    except json.JSONDecodeError as exc:
+        raise ValueError(f"Invalid JSON in test fixture {path}: {exc}") from exc
+    return ChatCompletion.model_validate(payload)
+
+
 def parse_context_files(raw: str) -> list[ContextFile]:
     """Parse and validate the JSON encoded context file descriptors."""
     try:
@@ -373,7 +386,8 @@ def main(argv: Sequence[str]) -> int:
     if len(argv) < 9:
         print(
             "Usage: chatgpt.py <context_files_json> <prompt_file> <model> "
-            "<server_type> <temperature> <max_tokens> <top_p> <system_message_file>"
+            "<server_type> <temperature> <max_tokens> <top_p> <system_message_file> "
+            "[<test_fixture>]"
         )
         return 1
 
@@ -388,6 +402,7 @@ def main(argv: Sequence[str]) -> int:
     temperature_arg = argv[5]
     max_tokens_arg = argv[6]
     top_p_arg = argv[7]
+    fixture = argv[9] if len(argv) > 9 else ""
 
     # The prompt and the system message are passed as files rather than on the
     # command line so that Galaxy's parameter sanitizer can be turned off for
@@ -409,24 +424,6 @@ def main(argv: Sequence[str]) -> int:
     top_p = float(top_p_arg) if top_p_arg and top_p_arg != "None" else None
 
     try:
-        api_key = resolve_api_key(server_type)
-    except ValueError as exc:
-        print(str(exc))
-        return 1
-
-    try:
-        base_url = resolve_base_url(server_type)
-    except ValueError as exc:
-        print(str(exc))
-        return 1
-
-    try:
-        client = build_client(base_url, api_key)
-    except Exception as exc:  # noqa: BLE001
-        print(f"An error occurred: {exc}")
-        return 1
-
-    try:
         messages = build_messages(question, context_files, system_message)
     except ValueError as exc:
         print(str(exc))
@@ -435,9 +432,31 @@ def main(argv: Sequence[str]) -> int:
     api_params = build_api_params(
         model, messages, server_type, temperature, max_tokens, top_p
     )
-    response = _call_with_retries(client, api_params, server_type)
-    if response is None:
-        return 1
+
+    if fixture:
+        try:
+            response = load_fixture(fixture)
+        except ValueError as exc:
+            print(str(exc))
+            return 1
+    else:
+        try:
+            api_key = resolve_api_key(server_type)
+            base_url = resolve_base_url(server_type)
+        except ValueError as exc:
+            print(str(exc))
+            return 1
+
+        try:
+            client = build_client(base_url, api_key)
+        except Exception as exc:  # noqa: BLE001
+            print(f"An error occurred: {exc}")
+            return 1
+
+        maybe_response = _call_with_retries(client, api_params, server_type)
+        if maybe_response is None:
+            return 1
+        response = maybe_response
 
     choice = response.choices[0] if response.choices else None
     message = getattr(choice, "message", None)
