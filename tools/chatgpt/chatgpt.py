@@ -45,6 +45,8 @@ BILLING_URL = "https://platform.openai.com/settings/organization/billing"
 
 MAX_ERROR_CHARS = 300
 
+REQUEST_TIMEOUT = 300.0
+
 
 def resolve_api_key(server_type: str) -> str | None:
     """Resolve the API key based on server type."""
@@ -93,7 +95,10 @@ def build_client(base_url: str | None, api_key: str | None) -> OpenAI:
         kwargs["api_key"] = "not-needed"
     if base_url:
         kwargs["base_url"] = base_url
-    return OpenAI(max_retries=0, **kwargs)
+    # Retry once, here, rather than letting the SDK multiply each attempt.
+    # The timeout is explicit because the SDK's 600s default, multiplied by
+    # this tool's retries, can hold a Galaxy job slot for half an hour.
+    return OpenAI(max_retries=0, timeout=REQUEST_TIMEOUT, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -168,19 +173,6 @@ def read_text_file(path: str) -> str:
             return text_file.read()
     except OSError as exc:
         raise ValueError(f"Error reading file {path}: {exc}") from exc
-
-
-def load_fixture(path: str) -> ChatCompletion:
-    """Replay a recorded chat completion instead of calling a server.
-
-    Used only by the tool's own tests: an API-backed tool otherwise has no way
-    to exercise its success path in CI, where no credentials exist.
-    """
-    try:
-        payload = json.loads(read_text_file(path))
-    except json.JSONDecodeError as exc:
-        raise ValueError(f"Invalid JSON in test fixture {path}: {exc}") from exc
-    return ChatCompletion.model_validate(payload)
 
 
 def parse_context_files(raw: str) -> list[ContextFile]:
@@ -298,14 +290,14 @@ def call_chat_completion(client: OpenAI, api_params: dict) -> ChatCompletion:
     return client.chat.completions.create(**api_params)
 
 
-def describe_error(exc: Exception) -> str:
-    """Summarise an API error without echoing the server's raw response.
+def describe_error(exc: Exception, trusted: bool = False) -> str:
+    """Summarise an API error without echoing a server's response back.
 
     The custom server URL comes from the user, so the job node can be pointed
-    at any host it can reach; copying the response body into the job log would
-    turn that into a way to read those hosts. Only the HTTP status and the
-    parsed OpenAI-style error fields are reported, and a body that is not a
-    JSON error object is never shown.
+    at any host it can reach and its reply must not reach the job log. Only
+    api.openai.com is ``trusted``: for anything else the SDK may hand back the
+    whole response body -- it only unwraps an "error" key when one is present
+    -- so the body could be any internal service's, and none of it is shown.
     """
     parts: list[str] = []
 
@@ -315,17 +307,28 @@ def describe_error(exc: Exception) -> str:
 
     body = getattr(exc, "body", None)
     if isinstance(body, dict):
-        code = body.get("code")
-        if isinstance(code, (str, int)) and str(code).strip():
-            parts.append(f"code {str(code).strip()[:MAX_ERROR_CHARS]}")
-        message = body.get("message")
-        if isinstance(message, str) and message.strip():
-            parts.append(message.strip()[:MAX_ERROR_CHARS])
+        if trusted:
+            code = body.get("code")
+            if isinstance(code, (str, int)) and str(code).strip():
+                parts.append(f"code {str(code).strip()[:MAX_ERROR_CHARS]}")
+            message = body.get("message")
+            if isinstance(message, str) and message.strip():
+                parts.append(message.strip()[:MAX_ERROR_CHARS])
+        else:
+            parts.append("the server returned an error response")
     elif body is not None:
         parts.append("the server returned an unexpected non-JSON response")
 
     if not parts:
-        parts.append(type(exc).__name__)
+        # No HTTP response at all. The cause is raised locally by httpx or the
+        # OS, so it is safe to show, and it is the only thing that separates a
+        # refused connection from a DNS, TLS or timeout failure -- the most
+        # likely outcome of a mistyped custom server URL.
+        detail = ""
+        if isinstance(exc, APIConnectionError) and exc.__cause__ is not None:
+            cause = exc.__cause__
+            detail = f" ({type(cause).__name__}: {cause})"[:MAX_ERROR_CHARS]
+        parts.append(f"{type(exc).__name__}{detail}")
     return "; ".join(parts)
 
 
@@ -351,6 +354,7 @@ def _call_with_retries(
         except (APIConnectionError, InternalServerError, RateLimitError) as exc:
             # An exhausted balance is reported as a rate limit, but retrying it
             # is pointless and hides a billing problem behind a server error.
+            trusted = server_type == "openai"
             if is_quota_error(exc):
                 if server_type == "openai":
                     print(
@@ -361,23 +365,23 @@ def _call_with_retries(
                 else:
                     print(
                         "Insufficient quota reported by the configured server: "
-                        f"{describe_error(exc)}"
+                        f"{describe_error(exc, trusted)}"
                     )
                 return None
             if attempt == MAX_RETRIES - 1:
-                print(f"Max retries reached. Last error: {describe_error(exc)}")
+                print(f"Max retries reached. Last error: {describe_error(exc, trusted)}")
                 return None
             sleep_time = 2**attempt + random.uniform(0, 1)
             print(
-                f"Server error encountered ({describe_error(exc)}). "
+                f"Server error encountered ({describe_error(exc, trusted)}). "
                 f"Retrying in {sleep_time:.2f}s..."
             )
             time.sleep(sleep_time)
         except AuthenticationError as exc:
-            print(f"Authentication error: {describe_error(exc)}")
+            print(f"Authentication error: {describe_error(exc, server_type == 'openai')}")
             return None
         except Exception as exc:  # noqa: BLE001 - keep reporting unexpected errors
-            print(f"An error occurred: {describe_error(exc)}")
+            print(f"An error occurred: {describe_error(exc, server_type == 'openai')}")
             return None
     return None
 
@@ -386,8 +390,7 @@ def main(argv: Sequence[str]) -> int:
     if len(argv) < 9:
         print(
             "Usage: chatgpt.py <context_files_json> <prompt_file> <model> "
-            "<server_type> <temperature> <max_tokens> <top_p> <system_message_file> "
-            "[<test_fixture>]"
+            "<server_type> <temperature> <max_tokens> <top_p> <system_message_file>"
         )
         return 1
 
@@ -402,7 +405,6 @@ def main(argv: Sequence[str]) -> int:
     temperature_arg = argv[5]
     max_tokens_arg = argv[6]
     top_p_arg = argv[7]
-    fixture = argv[9] if len(argv) > 9 else ""
 
     # The prompt and the system message are passed as files rather than on the
     # command line so that Galaxy's parameter sanitizer can be turned off for
@@ -424,6 +426,22 @@ def main(argv: Sequence[str]) -> int:
     top_p = float(top_p_arg) if top_p_arg and top_p_arg != "None" else None
 
     try:
+        api_key = resolve_api_key(server_type)
+        base_url = resolve_base_url(server_type)
+    except ValueError as exc:
+        print(str(exc))
+        return 1
+
+    try:
+        client = build_client(base_url, api_key)
+    except Exception:  # noqa: BLE001
+        print(
+            "The configured server URL could not be used to build a client; "
+            "check its host and port."
+        )
+        return 1
+
+    try:
         messages = build_messages(question, context_files, system_message)
     except ValueError as exc:
         print(str(exc))
@@ -432,31 +450,9 @@ def main(argv: Sequence[str]) -> int:
     api_params = build_api_params(
         model, messages, server_type, temperature, max_tokens, top_p
     )
-
-    if fixture:
-        try:
-            response = load_fixture(fixture)
-        except ValueError as exc:
-            print(str(exc))
-            return 1
-    else:
-        try:
-            api_key = resolve_api_key(server_type)
-            base_url = resolve_base_url(server_type)
-        except ValueError as exc:
-            print(str(exc))
-            return 1
-
-        try:
-            client = build_client(base_url, api_key)
-        except Exception as exc:  # noqa: BLE001
-            print(f"An error occurred: {exc}")
-            return 1
-
-        maybe_response = _call_with_retries(client, api_params, server_type)
-        if maybe_response is None:
-            return 1
-        response = maybe_response
+    response = _call_with_retries(client, api_params, server_type)
+    if response is None:
+        return 1
 
     choice = response.choices[0] if response.choices else None
     message = getattr(choice, "message", None)
@@ -470,7 +466,7 @@ def main(argv: Sequence[str]) -> int:
     if not content:
         refusal = getattr(message, "refusal", None)
         if refusal:
-            print(f"The model declined to answer: {refusal}")
+            print(f"The model declined to answer: {str(refusal)[:MAX_ERROR_CHARS]}")
         elif choice is not None and choice.finish_reason == "length":
             print(
                 "No output was generated!\n"
