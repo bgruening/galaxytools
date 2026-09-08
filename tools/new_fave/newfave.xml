@@ -1,0 +1,397 @@
+<tool id="new_fave_extract" name="Vowel formant extraction" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>with new-fave</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.2.1</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">25.0</token>
+        <xml name="citations">
+            <citations>
+                <citation type="doi">10.5281/zenodo.14837885</citation>
+            </citations>
+        </xml>
+        <token name="@SET_FNAME@">
+#import re
+#if $audio.element_identifier == $text_grid.element_identifier:
+    #set $fname = re.sub('[^\w\-_.]', '_', $audio.element_identifier)
+#else:
+    #set $fname = 'audio_in'
+#end if
+        </token>
+    </macros>
+    <requirements>
+        <container type="docker">quay.io/bgruening/new-fave:1.2.1</container>
+    </requirements>
+    <command><![CDATA[
+@SET_FNAME@
+ln -s '$audio' ${fname} &&
+ln -s '$text_grid' ${fname}.TextGrid &&
+#if str($ref.kind):
+  #if str($ref.kind) == '--logparam-reference':
+    #set $fsuffix = 'logparam'
+  #else if str($ref.kind) == '--param-reference':
+    #set $fsuffix = 'param'
+  #else:
+    #set $fsuffix = 'points'
+  #end if
+  mkdir ref_results &&
+  #for $i, $r in enumerate($ref.ref_measurement):
+    ln -s '$r' ref_results/ref${i}_${fsuffix}.csv &&
+  #end for
+#end if
+fave-extract audio-textgrid
+  ${fname} ${fname}.TextGrid $fave_aligned
+  $exclude_overlaps
+#if len($speaker_data) > 0:
+  --speakers speakers.yml
+#else:
+  --speakers all
+#end if
+#if str($ref.kind):
+  $ref.kind ref_results
+#end if
+
+## advanced options
+#if $adv_params.tracking.ft_config:
+  --ft-config '$adv_params.tracking.ft_config'
+#end if
+$adv_params.recoding.rules.basic_rules
+#if $adv_params.recoding.rules.rules_config:
+  --add-rules '$adv_params.recoding.rules_config'
+#end if
+#if $adv_params.recoding.labelset_parser:
+  --labelset-parser '$adv_params.recoding.labelset_parser'
+#end if
+#if str($adv_params.optimization.optimize.disable):
+  $adv_params.optimization.optimize.disable
+#else:
+  #if $adv_params.optimization.f1_cutoff:
+    --f1-cutoff $adv_params.optimization.f1_cutoff
+  #end if
+  #if $adv_params.optimization.f2_cutoff:
+    --f2-cutoff $adv_params.optimization.f2_cutoff
+  #end if
+  #if $adv_params.optimization.vowel_place:
+    --vowel-place '$adv_params.optimization.vowel_place
+  #end if
+#end if
+#if $adv_params.points_measurement.point_heuristic:
+  --point-heuristic '$adv_params.points_measurement.point_heuristic'
+#end if
+
+## output handling
+#set $outputs = str($outputs).split(',')
+#if len($outputs) < 5:
+  #for $o in $outputs:
+    --which $o
+  #end for
+#end if
+    ]]></command>
+    <configfiles>
+        <configfile filename="speakers.yml"><![CDATA[@SET_FNAME@
+#for $data in $speaker_data:
+- file_name: $fname
+  speaker_num: $data.speaker_num
+#if str($data.speaker_name):
+  name: $data.speaker_name
+#end if
+#if str($data.speaker_gender):
+  gender: $data.speaker_gender
+#end if
+#if str($data.speaker_age):
+  age: $data.speaker_age
+#end if
+#end for
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <param format="flac,mp3,wav" name="audio" type="data" label="Audio input" />
+        <param format="textgrid" name="text_grid" type="data" label="Aligned grid of transcribed text" />
+        <param argument="--fave-aligned" type="boolean" truevalue="--fave-aligned" falsevalue="" label="Was the text grid aligned with fave-align?" help="It is recommended that you align transcribed text with MFA (Montreal Forced Aligner), but the tool can also use input generated with fave-align." />
+        <param argument="--exclude-overlaps" type="boolean" truevalue="--exclude-overlaps" falsevalue="" label="Should overlapping speech be excluded from analysis?" />
+        <conditional name="ref">
+            <param name="kind" type="select" label="Do you want to provide reference measurements for refinement?">
+                <option value="">No, I want to run an analysis without reference values</option>
+                <option value="--logparam-reference">Yes, use a Log-Param Reference (--logparam-reference)</option>
+                <option value="--param-reference">Yes, use a Param Reference (--param-reference)</option>
+                <option value="--points-reference">Yes, use a Point Values Reference (--points-reference)</option>
+            </param>
+            <when value="" />
+            <when value="--logparam-reference">
+                <param name="ref_measurement" type="data" format="csv" multiple="true" label="Log param data from earlier analysis" />
+            </when>
+            <when value="--param-reference">
+                <param name="ref_measurement" type="data" format="csv" multiple="true" label="Param data from earlier analysis" />
+            </when>
+            <when value="--points-reference">
+                <param name="ref_measurement" type="data" format="csv" multiple="true" label="Points data from earlier analysis" />
+            </when>
+        </conditional>
+        <repeat name="speaker_data" title="Speaker data" min="0" default="0" help="Select speakers to analyze and provide optional metadata for them. The default is to analyze all speakers defined in the text grid input and to not record any additional metadata for them. If you do provide any speaker information, you need to identify each speaker by number (matching the order of occurence of speakers in the text grid input) and the analysis will then be restricted to those speakers. Additional metadata for the speakers will not affect the analysis in any way, but will be recorded in additional columns of the outputs of the tool.">
+            <param name="speaker_num" type="integer" min="1" />
+            <param name="speaker_name" type="text" />
+            <param name="speaker_gender" type="text" />
+            <param name="speaker_age" type="integer" min="1" optional="true" />
+        </repeat>
+        <!-- see also https://github.com/Forced-Alignment-and-Vowel-Extraction/new-fave/issues/75 -->
+        <param name="outputs" type="select" multiple="true" optional="false" label="Select output file(s)" help="Due to an issue with the new-fave command-line tool, whenever you deselect any of the supported outputs, you need to make sure to also deselect the 'Recoded text grid' and the 'log-transformed formants' data, or the tool will error out.">
+            <option value="tracks" selected="true">Per-vowel tracks data (--which tracks)</option>
+            <option value="points" selected="true">Per-vowel points data (--which points)</option>
+            <option value="param" selected="true">Per-vowel coefficients for transform of raw formants (--which param)</option>
+            <option value="log_param" selected="true">Per-vowel coefficients for transform of log-transformed formants (--which log_param)</option>
+            <option value="textgrid" selected="true">Recoded text grid (--which textgrid)</option>
+        </param>
+        <section name="adv_params" title="Advanced configuration options" expanded="false">
+            <section name="tracking" title="Initial formant tracking" expanded="true">
+                <param argument="--ft-config" type="data" format="yaml" optional="true" label="FastTrack Config" />
+            </section>
+            <section name="recoding" title="Label parsing and recoding" expanded="true">
+                <conditional name="rules">
+                    <param name="basic_rules" type="select" label="Select built-in set of recode rules to use">
+                        <option value="--recode-rules norecode">None (use only custom rules)</option>
+                        <option value="" selected="true">cmu2labov (the default rule)</option>
+                        <option value="--recode-rules cmu2phila">cmu2phila</option>
+                    </param>
+                    <when value="--recode-rules norecode">
+                        <param name="rules_config" type="data" format="yaml" optional="true" label="Custom Recode Rules" />
+                    </when>
+                    <when value="">
+                        <param name="rules_config" type="data" format="yaml" optional="true" label="Additional Recode Rules" />
+                    </when>
+                    <when value="--recode-rules cmu2phila">
+                        <param name="rules_config" type="data" format="yaml" optional="true" label="Additional Recode Rules" />
+                    </when>
+                </conditional>
+                <param argument="--labelset-parser" type="data" format="yaml" optional="true" label="Custom Label Set Parser definition" />
+            </section>
+            <section name="optimization" title="Optimization" expanded="true">
+                <conditional name="optimize">
+                    <param name="disable" type="select" label="Perform optimization step" help="Distributional properties are estimated for each vowel class at this step.">
+                        <option value="">Yes</option>
+                        <option value="--no-optimize">No (--no-optimize)</option>
+                    </param>
+                    <when value="">
+                        <param argument="--f1-cutoff" type="float" optional="true" label="Optional F1 value cutoff to apply during optimization" />
+                        <param argument="--f2-cutoff" type="float" optional="true" label="Optional F2 value cutoff to apply during optimization" />
+                        <param argument="--vowel-place" type="data" format="yaml" optional="true" label="Use this Vowel Place definition set instead of built-in one" />
+                    </when>
+                    <when value="--no-optimize" />
+                </conditional>
+            </section>
+            <section name="points_measurement" title="Points measurement" expanded="true" help="Only relevant if per-vowel points data is selected as output">
+                <param argument="--point-heuristic" type="data" format="yaml" optional="true" label="Custom Point Measurement Heuristics" />
+            </section>
+        </section>
+        <!--
+        - tests
+        -->
+    </inputs>
+    <outputs>
+        <data name="out_tracks" format="csv" from_work_dir="fave_results/*_tracks.csv" label="${tool.name} on ${on_string}: Tracks data">
+            <filter>'tracks' in outputs</filter>
+        </data>
+        <data name="out_points" format="csv" from_work_dir="fave_results/*_points.csv" label="${tool.name} on ${on_string}: Points data">
+            <filter>'points' in outputs</filter>
+        </data>
+        <data name="out_param" format="csv" from_work_dir="fave_results/*_param.csv" label="${tool.name} on ${on_string}: Param data">
+            <filter>'param' in outputs</filter>
+        </data>
+        <data name="out_logparam" format="csv" from_work_dir="fave_results/*_logparam.csv" label="${tool.name} on ${on_string}: Log Param data">
+            <filter>'log_param' in outputs</filter>
+        </data>
+        <data name="out_grid" format="textgrid" from_work_dir="fave_results/*_recoded.TextGrid" label="${tool.name} on ${on_string}: Recoded Text Grid">
+            <filter>'textgrid' in outputs</filter>
+        </data>
+        <!--data name="recoded_grid" format_source="infile" metadata_source="infile"/-->
+    </outputs>
+    <tests>
+        <!-- Test defaults -->
+        <test expect_num_outputs="5">
+            <param name="audio" value="KY25A_1.mp3" />
+            <param name="text_grid" value="KY25A_1.TextGrid" />
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="326" />
+                    <has_n_columns n="22" sep="," />
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test speakers config -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3" />
+            <param name="text_grid" value="KY25A_1.TextGrid" />
+            <repeat name="speaker_data">
+                <param name="speaker_num" value="2" />
+                <param name="speaker_name" value="Unknown Person" />
+            </repeat>
+            <param name="outputs" value="param" />
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="246" />
+                    <has_n_columns n="23" sep="," />
+                    <has_text text="Unknown Person" />
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test optimization skipping -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3" />
+            <param name="text_grid" value="KY25A_1.TextGrid" />
+            <param name="outputs" value="param" />
+            <section name="adv_params">
+                <section name="optimization">
+                    <conditional name="optimize">
+                        <param name="disable" value="--no-optimize" />
+                    </conditional>
+                </section>
+            </section>
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="326" />
+                    <has_n_columns n="22" sep="," />
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--no-optimize" />
+            </assert_command>
+        </test>
+        <!-- Test optimization cutoffs -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3" />
+            <param name="text_grid" value="KY25A_1.TextGrid" />
+            <param name="outputs" value="param" />
+            <section name="adv_params">
+                <section name="optimization">
+                    <conditional name="optimize">
+                        <param name="f1_cutoff" value="200.0" />
+                        <param name="f2_cutoff" value="500.0" />
+                    </conditional>
+                </section>
+            </section>
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="326" />
+                    <has_n_columns n="22" sep="," />
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--f1-cutoff 200.0" />
+                <has_text text="--f2-cutoff 500.0" />
+            </assert_command>
+        </test>
+        <!-- Test custom rule -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3" />
+            <param name="text_grid" value="KY25A_1.TextGrid" />
+            <param name="outputs" value="param" />
+            <section name="adv_params">
+                <section name="recoding">
+                    <conditional name="rules">
+                        <param name="rules_config" ftype="yaml" value="test_rule.yml" />
+                    </conditional>
+                </section>
+            </section>
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="326" />
+                    <has_n_columns n="22" sep="," />
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--add-rules" />
+            </assert_command>
+        </test>
+    </tests>
+    <help>
+<![CDATA[
+**What it does**
+
+`new-fave`_ is a tool for extracting and analyzing vowel `formants`_ from an audio track and associated aligned transcripts in TextGrid format.
+
+The TextGrid input will typically have been generated from the same audio track and a simple text transciption with a forced aligner like the `Montreal Forced Aligner (MFA) <mfa_>`_.
+
+As output the tool can generate `several tables <new_fave_outputs_>`_ describing various characteristics of the extracted formants.
+
+-----
+
+**Overview of the new-fave analysis flow**
+
+Any vowel formant analysis with new-fave proceeds in these distinct steps (also `described in the documentation <new_fave_how_it_works_>`_):
+
+1. Initial formant tracking using the vowel class labels found in the original TextGrid input
+2. Label recoding to adjust vowel classes as needed for the audio input and the analysis question
+3. Optimization to estimate various distributions over vowel class characteristics
+4. Writing the data
+
+-----
+
+**Custom config files for the different steps**
+
+Analyses with new-fave are rather customizable, but many of its more advanced parameters can only be passed in the form of various config files in yaml format.
+
+new-fave ships with a complete set of default yaml files that you can inspect to learn about their expected format and that you can use as the basis for custom config files to tweak the default behavior.
+For convenience, the following discussion links to the content of these default files in public code repositories.
+
+
+**The fasttrack configuration file**
+
+new-fave uses `fasttrackpy`_ for initial formant tracking (step 1 above) with this `default configuration <fasttrack_defaults_>`_.
+
+The complete set of options that can be configured for fasttrackpy is documented from `here <fasttrackpy_options_>`_ onwards.
+Note that options further up that page (controlling inputs/outputs) are managed by new-fave internally.
+
+.. class:: infomark
+
+A custom fasttrack config will *replace* the new-fave default config.
+fasttrackpy defaults, however, will remain in effect if they are not explicitly overwritten by the custom config.
+
+
+**Custom recode rules and label set parsers**
+
+At step 2 of the analysis, recode rules and label set parser definitions work together to translate "text" labels attached to "intervals" in the input TextGrid into new labels representing the vowel classes to be analyzed.
+
+new-fave comes with two built-in rule sets, called `cmu2labov`_ (the default) and `cmu2phila`_, and one built-in label set parser definition, the `cmu_parser`_, which is compatible with both.
+
+The new-fave documentation has dedicated sections that try to explain `rules`_ and `parsers`_.
+
+.. class:: infomark
+
+For custom rules, you can decide whether you want them to *extend* one of the two built-in rule sets, or whether they should *replace* the default.
+A custom label set parser you provide will always *replace* the built-in one.
+
+
+**Vowel place definitions**
+
+At step 3, new-fave uses Vowel Place definitions to guide the optimization process.
+
+The only documentation of the expected format is through the `vowel place default config <vowel_place_defaults_>`_,
+but the purpose is to assign the vowels in the audio to a "front" or a "back" class depending on where in the mouth they are formed.
+For vowels not defined in this config, new-fave attempts an automated correction based on the input data.
+
+
+**Custom points measurement config**
+
+For points measurements of extracted formant tracks, you can configure heuristics for which point to sample from the extracted formant tracks.
+
+The documentaion has a section explaining `points measurement customization <point_heuristics_>`_ and here's the `default config <point_heuristic_defaults_>`_.
+
+
+.. _new-fave: https://forced-alignment-and-vowel-extraction.github.io/new-fave/
+.. _formants: https://en.wikipedia.org/wiki/Formant
+.. _mfa: https://montreal-forced-aligner.readthedocs.io
+.. _new_fave_outputs: https://forced-alignment-and-vowel-extraction.github.io/new-fave/usage/outputs/
+.. _new_fave_how_it_works: https://forced-alignment-and-vowel-extraction.github.io/new-fave/usage/how_it_works.html
+.. _fasttrackpy: https://fasttrackiverse.github.io/fasttrackpy/
+.. _fasttrack_defaults: https://forced-alignment-and-vowel-extraction.github.io/new-fave/resources/fasttrack_config.yml
+.. _fasttrackpy_options: https://fasttrackiverse.github.io/fasttrackpy/usage/all_arguments.html#textgrid-processing-options
+.. _cmu2labov: https://forced-alignment-and-vowel-extraction.github.io/new-fave/resources/cmu2labov.yml
+.. _cmu2phila: https://forced-alignment-and-vowel-extraction.github.io/new-fave/resources/cmu2phila.yml
+.. _cmu_parser: https://forced-alignment-and-vowel-extraction.github.io/new-fave/resources/cmu_parser.yml
+.. _rules: https://forced-alignment-and-vowel-extraction.github.io/new-fave/usage/configs/recode-rules.html
+.. _parsers: https://forced-alignment-and-vowel-extraction.github.io/fave-recode/getting-started/label_set_parser.html
+.. _vowel_place_defaults: https://forced-alignment-and-vowel-extraction.github.io/new-fave/resources/vowel_place.yml
+.. _point_heuristics: https://forced-alignment-and-vowel-extraction.github.io/new-fave/usage/configs/point-heuristic.html
+.. _point_heuristic_defaults: https://forced-alignment-and-vowel-extraction.github.io/new-fave/resources/fave_measurement.yml
+]]>
+  </help>
+  <expand macro="citations" />
+</tool>
