@@ -1,8 +1,11 @@
 # Reference measurement test data
 
 The six `reference_speaker{1,2}_{param,logparam,points}.csv` fixtures were
-generated locally with `quay.io/bgruening/new-fave:1.2.1` from 
-`KY25A_1.mp3` audio and its corresponding transcript: `KY25A_1.TextGrid`.
+generated locally with [`quay.io/bgruening/new-fave:1.2.1`](https://quay.io/repository/bgruening/new-fave?tab=tags) from 
+`KY25A_1.mp3` audio and its corresponding transcript: `KY25A_1.TextGrid`
+as follows:
+
+## 1. Extract formant measurements and recoded TextGrid from audio and transcript:
 
 ```sh
 docker run --rm \
@@ -12,8 +15,9 @@ docker run --rm \
     quay.io/bgruening/new-fave:1.2.1 \
     fave-extract audio-textgrid KY25A_1.mp3 KY25A_1.TextGrid --speakers all
 ```
+## 2. Split the output CSV by speaker number into the corresponding reference fixture:
 
-Each output CSV was split by `speaker_num`:
+Each output CSV in the `fave_results` directory was split by `speaker_num` (1 or 2):
 
 ```sh
 for kind in param logparam points; do
