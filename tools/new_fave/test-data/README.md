@@ -53,3 +53,17 @@ and nine IVR vowels are excluded. Tests check the removed interval IDs
 explicitly in both runs and constrain the retained IDs in the points CSV,
 without comparing floating-point formant measurements. The FAVE layout
 test expects the same 65 interval IDs as the unfiltered original grid.
+
+# Audio format fixtures
+
+`KY25A_1.wav` and `KY25A_1.flac` are conversions of `KY25A_1.mp3`,
+with the original sample rate and channel count preserved. The defaults test
+uses WAV, the speakers configuration test uses FLAC, and other tests retain
+MP3 coverage. Both conversions use the original `KY25A_1.TextGrid`.
+
+Regenerate from this directory with FFmpeg:
+
+```sh
+ffmpeg -i KY25A_1.mp3 -c:a pcm_s16le KY25A_1.wav
+ffmpeg -i KY25A_1.wav -c:a flac KY25A_1.flac
+```
