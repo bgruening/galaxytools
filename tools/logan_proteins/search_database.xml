@@ -1,15 +1,27 @@
-<tool id="logan_protein_search_database" name="Search Protein Database" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
-    <description>Search FAISS database with embedded queries and align with MMseqs2</description>
+<tool id="logan_protein_search_database" name="Logan Protein Search: Search Database" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Search FAISS database with protein queries and align with MMseqs2</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="requirements"/>
     <command detect_errors="exit_code"><![CDATA[
-        mkdir results &&
-        mkdir -p results/intermediate_files &&       
-        ln -s '$query_embeddings_npy' results/intermediate_files/query_embeddings.npy &&
-        ln -s '$query_embeddings_names' results/intermediate_files/query_embeddings.names.txt &&
+        mkdir -p results/intermediate_files &&
         ln -s '$query_sequences' query_sequences.fasta &&
+        #if $query_embeddings_npy and $query_embeddings_names:
+            ln -s '$query_embeddings_npy' results/intermediate_files/query_embeddings.npy &&
+            ln -s '$query_embeddings_names' results/intermediate_files/query_embeddings.names.txt &&
+        #else:
+            if [ -n "\$GALAXY_LOGAN_PROTEIN_SEARCH_FORCE_CPU" ]; then
+                FORCE_CPU="--force_cpu"
+            else
+                FORCE_CPU="";
+            fi &&
+            python /app/embed_query.py
+                --query_sequences query_sequences.fasta
+                --output results
+                -F
+                \$FORCE_CPU &&
+        #end if
         python /app/search_database.py
             --database '$database.fields.path'
             $deep_search
@@ -22,30 +34,29 @@
             #end if
     ]]></command>
     <inputs>
-        <param name="query_sequences" type="data" format="fasta" label="Original query sequences (FASTA)" help="Same FASTA file used in the embedding step, needed for MMseqs2 alignment" />
-        <param name="query_embeddings_npy" type="data" format="npy" label="Query embeddings (npy)" help="Output from the Embed Query tool" />
-        <param name="query_embeddings_names" type="data" format="txt" label="Query embedding names" help="Output from the Embed Query tool" />
-        <param name="database" type="select" label="FAISS Database" help="Select FAISS database">
+        <param name="query_sequences" type="data" format="fasta" label="Query sequences (Protein Amino Acid FASTA)" help="FASTA file containing target protein sequences. NOTE: Sequences must be amino acids, NOT nucleotide coding sequences." />
+        <param name="query_embeddings_npy" type="data" format="npy" optional="true" label="Pre-computed query embeddings matrix (.npy, optional)" help="Optional: If you already ran 'Embed Queries', select the .npy output here. If omitted, embeddings will be automatically generated in this job." />
+        <param name="query_embeddings_names" type="data" format="txt" optional="true" label="Pre-computed query embedding names (.txt, optional)" help="Optional: If you already ran 'Embed Queries', select the names .txt output here." />
+        <param name="database" type="select" label="Target FAISS Database" help="Select pre-built planetary FAISS protein database">
             <options from_data_table="faiss_protein_databases">
-                <filter type="sort_by" column="3"/>
-                <filter type="static_value" column="version" value="@TOOL_VERSION@"/>
+                <filter type="sort_by" column="1"/>
             </options>
         </param>
-        <param name="outfmt" type="select" optional="true" label="MMseqs2 output format" help="Format for MMseqs2 alignment output">
-            <option value="0" selected="true">Tabular with header (0)</option>
-            <option value="1">Tabular without header (1)</option>
-            <option value="2">BLAST tabular (2)</option>
+        <param name="outfmt" type="select" optional="true" label="MMseqs2 alignment output format" help="Format for MMseqs2 alignment output table">
+            <option value="0" selected="true">Tabular with column headers (0, Recommended)</option>
+            <option value="2">Standard BLAST tabular / m8 (2)</option>
             <option value="3">BLAST tabular with comments (3)</option>
-            <option value="4">SAM (4)</option>
+            <option value="1">Tabular without header (1)</option>
+            <option value="4">SAM alignment format (4)</option>
             <option value="5">Taxonomic classification (5)</option>
         </param>
-        <param argument="--deep-search" type="boolean" truevalue="--deep-search" falsevalue="" label="Deep search mode" help="If enabled, extract proteins from all search results instead of only aligned centroids, then align everything with MMseqs2)"/> 
+        <param argument="--deep-search" type="boolean" truevalue="--deep-search" falsevalue="" label="Deep search mode" help="If enabled, extracts and aligns proteins from all search results instead of only aligned centroids with MMseqs2. Recommended when searching for divergent structural homologs, but increases runtime."/> 
     </inputs>
     
     <outputs>
-        <data name="matches_fasta" from_work_dir="results/matches.fasta" format="fasta" label="${tool.name} on ${on_string}: Matched proteins (FASTA)"/>
-        <data name="matches_mmseqs2" from_work_dir="results/matches.mmseqs2" format="tabular" label="${tool.name} on ${on_string}: MMseqs2 alignments"/>
-        <data name="all_results" from_work_dir="results/intermediate_files/all_results.fasta" format="fasta" label="${tool.name} on ${on_string}: All similar proteins (FASTA)"/>
+        <data name="matches_mmseqs2" from_work_dir="results/matches.mmseqs2" format="tabular" label="${tool.name} on ${on_string}: MMseqs2 Alignments (Tabular)"/>
+        <data name="matches_fasta" from_work_dir="results/matches.fasta" format="fasta" label="${tool.name} on ${on_string}: Matched Proteins (FASTA)"/>
+        <data name="all_results" from_work_dir="results/intermediate_files/all_results.fasta" format="fasta" label="${tool.name} on ${on_string}: All Similar Proteins (FASTA)"/>
     </outputs>
     
     <tests>
@@ -65,50 +76,39 @@
     <help><![CDATA[
 **What it does**
 
-This tool searches a pre-built FAISS database using embedded query sequences and performs alignment 
-with MMseqs2. It is the second step in the protein search pipeline.
+This tool searches a pre-built FAISS database using embedded protein sequences and performs validation and local alignment with **MMseqs2**.
 
-**Pipeline Overview**
+**Operational Modes**
 
-1. **Embed queries** - Convert protein sequences into embeddings (previous step)
-2. **Search database** - Find similar sequences using FAISS and align with MMseqs2
+1. **Direct 1-Step Search (Recommended):** Provide your protein FASTA file and leave the pre-computed embedding inputs empty. Galaxy will automatically compute the gLM2 embeddings and run the FAISS search in a single job.
+2. **Pre-computed Embeddings (2-Step):** If you previously ran *Logan Protein Search: Embed Queries*, select the `.npy` and `.txt` files to query multiple databases without re-embedding your queries.
 
 **Inputs**
 
-- **FAISS Database**: Pre-built database containing embedded protein sequences
-- **Original query sequences**: The same FASTA file used for embedding (required for MMseqs2 alignment)
-- **Query embeddings (npy)**: Output from the Embed Query tool
-- **Query embedding names**: Text file with sequence names from the Embed Query tool
-- **Deep search mode**: Optional flag to enable deep search, which extracts proteins from all search results instead of only aligned centroids, then aligns everything with MMseqs2
+- **Query sequences**: A FASTA file containing protein (amino acid) sequences.
+- **Target FAISS Database**: Pre-built database containing embedded protein sequences (e.g. Non-Human Flat or Human Flat).
+- **Pre-computed query embeddings (optional)**: Output from the Embed Query tool if reusing existing vectors.
+- **Deep search mode**: Optional flag to enable deep search, extracting all nearest-neighbor candidates for MMseqs2 alignment rather than only centroids.
 
 **Parameters**
 
-- **MMseqs2 output format**: Choose the alignment output format
-  - Format 0 (default): Tabular with header
-  - Format 1: Tabular without header  
-  - Format 2: BLAST tabular format
+- **MMseqs2 alignment output format**: Choose the alignment output format:
+  - Format 0 (default): Tabular with column headers
+  - Format 2: Standard BLAST tabular format (m8)
   - Format 3: BLAST tabular with comments
+  - Format 1: Tabular without header
   - Format 4: SAM format
   - Format 5: Taxonomic classification
 
 **Outputs**
 
-- **matches.fasta**: Main output containing all matched protein sequences
-- **matches.mmseqs2**: Alignment results from MMseqs2
-- **all_results.fasta**: All proteins with similarity to query sequences
+- **matches.mmseqs2**: Alignment results from MMseqs2 in tabular format (containing SRA sequence IDs, percent identity, alignment coverage, E-value, and bitscores).
+- **matches.fasta**: Main output containing all matched, validated protein sequences.
+- **all_results.fasta**: All candidate proteins retrieved by FAISS similarity before alignment filtering.
 
-The intermediate files directory also contains:
-- query_results_intermediate.fasta
-- query_results.tsv  
-- unique_centroids.fasta
-- matches.top_hit
+**Connecting Hits to Logan SRA Unitigs**
 
-**Algorithm**
-
-1. Uses FAISS for fast similarity search in embedding space
-2. Retrieves candidate proteins based on embedding similarity
-3. Performs sequence alignment with MMseqs2 for validation
-4. Returns matched proteins with alignment statistics
+The sequence identifiers in the MMseqs2 alignment output correspond to assembled contigs and accessions from the Logan Sequence Read Archive (SRA) compilation. You can extract accession numbers (e.g. `SRR/ERR/DRR`) from these identifiers to retrieve local compacted de Bruijn graph (cDBG) unitigs for downstream local haplotype reconstruction and intra-host variation analysis.
 
     ]]></help>
     <expand macro="citations"/>
