@@ -36,3 +36,20 @@ for kind in param logparam points; do
     done
 done
 ```
+
+# Alignment and overlap fixtures
+
+`KY25A_1_fave.TextGrid` is derived from `KY25A_1.TextGrid` by reordering
+its four tiers from words/phones/words/phones to phones/words/phones/words
+(the classic FAVE layout). Tier names, interval boundaries, and labels are
+unchanged; both grids use `KY25A_1.mp3`. This is a format conversion, not a
+new alignment produced by fave-align.
+
+The original recording and grid already contain speech from two speakers
+at the same time. The paired overlap tests use this unchanged input with
+`exclude_overlaps` disabled and enabled, with optimization disabled in both
+runs. In new-fave 1.2.1, 65 vowel measurements become 49: seven KY25A vowels
+and nine IVR vowels are excluded. Tests check the removed interval IDs
+explicitly in both runs and constrain the retained IDs in the points CSV,
+without comparing floating-point formant measurements. The FAVE layout
+test expects the same 65 interval IDs as the unfiltered original grid.
