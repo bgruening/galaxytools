@@ -85,28 +85,30 @@
 
         ## output handling
         #set $outputs = str($outputs).split(',')
-            #if len($outputs) < 5:
-        #for $o in $outputs:
-            --which $o
-        #end for
+        #if len($outputs) < 5:
+            #for $o in $outputs:
+                --which $o
+            #end for
         #end if
         ]]></command>
     <configfiles>
-        <configfile filename="speakers.yml"><![CDATA[@SET_FNAME@
-                #for $data in $speaker_data:
-                    - file_name: $fname
-                      speaker_num: $data.speaker_num
-                    #if str($data.speaker_name):
-                      name: $data.speaker_name
-                    #end if
-                    #if str($data.speaker_gender):
-                      gender: $data.speaker_gender
-                    #end if
-                    #if str($data.speaker_age):
-                      age: $data.speaker_age
-                    #end if
-                #end for
-            ]]></configfile>
+        <configfile filename="speakers.yml"><![CDATA[
+            @SET_FNAME@
+            #import json
+            #for $data in $speaker_data:
+                - file_name: $fname
+                  speaker_num: $data.speaker_num
+                #if str($data.speaker_name):
+                  name: ${json.dumps(str($data.speaker_name))}
+                #end if
+                #if str($data.speaker_gender):
+                  gender: ${json.dumps(str($data.speaker_gender))}
+                #end if
+                #if str($data.speaker_age):
+                  age: $data.speaker_age
+                #end if
+            #end for
+        ]]></configfile>
     </configfiles>
     <inputs>
         <param format="flac,mp3,wav" name="audio" type="data" label="Audio input"/>
@@ -133,8 +135,13 @@
         </conditional>
         <repeat name="speaker_data" title="Speaker data" min="0" default="0" help="Select speakers to analyze and provide optional metadata for them. The default is to analyze all speakers defined in the TextGrid input and to not record any additional metadata for them. If you do provide any speaker information, you need to identify each speaker by number (matching the order of occurence of speakers in the TextGrid input) and the analysis will then be restricted to those speakers. Additional metadata for the speakers will not affect the analysis in any way, but will be recorded in additional columns of the outputs of the tool.">
             <param name="speaker_num" type="integer" min="1"/>
-            <param name="speaker_name" type="text"/>
-            <param name="speaker_gender" type="text"/>
+            <!-- These values are JSON-escaped in speakers.yml and never interpolated into the shell command. -->
+            <param name="speaker_name" type="text">
+                <sanitizer sanitize="false"/>
+            </param>
+            <param name="speaker_gender" type="text">
+                <sanitizer sanitize="false"/>
+            </param>
             <param name="speaker_age" type="integer" min="1" optional="true"/>
         </repeat>
         <!-- see also https://github.com/Forced-Alignment-and-Vowel-Extraction/new-fave/issues/75 -->
@@ -232,6 +239,71 @@
                     <has_text text="Unknown Person"/>
                 </assert_contents>
             </output>
+        </test>
+        <!-- Test selected speaker without optional metadata -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3"/>
+            <param name="textgrid" value="KY25A_1.TextGrid"/>
+            <repeat name="speaker_data">
+                <param name="speaker_num" value="2"/>
+            </repeat>
+            <param name="outputs" value="param"/>
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="246"/>
+                    <has_n_columns n="22" sep=","/>
+                    <has_line line="param,F1,F2,F3,error,file_name,id,group,label,max_formant,speaker_num,optimized,word,stress,dur,pre_word,fol_word,pre_seg,fol_seg,abs_pre_seg,abs_fol_seg,context"/>
+                    <has_line_matching expression="^([^,\r\n]*,){10}2,([^,\r\n]*,){10}[^,\r\n]*$" n="245"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--speakers speakers.yml"/>
+                <not_has_text text="--speakers all"/>
+            </assert_command>
+        </test>
+        <!-- Test speaker name containing a colon followed by a space -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3"/>
+            <param name="textgrid" value="KY25A_1.TextGrid"/>
+            <repeat name="speaker_data">
+                <param name="speaker_num" value="2"/>
+                <param name="speaker_name" value="Speaker: Two"/>
+            </repeat>
+            <param name="outputs" value="param"/>
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="246"/>
+                    <has_n_columns n="23" sep=","/>
+                    <has_line line="param,F1,F2,F3,error,file_name,id,group,label,max_formant,speaker_num,optimized,word,stress,dur,pre_word,fol_word,pre_seg,fol_seg,abs_pre_seg,abs_fol_seg,context,name"/>
+                    <has_line_matching expression="^([^,\r\n]*,){10}2,([^,\r\n]*,){10}[^,\r\n]*,Speaker: Two$" n="245"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--speakers speakers.yml"/>
+                <not_has_text text="--speakers all"/>
+            </assert_command>
+        </test>
+        <!-- Test speaker name containing a hashtag -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3"/>
+            <param name="textgrid" value="KY25A_1.TextGrid"/>
+            <repeat name="speaker_data">
+                <param name="speaker_num" value="2"/>
+                <param name="speaker_name" value="Speaker #2"/>
+            </repeat>
+            <param name="outputs" value="param"/>
+            <output name="out_param">
+                <assert_contents>
+                    <has_n_lines n="246"/>
+                    <has_n_columns n="23" sep=","/>
+                    <has_line line="param,F1,F2,F3,error,file_name,id,group,label,max_formant,speaker_num,optimized,word,stress,dur,pre_word,fol_word,pre_seg,fol_seg,abs_pre_seg,abs_fol_seg,context,name"/>
+                    <has_line_matching expression="^([^,\r\n]*,){10}2,([^,\r\n]*,){10}[^,\r\n]*,Speaker #2$" n="245"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--speakers speakers.yml"/>
+                <not_has_text text="--speakers all"/>
+            </assert_command>
         </test>
         <!-- Test optimization skipping -->
         <test expect_num_outputs="1">
@@ -446,6 +518,111 @@
                 <has_text text="ref_results/ref0_points.csv"/>
                 <has_text text="ref_results/ref1_points.csv"/>
                 <not_has_text text="ref_results/ref2_points.csv"/>
+            </assert_command>
+        </test>
+        <!-- Custom FastTrack config constrains every candidate ceiling -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3"/>
+            <param name="textgrid" value="KY25A_1.TextGrid"/>
+            <param name="outputs" value="points"/>
+            <section name="adv_params">
+                <section name="tracking">
+                    <param name="ft_config" value="custom_ft_config.yml" ftype="yaml"/>
+                </section>
+                <section name="optimization">
+                    <conditional name="optimize">
+                        <param name="disable" value="--no-optimize"/>
+                    </conditional>
+                </section>
+            </section>
+            <output name="out_points">
+                <assert_contents>
+                    <has_n_lines n="66"/>
+                    <has_n_columns n="28" sep=","/>
+                    <has_line line="F1,F2,F3,B1,B2,B3,max_formant,smooth_error,time,rel_time,prop_time,id,label,file_name,group,speaker_num,point_heuristic,optimized,word,stress,dur,pre_word,fol_word,pre_seg,fol_seg,abs_pre_seg,abs_fol_seg,context"/>
+                    <has_line_matching expression="^([^,\r\n]*,){6}5(000|100)\.0,[^\r\n]*$" n="65"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--ft-config"/>
+                <has_text text="--no-optimize"/>
+            </assert_command>
+        </test>
+        <!-- Custom label parser propagates parsed stress into every output row -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3"/>
+            <param name="textgrid" value="KY25A_1.TextGrid"/>
+            <param name="outputs" value="points"/>
+            <section name="adv_params">
+                <section name="recoding">
+                    <param name="labelset_parser" value="custom_labelset_parser.yml" ftype="yaml"/>
+                </section>
+            </section>
+            <output name="out_points">
+                <assert_contents>
+                    <has_n_lines n="66"/>
+                    <has_n_columns n="28" sep=","/>
+                    <has_line line="F1,F2,F3,B1,B2,B3,max_formant,smooth_error,time,rel_time,prop_time,id,label,file_name,group,speaker_num,point_heuristic,optimized,word,stress,dur,pre_word,fol_word,pre_seg,fol_seg,abs_pre_seg,abs_fol_seg,context"/>
+                    <has_line_matching expression="^([^,\r\n]*,){19}custom_stress,[^\r\n]*$" n="65"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--labelset-parser"/>
+                <not_has_text text="--no-optimize"/>
+            </assert_command>
+        </test>
+        <!-- Custom vowel place guides optimization to the lower of two ceilings -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3"/>
+            <param name="textgrid" value="KY25A_1.TextGrid"/>
+            <param name="outputs" value="points"/>
+            <section name="adv_params">
+                <section name="tracking">
+                    <param name="ft_config" value="custom_ft_config.yml" ftype="yaml"/>
+                </section>
+                <section name="optimization">
+                    <conditional name="optimize">
+                        <param name="disable" value=""/>
+                        <param name="vowel_place" value="custom_vowel_place.yml" ftype="yaml"/>
+                    </conditional>
+                </section>
+            </section>
+            <output name="out_points">
+                <assert_contents>
+                    <has_n_lines n="66"/>
+                    <has_n_columns n="28" sep=","/>
+                    <has_line line="F1,F2,F3,B1,B2,B3,max_formant,smooth_error,time,rel_time,prop_time,id,label,file_name,group,speaker_num,point_heuristic,optimized,word,stress,dur,pre_word,fol_word,pre_seg,fol_seg,abs_pre_seg,abs_fol_seg,context"/>
+                    <has_line_matching expression="^([^,\r\n]*,){6}5000\.0,[^\r\n]*$" n="65"/>
+                    <has_line_matching expression="^([^,\r\n]*,){17}[1-9][0-9]*,[^\r\n]*$" n="65"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--ft-config"/>
+                <has_text text="--vowel-place"/>
+                <not_has_text text="--no-optimize"/>
+            </assert_command>
+        </test>
+        <!-- Custom point heuristic selects the first available frame for every vowel -->
+        <test expect_num_outputs="1">
+            <param name="audio" value="KY25A_1.mp3"/>
+            <param name="textgrid" value="KY25A_1.TextGrid"/>
+            <param name="outputs" value="points"/>
+            <section name="adv_params">
+                <section name="points_measurement">
+                    <param name="point_heuristic" value="custom_point_heuristic.yml" ftype="yaml"/>
+                </section>
+            </section>
+            <output name="out_points">
+                <assert_contents>
+                    <has_n_lines n="66"/>
+                    <has_n_columns n="28" sep=","/>
+                    <has_line line="F1,F2,F3,B1,B2,B3,max_formant,smooth_error,time,rel_time,prop_time,id,label,file_name,group,speaker_num,point_heuristic,optimized,word,stress,dur,pre_word,fol_word,pre_seg,fol_seg,abs_pre_seg,abs_fol_seg,context"/>
+                    <has_line_matching expression="^([^,\r\n]*,){9}0\.025,([^,\r\n]*,){6}custom_onset,[^\r\n]*$" n="65"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--point-heuristic"/>
+                <not_has_text text="--no-optimize"/>
             </assert_command>
         </test>
     </tests>
