@@ -2,40 +2,63 @@
 
 ## What it does
 
-This tool leverages OpenAI's ChatGPT API to generate responses based on user-provided context and prompt.
+This tool leverages OpenAI-compatible APIs to generate responses based on user-provided context and prompts.
 Users can upload context data in various formats and ask questions or execute prompts related to that data.
-The tool then uploads the data to a OpenAI server and processes them using the selected ChatGPT model, returning an AI-generated response tailored to the context provided.
+The tool supports two server types — the official OpenAI API and custom OpenAI-compatible servers — giving flexibility for both cloud and self-hosted deployments.
 
-To utilize this tool, users need to input their OpenAI API key in the credentials section. To obtain an API key, visit https://platform.openai.com/account/api-keys.
+## Server Types
 
-Make sure to setup the payment method in your OpenAI account to use the API key in here: https://platform.openai.com/settings/organization/billing/
+### OpenAI (official API)
 
-When you run this tool, your input data is sent to OpenAI's servers using your API-key. 
-OpenAI's models process the data and generate a response based on the context and prompt provided. 
-After receiving the response from the OpenAI server, the tool returns it to Galaxy and puts it in your history. 
-The files that have been uploaded are then deleted from the OpenAI's server, so they are not stored beyond their necessary use. 
-If the tool fails to delete your uploaded files automatically, you can manually delete them by visiting https://platform.openai.com/storage/. You might want to check your OpenAI storage from time to time as they also have a quota.
+Connect directly to OpenAI's API using your OpenAI API key. Select from the available OpenAI models: the current generation (`gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-6-astra`, `gpt-5.5`, `gpt-5.4`), the non-reasoning `gpt-4.1` and `gpt-4o`, and the legacy `gpt-5`/`gpt-5-mini`/`gpt-5-nano` (kept so existing histories stay reproducible; OpenAI retires their snapshots on 2026-12-11).
+
+The list is restricted to models that OpenAI serves on the Chat Completions endpoint. The `*-pro`, `*-codex` and `gpt-5.6-cyber` models are Responses-API-only and are therefore not offered. Verified against the OpenAI model catalogue on 2026-09-07.
+
+To obtain an API key, visit https://platform.openai.com/account/api-keys.
+Make sure to set up a payment method: https://platform.openai.com/settings/organization/billing/
+
+### Custom OpenAI-compatible server
+
+Connect to any server that implements the OpenAI Chat Completions API (e.g., vLLM, Ollama, LiteLLM proxy, Mistral, local deployments). The server URL is configured once in the Custom Server Credentials section; only the model name is specified per run. Authentication is optional — many local servers do not require an API key.
+
+## Credentials
+
+- **OpenAI API Key**: Required when using the OpenAI server type. Enter your key in the Galaxy credentials section.
+- **Custom Server URL**: Required when using the Custom server type. The base URL of the OpenAI-compatible API (e.g. `https://api.example.com/v1`, `http://localhost:8000/v1`). It must start with `http://` or `https://`.
+- **Custom Server API Key**: Optional. Only needed if your custom server requires authentication. Leave empty for servers without API key requirements (e.g., local vLLM or Ollama).
 
 ## Usage
 
-**Input**
+### Input
 
-1. **Upload Context Data**: Users can upload up to 500 files in formats such as DOC, DOCX, HTML, JSON, PDF, TXT, JPG, JPEG, PNG, WEBP, or GIF. 
-This context data serves as the input for the prompt you wish to execute.
+1. **Select a Server Type**: Choose between OpenAI or Custom.
 
-2. **Provide a Prompt**: Once the context data is added, users can provide a prompt for a task ChatGPT should execute.
-The more specific the prompt, the more tailored the response will be.
+2. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOCX, HTML, JSON, PDF, TXT, JPG, PNG, or GIF. Individual images are limited to 20MB. This context data serves as the input for the prompt you wish to execute. If no context is provided, the model will respond based solely on the prompt.
 
-    [General thoughts on prompting with GPT-4](https://help.openai.com/en/articles/4936848-how-do-i-create-a-good-prompt-for-an-ai-model-like-gpt-4)
+3. **Provide a Prompt**: Provide a prompt or task for the model to execute. The more specific the prompt, the more tailored the response will be.
 
-    [Open Ai's prompt example page for more information](https://platform.openai.com/docs/examples)
+   [General thoughts on prompting](https://help.openai.com/en/articles/4936848-how-do-i-create-a-good-prompt-for-an-ai-model-like-gpt-4)
 
-3. **Select a Model**: Choose the ChatGPT model that best fits your needs. 
-Information about different models and their pricing can be found at https://platform.openai.com/docs/models and https://openai.com/api/pricing.
+   [Prompt examples](https://platform.openai.com/docs/examples)
 
+### Advanced Options
 
-**Output**
+- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only `gpt-4.1`, `gpt-4o` and `gpt-5.4` accept it; every other model in the list rejects it outright, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
 
-The output is a response generated by ChatGPT, crafted based on the provided context data and the prompt posed.
-This response is saved in the `output.txt` file.
+- **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used. For the OpenAI server type it is sent as `max_completion_tokens`, which also covers the hidden reasoning tokens of the reasoning models — setting it too low there can consume the whole budget on reasoning and return an empty answer. For custom servers it is sent as `max_tokens`, which Ollama and older vLLM builds still require.
 
+- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only `gpt-4.1`, `gpt-4o` and `gpt-5.4` accept it on the OpenAI server type.
+
+- **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
+
+### Output
+
+The output is a response generated by the selected model, crafted based on the provided context data and the prompt.
+This response is saved in a Markdown file.
+
+## Privacy note
+
+When you run this tool, your input data is sent to the configured server using the provided credentials.
+Context files are embedded directly in the chat completion request — text files inline, images as base64 `data:` URIs — so they are not uploaded to OpenAI's Files/storage API and there is nothing to delete afterwards.
+For the OpenAI server type, the request is subject to OpenAI's data usage policies.
+For custom servers, data handling depends on the server's policies, and the Custom Server URL you configure determines which host the Galaxy job connects to.
