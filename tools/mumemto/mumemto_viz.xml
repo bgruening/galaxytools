@@ -1,0 +1,261 @@
+<tool id="mumemto_viz" name="mumemto viz" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>synteny visualization of MUMs</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="stdio"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+ln -s '$m' input.mums &&
+ln -s '$l' input.lengths &&
+
+mumemto viz
+--mums input.mums
+--lengths input.lengths
+--labels input.lengths
+#if $filelist_text:
+    --filelist '$filelist_file'
+#end if
+--len-filter $L
+--subsample $subsample
+## mumemto sizes the gap to under a pixel when the flag is omitted, so only pass it
+## when the user has picked a value.
+#if str($max_gap_len):
+    --max-gap-len $max_gap_len
+#end if
+--mode '$multifasta.mode'
+#if str($multifasta.mode) != "normal":
+    --spacer $multifasta.spacer
+#end if
+--fout 'plot.${output_format}'
+--dpi $styling.dpi
+--dims $styling.dims_width $styling.dims_height
+--mum-color '$styling.mum_color'
+--inversion-color '$styling.inversion_color'
+$styling.center
+$styling.no_coll_block
+]]></command>
+    <expand macro="configfile_filelist"/>
+    <inputs>
+        <expand macro="input_mums"/>
+        <expand macro="input_lengths"/>
+        <param name="filelist_text" type="text" area="true" optional="true" label="Custom sequence order" help="Only needed to change the order sequences are drawn in. One entry per line, using the exact first-column values from the .lengths file (not the original FASTA paths), in the desired new order. Leave empty to use the order from the .lengths file as-is. Sequence names on the y-axis are derived from the .lengths file automatically.">
+            <sanitizer>
+                <valid initial="string.printable">
+                    <add value="\n"/>
+                </valid>
+            </sanitizer>
+        </param>
+        <expand macro="param_length_filter"/>
+        <param argument="--subsample" type="integer" value="1" min="1" label="Subsample factor" help="Plot every Nth MUM (1 = all)"/>
+        <!-- Not the shared param_max_gap macro: mumemto viz picks a sub-pixel gap
+             automatically, so there is no sensible fixed default here. -->
+        <param argument="--max-gap-len" type="integer" optional="true" min="0" label="Maximum gap length" help="Maximum allowed gap between collinear MUMs. Leave empty to let mumemto pick a gap under one pixel wide."/>
+        <param name="output_format" type="select" label="Output format">
+            <option value="png" selected="true">PNG</option>
+            <option value="pdf">PDF</option>
+            <option value="svg">SVG</option>
+        </param>
+        <conditional name="multifasta">
+            <param argument="--mode" type="select" label="Multi-FASTA layout" help="Only takes effect when the lengths file is in multi-FASTA format, i.e. lists each contig separately. Otherwise every input file is drawn as one sequence.">
+                <option value="normal" selected="true">Normal - draw each input file as a single sequence</option>
+                <option value="delineated">Delineated - mark the contig boundaries within each file</option>
+                <option value="gapped">Gapped - space the contigs apart, requires the same contig count in every file</option>
+            </param>
+            <when value="normal"/>
+            <when value="delineated">
+                <expand macro="param_spacer"/>
+            </when>
+            <when value="gapped">
+                <expand macro="param_spacer"/>
+            </when>
+        </conditional>
+        <section name="styling" title="Styling options" expanded="false">
+            <param argument="--dpi" type="integer" value="500" min="1" label="Resolution (dpi)" help="Ignored for SVG and PDF, which are resolution independent"/>
+            <param name="dims_width" type="float" value="6.4" min="0.1" label="Figure width (inches)"/>
+            <param name="dims_height" type="float" value="4.8" min="0.1" label="Figure height (inches)"/>
+            <param argument="--mum-color" type="text" value="#00A2FF" label="MUM colour" help="Hex code such as #00A2FF, or a matplotlib colour name">
+                <!-- The default sanitizer turns the # of a hex code into __pd__, which
+                     matplotlib then rejects, so # has to be whitelisted here. -->
+                <sanitizer invalid_char="">
+                    <valid initial="string.letters,string.digits">
+                        <add value="#"/>
+                    </valid>
+                </sanitizer>
+                <validator type="empty_field"/>
+                <validator type="regex" message="Use a hex code like #00A2FF or a colour name">^(#[0-9A-Fa-f]{6}|[A-Za-z]+)$</validator>
+            </param>
+            <param argument="--inversion-color" type="text" value="green" label="Inversion colour" help="Colour for MUMs found on the reverse strand">
+                <sanitizer invalid_char="">
+                    <valid initial="string.letters,string.digits">
+                        <add value="#"/>
+                    </valid>
+                </sanitizer>
+                <validator type="empty_field"/>
+                <validator type="regex" message="Use a hex code like #00A2FF or a colour name">^(#[0-9A-Fa-f]{6}|[A-Za-z]+)$</validator>
+            </param>
+            <param argument="--center" type="boolean" truevalue="--center" falsevalue="" checked="false" label="Centre the sequences" help="Align sequences on their midpoints rather than their start positions"/>
+            <param argument="--no-coll-block" type="boolean" truevalue="--no-coll-block" falsevalue="" checked="false" label="Plot individual MUMs instead of collinear blocks" help="Slower, but shows every MUM rather than the blocks they form"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="plot_output" format="png" from_work_dir="plot.png" label="${tool.name} PNG on ${on_string}">
+            <filter>output_format == "png"</filter>
+        </data>
+        <data name="plot_output_pdf" format="pdf" from_work_dir="plot.pdf" label="${tool.name} PDF on ${on_string}">
+            <filter>output_format == "pdf"</filter>
+        </data>
+        <data name="plot_output_svg" format="svg" from_work_dir="plot.svg" label="${tool.name} SVG on ${on_string}">
+            <filter>output_format == "svg"</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Defaults, PNG. test1_blocks.mums carries a block column, so the default
+             collinear-block path has blocks to draw; a single-MUM file yields none. -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1_blocks.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <param name="output_format" value="png"/>
+            <output name="plot_output" ftype="png">
+                <assert_contents>
+                    <has_size size="96650" delta="10000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- SVG is text, so the figure dimensions can be checked directly:
+             6.4 x 4.8 inches at 72 pt per inch is 460.8 x 345.6 pt. The fill rule also
+             shows that the default MUM colour survives sanitization. -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1_blocks.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <param name="output_format" value="svg"/>
+            <output name="plot_output_svg" ftype="svg">
+                <assert_contents>
+                    <has_text text="&lt;svg"/>
+                    <has_text text="width=&quot;460.8pt&quot; height=&quot;345.6pt&quot;"/>
+                    <has_text text="fill: #00a2ff"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- PDF branch of the output filter -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1_blocks.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <param name="output_format" value="pdf"/>
+            <output name="plot_output_pdf" ftype="pdf">
+                <assert_contents>
+                    <has_size size="9183" delta="3000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Every styling option at a non-default value, checked in the SVG itself:
+             3 x 2 inches is 216 x 144 pt, and the MUM colour reaches the fill rule -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="l" value="test1.lengths" ftype="txt"/>
+            <param name="output_format" value="svg"/>
+            <section name="styling">
+                <param name="dims_width" value="3.0"/>
+                <param name="dims_height" value="2.0"/>
+                <param name="mum_color" value="#FF0000"/>
+                <param name="center" value="true"/>
+                <param name="no_coll_block" value="true"/>
+            </section>
+            <output name="plot_output_svg" ftype="svg">
+                <assert_contents>
+                    <has_text text="width=&quot;216pt&quot; height=&quot;144pt&quot;"/>
+                    <has_text text="fill: #ff0000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Every MUM in test_inversion.mums is on the reverse strand in the second
+             sequence, so the inversion colour is the only ribbon colour drawn -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test_inversion.mums" ftype="txt"/>
+            <param name="l" value="test1.lengths" ftype="txt"/>
+            <param name="output_format" value="svg"/>
+            <section name="styling">
+                <param name="inversion_color" value="#00FF00"/>
+                <param name="no_coll_block" value="true"/>
+            </section>
+            <output name="plot_output_svg" ftype="svg">
+                <assert_contents>
+                    <has_text text="fill: #00ff00"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Gapped layout over a multi-FASTA lengths file, which is the only case
+             where the mode and its spacer change anything -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1_blocks.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <param name="output_format" value="png"/>
+            <conditional name="multifasta">
+                <param name="mode" value="gapped"/>
+                <param name="spacer" value="0.1"/>
+            </conditional>
+            <output name="plot_output" ftype="png">
+                <assert_contents>
+                    <has_size size="78383" delta="10000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Custom sequence order via the text box: reordering seq2/seq1/seq3 changes
+             the rendered figure, confirmed against the unreordered gapped test above -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1_blocks.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <param name="filelist_text" value="seq2.fa&#10;seq1.fa&#10;seq3.fa"/>
+            <param name="output_format" value="png"/>
+            <conditional name="multifasta">
+                <param name="mode" value="gapped"/>
+                <param name="spacer" value="0.1"/>
+            </conditional>
+            <output name="plot_output" ftype="png">
+                <assert_contents>
+                    <has_size size="88255" delta="10000"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Draws a synteny plot from mumemto MUMs output. Each input sequence becomes a
+horizontal track, and every MUM is drawn as a ribbon joining its position in one
+sequence to its position in the next. Ribbons that cross are inversions, and they
+are drawn in a separate colour. Sequence names from the .lengths file are shown
+on the y-axis.
+
+By default the MUMs are grouped into collinear blocks before plotting, which is
+far faster and much easier to read on real collections. Turn that off under
+*Styling options* to see the individual MUMs.
+
+-----
+
+**Input**
+
+- A `.mums` file from mumemto
+- The `.lengths` file from that run
+- Optionally a custom sequence order, if the default (from the .lengths file) is not what you want
+
+-----
+
+**Multi-FASTA layout**
+
+If the `.lengths` file lists each contig separately, which is what mumemto writes,
+the layout modes control how contig boundaries are shown. *Gapped* needs every
+input file to have the same number of contigs and falls back to *delineated* when
+they differ. With a simplified two-column lengths file none of the modes have any
+effect, since each file is then a single sequence.
+
+-----
+
+**Output**
+
+One plot, in the chosen format. PNG is a good default; use SVG or PDF when you
+need to edit the figure afterwards, where the resolution setting no longer applies.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
