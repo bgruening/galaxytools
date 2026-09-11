@@ -64,6 +64,16 @@ MP3 coverage. Both conversions use the original `KY25A_1.TextGrid`.
 Regenerate from this directory with FFmpeg:
 
 ```sh
-ffmpeg -i KY25A_1.mp3 -c:a pcm_s16le KY25A_1.wav
-ffmpeg -i KY25A_1.wav -c:a flac KY25A_1.flac
+ffmpeg -i KY25A_1.mp3 -c:a pcm_s16le KY25A_1_temp.wav
+ffmpeg -i KY25A_1_temp.wav -c:a flac KY25A_1.flac
+```
+
+Decrease .wav file size by converting to mono and downsampling to 16 kHz:
+
+```sh
+ffmpeg -i KY25A_1_temp.wav \
+    -ac 1 \
+    -ar 16000 \
+    -c:a pcm_s16le \
+    KY25A_1.wav
 ```
