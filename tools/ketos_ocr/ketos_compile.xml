@@ -1,0 +1,217 @@
+<tool id="ketos_compile" name="Ketos Compile" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>precompile OCR training data into an Arrow dataset</description>
+    <macros>
+        <import>macros.xml</import>
+        <import>macros_for_testing.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="4.1.2">yq</requirement>
+    </expand>
+    <expand macro="creators"/>
+    <command detect_errors="exit_code"><![CDATA[
+        #set $input_source = $training_data.input_source
+
+        #if $input_source.source == 'repeat'
+            #set $pairs = $input_source.ground_truth_pairs
+        #else
+            #set $pairs = $input_source.ground_truth_collection
+        #end if
+
+        #set $image_filename_jq_paths = {
+            'alto': '.alto.Description.sourceImageInformation.fileName', 
+            'page': '.PcGts.Page."@imageFilename"'
+        }
+
+        #for $i, $pair in enumerate($pairs)
+            #if $input_source.source == 'repeat'
+                #set $image = $pair.image
+                #set $annotation = $pair.annotation
+            #else
+                #set $image = $pair.forward
+                #set $annotation = $pair.reverse
+            #end if
+
+            @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+
+            #if $training_data.format_type == 'path'
+                ln -s '$image' 'ground_truth_${i}.${image.ext}' &&
+                ln -s '$annotation' 'ground_truth_${i}.gt.txt' &&
+            #else
+                #set $image_filename = 'input.' + str($image.ext)
+                
+                mkdir -p 'ground_truth_${i}' &&
+                ln -s '$image' 'ground_truth_${i}/${image_filename}' &&
+
+                #set $image_filename_jq_path = $image_filename_jq_paths[str($training_data.format_type)]
+                xq -x --arg filename '$image_filename' 
+                    '$image_filename_jq_path = \$filename' 
+                    '$annotation' 
+                    > 'ground_truth_${i}/annotation.xml' &&
+            #end if
+        #end for
+
+        ketos compile
+            --output dataset.arrow
+            --format-type '$training_data.format_type'
+            $empty_lines
+            --recordbatch-size '$recordbatch_size'
+
+            #if str($force_type).strip() and str($force_type) != 'None'
+                --force-type '$force_type'
+            #end if
+
+            #if $training_data.format_type != 'path'
+                #if $training_data.linetype
+                    --linetype '$training_data.linetype'
+                #end if
+
+                #if $training_data.legacy_polygons
+                    --legacy-polygons
+                #end if
+            #end if
+
+            #for $i, $pair in enumerate($pairs)
+                #if $training_data.format_type == 'path'
+                    #if $input_source.source == 'repeat'
+                        #set $image = $pair.image
+                    #else
+                        #set $image = $pair.forward
+                    #end if
+                    'ground_truth_${i}.${image.ext}'
+                #else
+                    'ground_truth_${i}/annotation.xml'
+                #end if
+            #end for
+    ]]></command>
+    <expand macro="env_vars"/>
+    <inputs>
+        <conditional name="training_data">
+            <param name="format_type" type="select" label="Training data format">
+                <option value="alto" selected="true">ALTO</option>
+                <option value="page">PAGE XML</option>
+                <option value="path">Line image/transcription pairs</option>
+            </param>
+            <expand macro="compile_training_data_inputs"/>
+        </conditional>
+        <param argument="--force-type" type="select" optional="true" label="Force dataset type" help="Forces the dataset type to a specific value. Can be used to 'convert' a line strip-type collection to a baseline-style dataset, e.g. to disable centerline normalization.">
+            <option value="baseline">Baselines</option>
+            <option value="bbox">Bounding boxes</option>
+        </param>
+        <param name="empty_lines" type="select" label="Empty text lines" help="Whether to keep or skip empty text lines. Text-less datasets are useful for unsupervised pretraining but loading datasets with many empty lines for recognition training is inefficient">
+            <option value="--skip-empty-lines" selected="true">
+                Skip empty lines
+            </option>
+            <option value="--keep-empty-lines">
+                Keep empty lines
+            </option>
+        </param>
+        <!-- in ketos unbounded, 1000 is 10x the default 100, since we do not want to overstrain the available RAM resources this sounds reasonable, not yet tested -->
+        <param argument="--recordbatch-size" type="integer" min="1" max="1000" value="100" label="Minimum record batch size" help="Minimum number of records per RecordBatch written to the output file. Larger RecordBatches require more transient memory but slightly improve reading performance"/>
+    </inputs>
+    <outputs>
+        <data name="dataset" format="arrow" from_work_dir="dataset.arrow" label="${tool.name} on ${on_string}: dataset.arrow"/>
+    </outputs>
+    <tests>
+        <!-- Test manual repeat input using defaults. -->
+        <expand macro="compile_repeat_test" format_type="path" image="compile_input_line.png" annotation="compile_input_line.gt.txt" annotation_ftype="txt">
+            <assert_stdout>
+                <has_text text="Output file written to dataset.arrow"/>
+            </assert_stdout>
+            <assert_command>
+                <not_has_text text="--legacy-polygons"/>
+            </assert_command>
+        </expand>
+        <!-- Test manual repeat with two file pairs as input -->
+        <expand macro="compile_repeat_test_2_file_pairs" format_type="path">
+            <repeat name="ground_truth_pairs">
+                <param name="image" value="compile_input_line.png" ftype="png"/>
+                <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+            </repeat>
+            <repeat name="ground_truth_pairs">
+                <param name="image" value="compile_input_line.png" ftype="png"/>
+                <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+            </repeat>
+        </expand>
+        <!-- Test ALTO input with its referenced page image in png format -->
+        <expand macro="compile_repeat_test" format_type="alto" image="input_binarized.png" annotation="input_binarized_ocr_output.alto" annotation_ftype="alto">
+            <token name="format_options">
+                <param name="legacy_polygons" value="true"/>
+                <param name="linetype" value="bbox"/>
+            </token>
+            <assert_command>
+                <has_text text="filename 'input.png'"/>
+                <has_text text="--legacy-polygons"/>
+                <has_text text="--linetype 'bbox'"/>
+            </assert_command>
+        </expand>
+        <!-- Test TIFF input with its referenced ALTO annotation in tiff format -->
+        <expand macro="compile_repeat_test" format_type="alto" image="input.tiff" image_ftype="tiff" annotation="input_binarized_tiff_ocr_output.alto" annotation_ftype="alto">
+            <assert_command>
+                <has_text text="ground_truth_0/input.tiff"/>
+            </assert_command>
+        </expand>
+        <!-- Test ALTO input from a list:paired collection. -->
+        <expand macro="compile_collection_test" format_type="alto" element_name="page_001" image="input_binarized.png" annotation="input_binarized_ocr_output.alto" annotation_ftype="alto">
+            <token name="options">
+                <expand macro="compile_test_default_options"/>
+            </token>
+        </expand>
+        <!-- Test PAGE XML input with its referenced page image. -->
+        <expand macro="compile_repeat_test" format_type="page" image="input_binarized.png" annotation="input_binarized_ocr_output.page.xml" annotation_ftype="page.xml"/>
+        <!-- Test PAGE XML input from a list:paired collection. -->
+        <expand macro="compile_collection_test" format_type="page" element_name="page_001" image="input_binarized.png" annotation="input_binarized_ocr_output.page.xml" annotation_ftype="page.xml">
+            <token name="options">
+                <expand macro="compile_test_default_options"/>
+            </token>
+        </expand>
+        <!-- Test line image/transcription input from a list:paired collection using non-default options. -->
+        <expand macro="compile_collection_test" format_type="path" element_name="line_001" image="compile_input_line.png" annotation="compile_input_line.gt.txt" annotation_ftype="txt">
+            <token name="options">
+                <expand macro="compile_test_nondefault_options"/>
+            </token>
+            <element name="line_002">
+                <collection type="paired">
+                    <element name="forward" value="compile_input_line.png" ftype="png"/>
+                    <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                </collection>
+            </element>
+        </expand>
+        <!-- Reject a multi-page TIFF training image. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="training_data">
+                <param name="format_type" value="alto"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_2pages.tiff" ftype="tiff"/>
+                        <param name="annotation" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                    </repeat>
+                </conditional>
+            </conditional>
+            <expand macro="compile_test_default_options"/>
+            <assert_stderr>
+                <has_text text="Multi-page TIF(F) training images are not supported. Detected 2 pages."/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+
+**What it does**
+
+ketos belongs to kraken, an open-source, turn-key automatic text recognition (ATR) 
+system optimized for historical and non-Latin script writing.
+This tool only exposes Kraken's `ketos compile` command, 
+which compiles OCR ground-truth data into the Apache Arrow IPC dataset format 
+to be used with Ketos training commands. The expected input is a set of pairs,
+either selected manually or provided as a `list:paired` Galaxy collection, where each pair consists of:
+
+- image (in collection: forward): document or line image in PNG, JPEG, or TIFF format
+- annotation (in collection: reverse): OCR ground-truth data in ALTO, PAGE XML, or plain text
+
+**License**
+
+Kraken is licensed under the Apache-2.0 license.
+
+</help>
+    <expand macro="citations"/>
+</tool>
