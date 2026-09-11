@@ -8,6 +8,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from bertviz import head_view, model_view
 
+
 def sanitize_filename(s: str) -> str:
     return "".join(c if c.isalnum() or c in ("-", "_", ".") else "_" for c in s)
 
@@ -24,16 +25,16 @@ def save_layer_avg_attention_html(
     positions = list(range(S))
     ticktext = tokens
 
-    for l in range(L):
-        mat = attn_probs[l].mean(axis=0)  # [S,S]
+    for layer in range(L):
+        mat = attn_probs[layer].mean(axis=0)  # [S,S]
         fig.add_trace(
             go.Heatmap(
                 z=mat,
                 x=positions,
                 y=positions,
                 colorscale="Viridis",
-                visible=(l == 0),
-                colorbar=dict(title="Avg Attn") if l == 0 else None,
+                visible=(layer == 0),
+                colorbar=dict(title="Avg Attn") if layer == 0 else None,
                 customdata=np.array(tokens)[None, :].repeat(S, axis=0),
                 hovertemplate=(
                     "Query=%{y}<br>"
@@ -44,16 +45,16 @@ def save_layer_avg_attention_html(
         )
 
     buttons = []
-    for l in range(L):
+    for layer in range(L):
         visible = [False] * L
-        visible[l] = True
+        visible[layer] = True
         buttons.append(
             dict(
-                label=f"Layer {l}",
+                label=f"Layer {layer}",
                 method="update",
                 args=[
                     {"visible": visible},
-                    {"title": f"{seq_id} - Layer {l} (average over heads)"},
+                    {"title": f"{seq_id} - Layer {layer} (average over heads)"},
                 ],
             )
         )
@@ -90,7 +91,6 @@ def save_layer_avg_attention_html(
     )
 
     fig.write_html(out_html, include_plotlyjs="cdn")
-
 
 
 def compute_attention_statistics(attn_probs, exclude_cls_sep=True):
@@ -366,6 +366,7 @@ def save_attention_matrix_tsv(
             row = "\t".join(f"{x:.6f}" for x in attn_avg[i])
             f.write(f"{tok}\t{row}\n")
 
+
 def save_attention_matrix_sheet(
     tokens: List[str],
     attn_probs: np.ndarray,   # [L,H,S,S]
@@ -382,22 +383,23 @@ def save_attention_matrix_sheet(
     attn_probs = np.asarray(attn_probs)
     L, H, S, _ = attn_probs.shape
 
-    def sheet_name(l):
-        return f"Layer_{l}"[:31]
+    def sheet_name(layer):
+        return f"Layer_{layer}"[:31]
 
     with pd.ExcelWriter(out_path, engine="openpyxl") as writer:
-        for l in range(L):
-            mat = attn_probs[l].mean(axis=0)
+        for layer in range(L):
+            mat = attn_probs[layer].mean(axis=0)
             df = pd.DataFrame(
                 mat,
                 index=tokens,
                 columns=tokens
             )
             df.index.name = "query \\ key"
-            df.to_excel(writer, sheet_name=sheet_name(l))
+            df.to_excel(writer, sheet_name=sheet_name(layer))
+
 
 def create_visualizations_for_selected_sequences(
-    selected_indices, all_attention, all_tokens, viz_dir: str):
+        selected_indices, all_attention, all_tokens, viz_dir: str):
 
     os.makedirs(viz_dir, exist_ok=True)
 
@@ -410,8 +412,8 @@ def create_visualizations_for_selected_sequences(
         layer_avg_html = os.path.join(viz_dir, f"vis_{seq_id}_layer-avg-attention.html")
         save_layer_avg_attention_html(seq_idx, tokens, attn_probs, layer_avg_html)
 
-        # 2+3) BertViz head and model view   
-        if len(tokens) < 50:   
+        # 2+3) BertViz head and model view
+        if len(tokens) < 50:
             attention = tuple(layer.unsqueeze(0) for layer in attn_probs)
             hv = head_view(attention, tokens, html_action="return")
             with open(os.path.join(viz_dir, f"vis_{seq_id}_bertviz-head-view.html"), "w", encoding="utf-8") as f:
@@ -424,7 +426,7 @@ def create_visualizations_for_selected_sequences(
         # 4) Bar plots
         stats_html = os.path.join(viz_dir, f"vis_{seq_id}_attention-statistics.html")
         save_attention_statistics_html(seq_idx, tokens, attn_probs, stats_html)
-        
+
         # 5) Layer-Averaged Attention
         sheet_path = os.path.join(viz_dir, f"vis_{seq_id}_attn-avrg.xlsx")
         save_attention_matrix_sheet(tokens, attn_probs, sheet_path)

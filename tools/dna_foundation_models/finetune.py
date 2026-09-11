@@ -17,6 +17,7 @@ from peft import (
     get_peft_model,
 )
 
+
 # -----------------------------
 # Arguments
 # -----------------------------
@@ -76,6 +77,7 @@ class TrainingArguments(transformers.TrainingArguments):
     eval_and_save_results: bool = field(default=True)
     save_model: bool = field(default=False)
     seed: int = field(default=42)
+
 
 # -----------------------------
 # Dataset
@@ -188,7 +190,7 @@ def calculate_regression_metrics(predictions: np.ndarray, labels: np.ndarray):
         spearman = 0.0
         spearman_p = 1.0
 
-    results =  {
+    results = {
         "mse": mse,
         "rmse": rmse,
         "mae": mae,
@@ -230,7 +232,7 @@ def make_compute_metrics(problem_type: str):
             valid_mask = labels != -100
             valid_labels = labels[valid_mask]
 
-            if probs.shape[-1] == 2 and len(np.unique(valid_labels)) > 1: # for binary classification
+            if probs.shape[-1] == 2 and len(np.unique(valid_labels)) > 1:  # for binary classification
                 results["roc_auc"] = sklearn.metrics.roc_auc_score(valid_labels, probs[valid_mask, 1])
                 results["pr_auc"] = sklearn.metrics.average_precision_score(valid_labels, probs[valid_mask, 1])
             return results
@@ -251,6 +253,7 @@ def get_texts(data_path: str):
         for row in reader:
             texts.append(row[0])
     return texts
+
 
 def dump_test_predictions(trainer: transformers.Trainer, test_dataset: Dataset, sequences: list[str],
                           output_dir: str, problem_type: str):
@@ -273,6 +276,7 @@ def dump_test_predictions(trainer: transformers.Trainer, test_dataset: Dataset, 
         writer.writerow(["sequence", "label", "prediction"])
         for seq, y_true, y_pred in zip(sequences, labels.tolist(), preds.tolist()):
             writer.writerow([seq, y_true, y_pred])
+
 
 # -----------------------------
 # Train
@@ -386,7 +390,7 @@ def train():
             json.dump(test_metrics, f, indent=2)
 
     # iv) output test labels and predictions
-    texts = get_texts(data_path=data_args.test_file)  
+    texts = get_texts(data_path=data_args.test_file)
     dump_test_predictions(
         trainer=trainer,
         test_dataset=test_dataset,

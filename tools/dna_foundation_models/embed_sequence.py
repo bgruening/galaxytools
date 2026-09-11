@@ -5,6 +5,7 @@ import numpy as np
 from transformers import AutoTokenizer, AutoModel, AutoConfig
 from visualize_attn import create_visualizations_for_selected_sequences
 
+
 def parse_fasta(fasta_file):
     sequences = []
     header = None
@@ -12,7 +13,8 @@ def parse_fasta(fasta_file):
     with open(fasta_file, "r") as fasta:
         for line in fasta:
             line = line.strip()
-            if not line: continue
+            if not line:
+                continue
             if line.startswith(">"):
                 if header is not None:
                     sequences.append((header, "".join(current_seq)))
@@ -24,11 +26,13 @@ def parse_fasta(fasta_file):
             sequences.append((header, "".join(current_seq)))
     return sequences
 
+
 def remove_special_tokens(attention_mask):
     mask = attention_mask.clone()
     mask[:, 0] = 0
-    mask[torch.arange(mask.size(0)), mask.sum(dim=1)-1] = 0
+    mask[torch.arange(mask.size(0)), mask.sum(dim=1) - 1] = 0
     return mask
+
 
 def mean_pooling(last_hidden_state, attention_mask):
     """Attention-mask aware mean pooling."""
@@ -45,13 +49,13 @@ def max_pooling(last_hidden_state, attention_mask):
     return torch.max(masked, dim=1).values
 
 
-def embed_sequences(sequences, tokenizer, model, device, batch_size=16, 
+def embed_sequences(sequences, tokenizer, model, device, batch_size=16,
                     pooling="mean", attn_vis=False, attn_ids=None):
     headers, seqs = zip(*sequences)
     embeddings = []
     all_attentions = {}
     all_tokens = {}
-    
+
     print("Running batched inference...")
     for i in range(0, len(seqs), batch_size):
         batch = list(seqs[i:i + batch_size])
@@ -75,10 +79,10 @@ def embed_sequences(sequences, tokenizer, model, device, batch_size=16,
                     all_attentions[seq_id] = batch_attn[
                         :, j, :, :seq_len, :seq_len
                     ]
-                    
+
                     token_ids = input_ids[j, :seq_len].tolist()
                     all_tokens[seq_id] = tokenizer.convert_ids_to_tokens(token_ids)
-            
+
             pool_mask = remove_special_tokens(inputs["attention_mask"])
 
             if pooling == "cls":
@@ -149,18 +153,18 @@ def main():
         device=device,
         batch_size=args.batch_size,
         pooling=args.pooling,
-        attn_vis= args.attn_vis,
+        attn_vis=args.attn_vis,
         attn_ids=args.attn_ids
     )
 
     print("Saving TSV...")
     save_to_tsv(headers, embeddings, args.output)
-    
+
     if args.attn_vis and args.attn_ids is not None:
         print("Generating visualizations...")
         selected = headers if "all" in args.attn_ids else args.attn_ids
         create_visualizations_for_selected_sequences(selected, attention, tokens, args.viz_dir)
-    
+
     print("Done.")
     print("Output shape:", embeddings.shape)
 
