@@ -1,0 +1,207 @@
+<tool id="kat_filter_kmer" name="KAT Filter Kmer" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>filters k-mers to those within and outside defined bounds</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        ## Link input file with appropriate extension
+        #if $input.ext in ('fastq.gz', 'fastqsanger.gz'):
+            #set $ext = '.fastq.gz'
+        #elif $input.ext in ('fasta.gz',):
+            #set $ext = '.fasta.gz'
+        #elif $input.ext in ('fastq', 'fastqsanger'):
+            #set $ext = '.fastq'
+        #elif $input.ext == 'jellyfish':
+            #set $ext = '.jf'
+        #else:
+            #set $ext = '.fasta'
+        #end if
+        cp '$input' 'input${ext}' &&
+
+        kat filter kmer
+            -o kat-filter-kmer
+            -t \${GALAXY_SLOTS:-1}
+            -c '$filter_options.low_count'
+            -d '$filter_options.high_count'
+            -g '$filter_options.low_gc'
+            -h '$filter_options.high_gc'
+            $filter_options.invert
+            $filter_options.separate
+            $kmer_options.non_canonical
+            -m '$kmer_options.mer_len'
+            -H '$kmer_options.hash_size'
+            'input${ext}'
+            &&
+            mv kat-filter-kmer-in* kat-filter-kmer-in.jf
+            #if $filter_options.separate:
+            &&
+            mv kat-filter-kmer-out* kat-filter-kmer-out.jf
+            #end if
+
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz,jellyfish" label="Input" help="Input FASTA/FASTQ file (gzip accepted) or a pre-counted Jellyfish hash file to filter k-mers from"/>
+
+        <section name="filter_options" title="Filter Options" expanded="true">
+            <param argument="--low_count" type="integer" value="1" min="0" label="Low count threshold" help="K-mers with coverage below this value are excluded from the selected set"/>
+            <param argument="--high_count" type="integer" value="10000" min="0" label="High count threshold" help="K-mers with coverage above this value are excluded from the selected set"/>
+            <param argument="--low_gc" type="integer" value="1" min="0" label="Low GC count threshold" help="K-mers with a GC count below this value are excluded from the selected set"/>
+            <param argument="--high_gc" type="integer" value="100" min="0" label="High GC count threshold" help="K-mers with a GC count above this value are excluded from the selected set"/>
+            <param argument="--invert" type="boolean" truevalue="--invert" falsevalue="" checked="false" label="Invert selection" help="Take k-mers outside the defined region as the selected content, rather than those inside"/>
+            <param argument="--separate" type="boolean" truevalue="--separate" falsevalue="" checked="false" label="Separate into two sets" help="Partition k-mers into two output hashes: those inside the defined region and those outside. Works in combination with Invert"/>
+        </section>
+
+        <expand macro="kmer_params"/>
+    </inputs>
+
+    <outputs>
+        <!-- Primary selected k-mer hash (inside region, or outside if inverted) -->
+        <data name="output_selected" format="jellyfish" from_work_dir="kat-filter-kmer-in.jf" label="${tool.name} on ${on_string}: Selected k-mers (hash)"/>
+
+        <!-- Excluded k-mer hash, only produced when separate is enabled -->
+        <data name="output_non_selected" format="jellyfish" from_work_dir="kat-filter-kmer-out.jf" label="${tool.name} on ${on_string}: Non-selected k-mers (hash)">
+            <filter>filter_options['separate']</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <!-- Test 01: Basic FASTA input, default bounds -->
+        <test expect_num_outputs="1">
+            <param name="input" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            <section name="filter_options">
+                <param name="low_count" value="1"/>
+                <param name="high_count" value="10000"/>
+                <param name="low_gc" value="1"/>
+                <param name="high_gc" value="100"/>
+            </section>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <output name="output_selected">
+                <assert_contents>
+                    <has_size size="50060881" delta="1000"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 02: FASTQ input, separate into two sets -->
+        <test expect_num_outputs="2">
+            <param name="input" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            <section name="filter_options">
+                <param name="low_count" value="2"/>
+                <param name="high_count" value="500"/>
+                <param name="low_gc" value="5"/>
+                <param name="high_gc" value="22"/>
+                <param name="separate" value="true"/>
+            </section>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <output name="output_selected">
+                <assert_contents>
+                    <has_size size="39811" delta="1000"/>
+                </assert_contents>
+            </output>
+            <output name="output_non_selected">
+                <assert_contents>
+                    <has_size size="722322" delta="1000"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 03: Gzipped FASTQ input, inverted selection, non-canonical k-mers -->
+        <test expect_num_outputs="1">
+            <param name="input" value="ecoli_r1.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="filter_options">
+                <param name="low_count" value="1"/>
+                <param name="high_count" value="10000"/>
+                <param name="low_gc" value="1"/>
+                <param name="high_gc" value="100"/>
+                <param name="invert" value="true"/>
+            </section>
+            <section name="kmer_options">
+                <param name="mer_len" value="21"/>
+                <param name="non_canonical" value="true"/>
+            </section>
+            <output name="output_selected">
+                <assert_contents>
+                    <has_size size="1328" delta="100"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 04: Gzipped FASTQ input, inverted + separate, custom hash size -->
+        <test expect_num_outputs="2">
+            <param name="input" value="ecoli_r1.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            <section name="filter_options">
+                <param name="low_count" value="3"/>
+                <param name="high_count" value="1000"/>
+                <param name="low_gc" value="10"/>
+                <param name="high_gc" value="90"/>
+                <param name="invert" value="true"/>
+                <param name="separate" value="true"/>
+            </section>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+                <param name="hash_size" value="50000000"/>
+            </section>
+            <output name="output_selected">
+                <assert_contents>
+                    <has_size size="11280" delta="1000"/>
+                </assert_contents>
+            </output>
+            <output name="output_non_selected">
+                <assert_contents>
+                    <has_size size="750813" delta="1000"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+
+    <help format="markdown"><![CDATA[
+**KAT Filter Kmer - K-mer Filtering by Coverage and GC Bounds**
+
+KAT (K-mer Analysis Toolkit) Filter Kmer produces Jellyfish k-mer hashes containing k-mers that fall within (or outside) user-defined GC count and k-mer coverage bounds.
+
+-----
+
+**What it does**
+
+Given an input FASTA/FASTQ file or pre-counted Jellyfish hash, this tool filters k-mers according to two criteria applied simultaneously:
+
+- **K-mer coverage** - retain only k-mers whose count falls between the low and high count thresholds
+- **GC count** - retain only k-mers whose GC nucleotide count falls between the low and high GC thresholds
+
+This is particularly useful for isolating k-mers attributable to contamination or for contamination removal, typically after identifying suspect regions using the KAT GCP plot.
+
+The selection can be **inverted** to instead capture k-mers *outside* the defined bounds, and the **separate** option can be used to produce both sets simultaneously as distinct output hashes.
+
+-----
+
+**Inputs**
+
+- **Input**: A FASTA or FASTQ file (gzip compression accepted), or a pre-counted Jellyfish hash file (`.jf`).
+
+-----
+
+**Outputs**
+
+- **Selected k-mers hash**: A Jellyfish hash containing the k-mers that passed the filter (or failed, if *Invert* is enabled).
+- **Non-selected k-mers hash** *(optional)*: A Jellyfish hash of the complementary set of k-mers. Only produced when *Separate into two sets* is enabled.
+
+-----
+
+**Notes**
+
+- GC thresholds are expressed as **counts** (number of G/C bases in the k-mer), not percentages. For a k-mer length of 27, a GC count of 1–100 effectively covers all possible GC values.
+- Use *Invert* alone to flip which set is written to the primary output. Use *Separate* to write both sets regardless of inversion.
+- The default **hash size** (100 million) suits most datasets; adjust downward to reduce memory use on smaller inputs or upward for large, high-coverage datasets.
+- If the input is already a Jellyfish hash, k-mer length and hash size settings are ignored.
+
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>

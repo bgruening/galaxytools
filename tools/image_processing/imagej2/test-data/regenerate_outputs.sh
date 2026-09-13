@@ -13,7 +13,7 @@ ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2
 # Test 5
 ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_adjust_threshold_binary_jython_script.py' 'tools/image_processing/imagej2/test-data/blobs.gif' 0.0 8.0 'Manual' 'bw' 'no' 'tools/image_processing/imagej2/test-data/blobs_threshold_0-8.gif' 'gif'
 # Test 6
-ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_adjust_threshold_binary_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel.tif' 0.0 255.0 'Default' 'bw' 'yes' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_threshold_default.tiff' 'tiff'
+ImageJ --ij2 --headless --debug --jython 'tools/image_processing/imagej2/imagej2_adjust_threshold_binary_jython_script.py' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel.tiff' 0.0 255.0 'Default' 'bw' 'yes' 'tools/image_processing/imagej2/test-data/confocal-series-first-channel_threshold_default.tiff' 'tiff'
 
 
 # Analyze particles

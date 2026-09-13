@@ -1,0 +1,500 @@
+<tool id="survminer" name="Survminer" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Survival Analysis and Visualization</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="edam"/>
+    <expand macro="requirements"/>
+    <expand macro="creators"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+Rscript '$rscript'
+    ]]></command>
+    <configfiles>
+        <configfile name="rscript"><![CDATA[
+suppressWarnings(suppressMessages({
+    library(survival)
+    library(survminer)
+}))
+
+data <- read.delim("${input_data}", sep = "\t", stringsAsFactors = TRUE, check.names = TRUE)
+
+## Resolve column selection - data_column may pass index or name
+resolve_col_name <- function(data, col_value) {
+    col_value <- trimws(col_value)
+    col_idx <- suppressWarnings(as.integer(col_value))
+    if (!is.na(col_idx) && col_idx >= 1 && col_idx <= ncol(data)) {
+        return(colnames(data)[col_idx])
+    }
+    return(col_value)
+}
+
+time_col_name <- resolve_col_name(data, "${time_col}")
+status_col_name <- resolve_col_name(data, "${status_col}")
+print(paste("Using time column:", time_col_name))
+print(paste("Using status column:", status_col_name))
+#if $group_col:
+group_col_name <- resolve_col_name(data, "${group_col}")
+print(paste("Using group column:", group_col_name))
+
+## Convert grouping column to factor if numeric
+if (!is.factor(data[[group_col_name]])) {
+    data[[group_col_name]] <- as.factor(data[[group_col_name]])
+}
+#end if
+
+## Ensure status and time are numeric
+data[[status_col_name]] <- as.numeric(as.character(data[[status_col_name]]))
+data[[time_col_name]] <- as.numeric(as.character(data[[time_col_name]]))
+
+#set $po = $sec_plot_options
+#set $ap = $sec_appearance
+
+#if $group_col:
+fit <- survfit(as.formula(paste0("Surv(`", time_col_name, "`, `", status_col_name, "`) ~ `", group_col_name, "`")), data = data)
+#else:
+fit <- survfit(as.formula(paste0("Surv(`", time_col_name, "`, `", status_col_name, "`) ~ 1")), data = data)
+#end if
+
+surv_sum <- surv_summary(fit, data = data)
+write.table(surv_sum, file = "surv_summary.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+
+#if $pairwise_comparison:
+    #if $group_col:
+if (nlevels(data[[group_col_name]]) >= 2) {
+    pw_formula <- as.formula(paste0("Surv(`", time_col_name, "`, `", status_col_name, "`) ~ `", group_col_name, "`"))
+    pw_res <- pairwise_survdiff(pw_formula, data = data, p.adjust.method = "BH")
+    pw_pvalues <- as.data.frame(pw_res\$p.value)
+    pw_pvalues\$comparison <- rownames(pw_pvalues)
+    write.table(pw_pvalues, file = "pairwise_survdiff.tsv", sep = "\t", row.names = FALSE, quote = FALSE)
+} else {
+    print("Pairwise comparison skipped: grouping column has fewer than 2 levels.")
+}
+    #else:
+print("Pairwise comparison skipped: no grouping column selected.")
+    #end if
+#end if
+
+p <- ggsurvplot(
+  fit, data = data,
+  conf.int = ${po.conf_int},
+  pval = ${po.pval},
+  pval.method = ${po.pval_method},
+  risk.table = ${po.risk_table},
+  cumevents = ${po.cumevents},
+  cumcensor = ${po.cumcensor},
+  ncensor.plot = ${po.ncensor_plot},
+#if str($po.surv_median_line) != "none":
+  surv.median.line = "${po.surv_median_line}",
+#end if
+#if str($po.fun) != "default":
+  fun = "${po.fun}",
+#end if
+  palette = "${ap.palette}",
+#if $ap.legend_title:
+  legend.title = "${ap.legend_title}",
+#end if
+#if $ap.legend_labs:
+  legend.labs = trimws(unlist(strsplit("${ap.legend_labs}", ","))),
+#end if
+#if $ap.break_time_by:
+  break.time.by = as.numeric("${ap.break_time_by}"),
+#end if
+#if $ap.xlim_max:
+  xlim = c(0, as.numeric("${ap.xlim_max}")),
+#end if
+#if str($time_unit) == "day":
+  xlab = "Time (days)",
+#elif str($time_unit) == "month":
+  xlab = "Time (months)",
+#elif str($time_unit) == "year":
+  xlab = "Time (years)",
+#end if
+  ylab = "${ap.ylab}",
+  ggtheme = ${ap.ggtheme}(),
+#if str($ap.xscale) != "default":
+  xscale = "${ap.xscale}",
+#end if
+#if str($ap.censor_shape) != "+":
+  censor.shape = ${ap.censor_shape},
+#end if
+#if $ap.fontsize:
+  fontsize = ${ap.fontsize},
+#end if
+  log.rank.weights = "${ap.log_rank_weights}",
+  tables.theme = theme_cleantable()
+)
+
+#if $output_format == "pdf":
+pdf("output", width = ${ap.plot_width}, height = ${ap.plot_height})
+#else:
+png("output", width = ${ap.plot_width} * 300, height = ${ap.plot_height} * 300, res = 300)
+#end if
+print(p)
+dev.off()
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="common_survival_param"/>
+        <param name="time_unit" type="select" label="Time unit">
+            <option value="day">Days</option>
+            <option value="month">Months</option>
+            <option value="year">Years</option>
+        </param>
+        <param name="pairwise_comparison" type="boolean" checked="false" truevalue="true" falsevalue="false" label="Output pairwise group comparison table?" help="Run pairwise_survdiff() to compare survival curves between all pairs of groups (only available when a grouping column is selected)."/>
+        <section name="sec_plot_options" expanded="true" title="Plot Options">
+            <param name="conf_int" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Plot confidence intervals?"/>
+            <param name="pval" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Add log-rank p-value?"/>
+            <param name="pval_method" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show test name?"/>
+            <param name="risk_table" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show number-at-risk table?"/>
+            <param name="cumevents" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show cumulative events table?"/>
+            <param name="cumcensor" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show cumulative censoring table?"/>
+            <param name="ncensor_plot" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Show censoring count plot?"/>
+            <param name="surv_median_line" type="select" label="Median survival line">
+                <option value="none" selected="true">none</option>
+                <option value="hv">hv (horizontal + vertical)</option>
+                <option value="h">h (horizontal)</option>
+                <option value="v">v (vertical)</option>
+            </param>
+            <param name="fun" type="select" label="Transformation of survival curve">
+                <option value="default" selected="true">survival (no transformation)</option>
+                <option value="event">cumulative events</option>
+                <option value="cumhaz">cumulative hazard</option>
+                <option value="pct">survival probability in percentage</option>
+            </param>
+        </section>
+        <section name="sec_appearance" expanded="false" title="Appearance Options">
+            <param name="palette" type="select" label="Color palette">
+                <option value="hue" selected="true">hue (default)</option>
+                <option value="grey">grey</option>
+                <option value="npg">npg</option>
+                <option value="aaas">aaas</option>
+                <option value="lancet">lancet</option>
+                <option value="jco">jco</option>
+                <option value="ucscgb">ucscgb</option>
+                <option value="d3">d3</option>
+                <option value="locuszoom">locuszoom</option>
+                <option value="startrek">startrek</option>
+                <option value="futurama">futurama</option>
+                <option value="igv">igv</option>
+                <option value="gsea">gsea</option>
+                <option value="simpsons">simpsons</option>
+            </param>
+            <param name="legend_title" type="text" optional="true" label="Legend title"/>
+            <param name="legend_labs" type="text" optional="true" label="Legend labels" help="Comma-separated labels for each group (e.g. Male,Female). Do not use group names with commas."/>
+            <param name="ylab" type="text" value="Survival probability" label="Y-axis label"/>
+            <param name="break_time_by" type="integer" optional="true" label="X-axis break interval" help="Break the x-axis at regular intervals"/>
+            <param name="xlim_max" type="integer" optional="true" label="X-axis upper limit"/>
+            <param name="xscale" type="select" label="X-axis time scale conversion" help="Convert x-axis labels between days, months and years without changing the underlying data.">
+                <option value="default" selected="true">no conversion</option>
+                <option value="d_m">days to months</option>
+                <option value="d_y">days to years</option>
+                <option value="m_d">months to days</option>
+                <option value="m_y">months to years</option>
+                <option value="y_d">years to days</option>
+                <option value="y_m">years to months</option>
+            </param>
+            <param name="censor_shape" type="select" label="Censor marker shape">
+                <option value="+" selected="true">+</option>
+                <option value="124">|</option>
+                <option value="20">filled circle</option>
+                <option value="1">open circle</option>
+                <option value="3">cross</option>
+            </param>
+            <param name="ggtheme" type="select" label="ggplot2 theme">
+                <option value="theme_survminer" selected="true">theme_survminer</option>
+                <option value="theme_bw">theme_bw</option>
+                <option value="theme_minimal">theme_minimal</option>
+                <option value="theme_light">theme_light</option>
+                <option value="theme_classic">theme_classic</option>
+            </param>
+            <expand macro="plot_size_param"/>
+            <param name="log_rank_weights" type="select" label="Log-rank test weights">
+                <option value="1" selected="true">1 (log-rank)</option>
+                <option value="n">n (Gehan-Breslow)</option>
+                <option value="sqrtN">sqrtN (Tarone-Ware)</option>
+                <option value="S1">S1 (Peto-Peto)</option>
+                <option value="S2">S2 (modified Peto-Peto)</option>
+                <option value="FH">FH (Fleming-Harrington)</option>
+            </param>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_plot" from_work_dir="output" format="png" label="${tool.name} on ${on_string}: KM survival plot">
+            <change_format>
+                <when input="output_format" value="pdf" format="pdf"/>
+            </change_format>
+        </data>
+        <data name="surv_summary" from_work_dir="surv_summary.tsv" format="tabular" label="${tool.name} on ${on_string}: Survival summary table"/>
+        <data name="pairwise_survdiff" from_work_dir="pairwise_survdiff.tsv" format="tabular" label="${tool.name} on ${on_string}: Pairwise comparison table">
+            <filter>pairwise_comparison</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 1: Basic grouped survival curve with risk table and p-value -->
+        <test expect_num_outputs="2">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="group_col" value="3"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_plot_options">
+                <param name="conf_int" value="False"/>
+                <param name="pval" value="True"/>
+                <param name="pval_method" value="False"/>
+                <param name="risk_table" value="True"/>
+                <param name="cumevents" value="False"/>
+                <param name="cumcensor" value="False"/>
+                <param name="ncensor_plot" value="False"/>
+                <param name="surv_median_line" value="none"/>
+                <param name="fun" value="default"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="hue"/>
+                <param name="ylab" value="Survival probability"/>
+                <param name="xscale" value="default"/>
+                <param name="censor_shape" value="+"/>
+                <param name="ggtheme" value="theme_survminer"/>
+                <param name="plot_width" value="7"/>
+                <param name="plot_height" value="7"/>
+                <param name="log_rank_weights" value="1"/>
+            </section>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using group column: sex"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1053,1050" eps="50"/>
+                    <has_image_channels channels="3"/>
+                    <has_image_height height="2100"/>
+                    <has_image_width width="2100"/>
+                    <has_size value="100000" delta="95000"/>
+                </assert_contents>
+            </output>
+            <output name="surv_summary">
+                <assert_contents>
+                    <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
+                    <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 2: Single-group survival curve -->
+        <test expect_num_outputs="2">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="output_format" value="png"/>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1053,1050" eps="50"/>
+                    <has_image_channels channels="3"/>
+                    <has_image_height height="2100"/>
+                    <has_image_width width="2100"/>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+            <output name="surv_summary">
+                <assert_contents>
+                    <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
+                    <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 3: With confidence intervals and median line -->
+        <test expect_num_outputs="2">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="group_col" value="3"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_plot_options">
+                <param name="conf_int" value="True"/>
+                <param name="pval" value="True"/>
+                <param name="surv_median_line" value="hv"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="npg"/>
+                <param name="ggtheme" value="theme_bw"/>
+            </section>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using group column: sex"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1053,1050" eps="50"/>
+                    <has_image_channels channels="3"/>
+                    <has_image_height height="2100"/>
+                    <has_image_width width="2100"/>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+            <output name="surv_summary">
+                <assert_contents>
+                    <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
+                    <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 4: PDF output -->
+        <test expect_num_outputs="2">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="group_col" value="3"/>
+            <param name="output_format" value="pdf"/>
+            <section name="sec_plot_options">
+                <param name="pval" value="True"/>
+                <param name="risk_table" value="True"/>
+            </section>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using group column: sex"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="pdf">
+                <assert_contents>
+                    <has_text text="%PDF"/>
+                </assert_contents>
+            </output>
+            <output name="surv_summary">
+                <assert_contents>
+                    <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
+                    <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 5: Custom palette and legend labels -->
+        <test expect_num_outputs="2">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="group_col" value="3"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_plot_options">
+                <param name="pval" value="True"/>
+                <param name="risk_table" value="True"/>
+            </section>
+            <section name="sec_appearance">
+                <param name="palette" value="jco"/>
+                <param name="legend_title" value="Sex"/>
+                <param name="legend_labs" value="Male,Female"/>
+            </section>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using group column: sex"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1053,1050" eps="50"/>
+                    <has_image_channels channels="3"/>
+                    <has_image_height height="2100"/>
+                    <has_image_width width="2100"/>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+            <output name="surv_summary">
+                <assert_contents>
+                    <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
+                    <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 6: Pairwise group comparison table -->
+        <test expect_num_outputs="3">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="group_col" value="4"/>
+            <param name="output_format" value="png"/>
+            <param name="pairwise_comparison" value="True"/>
+            <section name="sec_plot_options">
+                <param name="pval" value="True"/>
+                <param name="risk_table" value="True"/>
+            </section>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using group column: multi"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1053,1050" eps="50"/>
+                    <has_image_channels channels="3"/>
+                    <has_image_height height="2100"/>
+                    <has_image_width width="2100"/>
+                    <has_size value="120000" delta="95000"/>
+                </assert_contents>
+            </output>
+            <output name="surv_summary">
+                <assert_contents>
+                    <has_text_matching expression="time\tn.risk\tn.event\tn.censor\tsurv\tstd.err\tupper\tlower"/>
+                    <has_n_lines n="23"/>
+                </assert_contents>
+            </output>
+            <output name="pairwise_survdiff">
+                <assert_contents>
+                    <has_text_matching expression="a\tb\tc\tcomparison"/>
+                    <has_n_lines n="4"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+This tool creates publication-ready survival curves (Kaplan-Meier plots) using
+the R **survminer** package's `ggsurvplot()` function.
+
+**Input**
+
+A tabular file (TSV) containing at minimum:
+
+- A **time** column (numeric survival/follow-up time)
+- A **status/event** column (0 = censored, 1 = event occurred)
+- Optionally, a **grouping** column (categorical variable for stratified curves)
+
+Leave the grouping column empty to fit a single overall survival curve.
+
+**Output**
+
+A PNG or PDF image containing:
+
+- Kaplan-Meier survival curve(s)
+- Optional number-at-risk table
+- Optional cumulative events/censoring tables
+- Optional confidence intervals
+- Optional log-rank test p-value
+- Optional median survival indicator lines
+
+**Example**
+
+Input data (subset of the R `lung` dataset):
+
+==== ====== ====
+time status sex
+==== ====== ====
+306    1     1
+455    0     1
+...   ...   ...
+==== ====== ====
+
+
+.. class:: infomark
+
+**note**
+
+**Status encoding:** The R `survival` package uses 1 = event, 0 = censored by
+default. Some datasets (e.g. `lung`) use 2 = event. The function automatically
+treats any non-zero value as an event.
+    </help>
+    <expand macro="citations"/>
+</tool>

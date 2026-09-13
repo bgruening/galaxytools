@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<tool id="mirtrace_trace" name="miRTrace Trace" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>clade-specific miRNA profile for contamination detection</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <expand macro="creators"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+@SYMLINK_INPUTS@
+
+mirtrace trace
+@COMMON_PARAMS@
+
+## Move output files
+&& cp output/mirtrace-report.html '$report_html'
+&& cp output/mirtrace-stats-contamination_basic.tsv '$stats_contamination_basic'
+&& cp output/mirtrace-stats-contamination_detailed.tsv '$stats_contamination_detailed'
+
+## Collect FASTA outputs into collections if requested
+#if $write_fasta
+    && mkdir -p fasta_qc_passed 
+    #if $uncollapse_fasta
+        && mv output/qc_passed_reads.all.uncollapsed/*.fasta fasta_qc_passed/
+    #else
+        && mv output/qc_passed_reads.all.collapsed/*.fasta fasta_qc_passed/
+    #end if
+&& gzip fasta_qc_passed/*.fasta
+#end if
+    ]]></command>
+    <inputs>
+        <expand macro="common_input_params"/>
+        <expand macro="common_reporting_params"/>
+    </inputs>
+    <outputs>
+        <data name="report_html" format="html" label="${tool.name} on ${on_string}: HTML report"/>
+        <data name="stats_contamination_basic" format="tabular" label="${tool.name} on ${on_string}: Contamination basic (Matrix 6)"/>
+        <data name="stats_contamination_detailed" format="tabular" label="${tool.name} on ${on_string}: Contamination detailed (Matrix 7)"/>
+        <collection name="fasta_qc_passed" type="list" label="${tool.name} on ${on_string}: QC-passed all reads FASTA" format="fasta.gz">
+            <discover_datasets pattern="(?P&lt;name&gt;.+)\.fasta\.gz" format="fasta.gz" directory="fasta_qc_passed"/>
+            <filter>write_fasta</filter>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="sample" value="sample1.fastq-1.gz"/>
+            <param name="adapter" value="TGGAATTCT"/>
+            <param name="title" value="Single sample report"/>
+            <param name="write_fasta" value="true"/>
+            <output name="report_html">
+                <assert_contents>
+                    <has_text text="Single sample report"/>
+                    <has_text text="&quot;cladeRefFamilyCounts&quot;:[67,33,6,62,175,8,4,60,26,9,7,21,16,59]"/>
+                </assert_contents>
+            </output>
+            <output_collection name="fasta_qc_passed" type="list">
+                <element name="sample1.fastq-1.gz" ftype="fasta.gz" decompress="true">
+                    <assert_contents>
+                        <has_n_lines n="6454"/>
+                        <has_line line=">seq_434_x3 rnatype:not_mapped clade:primates family_id:548"/>
+                        <has_line line=">seq_2062_x1 rnatype:not_mapped clade:primates family_id:1250"/>
+                        <has_line line=">seq_3062_x1 rnatype:not_mapped clade:primates family_id:580"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+         <test expect_num_outputs="3">
+            <param name="sample" value="sample1.fastq-1.gz,sample2.fastq-1.gz"/>
+            <param name="adapter" value="TGGAATTCT"/>
+            <output name="stats_contamination_basic">
+                <assert_contents>
+                    <has_line_matching expression="primates\t10\t8"/>
+                </assert_contents>
+            </output>
+            <output name="stats_contamination_detailed">
+                <assert_contents>
+                    <has_line_matching expression="primates\t548\tggo-miR-548c,hsa-miR-548k,ppy-miR-548c,ptr-miR-548k\tAAAAGTACTTGCGGATTTTG\t2\t3"/>
+                    <has_line_matching expression="primates\t580\thsa-miR-580,ptr-miR-580\tTTGAGAATGATGAATCATTA\t1\t0"/>
+                </assert_contents>
+            </output>
+        </test>
+         <test expect_num_outputs="4">
+            <param name="sample" value="sample1.fastq-1.gz,sample2.fastq-1.gz"/>
+            <param name="adapter" value="TGGAATTCT"/>
+            <param name="write_fasta" value="true"/>
+            <param name="uncollapse_fasta" value="true"/>
+            <output_collection name="fasta_qc_passed" type="list">
+                <element name="sample1.fastq-1.gz" ftype="fasta.gz" decompress="true">
+                    <assert_contents>
+                        <has_n_lines n="36314"/>
+                        <has_line line=">seq_434_0 rnatype:not_mapped clade:primates family_id:548"/>
+                        <has_line line=">seq_2062_0 rnatype:not_mapped clade:primates family_id:1250"/>
+                        <has_line line=">seq_3062_0 rnatype:not_mapped clade:primates family_id:580"/>
+                    </assert_contents>
+                </element>
+                <element name="sample2.fastq-1.gz" ftype="fasta.gz" decompress="true">
+                    <assert_contents>
+                        <has_n_lines n="36096"/>
+                        <has_line line=">seq_446_0 rnatype:not_mapped clade:primates family_id:548"/>
+                        <has_line line=">seq_1014_0 rnatype:not_mapped clade:primates family_id:550"/>
+                        <has_line line=">seq_1957_0 rnatype:not_mapped clade:primates family_id:576"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# miRTrace Trace
+
+miRTrace is a tool for quality control and tracing of small RNA sequencing data.
+
+-----
+
+## Trace Mode
+
+In Trace mode, miRTrace produces a clade-specific miRNA profile report. This is
+useful to identify potential cross-species or cross-sample contamination.
+
+**Output files:**
+
+- `mirtrace-report.html` – interactive HTML report with clade-specific miRNA profile
+- `mirtrace-stats-contamination_basic.tsv` – clade-specific miRNA counts (Matrix 6)
+- `mirtrace-stats-contamination_detailed.tsv` – detailed clade-specific miRNA counts (Matrix 7)
+- `fasta_qc_passed` – QC-passed reads in FASTA format (list collection, one element per input sample)
+
+-----
+
+## Use case example
+
+If you suspect that your samples may be contaminated with RNAs from another species
+(e.g. rodent RNA in a human sample), Trace mode can quantify clade-specific
+miRNA fractions to confirm or rule out contamination.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
