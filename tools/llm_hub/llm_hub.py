@@ -8,6 +8,7 @@ import time
 import yaml
 from openai import (
     APIConnectionError,
+    APIError,
     APITimeoutError,
     BadRequestError,
     InternalServerError,
@@ -330,3 +331,11 @@ for attempt in range(max_retries):
             file=sys.stderr,
         )
         time.sleep(sleep_time)
+    except APIError as e:
+        # Everything the SDK does not map to a named class handled above: 413
+        # (payload too large), 401/403/404/409/422, and APIResponseValidationError
+        # (an APIError but NOT an APIStatusError, so a status-based catch misses
+        # it). None are worth retrying -- re-sending reproduces them. Must stay
+        # LAST: APITimeoutError, APIConnectionError, RateLimitError and
+        # InternalServerError are all APIError subclasses caught above.
+        sys.exit(f"The request failed and cannot be retried: {type(e).__name__}: {e}")
