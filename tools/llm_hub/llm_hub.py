@@ -9,6 +9,7 @@ import yaml
 from openai import (
     APIConnectionError,
     APITimeoutError,
+    BadRequestError,
     InternalServerError,
     OpenAI,
     RateLimitError,
@@ -146,75 +147,6 @@ if not contents:
 messages = [{"role": "user", "content": contents}]
 
 
-# Upfront input-side overflow check: estimate the input token count and compare
-# it to the selected model's context window (max_context, from the
-# genai_models_extended data table, passed as sys.argv[9]). This is a WARN-ONLY
-# check -- it never
-# blocks the job; the request always proceeds. Counting is local tiktoken
-# (cl100k_base), offline, no proxy calls; cost scales linearly with input size.
-# Near-exact for gpt-oss/Qwen/Llama, approximate for Gemma/GLM/Mistral --
-# acceptable since we never reject. Image tokens are not counted (no reliable
-# local estimate), so the count is a lower bound for multimodal inputs.
-# If anything in the check fails (tiktoken unavailable, network-restricted node
-# unable to fetch the BPE vocab on first use, malformed max_context), we skip
-# the check silently rather than abort the job -- it is advisory only.
-max_context_arg = sys.argv[9] if len(sys.argv) > 9 else ""
-cleaned_arg = max_context_arg.replace(",", "").strip()
-max_context = int(cleaned_arg) if cleaned_arg.isdigit() else 0
-
-
-def estimate_input_tokens(messages):
-    """Estimate input token count with tiktoken (cl100k_base). Offline.
-
-    Counts text content only; image tokens are not counted (no reliable local
-    estimate), so the count is a lower bound for multimodal inputs.
-    Returns (token_count, has_image), or None on failure.
-    """
-    try:
-        import tiktoken
-
-        enc = tiktoken.get_encoding("cl100k_base")
-    except Exception:
-        return None
-    total = 0
-    has_image = False
-    try:
-        for msg in messages:
-            content = msg.get("content")
-            if isinstance(content, str):
-                total += len(enc.encode(content, disallowed_special=()))
-            elif isinstance(content, list):  # multimodal: list of content blocks
-                for block in content:
-                    if block.get("type") == "text":
-                        total += len(enc.encode(block.get("text", ""), disallowed_special=()))
-                    elif block.get("type") == "image_url":
-                        has_image = True
-    except Exception:
-        return None
-    return total, has_image
-
-
-if max_context:
-    result = estimate_input_tokens(messages)
-    if result is not None:
-        input_tokens, has_image = result
-        if input_tokens > max_context:
-            img_note = (
-                " (image tokens not counted; actual usage may be higher)"
-                if has_image
-                else ""
-            )
-            print(
-                f"WARNING: estimated input is ~{input_tokens} tokens, which exceeds the "
-                f"selected model's context window ({max_context} tokens){img_note}. "
-                f"The output will likely be truncated. Consider splitting the input "
-                f"into smaller chunks and re-running.",
-                file=sys.stderr,
-            )
-# max_context == 0 (unknown) or estimate failed: skip silently. The check is
-# advisory; we never block or noisily log when we cannot run it.
-
-
 max_retries = int(config.get("MAX_RETRIES", 3))
 max_delay = float(config.get("MAX_DELAY", 900))
 
@@ -226,6 +158,28 @@ retryable_errors = (
     RateLimitError,
     InternalServerError,
 )
+
+# An input larger than the model's context window is rejected up front with an
+# HTTP 400 -- by the serving backend (vLLM: "Input length (270080) exceeds
+# model's maximum context length (128000)"), or by LiteLLM's own pre-call check
+# when the proxy sets `enable_pre_call_checks` plus `model_info.max_input_tokens`
+# ("Max Input Tokens=..., Got=..."). Either way the rejection is authoritative
+# and carries the real numbers, so no local token estimate is needed. The OpenAI
+# SDK surfaces it as BadRequestError; without the handler below it escapes the
+# retry loop as a raw traceback.
+CONTEXT_OVERFLOW_MARKERS = (
+    "maximum context length",  # vLLM and OpenAI phrasings
+    "context window",  # "context window exceeded" phrasings
+    "max input tokens",  # litellm pre-call check
+    "too many tokens",
+)
+
+
+def is_context_overflow(exc):
+    """True if a 400 is the model's context window being exceeded."""
+    message = str(exc).lower()
+    return any(marker in message for marker in CONTEXT_OVERFLOW_MARKERS)
+
 
 # Timeouts on a long generation usually mean the work exceeds the per-request
 # budget, so re-sending reproduces the same timeout.  Cap timeout retries
@@ -329,6 +283,18 @@ for attempt in range(max_retries):
         with open("output.md", "w") as f:
             f.write(answer)
         break
+    except BadRequestError as e:
+        # The request itself is invalid, so re-sending it reproduces the same
+        # rejection -- never retry. Exit with an actionable message instead of
+        # letting the SDK exception escape as a traceback.
+        if is_context_overflow(e):
+            sys.exit(
+                "The input is too large for the selected model's context window, "
+                "so the request was rejected before any generation started. "
+                "Split the input into smaller chunks and re-run, or select a "
+                f"model with a larger context window. Upstream error: {e}"
+            )
+        sys.exit(f"The model/proxy rejected the request: {e}")
     except APITimeoutError as e:
         timeout_attempts += 1
         if attempt == max_retries - 1 or timeout_attempts > max_timeout_retries:
