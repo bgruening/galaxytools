@@ -1,0 +1,1926 @@
+<tool id="ketos_train" name="Ketos Train" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>train or fine-tune recognition models</description>
+    <macros>
+        <import>macros.xml</import>
+        <import>macros_for_testing.xml</import>
+    </macros>
+    <expand macro="requirements">
+        <requirement type="package" version="2.20.0">tensorboard</requirement>
+        <!-- below only available when using a NVIDIA GPU 
+            required for numerical precision options: transformer-engine, transformer-engine-float16 
+        -->
+        <!-- <requirement type="package" version="2.17">transformer-engine-torch</requirement> -->
+    </expand>
+    <expand macro="creators"/>
+    <command detect_errors="exit_code"><![CDATA[
+        KETOS_DEVICE="\${KETOS_DEVICE:-cpu}" &&
+        KETOS_WORKERS="\${KETOS_WORKERS:-1}" &&
+        KETOS_THREADS="\${KETOS_THREADS:-1}" &&
+
+        #if $training_data.format_type == 'binary'
+            #for $i, $dataset in enumerate($training_data.ground_truth)
+                ln -s '$dataset' 'training_${i}.arrow' &&
+            #end for
+            #if $training_data.validation.validation_source == 'explicit'
+                #for $i, $dataset in enumerate($training_data.validation.evaluation_data)
+                    ln -s '$dataset' 'validation_${i}.arrow' &&
+                #end for
+            #end if
+        #else
+            #set $input_source = $training_data.input_source
+
+            #if $input_source.source == 'repeat'
+                #set $pairs = $input_source.ground_truth_pairs
+            #else
+                #set $pairs = $input_source.ground_truth_collection
+            #end if
+
+            #for $i, $pair in enumerate($pairs)
+                #if $input_source.source == 'repeat'
+                    #set $image = $pair.image
+                    #set $annotation = $pair.annotation
+                #else
+                    #set $image = $pair.forward
+                    #set $annotation = $pair.reverse
+                #end if
+
+                @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+
+                #if $training_data.format_type == 'path'
+                    ln -s '$image' 'ground_truth_${i}.${image.ext}' &&
+                    ln -s '$annotation' 'ground_truth_${i}.gt.txt' &&
+                #else
+                    mkdir -p 'ground_truth_${i}' &&
+                    ln -s '$image' 'ground_truth_${i}/input.${image.ext}' &&
+                    python '$__tool_directory__/stage_ground_truth_xml.py' '$annotation' 'ground_truth_${i}/annotation.xml' 'input.${image.ext}' &&
+                #end if
+            #end for
+        #end if
+
+        #if $training_data.format_type != 'binary' and $training_data.validation.validation_source == 'explicit'
+            #set $validation_input_source = $training_data.validation.input_source
+
+            #if $validation_input_source.source == 'repeat'
+                #set $validation_pairs = $validation_input_source.ground_truth_pairs
+            #else
+                #set $validation_pairs = $validation_input_source.ground_truth_collection
+            #end if
+
+            #for $i, $pair in enumerate($validation_pairs)
+                #if $validation_input_source.source == 'repeat'
+                    #set $image = $pair.image
+                    #set $annotation = $pair.annotation
+                #else
+                    #set $image = $pair.forward
+                    #set $annotation = $pair.reverse
+                #end if
+
+                @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+
+                #if $training_data.format_type == 'path'
+                    ln -s '$image' 'validation_${i}.${image.ext}' &&
+                    ln -s '$annotation' 'validation_${i}.gt.txt' &&
+                #else
+                    mkdir -p 'validation_${i}' &&
+                    ln -s '$image' 'validation_${i}/input.${image.ext}' &&
+                    python '$__tool_directory__/stage_ground_truth_xml.py' '$annotation' 'validation_${i}/annotation.xml' 'input.${image.ext}' &&
+                #end if
+            #end for
+        #end if
+
+        @STAGE_INITIAL_MODEL@
+        mkdir -p model logs &&
+
+        ketos_exit_code=0 &&
+
+        ketos
+            --device "\$KETOS_DEVICE"
+            --workers "\$KETOS_WORKERS"
+            --threads "\$KETOS_THREADS"
+            #if str($global_opts.precision.dtype) in ('16', 'bf16'):
+                --precision '${global_opts.precision.dtype}-${global_opts.precision.mode}'
+            #elif str($global_opts.precision.dtype) in ('32', '64'):
+                --precision '${global_opts.precision.dtype}-true'
+            #else:
+                --precision '${global_opts.precision.dtype}'
+            #end if
+
+            $global_opts.deterministic.mode
+            #if $global_opts.deterministic.mode == '--deterministic'
+                --seed '$global_opts.deterministic.seed'
+            #end if
+            train
+            @RECOGNITION_TRAINING_ARGS@
+            #if $training_data.linetype in ('baselines', 'bbox')
+                --linetype '$training_data.linetype'
+            #end if
+            #if str($training_data.format_type).strip() and str($training_data.format_type) != 'None'
+                --format-type '$training_data.format_type'
+            #end if
+            #if $training_data.validation.validation_source == "training_data_split"
+                --partition '$training_data.validation.partition'
+            #else
+                --evaluation-data '$evaluation_manifest'
+            #end if
+            #if str($train_opts.image_preprocessing.pad).strip() and str($train_opts.image_preprocessing.pad) != 'None'
+                --pad '$train_opts.image_preprocessing.pad'
+            #end if
+            #if str($train_opts.text_normalization.normalization).strip() and str($train_opts.text_normalization.normalization) != 'None'
+                --normalization '$train_opts.text_normalization.normalization'
+            #end if
+            #if str($train_opts.text_normalization.normalize_whitespace).strip() and str($train_opts.text_normalization.normalize_whitespace) != 'None'
+                $train_opts.text_normalization.normalize_whitespace
+            #end if
+            #if $train_opts.text_normalization.bidi_settings.reorder == 'yes'
+                --reorder
+                --base-dir '$train_opts.text_normalization.bidi_settings.base_dir'
+            #else
+                --no-reorder
+            #end if
+            #if $train_opts.image_preprocessing.legacy_polygons
+                --legacy-polygons
+            #end if
+            #if $training_data.format_type == 'binary'
+                #for $i, $dataset in enumerate($training_data.ground_truth)
+                    'training_${i}.arrow'
+                #end for
+            #else
+                #for $i, $pair in enumerate($pairs)
+                    #if $training_data.format_type == 'path'
+                        #if $input_source.source == 'repeat'
+                            #set $image = $pair.image
+                        #else
+                            #set $image = $pair.forward
+                        #end if
+                        'ground_truth_${i}.${image.ext}'
+                    #else
+                        'ground_truth_${i}/annotation.xml'
+                    #end if
+                #end for
+            #end if
+            > training_report.txt 2>&1 || ketos_exit_code=\$?;
+
+        cat training_report.txt;
+        [ "\$ketos_exit_code" -eq 0 ] || exit "\$ketos_exit_code";
+
+        @CAPTURE_TRAINING_OUTPUTS@
+    ]]></command>
+    <expand macro="env_vars"/>
+    <configfiles>
+        <configfile name="evaluation_manifest"><![CDATA[
+#if $training_data.validation.validation_source == 'explicit'
+#if $training_data.format_type == 'binary'
+#for $i, $dataset in enumerate($training_data.validation.evaluation_data)
+validation_${i}.arrow
+#end for
+#else
+#set $source = $training_data.validation.input_source
+#if $source.source == 'repeat'
+#set $validation_pairs = $source.ground_truth_pairs
+#else
+#set $validation_pairs = $source.ground_truth_collection
+#end if
+#for $i, $pair in enumerate($validation_pairs)
+#if $training_data.format_type == 'path'
+#if $source.source == 'repeat'
+#set $image = $pair.image
+#else
+#set $image = $pair.forward
+#end if
+validation_${i}.${image.ext}
+#else
+validation_${i}/annotation.xml
+#end if
+#end for
+#end if
+#end if
+            ]]>
+        </configfile>
+    </configfiles>
+    <inputs>
+        <conditional name="training_data">
+            <param argument="--format-type" type="select" label="Ground-truth data format" help="Format used for both training data and potential explicit validation data.">
+                <option value="binary" selected="true">Compiled binary dataset</option>
+                <option value="alto">ALTO</option>
+                <option value="page">PAGE XML</option>
+                <option value="xml">XML</option>
+                <option value="path">Line image/transcription pairs</option>
+            </param>
+            <when value="binary">
+                <param name="ground_truth" type="data" multiple="true" format="arrow" label="Ground-truth data"/>
+                <expand macro="training_linetype" help="Force the line type of the training data. Automatic detection uses the recorded type for binary datasets.">
+                    <option value="auto" selected="true">Detect automatically</option>
+                </expand>
+                <expand macro="recognition_validation">
+                    <param name="evaluation_data" type="data" multiple="true" format="arrow" label="Validation datasets" help="Compiled Arrow datasets used for validation."/>
+                </expand>
+            </when>
+            <expand macro="training_data_input" format_type="alto" pair_label="page image/ALTO" annotation_format="alto" annotation_label="ALTO annotation">
+                <expand macro="training_linetype" baselines="true"/>
+                <expand macro="recognition_validation">
+                    <expand macro="paired_ground_truth_input" pair_label="page image/ALTO" annotation_format="alto" annotation_label="ALTO annotation"/>
+                </expand>
+            </expand>
+            <expand macro="training_data_input" format_type="page" pair_label="page image/PAGE XML" annotation_format="page.xml" annotation_label="PAGE XML annotation">
+                <expand macro="training_linetype" baselines="true"/>
+                <expand macro="recognition_validation">
+                    <expand macro="paired_ground_truth_input" pair_label="page image/PAGE" annotation_format="page.xml" annotation_label="PAGE XML annotation"/>
+                </expand>
+            </expand>
+            <expand macro="training_data_input" format_type="xml" pair_label="page image/XML" annotation_format="xml" annotation_label="XML annotation">
+                <expand macro="training_linetype" baselines="true"/>
+                <expand macro="recognition_validation">
+                    <expand macro="paired_ground_truth_input" pair_label="page image/XML" annotation_format="xml" annotation_label="XML annotation"/>
+                </expand>
+            </expand>
+            <expand macro="training_data_input" format_type="path" pair_label="line image/transcription" annotation_format="txt" annotation_label="Ground-truth transcription">
+                <expand macro="training_linetype" bbox="true"/>
+                <expand macro="recognition_validation">
+                    <expand macro="paired_ground_truth_input" pair_label="line image/transcription" annotation_format="txt" annotation_label="Ground-truth transcription"/>
+                </expand>
+            </expand>
+        </conditional>
+        <expand macro="training_inputs"/>
+        <expand macro="ketos_training_options"/>
+    </inputs>
+    <outputs>
+        <expand macro="training_outputs"/>
+    </outputs>
+    <tests>
+        <!-- Train a small recognition model for one epoch. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="ppocrv6"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="input_dimensions">
+                        <param name="max_width" value="2048"/>
+                    </section>
+                    <conditional name="ppocrv6_variant">
+                        <param name="variant" value="tiny"/>
+                    </conditional>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--logger 'tensorboard'"/>
+                <has_text text="--log-dir logs"/>
+                <not_has_text text="--linetype"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--variant 'tiny'"/>
+                <has_text text="--max-width '2048'"/>
+                <has_text text="--weights-format 'safetensors'"/>
+                <has_text text="--epochs '1'"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Initializing new model."/>
+                    <has_text text="Converting best model"/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+            <output_collection name="logs" type="list" count="2">
+                <element name="lightning_logs/version_0/hparams.yaml" ftype="yaml">
+                    <assert_contents>
+                        <has_size min="1"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Export Core ML weights with explicit validation from one Arrow dataset. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="explicit"/>
+                    <param name="evaluation_data" value="ketos_train_validation_1.arrow" ftype="arrow"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="vgsl"/>
+                    <param name="weights_format" value="coreml"/>
+                    <param name="vgsl_spec" value="[1,12,0,1 Cr3,3,8 S1(1x0)1,3]"/>
+                    <param name="lrate" value="0.002"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="SGD"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="step"/>
+                                <param name="step_size" value="2"/>
+                                <param name="gamma" value="0.5"/>
+                            </conditional>
+                        </conditional>
+                        <param name="weight_decay" value="0.02"/>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="text_normalization">
+                    <param name="normalization" value="NFKC"/>
+                    <param name="normalize_whitespace" value="false"/>
+                    <conditional name="bidi_settings">
+                        <param name="reorder" value="yes"/>
+                        <param name="base_dir" value="R"/>
+                    </conditional>
+                </section>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--weights-format 'coreml'"/>
+                <not_has_text text="--max-width"/>
+                <has_text text="--arch 'vgsl'"/>
+                <has_text text="--epochs '1'"/>
+                <has_text text="--lrate '0.002'"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--weight-decay '0.02'"/>
+                <has_text text="--warmup '0'"/>
+                <has_text text="--optimizer 'SGD'"/>
+                <has_text text="--schedule 'step'"/>
+                <has_text text="--step-size '2'"/>
+                <has_text text="--gamma '0.5'"/>
+                <has_text text="--momentum '0.9'"/>
+                <not_has_text text="--variant"/>
+                <not_has_text text="--height"/>
+                <has_text text="--evaluation-data"/>
+                <not_has_text text="--partition"/>
+                <has_text text="validation_0.arrow"/>
+                <not_has_text text="'validation_1.arrow'"/>
+                <has_text text="--spec '[1,12,0,1 Cr3,3,8 S1(1x0)1,3]'"/>
+                <has_text text="--quit 'fixed'"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Initializing new model."/>
+                    <has_text text="Converting best model"/>
+                    <has_text text=".mlmodel"/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+        </test>
+        <!-- Fine-tune existing weights with recognition options and two explicit Arrow validation datasets. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="explicit"/>
+                    <param name="evaluation_data" value="ketos_train_validation_1.arrow,ketos_train_validation_2.arrow" ftype="arrow"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="load"/>
+                    <param name="model" value="ketos_train_model.safetensors" ftype="safetensors"/>
+                    <conditional name="resize_settings">
+                        <param name="resize" value="union"/>
+                    </conditional>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="infer"/>
+                    <param name="lrate" value="0.002"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="Adam"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="cosine"/>
+                                <param name="cos_max" value="2"/>
+                                <param name="cos_min_lr" value="0.00001"/>
+                            </conditional>
+                        </conditional>
+                        <param name="weight_decay" value="0.02"/>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="text_normalization">
+                    <param name="normalization" value="NFKC"/>
+                    <param name="normalize_whitespace" value="false"/>
+                    <conditional name="bidi_settings">
+                        <param name="reorder" value="yes"/>
+                        <param name="base_dir" value="R"/>
+                    </conditional>
+                </section>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--load '"/>
+                <not_has_text text="initial_model.ckpt"/>
+                <not_has_text text="--resume"/>
+                <has_text text="--lrate '0.002'"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--weight-decay '0.02'"/>
+                <not_has_text text="--warmup"/>
+                <has_text text="--optimizer 'Adam'"/>
+                <has_text text="--schedule 'cosine'"/>
+                <has_text text="--cos-max '2'"/>
+                <has_text text="--cos-min-lr '1e-05'"/>
+                <not_has_text text="--variant"/>
+                <not_has_text text="--max-width"/>
+                <not_has_text text="--height"/>
+                <not_has_text text="--arch "/>
+                <not_has_text text="--spec "/>
+                <not_has_text text="--momentum"/>
+                <has_text text="--evaluation-data"/>
+                <not_has_text text="--partition"/>
+                <has_text text="validation_0.arrow"/>
+                <has_text text="validation_1.arrow"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Loading from checkpoint"/>
+                    <has_text text="Converting best model"/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+        </test>
+        <!-- Resume epoch 0 into epoch 1 using the checkpoint's staged input paths. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="path"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                </conditional>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="resume"/>
+                    <!-- PyTorch checkpoints are ZIP containers; preserve them on upload. -->
+                    <param name="checkpoint" value="ketos_train_resume.ckpt" ftype="zip"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="infer"/>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="2"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--resume '"/>
+                <not_has_text text="--lrate"/>
+                <not_has_text text="--batch-size"/>
+                <not_has_text text="--weight-decay"/>
+                <has_text text="--epochs '2'"/>
+                <not_has_text text="--load"/>
+                <not_has_text text="--resize"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Resuming from checkpoint"/>
+                    <has_text text="Restored all states from the checkpoint"/>
+                    <has_text text="max_epochs=2"/>
+                    <has_text text="Converting best model"/>
+                    <has_text text="checkpoint_01-"/>
+                    <not_has_text text="Initializing new model."/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+        </test>
+        <!-- Old checkpoints with missing saved paths still fail despite staged binary inputs. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="resume"/>
+                    <param name="checkpoint" value="ketos_train_resume_missing_data.ckpt" ftype="zip"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="infer"/>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="2"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--resume '"/>
+                <has_text text="--format-type 'binary'"/>
+            </assert_command>
+            <!-- The wrapper prints the captured report to stdout before propagating failure. -->
+            <assert_stdout>
+                <has_text text="Failed to open local file"/>
+                <has_text text="missing_resume_data/training.arrow"/>
+                <has_text text="[errno 2]"/>
+                <has_text text="No training data in dataset. Please supply some."/>
+                <not_has_text text="Converting best model"/>
+            </assert_stdout>
+        </test>
+        <!-- A Galaxy .dat checkpoint must be staged as .ckpt for fresh-run loading, starting again at epoch 0. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="path"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                </conditional>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="load"/>
+                    <param name="model_type" value="checkpoint"/>
+                    <!-- PyTorch checkpoints are ZIP containers; preserve them on upload. -->
+                    <param name="model" value="ketos_train_resume.ckpt" ftype="zip"/>
+                    <conditional name="resize_settings">
+                        <param name="resize" value="fail"/>
+                    </conditional>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="vgsl"/>
+                    <param name="vgsl_spec" value="[1,12,0,1 Cr3,3,8 S1(1x0)1,3]"/>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="ln -s '"/>
+                <has_text text="initial_model.ckpt &amp;&amp;"/>
+                <has_text text="--load 'initial_model.ckpt'"/>
+                <has_text text="--lrate '0.001'"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--weight-decay '0.0'"/>
+                <has_text text="--optimizer 'AdamW'"/>
+                <has_text text="--schedule 'constant'"/>
+                <has_text text="--warmup '0'"/>
+                <not_has_text text="--momentum"/>
+                <has_text text="--epochs '1'"/>
+                <not_has_text text="--resume"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Loading from checkpoint initial_model.ckpt"/>
+                    <not_has_text text="Restored all states from the checkpoint"/>
+                    <has_text text="max_epochs=1"/>
+                    <has_text text="Converting best model"/>
+                    <has_text text="checkpoint_00-"/>
+                    <not_has_text text="Initializing new model."/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+        </test>
+        <!-- Train a new VGSL model with an explicit JSON codec and two Arrow inputs with a validation split. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_validation_1.arrow,ketos_train_validation_2.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                    <param name="codec" value="ketos_train_codec.json" ftype="json"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="vgsl"/>
+                    <param name="vgsl_spec" value="[1,12,0,1 Cr3,3,8 S1(1x0)1,3]"/>
+                    <param name="lrate" value="0.002"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="AdamW"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="reduceonplateau"/>
+                                <param name="gamma" value="0.5"/>
+                                <param name="sched_patience" value="2"/>
+                            </conditional>
+                        </conditional>
+                        <param name="weight_decay" value="0.02"/>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="text_normalization">
+                    <param name="normalization" value="NFKC"/>
+                    <param name="normalize_whitespace" value="false"/>
+                    <conditional name="bidi_settings">
+                        <param name="reorder" value="yes"/>
+                        <param name="base_dir" value="R"/>
+                    </conditional>
+                </section>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--codec '"/>
+                <has_text text="--arch 'vgsl'"/>
+                <has_text text="--spec '[1,12,0,1 Cr3,3,8 S1(1x0)1,3]'"/>
+                <has_text text="--quit 'fixed'"/>
+                <has_text text="--epochs '1'"/>
+                <not_has_text text="--variant"/>
+                <has_text text="--lrate '0.002'"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--weight-decay '0.02'"/>
+                <has_text text="--warmup '0'"/>
+                <has_text text="--optimizer 'AdamW'"/>
+                <has_text text="--schedule 'reduceonplateau'"/>
+                <has_text text="--gamma '0.5'"/>
+                <has_text text="--sched-patience '2'"/>
+                <not_has_text text="--max-width"/>
+                <not_has_text text="--height"/>
+                <not_has_text text="--momentum"/>
+                <has_text text="--format-type 'binary'"/>
+                <!-- Both datasets must be separate positional arguments, even after Galaxy renames them. -->
+                <has_text_matching expression="'training_0.arrow'\s+'training_1.arrow'\s+&gt; training_report.txt"/>
+                <has_text text="--partition '0.75'"/>
+                <not_has_text text="--evaluation-data"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Initializing new model."/>
+                    <has_text text="Converting best model"/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+        </test>
+        <!-- Replace the loaded codec with an explicit JSON codec and disable bidirectional reordering. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="load"/>
+                    <param name="model" value="ketos_train_model.safetensors" ftype="safetensors"/>
+                    <conditional name="resize_settings">
+                        <param name="resize" value="new"/>
+                        <param name="codec" value="ketos_train_codec.json" ftype="json"/>
+                    </conditional>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="infer"/>
+                    <param name="lrate" value="0.002"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="RMSprop"/>
+                            <param name="momentum" value="0.8"/>
+                            <param name="warmup" value="12"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="exponential"/>
+                                <param name="gamma" value="0.5"/>
+                            </conditional>
+                        </conditional>
+                        <param name="weight_decay" value="0.02"/>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="text_normalization">
+                    <param name="normalization" value="NFKC"/>
+                    <param name="normalize_whitespace" value="false"/>
+                    <conditional name="bidi_settings">
+                        <param name="reorder" value="no"/>
+                    </conditional>
+                </section>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--codec '"/>
+                <has_text text="--resize 'new'"/>
+                <has_text text="--normalization 'NFKC'"/>
+                <has_text text="--no-normalize-whitespace"/>
+                <has_text text="--no-reorder"/>
+                <not_has_text text="--base-dir"/>
+                <not_has_text text="--spec"/>
+                <has_text text="--lrate '0.002'"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--weight-decay '0.02'"/>
+                <has_text text="--warmup '12'"/>
+                <has_text text="--optimizer 'RMSprop'"/>
+                <has_text text="--schedule 'exponential'"/>
+                <has_text text="--gamma '0.5'"/>
+                <has_text text="--momentum '0.8'"/>
+                <not_has_text text="--variant"/>
+                <not_has_text text="--max-width"/>
+                <not_has_text text="--height"/>
+                <not_has_text text="--arch "/>
+                <not_has_text text="--spec "/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Loading from checkpoint"/>
+                    <has_text text="Converting best model"/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+        </test>
+        <!-- Direct non-binary training: each format with repeats and list:paired input.
+             Four line pairs ensure both training and validation have samples.
+             These success tests also guard the input staging/argument wiring. -->
+        <!-- Mixed PNG and single-page TIFF pairs must both complete ALTO training. -->
+        <expand macro="train_nonbinary_test" format_type="alto">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input.tiff" ftype="tiff"/>
+                    <param name="annotation" value="input_binarized_tiff_ocr_output.alto" ftype="alto"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                </repeat>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_test" format_type="alto">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_test" format_type="page">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                </repeat>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_test" format_type="page">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_test" format_type="xml">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                </repeat>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_test" format_type="xml">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_test" format_type="path" linetype="bbox">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_test" format_type="path" linetype="bbox">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                        <element name="pair_003">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                        <element name="pair_004">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+        </expand>
+        <!-- Invalid weights must fail even though the report is captured and printed. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="load"/>
+                    <param name="model" value="invalid_model.bin" ftype="binary"/>
+                    <conditional name="resize_settings">
+                        <param name="resize" value="fail"/>
+                    </conditional>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="infer"/>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--load '"/>
+                <has_text text="--resize 'fail'"/>
+            </assert_command>
+            <!-- Ketos stderr is redirected into the report, then printed to stdout. -->
+            <assert_stdout>
+                <has_text text="No loader found for"/>
+                <not_has_text text="Converting best model"/>
+            </assert_stdout>
+        </test>
+        <!-- The Greek transcription contains characters absent from the loaded codec. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="training_data">
+                <param name="format_type" value="path"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                </conditional>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="load"/>
+                    <param name="model" value="ketos_train_model.safetensors" ftype="safetensors"/>
+                    <conditional name="resize_settings">
+                        <param name="resize" value="fail"/>
+                    </conditional>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="infer"/>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--load '"/>
+                <has_text text="--resize 'fail'"/>
+            </assert_command>
+            <!-- Ketos stderr is redirected into the report, then printed to stdout. -->
+            <assert_stdout>
+                <has_text text="Mismatched training data for loaded model."/>
+                <not_has_text text="Converting best model"/>
+            </assert_stdout>
+        </test>
+        <!-- TIFF metadata must reject multiple pages before invoking Ketos. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="training_data">
+                <param name="format_type" value="alto"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_2pages.tiff" ftype="tiff"/>
+                        <param name="annotation" value="input_binarized_tiff_ocr_output.alto" ftype="alto"/>
+                    </repeat>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Multi-page TIF(F) training images are not supported. Detected 2 pages. Please use a single-page image or split the TIFF first."/>
+            </assert_stderr>
+            <assert_stdout>
+                <not_has_text text="Initializing new model."/>
+                <not_has_text text="Converting best model"/>
+            </assert_stdout>
+        </test>
+        <!-- Explicit validation for every paired format and input method. -->
+        <expand macro="train_nonbinary_explicit_test" format_type="alto">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                </repeat>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_binarized.png" ftype="png"/>
+                        <param name="annotation" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_binarized.png" ftype="png"/>
+                        <param name="annotation" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                    </repeat>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="alto">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="collection"/>
+                    <param name="ground_truth_collection">
+                        <collection type="list:paired">
+                            <element name="pair_001">
+                                <collection type="paired">
+                                    <element name="forward" value="input_binarized.png" ftype="png"/>
+                                    <element name="reverse" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                                </collection>
+                            </element>
+                            <element name="pair_002">
+                                <collection type="paired">
+                                    <element name="forward" value="input_binarized.png" ftype="png"/>
+                                    <element name="reverse" value="input_binarized_ocr_output.alto" ftype="alto"/>
+                                </collection>
+                            </element>
+                        </collection>
+                    </param>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="page">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                </repeat>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_binarized.png" ftype="png"/>
+                        <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_binarized.png" ftype="png"/>
+                        <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                    </repeat>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="page">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="collection"/>
+                    <param name="ground_truth_collection">
+                        <collection type="list:paired">
+                            <element name="pair_001">
+                                <collection type="paired">
+                                    <element name="forward" value="input_binarized.png" ftype="png"/>
+                                    <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                                </collection>
+                            </element>
+                            <element name="pair_002">
+                                <collection type="paired">
+                                    <element name="forward" value="input_binarized.png" ftype="png"/>
+                                    <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="page.xml"/>
+                                </collection>
+                            </element>
+                        </collection>
+                    </param>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="xml">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input_binarized.png" ftype="png"/>
+                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                </repeat>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_binarized.png" ftype="png"/>
+                        <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input_binarized.png" ftype="png"/>
+                        <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                    </repeat>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="xml">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="input_binarized.png" ftype="png"/>
+                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="collection"/>
+                    <param name="ground_truth_collection">
+                        <collection type="list:paired">
+                            <element name="pair_001">
+                                <collection type="paired">
+                                    <element name="forward" value="input_binarized.png" ftype="png"/>
+                                    <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                                </collection>
+                            </element>
+                            <element name="pair_002">
+                                <collection type="paired">
+                                    <element name="forward" value="input_binarized.png" ftype="png"/>
+                                    <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                                </collection>
+                            </element>
+                        </collection>
+                    </param>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="path" linetype="bbox">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="compile_input_line.png" ftype="png"/>
+                    <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                </repeat>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="compile_input_line.png" ftype="png"/>
+                        <param name="annotation" value="compile_input_line.gt.txt" ftype="txt"/>
+                    </repeat>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="path" linetype="bbox">
+            <conditional name="input_source">
+                <param name="source" value="collection"/>
+                <param name="ground_truth_collection">
+                    <collection type="list:paired">
+                        <element name="pair_001">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                        <element name="pair_002">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                        <element name="pair_003">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                        <element name="pair_004">
+                            <collection type="paired">
+                                <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                            </collection>
+                        </element>
+                    </collection>
+                </param>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="collection"/>
+                    <param name="ground_truth_collection">
+                        <collection type="list:paired">
+                            <element name="pair_001">
+                                <collection type="paired">
+                                    <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                    <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                                </collection>
+                            </element>
+                            <element name="pair_002">
+                                <collection type="paired">
+                                    <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                    <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                                </collection>
+                            </element>
+                            <element name="pair_003">
+                                <collection type="paired">
+                                    <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                    <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                                </collection>
+                            </element>
+                            <element name="pair_004">
+                                <collection type="paired">
+                                    <element name="forward" value="compile_input_line.png" ftype="png"/>
+                                    <element name="reverse" value="compile_input_line.gt.txt" ftype="txt"/>
+                                </collection>
+                            </element>
+                        </collection>
+                    </param>
+                </conditional>
+            </conditional>
+        </expand>
+        <expand macro="train_nonbinary_explicit_test" format_type="alto">
+            <conditional name="input_source">
+                <param name="source" value="repeat"/>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input.tiff" ftype="tiff"/>
+                    <param name="annotation" value="input_binarized_tiff_ocr_output.alto" ftype="alto"/>
+                </repeat>
+                <repeat name="ground_truth_pairs">
+                    <param name="image" value="input.tiff" ftype="tiff"/>
+                    <param name="annotation" value="input_binarized_tiff_ocr_output.alto" ftype="alto"/>
+                </repeat>
+            </conditional>
+            <conditional name="validation">
+                <param name="validation_source" value="explicit"/>
+                <conditional name="input_source">
+                    <param name="source" value="repeat"/>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input.tiff" ftype="tiff"/>
+                        <param name="annotation" value="input_binarized_tiff_ocr_output.alto" ftype="alto"/>
+                    </repeat>
+                    <repeat name="ground_truth_pairs">
+                        <param name="image" value="input.tiff" ftype="tiff"/>
+                        <param name="annotation" value="input_binarized_tiff_ocr_output.alto" ftype="alto"/>
+                    </repeat>
+                </conditional>
+            </conditional>
+        </expand>
+        <!-- Reduce-on-plateau uses the default gamma. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="ppocrv6"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="input_dimensions">
+                        <param name="max_width" value="2048"/>
+                    </section>
+                    <conditional name="ppocrv6_variant">
+                        <param name="variant" value="tiny"/>
+                    </conditional>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="Adam"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="reduceonplateau"/>
+                                <param name="sched_patience" value="2"/>
+                            </conditional>
+                        </conditional>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--optimizer 'Adam'"/>
+                <has_text text="--schedule 'reduceonplateau'"/>
+                <has_text text="--gamma '0.1'"/>
+                <has_text text="--sched-patience '2'"/>
+                <has_text text="--logger 'tensorboard'"/>
+                <has_text text="--log-dir logs"/>
+                <not_has_text text="--linetype"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--variant 'tiny'"/>
+                <has_text text="--max-width '2048'"/>
+                <has_text text="--weights-format 'safetensors'"/>
+                <has_text text="--epochs '1'"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Initializing new model."/>
+                    <has_text text="Converting best model"/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+            <output_collection name="logs" type="list" count="2">
+                <element name="lightning_logs/version_0/hparams.yaml" ftype="yaml">
+                    <assert_contents>
+                        <has_size min="1"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Reduce-on-plateau uses a custom gamma. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="ppocrv6"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="input_dimensions">
+                        <param name="max_width" value="2048"/>
+                    </section>
+                    <conditional name="ppocrv6_variant">
+                        <param name="variant" value="tiny"/>
+                    </conditional>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="Adam"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="reduceonplateau"/>
+                                <param name="sched_patience" value="2"/>
+                                <param name="gamma" value="0.5"/>
+                            </conditional>
+                        </conditional>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--optimizer 'Adam'"/>
+                <has_text text="--schedule 'reduceonplateau'"/>
+                <has_text text="--gamma '0.5'"/>
+                <has_text text="--sched-patience '2'"/>
+                <has_text text="--logger 'tensorboard'"/>
+                <has_text text="--log-dir logs"/>
+                <not_has_text text="--linetype"/>
+                <has_text text="--batch-size '1'"/>
+                <has_text text="--variant 'tiny'"/>
+                <has_text text="--max-width '2048'"/>
+                <has_text text="--weights-format 'safetensors'"/>
+                <has_text text="--epochs '1'"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Initializing new model."/>
+                    <has_text text="Converting best model"/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+            <output_collection name="logs" type="list" count="2">
+                <element name="lightning_logs/version_0/hparams.yaml" ftype="yaml">
+                    <assert_contents>
+                        <has_size min="1"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Resume binary training with multiple staged training and validation datasets. -->
+        <test expect_num_outputs="4">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_validation_1.arrow,ketos_train_validation_2.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="explicit"/>
+                    <param name="evaluation_data" value="ketos_train_validation_1.arrow,ketos_train_validation_2.arrow" ftype="arrow"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="resume"/>
+                    <param name="checkpoint" value="ketos_train_binary_resume.ckpt" ftype="zip"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="infer"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="2"/>
+                        </conditional>
+                        <param name="freq" value="1"/>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--resume '"/>
+                <has_text text="'training_0.arrow'" n="2"/>
+                <has_text text="'training_1.arrow'" n="2"/>
+                <has_text text="'validation_0.arrow'"/>
+                <has_text text="'validation_1.arrow'"/>
+                <has_text text="--evaluation-data '"/>
+                <not_has_text text="--partition"/>
+            </assert_command>
+            <output name="best_model" ftype="binary">
+                <assert_contents>
+                    <has_size min="10000"/>
+                </assert_contents>
+            </output>
+            <output name="report" ftype="txt">
+                <assert_contents>
+                    <has_text text="Restored all states from the checkpoint"/>
+                    <has_text text="max_epochs=2"/>
+                    <has_text text="checkpoint_01-"/>
+                    <not_has_text text="Failed to open local file"/>
+                    <not_has_text text="Initializing new model."/>
+                </assert_contents>
+            </output>
+            <output_collection name="checkpoints" type="list" count="1"/>
+        </test>
+        <!-- TODO create an upstream issue for this -->
+        <!-- Muon/cosine requires a finite training duration. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="ppocrv6"/>
+                    <conditional name="ppocrv6_variant">
+                        <param name="variant" value="tiny"/>
+                    </conditional>
+                    <section name="input_dimensions">
+                        <param name="max_width" value="2048"/>
+                    </section>
+                    <param name="batch_size" value="1"/>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="AdamW+Muon"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="cosine"/>
+                            </conditional>
+                        </conditional>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="early"/>
+                        </conditional>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--arch 'ppocrv6'"/>
+                <has_text text="--optimizer 'AdamW+Muon'"/>
+                <has_text text="--schedule 'cosine'"/>
+                <has_text text="--quit 'early'"/>
+                <not_has_text text="--epochs"/>
+            </assert_command>
+            <!-- The captured traceback is printed to stdout by the wrapper. -->
+            <assert_stdout>
+                <has_text text="OverflowError: cannot convert float infinity to integer"/>
+                <not_has_text text="Converting best model"/>
+            </assert_stdout>
+        </test>
+        <!-- TODO create an upstream issue for this -->
+        <!-- 1cycle requires an epoch count, absent with early stopping. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="vgsl"/>
+                    <param name="vgsl_spec" value="[1,12,0,1 Cr3,3,8 S1(1x0)1,3]"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="optimization">
+                        <conditional name="optimizer_settings">
+                            <param name="optimizer" value="AdamW"/>
+                            <conditional name="scheduler_settings">
+                                <param name="schedule" value="1cycle"/>
+                            </conditional>
+                        </conditional>
+                    </section>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="early"/>
+                        </conditional>
+                    </section>
+                </conditional>
+                <section name="image_preprocessing">
+                    <param name="augment" value="--no-augment"/>
+                </section>
+            </section>
+            <assert_command>
+                <has_text text="--arch 'vgsl'"/>
+                <has_text text="--optimizer 'AdamW'"/>
+                <has_text text="--schedule '1cycle'"/>
+                <has_text text="--quit 'early'"/>
+                <not_has_text text="--epochs"/>
+            </assert_command>
+            <!-- The captured traceback is printed to stdout by the wrapper. -->
+            <assert_stdout>
+                <has_text text="ValueError: 1cycle learning rate scheduler selected but number of epochs is less than 0 (-1)."/>
+                <not_has_text text="Converting best model"/>
+            </assert_stdout>
+        </test>
+        <!-- Frequencies above 1 must be whole numbers; reject before training. -->
+        <test expect_failure="true">
+            <conditional name="training_data">
+                <param name="format_type" value="binary"/>
+                <param name="ground_truth" value="ketos_train_recognition.arrow" ftype="arrow"/>
+                <conditional name="validation">
+                    <param name="validation_source" value="training_data_split"/>
+                    <param name="partition" value="0.75"/>
+                </conditional>
+            </conditional>
+            <section name="train_opts">
+                <conditional name="initialization">
+                    <param name="source" value="new"/>
+                </conditional>
+                <conditional name="arch">
+                    <param name="recognition_arch" value="vgsl"/>
+                    <param name="vgsl_spec" value="[1,12,0,1 Cr3,3,8 S1(1x0)1,3]"/>
+                    <param name="batch_size" value="1"/>
+                    <section name="stopping">
+                        <conditional name="stop_condition">
+                            <param name="quit" value="fixed"/>
+                            <param name="epochs" value="1"/>
+                        </conditional>
+                        <param name="freq" value="1.5"/>
+                    </section>
+                </conditional>
+            </section>
+        </test>
+    </tests>
+    <help format="markdown">
+### What this tool does
+
+Ketos Train trains or fine-tunes a Kraken text recognition model using images and
+known transcriptions (ground truth). During training, it evaluates the model on
+validation data, saves checkpoints, and exports the best checkpoint as a weights
+file at the end.
+
+### Quick start
+
+1. Select the **Ground-truth data format** and supply the matching datasets described below.
+2. Choose a **Validation data source**. The default split uses 90% of the samples for training and the remaining 10% for validation. Alternatively, supply separate validation data in the same format as the training data.
+3. Under **Initialization**, choose whether to train a new model, fine-tune an existing model, or resume a checkpoint.
+4. Select the **Recognition architecture** and review the training options. When loading or resuming a model, select **Infer when fine-tuning or resuming training** to use its architecture.
+5. Run the tool. Use the **best model** output for recognition, and keep the **checkpoints** if you want to resume training later.
+
+### Preparing input data
+
+- **Compiled binary dataset**: one or more Arrow datasets, such as those produced by Ketos Compile.
+- **ALTO**, **PAGE XML**, or **XML**: page images paired with their corresponding ground-truth annotations. Select the format that matches your annotations.
+- **Line image/transcription pairs**: images of individual text lines paired with plain-text files containing the corresponding transcriptions.
+
+For image-based inputs, select individual pairs or a Galaxy `list:paired`
+collection. Each collection pair must have the image as its `forward` element and
+the annotation or transcription as its `reverse` element. Supported image formats
+are JPEG, PNG, and single-page TIFF. Split multi-page TIFF files into individual
+page images before using them.
+
+For XML inputs, the tool updates the annotation's image reference to point to the
+paired image. Supply the correct image for each annotation. Choose the
+**Training data line type** to match your data; compiled datasets also support
+automatic detection from their recorded line type.
+
+Validation data is used to monitor training and select the best checkpoint.
+When providing explicit validation data, use samples separate from the training
+samples so that validation measures recognition on unseen examples.
+
+### Starting a new run or fine-tuning
+
+- **Train a new model** initializes a new recognition model. The character encoding (codec) is inferred from the training data unless you supply a custom codec definition.
+- **Load existing weights/checkpoint for a fresh run** starts a new training run from an existing model. Make sure the when selecting the model's architecture that it matches the one used to produce the weights/the checkpoint. 
+
+When fine-tuning, **Codec/output layer resizing** controls how character
+mismatches are handled. **Fail on mismatch** rejects a mismatch; **Add new
+characters** extends the loaded codec; **Replace codec with training codec**
+replaces it with the training codec or the custom codec you provide.
+
+### Resuming a checkpointed run
+
+1. Select **Resume a checkpointed run** and a full training checkpoint from the **checkpoints** collection.
+2. Select the same training and validation datasets in the same order, and keep the same validation mode. For image-based inputs, also preserve the image extensions.
+3. Refer to the original Galaxy job's parameters and match its training settings, except those you intentionally want to change. **The form does not populate its values from the checkpoint.** It still supplies stopping rules, validation frequency, gradient settings, and other options, so unchanged form defaults can alter a resumed run.
+4. If using a fixed epoch count, set the total number of epochs, including those already completed. For example, to add 5 epochs after completing 10, set **Epochs** to 15.
+
+Ketos restores the checkpoint's data configuration instead of using newly supplied
+data settings. The tool does not check that the selected datasets have the same
+contents as the original inputs.
+
+Checkpoint outside of this galaxy tool will contain other paths. 
+Uploading the same files again does not overwrite the paths required by the checkpoint. 
+In that case, select **Load existing weights/checkpoint for a fresh run** to start training 
+from the checkpoint as a new run.
+
+### Training duration and outputs
+
+Use **Stop condition** to choose early stopping or a fixed number of epochs
+(passes through the training data). With early stopping, **Early stopping lag**
+counts validation evaluations without sufficient improvement. The
+**Validation/report frequency in epochs** controls how often validation and
+model saving occur; values greater than 1 must be whole numbers.
+
+The tool produces:
+
+- **best model**: weights exported from the best checkpoint. PP-OCRv6 and inferred architectures use Safetensors; VGSL also offers Core ML.
+- **report**: the training log, including progress and diagnostic messages.
+- **checkpoints**: full training checkpoints for resuming a run or loading into a fresh run.
+- **logger files**: TensorBoard event files and logging metadata. Download this collection to inspect training metrics locally with TensorBoard.
+
+### License
+
+Kraken is licensed under the Apache-2.0 license.
+    </help>
+    <expand macro="citations"/>
+</tool>
