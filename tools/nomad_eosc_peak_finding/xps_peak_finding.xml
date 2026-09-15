@@ -1,0 +1,165 @@
+<tool id="nomad_eosc_peak_finding" name="XPS peak finding" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>in a NeXus spectrum, written back as NXfit/NXpeak</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <required_files>
+        <include path="xps_peak_finding.py"/>
+    </required_files>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command detect_errors="aggressive"><![CDATA[
+        python '$__tool_directory__/xps_peak_finding.py'
+        '$input_nxs'
+        --output-path '$output_nxs'
+        --peaks-tsv '$peaks_tabular'
+        --peaks-json '$peaks_json'
+        @CMD_PEAK_ARGS@
+    ]]></command>
+    <inputs>
+        <param name="input_nxs" type="data" format="nxxps" label="XPS spectrum (NeXus/HDF5)" help="An already-converted NeXus file (for example NXxps) with a resolvable default NXdata group holding energy vs. intensity."/>
+        <section name="peak_detection" title="Peak detection" expanded="true">
+            <param argument="--prominence" type="float" value="" optional="true" min="0" label="Required prominence of peaks" help="How far a peak must stand out from the surrounding baseline, in the intensity units of the spectrum. Left empty, scipy applies no prominence filter and typically returns hundreds of peaks. For a survey spectrum in counts per second, 10000 is a reasonable starting point."/>
+            <param argument="--distance" type="float" value="" optional="true" min="1" label="Minimal horizontal distance between peaks" help="In data points, not energy units. Smaller peaks within this distance of a larger one are discarded. Try 20 for a survey spectrum."/>
+            <param argument="--height" type="float" value="" optional="true" label="Required absolute height of peaks" help="Minimum intensity a peak must reach, in the intensity units of the spectrum. Unlike prominence this ignores the local baseline, so it is mostly useful for picking out only the strongest lines."/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_nxs" format="nxxps" label="${tool.name} on ${on_string}: Annotated NeXus"/>
+        <data name="peaks_tabular" format="tabular" label="${tool.name} on ${on_string}: Peak table"/>
+        <data name="peaks_json" format="json" label="${tool.name} on ${on_string}: Peaks (JSON)"/>
+    </outputs>
+    <tests>
+        <!-- Test 01: prominence 10000, distance 20 -> 6 peaks. -->
+        <test expect_num_outputs="3">
+            <param name="input_nxs" value="vms_regular_ref.nxs" ftype="nxxps"/>
+            <section name="peak_detection">
+                <param name="prominence" value="10000"/>
+                <param name="distance" value="20"/>
+            </section>
+            <output name="output_nxs" ftype="nxxps">
+                <assert_contents>
+                    <has_h5_keys keys="1_as_loaded__Survey/fit,1_as_loaded__Survey/fit/peak_0/data/position,1_as_loaded__Survey/fit/peak_5/data/intensity"/>
+                    <has_h5_attribute key="NX_class" value="NXroot"/>
+                </assert_contents>
+            </output>
+            <output name="peaks_tabular" ftype="tabular">
+                <assert_contents>
+                    <has_text text="peak_id&#9;position&#9;intensity"/>
+                    <has_text text="182.61"/>
+                    <has_text text="1180.61"/>
+                    <has_n_lines n="7"/>
+                </assert_contents>
+            </output>
+            <output name="peaks_json" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;position&quot;"/>
+                    <has_text text="27570.7"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!--Test 02: Default parameters -->
+        <test expect_num_outputs="3">
+            <param name="input_nxs" value="vms_regular_ref.nxs" ftype="nxxps"/>
+            <output name="output_nxs" ftype="nxxps">
+                <assert_contents>
+                    <has_h5_keys keys="1_as_loaded__Survey/fit/peak_300/data/position"/>
+                </assert_contents>
+            </output>
+            <output name="peaks_tabular" ftype="tabular">
+                <assert_contents>
+                    <has_text text="peak_id&#9;position&#9;intensity"/>
+                    <has_n_lines n="343"/>
+                </assert_contents>
+            </output>
+            <output name="peaks_json" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;intensity&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Height filter on its own: keeps only the single strongest line. -->
+        <test expect_num_outputs="3">
+            <param name="input_nxs" value="vms_regular_ref.nxs" ftype="nxxps"/>
+            <section name="peak_detection">
+                <param name="height" value="100000"/>
+            </section>
+            <output name="output_nxs" ftype="nxxps">
+                <assert_contents>
+                    <has_h5_keys keys="1_as_loaded__Survey/fit/peak_0/data/intensity"/>
+                </assert_contents>
+            </output>
+            <output name="peaks_tabular" ftype="tabular">
+                <assert_contents>
+                    <has_text text="peak_id&#9;position&#9;intensity"/>
+                    <has_text text="peak_0&#9;1180.61&#9;108366.0"/>
+                    <has_n_lines n="2"/>
+                </assert_contents>
+            </output>
+            <output name="peaks_json" ftype="json">
+                <assert_contents>
+                    <has_text text="108366.0"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Finds peaks in an X-ray photoelectron spectroscopy (XPS) spectrum stored in a
+NeXus/HDF5 file, and writes the detected peaks back into a copy of that file as
+a standard ``NXfit`` group.
+
+The tool reads the spectrum from the file's *default* ``NXdata`` group (energy
+vs. intensity), runs ``scipy.signal.find_peaks`` over the intensity, and appends
+one ``NXpeak`` group per detected peak. The input dataset is never modified.
+
+This is the peak-finding step of the NOMAD ↔ Galaxy XPS demonstrator.
+
+-----
+
+**Inputs**
+
+A NeXus file that has already been converted from a vendor format - for example
+the output of ``pynxtools-xps``. It must contain an ``NXentry`` with a
+resolvable default ``NXdata`` group. Upload it to Galaxy as datatype ``nxxps``.
+
+-----
+
+**Peak detection parameters**
+
+All three are optional and map directly onto ``scipy.signal.find_peaks``. Leave
+them all empty and you get every local maximum in the spectrum, which is rarely
+what you want - ``prominence`` is usually the most useful single knob.
+
+The right values depend on the intensity scale of your data. For the survey
+spectrum used in the tool's tests (counts per second), ``prominence = 10000``
+with ``distance = 20`` picks out the six main lines.
+
+-----
+
+**Outputs**
+
+**Annotated NeXus** - a copy of the input with the peaks added under
+``/<entry>/fit``. For each detected peak *i*:
+
+``/<entry>/fit`` - ``@NX_class = NXfit``, holds a ``label`` describing how the
+peaks were found.
+
+``/<entry>/fit/peak_<i>`` - ``@NX_class = NXpeak``, holds a ``label``.
+
+``/<entry>/fit/peak_<i>/data`` - ``@NX_class = NXdata``, holds ``position``
+(with ``@units`` taken from the spectrum's energy axis, typically ``eV``) and
+``intensity`` (with ``@units`` taken from the signal, e.g. ``counts_per_second``).
+
+**Peak table** - tabular, with ``peak_id``, ``position`` and ``intensity``
+columns, ready for Galaxy's filtering, joining and plotting tools.
+
+**Peaks (JSON)** - the same peaks as a JSON list of
+``{"position": ..., "intensity": ...}`` objects.
+
+-----
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creators"/>
+</tool>
