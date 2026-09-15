@@ -4,9 +4,8 @@ from typing import List
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
-import plotly.express as px
-from plotly.subplots import make_subplots
 from bertviz import head_view, model_view
+from plotly.subplots import make_subplots
 
 
 def sanitize_filename(s: str) -> str:

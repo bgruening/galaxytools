@@ -1,8 +1,9 @@
 import argparse
 import csv
-import torch
+
 import numpy as np
-from transformers import AutoTokenizer, AutoModel, AutoConfig
+import torch
+from transformers import AutoConfig, AutoModel, AutoTokenizer
 from visualize_attn import create_visualizations_for_selected_sequences
 
 
