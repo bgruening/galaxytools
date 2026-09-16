@@ -5,6 +5,7 @@
         <import>macros_for_testing.xml</import>
     </macros>
     <expand macro="requirements">
+        <requirement type="package" version="4.1.2">yq</requirement>
         <requirement type="package" version="2.20.0">tensorboard</requirement>
         <!-- below only available when using a NVIDIA GPU 
             required for numerical precision options: transformer-engine, transformer-engine-float16 
@@ -19,6 +20,16 @@
         KETOS_DEVICE="\${KETOS_DEVICE:-cpu}" &&
         KETOS_WORKERS="\${KETOS_WORKERS:-1}" &&
         KETOS_THREADS="\${KETOS_THREADS:-1}" &&
+
+        #set $image_filename_jq_paths = {
+            'alto': '.alto.Description.sourceImageInformation.fileName',
+            'page': '.PcGts.Page."@imageFilename"'
+        }
+        #if $training_data.format_type == 'xml'
+            #set $image_filename_jq_path = '(if has("alto") then ' + $image_filename_jq_paths['alto'] + ' elif has("PcGts") then ' + $image_filename_jq_paths['page'] + ' else error("Expected ALTO or PAGE XML") end)'
+        #elif $training_data.format_type in ('alto', 'page')
+            #set $image_filename_jq_path = $image_filename_jq_paths[str($training_data.format_type)]
+        #end if
 
         #if $training_data.format_type == 'binary'
             #for $i, $dataset in enumerate($training_data.ground_truth)
@@ -55,7 +66,9 @@
                 #else
                     mkdir -p 'ground_truth_${i}' &&
                     ln -s '$image' 'ground_truth_${i}/input.${image.ext}' &&
-                    python '$__tool_directory__/stage_ground_truth_xml.py' '$annotation' 'ground_truth_${i}/annotation.xml' 'input.${image.ext}' &&
+                    xq -x --arg filename 'input.${image.ext}'
+                        '$image_filename_jq_path = \$filename'
+                        '$annotation' > 'ground_truth_${i}/annotation.xml' &&
                 #end if
             #end for
         #end if
@@ -86,7 +99,9 @@
                 #else
                     mkdir -p 'validation_${i}' &&
                     ln -s '$image' 'validation_${i}/input.${image.ext}' &&
-                    python '$__tool_directory__/stage_ground_truth_xml.py' '$annotation' 'validation_${i}/annotation.xml' 'input.${image.ext}' &&
+                    xq -x --arg filename 'input.${image.ext}'
+                        '$image_filename_jq_path = \$filename'
+                        '$annotation' > 'validation_${i}/annotation.xml' &&
                 #end if
             #end for
         #end if
@@ -203,7 +218,7 @@
     <inputs>
         <conditional name="training_data">
             <param argument="--format-type" type="select" label="Ground-truth data format" help="Format used for both training data and potential explicit validation data.">
-                <option value="binary" selected="true">Compiled binary dataset</option>
+                <option value="binary" selected="true">Compiled Apache Arrow dataset</option>
                 <option value="alto">ALTO</option>
                 <option value="page">PAGE XML</option>
                 <option value="xml">XML</option>
@@ -941,6 +956,7 @@
                 </param>
             </conditional>
         </expand>
+        <!-- Generic XML detects both PAGE and ALTO annotations in the same input. -->
         <expand macro="train_nonbinary_test" format_type="xml">
             <conditional name="input_source">
                 <param name="source" value="repeat"/>
@@ -950,10 +966,11 @@
                 </repeat>
                 <repeat name="ground_truth_pairs">
                     <param name="image" value="input_binarized.png" ftype="png"/>
-                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                    <param name="annotation" value="input_binarized_ocr_output.alto" ftype="xml"/>
                 </repeat>
             </conditional>
         </expand>
+        <!-- Generic XML detects both PAGE and ALTO annotations in the same input. -->
         <expand macro="train_nonbinary_test" format_type="xml">
             <conditional name="input_source">
                 <param name="source" value="collection"/>
@@ -968,7 +985,7 @@
                         <element name="pair_002">
                             <collection type="paired">
                                 <element name="forward" value="input_binarized.png" ftype="png"/>
-                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                                <element name="reverse" value="input_binarized_ocr_output.alto" ftype="xml"/>
                             </collection>
                         </element>
                     </collection>
@@ -1290,6 +1307,7 @@
                 </conditional>
             </conditional>
         </expand>
+        <!-- Generic XML detects both PAGE and ALTO annotations in the same input. -->
         <expand macro="train_nonbinary_explicit_test" format_type="xml">
             <conditional name="input_source">
                 <param name="source" value="repeat"/>
@@ -1299,7 +1317,7 @@
                 </repeat>
                 <repeat name="ground_truth_pairs">
                     <param name="image" value="input_binarized.png" ftype="png"/>
-                    <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                    <param name="annotation" value="input_binarized_ocr_output.alto" ftype="xml"/>
                 </repeat>
             </conditional>
             <conditional name="validation">
@@ -1312,11 +1330,12 @@
                     </repeat>
                     <repeat name="ground_truth_pairs">
                         <param name="image" value="input_binarized.png" ftype="png"/>
-                        <param name="annotation" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                        <param name="annotation" value="input_binarized_ocr_output.alto" ftype="xml"/>
                     </repeat>
                 </conditional>
             </conditional>
         </expand>
+        <!-- Generic XML detects both PAGE and ALTO annotations in the same input. -->
         <expand macro="train_nonbinary_explicit_test" format_type="xml">
             <conditional name="input_source">
                 <param name="source" value="collection"/>
@@ -1331,7 +1350,7 @@
                         <element name="pair_002">
                             <collection type="paired">
                                 <element name="forward" value="input_binarized.png" ftype="png"/>
-                                <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                                <element name="reverse" value="input_binarized_ocr_output.alto" ftype="xml"/>
                             </collection>
                         </element>
                     </collection>
@@ -1352,7 +1371,7 @@
                             <element name="pair_002">
                                 <collection type="paired">
                                     <element name="forward" value="input_binarized.png" ftype="png"/>
-                                    <element name="reverse" value="input_binarized_ocr_output.page.xml" ftype="xml"/>
+                                    <element name="reverse" value="input_binarized_ocr_output.alto" ftype="xml"/>
                                 </collection>
                             </element>
                         </collection>
