@@ -1,4 +1,4 @@
-"""TabICL classification, regression, fine-tuning and SHAP runner."""
+"""TabICL in-context classification, regression and SHAP runner."""
 import argparse
 import json
 import time
@@ -9,7 +9,7 @@ import pandas as pd
 from sklearn.metrics import (accuracy_score, average_precision_score, balanced_accuracy_score,
                              f1_score, precision_recall_curve, r2_score,
                              root_mean_squared_error)
-from sklearn.model_selection import KFold, StratifiedKFold, train_test_split
+from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.preprocessing import label_binarize
 
 SEED = 42
@@ -72,28 +72,9 @@ def model_config(args):
 
 
 def make_estimator(args):
-    if args.fine_tune == "true":
-        from tabicl import FinetunedTabICLClassifier, FinetunedTabICLRegressor
-        cls = FinetunedTabICLClassifier if args.selected_task == "Classification" else FinetunedTabICLRegressor
-        return cls(model_path=args.model_path, epochs=args.epochs, learning_rate=args.learning_rate,
-                   n_estimators_finetune=args.n_estimators_finetune,
-                   n_estimators_validation=args.n_estimators_validation,
-                   n_estimators_inference=args.n_estimators_inference,
-                   early_stopping=args.early_stopping == "true", patience=args.patience,
-                   eval_metric=(args.eval_metric if (args.selected_task == "Classification" and args.eval_metric in {"accuracy", "roc_auc", "log_loss"}) or (args.selected_task == "Regression" and args.eval_metric in {"mse", "mae", "r2"}) else ("accuracy" if args.selected_task == "Classification" else "r2")), random_state=SEED, verbose=True)
     from tabicl import TabICLClassifier, TabICLRegressor
     cls = TabICLClassifier if args.selected_task == "Classification" else TabICLRegressor
     return cls(**model_config(args))
-
-
-def fit(estimator, features, labels, args):
-    if args.fine_tune != "true":
-        estimator.fit(features, labels)
-        return
-    stratify = labels if args.selected_task == "Classification" else None
-    x_train, x_val, y_train, y_val = train_test_split(
-        features, labels, test_size=args.validation_fraction, random_state=args.random_state, stratify=stratify)
-    estimator.fit(x_train, y_train, X_val=x_val, y_val=y_val, output_dir="finetuned_model")
 
 
 def prediction_plot(y_true, y_pred, task, y_scores=None):
@@ -164,7 +145,7 @@ def train_test(args):
     else:
         x_test, y_test = read_table(args.test_data, args.test_header), None
     estimator = make_estimator(args)
-    fit(estimator, x_train, y_train, args)
+    estimator.fit(x_train, y_train)
     predicted = estimator.predict(x_test)
     if y_test is not None:
         scores = estimator.predict_proba(x_test) if args.selected_task == "Classification" else None
@@ -179,8 +160,6 @@ def train_test(args):
 
 
 def cross_validate(args):
-    if args.fine_tune == "true":
-        raise ValueError("Fine-tuning is available with train/test evaluation only.")
     features, labels = split_xy(args.train_data, args.train_header)
     if args.selected_task == "Classification" and args.cv_strategy == "stratified":
         too_small = labels.value_counts()[lambda counts: counts < args.n_splits]
@@ -242,29 +221,13 @@ def make_parser():
     parser.add_argument("--support_many_classes", default="true")
     parser.add_argument("--batch_size", type=optional_int, default=8)
     parser.add_argument("--kv_cache", choices=["false", "true", "kv", "repr"], default="false")
-    #parser.add_argument("--allow_auto_download", default="true")
-    #parser.add_argument("--checkpoint_version", default="")
-    parser.add_argument("--device", default="auto")
     parser.add_argument("--use_amp", choices=["auto", "true", "false"], default="auto")
-    parser.add_argument("--use_fa3", choices=["auto", "true", "false"], default="auto")
-    parser.add_argument("--offload_mode", choices=["auto", "gpu", "cpu", "disk"], default="auto")
-    parser.add_argument("--disk_offload_dir", default="")
     parser.add_argument("--random_state", type=optional_int, default=SEED)
     parser.add_argument("--n_jobs", type=optional_int, default=0)
     parser.add_argument("--verbose", default="false")
     parser.add_argument("--inference_config", default="")
     parser.add_argument("--n_splits", type=int, default=5)
     parser.add_argument("--cv_strategy", default="stratified")
-    parser.add_argument("--fine_tune", default="false")
-    parser.add_argument("--epochs", type=int, default=50)
-    parser.add_argument("--learning_rate", type=float, default=1e-5)
-    parser.add_argument("--n_estimators_finetune", type=int, default=2)
-    parser.add_argument("--n_estimators_validation", type=int, default=2)
-    parser.add_argument("--n_estimators_inference", type=int, default=8)
-    parser.add_argument("--early_stopping", default="true")
-    parser.add_argument("--patience", type=int, default=10)
-    parser.add_argument("--eval_metric", default="accuracy")
-    parser.add_argument("--validation_fraction", type=float, default=.2)
     parser.add_argument("--shap", default="false")
     parser.add_argument("--shap_max_samples", type=int, default=10)
     return parser
