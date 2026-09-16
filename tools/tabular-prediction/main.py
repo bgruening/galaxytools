@@ -30,35 +30,37 @@ def parse_auto_boolean(value):
     return value == "true"
 
 
+def optional_int(value):
+    if value.lower() in {"", "none"}:
+        return None
+    return int(value)
+
+
 def model_config(args):
     config = {"random_state": args.random_state, "model_path": args.model_path}
     if args.advanced_icl != "true":
         return config
-    norm_methods = {
-        "default": None,
-        "none": ["none"],
-        "power": ["power"],
-        "none_power": ["none", "power"],
-    }[args.norm_methods]
+    norm_methods = args.norm_methods.split(",")
+    if norm_methods == ["none_power"]:
+        norm_methods = ["none", "power"]
+    allowed_norm_methods = {"none", "power", "quantile", "quantile_rtdl", "robust"}
+    if not set(norm_methods) <= allowed_norm_methods:
+        raise ValueError("Unknown normalization method.")
     config.update({
         "n_estimators": args.n_estimators,
         "norm_methods": norm_methods,
         "feat_shuffle_method": args.feat_shuffle_method,
         "outlier_threshold": args.outlier_threshold,
         "batch_size": args.batch_size,
-        "kv_cache": args.kv_cache == "true",
-        "allow_auto_download": args.allow_auto_download == "true",
-        "device": None if args.device == "auto" else args.device,
-        "use_amp": parse_auto_boolean(args.use_amp),
-        "use_fa3": parse_auto_boolean(args.use_fa3),
-        "offload_mode": args.offload_mode,
-        "disk_offload_dir": args.disk_offload_dir or None,
-        "n_jobs": args.n_jobs or None,
+        "kv_cache": {"false": False, "true": True, "kv": "kv", "repr": "repr"}[args.kv_cache],
+        "device": None,
+        "use_amp": "auto",
+        "use_fa3": "auto",
+        "offload_mode": "auto",
+        "disk_offload_dir": None,
         "verbose": args.verbose == "true",
-        "inference_config": json.loads(args.inference_config) if args.inference_config else None,
+        "inference_config": None,
     })
-    if args.checkpoint_version:
-        config["checkpoint_version"] = args.checkpoint_version
     if args.selected_task == "Classification":
         config.update({
             "class_shuffle_method": args.class_shuffle_method,
@@ -231,24 +233,24 @@ def make_parser():
     parser.add_argument("--model_path", required=True)
     parser.add_argument("--advanced_icl", default="false")
     parser.add_argument("--n_estimators", type=int, default=8)
-    parser.add_argument("--norm_methods", choices=["default", "none", "power", "none_power"], default="default")
-    parser.add_argument("--feat_shuffle_method", default="latin")
-    parser.add_argument("--class_shuffle_method", default="shift")
+    parser.add_argument("--norm_methods", default="none_power", help="Comma-separated normalization methods")
+    parser.add_argument("--feat_shuffle_method", choices=["none", "shift", "random", "latin"], default="latin")
+    parser.add_argument("--class_shuffle_method", choices=["none", "shift", "random", "latin"], default="shift")
     parser.add_argument("--outlier_threshold", type=float, default=4.0)
     parser.add_argument("--softmax_temperature", type=float, default=0.9)
     parser.add_argument("--average_logits", default="true")
     parser.add_argument("--support_many_classes", default="true")
-    parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--kv_cache", default="false")
-    parser.add_argument("--allow_auto_download", default="true")
-    parser.add_argument("--checkpoint_version", default="")
+    parser.add_argument("--batch_size", type=optional_int, default=8)
+    parser.add_argument("--kv_cache", choices=["false", "true", "kv", "repr"], default="false")
+    #parser.add_argument("--allow_auto_download", default="true")
+    #parser.add_argument("--checkpoint_version", default="")
     parser.add_argument("--device", default="auto")
     parser.add_argument("--use_amp", choices=["auto", "true", "false"], default="auto")
     parser.add_argument("--use_fa3", choices=["auto", "true", "false"], default="auto")
-    parser.add_argument("--offload_mode", default="auto")
+    parser.add_argument("--offload_mode", choices=["auto", "gpu", "cpu", "disk"], default="auto")
     parser.add_argument("--disk_offload_dir", default="")
-    parser.add_argument("--random_state", type=int, default=SEED)
-    parser.add_argument("--n_jobs", type=int, default=0)
+    parser.add_argument("--random_state", type=optional_int, default=SEED)
+    parser.add_argument("--n_jobs", type=optional_int, default=0)
     parser.add_argument("--verbose", default="false")
     parser.add_argument("--inference_config", default="")
     parser.add_argument("--n_splits", type=int, default=5)
