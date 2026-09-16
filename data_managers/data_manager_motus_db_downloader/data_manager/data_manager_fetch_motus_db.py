@@ -8,7 +8,7 @@ import subprocess
 import sys
 import tarfile
 import time
-from datetime import datetime
+from urllib.request import urlopen
 
 import wget
 
@@ -36,6 +36,19 @@ version_mapping = {
     "3.0.1": "https://zenodo.org/records/5140350/files/db_mOTU_v3.0.1.tar.gz",
     "3.0.0": "https://zenodo.org/records/5012106/files/db_mOTU_v3.0.0.tar.gz",
 }
+
+
+def zenodo_publication_date(file_url):
+    """Return the publication date (YYYY-MM-DD) of the Zenodo record hosting
+    ``file_url`` (``.../records/<record_id>/files/<name>``). Used to derive a
+    deterministic default DB identifier from the record itself rather than from
+    the wall-clock time of the build."""
+    record_id = file_url.split("/records/")[1].split("/")[0]
+    with urlopen(
+        f"https://zenodo.org/api/records/{record_id}"
+    ) as fh:  # noqa: S310 (fixed https host)
+        record = json.load(fh)
+    return record["metadata"]["publication_date"]
 
 
 def download_untar_store(url, tmp_path, dest_path):
@@ -83,6 +96,17 @@ def main():
         action="store_true",
         help="option to test the script with an lighted database",
     )
+    parser.add_argument(
+        "--value",
+        dest="value",
+        action="store",
+        default=None,
+        help=(
+            "Override the data-table value / on-disk directory name. Defaults to "
+            "db_from_<Zenodo publication date>. Set it to reproduce or match an "
+            "existing entry from another server."
+        ),
+    )
 
     args = parser.parse_args()
 
@@ -95,11 +119,16 @@ def main():
     workdir = params["output_data"][0]["extra_files_path"]
     os.mkdir(workdir)
 
-    time = datetime.utcnow().strftime("%Y-%m-%dT%H%M%SZ")
-    db_value = "db_from_{0}".format(time)
+    url = version_mapping[args.version]
+    # Default the identifier to the Zenodo record's publication date so it is
+    # deterministic/reproducible across builds; an explicit --value overrides it
+    # (e.g. to match an existing entry already published on another server).
+    if args.value:
+        db_value = args.value
+    else:
+        db_value = "db_from_{0}".format(zenodo_publication_date(url))
     db_path = os.path.join(workdir, db_value)
     tmp_path = os.path.join(workdir, "tmp")
-    url = version_mapping[args.version]
 
     # create DB
     if args.test:  # the test only checks that the pharokka download script is available
@@ -135,7 +164,7 @@ def main():
             "motus_db_versioned": {
                 "value": db_value,
                 "version": args.version,
-                "name": f"mOTUs DB version {args.version} downloaded at {datetime.now()}",
+                "name": f"mOTUs DB version {args.version} ({db_value})",
                 "path": db_path,
             }
         }
