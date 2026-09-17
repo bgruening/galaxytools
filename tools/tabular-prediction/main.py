@@ -120,7 +120,7 @@ def prediction_plot(y_true, y_pred, task, y_scores=None):
     plt.close()
 
 
-def make_shap_plot(estimator, features, limit):
+def make_shap_plot(estimator, features, limit, plot_type="beeswarm"):
     from tabicl.shap import get_shap_explainer, plot_shap
     explain_data = features.iloc[:limit]
     explain_array = np.asarray(explain_data, dtype=np.float64)
@@ -132,7 +132,7 @@ def make_shap_plot(estimator, features, limit):
         explain_array, max_evals=2 * explain_array.shape[1] + 1)
     if hasattr(values, "feature_names"):
         values.feature_names = [str(column) for column in features.columns]
-    plot_shap(values, kind="beeswarm")
+    plot_shap(values, kind=plot_type)
     plt.tight_layout()
     plt.savefig("shap_plot.png", bbox_inches="tight")
     plt.close()
@@ -151,7 +151,7 @@ def train_test(args):
         scores = estimator.predict_proba(x_test) if args.selected_task == "Classification" else None
         prediction_plot(y_test, predicted, args.selected_task, scores)
     if args.shap == "true":
-        make_shap_plot(estimator, x_test, args.shap_max_samples)
+        make_shap_plot(estimator, x_test, args.shap_max_samples, args.shap_plot_type)
     output = x_test.copy()
     if y_test is not None:
         output["true_labels"] = y_test.to_numpy()
@@ -230,6 +230,7 @@ def make_parser():
     parser.add_argument("--cv_strategy", default="stratified")
     parser.add_argument("--shap", default="false")
     parser.add_argument("--shap_max_samples", type=int, default=10)
+    parser.add_argument("--shap_plot_type", choices=["bar", "scatter", "beeswarm"], default="beeswarm")
     return parser
 
 
