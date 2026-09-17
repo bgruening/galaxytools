@@ -12,6 +12,8 @@ import transformers
 from peft import get_peft_model, LoraConfig
 from scipy.stats import pearsonr, spearmanr
 from torch.utils.data import Dataset
+from embed_sequence import embed_sequences
+from visualize_attn import create_visualizations_for_selected_sequences
 
 
 # -----------------------------
@@ -73,6 +75,9 @@ class TrainingArguments(transformers.TrainingArguments):
     eval_and_save_results: bool = field(default=True)
     save_model: bool = field(default=False)
     seed: int = field(default=42)
+    attn_vis: bool = field(default=False)
+    attn_ids: Optional[str] = field(default=None, metadata={"help": "Comma-separated test sequence IDs or 'all'"})
+    viz_dir: str = field(default="attention_viz")
 
 
 # -----------------------------
@@ -241,14 +246,15 @@ def make_compute_metrics(problem_type: str):
 # -----------------------------
 # Prediction dump
 # -----------------------------
-def get_texts(data_path: str):
-    texts = []
+def get_ids_and_texts(data_path: str):
+    ids, texts = [], []
     with open(data_path, "r") as f:
         reader = csv.reader(f, delimiter="\t")
         next(reader, None)
-        for row in reader:
+        for i, row in enumerate(reader):
+            ids.append(str(i))
             texts.append(row[0])
-    return texts
+    return ids, texts
 
 
 def dump_test_predictions(trainer: transformers.Trainer, test_dataset: Dataset, sequences: list[str],
@@ -386,7 +392,7 @@ def train():
             json.dump(test_metrics, f, indent=2)
 
     # iv) output test labels and predictions
-    texts = get_texts(data_path=data_args.test_file)
+    test_ids, texts = get_ids_and_texts(data_path=data_args.test_file)
     dump_test_predictions(
         trainer=trainer,
         test_dataset=test_dataset,
@@ -394,6 +400,43 @@ def train():
         output_dir=training_args.output_dir,
         problem_type=problem_type,
     )
+
+    # v) attention visualizations
+    if training_args.attn_vis:
+
+        selected_ids = [x.strip() for x in training_args.attn_ids.split(",") if x.strip()]
+        if not selected_ids:
+            raise ValueError("--attn_ids is empty.")
+
+        test_pairs = list(zip(test_ids, texts))
+        device = next(trainer.model.parameters()).device
+        model_inference = transformers.AutoModel.from_pretrained(
+            model_args.model_name_or_path, config=config, trust_remote_code=True)
+        model_inference.to(device)
+        model_inference.eval()
+
+        _, _, all_attention, all_tokens = embed_sequences(
+            sequences=test_pairs,
+            tokenizer=tokenizer,
+            model=model_inference,
+            device=device,
+            batch_size=training_args.per_device_eval_batch_size,
+            pooling="cls",
+            attn_vis=True,
+            attn_ids=selected_ids,
+            return_embeddings=False,
+        )
+
+        selected = test_ids if "all" in selected_ids else selected_ids
+        selected = [sid for sid in selected if sid in all_attention]
+
+        os.makedirs(training_args.viz_dir, exist_ok=True)
+        create_visualizations_for_selected_sequences(
+            selected,
+            all_attention,
+            all_tokens,
+            training_args.viz_dir,
+        )
 
 
 if __name__ == "__main__":

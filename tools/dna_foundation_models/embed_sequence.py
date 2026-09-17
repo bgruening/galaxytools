@@ -51,7 +51,8 @@ def max_pooling(last_hidden_state, attention_mask):
 
 
 def embed_sequences(sequences, tokenizer, model, device, batch_size=16,
-                    pooling="mean", attn_vis=False, attn_ids=None):
+                    pooling="mean", attn_vis=False, attn_ids=None,
+                    return_embeddings=True):
     headers, seqs = zip(*sequences)
     embeddings = []
     all_attentions = {}
@@ -84,18 +85,21 @@ def embed_sequences(sequences, tokenizer, model, device, batch_size=16,
                     token_ids = input_ids[j, :seq_len].tolist()
                     all_tokens[seq_id] = tokenizer.convert_ids_to_tokens(token_ids)
 
-            pool_mask = remove_special_tokens(inputs["attention_mask"])
+            if return_embeddings:
+                pool_mask = remove_special_tokens(inputs["attention_mask"])
 
-            if pooling == "cls":
-                emb = last_hidden[:, 0, :]
-            elif pooling == "mean":
-                emb = mean_pooling(last_hidden, pool_mask)
-            elif pooling == "max":
-                emb = max_pooling(last_hidden, pool_mask)
-            else:
-                raise ValueError("Pooling must be 'cls', 'mean' or 'max'")
-        embeddings.append(emb.cpu().numpy())
-    embeddings = np.vstack(embeddings)
+                if pooling == "cls":
+                    emb = last_hidden[:, 0, :]
+                elif pooling == "mean":
+                    emb = mean_pooling(last_hidden, pool_mask)
+                elif pooling == "max":
+                    emb = max_pooling(last_hidden, pool_mask)
+                else:
+                    raise ValueError("Pooling must be 'cls', 'mean' or 'max'")
+                embeddings.append(emb.cpu().numpy())
+
+    if return_embeddings:
+        embeddings = np.vstack(embeddings)
 
     if not attn_vis:
         all_attentions = None
