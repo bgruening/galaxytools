@@ -1,0 +1,267 @@
+<tool id="doubletfinder" name="DoubletFinder" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Doublet detection in single-cell RNA-seq data using artificial nearest neighbors</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+Rscript '$__tool_directory__/doubletfinder.R'
+    --input-object '$input_object'
+    --output-object '$output_object'
+    --output-table '$output_table'
+    --output-sweep '$output_sweep'
+    #if $save_plot:
+        --output-plot '$output_plot'
+    #end if
+    --pcs $pcs
+    --pn $pn
+    --pk-mode '$pk_mode.pk_mode'
+    #if $pk_mode.pk_mode == 'manual':
+        --pk $pk_mode.pk
+        #if $pk_mode.reuse_pann:
+            --reuse-pann '$pk_mode.reuse_pann'
+        #end if
+    #end if
+    --nexp-mode '$nexp_mode.nexp_mode'
+    #if $nexp_mode.nexp_mode == 'expected_rate':
+        --doublet-rate $nexp_mode.doublet_rate
+        #if $nexp_mode.adjust_homotypic:
+            --homotypic-adjust
+            --annotation-col '$nexp_mode.annotation_col'
+        #end if
+    #else:
+        --nexp $nexp_mode.nexp
+    #end if
+    #if $sct:
+        --sct
+    #end if
+    #if $save_sweep_table:
+        --save-sweep-table
+    #end if
+    #if $save_plot:
+        --save-plot
+    #end if
+    #if $seed:
+        --seed $seed
+    #end if
+    ]]></command>
+    <inputs>
+        <param name="input_object" type="data" format="rds,rdata" label="Seurat object" help="A fully pre-processed Seurat object (after NormalizeData, FindVariableFeatures, ScaleData and RunPCA), saved as RDS or RData."/>
+        <param name="pcs" type="integer" value="10" min="1" max="50" label="Number of PCs" help="Number of statistically significant principal components to use, as estimated e.g. from a PC elbow plot."/>
+        <param name="pn" type="float" value="0.25" min="0.01" max="0.5" label="Artificial doublet proportion (pN)" help="Proportion of artificial doublets, expressed as a proportion of the merged real-artificial data. Performance is largely pN-invariant; keep the default unless you have a reason to change it."/>
+        <conditional name="pk_mode">
+            <param name="pk_mode" type="select" label="pK selection mode">
+                <option value="auto" selected="true">Automatic (run parameter sweep and use the pK with maximum BCmvn)</option>
+                <option value="manual">Manual (supply pK directly, skip the sweep)</option>
+            </param>
+            <when value="auto"/>
+            <when value="manual">
+                <param name="pk" type="float" value="0.09" min="0.0005" max="0.3" label="PC neighborhood size (pK)" help="The PC neighborhood size used to compute pANN, expressed as a proportion of the merged real-artificial data."/>
+                <param name="reuse_pann" type="text" optional="true" label="Existing pANN metadata column to reuse" help="Name of a 'pANN.*' column in the object's meta.data (e.g. from a previous DoubletFinder run) to reuse for re-classification. Leave empty for a fresh run."/>
+            </when>
+        </conditional>
+        <conditional name="nexp_mode">
+            <param name="nexp_mode" type="select" label="Expected doublets specification">
+                <option value="expected_rate" selected="true">Expected doublet rate</option>
+                <option value="expected_count">Expected doublet count</option>
+            </param>
+            <when value="expected_rate">
+                <param name="doublet_rate" type="float" value="0.075" min="0" max="1" label="Expected doublet rate" help="Expected doublet rate, e.g. ~0.075 (7.5%) for ~10,000 cells loaded on a 10x Chromium (~0.8% per 1,000 cells). Adjust for your platform and loading density."/>
+                <param name="adjust_homotypic" type="boolean" checked="false" label="Adjust for homotypic doublets" help="Estimate the proportion of homotypic doublets from cell-type annotations with modelHomotypic and reduce the expected doublet count accordingly."/>
+                <param name="annotation_col" type="text" optional="true" label="Annotation meta.data column" help="Name of the meta.data column holding cell-type (cluster) annotations, used for the homotypic adjustment. e.g. 'seurat_clusters' or 'RNA_snn_res.0.5'.">
+                    <validator type="regex" message="Column names must not contain whitespace">^\S*$</validator>
+                </param>
+            </when>
+            <when value="expected_count">
+                <param name="nexp" type="integer" value="10" min="1" label="Expected number of doublets (nExp)" help="The total number of doublet predictions to produce."/>
+            </when>
+        </conditional>
+        <param name="sct" type="boolean" checked="false" label="Object was normalized with SCTransform" help="Enable if the input Seurat object was pre-processed with SCTransform instead of NormalizeData."/>
+        <param name="save_sweep_table" type="boolean" checked="true" label="Save the pK sweep statistics table" help="Outputs the mean-variance-normalized bimodality coefficient (BCmvn) table from the parameter sweep (automatic pK mode only)."/>
+        <param name="save_plot" type="boolean" checked="true" label="Save the BCmvn vs pK plot" help="Outputs a PNG plot of the BCmvn curve across the pK sweep, highlighting the selected pK (automatic pK mode only)."/>
+        <param name="seed" type="integer" optional="true" label="Random seed" help="Set for reproducible artificial doublet generation and pANN computation."/>
+    </inputs>
+    <outputs>
+        <data name="output_object" format="rds" label="${tool.name} on ${on_string}: annotated Seurat object"/>
+        <data name="output_table" format="tabular" label="${tool.name} on ${on_string}: per-cell doublet classifications"/>
+        <data name="output_sweep" format="tabular" label="${tool.name} on ${on_string}: pK sweep statistics">
+            <filter>pk_mode['pk_mode'] == 'auto' and save_sweep_table</filter>
+        </data>
+        <data name="output_plot" format="png" label="${tool.name} on ${on_string}: BCmvn plot">
+            <filter>pk_mode['pk_mode'] == 'auto' and save_plot</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 1: automatic pK, rate-based nExp -->
+        <test expect_num_outputs="4">
+            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="pcs" value="10"/>
+            <conditional name="pk_mode">
+                <param name="pk_mode" value="auto"/>
+            </conditional>
+            <conditional name="nexp_mode">
+                <param name="nexp_mode" value="expected_rate"/>
+                <param name="doublet_rate" value="0.075"/>
+            </conditional>
+            <param name="seed" value="0"/>
+            <output name="output_table" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="81"/>
+                    <has_text text="cell"/>
+                    <has_text text="pANN"/>
+                    <has_text text="classification"/>
+                    <has_text text="Singlet"/>
+                    <has_text text="Doublet"/>
+                </assert_contents>
+            </output>
+            <output name="output_sweep" ftype="tabular">
+                <assert_contents>
+                    <has_text text="ParamID"/>
+                    <has_text text="BCmetric"/>
+                    <has_n_columns n="5"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_width width="800"/>
+                    <has_image_height height="600"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 2: manual pK, count-based nExp -->
+        <test expect_num_outputs="2">
+            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="pcs" value="10"/>
+            <conditional name="pk_mode">
+                <param name="pk_mode" value="manual"/>
+                <param name="pk" value="0.09"/>
+            </conditional>
+            <conditional name="nexp_mode">
+                <param name="nexp_mode" value="expected_count"/>
+                <param name="nexp" value="10"/>
+            </conditional>
+            <param name="seed" value="0"/>
+            <output name="output_table" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="81"/>
+                    <has_text text="Doublet"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 3: homotypic adjustment -->
+        <test expect_num_outputs="2">
+            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="pcs" value="10"/>
+            <conditional name="pk_mode">
+                <param name="pk_mode" value="manual"/>
+                <param name="pk" value="0.09"/>
+            </conditional>
+            <conditional name="nexp_mode">
+                <param name="nexp_mode" value="expected_rate"/>
+                <param name="doublet_rate" value="0.075"/>
+                <param name="adjust_homotypic" value="true"/>
+                <param name="annotation_col" value="RNA_snn_res.1"/>
+            </conditional>
+            <param name="seed" value="0"/>
+            <output name="output_table" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="81"/>
+                    <has_text text="classification"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 4: manual pK command construction -->
+        <test expect_num_outputs="2">
+            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="pcs" value="10"/>
+            <conditional name="pk_mode">
+                <param name="pk_mode" value="manual"/>
+                <param name="pk" value="0.09"/>
+            </conditional>
+            <conditional name="nexp_mode">
+                <param name="nexp_mode" value="expected_count"/>
+                <param name="nexp" value="5"/>
+            </conditional>
+            <param name="save_sweep_table" value="false"/>
+            <param name="save_plot" value="false"/>
+            <assert_command>
+                <has_text text="--pk 0.09"/>
+                <has_text text="--nexp 5"/>
+                <has_text text="--pk-mode 'manual'"/>
+            </assert_command>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# DoubletFinder
+
+**What it does**
+
+DoubletFinder predicts doublets in single-cell RNA-seq data by artificially
+creating doublets from existing data, embedding them alongside real cells in
+PCA space, and computing the proportion of artificial nearest neighbors
+(pANN) for every real cell. pANN values are then thresholded according to the
+expected number of doublets to produce final doublet predictions.
+
+This tool implements the standard DoubletFinder workflow:
+
+1. `paramSweep` — generate artificial doublets and compute pANN across a
+   pN-pK parameter grid (optional, in automatic pK mode)
+2. `summarizeSweep` — summarize sweep results
+3. `find.pK` — identify the pK with the maximum mean-variance-normalized
+   bimodality coefficient (BCmvn)
+4. `doubletFinder` — classify cells as singlets or doublets
+
+**Input requirements**
+
+Provide a *fully pre-processed* Seurat object (saved as RDS or RData):
+`NormalizeData`, `FindVariableFeatures`, `ScaleData` and `RunPCA` must already
+have been run. The input must originate from a single sample (see caveats).
+
+**Parameters**
+
+- **Number of PCs** — the number of statistically significant principal
+  components, as estimated e.g. from a PC elbow plot.
+- **pN** — the artificial doublet proportion. Performance is largely
+  pN-invariant; the default (0.25) is recommended.
+- **pK mode** — in *automatic* mode, the full parameter sweep is run and the
+  pK with maximum BCmvn is used. In *manual* mode you supply pK directly
+  (e.g. from the sweep table of a previous run) and may reuse an existing
+  `pANN_*` metadata column for fast re-classification with a different
+  expected doublet count.
+- **Expected doublets** — specify either a *rate* (e.g. ~0.8% per 1,000 cells
+  on the 10x Chromium platform; ~7.5% for 10,000 cells loaded), which is
+  multiplied by the cell count, or a direct *count*. With the rate mode you
+  can optionally *adjust for homotypic doublets*: the proportion of doublets
+  expected to form between cells of the same type (estimated from your
+  cluster/annotation column via `modelHomotypic`) is subtracted, giving a
+  lower bound on the detectable doublet rate.
+- **SCTransform** — enable if the object was pre-processed with SCTransform
+  rather than NormalizeData.
+
+**Outputs**
+
+- **Annotated Seurat object** — the input object with added `pANN_*` and
+  `DF.classifications_*` meta.data columns.
+- **Per-cell classification table** — barcode, pANN score and
+  Singlet/Doublet call for every cell; useful for filtering downstream.
+- **pK sweep statistics** — the BCmvn table from `find.pK` (automatic mode).
+- **BCmvn plot** — BCmvn across the sweep, highlighting the selected pK.
+
+**Important caveats**
+
+- Do not run DoubletFinder on aggregated data from multiple *distinct*
+  samples (e.g. different 10x lanes or different conditions); run it
+  per-sample/per-lane instead.
+- Remove low-quality clusters before running.
+- DoubletFinder is insensitive to homotypic doublets (doublets formed by
+  cells of the same type, which are transcriptionally indistinguishable from
+  singlets). The homotypic-adjusted estimate 'bookends' the true detectable
+  rate.
+- Artificial doublet generation and the parameter sweep are stochastic;
+  set a random seed for reproducibility.
+
+@ATTRIBUTION@
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
