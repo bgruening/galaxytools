@@ -8,7 +8,9 @@ import time
 import yaml
 from openai import (
     APIConnectionError,
+    APIError,
     APITimeoutError,
+    BadRequestError,
     InternalServerError,
     OpenAI,
     RateLimitError,
@@ -158,6 +160,28 @@ retryable_errors = (
     InternalServerError,
 )
 
+# An input larger than the model's context window is rejected up front with an
+# HTTP 400 -- by the serving backend (vLLM: "Input length (270080) exceeds
+# model's maximum context length (128000)"), or by LiteLLM's own pre-call check
+# when the proxy sets `enable_pre_call_checks` plus `model_info.max_input_tokens`
+# ("Max Input Tokens=..., Got=..."). Either way the rejection is authoritative
+# and carries the real numbers, so no local token estimate is needed. The OpenAI
+# SDK surfaces it as BadRequestError; without the handler below it escapes the
+# retry loop as a raw traceback.
+CONTEXT_OVERFLOW_MARKERS = (
+    "maximum context length",  # vLLM and OpenAI phrasings
+    "context window",  # "context window exceeded" phrasings
+    "max input tokens",  # litellm pre-call check
+    "too many tokens",
+)
+
+
+def is_context_overflow(exc):
+    """True if a 400 is the model's context window being exceeded."""
+    message = str(exc).lower()
+    return any(marker in message for marker in CONTEXT_OVERFLOW_MARKERS)
+
+
 # Timeouts on a long generation usually mean the work exceeds the per-request
 # budget, so re-sending reproduces the same timeout.  Cap timeout retries
 # separately (other transient errors keep the full max_retries budget).
@@ -260,6 +284,18 @@ for attempt in range(max_retries):
         with open("output.md", "w") as f:
             f.write(answer)
         break
+    except BadRequestError as e:
+        # The request itself is invalid, so re-sending it reproduces the same
+        # rejection -- never retry. Exit with an actionable message instead of
+        # letting the SDK exception escape as a traceback.
+        if is_context_overflow(e):
+            sys.exit(
+                "The input is too large for the selected model's context window, "
+                "so the request was rejected before any generation started. "
+                "Split the input into smaller chunks and re-run, or select a "
+                f"model with a larger context window. Upstream error: {e}"
+            )
+        sys.exit(f"The model/proxy rejected the request: {e}")
     except APITimeoutError as e:
         timeout_attempts += 1
         if attempt == max_retries - 1 or timeout_attempts > max_timeout_retries:
@@ -295,3 +331,11 @@ for attempt in range(max_retries):
             file=sys.stderr,
         )
         time.sleep(sleep_time)
+    except APIError as e:
+        # Everything the SDK does not map to a named class handled above: 413
+        # (payload too large), 401/403/404/409/422, and APIResponseValidationError
+        # (an APIError but NOT an APIStatusError, so a status-based catch misses
+        # it). None are worth retrying -- re-sending reproduces them. Must stay
+        # LAST: APITimeoutError, APIConnectionError, RateLimitError and
+        # InternalServerError are all APIError subclasses caught above.
+        sys.exit(f"The request failed and cannot be retried: {type(e).__name__}: {e}")
