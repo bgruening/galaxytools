@@ -126,7 +126,7 @@ def make_shap_plot(estimator, features, limit, plot_type="beeswarm"):
     explain_array = np.asarray(explain_data, dtype=np.float64)
     predict_method = "predict_proba" if hasattr(estimator, "predict_proba") else "predict"
     explainer = get_shap_explainer(
-        estimator, explain_array, predict_fn=predict_method)
+        estimator, explain_array, predict_fn=predict_method, algorithm="permutation")
     # Permutation SHAP requires at least two evaluations per feature plus one.
     values = explainer(
         explain_array, max_evals=2 * explain_array.shape[1] + 1)
@@ -136,6 +136,19 @@ def make_shap_plot(estimator, features, limit, plot_type="beeswarm"):
     plt.tight_layout()
     plt.savefig("shap_plot.png", bbox_inches="tight")
     plt.close()
+
+
+def performance_metrics(y_true, y_pred, task):
+    if task == "Classification":
+        return {
+            "accuracy": accuracy_score(y_true, y_pred),
+            "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
+            "f1_weighted": f1_score(y_true, y_pred, average="weighted", zero_division=0),
+        }
+    return {
+        "rmse": root_mean_squared_error(y_true, y_pred),
+        "r2": r2_score(y_true, y_pred),
+    }
 
 
 def train_test(args):
@@ -148,6 +161,8 @@ def train_test(args):
     estimator.fit(x_train, y_train)
     predicted = estimator.predict(x_test)
     if y_test is not None:
+        pd.DataFrame([performance_metrics(y_test, predicted, args.selected_task)]).to_csv(
+            "test_metrics.tsv", sep="\t", index=False)
         scores = estimator.predict_proba(x_test) if args.selected_task == "Classification" else None
         prediction_plot(y_test, predicted, args.selected_task, scores)
     if args.shap == "true":
@@ -180,17 +195,9 @@ def cross_validate(args):
         estimator.fit(features.iloc[train_index], labels.iloc[train_index])
         predicted = estimator.predict(features.iloc[test_index])
         predictions.iloc[test_index], fold_numbers.iloc[test_index] = predicted, fold_number
-        if args.selected_task == "Classification":
-            metrics.append({"fold": fold_number,
-                            "accuracy": accuracy_score(labels.iloc[test_index], predicted),
-                            "balanced_accuracy": balanced_accuracy_score(labels.iloc[test_index], predicted),
-                            "f1_weighted": f1_score(labels.iloc[test_index], predicted, average="weighted", zero_division=0)})
-            metric_columns = ["accuracy", "balanced_accuracy", "f1_weighted"]
-        else:
-            metrics.append({"fold": fold_number,
-                            "rmse": root_mean_squared_error(labels.iloc[test_index], predicted),
-                            "r2": r2_score(labels.iloc[test_index], predicted)})
-            metric_columns = ["rmse", "r2"]
+        fold_metrics = performance_metrics(labels.iloc[test_index], predicted, args.selected_task)
+        metrics.append({"fold": fold_number, **fold_metrics})
+        metric_columns = list(fold_metrics)
     output = features.copy()
     output["true_labels"], output["fold"], output["predicted_labels"] = labels, fold_numbers, predictions
     output.to_csv("output_predicted_data", sep="\t", index=False)
