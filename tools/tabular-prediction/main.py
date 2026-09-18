@@ -1,7 +1,6 @@
 """TabICL in-context classification, regression and SHAP runner."""
 
 import argparse
-import json
 import time
 
 import matplotlib.pyplot as plt
