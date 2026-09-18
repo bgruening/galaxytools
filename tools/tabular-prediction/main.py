@@ -1,4 +1,5 @@
 """TabICL in-context classification, regression and SHAP runner."""
+
 import argparse
 import json
 import time
@@ -6,9 +7,15 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from sklearn.metrics import (accuracy_score, average_precision_score, balanced_accuracy_score,
-                             f1_score, precision_recall_curve, r2_score,
-                             root_mean_squared_error)
+from sklearn.metrics import (
+    accuracy_score,
+    average_precision_score,
+    balanced_accuracy_score,
+    f1_score,
+    precision_recall_curve,
+    r2_score,
+    root_mean_squared_error,
+)
 from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.preprocessing import label_binarize
 
@@ -46,34 +53,43 @@ def model_config(args):
     allowed_norm_methods = {"none", "power", "quantile", "quantile_rtdl", "robust"}
     if not set(norm_methods) <= allowed_norm_methods:
         raise ValueError("Unknown normalization method.")
-    config.update({
-        "n_estimators": args.n_estimators,
-        "norm_methods": norm_methods,
-        "feat_shuffle_method": args.feat_shuffle_method,
-        "outlier_threshold": args.outlier_threshold,
-        "batch_size": args.batch_size,
-        "kv_cache": {"false": False, "true": True, "kv": "kv", "repr": "repr"}[args.kv_cache],
-        "device": None,
-        "use_amp": "auto",
-        "use_fa3": "auto",
-        "offload_mode": "auto",
-        "disk_offload_dir": None,
-        "verbose": args.verbose == "true",
-        "inference_config": None,
-    })
+    config.update(
+        {
+            "n_estimators": args.n_estimators,
+            "norm_methods": norm_methods,
+            "feat_shuffle_method": args.feat_shuffle_method,
+            "outlier_threshold": args.outlier_threshold,
+            "batch_size": args.batch_size,
+            "kv_cache": {"false": False, "true": True, "kv": "kv", "repr": "repr"}[
+                args.kv_cache
+            ],
+            "device": None,
+            "use_amp": "auto",
+            "use_fa3": "auto",
+            "offload_mode": "auto",
+            "disk_offload_dir": None,
+            "verbose": args.verbose == "true",
+            "inference_config": None,
+        }
+    )
     if args.selected_task == "Classification":
-        config.update({
-            "class_shuffle_method": args.class_shuffle_method,
-            "softmax_temperature": args.softmax_temperature,
-            "average_logits": args.average_logits == "true",
-            "support_many_classes": args.support_many_classes == "true",
-        })
+        config.update(
+            {
+                "class_shuffle_method": args.class_shuffle_method,
+                "softmax_temperature": args.softmax_temperature,
+                "average_logits": args.average_logits == "true",
+                "support_many_classes": args.support_many_classes == "true",
+            }
+        )
     return config
 
 
 def make_estimator(args):
     from tabicl import TabICLClassifier, TabICLRegressor
-    cls = TabICLClassifier if args.selected_task == "Classification" else TabICLRegressor
+
+    cls = (
+        TabICLClassifier if args.selected_task == "Classification" else TabICLRegressor
+    )
     return cls(**model_config(args))
 
 
@@ -82,24 +98,36 @@ def prediction_plot(y_true, y_pred, task, y_scores=None):
     if task == "Classification":
         classes = np.unique(y_true)
         if y_scores is None:
-            raise ValueError("Classification plotting requires prediction probabilities.")
+            raise ValueError(
+                "Classification plotting requires prediction probabilities."
+            )
         if len(classes) == 2:
             y_binary = label_binarize(y_true, classes=classes).ravel()
             precision, recall, _ = precision_recall_curve(y_binary, y_scores[:, 1])
             average_precision = average_precision_score(y_binary, y_scores[:, 1])
-            plt.plot(recall, precision, label=f"Precision-recall (AP={average_precision:.2f})")
+            plt.plot(
+                recall,
+                precision,
+                label=f"Precision-recall (AP={average_precision:.2f})",
+            )
             plt.title("Precision-recall curve (binary classification)")
         else:
             y_binarized = label_binarize(y_true, classes=classes)
             for index, class_name in enumerate(classes):
                 precision, recall, _ = precision_recall_curve(
-                    y_binarized[:, index], y_scores[:, index])
+                    y_binarized[:, index], y_scores[:, index]
+                )
                 average_precision = average_precision_score(
-                    y_binarized[:, index], y_scores[:, index])
-                plt.plot(recall, precision,
-                         label=f"{class_name} (AP={average_precision:.2f})")
+                    y_binarized[:, index], y_scores[:, index]
+                )
+                plt.plot(
+                    recall,
+                    precision,
+                    label=f"{class_name} (AP={average_precision:.2f})",
+                )
             precision, recall, _ = precision_recall_curve(
-                y_binarized.ravel(), y_scores.ravel())
+                y_binarized.ravel(), y_scores.ravel()
+            )
             plt.plot(recall, precision, "--", color="black", label="Micro-average")
             plt.title("Precision-recall curve (multiclass classification)")
         plt.xlabel("Recall")
@@ -107,8 +135,10 @@ def prediction_plot(y_true, y_pred, task, y_scores=None):
         plt.legend(loc="lower left")
     else:
         rmse, r2 = root_mean_squared_error(y_true, y_pred), r2_score(y_true, y_pred)
-        plt.scatter(y_true, y_pred, alpha=.8)
-        low, high = min(np.min(y_true), np.min(y_pred)), max(np.max(y_true), np.max(y_pred))
+        plt.scatter(y_true, y_pred, alpha=0.8)
+        low, high = min(np.min(y_true), np.min(y_pred)), max(
+            np.max(y_true), np.max(y_pred)
+        )
         plt.plot([low, high], [low, high], "r--", label="y = x")
         plt.xlabel("True values")
         plt.ylabel("Predicted values")
@@ -122,14 +152,17 @@ def prediction_plot(y_true, y_pred, task, y_scores=None):
 
 def make_shap_plot(estimator, features, limit, plot_type="beeswarm"):
     from tabicl.shap import get_shap_explainer, plot_shap
+
     explain_data = features.iloc[:limit]
     explain_array = np.asarray(explain_data, dtype=np.float64)
-    predict_method = "predict_proba" if hasattr(estimator, "predict_proba") else "predict"
+    predict_method = (
+        "predict_proba" if hasattr(estimator, "predict_proba") else "predict"
+    )
     explainer = get_shap_explainer(
-        estimator, explain_array, predict_fn=predict_method, algorithm="permutation")
+        estimator, explain_array, predict_fn=predict_method, algorithm="permutation"
+    )
     # Permutation SHAP requires at least two evaluations per feature plus one.
-    values = explainer(
-        explain_array, max_evals=2 * explain_array.shape[1] + 1)
+    values = explainer(explain_array, max_evals=2 * explain_array.shape[1] + 1)
     if hasattr(values, "feature_names"):
         values.feature_names = [str(column) for column in features.columns]
     plot_shap(values, kind=plot_type)
@@ -143,7 +176,9 @@ def performance_metrics(y_true, y_pred, task):
         return {
             "accuracy": accuracy_score(y_true, y_pred),
             "balanced_accuracy": balanced_accuracy_score(y_true, y_pred),
-            "f1_weighted": f1_score(y_true, y_pred, average="weighted", zero_division=0),
+            "f1_weighted": f1_score(
+                y_true, y_pred, average="weighted", zero_division=0
+            ),
         }
     return {
         "rmse": root_mean_squared_error(y_true, y_pred),
@@ -161,9 +196,14 @@ def train_test(args):
     estimator.fit(x_train, y_train)
     predicted = estimator.predict(x_test)
     if y_test is not None:
-        pd.DataFrame([performance_metrics(y_test, predicted, args.selected_task)]).to_csv(
-            "test_metrics.tsv", sep="\t", index=False)
-        scores = estimator.predict_proba(x_test) if args.selected_task == "Classification" else None
+        pd.DataFrame(
+            [performance_metrics(y_test, predicted, args.selected_task)]
+        ).to_csv("test_metrics.tsv", sep="\t", index=False)
+        scores = (
+            estimator.predict_proba(x_test)
+            if args.selected_task == "Classification"
+            else None
+        )
         prediction_plot(y_test, predicted, args.selected_task, scores)
     if args.shap == "true":
         make_shap_plot(estimator, x_test, args.shap_max_samples, args.shap_plot_type)
@@ -179,14 +219,22 @@ def cross_validate(args):
     if args.selected_task == "Classification" and args.cv_strategy == "stratified":
         too_small = labels.value_counts()[lambda counts: counts < args.n_splits]
         if not too_small.empty:
-            raise ValueError("Cannot run stratified cross validation: each class must contain at "
-                             f"least {args.n_splits} samples. Classes below that limit: "
-                             + ", ".join(map(str, too_small.index)))
-        splits = StratifiedKFold(args.n_splits, shuffle=True, random_state=args.random_state).split(features, labels)
+            raise ValueError(
+                "Cannot run stratified cross validation: each class must contain at "
+                f"least {args.n_splits} samples. Classes below that limit: "
+                + ", ".join(map(str, too_small.index))
+            )
+        splits = StratifiedKFold(
+            args.n_splits, shuffle=True, random_state=args.random_state
+        ).split(features, labels)
     else:
         if args.selected_task == "Regression" and args.cv_strategy == "stratified":
-            raise ValueError("Stratified cross validation is only available for classification.")
-        splits = KFold(args.n_splits, shuffle=True, random_state=args.random_state).split(features)
+            raise ValueError(
+                "Stratified cross validation is only available for classification."
+            )
+        splits = KFold(
+            args.n_splits, shuffle=True, random_state=args.random_state
+        ).split(features)
     predictions = pd.Series(index=features.index, dtype=object)
     fold_numbers = pd.Series(index=features.index, dtype="Int64")
     metrics = []
@@ -194,17 +242,35 @@ def cross_validate(args):
         estimator = make_estimator(args)
         estimator.fit(features.iloc[train_index], labels.iloc[train_index])
         predicted = estimator.predict(features.iloc[test_index])
-        predictions.iloc[test_index], fold_numbers.iloc[test_index] = predicted, fold_number
-        fold_metrics = performance_metrics(labels.iloc[test_index], predicted, args.selected_task)
+        predictions.iloc[test_index], fold_numbers.iloc[test_index] = (
+            predicted,
+            fold_number,
+        )
+        fold_metrics = performance_metrics(
+            labels.iloc[test_index], predicted, args.selected_task
+        )
         metrics.append({"fold": fold_number, **fold_metrics})
         metric_columns = list(fold_metrics)
     output = features.copy()
-    output["true_labels"], output["fold"], output["predicted_labels"] = labels, fold_numbers, predictions
+    output["true_labels"], output["fold"], output["predicted_labels"] = (
+        labels,
+        fold_numbers,
+        predictions,
+    )
     output.to_csv("output_predicted_data", sep="\t", index=False)
     metrics_df = pd.DataFrame(metrics)
-    summary = [{"fold": name, **{column: getattr(metrics_df[column], name)() for column in metric_columns}}
-               for name in ("mean", "std")]
-    pd.concat([metrics_df, pd.DataFrame(summary)], ignore_index=True).to_csv("cv_metrics.tsv", sep="\t", index=False)
+    summary = [
+        {
+            "fold": name,
+            **{
+                column: getattr(metrics_df[column], name)() for column in metric_columns
+            },
+        }
+        for name in ("mean", "std")
+    ]
+    pd.concat([metrics_df, pd.DataFrame(summary)], ignore_index=True).to_csv(
+        "cv_metrics.tsv", sep="\t", index=False
+    )
 
 
 def make_parser():
@@ -219,15 +285,29 @@ def make_parser():
     parser.add_argument("--model_path", required=True)
     parser.add_argument("--advanced_icl", default="false")
     parser.add_argument("--n_estimators", type=int, default=8)
-    parser.add_argument("--norm_methods", default="none_power", help="Comma-separated normalization methods")
-    parser.add_argument("--feat_shuffle_method", choices=["none", "shift", "random", "latin"], default="latin")
-    parser.add_argument("--class_shuffle_method", choices=["none", "shift", "random", "latin"], default="shift")
+    parser.add_argument(
+        "--norm_methods",
+        default="none_power",
+        help="Comma-separated normalization methods",
+    )
+    parser.add_argument(
+        "--feat_shuffle_method",
+        choices=["none", "shift", "random", "latin"],
+        default="latin",
+    )
+    parser.add_argument(
+        "--class_shuffle_method",
+        choices=["none", "shift", "random", "latin"],
+        default="shift",
+    )
     parser.add_argument("--outlier_threshold", type=float, default=4.0)
     parser.add_argument("--softmax_temperature", type=float, default=0.9)
     parser.add_argument("--average_logits", default="true")
     parser.add_argument("--support_many_classes", default="true")
     parser.add_argument("--batch_size", type=optional_int, default=8)
-    parser.add_argument("--kv_cache", choices=["false", "true", "kv", "repr"], default="false")
+    parser.add_argument(
+        "--kv_cache", choices=["false", "true", "kv", "repr"], default="false"
+    )
     parser.add_argument("--use_amp", choices=["auto", "true", "false"], default="auto")
     parser.add_argument("--random_state", type=optional_int, default=SEED)
     parser.add_argument("--n_jobs", type=optional_int, default=0)
@@ -237,7 +317,9 @@ def make_parser():
     parser.add_argument("--cv_strategy", default="stratified")
     parser.add_argument("--shap", default="false")
     parser.add_argument("--shap_max_samples", type=int, default=10)
-    parser.add_argument("--shap_plot_type", choices=["bar", "scatter", "beeswarm"], default="beeswarm")
+    parser.add_argument(
+        "--shap_plot_type", choices=["bar", "scatter", "beeswarm"], default="beeswarm"
+    )
     return parser
 
 
