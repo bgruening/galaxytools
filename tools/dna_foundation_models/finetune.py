@@ -9,10 +9,10 @@ import numpy as np
 import sklearn
 import torch
 import transformers
+from embed_sequence import embed_sequences
 from peft import get_peft_model, LoraConfig
 from scipy.stats import pearsonr, spearmanr
 from torch.utils.data import Dataset
-from embed_sequence import embed_sequences
 from visualize_attn import create_visualizations_for_selected_sequences
 
 
@@ -369,7 +369,10 @@ def train():
 
     trainer.train()
 
-    # i) save full fine-tuned model if requested
+    # i) save trainer state
+    trainer.save_state()
+
+    # ii) save full fine-tuned model if requested
     if training_args.save_model:
         model_dir = os.path.join(training_args.output_dir, "model")
         os.makedirs(model_dir, exist_ok=True)
@@ -380,9 +383,6 @@ def train():
             tokenizer.save_pretrained(model_dir)
         else:
             trainer.save_model(model_dir)
-
-    # ii) save trainer state
-    trainer.save_state()
 
     # iii) output test evaluation metrics
     if training_args.eval_and_save_results:
