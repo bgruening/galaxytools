@@ -1,8 +1,9 @@
 <tool id="doubletfinder" name="DoubletFinder" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
-    <description>Doublet detection in single-cell RNA-seq data using artificial nearest neighbors</description>
+    <description>Doublet detection in single-cell RNA-seq data</description>
     <macros>
         <import>macros.xml</import>
     </macros>
+    <expand macro="biotools"/>
     <expand macro="requirements"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
@@ -14,11 +15,11 @@ Rscript '$__tool_directory__/doubletfinder.R'
     #if $save_plot:
         --output-plot '$output_plot'
     #end if
-    --pcs $pcs
-    --pn $pn
+    --pcs $PCs
+    --pn $pN
     --pk-mode '$pk_mode.pk_mode'
     #if $pk_mode.pk_mode == 'manual':
-        --pk $pk_mode.pk
+        --pk $pk_mode.pK
         #if $pk_mode.reuse_pann:
             --reuse-pann '$pk_mode.reuse_pann'
         #end if
@@ -47,9 +48,9 @@ Rscript '$__tool_directory__/doubletfinder.R'
     #end if
     ]]></command>
     <inputs>
-        <param name="input_object" type="data" format="rds,rdata" label="Seurat object" help="A fully pre-processed Seurat object (after NormalizeData, FindVariableFeatures, ScaleData and RunPCA), saved as RDS or RData."/>
-        <param name="pcs" type="integer" value="10" min="1" max="50" label="Number of PCs" help="Number of statistically significant principal components to use, as estimated e.g. from a PC elbow plot."/>
-        <param name="pn" type="float" value="0.25" min="0.01" max="0.5" label="Artificial doublet proportion (pN)" help="Proportion of artificial doublets, expressed as a proportion of the merged real-artificial data. Performance is largely pN-invariant; keep the default unless you have a reason to change it."/>
+        <param name="input_object" type="data" format="rds" label="Seurat object" help="A fully pre-processed Seurat object (after NormalizeData, FindVariableFeatures, ScaleData and RunPCA)"/>
+        <param argument="PCs" type="integer" value="10" min="1" max="50" label="Number of PCs"/>
+        <param argument="pN" type="float" value="0.25" min="0.01" max="0.5" label="Artificial doublet proportion (pN)" help="Proportion of artificial doublets, expressed as a proportion of the merged real-artificial data. Performance is largely pN-invariant; keep the default unless you have a reason to change it."/>
         <conditional name="pk_mode">
             <param name="pk_mode" type="select" label="pK selection mode">
                 <option value="auto" selected="true">Automatic (run parameter sweep and use the pK with maximum BCmvn)</option>
@@ -57,8 +58,10 @@ Rscript '$__tool_directory__/doubletfinder.R'
             </param>
             <when value="auto"/>
             <when value="manual">
-                <param name="pk" type="float" value="0.09" min="0.0005" max="0.3" label="PC neighborhood size (pK)" help="The PC neighborhood size used to compute pANN, expressed as a proportion of the merged real-artificial data."/>
+                <param argument="pK" type="float" value="0.09" min="0.0005" max="0.3" label="PC neighborhood size (pK)" help="The PC neighborhood size used to compute pANN, expressed as a proportion of the merged real-artificial data."/>
                 <param name="reuse_pann" type="text" optional="true" label="Existing pANN metadata column to reuse" help="Name of a 'pANN.*' column in the object's meta.data (e.g. from a previous DoubletFinder run) to reuse for re-classification. Leave empty for a fresh run."/>
+            <!-- needs validator -->
+
             </when>
         </conditional>
         <conditional name="nexp_mode">
@@ -71,13 +74,14 @@ Rscript '$__tool_directory__/doubletfinder.R'
                 <param name="adjust_homotypic" type="boolean" checked="false" label="Adjust for homotypic doublets" help="Estimate the proportion of homotypic doublets from cell-type annotations with modelHomotypic and reduce the expected doublet count accordingly."/>
                 <param name="annotation_col" type="text" optional="true" label="Annotation meta.data column" help="Name of the meta.data column holding cell-type (cluster) annotations, used for the homotypic adjustment. e.g. 'seurat_clusters' or 'RNA_snn_res.0.5'.">
                     <validator type="regex" message="Column names must not contain whitespace">^\S*$</validator>
+                    <!-- maybe a better validator? only A-Z, a-z, 0-9, _, -, and . -->
                 </param>
             </when>
             <when value="expected_count">
                 <param name="nexp" type="integer" value="10" min="1" label="Expected number of doublets (nExp)" help="The total number of doublet predictions to produce."/>
             </when>
         </conditional>
-        <param name="sct" type="boolean" checked="false" label="Object was normalized with SCTransform" help="Enable if the input Seurat object was pre-processed with SCTransform instead of NormalizeData."/>
+        <param argument="sct" type="boolean" checked="false" label="Object was normalized with SCTransform" help="Enable if the input Seurat object was pre-processed with SCTransform instead of NormalizeData."/>
         <param name="save_sweep_table" type="boolean" checked="true" label="Save the pK sweep statistics table" help="Outputs the mean-variance-normalized bimodality coefficient (BCmvn) table from the parameter sweep (automatic pK mode only)."/>
         <param name="save_plot" type="boolean" checked="true" label="Save the BCmvn vs pK plot" help="Outputs a PNG plot of the BCmvn curve across the pK sweep, highlighting the selected pK (automatic pK mode only)."/>
         <param name="seed" type="integer" optional="true" label="Random seed" help="Set for reproducible artificial doublet generation and pANN computation."/>
@@ -96,7 +100,7 @@ Rscript '$__tool_directory__/doubletfinder.R'
         <!-- Test 1: automatic pK, rate-based nExp -->
         <test expect_num_outputs="4">
             <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
-            <param name="pcs" value="10"/>
+            <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="auto"/>
             </conditional>
@@ -132,10 +136,10 @@ Rscript '$__tool_directory__/doubletfinder.R'
         <!-- Test 2: manual pK, count-based nExp -->
         <test expect_num_outputs="2">
             <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
-            <param name="pcs" value="10"/>
+            <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="manual"/>
-                <param name="pk" value="0.09"/>
+                <param name="pK" value="0.09"/>
             </conditional>
             <conditional name="nexp_mode">
                 <param name="nexp_mode" value="expected_count"/>
@@ -152,10 +156,10 @@ Rscript '$__tool_directory__/doubletfinder.R'
         <!-- Test 3: homotypic adjustment -->
         <test expect_num_outputs="2">
             <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
-            <param name="pcs" value="10"/>
+            <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="manual"/>
-                <param name="pk" value="0.09"/>
+                <param name="pK" value="0.09"/>
             </conditional>
             <conditional name="nexp_mode">
                 <param name="nexp_mode" value="expected_rate"/>
@@ -174,10 +178,10 @@ Rscript '$__tool_directory__/doubletfinder.R'
         <!-- Test 4: manual pK command construction -->
         <test expect_num_outputs="2">
             <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
-            <param name="pcs" value="10"/>
+            <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="manual"/>
-                <param name="pk" value="0.09"/>
+                <param name="pK" value="0.09"/>
             </conditional>
             <conditional name="nexp_mode">
                 <param name="nexp_mode" value="expected_count"/>
@@ -186,7 +190,7 @@ Rscript '$__tool_directory__/doubletfinder.R'
             <param name="save_sweep_table" value="false"/>
             <param name="save_plot" value="false"/>
             <assert_command>
-                <has_text text="--pk 0.09"/>
+                <has_text text="--pK 0.09"/>
                 <has_text text="--nexp 5"/>
                 <has_text text="--pk-mode 'manual'"/>
             </assert_command>
