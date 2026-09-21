@@ -11,6 +11,7 @@
 
 suppressPackageStartupMessages({
     library(Seurat)
+    library(SeuratObject)
 })
 
 data("pbmc_small", package = "SeuratObject")
@@ -18,4 +19,10 @@ data("pbmc_small", package = "SeuratObject")
 stopifnot(inherits(pbmc_small, "Seurat"))
 stopifnot(ncol(pbmc_small) == 80)
 
-save(pbmc_small, file = "test-data/pbmc_small.rda", compress = "bzip2")
+## Convert to the v5 assay structure: DoubletFinder 2.0.6 calls the defunct
+## GetAssayData(slot = ...) on objects reporting a version < 5.0, which fails
+## with SeuratObject >= 5.5.
+pbmc_small <- UpdateSeuratObject(pbmc_small)
+stopifnot(as.numeric(SeuratObject::Version(pbmc_small)[1, 1]) >= 5)
+
+saveRDS(pbmc_small, file = "test-data/pbmc_small.rds")

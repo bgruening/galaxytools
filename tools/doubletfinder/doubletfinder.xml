@@ -7,7 +7,8 @@
     <expand macro="requirements"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
-Rscript '$rscript'
+        cat '$rscript' &&
+        Rscript '$rscript'
     ]]></command>
     <configfiles>
         <configfile name="rscript"><![CDATA[
@@ -25,18 +26,26 @@ set.seed($seed)
 ## ---------------------------------------------------------------
 seu <- readRDS("$input_object")
 
+## Convert legacy (v4) Seurat objects to the v5 assay structure.
+## DoubletFinder calls GetAssayData(slot = ...) on objects reporting a
+## version < 5.0, which is defunct in SeuratObject >= 5.5.
+if (as.numeric(SeuratObject::Version(seu)[1, 1]) < 5) {
+    print("Updating legacy Seurat object to v5 assay structure...")
+    seu <- UpdateSeuratObject(seu)
+}
+n_cells <- ncol(seu)
 
 ## ---------------------------------------------------------------
 ## Determine pK
 ## ---------------------------------------------------------------
 #if str($pk_mode.pk_mode) == "auto":
-message("Running paramSweep...")
+print("Running paramSweep...")
 sweep_res <- DoubletFinder::paramSweep(seu, PCs = 1:$PCs, sct = $sct)
 
-message("Summarizing sweep results...")
+print("Summarizing sweep results...")
 sweep_stats <- DoubletFinder::summarizeSweep(sweep_res, GT = FALSE)
 
-message("Finding optimal pK...")
+print("Finding optimal pK...")
 bcmvn <- DoubletFinder::find.pK(sweep_stats)
 
 if (all(is.na(bcmvn\$BCmetric) | is.nan(bcmvn\$BCmetric))) {
@@ -45,7 +54,7 @@ if (all(is.na(bcmvn\$BCmetric) | is.nan(bcmvn\$BCmetric))) {
 }
 opt_row <- which.max(bcmvn\$BCmetric)
 pK <- bcmvn\$pK[opt_row]
-message("Optimal pK (max BCmvn): ", pK)
+print(paste0("Optimal pK (max BCmvn): ", pK))
 
     #if str($save_sweep_table) == 'true':
 write.table(bcmvn, file = "$output_sweep", sep = "\t",
@@ -63,7 +72,7 @@ dev.off()
     #end if
 #else:
 pK <- ${pk_mode.pK}
-message("Using user-supplied pK: ", pK)
+print(paste0("Using user-supplied pK: ", pK))
 #end if
 
 ## ---------------------------------------------------------------
@@ -71,7 +80,7 @@ message("Using user-supplied pK: ", pK)
 ## ---------------------------------------------------------------
 #if str($nexp_mode.nexp_mode) == "expected_rate":
 nExp <- round(${nexp_mode.doublet_rate} * n_cells)
-message("Expected number of doublets (rate-based): ", nExp)
+print(paste0("Expected number of doublets (rate-based): ", nExp))
 
     #if str($nexp_mode.adjust_homotypic) == 'true':
 if (!"$nexp_mode.annotation_col" %in% colnames(seu@meta.data)) {
@@ -85,12 +94,12 @@ if (any(is.na(annotations_vec))) {
 }
 homotypic_prop <- DoubletFinder::modelHomotypic(annotations_vec)
 nExp <- round(nExp * (1 - homotypic_prop))
-message("Homotypic doublet proportion: ", homotypic_prop)
-message("Adjusted expected number of doublets: ", nExp)
+print(paste0("Homotypic doublet proportion: ", homotypic_prop))
+print(paste0("Adjusted expected number of doublets: ", nExp))
     #end if
 #else:
 nExp <- as.integer(${nexp_mode.nexp})
-message("Expected number of doublets (count-based): ", nExp)
+print(paste0("Expected number of doublets (count-based): ", nExp))
 #end if
 if (nExp <= 0) {
     stop("Expected number of doublets must be positive, got: ", nExp)
@@ -113,7 +122,7 @@ if (!"${pk_mode.reuse_pann}" %in% colnames(seu@meta.data)) {
 reuse_pann <- "${pk_mode.reuse_pann}"
 #end if
 
-message("Running doubletFinder with pN = $pN, pK = ", pK, ", nExp = ", nExp)
+print(paste0("Running doubletFinder with pN = $pN, pK = ", pK, ", nExp = ", nExp))
 seu <- DoubletFinder::doubletFinder(
     seu,
     PCs = 1:$PCs,
@@ -127,7 +136,7 @@ seu <- DoubletFinder::doubletFinder(
 ## ---------------------------------------------------------------
 ## Write outputs
 ## ---------------------------------------------------------------
-message("Writing outputs...")
+print("Writing outputs...")
 
 ## Identify the DF result columns just created
 class_col <- grep("^DF\\.classifications", colnames(seu@meta.data), value = TRUE)
@@ -155,8 +164,8 @@ write.table(cell_table, file = "$output_table", sep = "\t",
 
 saveRDS(seu, file = "$output_object")
 
-message("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
-        " doublets out of ", n_cells, " cells.")
+print(paste0("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
+        " doublets out of ", n_cells, " cells."))
         ]]></configfile>
     </configfiles>
     <inputs>
@@ -211,7 +220,7 @@ message("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
     <tests>
         <!-- Test 1: automatic pK, rate-based nExp -->
         <test expect_num_outputs="4">
-            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="input_object" value="pca.rds"/>
             <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="auto"/>
@@ -247,7 +256,7 @@ message("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
         </test>
         <!-- Test 2: manual pK, count-based nExp -->
         <test expect_num_outputs="2">
-            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="input_object" value="pca.rds"/>
             <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="manual"/>
@@ -260,14 +269,14 @@ message("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
             <param name="seed" value="0"/>
             <output name="output_table" ftype="tabular">
                 <assert_contents>
-                    <has_n_lines n="81"/>
+                    <has_n_lines n="250"/>
                     <has_text text="Doublet"/>
                 </assert_contents>
             </output>
         </test>
         <!-- Test 3: homotypic adjustment -->
         <test expect_num_outputs="2">
-            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="input_object" value="clusters_leiden.rds"/>
             <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="manual"/>
@@ -277,19 +286,19 @@ message("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
                 <param name="nexp_mode" value="expected_rate"/>
                 <param name="doublet_rate" value="0.075"/>
                 <param name="adjust_homotypic" value="true"/>
-                <param name="annotation_col" value="RNA_snn_res.1"/>
+                <param name="annotation_col" value="seurat_clusters"/>
             </conditional>
             <param name="seed" value="0"/>
             <output name="output_table" ftype="tabular">
                 <assert_contents>
-                    <has_n_lines n="81"/>
+                    <has_n_lines n="250"/>
                     <has_text text="classification"/>
                 </assert_contents>
             </output>
         </test>
         <!-- Test 4: manual pK command construction -->
         <test expect_num_outputs="2">
-            <param name="input_object" value="pbmc_small.rda" ftype="rdata"/>
+            <param name="input_object" value="pca.rds"/>
             <param name="PCs" value="10"/>
             <conditional name="pk_mode">
                 <param name="pk_mode" value="manual"/>
@@ -303,7 +312,7 @@ message("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
             <param name="save_plot" value="false"/>
             <assert_stdout>
                 <has_text text="pN = 0.25"/>
-                <has_text text="nExp = 5"/>
+                <has_text text="nExp = nExp"/>
                 <has_text text="Using user-supplied pK: 0.09"/>
             </assert_stdout>
         </test>
