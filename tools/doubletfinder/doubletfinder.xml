@@ -7,46 +7,158 @@
     <expand macro="requirements"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
-Rscript '$__tool_directory__/doubletfinder.R'
-    --input-object '$input_object'
-    --output-object '$output_object'
-    --output-table '$output_table'
-    --output-sweep '$output_sweep'
-    #if $save_plot:
-        --output-plot '$output_plot'
-    #end if
-    --pcs $PCs
-    --pn $pN
-    --pk-mode '$pk_mode.pk_mode'
-    #if $pk_mode.pk_mode == 'manual':
-        --pk $pk_mode.pK
-        #if $pk_mode.reuse_pann:
-            --reuse-pann '$pk_mode.reuse_pann'
-        #end if
-    #end if
-    --nexp-mode '$nexp_mode.nexp_mode'
-    #if $nexp_mode.nexp_mode == 'expected_rate':
-        --doublet-rate $nexp_mode.doublet_rate
-        #if $nexp_mode.adjust_homotypic:
-            --homotypic-adjust
-            --annotation-col '$nexp_mode.annotation_col'
-        #end if
-    #else:
-        --nexp $nexp_mode.nexp
-    #end if
-    #if $sct:
-        --sct
-    #end if
-    #if $save_sweep_table:
-        --save-sweep-table
-    #end if
-    #if $save_plot:
-        --save-plot
-    #end if
-    #if $seed:
-        --seed $seed
-    #end if
+Rscript '$rscript'
     ]]></command>
+    <configfiles>
+        <configfile name="rscript"><![CDATA[
+suppressPackageStartupMessages({
+    library(DoubletFinder)
+    library(Seurat)
+})
+
+#if $seed:
+set.seed($seed)
+#end if
+
+## ---------------------------------------------------------------
+## Load Seurat object (RDS, or RData containing a single Seurat object)
+## ---------------------------------------------------------------
+seu <- readRDS("$input_object")
+
+
+## ---------------------------------------------------------------
+## Determine pK
+## ---------------------------------------------------------------
+#if str($pk_mode.pk_mode) == "auto":
+message("Running paramSweep...")
+sweep_res <- DoubletFinder::paramSweep(seu, PCs = 1:$PCs, sct = $sct)
+
+message("Summarizing sweep results...")
+sweep_stats <- DoubletFinder::summarizeSweep(sweep_res, GT = FALSE)
+
+message("Finding optimal pK...")
+bcmvn <- DoubletFinder::find.pK(sweep_stats)
+
+if (all(is.na(bcmvn\$BCmetric) | is.nan(bcmvn\$BCmetric))) {
+    stop("Could not determine an optimal pK: all BCmvn values are NA. ",
+            "Consider using manual pK mode instead.")
+}
+opt_row <- which.max(bcmvn\$BCmetric)
+pK <- bcmvn\$pK[opt_row]
+message("Optimal pK (max BCmvn): ", pK)
+
+    #if str($save_sweep_table) == 'true':
+write.table(bcmvn, file = "$output_sweep", sep = "\t",
+    quote = FALSE, row.names = FALSE)
+    #end if
+
+    #if str($save_plot) == 'true':
+png("$output_plot", width = 800, height = 600)
+plot(bcmvn\$ParamID, bcmvn\$BCmetric,
+    type = "b", pch = 16, col = "steelblue",
+    xlab = "ParamID", ylab = "BCmvn",
+    main = paste0("Optimal pK = ", pK))
+abline(v = bcmvn\$ParamID[opt_row], lty = 2, col = "grey50")
+dev.off()
+    #end if
+#else:
+pK <- ${pk_mode.pK}
+message("Using user-supplied pK: ", pK)
+#end if
+
+## ---------------------------------------------------------------
+## Determine nExp
+## ---------------------------------------------------------------
+#if str($nexp_mode.nexp_mode) == "expected_rate":
+nExp <- round(${nexp_mode.doublet_rate} * n_cells)
+message("Expected number of doublets (rate-based): ", nExp)
+
+    #if str($nexp_mode.adjust_homotypic) == 'true':
+if (!"$nexp_mode.annotation_col" %in% colnames(seu@meta.data)) {
+    stop("Annotation column '", "$nexp_mode.annotation_col",
+            "' not found in Seurat meta.data. Available columns: ",
+            paste(colnames(seu@meta.data), collapse = ", "))
+}
+annotations_vec <- as.character(seu@meta.data[["$nexp_mode.annotation_col"]])
+if (any(is.na(annotations_vec))) {
+    stop("Annotation column '", "$nexp_mode.annotation_col", "' contains NA values")
+}
+homotypic_prop <- DoubletFinder::modelHomotypic(annotations_vec)
+nExp <- round(nExp * (1 - homotypic_prop))
+message("Homotypic doublet proportion: ", homotypic_prop)
+message("Adjusted expected number of doublets: ", nExp)
+    #end if
+#else:
+nExp <- as.integer(${nexp_mode.nexp})
+message("Expected number of doublets (count-based): ", nExp)
+#end if
+if (nExp <= 0) {
+    stop("Expected number of doublets must be positive, got: ", nExp)
+}
+if (nExp >= n_cells) {
+    stop("Expected number of doublets (", nExp,
+            ") must be smaller than the number of cells (", n_cells, ")")
+}
+
+## ---------------------------------------------------------------
+## Run doubletFinder
+## ---------------------------------------------------------------
+reuse_pann <- NULL
+#if str($pk_mode.pk_mode) == "manual" and str($pk_mode.reuse_pann) != '' and str($pk_mode.reuse_pann) != 'None':
+if (!"${pk_mode.reuse_pann}" %in% colnames(seu@meta.data)) {
+    stop("pANN column '", "${pk_mode.reuse_pann}",
+            "' not found in Seurat meta.data. Available columns: ",
+            paste(colnames(seu@meta.data), collapse = ", "))
+}
+reuse_pann <- "${pk_mode.reuse_pann}"
+#end if
+
+message("Running doubletFinder with pN = $pN, pK = ", pK, ", nExp = ", nExp)
+seu <- DoubletFinder::doubletFinder(
+    seu,
+    PCs = 1:$PCs,
+    pN = $pN,
+    pK = pK,
+    nExp = nExp,
+    reuse.pANN = reuse_pann,
+    sct = $sct
+)
+
+## ---------------------------------------------------------------
+## Write outputs
+## ---------------------------------------------------------------
+message("Writing outputs...")
+
+## Identify the DF result columns just created
+class_col <- grep("^DF\\.classifications", colnames(seu@meta.data), value = TRUE)
+pann_col <- grep("^pANN", colnames(seu@meta.data), value = TRUE)
+
+if (length(class_col) == 0) {
+    stop("DoubletFinder did not add classification columns to meta.data")
+}
+
+## Use the most recently added classification columns
+class_col <- class_col[length(class_col)]
+pann_col <- if (length(pann_col) > 0) pann_col[length(pann_col)] else NA_character_
+
+cell_table <- data.frame(
+    cell = rownames(seu@meta.data),
+    stringsAsFactors = FALSE
+)
+if (!is.na(pann_col)) {
+    cell_table\$pANN <- seu@meta.data[[pann_col]]
+}
+cell_table\$classification <- seu@meta.data[[class_col]]
+
+write.table(cell_table, file = "$output_table", sep = "\t",
+    quote = FALSE, row.names = FALSE)
+
+saveRDS(seu, file = "$output_object")
+
+message("Done. Classified ", sum(seu@meta.data[[class_col]] == "Doublet"),
+        " doublets out of ", n_cells, " cells.")
+        ]]></configfile>
+    </configfiles>
     <inputs>
         <param name="input_object" type="data" format="rds" label="Seurat object" help="A fully pre-processed Seurat object (after NormalizeData, FindVariableFeatures, ScaleData and RunPCA)"/>
         <param argument="PCs" type="integer" value="10" min="1" max="50" label="Number of PCs"/>
@@ -59,9 +171,9 @@ Rscript '$__tool_directory__/doubletfinder.R'
             <when value="auto"/>
             <when value="manual">
                 <param argument="pK" type="float" value="0.09" min="0.0005" max="0.3" label="PC neighborhood size (pK)" help="The PC neighborhood size used to compute pANN, expressed as a proportion of the merged real-artificial data."/>
-                <param name="reuse_pann" type="text" optional="true" label="Existing pANN metadata column to reuse" help="Name of a 'pANN.*' column in the object's meta.data (e.g. from a previous DoubletFinder run) to reuse for re-classification. Leave empty for a fresh run."/>
-            <!-- needs validator -->
-
+                <param name="reuse_pann" type="text" optional="true" label="Existing pANN metadata column to reuse" help="Name of a 'pANN.*' column in the object's meta.data (e.g. from a previous DoubletFinder run) to reuse for re-classification. Leave empty for a fresh run.">
+                    <validator type="regex" message="Column names must not contain whitespace">^\S*$</validator>
+                </param>
             </when>
         </conditional>
         <conditional name="nexp_mode">
@@ -81,7 +193,7 @@ Rscript '$__tool_directory__/doubletfinder.R'
                 <param name="nexp" type="integer" value="10" min="1" label="Expected number of doublets (nExp)" help="The total number of doublet predictions to produce."/>
             </when>
         </conditional>
-        <param argument="sct" type="boolean" checked="false" label="Object was normalized with SCTransform" help="Enable if the input Seurat object was pre-processed with SCTransform instead of NormalizeData."/>
+        <param argument="sct" type="boolean" checked="false" truevalue="TRUE" falsevalue="FALSE" label="Object was normalized with SCTransform" help="Enable if the input Seurat object was pre-processed with SCTransform instead of NormalizeData."/>
         <param name="save_sweep_table" type="boolean" checked="true" label="Save the pK sweep statistics table" help="Outputs the mean-variance-normalized bimodality coefficient (BCmvn) table from the parameter sweep (automatic pK mode only)."/>
         <param name="save_plot" type="boolean" checked="true" label="Save the BCmvn vs pK plot" help="Outputs a PNG plot of the BCmvn curve across the pK sweep, highlighting the selected pK (automatic pK mode only)."/>
         <param name="seed" type="integer" optional="true" label="Random seed" help="Set for reproducible artificial doublet generation and pANN computation."/>
@@ -189,11 +301,11 @@ Rscript '$__tool_directory__/doubletfinder.R'
             </conditional>
             <param name="save_sweep_table" value="false"/>
             <param name="save_plot" value="false"/>
-            <assert_command>
-                <has_text text="--pK 0.09"/>
-                <has_text text="--nexp 5"/>
-                <has_text text="--pk-mode 'manual'"/>
-            </assert_command>
+            <assert_stdout>
+                <has_text text="pN = 0.25"/>
+                <has_text text="nExp = 5"/>
+                <has_text text="Using user-supplied pK: 0.09"/>
+            </assert_stdout>
         </test>
     </tests>
     <help format="markdown"><![CDATA[
