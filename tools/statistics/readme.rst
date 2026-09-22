@@ -7,6 +7,26 @@ For more informations have a look at the `SciPy site`_.
 .. _`SciPy site`: http://docs.scipy.org/doc/scipy/reference/stats.html
 
 
+Features
+========
+
+- **Two analysis scopes**: compute tests *per row* (each row is a set of
+  observations, results are appended to the row) or *per column* (each
+  selected column is a set of observations, one result per column).
+- **Input flexibility**: optional header row, flexible NaN handling
+  (``propagate``, ``omit``, ``raise``), and per-test column selection.
+- **Rich output**: configurable labels, results-only mode, and optional
+  p-value correction (Bonferroni, Benjamini-Hochberg, Benjamini-Yekutieli,
+  Holm, Hochberg, FDR) across the tests of a row/column.
+- **Modern test coverage**: includes bootstrap and permutation tests
+  (with confidence intervals), t-test confidence intervals,
+  Shapiro-Wilk, Bartlett, Levene, Ansari-Bradley, Jarque-Bera,
+  Cramér-von Mises, Anderson-Darling, one- and two-sample
+  chisquare/power_divergence tests, and more.
+- **Tool selection diagram**: see ``static/images/statistics_tool_selection.png``
+  for a visual guide on picking the right test.
+
+
 ============
 Installation
 ============
@@ -21,8 +41,12 @@ Install the following repository: https://toolshed.g2.bx.psu.edu/view/bgruening/
 History
 =======
 
-  - v0.1: no release yet
+  - v0.1: initial release
   - v0.2: add a lot more statistics
+  - v0.3: per-row/per-column scopes, header and NaN handling, output
+    labels and p-value correction, bootstrap and permutation tests,
+    t-test confidence intervals, updated to scipy 1.16, tool selection
+    diagram
 
 
 
