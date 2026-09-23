@@ -312,7 +312,7 @@ def make_parser():
     parser.add_argument("--n_jobs", type=optional_int, default=0)
     parser.add_argument("--n_splits", type=int, default=5)
     parser.add_argument("--cv_strategy", default="stratified")
-    parser.add_argument("--shap", default="false")
+    parser.add_argument("--shap", choices=["shap_enabled", "shap_disabled"], default="shap_disabled")
     parser.add_argument("--shap_max_samples", type=int, default=10)
     parser.add_argument(
         "--shap_plot_type", choices=["bar", "scatter", "beeswarm"], default="beeswarm"
