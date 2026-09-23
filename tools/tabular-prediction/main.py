@@ -204,7 +204,7 @@ def train_test(args):
             else None
         )
         prediction_plot(y_test, predicted, args.selected_task, scores)
-    if args.shap == "true":
+    if args.shap == "shap_enabled":
         make_shap_plot(estimator, x_test, args.shap_max_samples, args.shap_plot_type)
     output = x_test.copy()
     if y_test is not None:
