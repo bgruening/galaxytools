@@ -67,7 +67,7 @@ def model_config(args):
             "use_fa3": "auto",
             "offload_mode": "auto",
             "disk_offload_dir": None,
-            "verbose": args.verbose == "true",
+            "verbose": False,
             "inference_config": None,
         }
     )
@@ -310,8 +310,6 @@ def make_parser():
     parser.add_argument("--use_amp", choices=["auto", "true", "false"], default="auto")
     parser.add_argument("--random_state", type=optional_int, default=SEED)
     parser.add_argument("--n_jobs", type=optional_int, default=0)
-    parser.add_argument("--verbose", default="false")
-    parser.add_argument("--inference_config", default="")
     parser.add_argument("--n_splits", type=int, default=5)
     parser.add_argument("--cv_strategy", default="stratified")
     parser.add_argument("--shap", default="false")
