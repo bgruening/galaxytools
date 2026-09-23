@@ -1,0 +1,100 @@
+<tool id="mumemto_collinear" name="mumemto collinear" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>compute collinear blocks from MUMs</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="stdio"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+ln -s '$m' input.mums &&
+
+mumemto collinear
+--mums input.mums
+--max-gap-len $g
+#if str($min_singleton_length):
+    --min-singleton-length $min_singleton_length
+#end if
+--fout 'output.mums' ||
+{ echo 'Error: mumemto collinear failed. Note that mumemto @TOOL_VERSION@ aborts when no collinear block survives (no collinear MUMs, or a maximum gap length that splits every block) - setting a minimum singleton length avoids this.' >&2; exit 1; }
+]]></command>
+    <inputs>
+        <expand macro="input_mums"/>
+        <expand macro="param_max_gap"/>
+        <param argument="--min-singleton-length" type="integer" optional="true" min="0" label="Minimum singleton length" help="Leave empty for the mumemto default, where MUMs outside a collinear block are marked '-'. Set a value to also emit every MUM of at least that length as a block of its own."/>
+    </inputs>
+    <outputs>
+        <data name="collinear_output" format="txt" from_work_dir="output.mums" label="${tool.name} MUMs on ${on_string}"/>
+    </outputs>
+    <tests>
+        <!-- All MUMs are collinear, so they form a single block -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test_collinear.mums" ftype="txt"/>
+            <output name="collinear_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="3"/>
+                    <has_line_matching expression="^100\t0,20\t\+,\+\t0$"/>
+                    <has_line_matching expression="^200\t100,120\t\+,\+\t0$"/>
+                    <has_line_matching expression="^50\t200,220\t\+,\+\t0$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Two collinear MUMs plus two isolated ones: only the 120 bp MUM clears the
+             100 bp singleton threshold and becomes a block, the 80 bp one stays '-' -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test_collinear_singleton.mums" ftype="txt"/>
+            <param name="min_singleton_length" value="100"/>
+            <output name="collinear_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_line_matching expression="^100\t0,20\t\+,\+\t0$"/>
+                    <has_line_matching expression="^200\t150,170\t\+,\+\t0$"/>
+                    <has_line_matching expression="^80\t500,900\t\+,\+\t-$"/>
+                    <has_line_matching expression="^120\t700,600\t\+,\+\t1$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Two collinear runs ~4.6 kb apart: the default gap of 1000 splits them into
+             blocks 0 and 1, a gap of 10000 keeps them merged into block 0 -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test_collinear_gap.mums" ftype="txt"/>
+            <param name="g" value="10000"/>
+            <output name="collinear_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_line_matching expression="^100\t0,20\t\+,\+\t0$"/>
+                    <has_line_matching expression="^200\t150,170\t\+,\+\t0$"/>
+                    <has_line_matching expression="^80\t5000,5020\t\+,\+\t0$"/>
+                    <has_line_matching expression="^120\t5200,5220\t\+,\+\t0$"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Computes collinear blocks from mumemto MUMs output. Collinear blocks are
+groups of MUMs that appear in the same order and orientation across sequences,
+indicating conserved syntenic regions.
+
+**Input**
+
+- A `.mums` file from mumemto
+
+**Output**
+
+The same MUMs, sorted by their start position in the first sequence, with a fourth
+column added holding the index of the collinear block each MUM belongs to, or `-`
+for MUMs that are not part of any block. This is the file *mumemto bed* consumes to
+emit one merged interval per block.
+
+**Notes**
+
+- *Maximum gap length* splits a run of collinear MUMs wherever the gap between
+  neighbours exceeds it; `0` disables the limit entirely.
+- mumemto @TOOL_VERSION@ aborts if no collinear block survives — either because no MUMs
+  are collinear at all, or because the maximum gap length splits every block. Setting a
+  minimum singleton length avoids this, since each remaining MUM then becomes its own block.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>

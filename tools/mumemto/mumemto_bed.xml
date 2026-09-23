@@ -1,0 +1,92 @@
+<tool id="mumemto_bed" name="mumemto bed" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>converts MUMs to BED format</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="stdio"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+ln -s '$m' input.mums &&
+ln -s '$l' input.lengths &&
+
+## mumemto bed needs the multi-FASTA (multilengths) lengths file, i.e. lines of
+## "<fasta> * <total>" followed by "<fasta> <contig> <length>". Check up front so a
+## simplified lengths file gives a readable message instead of a Python traceback.
+head -n 1 input.lengths | awk '{exit (\$2 == "*") ? 0 : 1}' ||
+{ echo 'Error: the lengths file must be in multi-FASTA (multilengths) format, i.e. the .lengths file written by the mumemto tool.' >&2; exit 1; } &&
+
+## -v is required: without it mumemto misdetects MUMs files that carry no collinear
+## block column as having blocks and writes an empty BED (mum_to_bed.process_mums_file).
+mumemto bed
+input.mums
+--lengths-file input.lengths
+--min-singleton-length $min_singleton_length
+--seq-idx $seq_idx
+--output 'output.bed'
+-v
+]]></command>
+    <inputs>
+        <expand macro="input_mums"/>
+        <expand macro="input_lengths"/>
+        <param argument="--min-singleton-length" type="integer" value="100" min="0" label="Minimum singleton length" help="Only output MUMs of at least this length"/>
+        <param argument="--seq-idx" type="integer" value="0" min="0" label="Sequence index" help="Index of the reference sequence for BED coordinates (0-based)"/>
+    </inputs>
+    <outputs>
+        <data name="bed_output" format="bed" from_work_dir="output.bed" label="${tool.name} BED on ${on_string}"/>
+    </outputs>
+    <tests>
+        <!-- MUMs file without collinear block annotations: every MUM becomes a singleton interval -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <param name="min_singleton_length" value="0"/>
+            <output name="bed_output" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line_matching expression="^seq1\t0\t100\tmum_0\t\+$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- MUMs file with collinear blocks, reported against the second sequence -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1_blocks.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <param name="min_singleton_length" value="0"/>
+            <param name="seq_idx" value="1"/>
+            <output name="bed_output" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_line_matching expression="^seq2\t20\t190\tblock_0\t\+$"/>
+                    <has_line_matching expression="^seq2\t220\t250\tmum_2\t\+$"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Converts mumemto MUMs output to BED format, using one sequence as the
+reference for coordinates. If the MUMs file carries collinear block annotations
+(a fourth column) each block is emitted as a single merged interval; otherwise
+every MUM longer than the minimum singleton length is emitted on its own.
+
+**Input**
+
+- A `.mums` file from mumemto
+- The `.lengths` file from mumemto. It must be in multi-FASTA (*multilengths*)
+  format, which is what mumemto writes: for each input FASTA a
+  `<fasta> * <total length>` line followed by one
+  `<fasta> <contig> <contig length>` line per record. A simplified two-column
+  lengths file cannot be used, because the contig names are needed for the BED
+  chromosome column.
+
+**Output**
+
+A tab-separated file with MUM intervals relative to the chosen reference sequence:
+contig, start, end, name (`block_N` for collinear blocks, `mum_N` for singleton
+MUMs) and strand. Note that the strand sits in column 5 here, not in the
+column 6 position used by full BED6.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
