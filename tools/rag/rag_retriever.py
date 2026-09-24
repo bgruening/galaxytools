@@ -1,12 +1,11 @@
 import hashlib
 import json
+import logging
 import os
 import sys
-import time
-from functools import partial
+from functools import cache, partial
 from pathlib import Path
 
-import httpx
 import torch
 import yaml
 from llama_index.core import Document, SimpleDirectoryReader, VectorStoreIndex
@@ -14,28 +13,30 @@ from llama_index.embeddings.huggingface import HuggingFaceEmbedding
 from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.readers.file import PDFReader
 from llama_index.readers.json import JSONReader
+from openai import APIError, OpenAI
 from sentence_transformers import CrossEncoder
 
 
-# How many chunks a reranker re-scores when the form does not say. The
+# Limits for every request to the LiteLLM proxy (embeddings and reranking).
+REQUEST_TIMEOUT = float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600"))
+REQUEST_MAX_RETRIES = int(os.environ.get("LITELLM_REQUEST_MAX_RETRIES", "3"))
+# Largest pool a reranker may re-score (the form's limit). The
 # galaxy-rag-project evaluation found gains up to about 20 candidates and none
-# beyond.
-DEFAULT_RERANK_CANDIDATES = 20
+# beyond, and every candidate costs one more model pass.
+MAX_RERANK_CANDIDATES = 100
 # Cross-encoders judge the question and one chunk together; 512 tokens is the
 # window the evaluated models (ms-marco-MiniLM, MedCPT, bge-reranker) were
 # trained on.
 RERANK_MAX_LENGTH = 512
-# Longest wait a proxy may ask for (Retry-After) before a reranker retry; the
-# OpenAI SDK applies the same limit to the embedding requests.
-RETRY_AFTER_CAP = 60
 
 
 # --- LiteLLM proxy config resolution -------------------------------------
-# The LiteLLM proxy exposes an OpenAI-compatible /v1/embeddings endpoint. The
-# YAML config may be flat (global LITELLM_API_KEY / LITELLM_BASE_URL) or expose
-# a ``servers`` mapping that keys provider names to per-server credentials; the
-# ``provider`` argument selects which server to use.
+# The LiteLLM proxy exposes OpenAI-compatible embeddings and rerank endpoints.
+# The YAML config may be flat (global LITELLM_API_KEY / LITELLM_BASE_URL) or
+# expose a ``servers`` mapping that keys provider names to per-server
+# credentials; the ``provider`` argument selects which server to use.
 
+@cache
 def load_litellm_config() -> dict:
     """Read the LiteLLM YAML config referenced by ``LITELLM_CONFIG_FILE``.
 
@@ -90,12 +91,14 @@ def attribution_user(galaxy_user_id: str, galaxy_url: str) -> str:
     rate limits. The id is namespaced by the Galaxy instance URL and hashed: the
     URL keeps ids unique when several Galaxy instances share one proxy (e.g.
     usegalaxy.eu), and hashing means no instance-identifying or personal data
-    leaves for the provider. Anonymous users (no id) fall back to a
-    per-instance shared "anonymous" bucket. Mirrors the attribution in
-    llm_hub.py so both tools map one Galaxy user to one proxy identity.
+    leaves for the provider. Anonymous sessions (Galaxy renders the literal
+    "Anonymous", or no id) share one per-instance "anonymous" bucket. Mirrors
+    the attribution in llm_hub.py so both tools map one Galaxy user to one
+    proxy identity.
     """
-    raw_user = galaxy_user_id or "anonymous"
-    return hashlib.sha256(f"{galaxy_url}|{raw_user}".encode()).hexdigest()
+    if not galaxy_user_id or galaxy_user_id == "Anonymous":
+        galaxy_user_id = "anonymous"
+    return hashlib.sha256(f"{galaxy_url}|{galaxy_user_id}".encode()).hexdigest()
 
 
 def build_embed_model(embed_cfg: dict, user: str):
@@ -119,8 +122,8 @@ def build_embed_model(embed_cfg: dict, user: str):
             model_name=model,
             api_key=server["LITELLM_API_KEY"],
             api_base=server["LITELLM_BASE_URL"],
-            timeout=float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600")),
-            max_retries=int(os.environ.get("LITELLM_REQUEST_MAX_RETRIES", "3")),
+            timeout=REQUEST_TIMEOUT,
+            max_retries=REQUEST_MAX_RETRIES,
             embed_batch_size=100,
             additional_kwargs={"user": user},
         )
@@ -141,84 +144,82 @@ def build_embed_model(embed_cfg: dict, user: str):
 # per pair. So retrieval first narrows the corpus to a few candidates, the
 # reranker re-sorts them, and the best ``top_k`` are kept.
 
+def is_cross_encoder(model_path: str) -> bool:
+    """Whether ``model_path`` holds a single-score cross-encoder.
+
+    That is a ``*ForSequenceClassification`` model with one output label.
+    CrossEncoder loads other models too, e.g. an embedding model gets a new,
+    randomly initialised scoring head and then ranks at random, so the check
+    reads the model's config.json instead of trusting the load.
+    """
+    try:
+        config = json.loads((Path(model_path) / "config.json").read_text(encoding="utf-8"))
+        labels = config.get("id2label")
+        num_labels = len(labels) if labels else config.get("num_labels", 2)
+        architectures = config.get("architectures") or []
+        return num_labels == 1 and any(a.endswith("ForSequenceClassification") for a in architectures)
+    except (OSError, ValueError, AttributeError, TypeError):
+        return False
+
+
 def rerank_local(model_path: str, question: str, chunks: list, top_k: int) -> list:
     """Re-sort ``chunks`` with a local cross-encoder; return the best ``top_k``."""
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = CrossEncoder(model_path, max_length=RERANK_MAX_LENGTH, device=device)
-    scores = model.predict(
-        [(question, chunk) for chunk in chunks], batch_size=16, show_progress_bar=False
-    )
-    order = sorted(range(len(chunks)), key=lambda i: -float(scores[i]))
-    return [chunks[i] for i in order[:top_k]]
+    ranked = model.rank(question, chunks, top_k=top_k, batch_size=16, show_progress_bar=False)
+    return [chunks[r["corpus_id"]] for r in ranked]
 
 
-def retry_delay(response, attempt: int) -> float:
-    """Seconds to wait before retrying a failed reranker request.
+def rerank_litellm(client: OpenAI, model: str, user: str, question: str, chunks: list, top_k: int) -> list:
+    """Re-sort ``chunks`` with a proxy-hosted reranker; return the best ``top_k``.
 
-    Honours the proxy's ``Retry-After`` header (seconds, capped at
-    RETRY_AFTER_CAP), so per-user rate limits reset before the next try;
-    otherwise backs off exponentially (1, 2, 4, ... s, at most 30 s).
-    ``response`` is None when the request failed before an answer arrived.
+    Posts to the proxy's rerank endpoint (``{LITELLM_BASE_URL}/rerank``)
+    through the OpenAI SDK client, so timeouts, retries (honouring the proxy's
+    Retry-After) and redirects behave as for the embedding requests. The
+    answer is checked before use: a proxy that returns too few results, or
+    indices that do not point at a chunk, fails the job instead of silently
+    returning wrong or short context.
     """
-    value = response.headers.get("retry-after") if response is not None else None
-    if value is not None and value.strip().isdigit():
-        return min(int(value), RETRY_AFTER_CAP)
-    return min(2 ** attempt, 30)
-
-
-def rerank_litellm(server: dict, model: str, user: str, question: str, chunks: list, top_k: int) -> list:
-    """Re-sort ``chunks`` with a proxy-hosted reranker via LiteLLM's /v1/rerank.
-
-    Transport errors, rate limits (429) and 5xx answers are retried with
-    backoff, like the embedding requests; any other HTTP error ends the job
-    with the proxy's message, since retrying a bad request cannot succeed.
-    """
-    url = server["LITELLM_BASE_URL"].rstrip("/") + "/v1/rerank"
-    payload = {"model": model, "query": question, "documents": chunks, "top_n": top_k, "user": user}
-    headers = {"Authorization": f"Bearer {server['LITELLM_API_KEY']}"}
-    timeout = float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600"))
-    max_retries = max(0, int(os.environ.get("LITELLM_REQUEST_MAX_RETRIES", "3")))
-    for attempt in range(max_retries + 1):
-        try:
-            response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
-        except httpx.TransportError as e:
-            failed, error = None, f"{type(e).__name__}: {e}"
-        else:
-            if response.status_code < 400:
-                break
-            failed, error = response, f"HTTP {response.status_code}: {response.text[:500]}"
-            if response.status_code < 500 and response.status_code != 429:
-                sys.exit(f"Reranker request to model '{model}' failed with {error}")
-        if attempt == max_retries:
-            sys.exit(f"Reranker request to model '{model}' failed after {attempt + 1} attempts: {error}")
-        time.sleep(retry_delay(failed, attempt))
+    top_n = min(top_k, len(chunks))
     try:
-        results = response.json()["results"]
-        order = [r["index"] for r in sorted(results, key=lambda r: -float(r["relevance_score"]))]
-        return [chunks[i] for i in order[:top_k]]
-    except (ValueError, KeyError, TypeError, IndexError):
-        sys.exit(f"Unexpected response from reranker model '{model}': {response.text[:500]}")
+        response = client.post(
+            "/rerank",
+            cast_to=object,
+            body={"model": model, "query": question, "documents": chunks, "top_n": top_n, "user": user},
+        )
+    except APIError as e:
+        sys.exit(f"Reranker request to model '{model}' failed: {e}")
+    try:
+        ranked = sorted(response["results"], key=lambda r: -float(r["relevance_score"]))
+        order = list(dict.fromkeys(r["index"] for r in ranked))  # best first, repeats dropped
+    except (KeyError, TypeError, ValueError):
+        sys.exit(f"Unexpected response from reranker model '{model}': {str(response)[:500]}")
+    if len(order) < top_n or not all(type(i) is int and 0 <= i < len(chunks) for i in order):
+        sys.exit(
+            f"Unexpected response from reranker model '{model}': expected {top_n} "
+            f"distinct chunk indices from 0 to {len(chunks) - 1}, got {order}"
+        )
+    return [chunks[i] for i in order[:top_n]]
 
 
-def prepare_reranker(rerank_cfg: dict, user: str):
+def prepare_reranker(rerank_cfg: dict, user: str, top_k: int):
     """Validate the reranker settings before any document is embedded.
 
-    Returns ``(rerank, candidates)``: a function ``rerank(question, chunks,
-    top_k)`` and how many chunks to retrieve for it, or ``(None, 0)`` when
-    reranking is off. Bad settings exit here, so a job fails in seconds rather
+    Returns ``(rerank, fetch_k)``: a function ``rerank(question, chunks,
+    top_k)``, or None when reranking is off, and how many chunks retrieval
+    should return. Bad settings exit here, so a job fails in seconds rather
     than after embedding the whole corpus.
     """
     source = rerank_cfg["source"]
     if source == "none":
-        return None, 0
+        return None, top_k
     if source not in ("litellm", "local"):
         sys.exit(f"Unknown reranker source: {source}")
-    try:
-        candidates = int(rerank_cfg.get("candidates", DEFAULT_RERANK_CANDIDATES))
-    except (TypeError, ValueError):
-        candidates = 0
-    if candidates < 1:
-        sys.exit("Reranker candidates must be a positive integer.")
+    candidates = rerank_cfg.get("candidates")
+    if type(candidates) is not int or not 1 <= candidates <= MAX_RERANK_CANDIDATES:
+        sys.exit(f"Reranker candidates must be a whole number from 1 to {MAX_RERANK_CANDIDATES}.")
+    # A reranker needs a wider pool to choose from; never fewer than top_k.
+    fetch_k = max(candidates, top_k)
     if source == "litellm":
         model = rerank_cfg.get("model")
         provider = rerank_cfg.get("provider")
@@ -227,30 +228,39 @@ def prepare_reranker(rerank_cfg: dict, user: str):
         if not provider:
             sys.exit("No LiteLLM reranker provider selected.")
         server = resolve_server(load_litellm_config(), provider)
-        return partial(rerank_litellm, server, model, user), candidates
+        client = OpenAI(
+            api_key=server["LITELLM_API_KEY"],
+            base_url=server["LITELLM_BASE_URL"],
+            timeout=REQUEST_TIMEOUT,
+            max_retries=REQUEST_MAX_RETRIES,
+        )
+        return partial(rerank_litellm, client, model, user), fetch_k
     model_path = rerank_cfg.get("path")
     if not model_path:
         sys.exit("No reranker model path given.")
     if not os.path.exists(model_path):
         sys.exit(f"Reranker model path does not exist: {model_path}")
-    return partial(rerank_local, model_path), candidates
+    if not is_cross_encoder(model_path):
+        sys.exit(
+            f"Reranker model is not a single-score cross-encoder: {model_path} "
+            "(expected a *ForSequenceClassification model with one output, "
+            "e.g. cross-encoder/ms-marco-MiniLM-L6-v2)."
+        )
+    return partial(rerank_local, model_path), fetch_k
 
 
 def main():
+    # httpx logs every proxy request at INFO; keep the job's stderr for errors.
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+
     context_files = json.loads(sys.argv[1])
     question = (sys.argv[2] or "").strip()
     embed_cfg = json.loads(sys.argv[3])
     top_k = int(sys.argv[4])
     # Galaxy user id + instance URL, for request attribution on the proxy.
-    # The literal "Anonymous" is rendered for anonymous sessions, in which
-    # case no per-user id is sent (the request falls back to a per-instance
-    # shared "anonymous" bucket).
-    galaxy_user_id = sys.argv[5] if len(sys.argv) > 5 else ""
-    if galaxy_user_id == "Anonymous":
-        galaxy_user_id = ""
-    galaxy_url = sys.argv[6] if len(sys.argv) > 6 else ""
-    # Reranker settings; absent in command lines from before reranking existed.
-    rerank_cfg = json.loads(sys.argv[7]) if len(sys.argv) > 7 and sys.argv[7].strip() else {"source": "none"}
+    galaxy_user_id = sys.argv[5]
+    galaxy_url = sys.argv[6]
+    rerank_cfg = json.loads(sys.argv[7])
 
     if not question:
         sys.exit("Question is empty.")
@@ -265,7 +275,7 @@ def main():
         sys.exit("Invalid reranker configuration: expected a JSON object with a 'source' key.")
 
     user = attribution_user(galaxy_user_id, galaxy_url)
-    rerank, candidates = prepare_reranker(rerank_cfg, user)
+    rerank, fetch_k = prepare_reranker(rerank_cfg, user, top_k)
     embed_model = build_embed_model(embed_cfg, user)
 
     docs: list[Document] = []
@@ -291,8 +301,6 @@ def main():
         sys.exit("No documents loaded.")
 
     index = VectorStoreIndex.from_documents(docs, embed_model=embed_model)
-    # A reranker needs a wider pool to choose from; never fewer than top_k.
-    fetch_k = max(candidates, top_k) if rerank else top_k
     retriever = index.as_retriever(similarity_top_k=fetch_k)
     nodes = retriever.retrieve(question)
 
