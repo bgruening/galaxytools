@@ -3,9 +3,13 @@
   <description>Retrieve relevant chunks from documents and output a context file</description>
 
   <macros>
-    <token name="@TOOL_VERSION@">1.0.0</token>
-    <token name="@VERSION_SUFFIX@">2</token>
+    <token name="@TOOL_VERSION@">1.1.0</token>
+    <token name="@VERSION_SUFFIX@">0</token>
     <token name="@CONTAINER_VERSION@">0.14.18</token>
+    <xml name="rerank_candidates">
+      <param name="candidates" type="integer" value="20" min="1" label="Candidates to rerank"
+        help="How many of the closest chunks the reranker re-scores before the best Top K are kept. About 20 works well; larger pools rarely help and make CPU rerankers slower. Values below Top K are raised to Top K." />
+    </xml>
   </macros>
 
   <creator>
@@ -36,6 +40,14 @@
     #set EMBED = {"source": "local", "path": str($model_source.embedding_model)}
 #end if
 
+#if $reranker.reranker_source == "litellm":
+    #set RERANK = {"source": "litellm", "model": str($reranker.reranker_model.fields.model_id), "provider": str($reranker.reranker_model.fields.provider), "candidates": int(str($reranker.candidates))}
+#else if $reranker.reranker_source == "preinstalled":
+    #set RERANK = {"source": "local", "path": str($reranker.reranker_model), "candidates": int(str($reranker.candidates))}
+#else:
+    #set RERANK = {"source": "none"}
+#end if
+
 #set LINKED = []
 #for $f in $files
   #set base = re.sub('[^\w\-]', '_', os.path.splitext($f.element_identifier)[0])
@@ -45,7 +57,7 @@
 #end for
 #set context_files = json.dumps($LINKED)
 
-python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$json.dumps($EMBED)' '$top_k' '$__user_id__' '$__galaxy_url__'
+python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$json.dumps($EMBED)' '$top_k' '$__user_id__' '$__galaxy_url__' '$json.dumps($RERANK)'
 ]]></command>
 
   <inputs>
@@ -107,6 +119,46 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$jso
 
     <param name="top_k" type="integer" value="5" min="1" label="Top K chunks"
       help="Select how many relevant text segments (chunks) should be extracted as context." />
+
+    <conditional name="reranker">
+      <param name="reranker_source" type="select" label="Reranker"
+        help="Optionally re-score a wider pool of candidate chunks with a cross-encoder, which reads the question and each chunk together, and keep the best Top K. This usually picks better chunks, at the cost of extra run time.">
+        <option value="none" selected="true">No reranking</option>
+        <option value="litellm">Use a LiteLLM-hosted reranker</option>
+        <option value="preinstalled">Use an installed HuggingFace cross-encoder</option>
+      </param>
+
+      <when value="none" />
+
+      <when value="litellm">
+        <param name="reranker_model" type="select" label="Select Reranker Model">
+          <options from_data_table="genai_models">
+            <column name="name" index="2" />
+            <column name="value" index="0" />
+            <column name="model_id" index="1" />
+            <column name="provider" index="4" />
+            <filter type="static_value" value="rerank" column="3" />
+          </options>
+          <validator type="no_options"
+            message="No reranker models are configured on this Galaxy instance. Ask your Galaxy admin to make a reranker model available." />
+        </param>
+        <expand macro="rerank_candidates" />
+      </when>
+
+      <when value="preinstalled">
+        <param name="reranker_model" type="select" label="Select Reranker Model">
+          <options from_data_table="huggingface">
+            <column name="name" index="1" />
+            <column name="value" index="6" />
+            <filter type="static_value" value="rag-reranker" column="4" />
+            <filter type="static_value" value="1" column="5" />
+          </options>
+          <validator type="no_options"
+            message="No reranker models are installed on this Galaxy instance." />
+        </param>
+        <expand macro="rerank_candidates" />
+      </when>
+    </conditional>
   </inputs>
 
   <outputs>
@@ -153,6 +205,45 @@ python '$__tool_directory__/rag_retriever.py' '$context_files' '$question' '$jso
         <has_text text="LITELLM_CONFIG_FILE environment variable is not set."/>
       </assert_stderr>
     </test>
+
+    <!-- Reranker settings are validated before the embedding model: the missing
+         embedding model below (a row of test-data/huggingface.loc) must not be
+         the error that is reported. -->
+    <test expect_failure="true" expect_exit_code="1">
+      <conditional name="model_source">
+        <param name="source_type" value="preinstalled" />
+        <param name="embedding_model" value="missing-embedding-model" />
+      </conditional>
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="How does it work?" />
+      <param name="top_k" value="2" />
+      <conditional name="reranker">
+        <param name="reranker_source" value="preinstalled" />
+        <param name="reranker_model" value="unknown" />
+      </conditional>
+      <assert_stderr>
+        <has_text text="Reranker model path does not exist: unknown" />
+        <not_has_text text="Embedding model path does not exist" />
+      </assert_stderr>
+    </test>
+
+    <test expect_failure="true" expect_exit_code="1">
+      <conditional name="model_source">
+        <param name="source_type" value="preinstalled" />
+        <param name="embedding_model" value="missing-embedding-model" />
+      </conditional>
+      <param name="files" value="test.txt" ftype="txt" />
+      <param name="question" value="How does it work?" />
+      <param name="top_k" value="2" />
+      <conditional name="reranker">
+        <param name="reranker_source" value="litellm" />
+        <param name="reranker_model" value="test-reranker" />
+      </conditional>
+      <assert_stderr>
+        <has_text text="LITELLM_CONFIG_FILE environment variable is not set." />
+        <not_has_text text="Embedding model path does not exist" />
+      </assert_stderr>
+    </test>
   </tests>
 
 
@@ -197,6 +288,17 @@ Usage
 
    The number of most relevant document chunks that should be returned.
 
+5. **Reranker** (optional)
+
+   A reranker takes a wider pool of candidate chunks (by default the 20 closest), reads the question together with each chunk, and keeps the best Top-K.
+   It usually returns better chunks than the embedding search alone, especially when many passages are relevant or when chunks share words with the question without answering it.
+   It adds little when each question was written from one specific passage, because the embedding search then already finds that passage.
+
+   - **Use a LiteLLM-hosted reranker**: Select a reranker made available by your Galaxy administrator (e.g. BGE-Reranker-v2-M3). Fast, because it runs on the provider's GPU.
+   - **Use an installed HuggingFace cross-encoder**: Select a local cross-encoder provided by your Galaxy administrator (e.g. ms-marco-MiniLM-L6-v2, about 1 second per question on a CPU; larger models such as BGE-Reranker-v2-M3 are much slower without a GPU).
+
+   **Candidates to rerank** sets the size of the pool. About 20 works well; larger pools rarely help.
+
 ---
 
 How it works
@@ -206,8 +308,9 @@ How it works
 2. Documents are automatically split into **smaller chunks**.
 3. Each chunk is converted into a **vector embedding** using the selected embedding model.
 4. The question is embedded using the same model.
-5. A **vector similarity search** retrieves the *Top-K most relevant chunks*.
-6. The retrieved chunks are written to a text file.
+5. A **vector similarity search** retrieves the *Top-K most relevant chunks* (or the larger candidate pool when a reranker is selected).
+6. *Optional:* the reranker re-scores each candidate chunk against the question and keeps the best Top-K.
+7. The retrieved chunks are written to a text file.
 
 ---
 
@@ -230,6 +333,7 @@ Notes
 - GPU acceleration is automatically used if available.
 - Retrieval quality strongly depends on the chosen embedding model.
 - Larger Top-K values provide more context but may introduce irrelevant information.
+- A reranker changes which chunks are returned and their order, never how many.
 
 ]]></help>
 
