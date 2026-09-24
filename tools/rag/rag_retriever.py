@@ -25,6 +25,9 @@ DEFAULT_RERANK_CANDIDATES = 20
 # window the evaluated models (ms-marco-MiniLM, MedCPT, bge-reranker) were
 # trained on.
 RERANK_MAX_LENGTH = 512
+# Longest wait a proxy may ask for (Retry-After) before a reranker retry; the
+# OpenAI SDK applies the same limit to the embedding requests.
+RETRY_AFTER_CAP = 60
 
 
 # --- LiteLLM proxy config resolution -------------------------------------
@@ -149,6 +152,20 @@ def rerank_local(model_path: str, question: str, chunks: list, top_k: int) -> li
     return [chunks[i] for i in order[:top_k]]
 
 
+def retry_delay(response, attempt: int) -> float:
+    """Seconds to wait before retrying a failed reranker request.
+
+    Honours the proxy's ``Retry-After`` header (seconds, capped at
+    RETRY_AFTER_CAP), so per-user rate limits reset before the next try;
+    otherwise backs off exponentially (1, 2, 4, ... s, at most 30 s).
+    ``response`` is None when the request failed before an answer arrived.
+    """
+    value = response.headers.get("retry-after") if response is not None else None
+    if value is not None and value.strip().isdigit():
+        return min(int(value), RETRY_AFTER_CAP)
+    return min(2 ** attempt, 30)
+
+
 def rerank_litellm(server: dict, model: str, user: str, question: str, chunks: list, top_k: int) -> list:
     """Re-sort ``chunks`` with a proxy-hosted reranker via LiteLLM's /v1/rerank.
 
@@ -165,16 +182,16 @@ def rerank_litellm(server: dict, model: str, user: str, question: str, chunks: l
         try:
             response = httpx.post(url, json=payload, headers=headers, timeout=timeout)
         except httpx.TransportError as e:
-            error = f"{type(e).__name__}: {e}"
+            failed, error = None, f"{type(e).__name__}: {e}"
         else:
             if response.status_code < 400:
                 break
-            error = f"HTTP {response.status_code}: {response.text[:500]}"
+            failed, error = response, f"HTTP {response.status_code}: {response.text[:500]}"
             if response.status_code < 500 and response.status_code != 429:
                 sys.exit(f"Reranker request to model '{model}' failed with {error}")
         if attempt == max_retries:
             sys.exit(f"Reranker request to model '{model}' failed after {attempt + 1} attempts: {error}")
-        time.sleep(min(2 ** attempt, 30))
+        time.sleep(retry_delay(failed, attempt))
     try:
         results = response.json()["results"]
         order = [r["index"] for r in sorted(results, key=lambda r: -float(r["relevance_score"]))]
