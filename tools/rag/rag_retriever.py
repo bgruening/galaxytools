@@ -20,9 +20,8 @@ from sentence_transformers import CrossEncoder
 # Limits for every request to the LiteLLM proxy (embeddings and reranking).
 REQUEST_TIMEOUT = float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600"))
 REQUEST_MAX_RETRIES = int(os.environ.get("LITELLM_REQUEST_MAX_RETRIES", "3"))
-# Largest pool a reranker may re-score (the form's limit). The
-# galaxy-rag-project evaluation found gains up to about 20 candidates and none
-# beyond, and every candidate costs one more model pass.
+# Largest pool a reranker may re-score (the form's limit). Gains level off at
+# about 20 candidates, and every candidate costs one more model pass.
 MAX_RERANK_CANDIDATES = 100
 # Cross-encoders judge the question and one chunk together; 512 tokens is the
 # window the evaluated models (ms-marco-MiniLM, MedCPT, bge-reranker) were
