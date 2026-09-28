@@ -215,8 +215,8 @@ def prepare_reranker(rerank_cfg: dict, user: str, top_k: int):
     if source not in ("litellm", "local"):
         sys.exit(f"Unknown reranker source: {source}")
     candidates = rerank_cfg.get("candidates")
-    if type(candidates) is not int or not 1 <= candidates <= MAX_RERANK_CANDIDATES:
-        sys.exit(f"Reranker candidates must be a whole number from 1 to {MAX_RERANK_CANDIDATES}.")
+    if type(candidates) is not int or not 2 <= candidates <= MAX_RERANK_CANDIDATES:
+        sys.exit(f"Reranker candidates must be a whole number from 2 to {MAX_RERANK_CANDIDATES}.")
     # A reranker needs a wider pool to choose from; never fewer than top_k.
     fetch_k = max(candidates, top_k)
     if source == "litellm":
@@ -265,7 +265,7 @@ def main():
         sys.exit("Question is empty.")
     if not context_files:
         sys.exit("No input files given.")
-    if top_k <= 0:
+    if top_k < 1:
         sys.exit("Top K must be a positive integer.")
 
     if not isinstance(embed_cfg, dict) or "source" not in embed_cfg:
