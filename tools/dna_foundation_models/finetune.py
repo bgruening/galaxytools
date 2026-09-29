@@ -280,6 +280,36 @@ def dump_test_predictions(trainer: transformers.Trainer, test_dataset: Dataset, 
             writer.writerow([seq, y_true, y_pred])
 
 
+def get_trained_backbone_for_attention(trainer: transformers.Trainer) -> torch.nn.Module:
+    """
+    Return the trained transformer backbone used for attention visualization.
+    The trainer model can be either:
+    - BertForSequenceClassification after full fine-tuning; or
+    - a PEFT-wrapped BertForSequenceClassification after LoRA fine-tuning.
+    """
+    model = trainer.model
+
+    accelerator = getattr(trainer, "accelerator", None)
+    if accelerator is not None:
+        model = accelerator.unwrap_model(model)
+
+    if hasattr(model, "merge_and_unload"):
+        model = model.merge_and_unload()
+
+    # BertForSequenceClassification in bert_layers.py exposes the transformer
+    # backbone as `.bert`
+    backbone = getattr(model, "bert", None)
+    if backbone is None:
+        raise TypeError(
+            "Expected a BertForSequenceClassification model with a `.bert` "
+            "backbone, but received "
+            f"{type(model).__name__}."
+        )
+
+    backbone.eval()
+    return backbone
+
+
 # -----------------------------
 # Train
 # -----------------------------
@@ -409,11 +439,8 @@ def train():
             raise ValueError("--attn_ids is empty.")
 
         test_pairs = list(zip(test_ids, texts))
-        device = next(trainer.model.parameters()).device
-        model_inference = transformers.AutoModel.from_pretrained(
-            model_args.model_name_or_path, config=config, trust_remote_code=True)
-        model_inference.to(device)
-        model_inference.eval()
+        model_inference = get_trained_backbone_for_attention(trainer)
+        device = next(model_inference.parameters()).device
 
         _, _, all_attention, all_tokens = embed_sequences(
             sequences=test_pairs,
