@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
-import sklearn
+import sklearn.metrics as metrics
 import torch
 import transformers
 from embed_sequence import embed_sequences
@@ -35,9 +35,9 @@ class ModelArguments:
 
     # LoRA args
     lora_r: int = field(default=8, metadata={"help": "hidden dimension for LoRA"})
-    lora_alpha: int = field(default=32, metadata={"help": "alpha for LoRA"})
-    lora_dropout: float = field(default=0.05, metadata={"help": "dropout rate for LoRA"})
-    lora_target_modules: str = field(default="Wqkv,wo", metadata={"help": "where to perform LoRA"})
+    lora_alpha: int = field(default=16, metadata={"help": "alpha for LoRA"})
+    lora_dropout: float = field(default=0.1, metadata={"help": "dropout rate for LoRA"})
+    lora_target_modules: str = field(default="Wqkv", metadata={"help": "where to perform LoRA"})
 
 
 @dataclass
@@ -52,20 +52,20 @@ class TrainingArguments(transformers.TrainingArguments):
     cache_dir: Optional[str] = field(default=None)
     run_name: str = field(default="run")
     optim: str = field(default="adamw_torch")
-    model_max_length: int = field(default=512, metadata={"help": "Maximum sequence length."})
+    model_max_length: int = field(default=128, metadata={"help": "Maximum sequence length."})
     gradient_accumulation_steps: int = field(default=1)
-    per_device_train_batch_size: int = field(default=1)
-    per_device_eval_batch_size: int = field(default=1)
-    num_train_epochs: int = field(default=1)
+    per_device_train_batch_size: int = field(default=8)
+    per_device_eval_batch_size: int = field(default=16)
+    num_train_epochs: int = field(default=3)
     fp16: bool = field(default=False)
     logging_steps: int = field(default=100)
-    save_steps: int = field(default=100)
-    eval_steps: int = field(default=100)
+    save_steps: int = field(default=500)
+    eval_steps: int = field(default=500)
     eval_strategy: str = field(default="steps")
     save_strategy: str = field(default="steps")
-    warmup_steps: int = field(default=50)
+    warmup_steps: int = field(default=0)
     weight_decay: float = field(default=0.01)
-    learning_rate: float = field(default=1e-4)
+    learning_rate: float = field(default=5e-5)
     save_total_limit: int = field(default=3)
     load_best_model_at_end: bool = field(default=True)
     output_dir: str = field(default="output")
@@ -159,11 +159,11 @@ def calculate_classification_metrics(predictions: np.ndarray, labels: np.ndarray
     valid_labels = labels[valid_mask]
 
     results = {
-        "accuracy": sklearn.metrics.accuracy_score(valid_labels, valid_predictions),
-        "f1": sklearn.metrics.f1_score(valid_labels, valid_predictions, average="macro", zero_division=0),
-        "matthews_correlation": sklearn.metrics.matthews_corrcoef(valid_labels, valid_predictions),
-        "precision": sklearn.metrics.precision_score(valid_labels, valid_predictions, average="macro", zero_division=0),
-        "recall": sklearn.metrics.recall_score(valid_labels, valid_predictions, average="macro", zero_division=0),
+        "accuracy": metrics.accuracy_score(valid_labels, valid_predictions),
+        "f1": metrics.f1_score(valid_labels, valid_predictions, average="macro", zero_division=0),
+        "matthews_correlation": metrics.matthews_corrcoef(valid_labels, valid_predictions),
+        "precision": metrics.precision_score(valid_labels, valid_predictions, average="macro", zero_division=0),
+        "recall": metrics.recall_score(valid_labels, valid_predictions, average="macro", zero_division=0),
     }
     return results
 
@@ -173,11 +173,11 @@ def calculate_regression_metrics(predictions: np.ndarray, labels: np.ndarray):
     preds = predictions[valid_mask]
     targets = labels[valid_mask]
 
-    mse = sklearn.metrics.mean_squared_error(targets, preds)
+    mse = metrics.mean_squared_error(targets, preds)
     rmse = np.sqrt(mse)
-    mae = sklearn.metrics.mean_absolute_error(targets, preds)
-    mape = sklearn.metrics.mean_absolute_percentage_error(targets, preds)
-    r2 = sklearn.metrics.r2_score(targets, preds)
+    mae = metrics.mean_absolute_error(targets, preds)
+    mape = metrics.mean_absolute_percentage_error(targets, preds)
+    r2 = metrics.r2_score(targets, preds)
 
     try:
         pearson, pearson_p = pearsonr(targets, preds)
@@ -234,8 +234,8 @@ def make_compute_metrics(problem_type: str):
             valid_labels = labels[valid_mask]
 
             if probs.shape[-1] == 2 and len(np.unique(valid_labels)) > 1:  # for binary classification
-                results["roc_auc"] = sklearn.metrics.roc_auc_score(valid_labels, probs[valid_mask, 1])
-                results["pr_auc"] = sklearn.metrics.average_precision_score(valid_labels, probs[valid_mask, 1])
+                results["roc_auc"] = metrics.roc_auc_score(valid_labels, probs[valid_mask, 1])
+                results["pr_auc"] = metrics.average_precision_score(valid_labels, probs[valid_mask, 1])
             return results
         else:
             predictions = np.squeeze(logits)
