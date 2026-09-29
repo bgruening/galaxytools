@@ -5,13 +5,27 @@
     </macros>
     <expand macro="biotools"/>
     <expand macro="requirements"/>
+    <version_command>echo " SIMORGH @TOOL_VERSION@"</version_command>
     <expand macro="creators"/>
     <command detect_errors="aggressive"><![CDATA[
         #if not $non_commercial_use
             >&2 echo "this tool is only available for non commercial use";
             exit 1;
         #end if
-        export DEVICE=`python -c "import torch; print('cuda' if torch.cuda.is_available() else 'cpu')"`
+        ## Set the number of threads for OpenMP, MKL, and OpenBLAS
+        ## if not set, torch will default to all available threads, which slows down the job
+        ## Xref: https://discuss.pytorch.org/t/cpu-usage-far-too-high-and-training-inefficient/57228
+        export OMP_NUM_THREADS=\${GALAXY_SLOTS:-4}
+        && export MKL_NUM_THREADS=\${GALAXY_SLOTS:-4}
+        && export OPENBLAS_NUM_THREADS=\${GALAXY_SLOTS:-4}
+        ## MKL is not optimozed for AMD CPUs. Xref: https://forums.fast.ai/t/psa-mkl-and-amd-cpus/59187
+        && export MKL_DEBUG_CPU_TYPE=5
+        ## double checking
+        && echo "Using \$OMP_NUM_THREADS threads for OpenMP"
+        && echo "Using \$MKL_NUM_THREADS threads for MKL"
+        && echo "Using \$OPENBLAS_NUM_THREADS threads for OpenBLAS"
+
+        && export DEVICE=`python -c "import torch; print('cuda' if torch.cuda.is_available() else 'cpu')"`
         && echo "Using device: \$DEVICE"
         && ln -s '$pdb' input.pdb
         #if str($bbflow_condi.bbflow) == 'yes':
@@ -88,8 +102,8 @@
         </conditional>
         <conditional name="cluster_condi">
             <param name="cluster" type="select" label="Run Clustering on predictions?" help="It runs HDBSCAN clustering on predictions">
-                <option value="no">No</option>
-                <option value="yes" selected="true">Yes</option>
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
             </param>
             <when value="no"/>
             <when value="yes">
@@ -131,9 +145,6 @@
         <test expect_num_outputs="1">
             <param name="non_commercial_use" value="True"/>
             <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
-            <conditional name="cluster_condi">
-                <param name="cluster" value="no"/>
-            </conditional>
             <conditional name="viz_condi">
                 <param name="visualize" value="no"/>
             </conditional>
@@ -143,6 +154,9 @@
                 <not_has_text text="--visualize"/>
             </assert_command>
             <assert_stdout>
+                <has_text text="Using 4 threads for OpenMP"/>
+                <has_text text="Using 4 threads for MKL"/>
+                <has_text text="Using 4 threads for OpenBLAS"/>
                 <has_text text="Using device: cpu"/>
             </assert_stdout>
             <output name="pdb_out" ftype="pdb">
@@ -158,6 +172,9 @@
         <test expect_num_outputs="2">
             <param name="non_commercial_use" value="True"/>
             <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="yes"/>
+            </conditional>
             <conditional name="viz_condi">
                 <param name="visualize" value="no"/>
             </conditional>
@@ -167,6 +184,9 @@
                 <not_has_text text="--visualize"/>
             </assert_command>
             <assert_stdout>
+                <has_text text="Using 4 threads for OpenMP"/>
+                <has_text text="Using 4 threads for MKL"/>
+                <has_text text="Using 4 threads for OpenBLAS"/>
                 <has_text text="Using device: cpu"/>
             </assert_stdout>
             <output name="pdb_out" ftype="pdb">
@@ -196,9 +216,6 @@
                 <param name="timesteps" value="1"/>
                 <param name="batch_size" value="1"/>
             </conditional>
-            <conditional name="cluster_condi">
-                <param name="cluster" value="no"/>
-            </conditional>
             <conditional name="viz_condi">
                 <param name="visualize" value="no"/>
             </conditional>
@@ -210,6 +227,9 @@
             </assert_command>
             <assert_stdout>
                 <has_text text="Sampling 2 confs for 1 input PDB files"/>
+                <has_text text="Using 4 threads for OpenMP"/>
+                <has_text text="Using 4 threads for MKL"/>
+                <has_text text="Using 4 threads for OpenBLAS"/>
                 <has_text text="Using device: cpu"/>
             </assert_stdout>
             <output name="pdb_out" ftype="pdb">
@@ -239,6 +259,9 @@
                 <param name="timesteps" value="1"/>
                 <param name="batch_size" value="1"/>
             </conditional>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="yes"/>
+            </conditional>
             <conditional name="viz_condi">
                 <param name="visualize" value="no"/>
             </conditional>
@@ -250,6 +273,9 @@
             </assert_command>
             <assert_stdout>
                 <has_text text="Sampling 1 confs for 1 input PDB files"/>
+                <has_text text="Using 4 threads for OpenMP"/>
+                <has_text text="Using 4 threads for MKL"/>
+                <has_text text="Using 4 threads for OpenBLAS"/>
                 <has_text text="Using device: cpu"/>
             </assert_stdout>
             <output name="pdb_out" ftype="pdb">
@@ -278,6 +304,9 @@
         <test expect_num_outputs="3">
             <param name="non_commercial_use" value="True"/>
             <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
+            <conditional name="cluster_condi">
+                <param name="cluster" value="yes"/>
+            </conditional>
             <assert_command>
                 <not_has_text text="bbflow_sample"/>
                 <has_text text="--cluster"/>
@@ -285,6 +314,9 @@
                 <has_text_matching expression="--viz-style &apos;sphere&apos;"/>
             </assert_command>
             <assert_stdout>
+                <has_text text="Using 4 threads for OpenMP"/>
+                <has_text text="Using 4 threads for MKL"/>
+                <has_text text="Using 4 threads for OpenBLAS"/>
                 <has_text text="Using device: cpu"/>
             </assert_stdout>
             <output name="pdb_out" ftype="pdb">
@@ -316,9 +348,6 @@
         <test expect_num_outputs="2">
             <param name="non_commercial_use" value="True"/>
             <param name="pdb" value="multi_model.pdb" ftype="pdb"/>
-            <conditional name="cluster_condi">
-                <param name="cluster" value="no"/>
-            </conditional>
             <conditional name="viz_condi">
                 <param name="visualize" value="yes"/>
             </conditional>
@@ -329,6 +358,9 @@
                 <has_text_matching expression="--viz-style &apos;sphere&apos;"/>
             </assert_command>
             <assert_stdout>
+                <has_text text="Using 4 threads for OpenMP"/>
+                <has_text text="Using 4 threads for MKL"/>
+                <has_text text="Using 4 threads for OpenBLAS"/>
                 <has_text text="Using device: cpu"/>
             </assert_stdout>
             <output name="pdb_out" ftype="pdb">
