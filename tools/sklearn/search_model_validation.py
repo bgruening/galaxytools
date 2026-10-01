@@ -183,7 +183,7 @@ def _eval_search_params(params_builder):
                 imblearn.over_sampling.SMOTE(random_state=0),
                 imblearn.over_sampling.SMOTEN(random_state=0),
                 imblearn.over_sampling.SMOTENC(
-                    categorical_features=[], random_state=0, n_jobs=N_JOBS
+                    categorical_features=[], random_state=0
                 ),
                 imblearn.over_sampling.SVMSMOTE(random_state=0),
                 imblearn.combine.SMOTEENN(random_state=0),
