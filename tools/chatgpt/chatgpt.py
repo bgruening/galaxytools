@@ -11,6 +11,7 @@ from typing import cast, ClassVar, TypeAlias
 from openai import (
     APIConnectionError,
     AuthenticationError,
+    DefaultHttpxClient,
     OpenAI,
     RateLimitError,
 )
@@ -36,25 +37,21 @@ from openai.types.chat.chat_completion_user_message_param import (
 MessageContentItem: TypeAlias = ChatCompletionContentPartParam
 ContextFile: TypeAlias = tuple[str, str]
 
-MAX_RETRIES = 3
-
 BILLING_URL = "https://platform.openai.com/settings/organization/billing"
 
 MAX_ERROR_CHARS = 300
-
-REQUEST_TIMEOUT = 300.0
 
 
 def resolve_api_key(server_type: str) -> str | None:
     """Resolve the API key based on server type."""
     if server_type == "openai":
-        key = os.getenv("OPENAI_API_KEY")
+        key = os.getenv("OPENAI_API_KEY", "").strip()
         if not key:
             raise ValueError("OpenAI API key is not provided in credentials!")
         return key
     elif server_type == "custom":
-        key = os.getenv("CUSTOM_SERVER_API_KEY")
-        return key if key else None
+        key = os.getenv("CUSTOM_SERVER_API_KEY", "").strip()
+        return key or None
     else:
         raise ValueError(f"Unknown server type: {server_type}")
 
@@ -62,10 +59,10 @@ def resolve_api_key(server_type: str) -> str | None:
 def resolve_base_url(server_type: str) -> str | None:
     """Resolve the base URL based on server type."""
     if server_type == "custom":
-        url = os.getenv("CUSTOM_SERVER_URL")
+        url = os.getenv("CUSTOM_SERVER_URL", "").strip()
         if not url:
             raise ValueError("Custom server URL is not provided in credentials!")
-        if not url.startswith(("http://", "https://")):
+        if not url.lower().startswith(("http://", "https://")):
             raise ValueError(
                 "Custom server URL must start with http:// or https://"
             )
@@ -92,10 +89,10 @@ def build_client(base_url: str | None, api_key: str | None) -> OpenAI:
         kwargs["api_key"] = "not-needed"
     if base_url:
         kwargs["base_url"] = base_url
-    # The SDK retries connection errors, 429 and 5xx with backoff. The timeout
-    # is explicit because the SDK's 600s default, multiplied by the retries,
-    # can hold a Galaxy job slot for over half an hour.
-    return OpenAI(max_retries=MAX_RETRIES, timeout=REQUEST_TIMEOUT, **kwargs)
+    # Keep the SDK's default timeouts and retries, but do not follow redirects:
+    # a redirect would let the server send the request, prompt and key
+    # included, to any other URL.
+    return OpenAI(http_client=DefaultHttpxClient(follow_redirects=False), **kwargs)
 
 
 @dataclass(frozen=True)
@@ -226,24 +223,17 @@ def build_messages(
     return messages
 
 
-# OpenAI models offered by this tool that accept temperature/top_p on Chat
-# Completions. Determined empirically against the live API on 2026-09-07: every
-# other model in the option list answers a request carrying temperature with
-# 400 unsupported_value, and one carrying top_p with 400 unsupported_parameter.
-# gpt-5.4 accepts both because its default reasoning effort is "none".
-# gpt-6.1-sol and gpt-6-luna (added 2026-10-01, not probed live) are reasoning
-# models with a "medium" default effort, so they are left out as well.
-# A prefix rule cannot express this -- "gpt-6-astra" does not start with
-# "gpt-5", and "gpt-5.4" does -- so keep an explicit set, and re-check it when
-# adding an option. Anything not listed is treated as refusing the parameters:
-# sending one to a model that refuses it fails the job, omitting it only
-# costs a note.
-SAMPLING_MODELS = frozenset({"gpt-4.1", "gpt-4o", "gpt-5.4"})
-
-
 def uses_fixed_sampling(model: str) -> bool:
-    """Whether an OpenAI model refuses temperature/top_p."""
-    return model not in SAMPLING_MODELS
+    """Whether an OpenAI model refuses temperature/top_p.
+
+    The gpt-3 and gpt-4 families are not reasoning models and accept both.
+    gpt-5.4 accepts them too, because its default reasoning effort is "none"
+    (checked against the live API on 2026-09-07). Every other OpenAI model is
+    a reasoning model and answers them with a 400 error, so for anything else
+    they are left out: sending them would fail the job, leaving them out only
+    costs a note.
+    """
+    return not (model.startswith(("gpt-3", "gpt-4")) or model == "gpt-5.4")
 
 
 def build_api_params(
@@ -264,8 +254,9 @@ def build_api_params(
         if fixed_sampling:
             if value != 1.0:
                 print(
-                    f"Note: {name} is not sent for '{model}' -- reasoning "
-                    f"models on the OpenAI API reject it; the requested value "
+                    f"Note: {name} is not sent for '{model}' -- on the OpenAI "
+                    f"API only gpt-3/gpt-4 models and gpt-5.4 accept it; the "
+                    f"requested value "
                     f"{value} was ignored."
                 )
             continue
@@ -319,14 +310,12 @@ def describe_error(exc: Exception, trusted: bool = False) -> str:
         parts.append("the server returned an unexpected non-JSON response")
 
     if not parts:
-        # No HTTP response at all. The cause is raised locally by httpx or the
-        # OS, so it is safe to show, and it is the only thing that separates a
-        # refused connection from a DNS, TLS or timeout failure -- the most
-        # likely outcome of a mistyped custom server URL.
+        # No HTTP response at all. Show only the type of the underlying error
+        # (ConnectError, ConnectTimeout, ...): its message can contain request
+        # headers, including the API key, or bytes sent by the server.
         detail = ""
         if isinstance(exc, APIConnectionError) and exc.__cause__ is not None:
-            cause = exc.__cause__
-            detail = f" ({type(cause).__name__}: {cause})"[:MAX_ERROR_CHARS]
+            detail = f" ({type(exc.__cause__).__name__})"
         parts.append(f"{type(exc).__name__}{detail}")
     return "; ".join(parts)
 
@@ -451,7 +440,7 @@ def main(argv: Sequence[str]) -> int:
             print(
                 "No output was generated!\n"
                 "The response hit the 'Max tokens' limit before any answer was "
-                "produced. On the gpt-5 models that budget also covers hidden "
+                "produced. On reasoning models that budget also covers hidden "
                 "reasoning tokens, so raise Max tokens or leave it unset."
             )
         elif server_type == "openai":
@@ -472,6 +461,11 @@ def main(argv: Sequence[str]) -> int:
     with open("output.md", "w", encoding="utf-8") as file_handle:
         file_handle.write(content)
 
+    if choice is not None and choice.finish_reason in ("length", "content_filter"):
+        print(
+            "Warning: the answer may be incomplete "
+            f"(finish_reason: {choice.finish_reason})."
+        )
     print(
         f"Successfully generated response for:\n{question[:100]}{'...' if len(question) > 100 else ''}"
     )
