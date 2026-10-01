@@ -569,7 +569,15 @@ def main(
     elif plot_type == "keras_plot_model":
         with open(model_config, "r") as f:
             model_str = f.read()
-        model = model_from_json(model_str)
+        try:
+            model = model_from_json(model_str)
+        except TypeError:
+            # Keras 3 cannot deserialize the unqualified class names emitted by
+            # Keras 2.  The TensorFlow compatibility loader still supports
+            # those legacy model-configuration files.
+            from tensorflow.python.keras import models as legacy_models
+
+            model = legacy_models.model_from_json(model_str)
         plot_model(model, to_file="output.png")
         os.rename("output.png", "output")
 
