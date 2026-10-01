@@ -79,11 +79,21 @@ if params["selected_tasks"]["selected_task"] == "train":
     my_class = getattr(sklearn.ensemble, algorithm)
     estimator = my_class(**options)
     estimator.fit(X,y)
+    # Current gradient boosting estimators cache a Cython-backed loss object
+    # that Galaxy-ML's safe HDF5 serializer cannot persist.  It is derived
+    # entirely from the public estimator parameters, so rebuild it on load.
+    if algorithm in ['GradientBoostingClassifier', 'GradientBoostingRegressor']:
+        del estimator._loss
+        del estimator._rng
     dump_model_to_h5(estimator, outfile_fit)
 
 else:
     classifier_object = load_model_from_h5(infile_model)
     classifier_object = clean_params(classifier_object)
+    if isinstance(classifier_object, (sklearn.ensemble.GradientBoostingClassifier,
+                                      sklearn.ensemble.GradientBoostingRegressor)) \
+            and not hasattr(classifier_object, '_loss'):
+        classifier_object._loss = classifier_object._get_loss(sample_weight=None)
     header = 'infer' if params["selected_tasks"]["header"] else None
     data = pandas.read_csv(infile_data, sep='\t', header=header, index_col=None, parse_dates=True, encoding=None)
     prediction = classifier_object.predict(data)
@@ -341,6 +351,9 @@ else:
                             <param name="col2" value="5" />
                         </conditional>
                     </conditional>
+                    <section name="options">
+                        <param name="random_state" value="42" />
+                    </section>
                 </conditional>
             </conditional>
             <output name="outfile_fit" file="gbc_model01" compare="sim_size" delta="5" />

@@ -21,6 +21,7 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 from tensorflow.keras.models import model_from_json
+from keras.src.legacy.saving.saving_utils import model_from_config
 from tensorflow.keras.utils import plot_model
 
 safe_eval = SafeEval()
@@ -569,7 +570,23 @@ def main(
     elif plot_type == "keras_plot_model":
         with open(model_config, "r") as f:
             model_str = f.read()
-        model = model_from_json(model_str)
+        model_json = json.loads(model_str)
+        if model_json.get("keras_version", "").startswith("2."):
+            first_layer = model_json["config"]["layers"][0]["config"]
+            batch_shape = first_layer.pop("batch_input_shape", None)
+            if batch_shape:
+                model_json["config"]["layers"].insert(0, {
+                    "class_name": "InputLayer",
+                    "config": {
+                        "batch_shape": batch_shape,
+                        "dtype": first_layer.get("dtype", "float32"),
+                        "sparse": False,
+                        "name": "input_layer",
+                    },
+                })
+            model = model_from_config(model_json)
+        else:
+            model = model_from_json(model_str)
         plot_model(model, to_file="output.png")
         os.rename("output.png", "output")
 
