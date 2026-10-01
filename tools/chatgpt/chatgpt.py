@@ -3,9 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
-import random
 import sys
-import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import cast, ClassVar, TypeAlias
@@ -13,7 +11,6 @@ from typing import cast, ClassVar, TypeAlias
 from openai import (
     APIConnectionError,
     AuthenticationError,
-    InternalServerError,
     OpenAI,
     RateLimitError,
 )
@@ -95,10 +92,10 @@ def build_client(base_url: str | None, api_key: str | None) -> OpenAI:
         kwargs["api_key"] = "not-needed"
     if base_url:
         kwargs["base_url"] = base_url
-    # Retry once, here, rather than letting the SDK multiply each attempt.
-    # The timeout is explicit because the SDK's 600s default, multiplied by
-    # this tool's retries, can hold a Galaxy job slot for half an hour.
-    return OpenAI(max_retries=0, timeout=REQUEST_TIMEOUT, **kwargs)
+    # The SDK retries connection errors, 429 and 5xx with backoff. The timeout
+    # is explicit because the SDK's 600s default, multiplied by the retries,
+    # can hold a Galaxy job slot for over half an hour.
+    return OpenAI(max_retries=MAX_RETRIES, timeout=REQUEST_TIMEOUT, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -342,47 +339,28 @@ def is_quota_error(exc: Exception) -> bool:
     return "insufficient_quota" in str(exc)
 
 
-def _call_with_retries(
+def request_completion(
     client: OpenAI,
     api_params: dict,
     server_type: str,
 ) -> ChatCompletion | None:
-    """Call chat completion with exponential backoff retry on server errors."""
-    for attempt in range(MAX_RETRIES):
-        try:
-            return call_chat_completion(client, api_params)
-        except (APIConnectionError, InternalServerError, RateLimitError) as exc:
-            # An exhausted balance is reported as a rate limit, but retrying it
-            # is pointless and hides a billing problem behind a server error.
-            trusted = server_type == "openai"
-            if is_quota_error(exc):
-                if server_type == "openai":
-                    print(
-                        "Insufficient quota!\n"
-                        "Please ensure that your OpenAI account has sufficient credits.\n"
-                        f"You can check your balance here: {BILLING_URL}"
-                    )
-                else:
-                    print(
-                        "Insufficient quota reported by the configured server: "
-                        f"{describe_error(exc, trusted)}"
-                    )
-                return None
-            if attempt == MAX_RETRIES - 1:
-                print(f"Max retries reached. Last error: {describe_error(exc, trusted)}")
-                return None
-            sleep_time = 2**attempt + random.uniform(0, 1)
+    """Call chat completion and report any error. The SDK handles retries."""
+    trusted = server_type == "openai"
+    try:
+        return call_chat_completion(client, api_params)
+    except RateLimitError as exc:
+        if trusted and is_quota_error(exc):
             print(
-                f"Server error encountered ({describe_error(exc, trusted)}). "
-                f"Retrying in {sleep_time:.2f}s..."
+                "Insufficient quota!\n"
+                "Please ensure that your OpenAI account has sufficient credits.\n"
+                f"You can check your balance here: {BILLING_URL}"
             )
-            time.sleep(sleep_time)
-        except AuthenticationError as exc:
-            print(f"Authentication error: {describe_error(exc, server_type == 'openai')}")
-            return None
-        except Exception as exc:  # noqa: BLE001 - keep reporting unexpected errors
-            print(f"An error occurred: {describe_error(exc, server_type == 'openai')}")
-            return None
+        else:
+            print(f"Rate limit reached: {describe_error(exc, trusted)}")
+    except AuthenticationError as exc:
+        print(f"Authentication error: {describe_error(exc, trusted)}")
+    except Exception as exc:  # noqa: BLE001 - keep reporting unexpected errors
+        print(f"An error occurred: {describe_error(exc, trusted)}")
     return None
 
 
@@ -450,7 +428,7 @@ def main(argv: Sequence[str]) -> int:
     api_params = build_api_params(
         model, messages, server_type, temperature, max_tokens, top_p
     )
-    response = _call_with_retries(client, api_params, server_type)
+    response = request_completion(client, api_params, server_type)
     if response is None:
         return 1
 
