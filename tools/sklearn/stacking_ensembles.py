@@ -3,7 +3,7 @@ import ast
 import json
 import sys
 import warnings
-from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 import mlxtend.classifier
 import mlxtend.regressor

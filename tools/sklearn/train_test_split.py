@@ -1,7 +1,7 @@
 import argparse
 import json
 import warnings
-from distutils.version import LooseVersion as Version
+from packaging.version import Version
 
 import pandas as pd
 from galaxy_ml import __version__ as galaxy_ml_version

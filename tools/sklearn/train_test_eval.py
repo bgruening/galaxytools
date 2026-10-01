@@ -416,7 +416,18 @@ def main(
             X_test, y_test=y_test, scorer=scorer, is_multimetric=True
         )
     else:
-        scores = _score(estimator, X_test, y_test, scorer)
+        # sklearn >= 1.4 changed `_score` to require `score_params` and no
+        # longer accepts a dict of scorers; score per metric and aggregate.
+        if isinstance(scorer, dict):
+            scores = {}
+            for name, single_scorer in scorer.items():
+                single = _score(estimator, X_test, y_test, single_scorer, None)
+                if isinstance(single, dict):
+                    scores[name] = list(single.values())[0]
+                else:  # plain float for single-metric scorers
+                    scores[name] = single
+        else:
+            scores = _score(estimator, X_test, y_test, scorer, None)
     # handle output
     for name, score in scores.items():
         scores[name] = [score]
