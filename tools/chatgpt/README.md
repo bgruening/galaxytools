@@ -31,7 +31,7 @@ Connect to any server that implements the OpenAI Chat Completions API (e.g., vLL
 
 1. **Select a Server Type**: Choose between OpenAI or Custom.
 
-2. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOCX, HTML, JSON, PDF, TXT, JPG, PNG, or GIF. Individual images are limited to 20MB. This context data serves as the input for the prompt you wish to execute. If no context is provided, the model will respond based solely on the prompt.
+2. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOCX, HTML, JSON, PDF, TXT, JPG, PNG, or GIF. Individual images are limited to 20MB. This context data serves as the input for the prompt you wish to execute. If no context is provided, the model will respond based solely on the prompt. To use images, choose a model that can read images: some models ignore images without an error.
 
 3. **Provide a Prompt**: Provide a prompt or task for the model to execute. The more specific the prompt, the more tailored the response will be.
 

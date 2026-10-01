@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import os
+import re
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -10,11 +11,10 @@ from typing import cast, ClassVar, TypeAlias
 
 from openai import (
     APIConnectionError,
-    AuthenticationError,
-    BadRequestError,
+    APIStatusError,
+    APITimeoutError,
     DefaultHttpxClient,
     OpenAI,
-    RateLimitError,
 )
 from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion_content_part_image_param import (
@@ -257,72 +257,89 @@ def call_chat_completion(client: OpenAI, api_params: dict) -> ChatCompletion:
     return client.chat.completions.create(**api_params)
 
 
-def describe_error(exc: Exception, trusted: bool = False) -> str:
-    """Summarise an API error without echoing a server's response back.
-
-    The custom server URL comes from the user, so the job node can be pointed
-    at any host it can reach and its reply must not reach the job log. Only
-    api.openai.com is ``trusted``: for anything else the SDK may hand back the
-    whole response body -- it only unwraps an "error" key when one is present
-    -- so the body could be any internal service's, and none of it is shown.
-    """
-    parts: list[str] = []
-
-    status = getattr(exc, "status_code", None)
-    if status:
-        parts.append(f"HTTP {status}")
-
-    body = getattr(exc, "body", None)
-    if isinstance(body, dict):
-        if trusted:
-            code = body.get("code")
-            if isinstance(code, (str, int)) and str(code).strip():
-                parts.append(f"code {str(code).strip()[:MAX_ERROR_CHARS]}")
-            message = body.get("message")
-            if isinstance(message, str) and message.strip():
-                parts.append(message.strip()[:MAX_ERROR_CHARS])
-        else:
-            parts.append("the server returned an error response")
-    elif body is not None:
-        parts.append("the server returned an unexpected non-JSON response")
-
-    if not parts:
-        # No HTTP response at all. Show only the type of the underlying error
-        # (ConnectError, ConnectTimeout, ...): its message can contain request
-        # headers, including the API key, or bytes sent by the server.
-        detail = ""
-        if isinstance(exc, APIConnectionError) and exc.__cause__ is not None:
-            detail = f" ({type(exc.__cause__).__name__})"
-        parts.append(f"{type(exc).__name__}{detail}")
-    return "; ".join(parts)
-
-
-def is_quota_error(exc: Exception) -> bool:
-    """Whether a rate limit error is really an exhausted account balance."""
-    for attr in ("code", "type"):
-        if getattr(exc, attr, None) == "insufficient_quota":
-            return True
-    if isinstance(getattr(exc, "body", None), dict):
-        return False
-    return "insufficient_quota" in str(exc)
-
-
-# Options a model may refuse. Reasoning models answer them with a 400 error
-# that names the option, e.g. param "temperature", code "unsupported_value".
+# Options a model may refuse, e.g. reasoning models refuse temperature.
 OPTIONAL_PARAMS = ("temperature", "top_p")
 
+# Servers word their errors differently, so look for these words in the error.
+REFUSED = re.compile(r"unsupported|not supported|not support|n't support|extra|unrecognized|must be|not permitted")
+TOO_LONG = re.compile(r"context.?(length|window|size)|maximum context|too large for model|longer than the model|reduce the length|max_new_tokens")
+NO_IMAGES = re.compile(r"(image|multimodal)[^.]{0,40}(not (supported|enabled)|only supported)|not a multimodal|support image input|does not support images")
+NO_MODEL = re.compile(r"model[^.]{0,60}(not found|does not exist|not available)|invalid model|not a valid model|model_not_found|deploymentnotfound")
+NO_CREDIT = re.compile(r"quota|budget|credit|billing")
 
-def unsupported_param(exc: BadRequestError, api_params: dict) -> str | None:
-    """The optional parameter the server refused, if that is the error."""
-    body = exc.body if isinstance(exc.body, dict) else {}
-    param = body.get("param")
-    if (
-        param in OPTIONAL_PARAMS
-        and param in api_params
-        and body.get("code") in ("unsupported_value", "unsupported_parameter")
-    ):
-        return param
-    return None
+
+def error_text(exc: Exception) -> str:
+    """All text of an error, in lower case, to look for the words above."""
+    body = getattr(exc, "body", None)
+    parts = [str(getattr(exc, "param", None) or ""), str(exc)]
+    if isinstance(body, (dict, list)):
+        parts.append(json.dumps(body))
+    elif body:
+        parts.append(str(body))
+    return " ".join(parts).lower()
+
+
+def refused_params(exc: APIStatusError, api_params: dict) -> list[str]:
+    """The optional parameters the server refused, if that is the error."""
+    if exc.status_code not in (400, 422):
+        return []
+    text = error_text(exc)
+    if TOO_LONG.search(text):
+        return []
+    sent = [p for p in OPTIONAL_PARAMS if p in api_params]
+    if getattr(exc, "param", None) in sent:
+        return [exc.param]
+    if exc.status_code == 422 or REFUSED.search(text):
+        return [p for p in sent if p in text]
+    return []
+
+
+def explain_error(exc: Exception, model: str, server_type: str) -> str:
+    """A short, plain message for a failed request.
+
+    The custom server URL comes from the user, so the job node can be pointed
+    at any host it can reach. Its reply is only searched for known words and
+    never written to the job log; only OpenAI's own error message is shown.
+    """
+    status = getattr(exc, "status_code", None)
+    text = error_text(exc)
+    if isinstance(exc, APITimeoutError):
+        message = "The server took too long to answer. Try again later."
+    elif isinstance(exc, APIConnectionError):
+        message = "Could not reach the server. Check the server URL."
+    elif status == 401:
+        message = "The API key was not accepted. Check the key in your credentials."
+    elif status == 403:
+        message = "Access denied. Your key may not be allowed to use this model."
+    elif TOO_LONG.search(text):
+        message = "The prompt and context files are too long for this model. Use fewer or smaller files."
+    elif NO_IMAGES.search(text):
+        message = "This model cannot read images. Choose a model that can, or remove the images."
+    elif NO_MODEL.search(text) or (status == 404 and "model" in text):
+        message = f"The server does not know the model '{model}'. Check the model name."
+    elif status in (402, 429) and NO_CREDIT.search(text):
+        message = "Your account has no credits or budget left."
+        if server_type == "openai":
+            message += f" Check your balance: {BILLING_URL}"
+    elif status == 429:
+        message = "Too many requests. Wait a few minutes and try again."
+    elif status and status >= 500:
+        message = "The server had a problem. Try again later."
+    elif status in (404, 405) or (status and 300 <= status < 400):
+        message = "The server URL seems wrong. Check that it ends with the API path, for example /v1."
+    else:
+        message = "The server could not handle the request."
+
+    if status:
+        details = f"HTTP {status}"
+    else:
+        # Only the type: the message of a connection error can contain the
+        # request headers, including the API key.
+        details = type(exc.__cause__ or exc).__name__
+    body = getattr(exc, "body", None)
+    if server_type == "openai" and isinstance(body, dict) and isinstance(body.get("message"), str):
+        details += f" - {body['message'][:MAX_ERROR_CHARS]}"
+    return f"Error: {message}\nDetails: {details}"
 
 
 def request_completion(
@@ -333,35 +350,21 @@ def request_completion(
     """Call chat completion and report any error. The SDK handles retries.
 
     If the model refuses temperature or top_p, send the request again
-    without it and say so in the job log.
+    without them and say so in the job log.
     """
-    trusted = server_type == "openai"
+    model = api_params["model"]
     try:
         return call_chat_completion(client, api_params)
-    except BadRequestError as exc:
-        param = unsupported_param(exc, api_params)
-        if param is None:
-            print(f"An error occurred: {describe_error(exc, trusted)}")
-            return None
-        print(
-            f"Note: model '{api_params['model']}' does not accept {param}, "
-            "so it was left out."
-        )
-        api_params = {k: v for k, v in api_params.items() if k != param}
-        return request_completion(client, api_params, server_type)
-    except RateLimitError as exc:
-        if trusted and is_quota_error(exc):
-            print(
-                "Insufficient quota!\n"
-                "Please ensure that your OpenAI account has sufficient credits.\n"
-                f"You can check your balance here: {BILLING_URL}"
-            )
-        else:
-            print(f"Rate limit reached: {describe_error(exc, trusted)}")
-    except AuthenticationError as exc:
-        print(f"Authentication error: {describe_error(exc, trusted)}")
-    except Exception as exc:  # noqa: BLE001 - keep reporting unexpected errors
-        print(f"An error occurred: {describe_error(exc, trusted)}")
+    except APIStatusError as exc:
+        refused = refused_params(exc, api_params)
+        if refused:
+            for param in refused:
+                print(f"Note: model '{model}' does not accept {param}, so it was left out.")
+            api_params = {k: v for k, v in api_params.items() if k not in refused}
+            return request_completion(client, api_params, server_type)
+        print(explain_error(exc, model, server_type))
+    except Exception as exc:  # noqa: BLE001 - report every failure plainly
+        print(explain_error(exc, model, server_type))
     return None
 
 
@@ -414,10 +417,7 @@ def main(argv: Sequence[str]) -> int:
     try:
         client = build_client(base_url, api_key)
     except Exception:  # noqa: BLE001
-        print(
-            "The configured server URL could not be used to build a client; "
-            "check its host and port."
-        )
+        print("Error: The server URL is not valid. Check it in your credentials.")
         return 1
 
     try:
@@ -432,46 +432,42 @@ def main(argv: Sequence[str]) -> int:
     response = request_completion(client, api_params, server_type)
     if response is None:
         return 1
+    # Some servers answer a wrong URL with "200 OK" and a web page or an
+    # error object instead of a chat answer.
+    if not isinstance(response, ChatCompletion) or not response.choices:
+        print(
+            "Error: The server URL seems wrong. Its reply is not a chat answer. "
+            "Check that it ends with the API path, for example /v1."
+        )
+        return 1
 
-    choice = response.choices[0] if response.choices else None
+    choice = response.choices[0]
     message = getattr(choice, "message", None)
     content = getattr(message, "content", None)
     if content is not None and not isinstance(content, str):
-        print(
-            "The server returned a response in an unexpected format; this tool "
-            "expects an OpenAI-compatible chat completion."
-        )
+        print("Error: The server's reply has an unexpected format.")
         return 1
     if not content:
         refusal = getattr(message, "refusal", None)
         if refusal:
             print(f"The model declined to answer: {str(refusal)[:MAX_ERROR_CHARS]}")
-        elif choice is not None and choice.finish_reason == "length":
+        elif choice.finish_reason == "length":
             print(
-                "No output was generated!\n"
-                "The response hit the 'Max tokens' limit before any answer was "
-                "produced. On reasoning models that budget also covers hidden "
-                "reasoning tokens, so raise Max tokens or leave it unset."
-            )
-        elif server_type == "openai":
-            print(
-                "No output was generated!\n"
-                "Please ensure that your OpenAI account has sufficient credits "
-                f"or that the model '{model}' is available.\n"
-                f"You can check your balance here: {BILLING_URL}"
+                "Error: The answer was empty because it hit the Max tokens limit. "
+                "Raise Max tokens or leave it empty. Reasoning models also "
+                "count their hidden thinking in this limit."
             )
         else:
             print(
-                "No output was generated!\n"
-                f"Please ensure that the model '{model}' is available on the "
-                "configured server."
+                f"Error: The model '{model}' gave an empty answer. "
+                "Try again or choose another model."
             )
         return 1
 
     with open("output.md", "w", encoding="utf-8") as file_handle:
         file_handle.write(content)
 
-    if choice is not None and choice.finish_reason in ("length", "content_filter"):
+    if choice.finish_reason in ("length", "content_filter"):
         print(
             "Warning: the answer may be incomplete "
             f"(finish_reason: {choice.finish_reason})."
