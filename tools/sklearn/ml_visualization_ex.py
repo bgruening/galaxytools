@@ -21,7 +21,6 @@ from sklearn.metrics import (
 )
 from sklearn.pipeline import Pipeline
 from tensorflow.keras.models import model_from_json
-from keras.src.legacy.saving.saving_utils import model_from_config
 from tensorflow.keras.utils import plot_model
 
 safe_eval = SafeEval()
