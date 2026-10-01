@@ -513,10 +513,22 @@ def main(
         if len(y_test.shape) == 2:
             rounded_test_labels = np.argmax(y_test, axis=1)
             y_true = rounded_test_labels
-            sk_scores = _score(estimator, X_test, rounded_test_labels, scorer)
         else:
             y_true = y_test
-            sk_scores = _score(estimator, X_test, y_true, scorer)
+        # sklearn >= 1.4 requires `score_params` in `_score` and returns a
+        # single float per call, so score per metric and aggregate.
+        if isinstance(scorer, dict):
+            sk_scores = {}
+            for name, single_scorer in scorer.items():
+                single = _score(
+                    estimator, X_test, y_true, single_scorer, None
+                )
+                if isinstance(single, dict):
+                    sk_scores[name] = list(single.values())[0]
+                else:  # plain float for single-metric scorers
+                    sk_scores[name] = single
+        else:
+            sk_scores = _score(estimator, X_test, y_true, scorer, None)
 
         scores.update(sk_scores)
 
