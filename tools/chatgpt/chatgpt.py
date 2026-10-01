@@ -7,7 +7,7 @@ import re
 import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import cast, ClassVar, TypeAlias
+from typing import ClassVar, TypeAlias
 
 from openai import (
     APIConnectionError,
@@ -27,72 +27,22 @@ from openai.types.chat.chat_completion_content_part_text_param import (
     ChatCompletionContentPartTextParam,
 )
 from openai.types.chat.chat_completion_message_param import ChatCompletionMessageParam
-from openai.types.chat.chat_completion_system_message_param import (
-    ChatCompletionSystemMessageParam,
-)
-from openai.types.chat.chat_completion_user_message_param import (
-    ChatCompletionUserMessageParam,
-)
 
 MessageContentItem: TypeAlias = ChatCompletionContentPartParam
 ContextFile: TypeAlias = tuple[str, str]
 
 BILLING_URL = "https://platform.openai.com/settings/organization/billing"
-
 MAX_ERROR_CHARS = 300
 
+# Options a model may refuse, e.g. reasoning models refuse temperature.
+OPTIONAL_PARAMS = ("temperature", "top_p")
 
-def resolve_api_key(server_type: str) -> str | None:
-    """Resolve the API key based on server type."""
-    if server_type == "openai":
-        key = os.getenv("OPENAI_API_KEY", "").strip()
-        if not key:
-            raise ValueError("OpenAI API key is not provided in credentials!")
-        return key
-    elif server_type == "custom":
-        key = os.getenv("CUSTOM_SERVER_API_KEY", "").strip()
-        return key or None
-    else:
-        raise ValueError(f"Unknown server type: {server_type}")
-
-
-def resolve_base_url(server_type: str) -> str | None:
-    """Resolve the base URL based on server type."""
-    if server_type == "custom":
-        url = os.getenv("CUSTOM_SERVER_URL", "").strip()
-        if not url:
-            raise ValueError("Custom server URL is not provided in credentials!")
-        if not url.lower().startswith(("http://", "https://")):
-            raise ValueError(
-                "Custom server URL must start with http:// or https://"
-            )
-        # The SDK appends "chat/completions" to the base URL's path *and* its
-        # query string, so a trailing "?" makes the query swallow the suffix
-        # and leaves the request path entirely under the credential's control
-        # -- turning an LLM endpoint setting into an arbitrary POST target.
-        if "?" in url or "#" in url:
-            raise ValueError(
-                "Custom server URL must not contain a query string or fragment."
-            )
-        return url
-    return None
-
-
-def build_client(base_url: str | None, api_key: str | None) -> OpenAI:
-    """Create an OpenAI client, optionally with a custom base URL."""
-    kwargs: dict = {}
-    if api_key:
-        kwargs["api_key"] = api_key
-    elif base_url:
-        # Custom servers (e.g. Ollama, vLLM) may not require authentication.
-        # The OpenAI SDK requires an api_key, so use a placeholder.
-        kwargs["api_key"] = "not-needed"
-    if base_url:
-        kwargs["base_url"] = base_url
-    # Keep the SDK's default timeouts and retries, but do not follow redirects:
-    # a redirect would let the server send the request, prompt and key
-    # included, to any other URL.
-    return OpenAI(http_client=DefaultHttpxClient(follow_redirects=False), **kwargs)
+# Servers word their errors differently, so look for these words in the error.
+REFUSED = re.compile(r"unsupported|not supported|not support|n't support|extra|unrecognized|must be|not permitted")
+TOO_LONG = re.compile(r"context.?(length|window|size)|maximum context|too large for model|longer than the model|reduce the length|max_new_tokens")
+NO_IMAGES = re.compile(r"(image|multimodal)[^.]{0,40}(not (supported|enabled)|only supported)|not a multimodal|support image input|does not support images")
+NO_MODEL = re.compile(r"model[^.]{0,60}(not found|does not exist|not available)|invalid model|not a valid model|model_not_found|deploymentnotfound")
+NO_CREDIT = re.compile(r"quota|budget|credit|billing")
 
 
 @dataclass(frozen=True)
@@ -124,23 +74,15 @@ class MessageBuilder:
 
     def _build_image_content(self, path: str) -> ChatCompletionContentPartImageParam:
         """Encode an image context file for model consumption."""
-        try:
-            size = os.path.getsize(path)
-        except OSError as exc:
-            raise ValueError(f"Error reading file {path}: {exc}") from exc
-
-        if size > self._MAX_IMAGE_BYTES:
+        if os.path.getsize(path) > self._MAX_IMAGE_BYTES:
             raise ValueError(
                 f"File {path} exceeds the 20MB limit and will not be processed."
             )
 
         _, ext = os.path.splitext(path)
         media_type = self._MEDIA_TYPE_MAP.get(ext.lower(), "image/jpeg")
-        try:
-            with open(path, "rb") as img_file:
-                image_data = base64.standard_b64encode(img_file.read()).decode("utf-8")
-        except OSError as exc:
-            raise ValueError(f"Error reading file {path}: {exc}") from exc
+        with open(path, "rb") as img_file:
+            image_data = base64.standard_b64encode(img_file.read()).decode("utf-8")
 
         image_url_payload = ImageURL(
             url=f"data:{media_type};base64,{image_data}", detail="auto"
@@ -151,22 +93,17 @@ class MessageBuilder:
 
     def _build_text_content(self, path: str) -> ChatCompletionContentPartTextParam:
         """Read a text context file and wrap it in a templated message."""
-        file_content = read_text_file(path)
+        try:
+            with open(path, "r", encoding="utf-8", errors="ignore") as text_file:
+                file_content = text_file.read()
+        except OSError as exc:
+            raise ValueError(f"Error reading file {path}: {exc}") from exc
 
         basename = os.path.basename(path)
         return ChatCompletionContentPartTextParam(
             type="text",
             text=f"--- Content of {basename} ---\n{file_content}\n",
         )
-
-
-def read_text_file(path: str) -> str:
-    """Read a UTF-8 text file, reporting a tool-level error on failure."""
-    try:
-        with open(path, "r", encoding="utf-8", errors="ignore") as text_file:
-            return text_file.read()
-    except OSError as exc:
-        raise ValueError(f"Error reading file {path}: {exc}") from exc
 
 
 def parse_context_files(raw: str) -> list[ContextFile]:
@@ -196,59 +133,25 @@ def parse_context_files(raw: str) -> list[ContextFile]:
     return parsed
 
 
-def build_messages(
-    question: str,
-    context_files: Sequence[ContextFile],
-    system_message: str | None = None,
-) -> list[ChatCompletionMessageParam]:
-    """Build the full message list including optional system message and user content."""
-    message_content = MessageBuilder(
-        question=question, context_files=context_files
-    ).build()
-
-    messages: list[ChatCompletionMessageParam] = []
-
-    if system_message:
-        messages.append(
-            cast(
-                ChatCompletionMessageParam,
-                ChatCompletionSystemMessageParam(
-                    role="system", content=system_message
-                ),
-            )
-        )
-
-    user_message = ChatCompletionUserMessageParam(role="user", content=list(message_content))
-    messages.append(cast(ChatCompletionMessageParam, user_message))
-    return messages
-
-
-def build_api_params(
-    model: str,
-    messages: list[ChatCompletionMessageParam],
-    server_type: str,
-    temperature: float | None = None,
-    max_tokens: int | None = None,
-    top_p: float | None = None,
-) -> dict:
-    """Assemble the request parameters, adapted to the target server."""
-    api_params: dict = {"model": model, "messages": messages}
-    if temperature is not None:
-        api_params["temperature"] = temperature
-    if top_p is not None:
-        api_params["top_p"] = top_p
-
-    if max_tokens is not None:
-        # OpenAI deprecated ``max_tokens`` and rejects it outright on the gpt-5
-        # family; ``max_completion_tokens`` is accepted by every current OpenAI
-        # model. Custom servers are the mirror image -- Ollama's OpenAI shim
-        # still only understands ``max_tokens``.
-        if server_type == "openai":
-            api_params["max_completion_tokens"] = max_tokens
-        else:
-            api_params["max_tokens"] = max_tokens
-
-    return api_params
+def make_client(server_type: str) -> OpenAI:
+    """Create the client from the credentials Galaxy puts in the environment."""
+    if server_type == "openai":
+        api_key = os.getenv("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            raise ValueError("OpenAI API key is not provided in credentials!")
+        base_url = None
+    else:
+        base_url = os.getenv("CUSTOM_SERVER_URL", "").strip()
+        if not base_url:
+            raise ValueError("Custom server URL is not provided in credentials!")
+        # The SDK adds "chat/completions" after the URL's path and query, so a
+        # "?" or "#" would let the URL send the request to any path.
+        if not base_url.lower().startswith(("http://", "https://")) or "?" in base_url or "#" in base_url:
+            raise ValueError("Error: The server URL must start with http:// or https:// and must not contain '?' or '#'.")
+        # Many local servers need no key, but the SDK needs one.
+        api_key = os.getenv("CUSTOM_SERVER_API_KEY", "").strip() or "not-needed"
+    # No redirects: they could send the request, key included, to another URL.
+    return OpenAI(api_key=api_key, base_url=base_url, http_client=DefaultHttpxClient(follow_redirects=False))
 
 
 @dataclass
@@ -282,34 +185,17 @@ def call_chat_completion(client: OpenAI, api_params: dict) -> Reply | None:
     return Reply("".join(content), "".join(refusal), finish_reason)
 
 
-# Options a model may refuse, e.g. reasoning models refuse temperature.
-OPTIONAL_PARAMS = ("temperature", "top_p")
-
-# Servers word their errors differently, so look for these words in the error.
-REFUSED = re.compile(r"unsupported|not supported|not support|n't support|extra|unrecognized|must be|not permitted")
-TOO_LONG = re.compile(r"context.?(length|window|size)|maximum context|too large for model|longer than the model|reduce the length|max_new_tokens")
-NO_IMAGES = re.compile(r"(image|multimodal)[^.]{0,40}(not (supported|enabled)|only supported)|not a multimodal|support image input|does not support images")
-NO_MODEL = re.compile(r"model[^.]{0,60}(not found|does not exist|not available)|invalid model|not a valid model|model_not_found|deploymentnotfound")
-NO_CREDIT = re.compile(r"quota|budget|credit|billing")
-
-
 def error_text(exc: Exception) -> str:
     """All text of an error, in lower case, to look for the words above."""
     body = getattr(exc, "body", None)
-    parts = [str(getattr(exc, "param", None) or ""), str(exc)]
-    if isinstance(body, (dict, list)):
-        parts.append(json.dumps(body))
-    elif body:
-        parts.append(str(body))
-    return " ".join(parts).lower()
+    body_text = json.dumps(body) if isinstance(body, (dict, list)) else str(body or "")
+    return f"{getattr(exc, 'param', None) or ''} {exc} {body_text}".lower()
 
 
 def refused_params(exc: APIStatusError, api_params: dict) -> list[str]:
     """The optional parameters the server refused, if that is the error."""
-    if exc.status_code not in (400, 422):
-        return []
     text = error_text(exc)
-    if TOO_LONG.search(text):
+    if exc.status_code not in (400, 422) or TOO_LONG.search(text):
         return []
     sent = [p for p in OPTIONAL_PARAMS if p in api_params]
     if getattr(exc, "param", None) in sent:
@@ -355,23 +241,16 @@ def explain_error(exc: Exception, model: str, server_type: str) -> str:
     else:
         message = "The server could not handle the request."
 
-    if status:
-        details = f"HTTP {status}"
-    else:
-        # Only the type: the message of a connection error can contain the
-        # request headers, including the API key.
-        details = type(exc.__cause__ or exc).__name__
+    # Without a status, show only the error type: a connection error's
+    # message can contain the request headers, including the API key.
+    details = f"HTTP {status}" if status else type(exc.__cause__ or exc).__name__
     body = getattr(exc, "body", None)
     if server_type == "openai" and isinstance(body, dict) and isinstance(body.get("message"), str):
         details += f" - {body['message'][:MAX_ERROR_CHARS]}"
     return f"Error: {message}\nDetails: {details}"
 
 
-def request_completion(
-    client: OpenAI,
-    api_params: dict,
-    server_type: str,
-) -> Reply | None:
+def request_completion(client: OpenAI, api_params: dict, server_type: str) -> Reply | None:
     """Call chat completion and report any error. The SDK handles retries.
 
     If the model refuses temperature or top_p, send the request again
@@ -399,6 +278,11 @@ def request_completion(
     return None
 
 
+def optional(value: str, kind: type) -> float | int | None:
+    """Galaxy passes an unset optional number as an empty string or 'None'."""
+    return kind(value) if value not in ("", "None") else None
+
+
 def main(argv: Sequence[str]) -> int:
     if len(argv) < 9:
         print(
@@ -407,59 +291,41 @@ def main(argv: Sequence[str]) -> int:
         )
         return 1
 
-    try:
-        context_files = parse_context_files(argv[1])
-    except ValueError as exc:
-        print(str(exc))
-        return 1
-
-    model = argv[3]
-    server_type = argv[4]
-    temperature_arg = argv[5]
-    max_tokens_arg = argv[6]
-    top_p_arg = argv[7]
-
-    # The prompt and the system message are passed as files rather than on the
-    # command line so that Galaxy's parameter sanitizer can be turned off for
-    # them: on the command line an apostrophe would break the shell quoting and
-    # every non-ASCII character would be replaced with a literal "X".
-    try:
-        question = read_text_file(argv[2])
-        system_message = read_text_file(argv[8]).strip() or None
-    except ValueError as exc:
-        print(str(exc))
-        return 1
-
+    model, server_type = argv[3], argv[4]
+    # The prompt and the system message come as files, so Galaxy does not
+    # need to sanitize them (that would change quotes and non-ASCII text).
+    with open(argv[2], encoding="utf-8") as file_handle:
+        question = file_handle.read()
+    with open(argv[8], encoding="utf-8") as file_handle:
+        system_message = file_handle.read().strip()
     if not question.strip():
         print("The prompt is empty!")
         return 1
 
-    temperature = float(temperature_arg) if temperature_arg and temperature_arg != "None" else None
-    max_tokens = int(max_tokens_arg) if max_tokens_arg and max_tokens_arg != "None" else None
-    top_p = float(top_p_arg) if top_p_arg and top_p_arg != "None" else None
-
     try:
-        api_key = resolve_api_key(server_type)
-        base_url = resolve_base_url(server_type)
+        client = make_client(server_type)
+        messages: list[ChatCompletionMessageParam] = []
+        if system_message:
+            messages.append({"role": "system", "content": system_message})
+        content = MessageBuilder(question, parse_context_files(argv[1])).build()
+        messages.append({"role": "user", "content": content})
     except ValueError as exc:
         print(str(exc))
         return 1
-
-    try:
-        client = build_client(base_url, api_key)
-    except Exception:  # noqa: BLE001
+    except Exception:  # noqa: BLE001 - e.g. a URL the SDK cannot parse
         print("Error: The server URL is not valid. Check it in your credentials.")
         return 1
 
-    try:
-        messages = build_messages(question, context_files, system_message)
-    except ValueError as exc:
-        print(str(exc))
-        return 1
+    api_params: dict = {"model": model, "messages": messages}
+    for name, value in (("temperature", optional(argv[5], float)), ("top_p", optional(argv[7], float))):
+        if value is not None:
+            api_params[name] = value
+    max_tokens = optional(argv[6], int)
+    if max_tokens is not None:
+        # OpenAI's reasoning models only take max_completion_tokens, while
+        # Ollama only takes max_tokens.
+        api_params["max_completion_tokens" if server_type == "openai" else "max_tokens"] = max_tokens
 
-    api_params = build_api_params(
-        model, messages, server_type, temperature, max_tokens, top_p
-    )
     reply = request_completion(client, api_params, server_type)
     if reply is None:
         return 1
@@ -473,20 +339,13 @@ def main(argv: Sequence[str]) -> int:
                 "count their hidden thinking in this limit."
             )
         else:
-            print(
-                f"Error: The model '{model}' gave an empty answer. "
-                "Try again or choose another model."
-            )
+            print(f"Error: The model '{model}' gave an empty answer. Try again or choose another model.")
         return 1
 
     with open("output.md", "w", encoding="utf-8") as file_handle:
         file_handle.write(reply.content)
-
     if reply.finish_reason in ("length", "content_filter"):
-        print(
-            "Warning: the answer may be incomplete "
-            f"(finish_reason: {reply.finish_reason})."
-        )
+        print(f"Warning: the answer may be incomplete (finish_reason: {reply.finish_reason}).")
     print(
         f"Successfully generated response for:\n{question[:100]}{'...' if len(question) > 100 else ''}"
     )
