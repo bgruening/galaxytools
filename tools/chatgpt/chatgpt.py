@@ -16,7 +16,6 @@ from openai import (
     DefaultHttpxClient,
     OpenAI,
 )
-from openai.types.chat import ChatCompletion
 from openai.types.chat.chat_completion_content_part_image_param import (
     ChatCompletionContentPartImageParam,
     ImageURL,
@@ -252,9 +251,35 @@ def build_api_params(
     return api_params
 
 
-def call_chat_completion(client: OpenAI, api_params: dict) -> ChatCompletion:
-    """Request a chat completion with the prepared parameters."""
-    return client.chat.completions.create(**api_params)
+@dataclass
+class Reply:
+    content: str
+    refusal: str
+    finish_reason: str | None
+
+
+def call_chat_completion(client: OpenAI, api_params: dict) -> Reply | None:
+    """Request a chat completion and collect the streamed answer.
+
+    Streaming keeps the connection busy while a reasoning model thinks, so a
+    long answer does not hit the read timeout. Returns None if the reply is
+    not a chat answer at all, e.g. a web page from a wrong URL.
+    """
+    content, refusal, finish_reason, chunks = [], [], None, 0
+    with client.chat.completions.create(**api_params, stream=True) as stream:
+        for chunk in stream:
+            chunks += 1
+            if not getattr(chunk, "choices", None):
+                continue
+            choice = chunk.choices[0]
+            if isinstance(choice.delta.content, str):
+                content.append(choice.delta.content)
+            if isinstance(getattr(choice.delta, "refusal", None), str):
+                refusal.append(choice.delta.refusal)
+            finish_reason = choice.finish_reason or finish_reason
+    if not chunks:
+        return None
+    return Reply("".join(content), "".join(refusal), finish_reason)
 
 
 # Options a model may refuse, e.g. reasoning models refuse temperature.
@@ -346,7 +371,7 @@ def request_completion(
     client: OpenAI,
     api_params: dict,
     server_type: str,
-) -> ChatCompletion | None:
+) -> Reply | None:
     """Call chat completion and report any error. The SDK handles retries.
 
     If the model refuses temperature or top_p, send the request again
@@ -354,7 +379,13 @@ def request_completion(
     """
     model = api_params["model"]
     try:
-        return call_chat_completion(client, api_params)
+        reply = call_chat_completion(client, api_params)
+        if reply is None:
+            print(
+                "Error: The server URL seems wrong. Its reply is not a chat answer. "
+                "Check that it ends with the API path, for example /v1 or /api."
+            )
+        return reply
     except APIStatusError as exc:
         refused = refused_params(exc, api_params)
         if refused:
@@ -429,29 +460,13 @@ def main(argv: Sequence[str]) -> int:
     api_params = build_api_params(
         model, messages, server_type, temperature, max_tokens, top_p
     )
-    response = request_completion(client, api_params, server_type)
-    if response is None:
+    reply = request_completion(client, api_params, server_type)
+    if reply is None:
         return 1
-    # Some servers answer a wrong URL with "200 OK" and a web page or an
-    # error object instead of a chat answer.
-    if not isinstance(response, ChatCompletion) or not response.choices:
-        print(
-            "Error: The server URL seems wrong. Its reply is not a chat answer. "
-            "Check that it ends with the API path, for example /v1 or /api."
-        )
-        return 1
-
-    choice = response.choices[0]
-    message = getattr(choice, "message", None)
-    content = getattr(message, "content", None)
-    if content is not None and not isinstance(content, str):
-        print("Error: The server's reply has an unexpected format.")
-        return 1
-    if not content:
-        refusal = getattr(message, "refusal", None)
-        if refusal:
-            print(f"The model declined to answer: {str(refusal)[:MAX_ERROR_CHARS]}")
-        elif choice.finish_reason == "length":
+    if not reply.content:
+        if reply.refusal:
+            print(f"The model declined to answer: {reply.refusal[:MAX_ERROR_CHARS]}")
+        elif reply.finish_reason == "length":
             print(
                 "Error: The answer was empty because it hit the Max tokens limit. "
                 "Raise Max tokens or leave it empty. Reasoning models also "
@@ -465,12 +480,12 @@ def main(argv: Sequence[str]) -> int:
         return 1
 
     with open("output.md", "w", encoding="utf-8") as file_handle:
-        file_handle.write(content)
+        file_handle.write(reply.content)
 
-    if choice.finish_reason in ("length", "content_filter"):
+    if reply.finish_reason in ("length", "content_filter"):
         print(
             "Warning: the answer may be incomplete "
-            f"(finish_reason: {choice.finish_reason})."
+            f"(finish_reason: {reply.finish_reason})."
         )
     print(
         f"Successfully generated response for:\n{question[:100]}{'...' if len(question) > 100 else ''}"

@@ -1,62 +1,35 @@
-# ChatGPT Galaxy tool
+# chatGPT Galaxy tool
 
-## What it does
-
-This tool leverages OpenAI-compatible APIs to generate responses based on user-provided context and prompts.
-Users can upload context data in various formats and ask questions or execute prompts related to that data.
-The tool supports two server types — the official OpenAI API and custom OpenAI-compatible servers — giving flexibility for both cloud and self-hosted deployments.
-
-## Server Types
-
-### OpenAI (official API)
-
-Connect directly to OpenAI's API using your OpenAI API key. The model list is loaded live from the public [OpenRouter model list](https://openrouter.ai/api/v1/models) and shows OpenAI's current chat models, newest first. (OpenAI's own `/v1/models` endpoint needs the user's API key, which Galaxy cannot use while building the form.) The `*-pro` and `*-codex` models are left out because they only work with the Responses API. If a model is missing, or the list cannot be loaded, choose **Type a model name**.
-
-To obtain an API key, visit https://platform.openai.com/account/api-keys.
-Make sure to set up a payment method: https://platform.openai.com/settings/organization/billing/
-
-### Custom OpenAI-compatible server
-
-Connect to any server that implements the OpenAI Chat Completions API (e.g., vLLM, Ollama, LiteLLM proxy, Mistral, local deployments). The server URL is configured once in the Custom Server Credentials section; only the model name is specified per run. Authentication is optional — many local servers do not require an API key.
+Sends your prompt, and optional files, to a large language model (LLM) and saves the answer as a Markdown file.
+You can use OpenAI, or any server with an OpenAI-compatible API, for example Open WebUI, vLLM, Ollama or LiteLLM.
 
 ## Credentials
 
-- **OpenAI API Key**: Required when using the OpenAI server type. Enter your key in the Galaxy credentials section.
-- **Custom Server URL**: Required when using the Custom server type. The base URL of the OpenAI-compatible API (e.g. `https://api.example.com/v1`, `http://localhost:8000/v1`). It must start with `http://` or `https://`.
-- **Custom Server API Key**: Optional. Only needed if your custom server requires authentication. Leave empty for servers without API key requirements (e.g., local vLLM or Ollama).
+Add them once with the **Provide credentials** button at the top of the tool form.
 
-## Usage
+- **OpenAI**: your OpenAI API key ([get one here](https://platform.openai.com/account/api-keys); the account needs [credits](https://platform.openai.com/settings/organization/billing)).
+- **Custom server**: the server URL and, if the server needs one, an API key. The URL is the server address plus its API path, for example `https://my-server.org/v1`. For Open WebUI it ends with `/api`. The job runs on a Galaxy server, so `localhost` means that server, not your computer.
 
-### Input
+## Inputs
 
-1. **Select a Server Type**: Choose between OpenAI or Custom.
+- **Server**: OpenAI or your custom server.
+- **Model**: for OpenAI, choose from the current models or type any model name. The list is loaded live from the public [OpenRouter model list](https://openrouter.ai/api/v1/models), because OpenAI's own model list needs the user's key, which Galaxy cannot use while building the form. The `*-pro` and `*-codex` models are left out: they only work with OpenAI's Responses API. For a custom server, type the model name as the server knows it.
+- **Context** (optional): files for the model to read. Text files (TXT, CSV, JSON, HTML) work best. PDF and Word files are not converted, so turn them into text first, for example with the Markitdown tool. Images (JPG, PNG, GIF, max 20 MB each) need a model that can read images: some models ignore images without an error.
+- **Prompt**: your question or task. Be specific.
 
-2. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOCX, HTML, JSON, PDF, TXT, JPG, PNG, or GIF. Individual images are limited to 20MB. This context data serves as the input for the prompt you wish to execute. If no context is provided, the model will respond based solely on the prompt. To use images, choose a model that can read images: some models ignore images without an error.
+## Advanced options
 
-3. **Provide a Prompt**: Provide a prompt or task for the model to execute. The more specific the prompt, the more tailored the response will be.
+- **Temperature**: lower (0 to 0.3) gives focused, repeatable answers. Higher (0.7 or more) gives more creative answers.
+- **Top P**: another way to control randomness. Change Temperature or Top P, not both.
+- **Max tokens**: the longest answer allowed. Reasoning models also count their hidden thinking, so a low value can give an empty answer.
+- **System message**: tells the model how to behave, for example "You are a helpful biology assistant".
 
-   [General thoughts on prompting](https://help.openai.com/en/articles/4936848-how-do-i-create-a-good-prompt-for-an-ai-model-like-gpt-4)
+Many reasoning models do not accept Temperature or Top P. The tool then leaves them out and writes a note in the job log.
 
-   [Prompt examples](https://platform.openai.com/docs/examples)
+## If something goes wrong
 
-### Advanced Options
+The job log says what went wrong in one short sentence, for example a wrong API key, an unknown model name, or files that are too long for the model.
 
-- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. Some models (e.g. reasoning models) do not accept it; the tool then leaves it out and writes a note in the job log.
+## Privacy
 
-- **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used. For the OpenAI server type it is sent as `max_completion_tokens`, which also covers the hidden reasoning tokens of the reasoning models — setting it too low there can consume the whole budget on reasoning and return an empty answer. For custom servers it is sent as `max_tokens`, which Ollama and older vLLM builds still require.
-
-- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, it is left out (with a note) if the model does not accept it.
-
-- **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
-
-### Output
-
-The output is a response generated by the selected model, crafted based on the provided context data and the prompt.
-This response is saved in a Markdown file.
-
-## Privacy note
-
-When you run this tool, your input data is sent to the configured server using the provided credentials.
-Context files are embedded directly in the chat completion request — text files inline, images as base64 `data:` URIs — so they are not uploaded to OpenAI's Files/storage API and there is nothing to delete afterwards.
-For the OpenAI server type, the request is subject to OpenAI's data usage policies.
-For custom servers, data handling depends on the server's policies, and the Custom Server URL you configure determines which host the Galaxy job connects to.
+Your prompt, system message and files leave Galaxy. They are sent to OpenAI or to your custom server, and that service's data policy applies. Files are sent inside the request (text inline, images as base64), not uploaded to OpenAI's file storage.
