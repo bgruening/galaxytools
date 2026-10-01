@@ -515,8 +515,7 @@ def main(
             y_true = rounded_test_labels
         else:
             y_true = y_test
-        # sklearn >= 1.4 requires `score_params` in `_score` and returns a
-        # single float per call, so score per metric and aggregate.
+
         if isinstance(scorer, dict):
             sk_scores = {}
             for name, single_scorer in scorer.items():

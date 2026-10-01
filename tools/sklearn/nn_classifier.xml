@@ -24,21 +24,6 @@ from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
 from galaxy_ml.utils import clean_params, get_X_y
 
 
-def _clean_params_compat(estimator):
-    """`get_params()` in newer sklearn may request parameters that
-    estimators fit (and pickled) with older sklearn do not carry as
-    instance attributes; fall back to fresh defaults for those."""
-    try:
-        return clean_params(estimator)
-    except AttributeError:
-        # clone() also needs get_params(), so use the fresh class instead
-        fresh = type(estimator)()
-        for key, value in fresh.get_params().items():
-            if not hasattr(estimator, key):
-                setattr(estimator, key, value)
-        return clean_params(estimator)
-
-
 input_json_path = sys.argv[1]
 with open(input_json_path, "r") as param_handler:
     params = json.load(param_handler)
@@ -46,18 +31,7 @@ with open(input_json_path, "r") as param_handler:
 #if $selected_tasks.selected_task == "load":
 
 classifier_object = load_model_from_h5('$infile_model')
-classifier_object = _clean_params_compat(classifier_object)
-
-# Models fit with older sklearn may miss attributes that newer sklearn's
-# predict() requires; restore them where possible.
-if not hasattr(classifier_object, "classes_") and \
-        hasattr(classifier_object, "_label_binarizer"):
-    classifier_object.classes_ = classifier_object._label_binarizer.classes_
-if classifier_object.__class__.__name__ == "NearestCentroid" and \
-        not hasattr(classifier_object, "class_prior_"):
-    import numpy as _np
-    n_classes = len(classifier_object.classes_)
-    classifier_object.class_prior_ = _np.full(n_classes, 1.0 / n_classes)
+classifier_object = clean_params(classifier_object)
 
 header = 'infer' if params["selected_tasks"]["header"] else None
 data = pandas.read_csv("$selected_tasks.infile_data", sep='\t', header=header, index_col=None, parse_dates=True, encoding=None)

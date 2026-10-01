@@ -49,16 +49,7 @@ outfile_predict = "$outfile_predict"
 if params["selected_tasks"]["selected_task"] == "train":
     algorithm = params["selected_tasks"]["selected_algorithms"]["selected_algorithm"]
     options = params["selected_tasks"]["selected_algorithms"]["options"]
-    if algorithm == "AdaBoostClassifier":
-        options.pop("algorithm", None)
-    if options.get("criterion") == "mse":
-        options["criterion"] = "squared_error"
-    if options.get("loss") == "ls":
-        options["loss"] = "squared_error"
-    elif options.get("loss") == "lad":
-        options["loss"] = "absolute_error"
-    elif options.get("loss") == "deviance":
-        options["loss"] = "log_loss"
+
     if algorithm in ['RandomForestClassifier', 'RandomForestRegressor']:
         options['n_jobs'] = N_JOBS
     if "select_max_features" in options:
@@ -67,8 +58,6 @@ if params["selected_tasks"]["selected_task"] == "train":
             options["select_max_features"].pop("num_max_features")
         options["max_features"] = options["select_max_features"]["max_features"]
         options.pop("select_max_features")
-    if options.get("max_features") == "auto":
-        options["max_features"] = "sqrt" if algorithm.endswith("Classifier") else 1.0
     if "min_samples_leaf" in options and options["min_samples_leaf"] == 1.0:
         options["min_samples_leaf"] = 1
     if "min_samples_split" in options and options["min_samples_split"] > 1.0:
@@ -79,21 +68,11 @@ if params["selected_tasks"]["selected_task"] == "train":
     my_class = getattr(sklearn.ensemble, algorithm)
     estimator = my_class(**options)
     estimator.fit(X,y)
-    # Current gradient boosting estimators cache a Cython-backed loss object
-    # that Galaxy-ML's safe HDF5 serializer cannot persist.  It is derived
-    # entirely from the public estimator parameters, so rebuild it on load.
-    if algorithm in ['GradientBoostingClassifier', 'GradientBoostingRegressor']:
-        del estimator._loss
-        del estimator._rng
     dump_model_to_h5(estimator, outfile_fit)
 
 else:
     classifier_object = load_model_from_h5(infile_model)
     classifier_object = clean_params(classifier_object)
-    if isinstance(classifier_object, (sklearn.ensemble.GradientBoostingClassifier,
-                                      sklearn.ensemble.GradientBoostingRegressor)) \
-            and not hasattr(classifier_object, '_loss'):
-        classifier_object._loss = classifier_object._get_loss(sample_weight=None)
     header = 'infer' if params["selected_tasks"]["header"] else None
     data = pandas.read_csv(infile_data, sep='\t', header=header, index_col=None, parse_dates=True, encoding=None)
     prediction = classifier_object.predict(data)

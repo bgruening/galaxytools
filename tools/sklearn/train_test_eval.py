@@ -416,8 +416,6 @@ def main(
             X_test, y_test=y_test, scorer=scorer, is_multimetric=True
         )
     else:
-        # sklearn >= 1.4 changed `_score` to require `score_params` and no
-        # longer accepts a dict of scorers; score per metric and aggregate.
         if isinstance(scorer, dict):
             scores = {}
             for name, single_scorer in scorer.items():

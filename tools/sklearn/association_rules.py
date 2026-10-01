@@ -111,7 +111,7 @@ def main(
     # Keep the output schema stable across mlxtend releases. Newer versions add
     # additional rule metrics, but these nine columns are the documented output
     # of this Galaxy tool.
-    rules = rules[
+    '''rules = rules[
         [
             "antecedents",
             "consequents",
@@ -123,7 +123,7 @@ def main(
             "leverage",
             "conviction",
         ]
-    ]
+    ]'''
 
     # Write association rules and metrics to file
     rules.to_csv(outfile, sep="\t", index=False)
