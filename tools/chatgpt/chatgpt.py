@@ -326,7 +326,7 @@ def explain_error(exc: Exception, model: str, server_type: str) -> str:
     elif status and status >= 500:
         message = "The server had a problem. Try again later."
     elif status in (404, 405) or (status and 300 <= status < 400):
-        message = "The server URL seems wrong. Check that it ends with the API path, for example /v1."
+        message = "The server URL seems wrong. Check that it ends with the API path, for example /v1 or /api."
     else:
         message = "The server could not handle the request."
 
@@ -437,7 +437,7 @@ def main(argv: Sequence[str]) -> int:
     if not isinstance(response, ChatCompletion) or not response.choices:
         print(
             "Error: The server URL seems wrong. Its reply is not a chat answer. "
-            "Check that it ends with the API path, for example /v1."
+            "Check that it ends with the API path, for example /v1 or /api."
         )
         return 1
 
