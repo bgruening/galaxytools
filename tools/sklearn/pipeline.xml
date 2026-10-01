@@ -16,6 +16,7 @@
         <configfile name="sklearn_pipeline_script">
             <![CDATA[
 import imblearn
+import inspect
 import json
 import pandas as pd
 import pprint
@@ -55,6 +56,47 @@ params['final_estimator']['estimator_selector']['wrapped_estimator'] =\
 #end if
 
 pipeline_steps = []
+
+
+def add_missing_init_attributes(obj, seen=None):
+    """Fill constructor-backed attributes added after a model was saved."""
+    if seen is None:
+        seen = set()
+    if id(obj) in seen:
+        return obj
+    seen.add(id(obj))
+
+    if isinstance(obj, dict):
+        children = list(obj.values())
+    elif isinstance(obj, (list, tuple, set)):
+        children = list(obj)
+    else:
+        children = None
+    if children is not None:
+        for child in children:
+            add_missing_init_attributes(child, seen)
+        return obj
+    if not hasattr(obj, "__dict__"):
+        return obj
+
+    parameters = []
+    for cls in obj.__class__.__mro__:
+        try:
+            parameters.extend(inspect.signature(cls.__init__).parameters.values())
+        except (TypeError, ValueError):
+            pass
+    for parameter in parameters:
+        if (
+            parameter.name != "self"
+            and parameter.default is not inspect.Parameter.empty
+            and not hasattr(obj, parameter.name)
+        ):
+            setattr(obj, parameter.name, parameter.default)
+
+    for value in list(vars(obj).values()):
+        add_missing_init_attributes(value, seen)
+    return obj
+
 
 def get_component(input_json, check_none=False):
     is_imblearn = False
@@ -179,8 +221,8 @@ elif estimator_json['selected_module'] == 'sklearn.compose':
     regressor_path = '$final_estimator.estimator_selector.regressor'
     transformer_path = '$final_estimator.estimator_selector.transformer'
     #end if
-    regressor = load_model_from_h5(regressor_path)
-    transformer = load_model_from_h5(transformer_path)
+    regressor = add_missing_init_attributes(load_model_from_h5(regressor_path))
+    transformer = add_missing_init_attributes(load_model_from_h5(transformer_path))
     estimator = compose.TransformedTargetRegressor(regressor=regressor, transformer=transformer)
     pipeline_steps.append( estimator )
 else:
@@ -196,6 +238,10 @@ else:
     else:
         out_obj = make_pipeline(*pipeline_steps)
     pprint.pprint(out_obj.named_steps)
+
+for step in pipeline_steps:
+    if isinstance(step, cluster.FeatureAgglomeration):
+        step.pooling_func = preprocessing.StandardScaler
 
 dump_model_to_h5(out_obj, '$outfile', verbose=0)
 
@@ -477,7 +523,7 @@ dump_model_to_h5(out_obj, '$outfile', verbose=0)
                     <param name="component_type" value="FeatureAgglomeration" />
                     <conditional name="FeatureAgglomeration_selector">
                         <param name="select_algorithm" value="FeatureAgglomeration" />
-                        <param name="text_params" value="n_clusters=3, affinity='euclidean'" />
+                        <param name="text_params" value="n_clusters=3, metric='euclidean'" />
                     </conditional>
                 </conditional>
             </repeat>

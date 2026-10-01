@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import json
 import os
 import sys
@@ -50,6 +51,48 @@ NON_SEARCHABLE = (
     "nthread",
     "callbacks",
 )
+
+
+def add_missing_init_attributes(obj, seen=None):
+    """Fill constructor-backed attributes added after a model was saved."""
+    if seen is None:
+        seen = set()
+    if id(obj) in seen:
+        return obj
+    seen.add(id(obj))
+
+    if isinstance(obj, dict):
+        children = list(obj.values())
+    elif isinstance(obj, (list, tuple, set)):
+        children = list(obj)
+    else:
+        children = None
+    if children is not None:
+        for child in children:
+            add_missing_init_attributes(child, seen)
+        return obj
+    if not hasattr(obj, "__dict__"):
+        return obj
+
+    parameters = []
+    for cls in obj.__class__.__mro__:
+        try:
+            parameters.extend(inspect.signature(cls.__init__).parameters.values())
+        except (TypeError, ValueError):
+            pass
+    for parameter in parameters:
+        if (
+            parameter.name != "self"
+            and parameter.default is not inspect.Parameter.empty
+            and not hasattr(obj, parameter.name)
+        ):
+            setattr(obj, parameter.name, parameter.default)
+
+    for value in list(vars(obj).values()):
+        add_missing_init_attributes(value, seen)
+    if isinstance(obj, cluster.FeatureAgglomeration):
+        obj.pooling_func = np.mean
+    return obj
 
 
 def _eval_search_params(params_builder):
@@ -116,7 +159,7 @@ def _eval_search_params(params_builder):
                 skrebate.SURFstar(n_jobs=N_JOBS),
                 skrebate.MultiSURF(n_jobs=N_JOBS),
                 skrebate.MultiSURFstar(n_jobs=N_JOBS),
-                imblearn.under_sampling.ClusterCentroids(random_state=0, n_jobs=N_JOBS),
+                imblearn.under_sampling.ClusterCentroids(random_state=0),
                 imblearn.under_sampling.CondensedNearestNeighbour(
                     random_state=0, n_jobs=N_JOBS
                 ),
@@ -554,7 +597,7 @@ def main(
         else False
     )
 
-    estimator = load_model_from_h5(infile_estimator)
+    estimator = add_missing_init_attributes(load_model_from_h5(infile_estimator))
 
     estimator = clean_params(estimator)
 
@@ -630,7 +673,7 @@ def main(
     if options["error_score"]:
         options["error_score"] = "raise"
     else:
-        options["error_score"] = np.NaN
+        options["error_score"] = np.nan
     if options["refit"] and isinstance(options["scoring"], dict):
         options["refit"] = primary_scoring
     if "pre_dispatch" in options and options["pre_dispatch"] == "":
@@ -687,7 +730,7 @@ def main(
                 cv=outer_cv,
                 n_jobs=N_JOBS,
                 verbose=options["verbose"],
-                fit_params={"groups": groups},
+                params={"groups": groups},
                 return_estimator=(params["save"] == "save_estimator"),
                 error_score=options["error_score"],
                 return_train_score=True,
@@ -705,7 +748,7 @@ def main(
                         cv=outer_cv,
                         n_jobs=N_JOBS,
                         verbose=options["verbose"],
-                        fit_params={"groups": groups},
+                        params={"groups": groups},
                         return_estimator=(params["save"] == "save_estimator"),
                         error_score=options["error_score"],
                         return_train_score=True,
