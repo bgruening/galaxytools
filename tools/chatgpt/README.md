@@ -41,11 +41,11 @@ Connect to any server that implements the OpenAI Chat Completions API (e.g., vLL
 
 ### Advanced Options
 
-- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only the gpt-3/gpt-4 models and `gpt-5.4` accept it; the other models are reasoning models that reject it, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
+- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. Some models (e.g. reasoning models) do not accept it; the tool then leaves it out and writes a note in the job log.
 
 - **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used. For the OpenAI server type it is sent as `max_completion_tokens`, which also covers the hidden reasoning tokens of the reasoning models — setting it too low there can consume the whole budget on reasoning and return an empty answer. For custom servers it is sent as `max_tokens`, which Ollama and older vLLM builds still require.
 
-- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only the gpt-3/gpt-4 models and `gpt-5.4` accept it on the OpenAI server type.
+- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, it is left out (with a note) if the model does not accept it.
 
 - **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
 

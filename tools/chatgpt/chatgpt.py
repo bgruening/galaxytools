@@ -11,6 +11,7 @@ from typing import cast, ClassVar, TypeAlias
 from openai import (
     APIConnectionError,
     AuthenticationError,
+    BadRequestError,
     DefaultHttpxClient,
     OpenAI,
     RateLimitError,
@@ -223,19 +224,6 @@ def build_messages(
     return messages
 
 
-def uses_fixed_sampling(model: str) -> bool:
-    """Whether an OpenAI model refuses temperature/top_p.
-
-    The gpt-3 and gpt-4 families are not reasoning models and accept both.
-    gpt-5.4 accepts them too, because its default reasoning effort is "none"
-    (checked against the live API on 2026-09-07). Every other OpenAI model is
-    a reasoning model and answers them with a 400 error, so for anything else
-    they are left out: sending them would fail the job, leaving them out only
-    costs a note.
-    """
-    return not (model.startswith(("gpt-3", "gpt-4")) or model == "gpt-5.4")
-
-
 def build_api_params(
     model: str,
     messages: list[ChatCompletionMessageParam],
@@ -246,21 +234,10 @@ def build_api_params(
 ) -> dict:
     """Assemble the request parameters, adapted to the target server."""
     api_params: dict = {"model": model, "messages": messages}
-    fixed_sampling = server_type == "openai" and uses_fixed_sampling(model)
-
-    for name, value in (("temperature", temperature), ("top_p", top_p)):
-        if value is None:
-            continue
-        if fixed_sampling:
-            if value != 1.0:
-                print(
-                    f"Note: {name} is not sent for '{model}' -- on the OpenAI "
-                    f"API only gpt-3/gpt-4 models and gpt-5.4 accept it; the "
-                    f"requested value "
-                    f"{value} was ignored."
-                )
-            continue
-        api_params[name] = value
+    if temperature is not None:
+        api_params["temperature"] = temperature
+    if top_p is not None:
+        api_params["top_p"] = top_p
 
     if max_tokens is not None:
         # OpenAI deprecated ``max_tokens`` and rejects it outright on the gpt-5
@@ -330,15 +307,48 @@ def is_quota_error(exc: Exception) -> bool:
     return "insufficient_quota" in str(exc)
 
 
+# Options a model may refuse. Reasoning models answer them with a 400 error
+# that names the option, e.g. param "temperature", code "unsupported_value".
+OPTIONAL_PARAMS = ("temperature", "top_p")
+
+
+def unsupported_param(exc: BadRequestError, api_params: dict) -> str | None:
+    """The optional parameter the server refused, if that is the error."""
+    body = exc.body if isinstance(exc.body, dict) else {}
+    param = body.get("param")
+    if (
+        param in OPTIONAL_PARAMS
+        and param in api_params
+        and body.get("code") in ("unsupported_value", "unsupported_parameter")
+    ):
+        return param
+    return None
+
+
 def request_completion(
     client: OpenAI,
     api_params: dict,
     server_type: str,
 ) -> ChatCompletion | None:
-    """Call chat completion and report any error. The SDK handles retries."""
+    """Call chat completion and report any error. The SDK handles retries.
+
+    If the model refuses temperature or top_p, send the request again
+    without it and say so in the job log.
+    """
     trusted = server_type == "openai"
     try:
         return call_chat_completion(client, api_params)
+    except BadRequestError as exc:
+        param = unsupported_param(exc, api_params)
+        if param is None:
+            print(f"An error occurred: {describe_error(exc, trusted)}")
+            return None
+        print(
+            f"Note: model '{api_params['model']}' does not accept {param}, "
+            "so it was left out."
+        )
+        api_params = {k: v for k, v in api_params.items() if k != param}
+        return request_completion(client, api_params, server_type)
     except RateLimitError as exc:
         if trusted and is_quota_error(exc):
             print(
