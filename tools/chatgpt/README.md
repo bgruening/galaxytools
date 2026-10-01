@@ -10,9 +10,9 @@ The tool supports two server types — the official OpenAI API and custom OpenAI
 
 ### OpenAI (official API)
 
-Connect directly to OpenAI's API using your OpenAI API key. Select from the available OpenAI models: the current generation (`gpt-5.6-terra`, `gpt-5.6-sol`, `gpt-5.6-luna`, `gpt-6-astra`, `gpt-5.5`, `gpt-5.4`), the non-reasoning `gpt-4.1` and `gpt-4o`, and the legacy `gpt-5`/`gpt-5-mini`/`gpt-5-nano` (kept so existing histories stay reproducible; OpenAI retires their snapshots on 2026-12-11).
+Connect directly to OpenAI's API using your OpenAI API key. Select from the available OpenAI models: the GPT-6 series (`gpt-6.1-sol`, `gpt-6-astra`, `gpt-6-luna`), the previous generation (`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`, `gpt-5.5`, `gpt-5.4`), the non-reasoning `gpt-4.1` and `gpt-4o`, and the legacy `gpt-5`/`gpt-5-mini`/`gpt-5-nano` (kept so existing histories stay reproducible; OpenAI retires their snapshots on 2026-12-11).
 
-The list is restricted to models that OpenAI serves on the Chat Completions endpoint. The `*-pro`, `*-codex` and `gpt-5.6-cyber` models are Responses-API-only and are therefore not offered. Verified against the OpenAI model catalogue on 2026-09-07.
+The list is restricted to models that OpenAI serves on the Chat Completions endpoint. The `*-pro`, `*-codex` and `gpt-5.6-cyber` models are Responses-API-only and are therefore not offered. Verified against the OpenAI model catalogue on 2026-10-01.
 
 To use a model that is not in the list yet, pick **Other model** and type its name.
 

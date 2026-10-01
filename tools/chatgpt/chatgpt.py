@@ -231,6 +231,8 @@ def build_messages(
 # other model in the option list answers a request carrying temperature with
 # 400 unsupported_value, and one carrying top_p with 400 unsupported_parameter.
 # gpt-5.4 accepts both because its default reasoning effort is "none".
+# gpt-6.1-sol and gpt-6-luna (added 2026-10-01, not probed live) are reasoning
+# models with a "medium" default effort, so they are left out as well.
 # A prefix rule cannot express this -- "gpt-6-astra" does not start with
 # "gpt-5", and "gpt-5.4" does -- so keep an explicit set, and re-check it when
 # adding an option. Anything not listed is treated as refusing the parameters:
