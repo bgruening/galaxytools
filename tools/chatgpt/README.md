@@ -14,6 +14,8 @@ Connect directly to OpenAI's API using your OpenAI API key. Select from the avai
 
 The list is restricted to models that OpenAI serves on the Chat Completions endpoint. The `*-pro`, `*-codex` and `gpt-5.6-cyber` models are Responses-API-only and are therefore not offered. Verified against the OpenAI model catalogue on 2026-09-07.
 
+To use a model that is not in the list yet, pick **Other model** and type its name.
+
 To obtain an API key, visit https://platform.openai.com/account/api-keys.
 Make sure to set up a payment method: https://platform.openai.com/settings/organization/billing/
 
