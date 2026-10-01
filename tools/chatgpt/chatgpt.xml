@@ -37,11 +37,7 @@
 
 ## Resolve model based on server type
 #if $server_type.server_type_selection == 'openai'
-    #if $server_type.openai_model.model == 'other'
-        #set model = $server_type.openai_model.other_model
-    #else
-        #set model = $server_type.openai_model.model
-    #end if
+    #set model = $server_type.openai_model.model
 #else
     #set model = $server_type.custom_model
 #end if
@@ -68,41 +64,38 @@ python '$__tool_directory__/chatgpt.py'
             </param>
             <when value="openai">
                 <conditional name="openai_model">
-                    <param name="model" type="select" optional="false" label="Model" help="Select the OpenAI model you want to use.">
-                        <!-- Chat Completions models, verified against https://developers.openai.com/api/docs/models on 2026-10-01.
-                             The *-pro, *-codex and gpt-5.6-cyber models are deliberately absent: they are Responses API only
-                             and would fail on every run. The gpt-5 family is kept for reproducibility of existing histories
-                             but OpenAI retires its only snapshot on 2026-12-11. -->
-                        <option value="gpt-6.1-sol" selected="true">Near-Astra performance for complex work at a lower cost. Recommended starting point. (gpt-6.1-sol)</option>
-                        <option value="gpt-6-astra">Most capable model for the most demanding work. Markedly more expensive. (gpt-6-astra)</option>
-                        <option value="gpt-6-luna">Most efficient model for focused, high-volume tasks like summarization and extraction. (gpt-6-luna)</option>
-                        <option value="gpt-5.6-sol">Previous generation flagship. (gpt-5.6-sol)</option>
-                        <option value="gpt-5.6-terra">Previous generation, balances intelligence and cost. (gpt-5.6-terra)</option>
-                        <option value="gpt-5.6-luna">Previous generation, most cost-efficient. (gpt-5.6-luna)</option>
-                        <option value="gpt-5.5">A new class of intelligence for coding and professional work. (gpt-5.5)</option>
-                        <option value="gpt-5.4">A more affordable model for coding and professional work. (gpt-5.4)</option>
-                        <option value="gpt-4.1">Smartest non-reasoning model. (gpt-4.1)</option>
-                        <option value="gpt-4o">Older multimodal model. (gpt-4o)</option>
-                        <option value="gpt-5">Legacy, superseded by gpt-5.6-sol. (gpt-5)</option>
-                        <option value="gpt-5-mini">Legacy, superseded by gpt-5.6-terra. (gpt-5-mini)</option>
-                        <option value="gpt-5-nano">Legacy, superseded by gpt-5.6-luna. (gpt-5-nano)</option>
-                        <option value="other">Other model, type its name below</option>
+                    <param name="model_source" type="select" label="Model" help="Choose from the current OpenAI models, or type the name of any other one.">
+                        <option value="list" selected="true">Choose from the current OpenAI models</option>
+                        <option value="other">Type a model name</option>
                     </param>
-                    <when value="gpt-6.1-sol"/>
-                    <when value="gpt-6-astra"/>
-                    <when value="gpt-6-luna"/>
-                    <when value="gpt-5.6-sol"/>
-                    <when value="gpt-5.6-terra"/>
-                    <when value="gpt-5.6-luna"/>
-                    <when value="gpt-5.5"/>
-                    <when value="gpt-5.4"/>
-                    <when value="gpt-4.1"/>
-                    <when value="gpt-4o"/>
-                    <when value="gpt-5"/>
-                    <when value="gpt-5-mini"/>
-                    <when value="gpt-5-nano"/>
+                    <when value="list">
+                        <param name="model" type="select" label="OpenAI model" help="Current OpenAI chat models, newest first, loaded from the public OpenRouter model list (https://openrouter.ai/api/v1/models).">
+                            <!-- OpenAI's own /v1/models needs the user's API key, which from_url cannot read from <credentials>.
+                                 Keep only plain chat models: no -pro/-codex (Responses API only), no audio/image/snapshot variants. -->
+                            <options from_url="https://openrouter.ai/api/v1/models">
+                                <postprocess_expression type="ecma5.1"><![CDATA[${
+                                    if (!inputs || !inputs.data) {
+                                        return [];
+                                    }
+                                    var skip = ["pro", "codex", "chat", "audio", "image", "instruct", "turbo"];
+                                    var models = inputs.data.filter(function (m) {
+                                        var match = /^openai\/gpt-[0-9][0-9.]*o?(?:-([a-z]+))?$/.exec(m.id);
+                                        return match !== null && skip.indexOf(match[1]) === -1;
+                                    });
+                                    models.sort(function (a, b) {
+                                        return b.created - a.created;
+                                    });
+                                    return models.map(function (m) {
+                                        var id = m.id.slice("openai/".length);
+                                        return [m.name.replace(/^OpenAI: /, "") + " (" + id + ")", id];
+                                    });
+                                }]]></postprocess_expression>
+                            </options>
+                            <validator type="no_options" message="The OpenAI model list could not be loaded. Choose 'Type a model name' instead."/>
+                        </param>
+                    </when>
                     <when value="other">
-                        <param name="other_model" type="text" optional="false" label="Model name" help="Any OpenAI Chat Completions model, for example a newer one that is not in the list yet.">
+                        <param name="model" type="text" label="Model name" help="Any OpenAI Chat Completions model, e.g. gpt-6.1-sol.">
                             <validator type="empty_field"/>
                             <sanitizer><valid initial="string.printable"><remove value="&apos;"/></valid></sanitizer>
                         </param>
@@ -116,15 +109,15 @@ python '$__tool_directory__/chatgpt.py'
                 </param>
             </when>
         </conditional>
-        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional context data that will be uploaded for processing. Images are limited to 20MB each."/>
+        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional context data. It is sent to the selected server (OpenAI or your custom server) together with the prompt. Images are limited to 20MB each."/>
         <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want the model to perform." area="true">
             <validator type="empty_field"/>
             <sanitizer sanitize="false"/>
         </param>
         <section name="advanced" title="Advanced Options" expanded="false">
-            <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Controls randomness in the output. Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model's default temperature will be used. On the OpenAI server type only gpt-4.1, gpt-4o and gpt-5.4 accept it; for the other reasoning models it is dropped with a note in the job log."/>
+            <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Controls randomness in the output. Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model's default temperature will be used. On the OpenAI server type only the gpt-3/gpt-4 models and gpt-5.4 accept it; for the other (reasoning) models it is dropped with a note in the job log."/>
             <param name="max_tokens" type="integer" optional="true" min="1" max="128000" label="Max tokens" help="Maximum number of tokens in the response. If not set, the model's default is used. For OpenAI models this is sent as max_completion_tokens and also covers hidden reasoning tokens, so a low value on a reasoning model can be consumed entirely by reasoning and return no answer."/>
-            <param name="top_p" type="float" optional="true" min="0.0" max="1.0" label="Top P" help="Nucleus sampling threshold. If not set, the model's default is used. On the OpenAI server type only gpt-4.1, gpt-4o and gpt-5.4 accept it; for the other reasoning models it is dropped with a note in the job log."/>
+            <param name="top_p" type="float" optional="true" min="0.0" max="1.0" label="Top P" help="Nucleus sampling threshold. If not set, the model's default is used. On the OpenAI server type only the gpt-3/gpt-4 models and gpt-5.4 accept it; for the other (reasoning) models it is dropped with a note in the job log."/>
             <param name="system_message" type="text" optional="true" label="System message" help="Optional system prompt to set the model's behavior. If not set, no system message is sent." area="true">
                 <sanitizer sanitize="false"/>
             </param>
@@ -132,13 +125,14 @@ python '$__tool_directory__/chatgpt.py'
         </section>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} (#if $server_type.server_type_selection == 'custom' then $server_type.custom_model else ($server_type.openai_model.other_model if $server_type.openai_model.model == 'other' else $server_type.openai_model.model)#)#if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" label="${tool.name} (#if $server_type.server_type_selection == 'custom' then $server_type.custom_model else $server_type.openai_model.model#)#if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
     </outputs>
     <tests>
         <test expect_failure="true" expect_exit_code="1">
             <conditional name="server_type">
                 <param name="server_type_selection" value="openai"/>
                 <conditional name="openai_model">
+                    <param name="model_source" value="other"/>
                     <param name="model" value="gpt-5"/>
                 </conditional>
             </conditional>
@@ -176,6 +170,7 @@ python '$__tool_directory__/chatgpt.py'
             <conditional name="server_type">
                 <param name="server_type_selection" value="openai"/>
                 <conditional name="openai_model">
+                    <param name="model_source" value="other"/>
                     <param name="model" value="gpt-5"/>
                 </conditional>
             </conditional>
@@ -207,6 +202,7 @@ python '$__tool_directory__/chatgpt.py'
             <conditional name="server_type">
                 <param name="server_type_selection" value="openai"/>
                 <conditional name="openai_model">
+                    <param name="model_source" value="other"/>
                     <param name="model" value="gpt-5.6-terra"/>
                 </conditional>
             </conditional>
@@ -222,6 +218,7 @@ python '$__tool_directory__/chatgpt.py'
             <conditional name="server_type">
                 <param name="server_type_selection" value="openai"/>
                 <conditional name="openai_model">
+                    <param name="model_source" value="other"/>
                     <param name="model" value="gpt-4o"/>
                 </conditional>
             </conditional>
@@ -237,8 +234,8 @@ python '$__tool_directory__/chatgpt.py'
             <conditional name="server_type">
                 <param name="server_type_selection" value="openai"/>
                 <conditional name="openai_model">
-                    <param name="model" value="other"/>
-                    <param name="other_model" value="gpt-7"/>
+                    <param name="model_source" value="other"/>
+                    <param name="model" value="gpt-7"/>
                 </conditional>
             </conditional>
             <param name="prompt" value="Hello"/>
@@ -264,7 +261,7 @@ The tool processes the data using the selected model and returns an AI-generated
 
 You can choose from two server types:
 
-- **OpenAI (official API)**: Connect directly to OpenAI's API using your OpenAI API key. Select from the available OpenAI models, or pick **Other model** and type the name of any newer one. The legacy gpt-5, gpt-5-mini and gpt-5-nano options are kept so existing histories stay reproducible; OpenAI retires them on 2026-12-11.
+- **OpenAI (official API)**: Connect directly to OpenAI's API using your OpenAI API key. The model list is loaded live from the public OpenRouter model list (https://openrouter.ai/api/v1/models), newest first. If a model is missing, or the list cannot be loaded, choose **Type a model name**.
 - **Custom OpenAI-compatible server**: Connect to any server that implements the OpenAI Chat Completions API (e.g., vLLM, Ollama, LiteLLM proxy, Mistral, local deployments). The server URL and API key are configured in the Custom Server Credentials section. Only the model name is specified per run.
 
 **Credentials**
@@ -285,11 +282,11 @@ You can choose from two server types:
 
 **Advanced Options**
 
-- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only gpt-4.1, gpt-4o and gpt-5.4 accept it; every other model in the list rejects it outright, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
+- **Temperature**: Controls randomness in the output (range: 0.0 to 2.0). Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model uses its default temperature. On the **OpenAI** server type only the gpt-3/gpt-4 models and gpt-5.4 accept it; the other models are reasoning models that reject it, so the tool drops it and records a note in the job log. On a **custom** server every sampling parameter is forwarded verbatim, so the target server's own restrictions apply.
 
 - **Max tokens**: Maximum number of tokens in the response. If not set, the model's default is used. For the OpenAI server type this is sent as ``max_completion_tokens``, which also covers the hidden reasoning tokens of the reasoning models -- setting it too low there can consume the whole budget on reasoning and return an empty answer. For custom servers it is sent as ``max_tokens``, which is what Ollama and older vLLM builds accept.
 
-- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only gpt-4.1, gpt-4o and gpt-5.4 accept it on the OpenAI server type.
+- **Top P**: Nucleus sampling threshold. If not set, the model's default is used. As with Temperature, only the gpt-3/gpt-4 models and gpt-5.4 accept it on the OpenAI server type.
 
 - **System message**: Optional system prompt to set the model's behavior (e.g., "You are a helpful biology assistant"). If not set, no system message is sent.
 
@@ -297,6 +294,10 @@ You can choose from two server types:
 
 The output is a response generated by the selected model, crafted based on the provided context data and the prompt.
 This response is saved in a Markdown file.
+
+**Privacy**
+
+Your prompt, system message and context files leave Galaxy: they are sent to OpenAI or to the custom server you configured, and are handled under that service's data policy.
 
     ]]></help>
     <citations>
