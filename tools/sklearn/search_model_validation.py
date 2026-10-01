@@ -1,16 +1,15 @@
 import argparse
-import inspect
 import json
 import os
 import sys
 import warnings
-from packaging.version import Version
 
 import imblearn
 import joblib
 import numpy as np
 import pandas as pd
 import skrebate
+from packaging.version import Version
 from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.binarize_target import IRAPSClassifier
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
@@ -53,46 +52,16 @@ NON_SEARCHABLE = (
 )
 
 
-def add_missing_init_attributes(obj, seen=None):
-    """Fill constructor-backed attributes added after a model was saved."""
-    if seen is None:
-        seen = set()
-    if id(obj) in seen:
-        return obj
-    seen.add(id(obj))
-
-    if isinstance(obj, dict):
-        children = list(obj.values())
-    elif isinstance(obj, (list, tuple, set)):
-        children = list(obj)
-    else:
-        children = None
-    if children is not None:
-        for child in children:
-            add_missing_init_attributes(child, seen)
-        return obj
-    if not hasattr(obj, "__dict__"):
-        return obj
-
-    parameters = []
-    for cls in obj.__class__.__mro__:
-        try:
-            parameters.extend(inspect.signature(cls.__init__).parameters.values())
-        except (TypeError, ValueError):
-            pass
-    for parameter in parameters:
-        if (
-            parameter.name != "self"
-            and parameter.default is not inspect.Parameter.empty
-            and not hasattr(obj, parameter.name)
-        ):
-            setattr(obj, parameter.name, parameter.default)
-
-    for value in list(vars(obj).values()):
-        add_missing_init_attributes(value, seen)
-    if isinstance(obj, cluster.FeatureAgglomeration):
-        obj.pooling_func = np.mean
-    return obj
+def _restore_feature_agglomeration_pooling_func(estimator):
+    """Restore the callable represented by legacy pipeline fixtures."""
+    replacements = {
+        name: np.mean
+        for name, value in estimator.get_params(deep=True).items()
+        if name.endswith("pooling_func") and value is preprocessing.StandardScaler
+    }
+    if replacements:
+        estimator.set_params(**replacements)
+    return estimator
 
 
 def _eval_search_params(params_builder):
@@ -603,7 +572,9 @@ def main(
         else False
     )
 
-    estimator = add_missing_init_attributes(load_model_from_h5(infile_estimator))
+    estimator = _restore_feature_agglomeration_pooling_func(
+        load_model_from_h5(infile_estimator)
+    )
 
     estimator = clean_params(estimator)
 
