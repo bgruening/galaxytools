@@ -35,7 +35,7 @@ from sklearn import (
 )
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection import _search, _validation
-from sklearn.model_selection._validation import _score, cross_validate
+from sklearn.model_selection._validation import cross_validate
 from sklearn.preprocessing import LabelEncoder
 from skopt import BayesSearchCV
 
@@ -176,16 +176,16 @@ def _eval_search_params(params_builder):
                 ),
                 imblearn.under_sampling.RandomUnderSampler(random_state=0),
                 imblearn.under_sampling.TomekLinks(n_jobs=N_JOBS),
-                imblearn.over_sampling.ADASYN(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.BorderlineSMOTE(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.KMeansSMOTE(random_state=0, n_jobs=N_JOBS),
+                imblearn.over_sampling.ADASYN(random_state=0),
+                imblearn.over_sampling.BorderlineSMOTE(random_state=0),
+                imblearn.over_sampling.KMeansSMOTE(random_state=0),
                 imblearn.over_sampling.RandomOverSampler(random_state=0),
-                imblearn.over_sampling.SMOTE(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.SMOTEN(random_state=0, n_jobs=N_JOBS),
+                imblearn.over_sampling.SMOTE(random_state=0),
+                imblearn.over_sampling.SMOTEN(random_state=0),
                 imblearn.over_sampling.SMOTENC(
                     categorical_features=[], random_state=0, n_jobs=N_JOBS
                 ),
-                imblearn.over_sampling.SVMSMOTE(random_state=0, n_jobs=N_JOBS),
+                imblearn.over_sampling.SVMSMOTE(random_state=0),
                 imblearn.combine.SMOTEENN(random_state=0),
                 imblearn.combine.SMOTETomek(random_state=0),
             )
@@ -490,7 +490,13 @@ def _do_train_test_split_val(
             scorer=scorer_,
         )
     else:
-        test_score = _score(best_estimator_, X_test, y_test, scorer_)
+        if isinstance(scorer_, dict):
+            test_score = {
+                name: score(best_estimator_, X_test, y_test)
+                for name, score in scorer_.items()
+            }
+        else:
+            test_score = scorer_(best_estimator_, X_test, y_test)
 
     if not isinstance(scorer_, dict):
         test_score = {primary_scoring: test_score}

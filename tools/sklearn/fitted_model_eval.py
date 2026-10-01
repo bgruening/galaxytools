@@ -7,7 +7,6 @@ from galaxy_ml.model_persist import load_model_from_h5
 from galaxy_ml.utils import clean_params, get_scoring, read_columns
 from scipy.io import mmread
 from sklearn.metrics._scorer import _check_multimetric_scoring
-from sklearn.model_selection._validation import _score
 
 
 def _get_X_y(params, infile1, infile2):
@@ -128,7 +127,10 @@ def main(inputs, infile_estimator, outfile_eval, infile1=None, infile2=None):
     if hasattr(estimator, "evaluate"):
         scores = estimator.evaluate(X_test, y_test=y_test, scorer=scorer)
     else:
-        scores = _score(estimator, X_test, y_test, scorer)
+        scores = {
+            name: score(estimator, X_test, y_test)
+            for name, score in scorer.items()
+        }
 
     # handle output
     for name, score in scores.items():
