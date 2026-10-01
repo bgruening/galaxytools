@@ -205,6 +205,21 @@ def refused_params(exc: APIStatusError, api_params: dict) -> list[str]:
     return []
 
 
+def unknown_model(exc: Exception) -> bool:
+    """Whether the error says the server does not know the model."""
+    text = error_text(exc)
+    return bool(NO_MODEL.search(text)) or (getattr(exc, "status_code", None) == 404 and "model" in text)
+
+
+def server_models(client: OpenAI) -> list[str]:
+    """The model names a server offers, to help after a wrong model name."""
+    try:
+        names = [m.id for m in client.with_options(timeout=20, max_retries=0).models.list()]
+    except Exception:  # noqa: BLE001 - the list is only a hint
+        return []
+    return [n for n in names if isinstance(n, str) and n.isprintable() and len(n) <= 100]
+
+
 def explain_error(exc: Exception, model: str, server_type: str) -> str:
     """A short, plain message for a failed request.
 
@@ -226,7 +241,7 @@ def explain_error(exc: Exception, model: str, server_type: str) -> str:
         message = "The prompt and context files are too long for this model. Use fewer or smaller files."
     elif NO_IMAGES.search(text):
         message = "This model cannot read images. Choose a model that can, or remove the images."
-    elif NO_MODEL.search(text) or (status == 404 and "model" in text):
+    elif unknown_model(exc):
         message = f"The server does not know the model '{model}'. Check the model name."
     elif status in (402, 429) and NO_CREDIT.search(text):
         message = "Your account has no credits or budget left."
@@ -273,6 +288,10 @@ def request_completion(client: OpenAI, api_params: dict, server_type: str) -> Re
             api_params = {k: v for k, v in api_params.items() if k not in refused}
             return request_completion(client, api_params, server_type)
         print(explain_error(exc, model, server_type))
+        # Only the names, and only for a custom server: OpenAI has the list in the form.
+        if server_type == "custom" and unknown_model(exc) and (names := server_models(client)):
+            more = f", and {len(names) - 50} more" if len(names) > 50 else ""
+            print(f"Models on this server: {', '.join(names[:50])}{more}")
     except Exception as exc:  # noqa: BLE001 - report every failure plainly
         print(explain_error(exc, model, server_type))
     return None

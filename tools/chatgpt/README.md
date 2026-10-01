@@ -13,7 +13,7 @@ Add them once with the **Provide credentials** button at the top of the tool for
 ## Inputs
 
 - **Server**: OpenAI or your custom server.
-- **Model**: for OpenAI, choose from the current models or type any model name. The list is loaded live from the public [OpenRouter model list](https://openrouter.ai/api/v1/models), because OpenAI's own model list needs the user's key, which Galaxy cannot use while building the form. The `*-pro` and `*-codex` models are left out: they only work with OpenAI's Responses API. For a custom server, type the model name as the server knows it.
+- **Model**: for OpenAI, choose from the current models or type any model name. The list is loaded live from the public [OpenRouter model list](https://openrouter.ai/api/v1/models), because OpenAI's own model list needs the user's key, which Galaxy cannot use while building the form. The `*-pro` and `*-codex` models are left out: they only work with OpenAI's Responses API. For a custom server, type the model name as the server knows it. Not sure of the name? Run the tool once: if the name is wrong, the job log lists the models on your server.
 - **Context** (optional): files for the model to read. Text files (TXT, CSV, JSON, HTML) work best. PDF and Word files are not converted, so turn them into text first, for example with the Markitdown tool. Images (JPG, PNG, GIF, max 20 MB each) need a model that can read images: some models ignore images without an error.
 - **Prompt**: your question or task. Be specific.
 
