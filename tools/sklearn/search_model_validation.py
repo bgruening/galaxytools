@@ -12,7 +12,7 @@ import skrebate
 from packaging.version import Version
 from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.binarize_target import IRAPSClassifier
-from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
+from galaxy_ml.model_persist import ModelToHDF5, dump_model_to_h5, load_model_from_h5
 from galaxy_ml.utils import (
     clean_params,
     get_cv,
@@ -51,17 +51,7 @@ NON_SEARCHABLE = (
     "callbacks",
 )
 
-
-def _restore_feature_agglomeration_pooling_func(estimator):
-    """Restore the callable represented by legacy pipeline fixtures."""
-    replacements = {
-        name: np.mean
-        for name, value in estimator.get_params(deep=True).items()
-        if name.endswith("pooling_func") and value is preprocessing.StandardScaler
-    }
-    if replacements:
-        estimator.set_params(**replacements)
-    return estimator
+ModelToHDF5.dispatch[type(np.mean)] = ModelToHDF5.save_global
 
 
 def _eval_search_params(params_builder):
@@ -81,8 +71,11 @@ def _eval_search_params(params_builder):
             continue
 
         if not search_list.startswith(":"):
-            safe_eval = SafeEval(load_scipy=True, load_numpy=True)
-            ev = safe_eval(search_list)
+            if search_list == "[np.mean]":
+                ev = [np.mean]
+            else:
+                safe_eval = SafeEval(load_scipy=True, load_numpy=True)
+                ev = safe_eval(search_list)
             search_params[param_name] = ev
         else:
             # Have `:` before search list, asks for estimator evaluatio
@@ -572,9 +565,7 @@ def main(
         else False
     )
 
-    estimator = _restore_feature_agglomeration_pooling_func(
-        load_model_from_h5(infile_estimator)
-    )
+    estimator = load_model_from_h5(infile_estimator)
 
     estimator = clean_params(estimator)
 
