@@ -170,8 +170,8 @@ def check_context_window():
         return
     if tokens > limit:
         sys.exit(
-            f"Your input is {tokens:,} tokens, but this model accepts at most {limit:,}. "
-            "Split it into smaller parts or choose a model with a larger context window."
+            f"Your input is {tokens:,} tokens, but this model accepts at most {limit:,} tokens (context window). "
+            "Split it into smaller parts with the LangChain Text Splitters tool, or choose a model with a larger context window."
         )
     print(f"Input: {tokens:,} of {limit:,} tokens.")
 
@@ -299,8 +299,8 @@ for attempt in range(max_retries):
         limit = re.search(r"(?:maximum context length (?:is |\()|Max Input Tokens=)(\d+)", str(e))
         if limit:
             sys.exit(
-                f"The input is too large for this model (limit {limit.group(1)} tokens). "
-                "Split it into smaller parts or choose a model with a larger context window."
+                f"The input is too large: this model accepts at most {int(limit.group(1)):,} tokens (context window). "
+                "Split it into smaller parts with the LangChain Text Splitters tool, or choose a model with a larger context window."
             )
         sys.exit(f"The request was rejected: {e}")
     except APITimeoutError as e:
