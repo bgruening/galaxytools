@@ -33,6 +33,12 @@
     #set prompt = ''
 #end if
 
+#if str($model.fields.provider) == 'galaxy-test'
+    ## Tool tests only: start a fake LiteLLM proxy inside the job (see test-data/fake_litellm.py)
+    { python '$__tool_directory__/test-data/fake_litellm.py' fake_litellm.yaml & } && trap "kill \$! 2>/dev/null" EXIT &&
+    for i in \$(seq 50); do [ -f fake_litellm.yaml ] && break; sleep 0.2; done &&
+    export LITELLM_CONFIG_FILE="\$PWD/fake_litellm.yaml" &&
+#end if
 python '$__tool_directory__/llm_hub.py'
 '$context_files'
 '$prompt'
@@ -105,6 +111,49 @@ python '$__tool_directory__/llm_hub.py'
             </section>
             <assert_stdout>
                 <has_text text="LiteLLM API key is not configured!"/>
+            </assert_stdout>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="text"/>
+                <param name="model" value="test-model"/>
+                <param name="text_context" value="test.txt" ftype="txt"/>
+                <param name="prompt" value="What is this?"/>
+            </conditional>
+            <output name="output" ftype="markdown">
+                <assert_contents>
+                    <has_text text="OK"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <has_text text="of 50 tokens."/>
+            </assert_stdout>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="text"/>
+                <param name="model" value="test-model"/>
+                <param name="text_context" value="long_input.txt" ftype="txt"/>
+                <param name="prompt" value="What is this?"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="this model accepts at most 50 tokens"/>
+            </assert_stderr>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="text"/>
+                <param name="model" value="no-limit-model"/>
+                <param name="text_context" value="long_input.txt" ftype="txt"/>
+                <param name="prompt" value="What is this?"/>
+            </conditional>
+            <output name="output" ftype="markdown">
+                <assert_contents>
+                    <has_text text="OK"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <not_has_text text="tokens."/>
             </assert_stdout>
         </test>
     </tests>
