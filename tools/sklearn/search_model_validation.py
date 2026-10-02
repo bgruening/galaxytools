@@ -11,21 +11,32 @@ import pandas as pd
 import skrebate
 from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.binarize_target import IRAPSClassifier
-from galaxy_ml.model_persist import (ModelToHDF5, dump_model_to_h5,
-                                     load_model_from_h5)
-from galaxy_ml.utils import (SafeEval, clean_params, get_cv,
-                             get_main_estimator, get_module, get_scoring,
-                             read_columns, try_get_attr)
+from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5, ModelToHDF5
+from galaxy_ml.utils import (
+    clean_params,
+    get_cv,
+    get_main_estimator,
+    get_module,
+    get_scoring,
+    read_columns,
+    SafeEval,
+    try_get_attr,
+)
 from packaging.version import Version
 from scipy.io import mmread
-from skopt import BayesSearchCV
-
-from sklearn import (cluster, decomposition, feature_selection,
-                     kernel_approximation, model_selection, preprocessing)
+from sklearn import (
+    cluster,
+    decomposition,
+    feature_selection,
+    kernel_approximation,
+    model_selection,
+    preprocessing,
+)
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import cross_validate
 from sklearn.preprocessing import LabelEncoder
+from skopt import BayesSearchCV
 
 N_JOBS = int(os.environ.get("GALAXY_SLOTS", 1))
 # handle  disk cache

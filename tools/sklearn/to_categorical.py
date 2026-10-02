@@ -49,7 +49,7 @@ def encode_dna_sequences(fasta_path, padding, outfile, outfile_matrix):
 
 
 def seq_to_kmers(sequence, k=3):
-    return [sequence[idx : idx + k] for idx in range(len(sequence) - k + 1)]
+    return [sequence[idx: idx + k] for idx in range(len(sequence) - k + 1)]
 
 
 def normalize_dna_sequence(sequence):
