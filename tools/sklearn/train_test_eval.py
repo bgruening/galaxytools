@@ -9,23 +9,18 @@ import numpy as np
 import pandas as pd
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
 from galaxy_ml.model_validations import train_test_split
-from galaxy_ml.utils import (
-    clean_params,
-    get_module,
-    get_scoring,
-    read_columns,
-    SafeEval,
-    try_get_attr
-)
+from galaxy_ml.utils import (SafeEval, clean_params, get_module, get_scoring,
+                             read_columns, try_get_attr)
 from scipy.io import mmread
+
 from sklearn import pipeline
 from sklearn.model_selection import _search, _validation
 from sklearn.model_selection._validation import _score
 from sklearn.utils import _safe_indexing, indexable
 
 _fit_and_score = try_get_attr("galaxy_ml.model_validations", "_fit_and_score")
-setattr(_search, "_fit_and_score", _fit_and_score)
-setattr(_validation, "_fit_and_score", _fit_and_score)
+_search._fit_and_score = _fit_and_score
+_validation._fit_and_score = _fit_and_score
 
 N_JOBS = int(os.environ.get("GALAXY_SLOTS", 1))
 CACHE_DIR = os.path.join(os.getcwd(), "cached")
@@ -51,8 +46,7 @@ def _eval_swap_params(params_builder):
         param_name = p["sp_name"]
         if param_name.lower().endswith(NON_SEARCHABLE):
             warnings.warn(
-                "Warning: `%s` is not eligible for search and was "
-                "omitted!" % param_name
+                "Warning: `%s` is not eligible for search and was omitted!" % param_name
             )
             continue
 
@@ -105,7 +99,7 @@ def train_test_split_none(*arrays, **kwargs):
         rval = train_test_split(*new_arrays, **kwargs)
 
     for pos in nones:
-        rval[pos * 2: 2] = [None, None]
+        rval[pos * 2 : 2] = [None, None]
 
     return rval
 
@@ -364,7 +358,7 @@ def main(
             test_split_options["labels"] = y
         else:
             raise ValueError(
-                "Stratified shuffle split is not " "applicable on empty target values!"
+                "Stratified shuffle split is not applicable on empty target values!"
             )
 
     (
@@ -389,8 +383,7 @@ def main(
                 val_split_options["labels"] = y_train
             else:
                 raise ValueError(
-                    "Stratified shuffle split is not "
-                    "applicable on empty target values!"
+                    "Stratified shuffle split is not applicable on empty target values!"
                 )
 
         (

@@ -10,19 +10,15 @@ import pandas as pd
 import plotly
 import plotly.graph_objs as go
 from galaxy_ml.model_persist import load_model_from_h5
-from galaxy_ml.utils import read_columns, SafeEval
-from sklearn.feature_selection._base import SelectorMixin
-from sklearn.metrics import (
-    auc,
-    average_precision_score,
-    confusion_matrix,
-    precision_recall_curve,
-    roc_curve,
-)
-from sklearn.pipeline import Pipeline
+from galaxy_ml.utils import SafeEval, read_columns
 from tensorflow import keras
 from tensorflow.keras.models import model_from_json
 from tensorflow.keras.utils import plot_model
+
+from sklearn.feature_selection._base import SelectorMixin
+from sklearn.metrics import (auc, average_precision_score, confusion_matrix,
+                             precision_recall_curve, roc_curve)
+from sklearn.pipeline import Pipeline
 
 safe_eval = SafeEval()
 

@@ -305,11 +305,11 @@ def build_keras_model(inputs, outfile, model_json, batch_mode=False):
         ).lower()
 
         options.update(
-            (
+            
                 inputs["mode_selection"]["compile_params"]["optimizer_selection"][
                     "optimizer_options"
                 ]
-            )
+            
         )
 
         train_metrics = inputs["mode_selection"]["compile_params"]["metrics"]

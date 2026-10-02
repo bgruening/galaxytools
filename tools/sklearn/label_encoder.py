@@ -4,6 +4,7 @@ import warnings
 
 import numpy as np
 import pandas as pd
+
 from sklearn.preprocessing import LabelEncoder
 
 
@@ -51,7 +52,9 @@ if __name__ == "__main__":
     aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
     aparser.add_argument("-y", "--infile", dest="infile")
     aparser.add_argument("-o", "--outfile", dest="outfile")
-    aparser.add_argument("-v", "--outfile_encoding_vocabulary", dest="outfile_encoding_vocabulary")
+    aparser.add_argument(
+        "-v", "--outfile_encoding_vocabulary", dest="outfile_encoding_vocabulary"
+    )
     args = aparser.parse_args()
 
     main(args.inputs, args.infile, args.outfile, args.outfile_encoding_vocabulary)
