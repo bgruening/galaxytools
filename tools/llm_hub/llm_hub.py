@@ -157,12 +157,14 @@ def check_context_window():
     """
     try:
         proxy = client.with_options(timeout=60, max_retries=0)
-        info = proxy.get("/model/info", cast_to=object)["data"]
+        # LiteLLM serves these routes at the root, also when the base URL ends in /v1
+        root = str(client.base_url).rstrip("/").removesuffix("/v1")
+        info = proxy.get(f"{root}/model/info", cast_to=object)["data"]
         limits = [(m.get("model_info") or {}).get("max_input_tokens") for m in info if m.get("model_name") == model]
         limits = [n for n in limits if isinstance(n, int)]
         if not limits:
             return
-        count = proxy.post("/utils/token_counter", body={"model": model, "messages": messages}, cast_to=object)
+        count = proxy.post(f"{root}/utils/token_counter", body={"model": model, "messages": messages}, cast_to=object)
         if count.get("tokenizer_type") != "huggingface_tokenizer":
             return  # the default tokenizer can be far off for non-English text
         tokens, limit = count["total_tokens"], min(limits)
