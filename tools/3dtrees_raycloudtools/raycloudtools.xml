@@ -1,8 +1,25 @@
 <tool id="3dtrees_raycloudtools" name="3Dtrees: RayCloudTools" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1" license="BSD-3-Clause">
     <description>Tree instance segmentation</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.2.1</token>
+        <token name="@TOOL_VERSION@">1.2.2</token>
         <token name="@VERSION_SUFFIX@">0</token>
+        <xml name="test_mesh_outputs">
+            <output name="tree_mesh_ply" ftype="plybinary">
+                <assert_contents>
+                    <has_text text="format binary_little_endian 1.0"/>
+                    <has_text text="element face 540"/>
+                    <has_text text="property uint tree_id"/>
+                    <has_text text="rct_tree_count 2"/>
+                </assert_contents>
+            </output>
+            <output name="terrain_mesh_ply" ftype="plybinary">
+                <assert_contents>
+                    <has_text text="format binary_little_endian 1.0"/>
+                    <has_text text="element face 444"/>
+                    <not_has_text text="property uint tree_id"/>
+                </assert_contents>
+            </output>
+        </xml>
     </macros>
     <requirements>
         <container type="docker">
@@ -11,10 +28,9 @@
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
-    #set $input_name = str($input.element_identifier)
-        ln -sf '$input' '${input_name}.${input.ext}' &&
+        ln -s '$input' 'input.${input.ext}' &&
         python3 -u /src/run.py
-        --dataset-path '${input_name}.${input.ext}'
+        --dataset-path 'input.${input.ext}'
         --output-dir 'out'
         --gradient '$gradient'
         --max-diameter '$max_diameter'
@@ -30,34 +46,34 @@
         $branch_data
         &&
         ## Mesh artifacts can be absent depending on the run
-        mv "out/${input_name}_segmented.laz" '$segmented_laz' &&
-        if [ -f "out/${input_name}_trees_mesh.ply" ]; then mv "out/${input_name}_trees_mesh.ply" '$tree_mesh_ply'; fi &&
-        if [ -f "out/${input_name}_mesh.ply" ]; then mv "out/${input_name}_mesh.ply" '$terrain_mesh_ply'; fi &&
+        mv "out/input_segmented.laz" '$segmented_laz' &&
+        if [ -f "out/input_trees_mesh.ply" ]; then mv "out/input_trees_mesh.ply" '$tree_mesh_ply'; fi &&
+        if [ -f "out/input_mesh.ply" ]; then mv "out/input_mesh.ply" '$terrain_mesh_ply'; fi &&
         #if $treeinfo
-            mv "out/${input_name}_trees_info.txt" '$tree_info_txt'
+            mv "out/input_trees_info.txt" '$tree_info_txt'
         #else
-            mv "out/${input_name}_trees.txt" '$tree_model_txt'
+            mv "out/input_trees.txt" '$tree_model_txt'
         #end if
         ]]>
     </command>
 
     <inputs>
-        <param name="input" type="data" format="laz" label="Input point cloud (.laz)" help="Input LAZ file."/>
+        <param name="input" type="data" format="laz,las" label="Input point cloud (.las or .laz)" help="Input LAS or LAZ file."/>
         <!-- rayextract terrain -->
         <param argument="--gradient" type="float" min="0.001" max="1000" value="1" label="Gradient" help="Gradient threshold for terrain extraction"/>
         <!-- rayextract trees -->
         <param argument="--max-diameter" type="float" min="0.01" max="100" value="0.9" label="Maximum diameter" help="maximum trunk diameter in segmenting trees (m)"/>
-        <param argument="--crop-length" type="float" min="0.01" max="100" value="1" label="Crop length" help="Crops branches up to this distance from tip (m)."/>
+        <param argument="--crop-length" type="float" min="0.01" max="100" value="1" label="Crop length" help="Reconstruct the QSM up to this distance from branch tips (m)."/>
         <param argument="--distance-limit" type="float" min="0.01" max="10" value="1" label="Distance limit" help="Maximum distance between neighbour points in a tree (m)"/>
         <param argument="--height-min" type="float" min="0.01" max="1000" value="2" label="Minimum tree height" help="Minimum height counted as a tree (m)"/>
         <param argument="--girth-height-ratio" type="float" min="0.001" max="0.5" value="0.12" label="Girth height ratio" help="Amount up tree's height to estimate trunk girth"/>
         <param argument="--global-taper" type="float" min="0" max="1" value="0.024" label="Global taper" help="Force taper value (diameter per length) for trees under global_taper_factor of max tree height - use 0 to estimate global taper from the data"/>
         <param argument="--global-taper-factor" type="float" min="0" max="1" value="0.3" label="Global taper factor" help="1 estimates same taper for whole scan, 0 is per-tree tapering, values between 0 and 1 produce soft cutoff at this amount of max tree height"/>
         <param argument="--gravity-factor" type="float" min="0" max="1" value="0.3" label="Gravity factor" help="Larger values preference vertical trees"/>
-        <param argument="--branch-segmentation" type="boolean" checked="false" truevalue="--branch-segmentation" falsevalue="" label="Branch segmentation" help="Segments per branch segment - assigns IDs per branch segment instead of per tree instance"/>
+        <param argument="--branch-segmentation" type="boolean" checked="false" truevalue="--branch-segmentation" falsevalue="" label="Branch segmentation" help="Add segment IDs in PredBranch_RCT while retaining tree IDs in PredInstance_RCT. Zero means unassigned."/>
         <!-- treeinfo -->
         <param argument="--treeinfo" type="boolean" checked="false" truevalue="--treeinfo" falsevalue="" label="Treeinfo" help="Calculate tree attributes - dbh, height, crown radius, volume, ..."/>
-        <param argument="--branch-data" type="boolean" checked="false" truevalue="--branch-data" falsevalue="" label="Branch data" help="Calculate branch attributes - branch number, segment_length, branch order number, extension and position in branch integers per-segment"/>
+        <param argument="--branch-data" type="boolean" checked="false" truevalue="--branch-data" falsevalue="" label="Branch data" help="Calculate additional branch attributes (branch number, segment length, order, extension and position). Only used when Treeinfo is enabled; otherwise ignored."/>
     </inputs>
 
     <outputs>
@@ -73,21 +89,72 @@
     </outputs>
 
     <tests>
+        <!-- Default outputs: the same no-GPS input, four output datasets. -->
         <test expect_num_outputs="4">
-            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
-            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
-            <output name="tree_model_txt" file="Example_Tree_RCT_trees.txt" compare="contains" ftype="txt"/>
-            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
-            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <param name="input" value="mikro.laz" ftype="laz"/>
+            <output name="segmented_laz" ftype="laz">
+                <assert_contents>
+                    <has_size size="95000" delta="2000"/>
+                    <has_text text="LASF"/>
+                    <has_text text="PredInstance_RCT"/>
+                    <not_has_text text="PredBranch_RCT"/>
+                </assert_contents>
+            </output>
+            <output name="tree_model_txt" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                    <not_has_text text="DBH"/>
+                    <not_has_text text="branch_order"/>
+                </assert_contents>
+            </output>
+            <expand macro="test_mesh_outputs"/>
         </test>
-        <!-- Test 2: treeinfo enabled -->
+        <!-- Tree information: the same no-GPS input, four output datasets. -->
         <test expect_num_outputs="4">
-            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
+            <param name="input" value="mikro.laz" ftype="laz"/>
             <param name="treeinfo" value="true"/>
-            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
-            <output name="tree_info_txt" file="Example_Tree_RCT_trees_info.txt" compare="contains" ftype="txt"/>
-            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
-            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <output name="segmented_laz" ftype="laz">
+                <assert_contents>
+                    <has_size size="95000" delta="2000"/>
+                    <has_text text="LASF"/>
+                    <has_text text="PredInstance_RCT"/>
+                    <not_has_text text="PredBranch_RCT"/>
+                </assert_contents>
+            </output>
+            <output name="tree_info_txt" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                    <has_text text="DBH"/>
+                    <not_has_text text="branch_order"/>
+                </assert_contents>
+            </output>
+            <expand macro="test_mesh_outputs"/>
+        </test>
+        <!-- Branch labels and attributes: the same no-GPS input, four output datasets. -->
+        <test expect_num_outputs="4">
+            <param name="input" value="mikro.laz" ftype="laz"/>
+            <param name="treeinfo" value="true"/>
+            <param name="branch_segmentation" value="true"/>
+            <param name="branch_data" value="true"/>
+            <output name="segmented_laz" ftype="laz">
+                <assert_contents>
+                    <has_size size="95000" delta="2000"/>
+                    <has_text text="LASF"/>
+                    <has_text text="PredInstance_RCT"/>
+                    <has_text text="PredBranch_RCT"/>
+                </assert_contents>
+            </output>
+            <output name="tree_info_txt" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                    <has_text text="DBH"/>
+                    <has_text text="branch_order"/>
+                </assert_contents>
+            </output>
+            <expand macro="test_mesh_outputs"/>
         </test>
     </tests>
 
@@ -101,23 +168,45 @@ It is platform-agnostic and works across airborne (ULS), terrestrial (TLS), and 
 
 **Processing Steps**
 
-- Convert input point cloud to LAZ 1.2
+- Prepare a temporary LAZ 1.2 copy for native processing
 - Import point cloud as ray cloud
 - Extract terrain
 - Extract trees
 - Convert point color (segmentation result) to instance IDs
-- Add instance IDs back to input point cloud
+- Add instance IDs to a new copy of the original point cloud, preserving its LAS version, point format, dimensions and metadata
 - Optional: Calculate tree attributes (dbh, height, crown radius, volume, ...)
+
+-----
+
+**Input and metadata**
+
+LAZ inputs may omit GPS time. The segmented output preserves the original point
+order and dimension values, XYZ scales and offsets, CRS, ExtraBytes descriptors,
+and non-structural VLRs/EVLRs. The temporary LAZ 1.2 processing copy does not
+change the original input or the segmented output's LAS version.
+
+COPC indexing records are removed because the output is sequential LAZ.
+Waveform point formats (4, 5, 9 and 10) are rejected because waveform payload
+preservation is not supported. Metadata or label validation failures fail the job.
 
 -----
 
 **Outputs**
 
-- **Segmented point cloud (LAZ):** instance dimension `PredInstance_RCT`
-- **Tree info (TXT):** produced when `treeinfo` is disabled
+- **Segmented point cloud (LAZ):** tree IDs in `PredInstance_RCT`. With branch
+  segmentation enabled, also includes `PredBranch_RCT` (native `section_id + 1`).
+  Zero means unassigned. Segment IDs include root/trunk sections and are distinct
+  from the branch-order attributes calculated by Treeinfo with Branch data.
+- **Tree model (TXT):** cylinder models, produced when `treeinfo` is disabled
 - **Tree info (TXT):** produced when `treeinfo` is enabled
-- **Tree meshes (PLY)**
+- **Tree meshes (PLY):** one combined mesh with an unsigned `tree_id` on every
+  triangle face, matching native tree-file rows (1-based). These IDs match
+  `PredInstance_RCT` in both modes; they do not identify `PredBranch_RCT` segments.
 - **Terrain meshes (PLY)**
+
+Tree ownership is embedded in the tree PLY; no separate CSV is needed.
+Downstream merge/filter operations must preserve and remap these IDs together
+with the LAZ and tree files. This tool does not generate a viewer GLB.
 
 This wrapper processes one input file per job. If you pass a collection in Galaxy workflows, Galaxy will iterate the tool over the collection and can parallelize those jobs.
 
