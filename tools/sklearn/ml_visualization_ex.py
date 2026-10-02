@@ -20,10 +20,30 @@ from sklearn.metrics import (
     roc_curve,
 )
 from sklearn.pipeline import Pipeline
+from tensorflow import keras
 from tensorflow.keras.models import model_from_json
 from tensorflow.keras.utils import plot_model
 
 safe_eval = SafeEval()
+
+
+def model_from_legacy_json(model_str):
+    """Build a Keras 3 Sequential model from a Keras 2 JSON config."""
+    model_config = json.loads(model_str)["config"]
+    model = keras.Sequential(name=model_config.get("name"))
+
+    for layer_config in model_config["layers"]:
+        config = layer_config["config"].copy()
+        batch_shape = config.pop("batch_input_shape", None)
+        if batch_shape:
+            model.add(
+                keras.Input(batch_shape=tuple(batch_shape), dtype=config.get("dtype"))
+            )
+        layer_class = getattr(keras.layers, layer_config["class_name"])
+        model.add(layer_class.from_config(config))
+
+    return model
+
 
 # plotly default colors
 default_colors = [
@@ -573,11 +593,8 @@ def main(
             model = model_from_json(model_str)
         except TypeError:
             # Keras 3 cannot deserialize the unqualified class names emitted by
-            # Keras 2.  The TensorFlow compatibility loader still supports
-            # those legacy model-configuration files.
-            from tensorflow.python.keras import models as legacy_models
-
-            model = legacy_models.model_from_json(model_str)
+            # Keras 2, so migrate the legacy Sequential config before plotting.
+            model = model_from_legacy_json(model_str)
         plot_model(model, to_file="output.png")
         os.rename("output.png", "output")
 
