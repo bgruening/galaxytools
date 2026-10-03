@@ -1,14 +1,19 @@
-<tool id="chatgpt_openai_api" name="chatGPT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1">
-    <description>Integrating OpenAI's ChatGPT into Galaxy</description>
+<tool id="chatgpt_openai_api" name="chatGPT" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Query OpenAI or any OpenAI-compatible LLM server</description>
     <macros>
-        <token name="@TOOL_VERSION@">2025</token>
-        <token name="@VERSION_SUFFIX@">1</token>
+        <token name="@TOOL_VERSION@">2026</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">25.1</token>
     </macros>
     <requirements>
         <requirement type="package" version="3.13">python</requirement>
-        <requirement type="package" version="2.7.1">openai</requirement>
-        <credentials name="openai_credentials" version="1.0" label="OpenAI Credentials" description="Credentials for accessing OpenAI's API.">
-            <secret name="openai_api_key" inject_as_env="OPENAI_API_KEY" optional="false" label="OpenAI API Key" description="Your OpenAI API key is required to use this tool. You can obtain it from your OpenAI account dashboard."/>
+        <requirement type="package" version="3.22.1">openai</requirement>
+        <credentials name="openai_credentials" version="1.0" optional="true" label="OpenAI Credentials" description="Credentials for accessing OpenAI's API.">
+            <secret name="openai_api_key" inject_as_env="OPENAI_API_KEY" optional="false" label="OpenAI API Key" description="Required when using the OpenAI server type. You can obtain it from your OpenAI account dashboard."/>
+        </credentials>
+        <credentials name="custom_server_credentials" version="1.0" optional="true" label="Custom Server Credentials" description="Credentials for accessing a custom OpenAI-compatible server.">
+            <variable name="custom_server_url" inject_as_env="CUSTOM_SERVER_URL" optional="false" label="Server URL" description="Server address plus API path, e.g. https://my-server.org/v1. For Open WebUI it ends with /api."/>
+            <secret name="custom_server_api_key" inject_as_env="CUSTOM_SERVER_API_KEY" optional="true" label="Custom Server API Key" description="Only needed if your server asks for a key."/>
         </credentials>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
@@ -17,11 +22,12 @@
 #import re
 #set LINK_LIST = []
 #if $context
-    #for $input in $context
+    #for $i, $input in enumerate($context)
         #set file_name = os.path.splitext($input.element_identifier)[0]
         ## list of supported filetypes in OpenAI. If Galaxy has a filetype that is not in this list, just use the generic `txt`.
         #set ext = $input.ext if $input.ext in ['c', 'cpp', 'css', 'csv', 'docx', 'gif', 'html', 'java', 'jpeg', 'jpg', 'js', 'json', 'md', 'pdf', 'php', 'pkl', 'png', 'pptx', 'py', 'rb', 'tar', 'tex', 'ts', 'txt', 'webp', 'xlsx', 'xml', 'zip'] else 'txt'
-        #set LINK = re.sub('[^\w\-]', '_', $file_name)+'.'+$ext
+        ## Number the files, so two files with the same name (e.g. "Pasted Entry") do not clash.
+        #set LINK = str($i + 1) + '_' + re.sub('[^\w\-]', '_', $file_name)+'.'+$ext
         ln -s '$input' '$LINK' &&
         ## OpenAI has some special handling of "images", so let's annotate this here and pass it to the script
         #set type = 'image' if $input.ext in ['jpg', 'jpeg', 'png', 'webp', 'gif'] else 'text'
@@ -30,34 +36,149 @@
 #end if
 #set context_files = json.dumps($LINK_LIST)
 
+## Resolve model based on server type
+#if $server_type.server_type_selection == 'openai'
+    #set model = $server_type.openai_model.model
+#else
+    #set model = $server_type.custom_model
+#end if
+
 python '$__tool_directory__/chatgpt.py'
 '$context_files'
-'$prompt'
+'$prompt_file'
 '$model'
+'$server_type.server_type_selection'
+'$advanced.temperature'
+'$advanced.max_tokens'
+'$advanced.top_p'
+'$system_message_file'
     ]]></command>
+    <configfiles>
+        <configfile name="prompt_file">$prompt</configfile>
+        <configfile name="system_message_file">#if str($advanced.system_message) != 'None'#$advanced.system_message#end if#</configfile>
+    </configfiles>
     <inputs>
-        <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
-            <option value="gpt-5" selected="true">Flagship model for coding, reasoning, and agentic tasks across domains. (gpt-5)</option>
-            <option value="gpt-5-mini">Faster, more cost-efficient version of GPT-5. It's great for well-defined tasks and precise prompts. (gpt-5-mini)</option>
-            <option value="gpt-5-nano">Fastest, cheapest version of GPT-5. It's great for summarization and classification tasks. (gpt-5-nano)</option>
-            <option value="gpt-4.1">Excels at instruction following and tool calling, with broad knowledge across domains (gpt-4.1)</option>
-            <option value="gpt-4o">High-intelligence flagship model for complex, multi-step tasks (gpt-4o)</option>
-        </param>
-        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional context data that will be uploaded to OpenAI's servers for processing."/>
-        <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want ChatGPT to perform." area="true">
+        <conditional name="server_type">
+            <param name="server_type_selection" type="select" label="Server" help="Choose where to send your request.">
+                <option value="openai" selected="true">OpenAI (official API)</option>
+                <option value="custom">Custom OpenAI-compatible server</option>
+            </param>
+            <when value="openai">
+                <conditional name="openai_model">
+                    <param name="model_source" type="select" label="Model" help="Choose from the current OpenAI models, or type the name of any other one.">
+                        <option value="list" selected="true">Choose from the current OpenAI models</option>
+                        <option value="other">Type a model name</option>
+                    </param>
+                    <when value="list">
+                        <param name="model" type="select" label="OpenAI model" help="Current OpenAI chat models, newest first, loaded from the public OpenRouter model list (https://openrouter.ai/api/v1/models).">
+                            <!-- OpenAI's own /v1/models needs the user's API key, which from_url cannot read from <credentials>.
+                                 Keep only plain chat models: no -pro/-codex (Responses API only), no audio/image/snapshot variants. -->
+                            <options from_url="https://openrouter.ai/api/v1/models">
+                                <postprocess_expression type="ecma5.1"><![CDATA[${
+                                    if (!inputs || !inputs.data) {
+                                        return [];
+                                    }
+                                    var skip = ["pro", "codex", "chat", "audio", "image", "instruct", "turbo"];
+                                    var models = inputs.data.filter(function (m) {
+                                        var match = /^openai\/gpt-[0-9][0-9.]*o?(?:-([a-z]+))?$/.exec(m.id);
+                                        return match !== null && skip.indexOf(match[1]) === -1;
+                                    });
+                                    models.sort(function (a, b) {
+                                        return b.created - a.created;
+                                    });
+                                    return models.map(function (m) {
+                                        var id = m.id.slice("openai/".length);
+                                        var inputs = (m.architecture && m.architecture.input_modalities) || [];
+                                        var note = inputs.indexOf("image") === -1 ? ", text only" : "";
+                                        return [m.name.replace(/^OpenAI: /, "") + " (" + id + ")" + note, id];
+                                    });
+                                }]]></postprocess_expression>
+                            </options>
+                            <validator type="no_options" message="The OpenAI model list could not be loaded. Choose 'Type a model name' instead."/>
+                        </param>
+                    </when>
+                    <when value="other">
+                        <param name="model" type="text" label="Model name" help="Any OpenAI Chat Completions model, e.g. gpt-6.1-sol.">
+                            <validator type="empty_field"/>
+                            <sanitizer><valid initial="string.printable"><remove value="&apos;"/></valid></sanitizer>
+                        </param>
+                    </when>
+                </conditional>
+            </when>
+            <when value="custom">
+                <param name="custom_model" type="text" optional="false" label="Model" help="The model name as your server knows it, e.g. llama-3.2-8b.">
+                    <validator type="empty_field"/>
+                    <sanitizer><valid initial="string.printable"><remove value="&apos;"/></valid></sanitizer>
+                </param>
+            </when>
+        </conditional>
+        <param name="context" type="data" multiple="true" optional="true" format="docx,html,json,pdf,txt,jpg,png,gif" label="Context" max="500" help="Optional files for the model to read. They are sent to the selected server with the prompt. Text files work best. Images: max 20 MB each, and the model must be able to read images."/>
+        <param name="prompt" type="text" optional="false" label="Prompt" help="Your question or task for the model." area="true">
             <validator type="empty_field"/>
+            <sanitizer sanitize="false"/>
         </param>
+        <section name="advanced" title="Advanced Options" expanded="false">
+            <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Randomness of the answer (0 to 2). Lower is more focused, higher is more creative. If the model does not accept it, it is left out and the job log says so."/>
+            <param name="max_tokens" type="integer" optional="true" min="1" max="128000" label="Max tokens" help="Longest answer allowed. Reasoning models also count their hidden thinking, so a low value can give an empty answer."/>
+            <param name="top_p" type="float" optional="true" min="0.0" max="1.0" label="Top P" help="Another way to control randomness (0 to 1). If the model does not accept it, it is left out and the job log says so."/>
+            <param name="system_message" type="text" optional="true" label="System message" help="Tells the model how to behave, e.g. 'You are a helpful biology assistant'." area="true">
+                <sanitizer sanitize="false"/>
+            </param>
+
+        </section>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} (${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" label="${tool.name} (#if $server_type.server_type_selection == 'custom' then $server_type.custom_model else $server_type.openai_model.model#)#if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
     </outputs>
     <tests>
         <test expect_failure="true" expect_exit_code="1">
-            <param name="model" value="gpt-5"/>
+            <conditional name="server_type">
+                <param name="server_type_selection" value="openai"/>
+                <conditional name="openai_model">
+                    <param name="model_source" value="other"/>
+                    <param name="model" value="gpt-4o"/>
+                </conditional>
+            </conditional>
             <param name="context" value="chatgpt_test.txt" ftype="txt"/>
             <param name="prompt" value="What is this?"/>
+            <assert_command>
+                <has_text text="1_chatgpt_test.txt"/>
+                <has_text text="'gpt-4o' 'openai' '' '' ''"/>
+            </assert_command>
             <assert_stdout>
                 <has_text text="OpenAI API key is not provided in credentials!"/>
+            </assert_stdout>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="server_type">
+                <param name="server_type_selection" value="custom"/>
+                <param name="custom_model" value="llama-3.2-8b"/>
+            </conditional>
+            <param name="prompt" value="Hello"/>
+            <section name="advanced">
+                <param name="temperature" value="0.5"/>
+                <param name="max_tokens" value="100"/>
+                <param name="top_p" value="0.9"/>
+                <param name="system_message" value="You are a helpful assistant."/>
+            </section>
+            <assert_command>
+                <has_text text="'llama-3.2-8b' 'custom' '0.5' '100' '0.9'"/>
+            </assert_command>
+            <assert_stdout>
+                <has_text text="Custom server URL is not provided in credentials!"/>
+            </assert_stdout>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <conditional name="server_type">
+                <param name="server_type_selection" value="openai"/>
+                <conditional name="openai_model">
+                    <param name="model_source" value="other"/>
+                    <param name="model" value="gpt-4o"/>
+                </conditional>
+            </conditional>
+            <param name="prompt" value=" "/>
+            <assert_stdout>
+                <has_text text="The prompt is empty!"/>
             </assert_stdout>
         </test>
     </tests>
@@ -67,43 +188,39 @@ python '$__tool_directory__/chatgpt.py'
 
 **What it does**
 
-This tool leverages OpenAI's ChatGPT API to generate responses based on user-provided context and prompt.
-Users can upload context data in various formats and ask questions or execute prompts related to that data.
-The tool then uploads the data to a OpenAI server and processes them using the selected ChatGPT model, returning an AI-generated response tailored to the context provided.
+Sends your prompt, and optional files, to a large language model (LLM) and saves the answer as a Markdown file.
+You can use OpenAI, or any server with an OpenAI-compatible API, for example Open WebUI, vLLM, Ollama or LiteLLM.
 
-To utilize this tool, users need to input their OpenAI API key in the credentials section. To obtain an API key, visit API keys page in your OpenAI Dashboard.
-Make sure to setup the payment method in your OpenAI account to use the API key.
+**Credentials**
 
-When you run this tool, your input data is sent to OpenAI's servers using your API-key. 
-OpenAI's models process the data and generate a response based on the context and prompt provided. 
-After receiving the response from the OpenAI server, the tool returns it to Galaxy and puts it in your history. 
-The files that have been uploaded are then deleted from the OpenAI's server, so they are not stored beyond their necessary use. 
-If the tool fails to delete your uploaded files automatically, you can manually delete them in your openai account page. You might want to check your OpenAI storage from time to time as they also have a quota.
+Add them once with the **Provide credentials** button at the top of the tool form.
 
-For more information on the tool refer to GitHub README_ file.
+- **OpenAI**: your OpenAI API key.
+- **Custom server**: the server URL and, if the server needs one, an API key. The URL is the server address followed by its API path, usually ``/v1``. For Open WebUI the path is ``/api``. The job runs on a Galaxy server, so ``localhost`` means that server, not your computer.
 
-.. _README: https://github.com/bgruening/galaxytools/blob/master/tools/chatgpt/README.md
+**Inputs**
 
-Usage
-.....
+- **Server**: OpenAI or your custom server.
+- **Model**: for OpenAI, choose from the current models (the list comes from the public OpenRouter model list) or type any model name. For a custom server, type the model name as the server knows it. Not sure of the name? Run the tool once: if the name is wrong, the job log lists the models on your server.
+- **Context** (optional): files for the model to read. Text files (TXT, CSV, JSON, HTML) work best. PDF and Word files are not converted, so turn them into text first, for example with the Markitdown tool. Images (JPG, PNG, GIF, max 20 MB each) need a model that can read images: some models ignore images without an error.
+- **Prompt**: your question or task. Be specific.
 
-**Input**
+**Advanced options**
 
-1. **Upload Context Data** (Optional): You can optionally upload up to 500 files in formats such as DOC, DOCX, HTML, JSON, PDF, TXT, JPG, JPEG, PNG, WEBP, or GIF. 
-This context data serves as the input for the prompt you wish to execute. If no context is provided, ChatGPT will respond based solely on the prompt.
+- **Temperature**: lower (0 to 0.3) gives focused, repeatable answers. Higher (0.7 or more) gives more creative answers.
+- **Top P**: another way to control randomness. Change Temperature or Top P, not both.
+- **Max tokens**: the longest answer allowed. Reasoning models also count their hidden thinking, so a low value can give an empty answer.
+- **System message**: tells the model how to behave, for example "You are a helpful biology assistant".
 
-2. **Provide a Prompt**: Provide a prompt or task for ChatGPT to execute.
-The more specific the prompt, the more tailored the response will be.
+Many reasoning models do not accept Temperature or Top P. The tool then leaves them out and writes a note in the job log.
 
-3. **Select a Model**: Choose the ChatGPT model that best fits your needs. 
-Information about different models and their pricing can be found on the OpenAI website.
+**If something goes wrong**
 
+The job log says what went wrong in one short sentence, for example a wrong API key, an unknown model name, or files that are too long for the model.
 
-**Output**
+**Privacy**
 
-The output is a response generated by ChatGPT, crafted based on the provided context data and the prompt posed.
-This response is saved in the `output.txt` file.
-
+Your prompt, system message and files leave Galaxy. They are sent to OpenAI or to your custom server, and that service's data policy applies.
 
     ]]></help>
     <citations>
