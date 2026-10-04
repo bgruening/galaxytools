@@ -91,7 +91,8 @@ class SupervisedDataset(Dataset):
         self,
         data_path: str,
         tokenizer: transformers.PreTrainedTokenizer,
-        problem_type: str = "classification"
+        problem_type: str = "classification",
+        label_mapping: Optional[Dict[int, int]] = None,
     ):
         super(SupervisedDataset, self).__init__()
 
@@ -102,9 +103,33 @@ class SupervisedDataset(Dataset):
             # data is in the format of [text, label]
             logging.warning("Perform single sequence task...")
             texts = [d[0] for d in data]
-            labels = [int(d[1]) for d in data] if problem_type == "classification" else [float(d[1]) for d in data]
+            raw_labels = (
+                [int(d[1]) for d in data]
+                if problem_type == "classification"
+                else [float(d[1]) for d in data]
+            )
         else:
             raise ValueError("Data format not supported.")
+
+        if problem_type == "classification":
+            if label_mapping is None:
+                classes = sorted(set(raw_labels))
+                label_mapping = {label: index for index, label in enumerate(classes)}
+
+            unknown_labels = set(raw_labels) - set(label_mapping)
+            if unknown_labels:
+                raise ValueError(
+                    f"Found labels not present in the training dataset: "
+                    f"{sorted(unknown_labels)}"
+                )
+
+            labels = [label_mapping[label] for label in raw_labels]
+            self.label_mapping = label_mapping
+            self.num_labels = len(label_mapping)
+        else:
+            labels = raw_labels
+            self.label_mapping = None
+            self.num_labels = 1
 
         output = tokenizer(
             texts,
@@ -118,7 +143,6 @@ class SupervisedDataset(Dataset):
         self.attention_mask = output["attention_mask"]
         self.labels = labels
         self.problem_type = problem_type
-        self.num_labels = len(set(labels)) if problem_type == "classification" else 1
 
     def __len__(self):
         return len(self.input_ids)
@@ -257,8 +281,14 @@ def get_ids_and_texts(data_path: str):
     return ids, texts
 
 
-def dump_test_predictions(trainer: transformers.Trainer, test_dataset: Dataset, sequences: list[str],
-                          output_dir: str, problem_type: str):
+def dump_test_predictions(
+    trainer: transformers.Trainer,
+    test_dataset: Dataset,
+    sequences: list[str],
+    output_dir: str,
+    problem_type: str,
+    label_mapping: Optional[Dict[int, int]] = None,
+):
     pred_output = trainer.predict(test_dataset=test_dataset)
     labels = pred_output.label_ids
     preds_raw = pred_output.predictions
@@ -266,6 +296,18 @@ def dump_test_predictions(trainer: transformers.Trainer, test_dataset: Dataset, 
     if problem_type == "classification":
         probs = torch.softmax(torch.tensor(preds_raw), dim=-1).numpy()
         preds = np.argmax(probs, axis=-1)
+
+        if label_mapping is not None:
+            inverse_label_mapping = {
+                encoded_label: original_label
+                for original_label, encoded_label in label_mapping.items()
+            }
+            labels = np.asarray(
+                [inverse_label_mapping[int(label)] for label in labels]
+            )
+            preds = np.asarray(
+                [inverse_label_mapping[int(pred)] for pred in preds]
+            )
     else:
         preds = np.squeeze(preds_raw)
 
@@ -344,11 +386,13 @@ def train():
         tokenizer=tokenizer,
         data_path=data_args.eval_file,
         problem_type=problem_type,
+        label_mapping=train_dataset.label_mapping,
     )
     test_dataset = SupervisedDataset(
         tokenizer=tokenizer,
         data_path=data_args.test_file,
         problem_type=problem_type,
+        label_mapping=train_dataset.label_mapping,
     )
     data_collator = DataCollatorForSupervisedDataset(tokenizer=tokenizer, problem_type=problem_type)
 
@@ -429,6 +473,7 @@ def train():
         sequences=texts,
         output_dir=training_args.output_dir,
         problem_type=problem_type,
+        label_mapping=train_dataset.label_mapping,
     )
 
     # v) attention visualizations
