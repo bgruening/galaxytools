@@ -311,8 +311,8 @@ def dump_test_predictions(
     else:
         preds = np.squeeze(preds_raw)
 
-    labels = np.squeeze(labels)
-    preds = np.squeeze(preds)
+    labels = np.atleast_1d(np.squeeze(labels))
+    preds = np.atleast_1d(np.squeeze(preds))
 
     pred_path = os.path.join(output_dir, "test_predictions.csv")
     with open(pred_path, "w", newline="") as f:
