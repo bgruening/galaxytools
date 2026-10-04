@@ -45,6 +45,7 @@ def main(inputs, infile, outfile, outfile_encoding_vocabulary):
     with open(outfile_encoding_vocabulary, "w") as vocab_handler:
         json.dump(vocab, vocab_handler)
 
+
 if __name__ == "__main__":
     aparser = argparse.ArgumentParser()
     aparser.add_argument("-i", "--inputs", dest="inputs", required=True)
