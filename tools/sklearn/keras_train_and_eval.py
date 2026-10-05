@@ -11,7 +11,7 @@ from galaxy_ml.keras_galaxy_models import (
     _predict_generator,
     KerasGBatchClassifier,
     KerasGClassifier,
-    KerasGRegressor
+    KerasGRegressor,
 )
 from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
 from galaxy_ml.model_validations import train_test_split
@@ -22,7 +22,7 @@ from galaxy_ml.utils import (
     get_module,
     get_scoring,
     read_columns,
-    SafeEval
+    SafeEval,
 )
 from scipy.io import mmread
 from sklearn.metrics._scorer import _check_multimetric_scoring
@@ -60,8 +60,7 @@ def _eval_swap_params(params_builder):
         param_name = p["sp_name"]
         if param_name.lower().endswith(NON_SEARCHABLE):
             warnings.warn(
-                "Warning: `%s` is not eligible for search and was "
-                "omitted!" % param_name
+                "Warning: `%s` is not eligible for search and was omitted!" % param_name
             )
             continue
 
@@ -408,9 +407,9 @@ def main(
     # the default scoring for classification/regression (accuracy/r2)
     if scorer is None:
         if isinstance(estimator, KerasGClassifier):
-            scorer = ['accuracy']
+            scorer = ["accuracy"]
         if isinstance(estimator, KerasGRegressor):
-            scorer = ['r2']
+            scorer = ["r2"]
 
     scorer = _check_multimetric_scoring(estimator, scoring=scorer)
 
@@ -424,7 +423,7 @@ def main(
             test_split_options["labels"] = y
         else:
             raise ValueError(
-                "Stratified shuffle split is not " "applicable on empty target values!"
+                "Stratified shuffle split is not applicable on empty target values!"
             )
 
     X_train, X_test, y_train, y_test, groups_train, groups_test = train_test_split_none(
@@ -444,8 +443,7 @@ def main(
                 val_split_options["labels"] = y_train
             else:
                 raise ValueError(
-                    "Stratified shuffle split is not "
-                    "applicable on empty target values!"
+                    "Stratified shuffle split is not applicable on empty target values!"
                 )
 
         (
@@ -470,9 +468,11 @@ def main(
             if cb["callback_selection"]["callback_type"] == "CSVLogger":
                 hist_df = pd.DataFrame(history.history)
                 hist_df["epoch"] = np.arange(1, estimator_params["epochs"] + 1)
-                epo_col = hist_df.pop('epoch')
-                hist_df.insert(0, 'epoch', epo_col)
-                hist_df.to_csv(path_or_buf=outfile_history, sep="\t", header=True, index=False)
+                epo_col = hist_df.pop("epoch")
+                hist_df.insert(0, "epoch", epo_col)
+                hist_df.to_csv(
+                    path_or_buf=outfile_history, sep="\t", header=True, index=False
+                )
                 break
     if isinstance(estimator, KerasGBatchClassifier):
         scores = {}
@@ -513,10 +513,19 @@ def main(
         if len(y_test.shape) == 2:
             rounded_test_labels = np.argmax(y_test, axis=1)
             y_true = rounded_test_labels
-            sk_scores = _score(estimator, X_test, rounded_test_labels, scorer)
         else:
             y_true = y_test
-            sk_scores = _score(estimator, X_test, y_true, scorer)
+
+        if isinstance(scorer, dict):
+            sk_scores = {}
+            for name, single_scorer in scorer.items():
+                single = _score(estimator, X_test, y_true, single_scorer, None)
+                if isinstance(single, dict):
+                    sk_scores[name] = list(single.values())[0]
+                else:  # plain float for single-metric scorers
+                    sk_scores[name] = single
+        else:
+            sk_scores = _score(estimator, X_test, y_true, scorer, None)
 
         scores.update(sk_scores)
 

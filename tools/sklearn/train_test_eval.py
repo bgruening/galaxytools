@@ -15,7 +15,7 @@ from galaxy_ml.utils import (
     get_scoring,
     read_columns,
     SafeEval,
-    try_get_attr
+    try_get_attr,
 )
 from scipy.io import mmread
 from sklearn import pipeline
@@ -24,8 +24,8 @@ from sklearn.model_selection._validation import _score
 from sklearn.utils import _safe_indexing, indexable
 
 _fit_and_score = try_get_attr("galaxy_ml.model_validations", "_fit_and_score")
-setattr(_search, "_fit_and_score", _fit_and_score)
-setattr(_validation, "_fit_and_score", _fit_and_score)
+_search._fit_and_score = _fit_and_score
+_validation._fit_and_score = _fit_and_score
 
 N_JOBS = int(os.environ.get("GALAXY_SLOTS", 1))
 CACHE_DIR = os.path.join(os.getcwd(), "cached")
@@ -51,8 +51,7 @@ def _eval_swap_params(params_builder):
         param_name = p["sp_name"]
         if param_name.lower().endswith(NON_SEARCHABLE):
             warnings.warn(
-                "Warning: `%s` is not eligible for search and was "
-                "omitted!" % param_name
+                "Warning: `%s` is not eligible for search and was omitted!" % param_name
             )
             continue
 
@@ -364,7 +363,7 @@ def main(
             test_split_options["labels"] = y
         else:
             raise ValueError(
-                "Stratified shuffle split is not " "applicable on empty target values!"
+                "Stratified shuffle split is not applicable on empty target values!"
             )
 
     (
@@ -389,8 +388,7 @@ def main(
                 val_split_options["labels"] = y_train
             else:
                 raise ValueError(
-                    "Stratified shuffle split is not "
-                    "applicable on empty target values!"
+                    "Stratified shuffle split is not applicable on empty target values!"
                 )
 
         (
@@ -416,7 +414,16 @@ def main(
             X_test, y_test=y_test, scorer=scorer, is_multimetric=True
         )
     else:
-        scores = _score(estimator, X_test, y_test, scorer)
+        if isinstance(scorer, dict):
+            scores = {}
+            for name, single_scorer in scorer.items():
+                single = _score(estimator, X_test, y_test, single_scorer, None)
+                if isinstance(single, dict):
+                    scores[name] = list(single.values())[0]
+                else:  # plain float for single-metric scorers
+                    scores[name] = single
+        else:
+            scores = _score(estimator, X_test, y_test, scorer, None)
     # handle output
     for name, score in scores.items():
         scores[name] = [score]

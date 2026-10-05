@@ -23,15 +23,15 @@ def _get_longest_sequence_length(fasta_file):
 
 
 def encode_dna_sequences(fasta_path, padding, outfile, outfile_matrix):
-    from galaxy_ml.preprocessors import GenomeOneHotEncoder
     import pyfaidx
+    from galaxy_ml.preprocessors import GenomeOneHotEncoder
 
     seq_length = None
     fasta_file = pyfaidx.Fasta(fasta_path)
     if padding:
         seq_length, max_id = _get_longest_sequence_length(fasta_file)
         print("Longest sequence is %s with length %d" % (max_id, seq_length))
-    print("Padding: {}".format(padding))
+    print(f"Padding: {padding}")
     X = np.arange(len(fasta_file.keys())).reshape(-1, 1)
     genome_encoder = GenomeOneHotEncoder(
         fasta_path=fasta_path, seq_length=seq_length, padding=padding
