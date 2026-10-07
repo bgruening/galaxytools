@@ -28,9 +28,10 @@
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
-        ln -s '$input' 'input.${input.ext}' &&
+    #set $input_name = str($input.element_identifier)
+        ln -sf '$input' '${input_name}.${input.ext}' &&
         python3 -u /src/run.py
-        --dataset-path 'input.${input.ext}'
+        --dataset-path '${input_name}.${input.ext}'
         --output-dir 'out'
         --gradient '$gradient'
         --max-diameter '$max_diameter'
@@ -46,34 +47,34 @@
         $branch_data
         &&
         ## Mesh artifacts can be absent depending on the run
-        mv "out/input_segmented.laz" '$segmented_laz' &&
-        if [ -f "out/input_trees_mesh.ply" ]; then mv "out/input_trees_mesh.ply" '$tree_mesh_ply'; fi &&
-        if [ -f "out/input_mesh.ply" ]; then mv "out/input_mesh.ply" '$terrain_mesh_ply'; fi &&
+        mv "out/${input_name}_segmented.laz" '$segmented_laz' &&
+        if [ -f "out/${input_name}_trees_mesh.ply" ]; then mv "out/${input_name}_trees_mesh.ply" '$tree_mesh_ply'; fi &&
+        if [ -f "out/${input_name}_mesh.ply" ]; then mv "out/${input_name}_mesh.ply" '$terrain_mesh_ply'; fi &&
         #if $treeinfo
-            mv "out/input_trees_info.txt" '$tree_info_txt'
+            mv "out/${input_name}_trees_info.txt" '$tree_info_txt'
         #else
-            mv "out/input_trees.txt" '$tree_model_txt'
+            mv "out/${input_name}_trees.txt" '$tree_model_txt'
         #end if
         ]]>
     </command>
 
     <inputs>
-        <param name="input" type="data" format="laz,las" label="Input point cloud (.las or .laz)" help="Input LAS or LAZ file."/>
+        <param name="input" type="data" format="laz" label="Input point cloud (.laz)" help="Input LAZ file."/>
         <!-- rayextract terrain -->
         <param argument="--gradient" type="float" min="0.001" max="1000" value="1" label="Gradient" help="Gradient threshold for terrain extraction"/>
         <!-- rayextract trees -->
         <param argument="--max-diameter" type="float" min="0.01" max="100" value="0.9" label="Maximum diameter" help="maximum trunk diameter in segmenting trees (m)"/>
-        <param argument="--crop-length" type="float" min="0.01" max="100" value="1" label="Crop length" help="Reconstruct the QSM up to this distance from branch tips (m)."/>
+        <param argument="--crop-length" type="float" min="0.01" max="100" value="1" label="Crop length" help="Crops branches up to this distance from tip (m)."/>
         <param argument="--distance-limit" type="float" min="0.01" max="10" value="1" label="Distance limit" help="Maximum distance between neighbour points in a tree (m)"/>
         <param argument="--height-min" type="float" min="0.01" max="1000" value="2" label="Minimum tree height" help="Minimum height counted as a tree (m)"/>
         <param argument="--girth-height-ratio" type="float" min="0.001" max="0.5" value="0.12" label="Girth height ratio" help="Amount up tree's height to estimate trunk girth"/>
         <param argument="--global-taper" type="float" min="0" max="1" value="0.024" label="Global taper" help="Force taper value (diameter per length) for trees under global_taper_factor of max tree height - use 0 to estimate global taper from the data"/>
         <param argument="--global-taper-factor" type="float" min="0" max="1" value="0.3" label="Global taper factor" help="1 estimates same taper for whole scan, 0 is per-tree tapering, values between 0 and 1 produce soft cutoff at this amount of max tree height"/>
         <param argument="--gravity-factor" type="float" min="0" max="1" value="0.3" label="Gravity factor" help="Larger values preference vertical trees"/>
-        <param argument="--branch-segmentation" type="boolean" checked="false" truevalue="--branch-segmentation" falsevalue="" label="Branch segmentation" help="Add segment IDs in PredBranch_RCT while retaining tree IDs in PredInstance_RCT. Zero means unassigned."/>
+        <param argument="--branch-segmentation" type="boolean" checked="false" truevalue="--branch-segmentation" falsevalue="" label="Branch segmentation" help="Segments per branch segment - assigns IDs per branch segment instead of per tree instance"/>
         <!-- treeinfo -->
         <param argument="--treeinfo" type="boolean" checked="false" truevalue="--treeinfo" falsevalue="" label="Treeinfo" help="Calculate tree attributes - dbh, height, crown radius, volume, ..."/>
-        <param argument="--branch-data" type="boolean" checked="false" truevalue="--branch-data" falsevalue="" label="Branch data" help="Calculate additional branch attributes (branch number, segment length, order, extension and position). Only used when Treeinfo is enabled; otherwise ignored."/>
+        <param argument="--branch-data" type="boolean" checked="false" truevalue="--branch-data" falsevalue="" label="Branch data" help="Calculate branch attributes - branch number, segment_length, branch order number, extension and position in branch integers per-segment"/>
     </inputs>
 
     <outputs>
@@ -168,45 +169,23 @@ It is platform-agnostic and works across airborne (ULS), terrestrial (TLS), and 
 
 **Processing Steps**
 
-- Prepare a temporary LAZ 1.2 copy for native processing
+- Convert input point cloud to LAZ 1.2
 - Import point cloud as ray cloud
 - Extract terrain
 - Extract trees
 - Convert point color (segmentation result) to instance IDs
-- Add instance IDs to a new copy of the original point cloud, preserving its LAS version, point format, dimensions and metadata
+- Add instance IDs back to input point cloud
 - Optional: Calculate tree attributes (dbh, height, crown radius, volume, ...)
-
------
-
-**Input and metadata**
-
-LAZ inputs may omit GPS time. The segmented output preserves the original point
-order and dimension values, XYZ scales and offsets, CRS, ExtraBytes descriptors,
-and non-structural VLRs/EVLRs. The temporary LAZ 1.2 processing copy does not
-change the original input or the segmented output's LAS version.
-
-COPC indexing records are removed because the output is sequential LAZ.
-Waveform point formats (4, 5, 9 and 10) are rejected because waveform payload
-preservation is not supported. Metadata or label validation failures fail the job.
 
 -----
 
 **Outputs**
 
-- **Segmented point cloud (LAZ):** tree IDs in `PredInstance_RCT`. With branch
-  segmentation enabled, also includes `PredBranch_RCT` (native `section_id + 1`).
-  Zero means unassigned. Segment IDs include root/trunk sections and are distinct
-  from the branch-order attributes calculated by Treeinfo with Branch data.
-- **Tree model (TXT):** cylinder models, produced when `treeinfo` is disabled
+- **Segmented point cloud (LAZ):** instance dimension `PredInstance_RCT`
+- **Tree info (TXT):** produced when `treeinfo` is disabled
 - **Tree info (TXT):** produced when `treeinfo` is enabled
-- **Tree meshes (PLY):** one combined mesh with an unsigned `tree_id` on every
-  triangle face, matching native tree-file rows (1-based). These IDs match
-  `PredInstance_RCT` in both modes; they do not identify `PredBranch_RCT` segments.
+- **Tree meshes (PLY)**
 - **Terrain meshes (PLY)**
-
-Tree ownership is embedded in the tree PLY; no separate CSV is needed.
-Downstream merge/filter operations must preserve and remap these IDs together
-with the LAZ and tree files. This tool does not generate a viewer GLB.
 
 This wrapper processes one input file per job. If you pass a collection in Galaxy workflows, Galaxy will iterate the tool over the collection and can parallelize those jobs.
 
