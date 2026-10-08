@@ -12,13 +12,14 @@ from huggingface_hub import snapshot_download
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Download multiple SentenceTransformer models."
+        description="Download SentenceTransformer embedding models and cross-encoder "
+        "rerankers (e.g. cross-encoder/ms-marco-MiniLM-L6-v2) for the RAG Retriever."
     )
     parser.add_argument(
         "--models",
         nargs="+",
         required=True,
-        help="Hugging Face model IDs, separated by spaces",
+        help="Hugging Face model IDs (embedding models or rerankers), separated by spaces",
     )
 
     args = parser.parse_args()
