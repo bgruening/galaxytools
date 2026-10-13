@@ -1,12 +1,12 @@
 import argparse
 import json
 import warnings
-from distutils.version import LooseVersion as Version
 
 import pandas as pd
 from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.model_validations import train_test_split
 from galaxy_ml.utils import get_cv, read_columns
+from packaging.version import Version
 
 
 def _get_single_cv_split(params, array, infile_labels=None, infile_groups=None):
@@ -79,8 +79,7 @@ def _get_single_cv_split(params, array, infile_labels=None, infile_groups=None):
     total_n_splits = splitter.get_n_splits(array.values, y=y, groups=groups)
     if nth_split > total_n_splits:
         raise ValueError(
-            "Total number of splits is {}, but got `nth_split` "
-            "= {}".format(total_n_splits, nth_split)
+            f"Total number of splits is {total_n_splits}, but got `nth_split` = {nth_split}"
         )
 
     i = 1
@@ -139,7 +138,11 @@ def main(
     if params["mode_selection"]["selected_mode"] == "train_test_split":
         options = params["mode_selection"]["options"]
         shuffle_selection = options.pop("shuffle_selection")
-        options["shuffle"] = None if shuffle_selection["shuffle"] == "None" else shuffle_selection["shuffle"]
+        options["shuffle"] = (
+            None
+            if shuffle_selection["shuffle"] == "None"
+            else shuffle_selection["shuffle"]
+        )
         if infile_labels:
             header = "infer" if shuffle_selection["header1"] else None
             col_index = shuffle_selection["col"][0] - 1
