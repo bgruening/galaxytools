@@ -5,10 +5,29 @@ on:
 jobs:
   plan:
     name: Plan Tool Request
+    # Dual-match: both the prefixed (tool-bot:*) and original unprefixed label
+    # names trigger. If your repo only has the prefixed labels (e.g. created by
+    # scripts/create-labels.sh), you can drop the unprefixed alternatives.
+    # Note: the pinned CLI learns the prefixed names in releases after 0.1.2 —
+    # on older pins, prefixed labels need a `labels:` override in
+    # .gxy-tool-bot.yml (or keep the legacy names), else update issues
+    # misroute to the new-tool flow and plan-ready label writes 422.
     if: |
-      (github.event.action == 'opened' && contains(github.event.issue.labels.*.name, 'tool-request')) ||
-      (github.event.action == 'labeled' && github.event.label.name == 'retry-plan')
+      (github.event.action == 'opened' &&
+       (contains(github.event.issue.labels.*.name, 'tool-bot:tool-request') ||
+        contains(github.event.issue.labels.*.name, 'tool-request') ||
+        contains(github.event.issue.labels.*.name, 'tool-bot:tool-update') ||
+        contains(github.event.issue.labels.*.name, 'tool-update'))) ||
+      (github.event.action == 'labeled' &&
+       (github.event.label.name == 'tool-bot:retry-plan' ||
+        github.event.label.name == 'retry-plan'))
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    concurrency:
+      group: plan-${{ github.event.issue.number }}
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - name: Post status comment
@@ -19,14 +38,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --no-cache-dir gxy-tool-bot==0.1.2
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.0
       - name: Remove retry-plan and generation-failed labels
         if: github.event.action == 'labeled'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Remove whichever spelling(s) exist — prefixed and legacy.
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "tool-bot:retry-plan" || true
           gh issue edit ${{ github.event.issue.number }} \
             --remove-label "retry-plan" || true
+          gh issue edit ${{ github.event.issue.number }} \
+            --remove-label "tool-bot:generation-failed" || true
           gh issue edit ${{ github.event.issue.number }} \
             --remove-label "generation-failed" || true
       - name: Generate plan
@@ -43,5 +67,9 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Prefixed label is canonical; fall back to the legacy name if the
+          # prefixed one doesn't exist in this repo.
+          gh issue edit ${{ github.event.issue.number }} \
+            --add-label "tool-bot:plan-ready" 2>/dev/null || \
           gh issue edit ${{ github.event.issue.number }} \
             --add-label "plan-ready"

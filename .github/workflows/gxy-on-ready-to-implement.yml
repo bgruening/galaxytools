@@ -1,14 +1,45 @@
 on:
   issues:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      issue_number:
+        description: "Issue number to generate from"
+        required: true
+        type: string
+      max_iterations:
+        description: "Override max tool iterations per round (blank = config default)"
+        required: false
+        type: string
+        default: ""
+      max_retries:
+        description: "Override max validation retry rounds (blank = config default)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   generate:
     name: Generate Tool Files
+    # Dual-match: both the prefixed (tool-bot:*) and original unprefixed label
+    # names trigger. If your repo only has the prefixed labels (e.g. created by
+    # scripts/create-labels.sh), you can drop the unprefixed alternatives.
     if: |
+      github.event.label.name == 'tool-bot:ready-to-implement' ||
       github.event.label.name == 'ready-to-implement' ||
-      github.event.label.name == 'retry-generate'
+      github.event.label.name == 'tool-bot:retry-generate' ||
+      github.event.label.name == 'retry-generate' ||
+      github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+    concurrency:
+      group: generate-${{ github.event.issue.number || inputs.issue_number }}
+      cancel-in-progress: false
+    env:
+      ISSUE_NUMBER: ${{ github.event.issue.number || inputs.issue_number }}
     # Note: if allowed_maintainers is configured, the CLI verifies
     # github.event.actor is in the list and exits with code 1 if not.
     steps:
@@ -17,34 +48,54 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "🔄 Tool generation started — [view progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          gh issue comment $ISSUE_NUMBER --body "🔄 Tool generation started — [view progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --no-cache-dir gxy-tool-bot==0.1.2
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.0
       - run: pip install "planemo>=0.75.43"
+      - name: Install micromamba
+        run: |
+          curl -Ls "https://micro.mamba.pm/api/micromamba/linux-64/latest" | tar -xvj -C /tmp
+          echo "/tmp/bin" >> $GITHUB_PATH
       - name: Remove retry-generate and generation-failed labels
-        if: github.event.label.name == 'retry-generate'
+        if: github.event.label.name == 'tool-bot:retry-generate' || github.event.label.name == 'retry-generate'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue edit ${{ github.event.issue.number }} \
+          # Remove whichever spelling(s) exist — prefixed and legacy.
+          gh issue edit $ISSUE_NUMBER \
+            --remove-label "tool-bot:retry-generate" || true
+          gh issue edit $ISSUE_NUMBER \
             --remove-label "retry-generate" || true
-          gh issue edit ${{ github.event.issue.number }} \
+          gh issue edit $ISSUE_NUMBER \
+            --remove-label "tool-bot:generation-failed" || true
+          gh issue edit $ISSUE_NUMBER \
             --remove-label "generation-failed" || true
       - name: Generate tool files
         id: generate
         env:
           GXY_TOOL_BOT_API_KEY: ${{ secrets.GXY_TOOL_BOT_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          MAX_ITERATIONS_INPUT: ${{ inputs.max_iterations }}
+          MAX_RETRIES_INPUT: ${{ inputs.max_retries }}
         run: |
+          OVERRIDE_ARGS=()
+          if [ -n "$MAX_ITERATIONS_INPUT" ]; then
+            OVERRIDE_ARGS+=(--max-iterations "$MAX_ITERATIONS_INPUT")
+          fi
+          if [ -n "$MAX_RETRIES_INPUT" ]; then
+            OVERRIDE_ARGS+=(--max-retries "$MAX_RETRIES_INPUT")
+          fi
           gxy-tool-bot generate \
-            --issue ${{ github.event.issue.number }} \
+            --issue $ISSUE_NUMBER \
             --config .gxy-tool-bot.yml \
             --output generated/ \
-            --actor ${{ github.event.sender.login }} \
+            --actor ${{ github.event.sender.login || 'manual' }} \
             --commit-msg-path $GITHUB_WORKSPACE/.commit-msg \
-            --pr-body-path $GITHUB_WORKSPACE/.pr-body
+            --pr-body-path $GITHUB_WORKSPACE/.pr-body \
+            "${OVERRIDE_ARGS[@]}"
       - name: Format generated XML with planemo
         id: format
         if: steps.generate.outcome == 'success'
@@ -60,7 +111,7 @@ jobs:
           git config user.email "gxy-tool-bot@users.noreply.github.com"
           TOOL_DIR=$(cat generated/.tool-name)
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
-          BRANCH="tool-bot/issue-${{ github.event.issue.number }}"
+          BRANCH="tool-bot/issue-$ISSUE_NUMBER"
           DEFAULT_BRANCH=${{ github.event.repository.default_branch }}
           git fetch origin "$DEFAULT_BRANCH"
           # Check if branch already exists (re-run scenario)
@@ -82,11 +133,21 @@ jobs:
           IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --files-from=- 2>/dev/null || true)
           # Add everything that isn't ignored
           git add "tools/$TOOL_DIR/" || true
+          if git diff --cached --quiet; then
+            # The agent can legitimately produce no changes (e.g. it declines an
+            # update, or regenerates identical files) — commit and PR creation
+            # would both fail on an empty diff.
+            echo "No changes to commit — skipping PR creation"
+            gh issue comment $ISSUE_NUMBER --body "⚠️ Bot finished but produced no changes to \`tools/$TOOL_DIR/\` — nothing to commit. Add the \`tool-bot:retry-generate\` (or \`retry-generate\`) label to try again."
+          else
           # Use LLM-generated commit message if available, otherwise fallback
+          # (.is-update is written by the CLI for tool-update issues)
           if [ -f "$GITHUB_WORKSPACE/.commit-msg" ]; then
             COMMIT_MSG=$(cat "$GITHUB_WORKSPACE/.commit-msg")
+          elif [ -f "$GITHUB_WORKSPACE/.is-update" ]; then
+            COMMIT_MSG=$(printf "Update tool for issue #%s\n\nCloses #%s" "$ISSUE_NUMBER" "$ISSUE_NUMBER")
           else
-            COMMIT_MSG=$(printf "Generate tool for issue #%s\n\nCloses #%s" "${{ github.event.issue.number }}" "${{ github.event.issue.number }}")
+            COMMIT_MSG=$(printf "Generate tool for issue #%s\n\nCloses #%s" "$ISSUE_NUMBER" "$ISSUE_NUMBER")
           fi
           git commit -m "$COMMIT_MSG"
           git push origin "$BRANCH" --force
@@ -94,7 +155,7 @@ jobs:
           PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$PR_NUMBER" ]; then
             gh pr comment "$PR_NUMBER" --body "🔄 Tool regenerated — previous files overwritten. [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
-            gh issue comment ${{ github.event.issue.number }} --body "🔄 Tool regenerated and PR #$PR_NUMBER updated — previous files overwritten."
+            gh issue comment $ISSUE_NUMBER --body "🔄 Tool regenerated and PR #$PR_NUMBER updated — previous files overwritten."
           else
             # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
             # The address-feedback workflow parses this title (cut -d':' -f1) to find
@@ -104,17 +165,28 @@ jobs:
             if [ -f "$GITHUB_WORKSPACE/.pr-body" ]; then
               PR_BODY=$(cat "$GITHUB_WORKSPACE/.pr-body")
             else
-              PR_BODY="Generated by gxy-tool-bot for issue #${{ github.event.issue.number }}"
+              PR_BODY=$(printf "Generated by gxy-tool-bot for issue #%s\n\n---\n\n## Working on this tool\n\nTo review or improve this tool locally:\n\n**If you don't have the repo yet** (forks and clones in one step):\n\n```bash\ngh repo fork %s --clone\ncd %s\ngit checkout %s\n```\n\n**If you already have the repo:**\n\n```bash\ngit fetch origin\ngit checkout %s\n```\n\nThe tool files are in \`tools/%s/\`." "$ISSUE_NUMBER" "${{ github.repository }}" "${{ github.event.repository.name }}" "$BRANCH" "$BRANCH" "$TOOL_DIR")
+            fi
+            if [ -f "$GITHUB_WORKSPACE/.is-update" ]; then
+              PR_TITLE="$TOOL_DIR: update tool wrapper (issue #$ISSUE_NUMBER)"
+            else
+              PR_TITLE="$TOOL_DIR: auto-generated tool wrapper (issue #$ISSUE_NUMBER)"
             fi
             gh pr create \
               --head "$BRANCH" \
               --base "$DEFAULT_BRANCH" \
-              --title "$TOOL_DIR: auto-generated tool wrapper (issue #${{ github.event.issue.number }})" \
+              --title "$PR_TITLE" \
               --body "$PR_BODY"
-            gh issue comment ${{ github.event.issue.number }} --body "✅ Tool generated successfully and PR opened!"
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+            gh issue comment $ISSUE_NUMBER --body "✅ Tool generated successfully — PR #$PR_NUMBER is ready for review."
+          fi
+          # Prefixed label is canonical; fall back to the legacy name if the
+          # prefixed one doesn't exist in this repo.
+          gh issue edit $ISSUE_NUMBER --add-label "tool-bot:pr-opened" 2>/dev/null || \
+            gh issue edit $ISSUE_NUMBER --add-label "pr-opened"
           fi
           # If some files were gitignored, post a comment for human review
-          if [ -n "$IGNORED_FILES" ]; then
+          if [ -n "$IGNORED_FILES" ] && [ -n "$PR_NUMBER" ]; then
             IGNORED_MSG="⚠️ The following files were generated but are excluded by .gitignore and were NOT committed:\n\n"
             for f in $IGNORED_FILES; do
               IGNORED_MSG+=" - \`$f\`\n"
@@ -122,9 +194,8 @@ jobs:
             IGNORED_MSG+="\nThese files are needed for the tool tests. To include them, a maintainer can run \`git add -f\` for each file, or download them from the [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
             gh pr comment "$PR_NUMBER" --body "$(echo -e "$IGNORED_MSG")"
           fi
-          gh issue edit ${{ github.event.issue.number }} --add-label "pr-opened"
           # Clean up intermediary files
-          rm -f "$GITHUB_WORKSPACE/.commit-msg" "$GITHUB_WORKSPACE/.pr-body"
+          rm -f "$GITHUB_WORKSPACE/.commit-msg" "$GITHUB_WORKSPACE/.pr-body" "$GITHUB_WORKSPACE/.is-update"
       - name: Upload gitignored files as artifacts
         if: steps.create_pr.outcome == 'success'
         uses: actions/upload-artifact@v4
@@ -140,9 +211,9 @@ jobs:
         run: |
           TOOL_DIR="${{ steps.create_pr.outputs.tool_dir }}"
           if [ -f "$GITHUB_WORKSPACE/.validation-failed" ]; then
-            PR_NUMBER=$(gh pr list --head "tool-bot/issue-${{ github.event.issue.number }}" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+            PR_NUMBER=$(gh pr list --head "tool-bot/issue-$ISSUE_NUMBER" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
             if [ -n "$PR_NUMBER" ]; then
-              gh pr comment "$PR_NUMBER" --body "⚠️ Validation issues were found during generation. See the PR description for details, or add the \`address-feedback\` label to have the bot attempt fixes."
+              gh pr comment "$PR_NUMBER" --body "⚠️ Validation issues were found during generation. See the PR description for details, or add the \`tool-bot:address-feedback\` (or \`address-feedback\`) label to have the bot attempt fixes."
             fi
           fi
           rm -f "$GITHUB_WORKSPACE/.validation-failed"
@@ -151,12 +222,20 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "⚠️ Tool generation failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. Add the \`retry-generate\` label to try again."
-          gh issue edit ${{ github.event.issue.number }} --add-label "generation-failed"
+          if [ -f "$GITHUB_WORKSPACE/.gave-up" ]; then
+            # The CLI already posted the agent's give-up reason and applied
+            # the label — don't post a second, contradictory comment.
+            rm -f "$GITHUB_WORKSPACE/.gave-up"
+          else
+            gh issue comment $ISSUE_NUMBER --body "⚠️ Tool generation failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. Add the \`tool-bot:retry-generate\` (or \`retry-generate\`) label to try again."
+            gh issue edit $ISSUE_NUMBER --add-label "tool-bot:generation-failed" 2>/dev/null || \
+              gh issue edit $ISSUE_NUMBER --add-label "generation-failed"
+          fi
       - name: Handle PR creation failure
         if: steps.create_pr.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh issue comment ${{ github.event.issue.number }} --body "⚠️ Files were generated but PR creation failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. Add the \`retry-generate\` label to try again."
-          gh issue edit ${{ github.event.issue.number }} --add-label "generation-failed"
+          gh issue comment $ISSUE_NUMBER --body "⚠️ Files were generated but PR creation failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details. Add the \`tool-bot:retry-generate\` (or \`retry-generate\`) label to try again."
+          gh issue edit $ISSUE_NUMBER --add-label "tool-bot:generation-failed" 2>/dev/null || \
+            gh issue edit $ISSUE_NUMBER --add-label "generation-failed"
