@@ -1,0 +1,651 @@
+<tool id="protein_lm" name="Protein Language Modelling" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>embed, predict, and fine-tune with ESM-2, ProtBERT, or ProtT5</description>
+    <macros>
+        <token name="@TOOL_VERSION@">0.1.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">24.2</token>
+        <xml name="model_source">
+            <conditional name="model_source">
+                <param name="source_type" type="select" label="Model source">
+                    <option value="preinstalled" selected="true">Use an installed model</option>
+                    <option value="upload">Upload a model archive</option>
+                </param>
+                <when value="preinstalled">
+                    <param name="pretrained_model" type="select" label="Select a protein language model">
+                        <options from_data_table="huggingface">
+                            <column name="name" index="1"/>
+                            <column name="value" index="6"/>
+                            <filter type="static_value" value="protein-lm" column="4"/>
+                            <filter type="static_value" value="1" column="5"/>
+                        </options>
+                        <validator type="no_options" message="No protein language models are installed on this Galaxy instance. Ask your Galaxy admin to add one to the huggingface data table with free_tag 'protein-lm'."/>
+                    </param>
+                </when>
+                <when value="upload">
+                    <param name="model_archive" type="data" format="tgz,tar,data" label="Model archive" help="A .tgz or .tar archive of a local Hugging Face model folder (config.json, tokenizer files, and safetensors weights), with or without a single wrapping directory."/>
+                </when>
+            </conditional>
+        </xml>
+        <xml name="long_sequence_options">
+            <param name="max_length" type="integer" value="1024" min="8" label="Maximum sequence length (tokens, including special tokens)"/>
+            <param name="on_long_sequence" type="select" label="If a sequence exceeds the maximum length">
+                <option value="truncate" selected="true">Truncate it</option>
+                <option value="skip">Skip it (with a warning)</option>
+            </param>
+        </xml>
+        <xml name="train_test_split_inputs">
+            <param name="data_fasta" type="data" format="fasta" label="Input FASTA"/>
+            <param name="data_labels" type="data" format="tabular" label="Labels table" help="Tab-separated, with an 'id' column matching the FASTA and a label column."/>
+            <param name="label_col" type="text" value="label" label="Label column name"/>
+            <param name="test_fraction" type="float" value="0.2" min="0.05" max="0.95" label="Fraction held out for testing" help="The tool splits this one dataset into train/test itself -- e.g. 0.2 means 20% test, 80% train."/>
+            <param name="random_seed" type="integer" value="42" label="Random seed for the split" help="Change this to get a different random split of the same data."/>
+        </xml>
+        <xml name="estimator_hyperparams">
+            <when value="rf">
+                <param name="n_estimators" type="integer" value="100" min="1" label="Number of trees"/>
+            </when>
+            <when value="svm">
+                <param name="svm_kernel" type="select" label="Kernel">
+                    <option value="rbf" selected="true">RBF</option>
+                    <option value="linear">Linear</option>
+                    <option value="poly">Polynomial</option>
+                </param>
+            </when>
+            <when value="mlp">
+                <param name="hidden_sizes" type="text" value="128" label="Hidden layer sizes" help="Comma-separated, e.g. 128,64 for two hidden layers.">
+                    <sanitizer invalid_char="">
+                        <valid initial="string.digits"><add value=","/></valid>
+                    </sanitizer>
+                </param>
+            </when>
+        </xml>
+    </macros>
+    <requirements>
+        <requirement type="package" version="2.3.1">pytorch</requirement>
+        <requirement type="package" version="4.44.2">transformers</requirement>
+        <requirement type="package" version="0.12.0">peft</requirement>
+        <requirement type="package" version="0.2.0">sentencepiece</requirement>
+        <requirement type="package" version="1.9.1">scikit-learn</requirement>
+        <requirement type="package" version="3.16.0">h5py</requirement>
+        <requirement type="package" version="3.0.6">pandas</requirement>
+        <requirement type="package" version="3.11.2">matplotlib</requirement>
+        <requirement type="package" version="4.25.3">protobuf</requirement>
+    </requirements>
+    <required_files>
+        <include path="embed.py"/>
+        <include path="predict.py"/>
+        <include path="finetune.py"/>
+        <include path="model_utils.py"/>
+        <include path="fasta_utils.py"/>
+        <include path="errors.py"/>
+    </required_files>
+    <command detect_errors="exit_code"><![CDATA[
+#if str($mode.mode_select) == 'embed'
+    python '$__tool_directory__/embed.py'
+        --input '$mode.input_fasta'
+        #if str($mode.model_source.source_type) == 'upload'
+            --model_archive '$mode.model_source.model_archive'
+        #else
+            --model_path '$mode.model_source.pretrained_model'
+        #end if
+        --output_format '$mode.output_format'
+        #if str($mode.output_format) in ('per_residue', 'both')
+            --output_h5 'output_embeddings.h5'
+        #end if
+        #if str($mode.output_format) in ('per_protein', 'both')
+            --output_tsv 'output_embeddings.tsv'
+        #end if
+        --max_length '$mode.max_length'
+        --on_long_sequence '$mode.on_long_sequence'
+        --batch_size '$mode.batch_size'
+        --device auto
+#elif str($mode.mode_select) == 'predict'
+    python '$__tool_directory__/predict.py'
+        #if str($mode.model_source.source_type) == 'upload'
+            --model_archive '$mode.model_source.model_archive'
+        #else
+            --model_path '$mode.model_source.pretrained_model'
+        #end if
+        --task '$mode.task.selected_task'
+        --data_fasta '$mode.task.data_fasta'
+        --data_labels '$mode.task.data_labels'
+        --label_col '$mode.task.label_col'
+        --test_fraction '$mode.task.test_fraction'
+        --random_seed '$mode.task.random_seed'
+        --estimator '$mode.task.estimator_conditional.estimator'
+        #if str($mode.task.estimator_conditional.estimator) == 'rf'
+            --n_estimators '$mode.task.estimator_conditional.n_estimators'
+        #elif str($mode.task.estimator_conditional.estimator) == 'svm'
+            --svm_kernel '$mode.task.estimator_conditional.svm_kernel'
+        #elif str($mode.task.estimator_conditional.estimator) == 'mlp'
+            --hidden_sizes $mode.task.estimator_conditional.hidden_sizes.replace(',', ' ')
+        #end if
+        --max_length '$mode.max_length'
+        --on_long_sequence '$mode.on_long_sequence'
+        --batch_size '$mode.batch_size'
+        --device auto
+#else
+    python '$__tool_directory__/finetune.py'
+        #if str($mode.model_source.source_type) == 'upload'
+            --model_archive '$mode.model_source.model_archive'
+        #else
+            --model_path '$mode.model_source.pretrained_model'
+        #end if
+        --task '$mode.selected_task'
+        --data_fasta '$mode.data_fasta'
+        --data_labels '$mode.data_labels'
+        --label_col '$mode.label_col'
+        --val_fraction '$mode.val_fraction'
+        --random_seed '$mode.random_seed'
+        --adapter_method '$mode.adapter_conditional.adapter_method'
+        #if str($mode.adapter_conditional.adapter_method) == 'adalora'
+            --adalora_init_r '$mode.adapter_conditional.adalora_init_r'
+            --adalora_target_r '$mode.adapter_conditional.adalora_target_r'
+        #else
+            --lora_r '$mode.adapter_conditional.lora_r'
+        #end if
+        --lora_alpha '$mode.lora_alpha'
+        --lora_dropout '$mode.lora_dropout'
+        --lora_layer_scope '$mode.layer_scope_conditional.lora_layer_scope'
+        #if str($mode.layer_scope_conditional.lora_layer_scope) == 'last_n'
+            --lora_last_n '$mode.layer_scope_conditional.lora_last_n'
+        #elif str($mode.layer_scope_conditional.lora_layer_scope) == 'custom'
+            --lora_custom_layers '$mode.layer_scope_conditional.lora_custom_layers'
+        #end if
+        --epochs '$mode.epochs'
+        --lr '$mode.lr'
+        --batch_size '$mode.batch_size'
+        --weight_decay '$mode.weight_decay'
+        --max_length '$mode.max_length'
+        --on_long_sequence '$mode.on_long_sequence'
+        --device auto
+        && tar -czf lora_adapter.tgz output_adapter
+#end if
+    ]]></command>
+    <inputs>
+        <conditional name="mode">
+            <param name="mode_select" type="select" label="Mode">
+                <option value="embed" selected="true">Extract embeddings</option>
+                <option value="predict">Train a classifier/regressor on embeddings</option>
+                <option value="finetune">LoRA fine-tune the encoder</option>
+            </param>
+            <when value="embed">
+                <expand macro="model_source"/>
+                <param name="input_fasta" type="data" format="fasta" label="Input FASTA"/>
+                <param name="output_format" type="select" label="Output">
+                    <option value="per_protein" selected="true">Per-protein (mean-pooled, TSV)</option>
+                    <option value="per_residue">Per-residue (H5)</option>
+                    <option value="both">Both</option>
+                </param>
+                <expand macro="long_sequence_options"/>
+                <param name="batch_size" type="integer" value="8" min="1" label="Batch size"/>
+            </when>
+            <when value="predict">
+                <expand macro="model_source"/>
+                <conditional name="task">
+                    <param name="selected_task" type="select" label="Task">
+                        <option value="classification" selected="true">Classification</option>
+                        <option value="regression">Regression</option>
+                    </param>
+                    <when value="classification">
+                        <expand macro="train_test_split_inputs"/>
+                        <conditional name="estimator_conditional">
+                            <param name="estimator" type="select" label="Model">
+                                <option value="lr" selected="true">Logistic regression</option>
+                                <option value="rf">Random forest</option>
+                                <option value="svm">Support vector machine</option>
+                                <option value="mlp">MLP</option>
+                            </param>
+                            <expand macro="estimator_hyperparams"/>
+                            <when value="lr"/>
+                        </conditional>
+                    </when>
+                    <when value="regression">
+                        <expand macro="train_test_split_inputs"/>
+                        <conditional name="estimator_conditional">
+                            <param name="estimator" type="select" label="Model">
+                                <option value="linear" selected="true">Linear regression</option>
+                                <option value="rf">Random forest</option>
+                                <option value="svm">Support vector machine</option>
+                                <option value="mlp">MLP</option>
+                            </param>
+                            <expand macro="estimator_hyperparams"/>
+                            <when value="linear"/>
+                        </conditional>
+                    </when>
+                </conditional>
+                <expand macro="long_sequence_options"/>
+                <param name="batch_size" type="integer" value="8" min="1" label="Batch size"/>
+            </when>
+            <when value="finetune">
+                <expand macro="model_source"/>
+                <param name="selected_task" type="select" label="Task">
+                    <option value="classification" selected="true">Classification</option>
+                    <option value="regression">Regression</option>
+                </param>
+                <param name="data_fasta" type="data" format="fasta" label="Input FASTA"/>
+                <param name="data_labels" type="data" format="tabular" label="Labels table" help="Tab-separated, with an 'id' column matching the FASTA and a label column."/>
+                <param name="label_col" type="text" value="label" label="Label column name"/>
+                <param name="val_fraction" type="float" value="0.2" min="0.05" max="0.95" label="Fraction held out for validation" help="The tool splits this one dataset into train/validation itself -- e.g. 0.2 means 20% validation, 80% train."/>
+                <param name="random_seed" type="integer" value="42" label="Random seed for the split"/>
+                <conditional name="adapter_conditional">
+                    <param name="adapter_method" type="select" label="Adapter method">
+                        <option value="lora" selected="true">LoRA</option>
+                        <option value="adalora">AdaLoRA (adaptive rank allocation)</option>
+                    </param>
+                    <when value="lora">
+                        <param name="lora_r" type="integer" value="8" min="1" label="LoRA rank (r)"/>
+                    </when>
+                    <when value="adalora">
+                        <param name="adalora_init_r" type="integer" value="12" min="1" label="Initial rank" help="AdaLoRA starts at this rank and prunes down to the target rank over training."/>
+                        <param name="adalora_target_r" type="integer" value="8" min="1" label="Target rank" help="Final rank after pruning; must be less than or equal to the initial rank."/>
+                    </when>
+                </conditional>
+                <param name="lora_alpha" type="integer" value="16" min="1" label="LoRA alpha"/>
+                <param name="lora_dropout" type="float" value="0.05" min="0" max="1" label="LoRA dropout"/>
+                <conditional name="layer_scope_conditional">
+                    <param name="lora_layer_scope" type="select" label="Apply the adapter to">
+                        <option value="all" selected="true">All transformer layers</option>
+                        <option value="last_n">The last N layers</option>
+                        <option value="custom">Custom layer indices</option>
+                    </param>
+                    <when value="all"/>
+                    <when value="last_n">
+                        <param name="lora_last_n" type="integer" value="1" min="1" label="N (number of final layers)"/>
+                    </when>
+                    <when value="custom">
+                        <param name="lora_custom_layers" type="text" value="0" label="Layer indices" help="Comma-separated, 0-indexed, e.g. 0,1,2 -- check your model's layer count in its help text or config.json's num_hidden_layers/num_layers.">
+                            <sanitizer invalid_char="">
+                                <valid initial="string.digits"><add value=","/></valid>
+                            </sanitizer>
+                        </param>
+                    </when>
+                </conditional>
+                <param name="epochs" type="integer" value="3" min="1" label="Epochs"/>
+                <param name="lr" type="float" value="0.001" min="0" label="Learning rate"/>
+                <param name="weight_decay" type="float" value="0.01" min="0" label="Weight decay"/>
+                <expand macro="long_sequence_options"/>
+                <param name="batch_size" type="integer" value="8" min="1" label="Batch size"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data format="h5" name="output_embeddings_h5" from_work_dir="output_embeddings.h5" label="${tool.name}: per-residue embeddings">
+            <filter>mode['mode_select'] == 'embed' and mode['output_format'] in ('per_residue', 'both')</filter>
+        </data>
+        <data format="tabular" name="output_embeddings_tsv" from_work_dir="output_embeddings.tsv" label="${tool.name}: per-protein embeddings">
+            <filter>mode['mode_select'] == 'embed' and mode['output_format'] in ('per_protein', 'both')</filter>
+        </data>
+        <data format="tabular" name="output_predicted_data" from_work_dir="output_predicted_data" label="${tool.name}: predictions">
+            <filter>mode['mode_select'] in ('predict', 'finetune')</filter>
+        </data>
+        <data format="png" name="output_plot" from_work_dir="output_plot.png" label="${tool.name}: plot">
+            <filter>mode['mode_select'] in ('predict', 'finetune')</filter>
+        </data>
+        <data format="tabular" name="test_metrics" from_work_dir="test_metrics.tsv" label="${tool.name}: test performance metrics">
+            <filter>mode['mode_select'] == 'predict'</filter>
+        </data>
+        <data format="tabular" name="val_metrics" from_work_dir="val_metrics.tsv" label="${tool.name}: validation metrics">
+            <filter>mode['mode_select'] == 'finetune'</filter>
+        </data>
+        <data format="tgz" name="lora_adapter" from_work_dir="lora_adapter.tgz" label="${tool.name}: LoRA adapter">
+            <filter>mode['mode_select'] == 'finetune'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <conditional name="mode">
+                <param name="mode_select" value="embed"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="esm_test"/>
+                </conditional>
+                <param name="input_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="output_format" value="per_protein"/>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="output_embeddings_tsv">
+                <assert_contents>
+                    <has_n_columns n="18"/>
+                    <has_n_lines n="5"/>
+                    <has_text text="seq1"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="mode">
+                <param name="mode_select" value="embed"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="protbert_test"/>
+                </conditional>
+                <param name="input_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="output_format" value="per_residue"/>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="output_embeddings_h5">
+                <assert_contents>
+                    <has_h5_keys keys="seq1,seq2,seq3,seq4"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="2">
+            <conditional name="mode">
+                <param name="mode_select" value="embed"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="prott5_test"/>
+                </conditional>
+                <param name="input_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="output_format" value="both"/>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="output_embeddings_h5">
+                <assert_contents>
+                    <has_h5_keys keys="seq1,seq2,seq3,seq4"/>
+                </assert_contents>
+            </output>
+            <output name="output_embeddings_tsv">
+                <assert_contents>
+                    <has_n_columns n="18"/>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_num_outputs="1">
+            <conditional name="mode">
+                <param name="mode_select" value="embed"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="upload"/>
+                    <param name="model_archive" value="tiny_esm_archive.tgz" ftype="data"/>
+                </conditional>
+                <param name="input_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="output_format" value="per_protein"/>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="output_embeddings_tsv">
+                <assert_contents>
+                    <has_n_lines n="5"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_num_outputs="3">
+            <conditional name="mode">
+                <param name="mode_select" value="predict"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="esm_test"/>
+                </conditional>
+                <conditional name="task">
+                    <param name="selected_task" value="classification"/>
+                    <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
+                    <param name="data_labels" value="sample_labels_classification.tsv" ftype="tabular"/>
+                    <param name="label_col" value="label"/>
+                    <param name="test_fraction" value="0.5"/>
+                    <param name="random_seed" value="42"/>
+                    <conditional name="estimator_conditional">
+                        <param name="estimator" value="lr"/>
+                    </conditional>
+                </conditional>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="output_predicted_data">
+                <assert_contents>
+                    <has_n_columns n="3"/>
+                </assert_contents>
+            </output>
+            <output name="test_metrics">
+                <assert_contents>
+                    <has_text text="accuracy"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_num_outputs="3">
+            <conditional name="mode">
+                <param name="mode_select" value="predict"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="prott5_test"/>
+                </conditional>
+                <conditional name="task">
+                    <param name="selected_task" value="regression"/>
+                    <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
+                    <param name="data_labels" value="sample_labels_regression.tsv" ftype="tabular"/>
+                    <param name="label_col" value="label"/>
+                    <param name="test_fraction" value="0.5"/>
+                    <param name="random_seed" value="42"/>
+                    <conditional name="estimator_conditional">
+                        <param name="estimator" value="linear"/>
+                    </conditional>
+                </conditional>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="output_predicted_data">
+                <assert_contents>
+                    <has_n_columns n="3"/>
+                </assert_contents>
+            </output>
+            <output name="test_metrics">
+                <assert_contents>
+                    <has_text text="rmse"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot">
+                <assert_contents>
+                    <has_size min="1"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_num_outputs="4">
+            <conditional name="mode">
+                <param name="mode_select" value="finetune"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="protbert_test"/>
+                </conditional>
+                <param name="selected_task" value="classification"/>
+                <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="data_labels" value="sample_labels_classification.tsv" ftype="tabular"/>
+                <param name="label_col" value="label"/>
+                <param name="val_fraction" value="0.5"/>
+                <param name="random_seed" value="42"/>
+                <conditional name="adapter_conditional">
+                    <param name="adapter_method" value="lora"/>
+                    <param name="lora_r" value="4"/>
+                </conditional>
+                <param name="lora_alpha" value="8"/>
+                <param name="lora_dropout" value="0.0"/>
+                <conditional name="layer_scope_conditional">
+                    <param name="lora_layer_scope" value="all"/>
+                </conditional>
+                <param name="epochs" value="1"/>
+                <param name="lr" value="0.001"/>
+                <param name="weight_decay" value="0.0"/>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="output_predicted_data">
+                <assert_contents>
+                    <has_n_columns n="3"/>
+                </assert_contents>
+            </output>
+            <output name="val_metrics">
+                <assert_contents>
+                    <has_text text="accuracy"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_num_outputs="4">
+            <conditional name="mode">
+                <param name="mode_select" value="finetune"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="prott5_test"/>
+                </conditional>
+                <param name="selected_task" value="regression"/>
+                <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="data_labels" value="sample_labels_regression.tsv" ftype="tabular"/>
+                <param name="label_col" value="label"/>
+                <param name="val_fraction" value="0.5"/>
+                <param name="random_seed" value="42"/>
+                <conditional name="adapter_conditional">
+                    <param name="adapter_method" value="lora"/>
+                    <param name="lora_r" value="4"/>
+                </conditional>
+                <param name="lora_alpha" value="8"/>
+                <param name="lora_dropout" value="0.0"/>
+                <conditional name="layer_scope_conditional">
+                    <param name="lora_layer_scope" value="last_n"/>
+                    <param name="lora_last_n" value="1"/>
+                </conditional>
+                <param name="epochs" value="1"/>
+                <param name="lr" value="0.001"/>
+                <param name="weight_decay" value="0.0"/>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+        </test>
+
+        <test expect_num_outputs="4">
+            <conditional name="mode">
+                <param name="mode_select" value="finetune"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="esm_test"/>
+                </conditional>
+                <param name="selected_task" value="classification"/>
+                <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="data_labels" value="sample_labels_classification.tsv" ftype="tabular"/>
+                <param name="label_col" value="label"/>
+                <param name="val_fraction" value="0.5"/>
+                <param name="random_seed" value="42"/>
+                <conditional name="adapter_conditional">
+                    <param name="adapter_method" value="adalora"/>
+                    <param name="adalora_init_r" value="6"/>
+                    <param name="adalora_target_r" value="4"/>
+                </conditional>
+                <param name="lora_alpha" value="8"/>
+                <param name="lora_dropout" value="0.0"/>
+                <conditional name="layer_scope_conditional">
+                    <param name="lora_layer_scope" value="custom"/>
+                    <param name="lora_custom_layers" value="0"/>
+                </conditional>
+                <param name="epochs" value="1"/>
+                <param name="lr" value="0.001"/>
+                <param name="weight_decay" value="0.0"/>
+                <param name="max_length" value="128"/>
+                <param name="on_long_sequence" value="truncate"/>
+                <param name="batch_size" value="4"/>
+            </conditional>
+            <output name="val_metrics">
+                <assert_contents>
+                    <has_text text="accuracy"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <test expect_failure="true">
+            <conditional name="mode">
+                <param name="mode_select" value="embed"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="unknown"/>
+                </conditional>
+                <param name="input_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="output_format" value="per_protein"/>
+            </conditional>
+        </test>
+
+        <test expect_failure="true" expect_exit_code="3">
+            <conditional name="mode">
+                <param name="mode_select" value="embed"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="upload"/>
+                    <param name="model_archive" value="not_a_model.txt" ftype="data"/>
+                </conditional>
+                <param name="input_fasta" value="sample.fasta" ftype="fasta"/>
+                <param name="output_format" value="per_protein"/>
+            </conditional>
+            <assert_stderr>
+                <has_text_matching expression="not a valid tar"/>
+            </assert_stderr>
+        </test>
+
+        <test expect_failure="true" expect_exit_code="6">
+            <conditional name="mode">
+                <param name="mode_select" value="predict"/>
+                <conditional name="model_source">
+                    <param name="source_type" value="preinstalled"/>
+                    <param name="pretrained_model" value="esm_test"/>
+                </conditional>
+                <conditional name="task">
+                    <param name="selected_task" value="classification"/>
+                    <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
+                    <param name="data_labels" value="mismatched_labels.tsv" ftype="tabular"/>
+                    <param name="label_col" value="label"/>
+                    <param name="test_fraction" value="0.5"/>
+                    <param name="random_seed" value="42"/>
+                    <conditional name="estimator_conditional">
+                        <param name="estimator" value="lr"/>
+                    </conditional>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text_matching expression="do not match"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+Runs a protein language model (ESM-2, ProtBERT, or ProtT5 -- auto-detected) in one of three modes: extract embeddings, train a classifier/regressor on embeddings, or LoRA/AdaLoRA fine-tune the encoder.
+
+**Model source**
+
+Select a model your Galaxy administrator has installed, or upload your own model archive (``.tgz``/``.tar`` of a Hugging Face model folder with safetensors weights).
+
+**Per-residue (H5) output**
+
+One dataset per sequence, keyed by a sanitised version of its FASTA id; the original id is kept as the dataset's ``original_id`` attribute::
+
+    import h5py
+    with h5py.File("output_embeddings.h5") as f:
+        for key in f:
+            residue_embeddings = f[key][:]
+            original_id = f[key].attrs["original_id"]
+
+**GPU**
+
+Used automatically when available, otherwise runs on CPU.
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1126/science.ade2574</citation>
+        <citation type="doi">10.1109/TPAMI.2021.3095381</citation>
+        <citation type="doi">10.48550/arXiv.2106.09685</citation>
+        <citation type="doi">10.48550/arXiv.2303.10512</citation>
+    </citations>
+</tool>
