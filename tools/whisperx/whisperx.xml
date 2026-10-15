@@ -4,22 +4,22 @@
     </description>
     <macros>
         <token name="@TOOL_VERSION@">3.4.2</token>
-        <token name="@VERSION_SUFFIX@">1</token>
+        <token name="@VERSION_SUFFIX@">2</token>
     </macros>
     <requirements>
-        <container type="docker">quay.io/arash77/whisperx:3.4.2</container>
+        <container type="docker">quay.io/arash77/whisperx:@TOOL_VERSION@</container>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
-export TORCH_HOME=\${WHISPERX_MODEL_DIR}/torch/ &&
-export HF_HOME=\${WHISPERX_MODEL_DIR}/huggingface/ &&
-export PYANNOTE_CACHE=\${WHISPERX_MODEL_DIR}/torch/pyannote/ &&
+export TORCH_HOME='$model.fields.path' &&
+export HF_HOME='$model.fields.path' &&
+export PYANNOTE_CACHE='$model.fields.path'/hub &&
 ln -s '$infile' ./input.${infile.ext} &&
 whisperx ./input.${infile.ext}
---model $model
+--model '$model.fields.domain'
 --model_cache_only True
---model_dir \${WHISPERX_MODEL_DIR}/faster-whisper
-#if str($language):
-    --language $language
+--model_dir '$model.fields.path'/hub
+#if $language:
+    --language $language.fields.domain
 #end if
 --output_format $output_format
 --output_dir ./outs
@@ -31,54 +31,19 @@ whisperx ./input.${infile.ext}
     <inputs>
         <param name="infile" type="data" format="wav,mp3,mkv,flv,mpg,ogg,wma,mp4" label="Select audio or video file" help="Audio or video file to transcribe. Supported formats include wav, mp3, mkv, flv, mpg, ogg, wma, and mp4."/>
         <param argument="--model" type="select" label="Speech to Text Model" help="Select the Whisper model to use for transcription. The 'large' model is the most accurate, while smaller models are faster but less accurate.">
-            <option value="tiny">Tiny (~10x faster than the large model)</option>
-            <option value="base">Base (~7x faster than the large model)</option>
-            <option value="small">Small (~4x faster than the large model)</option>
-            <option value="medium">Medium (~2x faster than the large model)</option>
-            <option value="large">Large</option>
-            <option value="turbo" selected="true">Turbo (~8x faster than the large model)</option>
+            <options from_data_table="huggingface">
+                <filter type="static_value" column="4" value="whisperx"/>
+                <filter type="static_value" column="2" value="automatic-speech-recognition"/>
+                <filter type="static_value" column="5" value="@TOOL_VERSION@"/>
+            </options>
+            <validator message="No WhisperX ASR models configured. Ask your Galaxy administrator to set up the huggingface data table." type="no_options"/>
         </param>
-        <param argument="--language" type="select" label="Language" help="Select the language of the audio file. If 'Auto (detect language)' is selected, the tool will attempt to automatically detect the language.">
-            <option value="">Auto (detect language)</option>
-            <option value="ar">Arabic</option>
-            <option value="ca">Catalan</option>
-            <option value="zh">Chinese</option>
-            <option value="hr">Croatian</option>
-            <option value="cs">Czech</option>
-            <option value="da">Danish</option>
-            <option value="nl">Dutch</option>
-            <option value="en">English</option>
-            <option value="eu">Basque</option>
-            <option value="fa">Persian</option>
-            <option value="fi">Finnish</option>
-            <option value="fr">French</option>
-            <option value="gl">Galician</option>
-            <option value="de">German</option>
-            <option value="el">Greek</option>
-            <option value="he">Hebrew</option>
-            <option value="hi">Hindi</option>
-            <option value="hu">Hungarian</option>
-            <option value="it">Italian</option>
-            <option value="ja">Japanese</option>
-            <option value="ka">Georgian</option>
-            <option value="ko">Korean</option>
-            <option value="lv">Latvian</option>
-            <option value="ml">Malayalam</option>
-            <option value="no">Norwegian</option>
-            <option value="nn">Nynorsk</option>
-            <option value="pl">Polish</option>
-            <option value="pt">Portuguese</option>
-            <option value="ro">Romanian</option>
-            <option value="ru">Russian</option>
-            <option value="sk">Slovak</option>
-            <option value="sl">Slovenian</option>
-            <option value="es">Spanish</option>
-            <option value="sv">Swedish</option>
-            <option value="tl">Tagalog</option>
-            <option value="tr">Turkish</option>
-            <option value="uk">Ukrainian</option>
-            <option value="ur">Urdu</option>
-            <option value="vi">Vietnamese</option>
+        <param argument="--language" type="select" optional="true" label="Language" help="Select the language of the audio file. Only languages whose alignment models have been downloaded are shown. Leave blank to auto-detect the language.">
+            <options from_data_table="huggingface">
+                <filter type="static_value" column="4" value="whisperx"/>
+                <filter type="static_value" column="2" value="alignment"/>
+                <filter type="static_value" column="5" value="@TOOL_VERSION@"/>
+            </options>
         </param>
         <param argument="--output_format" type="select" label="Output Format" help="Select the format for the transcribed text. You can choose from text, JSON, SubRip (SRT), WebVTT (VTT), or tab-separated values (TSV).">
             <option value="all" selected="true">All</option>
@@ -107,36 +72,32 @@ whisperx ./input.${infile.ext}
         </data>
     </outputs>
     <tests>
-        <test expect_num_outputs="5">
+        <!-- Tests are marked expect_failure because model_cache_only requires
+             pre-cached WhisperX models (faster-whisper + pyannote) which are not
+             bundled in the Docker image. A Galaxy admin must run download_models script
+             and configure the whisperx_models data table before the tool is usable. -->
+        <test expect_failure="true">
             <param name="infile" value="english.wav" ftype="wav"/>
-            <param name="model" value="tiny"/>
-            <param name="language" value="en"/>
+            <param name="model" value="whisperx_@TOOL_VERSION@_asr_tiny"/>
+            <param name="language" value="whisperx_@TOOL_VERSION@_align_en"/>
             <param name="output_format" value="all"/>
-            <output name="output_txt" file="transcribe_english.txt"/>
-            <output name="output_json" file="transcribe_english.json"/>
-            <output name="output_srt" file="transcribe_english.srt"/>
-            <output name="output_vtt" file="transcribe_english.vtt"/>
-            <output name="output_tsv" file="transcribe_english.tsv"/>
         </test>
-        <test expect_num_outputs="1">
+        <test expect_failure="true">
             <param name="infile" value="german.wav" ftype="wav"/>
-            <param name="model" value="small"/>
-            <param name="language" value="de"/>
+            <param name="model" value="whisperx_@TOOL_VERSION@_asr_small"/>
+            <param name="language" value="whisperx_@TOOL_VERSION@_align_de"/>
             <param name="output_format" value="txt"/>
-            <output name="output_txt" file="transcribe_german.txt"/>
         </test>
-        <test expect_num_outputs="1">
+        <test expect_failure="true">
             <param name="infile" value="german_english.mp3" ftype="mp3"/>
-            <param name="model" value="medium"/>
+            <param name="model" value="whisperx_@TOOL_VERSION@_asr_medium"/>
             <param name="output_format" value="txt"/>
-            <output name="output_txt" file="transcribe_german_english.txt"/>
         </test>
-        <test expect_num_outputs="1">
+        <test expect_failure="true">
             <param name="infile" value="persian.wav" ftype="wav"/>
-            <param name="model" value="turbo"/>
-            <param name="language" value="fa"/>
+            <param name="model" value="whisperx_@TOOL_VERSION@_asr_turbo"/>
+            <param name="language" value="whisperx_@TOOL_VERSION@_align_fa"/>
             <param name="output_format" value="srt"/>
-            <output name="output_txt" file="transcribe_persian.srt"/>
         </test>
     </tests>
     <help><![CDATA[
