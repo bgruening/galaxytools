@@ -96,7 +96,9 @@ if __name__ == "__main__":
     input_size = args["image_size"]
 
     # load all embedded images in TIF file
-    test_data = imageio.v3.imread(input_image_path, index="...")
+    # imageio >=2.37 no longer supports index="..."; index=None reads the
+    # full image stack (all pages of a multi-page TIFF / the full PNG)
+    test_data = imageio.v3.imread(input_image_path, index=None)
     test_data = test_data.astype(np.float32)
     test_data = np.squeeze(test_data)
 
@@ -127,7 +129,11 @@ if __name__ == "__main__":
         exp_test_data = torch.unsqueeze(exp_test_data, i)
 
     # load model
-    model = torch.load(model_path)
+    # PyTorch 2.6+ changed the default of torch.load's weights_only argument
+    # to True, which raises a RuntimeError for TorchScript archives (the
+    # format of BioImage.IO models). torch.jit.load is the correct loader
+    # for TorchScript models and works with all supported versions.
+    model = torch.jit.load(model_path)
     model.eval()
 
     # make prediction
