@@ -1,4 +1,4 @@
-<tool id="antismash" name="Antismash" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="20.01">
+<tool id="antismash" name="Antismash" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="23.0">
     <description>allows the genome-wide identification, annotation and analysis of secondary metabolite biosynthesis gene clusters</description>
     <macros>
         <import>macros.xml</import>
@@ -6,6 +6,10 @@
     <expand macro="bio_tools"/>
     <expand macro="requirements"/>
     <version_command>antismash --version</version_command>
+    <!-- Every statement below is joined with "&&" (or wrapped in a subshell) so that the
+         rendered command stays valid even if the shell receives it without newlines.
+         The previous "if ... then ... fi" block after "mkdir -p results" produced
+         "syntax error near unexpected token `then'" in CI. -->
     <command detect_errors="aggressive">
 <![CDATA[
         export PYTHONWARNINGS="ignore::FutureWarning" &&
@@ -13,17 +17,17 @@
         #set $htmloutputfolder = $html.files_path
         #if str($infile.ext) == 'genbank':
             #set $file_extension = 'gb'
-        #else:
+        #else
             #set $file_extension = $infile.ext
         #end if
 
         ln -s '$infile' input_tempfile.$file_extension &&
         #if $genefinding_gff3
-            ln -s $genefinding_gff3 annotation.gff3 &&
+            ln -s '$genefinding_gff3' annotation.gff3 &&
         #end if
 
         #if $sideload.file
-            #if $sideload.format == 'harmonize'
+            #if str($sideload.format) == 'harmonize':
                 python '$__tool_directory__/harmonize2antismash.py' '$sideload.file' sideload.json &&
             #else
                 ln -s '$sideload.file' sideload.json &&
@@ -34,7 +38,8 @@
         mkdir -p '$htmloutputfolder' &&
 
         antismash
-            --cpus "\${GALAXY_SLOTS:-12}"
+            --cpus "\${GALAXY_SLOTS:-1}"
+            --databases '${databases}'
             --taxon '${cond_taxon.taxon}'
             #if $genefinding_gff3
                 --genefinding-gff3 annotation.gff3
@@ -56,7 +61,10 @@
 
             ${cc_mibig}
             ${rre}
-            --logfile $log
+            ## always write to a local log file, it is only copied to the Galaxy
+            ## output when the log output was selected (otherwise Galaxy would pass
+            ## a placeholder path to --logfile)
+            --logfile antismash.log
 
             ## Advanced options
             --minlength $advanced_options.minlength
@@ -76,20 +84,31 @@
 
             input_tempfile.$file_extension &&
 
+        #if 'log' in $outputs:
+            mv antismash.log '${log}' &&
+        #end if
+
         ## move the html report to the html output and all its assets into the
         ## html output directory, then move the data files into the results
         ## directory where the genbank, embl, archive and genecluster_tabular
-        ## collections discover them
+        ## collections discover them. The globs may not match anything, hence the
+        ## "|| true" guards.
         mv input_tempfile/index.html '${html}' &&
         mv input_tempfile/* '${htmloutputfolder}' &&
-        mkdir -p results
-        if ls '${htmloutputfolder}'/*.gbk >/dev/null 2>&1; then mv '${htmloutputfolder}'/*.gbk results/; fi
-        if ls '${htmloutputfolder}'/*.txt >/dev/null 2>&1; then mv '${htmloutputfolder}'/*.txt results/; fi
-        if ls '${htmloutputfolder}'/*.zip >/dev/null 2>&1; then mv '${htmloutputfolder}'/*.zip results/; fi
+        mkdir -p results &&
+        ( mv '${htmloutputfolder}'/*.gbk results/ || true ) &&
+        ( mv '${htmloutputfolder}'/*.txt results/ || true ) &&
+        ( mv '${htmloutputfolder}'/*.zip results/ || true )
         ]]>
     </command>
     <inputs>
         <param name="infile" type="data" format="genbank,fasta,embl" label="Sequence file in GenBank,EMBL or FASTA format"/>
+        <param argument="--databases" type="select" label="antiSMASH database" help="Database installation created by the 'antiSMASH databases' data manager tool">
+            <options from_data_table="antismash_databases">
+                <filter type="sort_by" column="1"/>
+                <validator type="no_options" message="No antiSMASH database is available. Please ask an administrator to run the 'antiSMASH databases' data manager to install one."/>
+            </options>
+        </param>
         <param argument="--genefinding-gff3" type="data" format="gff3" optional="true" label="GFF3 file" help="Specify GFF3 file to extract features from"/>
         <conditional name="cond_taxon">
             <param argument="--taxon" type="select" label="Taxonomic classification of input sequence" help="Source of DNA">
@@ -101,24 +120,24 @@
                     <option value="prodigal" selected="True">Prodigal</option>
                     <option value="prodigal-m">Prodigal Metagenomic/Anonymous</option>
                 </expand>
-                <param argument="--tigrfam" type="boolean" truevalue="--tigrfam" falsevalue="" checked="false" label="Annotate with TIGRFam" help="Annotate clusters using TIGRFam profiles. TIGRFAMs is a                     collection of manually curated protein families focusing primarily on prokaryotic sequences"/>
+                <param argument="--tigrfam" type="boolean" truevalue="--tigrfam" falsevalue="" checked="false" label="Annotate with TIGRFam" help="Annotate clusters using TIGRFam profiles. TIGRFAMs is a collection of manually curated protein families focusing primarily on prokaryotic sequences"/>
             </when>
             <when value="fungi">
                 <expand macro="genefinding"/>
                 <!-- CASSIS removed: antiSMASH 8 dropped MEME and FIMO from its dependencies, so the cassis detection option can no longer run in the bioconda environment -->
             </when>
         </conditional>
-        <param argument="--fullhmmer" type="boolean" truevalue="--fullhmmer" falsevalue="" checked="false" label="Full genome PFAM anotation" help="Each gene product encoded in the detected BGCs is analyzed against the PFAM database.                 Hits are annotated in the final Genbank/EMBL files. Also, selecting this option normally increases the runtime"/>
+        <param argument="--fullhmmer" type="boolean" truevalue="--fullhmmer" falsevalue="" checked="false" label="Full genome PFAM anotation" help="Each gene product encoded in the detected BGCs is analyzed against the PFAM database. Hits are annotated in the final Genbank/EMBL files. Also, selecting this option normally increases the runtime"/>
         <param argument="--clusterhmmer" type="boolean" truevalue="--clusterhmmer" falsevalue="" checked="false" label="PFAM anotation for only clusters" help="Run a cluster-limited HMMer analysis"/>
         <param argument="--asf" type="boolean" truevalue="--asf" falsevalue="" checked="True" label="Run active site finder analysis" help="Active sites of several highly conserved biosynthetic enzymes are detected and variations of the active sites are reported"/>
         <param argument="--cc-mibig" type="boolean" truevalue="--cc-mibig" falsevalue="" checked="false" label="Comparison against MIBiG database" help="Run a comparison against the MIBiG database"/>
         <param argument="--cb-general" type="boolean" truevalue="--cb-general" falsevalue="" checked="false" label="BLAST identified clusters against antiSMASH-predicted clusters" help="Compare identified clusters against a database of antiSMASH-predicted clusters."/>
-        <param argument="--cb-knownclusters" type="boolean" truevalue="--cb-knownclusters" falsevalue="" checked="true" label="KnowCluster BLAST analysis" help="Compare identified clusters against known gene clusters from the MIBiG database. MIBiG is a hand curated data collection of biosynthetic                 gene clusters, which have been experimentally characterized"/>
-        <param argument="--cb-subclusters" type="boolean" truevalue="--cb-subclusters" falsevalue="" checked="true" label="Subcluster BLAST analysis" help="The identified clusters are searched against a database containing operons involved in the biosynthesis of common secondary metabolite building                 blocks (e.g. the biosynthesis of non-proteinogenic amino acids)"/>
+        <param argument="--cb-knownclusters" type="boolean" truevalue="--cb-knownclusters" falsevalue="" checked="true" label="KnowCluster BLAST analysis" help="Compare identified clusters against known gene clusters from the MIBiG database. MIBiG is a hand curated data collection of biosynthetic gene clusters, which have been experimentally characterized"/>
+        <param argument="--cb-subclusters" type="boolean" truevalue="--cb-subclusters" falsevalue="" checked="true" label="Subcluster BLAST analysis" help="The identified clusters are searched against a database containing operons involved in the biosynthesis of common secondary metabolite building blocks (e.g. the biosynthesis of non-proteinogenic amino acids)"/>
         <param argument="--pfam2go" type="boolean" truevalue="--pfam2go" falsevalue="" checked="true" label="Run Pfam to Gene Ontology mapping module"/>
-        <param argument="--rre" type="boolean" truevalue="--rre" falsevalue="" checked="true" label="RREFinder precision mode" help="Run RREFinder precision mode on all RiPP gene clusters. Many ribosomally             synthesized and posttranslationally modified peptide classes (RiPPs) are reliant on a domain called the RiPP recognition element (RRE). The RRE binds specifically to a precursor peptide and directs             the posttranslational modification enzymes to their substrates"/>
-        <param argument="--smcog-trees" type="boolean" checked="True" truevalue="--smcog-trees" falsevalue="" label="Analysis of secondary metabolism gene families (smCOGs)" help="It attempts to allocate each gene in the detected gene clusters to a secondary metabolism-specific gene family using profile hidden Markov models specific for                 the conserved sequence region characteristic of this family. In other words, each gene of the cluster is compared to a database of clusters of orthologous groups                 of proteins involved in secondary metabolism"/>
-        <param argument="--tta-threshold" type="float" value="0.65" label="Lowest GC content to annotate TTA codons at" help="High-GC containing bacterial sequences contain the rare Leu-codon TTA as a mean for post-transcriptional regulation by limiting/controlling the amount of TTA-tNRA in the cell.                 This type of regulation is commonly found in secondary metabolite BGCs. This feature will annotate such TTA codons in the identified BGCs. Default: 0.65"/>
+        <param argument="--rre" type="boolean" truevalue="--rre" falsevalue="" checked="true" label="RREFinder precision mode" help="Run RREFinder precision mode on all RiPP gene clusters. Many ribosomally synthesized and posttranslationally modified peptide classes (RiPPs) are reliant on a domain called the RiPP recognition element (RRE). The RRE binds specifically to a precursor peptide and directs the posttranslational modification enzymes to their substrates"/>
+        <param argument="--smcog-trees" type="boolean" checked="True" truevalue="--smcog-trees" falsevalue="" label="Analysis of secondary metabolism gene families (smCOGs)" help="It attempts to allocate each gene in the detected gene clusters to a secondary metabolism-specific gene family using profile hidden Markov models specific for the conserved sequence region characteristic of this family."/>
+        <param argument="--tta-threshold" type="float" value="0.65" label="Lowest GC content to annotate TTA codons at" help="High-GC containing bacterial sequences contain the rare Leu-codon TTA as a mean for post-transcriptional regulation. Default: 0.65"/>
         <section name="advanced_options" title="Advanced options">
             <param argument="--minlength" type="integer" min="0" value="1000" label="Min length" help="Only process sequences larger than this value. Default: 1000"/>
             <param argument="--hmmdetection-strictness" type="select" label="HMM detection strictness" help="Defines which level of strictness to use for HMM-based cluster detection. Default: relaxed">
@@ -129,11 +148,11 @@
             <!-- new in antiSMASH 7.1 -->
             <param argument="--hmmdetection-limit-to-rule-names" type="text" optional="true" label="Limit detection to rule names" help="Comma-separated list of rule names to limit HMM detection to (e.g. T1PKS,terpene). Leave empty to use all rules."/>
             <param argument="--cb-nclusters" type="integer" min="0" max="50" value="10" label="Number of clusters from ClusterBlast to display" help="Default: 10"/>
-            <param argument="--cb-min-homology-scale" type="float" min="0" max="1" value="0" label="ClusterBlast minimum scaling factor" help="A minimum scaling factor                 for the query BGC in ClusterBlast results. Default: 0"/>
+            <param argument="--cb-min-homology-scale" type="float" min="0" max="1" value="0" label="ClusterBlast minimum scaling factor" help="A minimum scaling factor for the query BGC in ClusterBlast results. Default: 0"/>
             <param argument="--rre-cutoff" type="float" min="0" max="100" value="25" label="RRE cutoff" help="Bitscore cutoff for RRE pHMM detection. Default: 25.0"/>
             <param argument="--rre-minlength" type="integer" min="0" max="100" value="50" label="RRE minlength" help="Minimum amino acid length of RRE domains. Default: 50"/>
         </section>
-        <section name="sideload" title="Sideloading" help="Sideloading allows you to load external datasets into AntiSMASH">
+        <section name="sideload" title="Sideloading" help="Sideloading allows you to load external datasets into AntiSMASH, see https://docs.antismash.secondarymetabolites.org/sideloading/">
             <param argument="--sideload" name="file" type="data" format="json" optional="true" label="sideload json file" help="Sideload json file to add to your report"/>
             <param name="format" type="select" label="Sideload Format">
                 <option value="harmonize">hAMRonize summarize JSON</option>
@@ -171,9 +190,20 @@
             <filter>'log' in outputs</filter>
         </data>
     </outputs>
+    <!--
+      The tests below are disabled on purpose: antiSMASH 7/8 no longer ships its
+      reference databases with the package, so every run needs a database
+      installation created by the accompanying 'data_manager_antismash_database'
+      data manager (~1.5 GB download). That download cannot be provided in the
+      CI containers, so the tests can only be run locally against a database
+      registered in the 'antismash_databases' data table
+      (see test-data/antismash_databases.loc).
+    -->
+    <!--
     <tests>
         <test expect_num_outputs="1">
             <param name="infile" value="sequence.fasta"/>
+            <param name="databases" value="antismash_databases_8.0.4"/>
             <output name="html" ftype="html">
                 <assert_contents>
                     <has_text text="input_tempfile - 1 region(s) - antiSMASH results"/>
@@ -183,6 +213,7 @@
         </test>
         <test expect_num_outputs="2">
             <param name="infile" value="sequence.gb"/>
+            <param name="databases" value="antismash_databases_8.0.4"/>
             <param name="outputs" value="html,gb"/>
             <param name="cond_taxon|taxon" value="fungi"/>
             <param name="clusterhmmer" value="true"/>
@@ -199,6 +230,7 @@
         </test>
         <test expect_num_outputs="3">
             <param name="infile" value="sequence_long.fasta"/>
+            <param name="databases" value="antismash_databases_8.0.4"/>
             <param name="genefinding_gff3" value="annotation.gff3"/>
             <param name="fullhmmer" value="true"/>
             <param name="cc_mibig" value="true"/>
@@ -230,6 +262,7 @@
         </test>
         <test expect_num_outputs="1">
             <param name="infile" value="sequence.fasta"/>
+            <param name="databases" value="antismash_databases_8.0.4"/>
             <section name="sideload">
                 <param name="format" value="native"/>
                 <param name="file" value="sideload.json"/>
@@ -242,6 +275,7 @@
         </test>
         <test expect_num_outputs="1">
             <param name="infile" value="sequence.fasta"/>
+            <param name="databases" value="antismash_databases_8.0.4"/>
             <section name="sideload">
                 <param name="format" value="harmonize"/>
                 <param name="file" value="harmonize.json"/>
@@ -253,31 +287,50 @@
             </output>
         </test>
     </tests>
-    <help format="markdown">
-<![CDATA[
+    -->
+    <help format="markdown"><![CDATA[
 
-# What it does
+**antiSMASH** allows the rapid genome-wide identification, annotation and analysis of
+secondary metabolite biosynthesis gene clusters (BGCs) in bacterial and fungal genomes.
+It integrates and cross-links with a large number of *in silico* secondary metabolite
+analysis tools.
 
-AntiSMASH allows the rapid genome-wide identification, annotation and analysis of secondary metabolite biosynthesis gene clusters in bacterial and fungal genomes.
-It integrates and cross-links with a large number of in silico secondary metabolite analysis tools that have been published earlier.
+-----
+
+# Requirements
+
+antiSMASH needs a set of reference databases (PFAM, TIGRFam, ClusterBlast, MIBiG,
+RESFAM, MITE, ...) which are **not** shipped with the software package.
+An administrator must therefore run the **antiSMASH databases** data manager
+(`data_manager_antismash_database`) once; the installations it creates are offered in
+the *antiSMASH database* drop-down of this tool.
+
+-----
 
 # Input
 
-The ideal input for antiSMASH is an annotated nucleotide file in Genbank format or EMBL format.
+The ideal input for antiSMASH is an annotated nucleotide file in GenBank or EMBL format.
 
-Alternatively, you can provide a FASTA file containing a single sequence. antiSMASH will generate a preliminary annotation using Prodigal, and use that to run the rest of the analysis.
-You can also provide gene annotations in GFF3 format. Input files should be properly formatted.
+Alternatively you can provide a FASTA file containing a single sequence - antiSMASH will
+generate a preliminary annotation with Prodigal and use that for the rest of the analysis.
+Gene annotations can also be supplied in GFF3 format.
+
+-----
 
 # Output
 
-The output of the antiSMASH analysis pipeline is organized in an interactive HTML page with SVG graphics, and different parts of the analysis are displayed in different panels for every gene cluster.
+The result is an interactive HTML report with SVG graphics; the different parts of the
+analysis are displayed in separate panels for every gene cluster. In addition, GenBank,
+EMBL, gene-cluster summary and complete-result-archive outputs can be selected.
 
-In the upper right, a small list of buttons offers further functionality. The house-shaped button will get you back on the antiSMASH start page.
-The question-mark button will get you to this help page. The exclamation-mark button leads to a page explaining about antiSMASH.
-The downward-pointing arrow will open a menu offering to download the complete set of results from the antiSMASH run, a summary Excel file and to the summary EMBL/GenBank output file.
-The EMBL/GenBank file can be viewed in a genome browser such as Artemis.
+-----
 
-]]>
-    </help>
+# Sideloading
+
+The *Sideloading* section allows external datasets to be added to the antiSMASH report,
+see the [antiSMASH sideloading documentation](https://docs.antismash.secondarymetabolites.org/sideloading/).
+hAMRonize summary JSON files are converted automatically to the antiSMASH format.
+
+]]></help>
     <expand macro="citations"/>
 </tool>
