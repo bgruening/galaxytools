@@ -108,6 +108,23 @@ def main(
     del rules["con_str"]
     rules.reset_index(drop=True, inplace=True)
 
+    # Keep the output schema stable across mlxtend releases. Newer versions add
+    # additional rule metrics, but these nine columns are the documented output
+    # of this Galaxy tool.
+    rules = rules[
+        [
+            "antecedents",
+            "consequents",
+            "antecedent support",
+            "consequent support",
+            "support",
+            "confidence",
+            "lift",
+            "leverage",
+            "conviction",
+        ]
+    ]
+
     # Write association rules and metrics to file
     rules.to_csv(outfile, sep="\t", index=False)
 

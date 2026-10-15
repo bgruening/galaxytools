@@ -1,0 +1,304 @@
+<tool id="sem_analysis" name="Scanning electron micrographs (SEM) fiber analysis" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>segment fibers and measure their diameters</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1-018</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">25.0</token>
+    </macros>
+    <creator>
+        <person givenName="Anup" familyName="Kumar" email="kumara@informatik.uni-freiburg.de"/>
+        <organization name="European Galaxy Team" url="https://galaxyproject.org/eu/"/>
+    </creator>
+    <requirements>
+        <container type="docker">quay.io/galaxy/sem-analysis-fiji-diameterj:@TOOL_VERSION@</container>
+    </requirements>
+    <required_files>
+        <include path="convert_radius_plots.py"/>
+    </required_files>
+    <command detect_errors="exit_code"><![CDATA[
+mkdir -p results &&
+export ANALYSIS_RESULTS_DIR='results' &&
+ln -s '$input_image' input.tif &&
+srm_args=''
+#if $segmentation.workflow in ('recursive-srm', 'srm-auto-thresholding'):
+srm_args='--srm-q $segmentation.srm_q'
+#end if
+#if $calibration.source == 'pixel_size':
+calibration_args='--pixel-size-um $calibration.pixel_size_um'
+#else:
+calibration_args='--hfw-um $calibration.hfw_um'
+#end if
+mode_args=''
+#if $analysis_mode == 'qc':
+mode_args='--skip-diameterj'
+#end if
+#if $analysis_mode == 'diameterj':
+/usr/local/bin/sem-analysis --input input.tif --output results --segmentation '$segmentation.workflow' --threshold-methods '#echo ",".join($threshold_methods)#' \$srm_args \$calibration_args \$mode_args --crop-bottom '$advanced.crop_bottom' &&
+python3 '$__tool_directory__/convert_radius_plots.py' results
+#else:
+/usr/local/bin/sem-analysis --input input.tif --output results --segmentation '$segmentation.workflow' --threshold-methods '#echo ",".join($threshold_methods)#' \$srm_args \$calibration_args \$mode_args --crop-bottom '$advanced.crop_bottom'
+#end if
+    ]]></command>
+    <inputs>
+        <param name="input_image" type="data" format="tiff" label="Scanning electron micrographs" help="A 2-D TIFF image. RGB TIFFs are converted to grayscale."/>
+        <conditional name="segmentation">
+            <param name="workflow" type="select" label="Segmentation workflow">
+                <option value="auto-thresholding" selected="true">Auto Thresholding (Traditional)</option>
+                <option value="recursive-srm">Recursive SRM with Auto Thresholding (SRM)</option>
+                <option value="srm-auto-thresholding">SRM with Auto Thresholding (Mixed)</option>
+            </param>
+            <when value="auto-thresholding"/>
+            <when value="recursive-srm">
+                <param name="srm_q" type="integer" value="100" min="1" label="Starting SRM granularity (q)"/>
+            </when>
+            <when value="srm-auto-thresholding">
+                <param name="srm_q" type="integer" value="100" min="1" label="SRM granularity (q)"/>
+            </when>
+        </conditional>
+        <param name="threshold_methods" type="select" multiple="true" optional="false" label="Thresholding methods" help="Select one or more Fiji Auto Threshold methods. Each selected method produces a separate segmentation candidate.">
+            <option value="default" selected="true">Default</option>
+            <option value="huang">Huang</option>
+            <option value="huang2">Huang2</option>
+            <option value="intermodes">Intermodes</option>
+            <option value="isodata">IsoData</option>
+            <option value="li">Li</option>
+            <option value="maxentropy">MaxEntropy</option>
+            <option value="mean">Mean</option>
+            <option value="minerror">MinError(I)</option>
+            <option value="minimum">Minimum</option>
+            <option value="moments">Moments</option>
+            <option value="otsu">Otsu</option>
+            <option value="percentile">Percentile</option>
+            <option value="renyientropy">RenyiEntropy</option>
+            <option value="shanbhag">Shanbhag</option>
+            <option value="triangle">Triangle</option>
+            <option value="yen">Yen</option>
+        </param>
+        <param name="analysis_mode" type="select" label="Analysis mode">
+            <option value="diameterj" selected="true">Full DiameterJ analysis</option>
+            <option value="qc">Segmentation and QC only</option>
+        </param>
+        <conditional name="calibration">
+            <param name="source" type="select" label="Pixel calibration">
+                <option value="hfw" selected="true">Derive from horizontal field width</option>
+                <option value="pixel_size">Specify pixel size directly</option>
+            </param>
+            <when value="hfw">
+                <param name="hfw_um" type="float" value="27.04" min="0.01" max="1000" label="Horizontal field width (µm)" help="Physical width of the full image, as recorded by the SEM. The default 27.04 µm corresponds to 0.02640625 µm/pixel for a 1024-pixel-wide image; replace it with the value from your image metadata. Increasing or decreasing HFW scales all derived physical sizes by the same proportion, but does not change pixel-based segmentation."/>
+            </when>
+            <when value="pixel_size">
+                <param name="pixel_size_um" type="float" value="0.02640625" min="0.000001" max="1000" label="Pixel size (µm/pixel)" help="Physical size represented by one image pixel, as recorded by the SEM or calculated from a known scale. The default 0.02640625 µm/pixel corresponds to a 27.04 µm horizontal field width for a 1024-pixel-wide image; replace it with the value from your image metadata. Increasing or decreasing pixel size scales all derived physical sizes by the same proportion, but does not change pixel-based segmentation."/>
+            </when>
+        </conditional>
+        <section name="advanced" title="Segmentation options" expanded="false">
+            <param name="crop_bottom" type="integer" value="59" min="0" label="Crop from bottom (pixels)" help="Removes the SEM instrument footer before analysis."/>
+        </section>
+    </inputs>
+    <outputs>
+        <collection name="results_collection" type="list" label="${tool.name}: results for ${on_string}">
+            <discover_datasets pattern="__name_and_ext__" directory="results"/>
+        </collection>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="auto-thresholding"/>
+            </conditional>
+            <param name="analysis_mode" value="qc"/>
+            <param name="threshold_methods" value="default,otsu"/>
+            <output_collection name="results_collection" type="list" count="21"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="auto-thresholding"/>
+            </conditional>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="12"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="srm-auto-thresholding"/>
+                <param name="srm_q" value="80"/>
+            </conditional>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="12"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="recursive-srm"/>
+                <param name="srm_q" value="100"/>
+            </conditional>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="12"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="auto-thresholding"/>
+            </conditional>
+            <param name="threshold_methods" value="huang"/>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="12"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="auto-thresholding"/>
+            </conditional>
+            <param name="threshold_methods" value="huang2,intermodes,isodata"/>
+            <param name="analysis_mode" value="qc"/>
+            <conditional name="calibration">
+                <param name="source" value="pixel_size"/>
+                <param name="pixel_size_um" value="0.03"/>
+            </conditional>
+            <output_collection name="results_collection" type="list" count="30"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="srm-auto-thresholding"/>
+                <param name="srm_q" value="60"/>
+            </conditional>
+            <param name="threshold_methods" value="li"/>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="12"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="srm-auto-thresholding"/>
+                <param name="srm_q" value="120"/>
+            </conditional>
+            <param name="threshold_methods" value="maxentropy,mean,minerror"/>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="30"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="recursive-srm"/>
+                <param name="srm_q" value="64"/>
+            </conditional>
+            <param name="threshold_methods" value="minerror"/>
+            <param name="analysis_mode" value="qc"/>
+            <output_collection name="results_collection" type="list" count="12"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input_image" value="PVA-A_004.tif"/>
+            <conditional name="segmentation">
+                <param name="workflow" value="recursive-srm"/>
+                <param name="srm_q" value="80"/>
+            </conditional>
+            <param name="threshold_methods" value="moments,percentile,renyientropy,shanbhag,triangle,yen"/>
+            <param name="analysis_mode" value="qc"/>
+            <conditional name="calibration">
+                <param name="source" value="hfw"/>
+                <param name="hfw_um" value="30"/>
+            </conditional>
+            <output_collection name="results_collection" type="list" count="57"/>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+This tool prepares an SEM micrograph for DiameterJ, creates a binary fiber mask,
+and computes an independent diameter quality-control estimate. In full
+mode it also runs the validated DiameterJ 1.018 workflow under a virtual display.
+
+The tool provides Fiji Auto Thresholding, SRM with Auto Thresholding, and
+Recursive SRM workflows. Every generated mask receives an independent
+skeleton/distance-transform QC.
+
+**Input image**
+
+The input must be a TIFF image. A two-dimensional grayscale image is used
+directly. An RGB TIFF is converted to grayscale by averaging its first three
+channels. Other dimensional layouts, such as image stacks or time series, are
+not supported.
+
+**Segmentation workflow**
+
+* **Auto Thresholding** applies the selected Fiji [Auto Threshold v1.18.0](https://imagej.net/plugins/auto-threshold)
+  methods directly to the cropped image. The available methods are Default,
+  Huang, Huang2, Intermodes,
+  IsoData, Li, MaxEntropy, Mean, MinError(I), Minimum, Moments, Otsu,
+  Percentile, RenyiEntropy, Shanbhag, Triangle, and Yen.
+* **SRM with Auto Thresholding** applies one [Statistical Region Merging](https://imagej.net/plugins/statistical-region-merging) pass at
+  the selected ``q``, converts the result to 8-bit, and applies the selected
+  Auto Threshold methods.
+* **Recursive SRM** runs exactly one recursive workflow. It successively applies
+  SRM at ``q``, ``q/2``, ``q/4``, and ``q/8`` (with a minimum of 1), then
+  applies the selected threshold methods to the final SRM image.
+
+Use **Thresholding methods** to choose one or more of these methods. The same
+selection is applied after SRM for either SRM-based workflow. All 17 methods are
+selected by default.
+
+**Analysis mode**
+
+* **Full DiameterJ analysis** creates the selected segmentation masks and QC
+  results, then runs DiameterJ 1.018 on every mask. Candidates are not rejected
+  based on their black-pixel fraction, so review the segmentation and overlay
+  montages when a threshold method produces an implausible mask.
+* **Segmentation and QC only** skips DiameterJ analysis. It is faster and
+  is useful for comparing candidate masks before a full run.
+
+**Calibration and interpretation**
+
+QC measurements are reported in pixels and micrometres. Choose one of the
+following calibration sources:
+
+* **Horizontal field width** is the physical width represented by the entire
+  uncropped image. Pixel size is calculated as ``HFW / image width in pixels``.
+  The default is 27.04 µm and should be replaced with the value recorded by the
+  microscope for the input image.
+* **Pixel size** directly specifies micrometres per pixel. Use this when the
+  calibrated pixel spacing is already known.
+
+Cropping the bottom does not change image width, so it does not alter an
+HFW-derived pixel size. DiameterJ runs in its validated native-pixel mode because
+physical calibration can change its legacy particle-size filtering. Use the
+``pixel_size_um`` field in ``qc_summary.csv`` when converting DiameterJ
+measurements to physical units.
+
+**Segmentation options**
+
+* **Crop from bottom** removes a fixed number of pixel rows before analysis. The
+  default of 59 is intended for an SEM annotation or instrument footer. Set it
+  to 0 when the image contains no footer. It must be smaller than image height.
+* **SRM granularity (q)** controls region merging in SRM with Auto Thresholding
+  and Recursive SRM modes. It must be positive. Larger values generally
+  preserve more, smaller regions; lower values generally merge regions more
+  aggressively. The default is 100.
+
+**Outputs**
+
+All generated files are returned as one list collection in the Galaxy history.
+Each workflow produces two PNG review sheets: a segmentation montage containing
+the cropped original and every binary mask, and an overlay montage containing
+the original and every boundary overlay. It also produces each candidate as a
+separate, display-ready PNG and as a matching TIFF used for DiameterJ analysis.
+Each workflow produces one segmented PNG and one matching TIFF per selected
+threshold method.
+
+Dataset names retain the input stem, segmentation family, SRM settings where
+applicable, and threshold method. For each mask, QC-only mode also includes a
+boundary-overlay PNG and diameter-samples CSV; the collection contains one
+QC summary CSV. Full mode adds the DiameterJ total summary, comparison
+image, pore data, radius histogram, characteristic lengths, and radius plot for
+each mask. Every DiameterJ radius-plot TIFF is converted to PNG before Galaxy
+discovers the collection. The resulting collection size depends on the number of 
+selected threshold methods and the analysis mode.
+
+The QC diameter samples are distance-transform measurements on skeleton pixels.
+They are intended as an independent quality check; DiameterJ output is the
+primary result in full-analysis mode.
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1016/j.biomaterials.2015.05.015</citation>
+    </citations>
+</tool>

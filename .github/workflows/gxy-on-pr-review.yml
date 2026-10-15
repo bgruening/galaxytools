@@ -1,0 +1,94 @@
+on:
+  pull_request:
+    types: [labeled]
+
+jobs:
+  review:
+    name: Review Tool Files
+    # Dual-match: both the prefixed (tool-bot:*) and original unprefixed label
+    # names trigger. If your repo only has the prefixed labels (e.g. created by
+    # scripts/create-labels.sh), you can drop the unprefixed alternative.
+    if: contains(github.event.pull_request.labels.*.name, 'tool-bot:review') || contains(github.event.pull_request.labels.*.name, 'review')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
+      actions: read
+      checks: read
+    # Shared group with on-pr-feedback — see that file's note.
+    concurrency:
+      group: pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0
+      - name: Restore config from default branch
+        run: |
+          git fetch origin ${{ github.event.repository.default_branch }}
+          git checkout FETCH_HEAD -- .gxy-tool-bot.yml
+      - name: Post status comment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "🔍 Reviewing tool files — [view progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.0
+      - run: pip install "planemo>=0.75.43"
+      - name: Install micromamba
+        run: |
+          curl -Ls "https://micro.mamba.pm/api/micromamba/linux-64/latest" | tar -xvj -C /tmp
+          echo "/tmp/bin" >> $GITHUB_PATH
+      - name: Remove review label
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Remove whichever spelling(s) exist — prefixed and legacy.
+          gh pr edit ${{ github.event.pull_request.number }} \
+            --remove-label "tool-bot:review" || true
+          gh pr edit ${{ github.event.pull_request.number }} \
+            --remove-label "review" || true
+      - name: Find tool directory
+        id: find_tool_dir
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
+          PR_TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title --jq '.title' 2>/dev/null || echo "")
+          TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
+          # Fallback: check for .tool-name in the PR branch
+          if [ -z "$TOOL_DIR" ] && [ -f tools/*/.tool-name ]; then
+            TOOL_DIR=$(cat tools/*/.tool-name 2>/dev/null | head -1)
+          fi
+          # Fallback: find directories with .xml files under tools/
+          if [ -z "$TOOL_DIR" ]; then
+            TOOL_DIR=$(find tools/ -name "*.xml" -not -name "macros.xml" -exec dirname {} \; 2>/dev/null | head -1 | xargs basename 2>/dev/null || echo "")
+          fi
+          if [ -z "$TOOL_DIR" ]; then
+            echo "Could not determine tool directory from PR title, .tool-name, or XML files"
+            exit 1
+          fi
+          echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
+          echo "Found tool directory: $TOOL_DIR"
+      - name: Review tool files
+        id: review
+        env:
+          GXY_TOOL_BOT_API_KEY: ${{ secrets.GXY_TOOL_BOT_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          gxy-tool-bot review \
+            --pr ${{ github.event.pull_request.number }} \
+            --config .gxy-tool-bot.yml \
+            --tool-dir tools/${{ steps.find_tool_dir.outputs.tool_dir }} \
+            --actor ${{ github.event.sender.login }}
+      - name: Handle failure
+        if: steps.review.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment ${{ github.event.pull_request.number }} --body "⚠️ Review failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
