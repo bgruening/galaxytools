@@ -77,7 +77,6 @@ def main() -> None:
     parser.add_argument("--max_length", type=int, default=1024)
     parser.add_argument("--on_long_sequence", choices=["skip", "truncate"], default="truncate")
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     args = parser.parse_args()
     args.model_dir = resolve_model_source(args.model_path, args.model_archive)
 
@@ -88,7 +87,7 @@ def main() -> None:
         print(f"WARNING: {warning}", file=sys.stderr)
 
     family, tokenizer, model = load_model(args.model_dir)
-    device = resolve_device(args.device)
+    device = resolve_device()
     model.eval().to(device)
     print(f"Loaded {family} model from {args.model_dir} on {device}.", file=sys.stderr)
     args.max_length = resolve_max_length(model, args.max_length)

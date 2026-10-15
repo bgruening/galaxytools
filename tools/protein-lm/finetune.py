@@ -4,9 +4,9 @@ Generalizes the pipeline's three LoRA scripts (ESM full-layer, ESM last-layer,
 ProtT5) into one family-agnostic tool: model family is auto-detected (see
 model_utils.detect_family) and determines the target_modules and pooling
 function; which transformer layers the adapter is applied to (--lora_layer_scope)
-is an orthogonal choice that applies to any family. Evaluation always uses a
-single FASTA + labels table, split internally by --val_fraction (same pattern
-as predict.py's train/test split).
+is an orthogonal choice that applies to any family. Input convention matches
+tools/dna_foundation_models: 2-column tab-separated [sequence, label] tables,
+separate pre-split train/validation files -- no internal splitting.
 
 Exit codes: see errors.py.
 """
@@ -18,17 +18,14 @@ import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
-from embed import filter_by_length, tokenize_batch
+from embed import tokenize_batch
 from errors import fail, run_main
-from fasta_utils import check_id_overlap, ensure_file_exists, load_labels_or_fail, parse_fasta_or_fail, warn_nonstandard_residues
+from fasta_utils import load_and_filter_sequence_label_table
 from model_utils import detect_family, hidden_size, load_model, resolve_device, resolve_max_length, resolve_model_source
 from peft import AdaLoraConfig, get_peft_model, LoraConfig, TaskType
 from predict import performance_metrics, prediction_plot
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from torch.utils.data import DataLoader, Dataset
-
-SEED = 42
 
 _TARGET_MODULES = {"esm": ["query", "value"], "protbert": ["query", "value"], "prott5": ["q", "v"]}
 # peft's layers_to_transform needs an explicit layers_pattern for T5: its modules are
@@ -132,35 +129,6 @@ def make_collate_fn(pad_token_id: int):
     return _collate
 
 
-def load_fasta_labels(fasta_path, labels_path, label_col, max_length, on_long_sequence):
-    """Parse+validate the FULL fasta/labels pair, then length-filter the survivors.
-
-    Mirrors predict.py's build_xy: the ID-overlap check runs on the full FASTA
-    before filtering, so a sequence --on_long_sequence skip legitimately drops
-    is never mistaken for a genuine FASTA/labels mismatch.
-    """
-    ensure_file_exists(fasta_path, "FASTA file")
-    ensure_file_exists(labels_path, "Labels table")
-    all_ids, all_seqs = parse_fasta_or_fail(fasta_path)
-    labels = load_labels_or_fail(labels_path, id_col="id", label_cols=[label_col])
-    fasta_only, labels_only = check_id_overlap(all_ids, labels.keys())
-    if fasta_only or labels_only:
-        fail(
-            "Sequence IDs in the FASTA file and labels table do not match. "
-            f"In FASTA but not labels: {fasta_only[:10]}. In labels but not FASTA: {labels_only[:10]}.",
-            exit_code=6,
-        )
-    for warning in warn_nonstandard_residues(all_ids, all_seqs):
-        print(f"WARNING: {warning}", file=sys.stderr)
-    ids, seqs, length_warnings = filter_by_length(all_ids, all_seqs, max_length, on_long_sequence)
-    for warning in length_warnings:
-        print(f"WARNING: {warning}", file=sys.stderr)
-    if not seqs:
-        fail(f"No sequences remain in {fasta_path} after length filtering.", exit_code=5)
-    raw_values = [labels[seq_id][0] for seq_id in ids]
-    return ids, seqs, raw_values
-
-
 def train_epoch(model, loader, optimizer, loss_fn, device, adapter_method, global_step):
     """Returns (avg_loss, new_global_step). adapter_method/global_step drive AdaLoRA's
     rank reallocation, which peft requires to be called every step: backward -> step ->
@@ -206,11 +174,8 @@ def main() -> None:
     parser.add_argument("--model_path", default=None, help="Preinstalled model folder (from the huggingface data table)")
     parser.add_argument("--model_archive", default=None, help="Uploaded model archive (tar/tgz)")
     parser.add_argument("--task", choices=["classification", "regression"], required=True)
-    parser.add_argument("--data_fasta", required=True)
-    parser.add_argument("--data_labels", required=True)
-    parser.add_argument("--label_col", required=True)
-    parser.add_argument("--val_fraction", type=float, default=0.2)
-    parser.add_argument("--random_seed", type=int, default=SEED)
+    parser.add_argument("--train_data", required=True, help="Tabular [sequence, label] training file")
+    parser.add_argument("--val_data", required=True, help="Tabular [sequence, label] validation file")
     parser.add_argument("--adapter_method", choices=["lora", "adalora"], default="lora")
     parser.add_argument("--lora_layer_scope", choices=["all", "last_n", "custom"], default="all")
     parser.add_argument("--lora_last_n", type=int, default=1)
@@ -226,60 +191,39 @@ def main() -> None:
     parser.add_argument("--weight_decay", type=float, default=0.01)
     parser.add_argument("--max_length", type=int, default=1024)
     parser.add_argument("--on_long_sequence", choices=["skip", "truncate"], default="truncate")
-    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     args = parser.parse_args()
     args.model_dir = resolve_model_source(args.model_path, args.model_archive)
 
-    device = resolve_device(args.device)
+    device = resolve_device()
     family = detect_family(args.model_dir)
     _, tokenizer, encoder = load_model(args.model_dir)
     args.max_length = resolve_max_length(encoder, args.max_length)
 
-    all_ids, all_seqs, all_raw = load_fasta_labels(
-        args.data_fasta, args.data_labels, args.label_col, args.max_length, args.on_long_sequence
-    )
+    train_seqs, train_raw = load_and_filter_sequence_label_table(args.train_data, args.max_length, args.on_long_sequence)
+    val_seqs, val_raw = load_and_filter_sequence_label_table(args.val_data, args.max_length, args.on_long_sequence)
 
     label_encoder = None
     if args.task == "classification":
         label_encoder = LabelEncoder()
-        all_targets = label_encoder.fit_transform(all_raw)
+        train_targets = label_encoder.fit_transform(train_raw)
         output_dim = len(label_encoder.classes_)
         loss_fn = nn.CrossEntropyLoss()
-        stratify = all_targets
-        _, counts = np.unique(all_targets, return_counts=True)
-        if counts.min() < 2:
+        try:
+            label_encoder.transform(val_raw)
+        except ValueError as exc:
             fail(
-                "Cannot split into train/validation: every class must have at least 2 samples "
-                f"(smallest class has {counts.min()}). Use more data, or a larger validation "
-                "fraction so every class can appear on both sides of the split.",
+                f"{args.val_data} contains a label not seen in {args.train_data}'s training data: {exc}",
                 exit_code=7,
             )
+        train_targets_t = torch.as_tensor(train_targets, dtype=torch.long)
     else:
         try:
-            all_targets = np.array([float(v) for v in all_raw], dtype=np.float32)
+            train_targets = np.array([float(v) for v in train_raw], dtype=np.float32)
         except ValueError as exc:
-            fail(f"Labels table column '{args.label_col}' contains a non-numeric value: {exc}", exit_code=7)
+            fail(f"{args.train_data}: label column contains a non-numeric value: {exc}", exit_code=7)
         output_dim = 1
         loss_fn = nn.MSELoss()
-        stratify = None
-
-    indices = np.arange(len(all_ids))
-    try:
-        train_idx, val_idx = train_test_split(
-            indices, test_size=args.val_fraction, random_state=args.random_seed, stratify=stratify
-        )
-    except ValueError as exc:
-        fail(f"Cannot split into train/validation with val_fraction={args.val_fraction}: {exc}", exit_code=7)
-
-    train_seqs = [all_seqs[i] for i in train_idx]
-    val_seqs = [all_seqs[i] for i in val_idx]
-    val_ids = [all_ids[i] for i in val_idx]
-    val_raw = [all_raw[i] for i in val_idx]
-
-    if args.task == "classification":
-        train_targets_t = torch.as_tensor(all_targets[train_idx], dtype=torch.long)
-    else:
-        train_targets_t = torch.as_tensor(all_targets[train_idx], dtype=torch.float32).unsqueeze(-1)
+        train_targets_t = torch.as_tensor(train_targets, dtype=torch.float32).unsqueeze(-1)
 
     num_layers = num_transformer_layers(encoder)
     layers_to_transform = resolve_layers_to_transform(
@@ -334,14 +278,14 @@ def main() -> None:
         y_true = label_encoder.transform(val_raw)
         pred_labels = label_encoder.inverse_transform(predicted)
     else:
-        y_true = all_targets[val_idx]
+        y_true = np.array([float(v) for v in val_raw], dtype=np.float32)
         pred_labels = predicted
 
     pd.DataFrame([performance_metrics(y_true, predicted, args.task)]).to_csv(
         "val_metrics.tsv", sep="\t", index=False
     )
     prediction_plot(y_true, predicted, args.task, scores)
-    pd.DataFrame({"id": val_ids, "true_label": val_raw, "predicted_label": pred_labels}).to_csv(
+    pd.DataFrame({"sequence": val_seqs, "label": val_raw, "prediction": pred_labels}).to_csv(
         "output_predicted_data", sep="\t", index=False
     )
 

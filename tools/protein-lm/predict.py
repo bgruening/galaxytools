@@ -1,30 +1,22 @@
-"""Train a classifier/regressor on protein language model embeddings.
+"""Train an MLP classifier/regressor on protein language model embeddings.
 
-Follows the PRIMARY reference's (tabicl) generic single-target layout: one
-feature matrix (here, mean-pooled per-protein embeddings) plus one target
-column, evaluated via an internal train/test split.
+Input convention matches tools/dna_foundation_models: a 2-column tab-separated
+table (sequence, label), separate pre-split train/test files -- no FASTA, no
+internal splitting. Users who need a split can use the existing
+sklearn_train_test_split Galaxy tool first.
 
 Exit codes: see errors.py.
 """
 
 import argparse
-import sys
 
 import numpy as np
 import pandas as pd
 import torch
-from embed import filter_by_length, strip_special_tokens, tokenize_batch
+from embed import strip_special_tokens, tokenize_batch
 from errors import fail, run_main
-from fasta_utils import (
-    check_id_overlap,
-    ensure_file_exists,
-    load_labels_or_fail,
-    parse_fasta_or_fail,
-    warn_nonstandard_residues,
-)
+from fasta_utils import load_and_filter_sequence_label_table
 from model_utils import load_model, resolve_device, resolve_max_length, resolve_model_source
-from sklearn.ensemble import RandomForestClassifier, RandomForestRegressor
-from sklearn.linear_model import LinearRegression, LogisticRegression
 from sklearn.metrics import (
     accuracy_score,
     average_precision_score,
@@ -34,25 +26,8 @@ from sklearn.metrics import (
     r2_score,
     root_mean_squared_error,
 )
-from sklearn.model_selection import train_test_split
 from sklearn.neural_network import MLPClassifier, MLPRegressor
 from sklearn.preprocessing import label_binarize
-from sklearn.svm import SVC, SVR
-
-SEED = 42
-
-CLASSIFIERS = {
-    "lr": lambda args: LogisticRegression(max_iter=1000, random_state=SEED),
-    "rf": lambda args: RandomForestClassifier(n_estimators=args.n_estimators, random_state=SEED),
-    "svm": lambda args: SVC(kernel=args.svm_kernel, probability=True, random_state=SEED),
-    "mlp": lambda args: MLPClassifier(hidden_layer_sizes=tuple(args.hidden_sizes), random_state=SEED),
-}
-REGRESSORS = {
-    "linear": lambda args: LinearRegression(),
-    "rf": lambda args: RandomForestRegressor(n_estimators=args.n_estimators, random_state=SEED),
-    "svm": lambda args: SVR(kernel=args.svm_kernel),
-    "mlp": lambda args: MLPRegressor(hidden_layer_sizes=tuple(args.hidden_sizes), random_state=SEED),
-}
 
 
 def embed_sequences(seqs: list[str], family, tokenizer, model, max_length: int, batch_size: int, device) -> np.ndarray:
@@ -69,48 +44,19 @@ def embed_sequences(seqs: list[str], family, tokenizer, model, max_length: int, 
     return np.vstack(rows)
 
 
-def build_xy(fasta_path, labels_path, label_col, model_dir, max_length, on_long_sequence, batch_size, device, task):
-    """Parse+validate the FULL fasta/labels pair (so a genuine ID mismatch is never
-    confused with a sequence that --on_long_sequence skip legitimately dropped),
-    then length-filter and embed only the matched survivors.
-    """
-    ensure_file_exists(fasta_path, "FASTA file")
-    ensure_file_exists(labels_path, "Labels table")
-    all_ids, all_seqs = parse_fasta_or_fail(fasta_path)
-    labels = load_labels_or_fail(labels_path, id_col="id", label_cols=[label_col])
-
-    fasta_only, labels_only = check_id_overlap(all_ids, labels.keys())
-    if fasta_only or labels_only:
-        fail(
-            "Sequence IDs in the FASTA file and labels table do not match. "
-            f"In FASTA but not labels: {fasta_only[:10]}{'...' if len(fasta_only) > 10 else ''}. "
-            f"In labels but not FASTA: {labels_only[:10]}{'...' if len(labels_only) > 10 else ''}.",
-            exit_code=6,
-        )
-
-    family, tokenizer, model = load_model(model_dir)
-    model.eval().to(device)
-    max_length = resolve_max_length(model, max_length)
-
-    for warning in warn_nonstandard_residues(all_ids, all_seqs):
-        print(f"WARNING: {warning}", file=sys.stderr)
-    ids, seqs, length_warnings = filter_by_length(all_ids, all_seqs, max_length, on_long_sequence)
-    for warning in length_warnings:
-        print(f"WARNING: {warning}", file=sys.stderr)
-    if not seqs:
-        fail(f"No sequences remain in {fasta_path} after length filtering.", exit_code=5)
-
-    raw_values = [labels[seq_id][0] for seq_id in ids]
+def build_xy(data_path, family, tokenizer, model, max_length, on_long_sequence, batch_size, device, task):
+    """Load a [sequence, label] tabular file, length-filter, and embed it."""
+    seqs, raw_values = load_and_filter_sequence_label_table(data_path, max_length, on_long_sequence)
     if task == "regression":
         try:
             y = np.array([float(v) for v in raw_values], dtype=np.float64)
         except ValueError as exc:
-            fail(f"Labels table column '{label_col}' contains a non-numeric value for regression: {exc}", exit_code=7)
+            fail(f"{data_path}: label column contains a non-numeric value for regression: {exc}", exit_code=7)
     else:
         y = np.array(raw_values)
 
     embeddings = embed_sequences(seqs, family, tokenizer, model, max_length, batch_size, device)
-    return ids, embeddings, y
+    return seqs, embeddings, y
 
 
 def performance_metrics(y_true, y_pred, task: str) -> dict:
@@ -164,74 +110,52 @@ def prediction_plot(y_true, y_pred, task, y_scores=None):
 
 
 def make_estimator(args):
-    table = CLASSIFIERS if args.task == "classification" else REGRESSORS
-    return table[args.estimator](args)
+    if args.task == "classification":
+        return MLPClassifier(hidden_layer_sizes=tuple(args.hidden_sizes), random_state=42)
+    return MLPRegressor(hidden_layer_sizes=tuple(args.hidden_sizes), random_state=42)
 
 
 def train_test(args, device):
-    """Embed the whole dataset once, then split it into train/test by --test_fraction."""
-    ids, X, y = build_xy(
-        args.data_fasta, args.data_labels, args.label_col, args.model_dir,
-        args.max_length, args.on_long_sequence, args.batch_size, device, args.task,
+    family, tokenizer, model = load_model(args.model_dir)
+    model.eval().to(device)
+    max_length = resolve_max_length(model, args.max_length)
+
+    train_seqs, X_train, y_train = build_xy(
+        args.train_data, family, tokenizer, model, max_length, args.on_long_sequence, args.batch_size, device, args.task,
+    )
+    test_seqs, X_test, y_test = build_xy(
+        args.test_data, family, tokenizer, model, max_length, args.on_long_sequence, args.batch_size, device, args.task,
     )
 
-    stratify = y if args.task == "classification" else None
-    if args.task == "classification":
-        _, counts = np.unique(y, return_counts=True)
-        if counts.min() < 2:
-            fail(
-                "Cannot split into train/test: every class must have at least 2 samples "
-                f"(smallest class has {counts.min()}). Use more data, or a larger test "
-                "fraction so every class can appear on both sides of the split.",
-                exit_code=7,
-            )
-
-    indices = np.arange(len(ids))
-    try:
-        train_idx, test_idx = train_test_split(
-            indices, test_size=args.test_fraction, random_state=args.random_seed, stratify=stratify
-        )
-    except ValueError as exc:
-        fail(f"Cannot split into train/test with test_fraction={args.test_fraction}: {exc}", exit_code=7)
-
     estimator = make_estimator(args)
-    estimator.fit(X[train_idx], y[train_idx])
-    predicted = estimator.predict(X[test_idx])
-    y_test = y[test_idx]
-    test_ids = [ids[i] for i in test_idx]
+    estimator.fit(X_train, y_train)
+    predicted = estimator.predict(X_test)
 
     pd.DataFrame([performance_metrics(y_test, predicted, args.task)]).to_csv(
         "test_metrics.tsv", sep="\t", index=False
     )
-    scores = estimator.predict_proba(X[test_idx]) if args.task == "classification" else None
+    scores = estimator.predict_proba(X_test) if args.task == "classification" else None
     prediction_plot(y_test, predicted, args.task, scores)
 
-    output = pd.DataFrame({"id": test_ids, "true_label": y_test, "predicted_label": predicted})
+    output = pd.DataFrame({"sequence": test_seqs, "label": y_test, "prediction": predicted})
     output.to_csv("output_predicted_data", sep="\t", index=False)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Train a classifier/regressor on protein LM embeddings")
+    parser = argparse.ArgumentParser(description="Train an MLP classifier/regressor on protein LM embeddings")
     parser.add_argument("--model_path", default=None, help="Preinstalled model folder (from the huggingface data table)")
     parser.add_argument("--model_archive", default=None, help="Uploaded model archive (tar/tgz)")
     parser.add_argument("--task", choices=["classification", "regression"], required=True)
-    parser.add_argument("--data_fasta", required=True)
-    parser.add_argument("--data_labels", required=True)
-    parser.add_argument("--label_col", required=True)
-    parser.add_argument("--test_fraction", type=float, default=0.2)
-    parser.add_argument("--random_seed", type=int, default=SEED)
-    parser.add_argument("--estimator", choices=["lr", "rf", "svm", "mlp", "linear"], default="rf")
-    parser.add_argument("--n_estimators", type=int, default=100)
-    parser.add_argument("--svm_kernel", default="rbf")
+    parser.add_argument("--train_data", required=True, help="Tabular [sequence, label] training file")
+    parser.add_argument("--test_data", required=True, help="Tabular [sequence, label] test file")
     parser.add_argument("--hidden_sizes", type=int, nargs="+", default=[128])
     parser.add_argument("--max_length", type=int, default=1024)
     parser.add_argument("--on_long_sequence", choices=["skip", "truncate"], default="truncate")
     parser.add_argument("--batch_size", type=int, default=8)
-    parser.add_argument("--device", choices=["auto", "cpu", "cuda"], default="auto")
     args = parser.parse_args()
     args.model_dir = resolve_model_source(args.model_path, args.model_archive)
 
-    device = resolve_device(args.device)
+    device = resolve_device()
     train_test(args, device)
 
 

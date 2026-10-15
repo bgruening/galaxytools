@@ -28,36 +28,19 @@
         </xml>
         <xml name="long_sequence_options">
             <param name="max_length" type="integer" value="1024" min="8" label="Maximum sequence length (tokens, including special tokens)"/>
-            <param name="on_long_sequence" type="select" label="If a sequence exceeds the maximum length">
+            <param name="on_long_sequence" type="select" label="If a sequence exceeds the maximum length" help="A sequence is measured against max_length minus 2 residues, reserving up to 2 positions for special tokens (e.g. CLS/BOS and EOS). Truncation keeps the first (max_length - 2) residues.">
                 <option value="truncate" selected="true">Truncate it</option>
                 <option value="skip">Skip it (with a warning)</option>
             </param>
         </xml>
-        <xml name="train_test_split_inputs">
-            <param name="data_fasta" type="data" format="fasta" label="Input FASTA"/>
-            <param name="data_labels" type="data" format="tabular" label="Labels table" help="Tab-separated, with an 'id' column matching the FASTA and a label column."/>
-            <param name="label_col" type="text" value="label" label="Label column name"/>
-            <param name="test_fraction" type="float" value="0.2" min="0.05" max="0.95" label="Fraction held out for testing" help="The tool splits this one dataset into train/test itself -- e.g. 0.2 means 20% test, 80% train."/>
-            <param name="random_seed" type="integer" value="42" label="Random seed for the split" help="Change this to get a different random split of the same data."/>
-        </xml>
-        <xml name="estimator_hyperparams">
-            <when value="rf">
-                <param name="n_estimators" type="integer" value="100" min="1" label="Number of trees"/>
-            </when>
-            <when value="svm">
-                <param name="svm_kernel" type="select" label="Kernel">
-                    <option value="rbf" selected="true">RBF</option>
-                    <option value="linear">Linear</option>
-                    <option value="poly">Polynomial</option>
-                </param>
-            </when>
-            <when value="mlp">
-                <param name="hidden_sizes" type="text" value="128" label="Hidden layer sizes" help="Comma-separated, e.g. 128,64 for two hidden layers.">
-                    <sanitizer invalid_char="">
-                        <valid initial="string.digits"><add value=","/></valid>
-                    </sanitizer>
-                </param>
-            </when>
+        <xml name="tabular_train_test_inputs">
+            <param name="train_data" type="data" format="tabular" label="Training dataset" help="Tab-separated, 2 columns: sequence, label. Use the sklearn_train_test_split tool first if you need to split a single dataset."/>
+            <param name="test_data" type="data" format="tabular" label="Test dataset" help="Same 2-column format as the training dataset."/>
+            <param name="hidden_sizes" type="text" value="128" label="Hidden layer sizes" help="Comma-separated, e.g. 128,64 for two hidden layers.">
+                <sanitizer invalid_char="">
+                    <valid initial="string.digits"><add value=","/></valid>
+                </sanitizer>
+            </param>
         </xml>
     </macros>
     <requirements>
@@ -98,7 +81,6 @@
         --max_length '$mode.max_length'
         --on_long_sequence '$mode.on_long_sequence'
         --batch_size '$mode.batch_size'
-        --device auto
 #elif str($mode.mode_select) == 'predict'
     python '$__tool_directory__/predict.py'
         #if str($mode.model_source.source_type) == 'upload'
@@ -107,23 +89,12 @@
             --model_path '$mode.model_source.pretrained_model'
         #end if
         --task '$mode.task.selected_task'
-        --data_fasta '$mode.task.data_fasta'
-        --data_labels '$mode.task.data_labels'
-        --label_col '$mode.task.label_col'
-        --test_fraction '$mode.task.test_fraction'
-        --random_seed '$mode.task.random_seed'
-        --estimator '$mode.task.estimator_conditional.estimator'
-        #if str($mode.task.estimator_conditional.estimator) == 'rf'
-            --n_estimators '$mode.task.estimator_conditional.n_estimators'
-        #elif str($mode.task.estimator_conditional.estimator) == 'svm'
-            --svm_kernel '$mode.task.estimator_conditional.svm_kernel'
-        #elif str($mode.task.estimator_conditional.estimator) == 'mlp'
-            --hidden_sizes $mode.task.estimator_conditional.hidden_sizes.replace(',', ' ')
-        #end if
+        --train_data '$mode.task.train_data'
+        --test_data '$mode.task.test_data'
+        --hidden_sizes $mode.task.hidden_sizes.replace(',', ' ')
         --max_length '$mode.max_length'
         --on_long_sequence '$mode.on_long_sequence'
         --batch_size '$mode.batch_size'
-        --device auto
 #else
     python '$__tool_directory__/finetune.py'
         #if str($mode.model_source.source_type) == 'upload'
@@ -132,11 +103,8 @@
             --model_path '$mode.model_source.pretrained_model'
         #end if
         --task '$mode.selected_task'
-        --data_fasta '$mode.data_fasta'
-        --data_labels '$mode.data_labels'
-        --label_col '$mode.label_col'
-        --val_fraction '$mode.val_fraction'
-        --random_seed '$mode.random_seed'
+        --train_data '$mode.train_data'
+        --val_data '$mode.val_data'
         --adapter_method '$mode.adapter_conditional.adapter_method'
         #if str($mode.adapter_conditional.adapter_method) == 'adalora'
             --adalora_init_r '$mode.adapter_conditional.adalora_init_r'
@@ -158,7 +126,6 @@
         --weight_decay '$mode.weight_decay'
         --max_length '$mode.max_length'
         --on_long_sequence '$mode.on_long_sequence'
-        --device auto
         && tar -czf lora_adapter.tgz output_adapter
 #end if
     ]]></command>
@@ -188,30 +155,10 @@
                         <option value="regression">Regression</option>
                     </param>
                     <when value="classification">
-                        <expand macro="train_test_split_inputs"/>
-                        <conditional name="estimator_conditional">
-                            <param name="estimator" type="select" label="Model">
-                                <option value="lr" selected="true">Logistic regression</option>
-                                <option value="rf">Random forest</option>
-                                <option value="svm">Support vector machine</option>
-                                <option value="mlp">MLP</option>
-                            </param>
-                            <expand macro="estimator_hyperparams"/>
-                            <when value="lr"/>
-                        </conditional>
+                        <expand macro="tabular_train_test_inputs"/>
                     </when>
                     <when value="regression">
-                        <expand macro="train_test_split_inputs"/>
-                        <conditional name="estimator_conditional">
-                            <param name="estimator" type="select" label="Model">
-                                <option value="linear" selected="true">Linear regression</option>
-                                <option value="rf">Random forest</option>
-                                <option value="svm">Support vector machine</option>
-                                <option value="mlp">MLP</option>
-                            </param>
-                            <expand macro="estimator_hyperparams"/>
-                            <when value="linear"/>
-                        </conditional>
+                        <expand macro="tabular_train_test_inputs"/>
                     </when>
                 </conditional>
                 <expand macro="long_sequence_options"/>
@@ -223,13 +170,10 @@
                     <option value="classification" selected="true">Classification</option>
                     <option value="regression">Regression</option>
                 </param>
-                <param name="data_fasta" type="data" format="fasta" label="Input FASTA"/>
-                <param name="data_labels" type="data" format="tabular" label="Labels table" help="Tab-separated, with an 'id' column matching the FASTA and a label column."/>
-                <param name="label_col" type="text" value="label" label="Label column name"/>
-                <param name="val_fraction" type="float" value="0.2" min="0.05" max="0.95" label="Fraction held out for validation" help="The tool splits this one dataset into train/validation itself -- e.g. 0.2 means 20% validation, 80% train."/>
-                <param name="random_seed" type="integer" value="42" label="Random seed for the split"/>
+                <param name="train_data" type="data" format="tabular" label="Training dataset" help="Tab-separated, 2 columns: sequence, label. Use the sklearn_train_test_split tool first if you need to split a single dataset."/>
+                <param name="val_data" type="data" format="tabular" label="Validation dataset" help="Same 2-column format as the training dataset."/>
                 <conditional name="adapter_conditional">
-                    <param name="adapter_method" type="select" label="Adapter method">
+                    <param name="adapter_method" type="select" label="Low-ranking adaptation methods">
                         <option value="lora" selected="true">LoRA</option>
                         <option value="adalora">AdaLoRA (adaptive rank allocation)</option>
                     </param>
@@ -241,12 +185,12 @@
                         <param name="adalora_target_r" type="integer" value="8" min="1" label="Target rank" help="Final rank after pruning; must be less than or equal to the initial rank."/>
                     </when>
                 </conditional>
-                <param name="lora_alpha" type="integer" value="16" min="1" label="LoRA alpha"/>
+                <param name="lora_alpha" type="integer" value="16" min="1" max="256" label="LoRA alpha"/>
                 <param name="lora_dropout" type="float" value="0.05" min="0" max="1" label="LoRA dropout"/>
                 <conditional name="layer_scope_conditional">
                     <param name="lora_layer_scope" type="select" label="Apply the adapter to">
                         <option value="all" selected="true">All transformer layers</option>
-                        <option value="last_n">The last N layers</option>
+                        <option value="last_n">The last N layers (set N below)</option>
                         <option value="custom">Custom layer indices</option>
                     </param>
                     <when value="all"/>
@@ -388,14 +332,9 @@
                 </conditional>
                 <conditional name="task">
                     <param name="selected_task" value="classification"/>
-                    <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
-                    <param name="data_labels" value="sample_labels_classification.tsv" ftype="tabular"/>
-                    <param name="label_col" value="label"/>
-                    <param name="test_fraction" value="0.5"/>
-                    <param name="random_seed" value="42"/>
-                    <conditional name="estimator_conditional">
-                        <param name="estimator" value="lr"/>
-                    </conditional>
+                    <param name="train_data" value="classification_train.tsv" ftype="tabular"/>
+                    <param name="test_data" value="classification_test.tsv" ftype="tabular"/>
+                    <param name="hidden_sizes" value="8"/>
                 </conditional>
                 <param name="max_length" value="128"/>
                 <param name="on_long_sequence" value="truncate"/>
@@ -427,14 +366,9 @@
                 </conditional>
                 <conditional name="task">
                     <param name="selected_task" value="regression"/>
-                    <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
-                    <param name="data_labels" value="sample_labels_regression.tsv" ftype="tabular"/>
-                    <param name="label_col" value="label"/>
-                    <param name="test_fraction" value="0.5"/>
-                    <param name="random_seed" value="42"/>
-                    <conditional name="estimator_conditional">
-                        <param name="estimator" value="linear"/>
-                    </conditional>
+                    <param name="train_data" value="regression_train.tsv" ftype="tabular"/>
+                    <param name="test_data" value="regression_test.tsv" ftype="tabular"/>
+                    <param name="hidden_sizes" value="8"/>
                 </conditional>
                 <param name="max_length" value="128"/>
                 <param name="on_long_sequence" value="truncate"/>
@@ -465,11 +399,8 @@
                     <param name="pretrained_model" value="protbert_test"/>
                 </conditional>
                 <param name="selected_task" value="classification"/>
-                <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
-                <param name="data_labels" value="sample_labels_classification.tsv" ftype="tabular"/>
-                <param name="label_col" value="label"/>
-                <param name="val_fraction" value="0.5"/>
-                <param name="random_seed" value="42"/>
+                <param name="train_data" value="classification_train.tsv" ftype="tabular"/>
+                <param name="val_data" value="classification_test.tsv" ftype="tabular"/>
                 <conditional name="adapter_conditional">
                     <param name="adapter_method" value="lora"/>
                     <param name="lora_r" value="4"/>
@@ -506,11 +437,8 @@
                     <param name="pretrained_model" value="prott5_test"/>
                 </conditional>
                 <param name="selected_task" value="regression"/>
-                <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
-                <param name="data_labels" value="sample_labels_regression.tsv" ftype="tabular"/>
-                <param name="label_col" value="label"/>
-                <param name="val_fraction" value="0.5"/>
-                <param name="random_seed" value="42"/>
+                <param name="train_data" value="regression_train.tsv" ftype="tabular"/>
+                <param name="val_data" value="regression_test.tsv" ftype="tabular"/>
                 <conditional name="adapter_conditional">
                     <param name="adapter_method" value="lora"/>
                     <param name="lora_r" value="4"/>
@@ -538,11 +466,8 @@
                     <param name="pretrained_model" value="esm_test"/>
                 </conditional>
                 <param name="selected_task" value="classification"/>
-                <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
-                <param name="data_labels" value="sample_labels_classification.tsv" ftype="tabular"/>
-                <param name="label_col" value="label"/>
-                <param name="val_fraction" value="0.5"/>
-                <param name="random_seed" value="42"/>
+                <param name="train_data" value="classification_train.tsv" ftype="tabular"/>
+                <param name="val_data" value="classification_test.tsv" ftype="tabular"/>
                 <conditional name="adapter_conditional">
                     <param name="adapter_method" value="adalora"/>
                     <param name="adalora_init_r" value="6"/>
@@ -595,7 +520,7 @@
             </assert_stderr>
         </test>
 
-        <test expect_failure="true" expect_exit_code="6">
+        <test expect_failure="true" expect_exit_code="7">
             <conditional name="mode">
                 <param name="mode_select" value="predict"/>
                 <conditional name="model_source">
@@ -604,18 +529,13 @@
                 </conditional>
                 <conditional name="task">
                     <param name="selected_task" value="classification"/>
-                    <param name="data_fasta" value="sample.fasta" ftype="fasta"/>
-                    <param name="data_labels" value="mismatched_labels.tsv" ftype="tabular"/>
-                    <param name="label_col" value="label"/>
-                    <param name="test_fraction" value="0.5"/>
-                    <param name="random_seed" value="42"/>
-                    <conditional name="estimator_conditional">
-                        <param name="estimator" value="lr"/>
-                    </conditional>
+                    <param name="train_data" value="malformed_rows.tsv" ftype="tabular"/>
+                    <param name="test_data" value="classification_test.tsv" ftype="tabular"/>
+                    <param name="hidden_sizes" value="8"/>
                 </conditional>
             </conditional>
             <assert_stderr>
-                <has_text_matching expression="do not match"/>
+                <has_text_matching expression="do not have exactly 2 tab-separated columns"/>
             </assert_stderr>
         </test>
     </tests>
@@ -627,6 +547,10 @@ Runs a protein language model (ESM-2, ProtBERT, or ProtT5 -- auto-detected) in o
 **Model source**
 
 Select a model your Galaxy administrator has installed, or upload your own model archive (``.tgz``/``.tar`` of a Hugging Face model folder with safetensors weights).
+
+**Train/test input (predict and fine-tune modes)**
+
+Both modes take pre-split, tab-separated, 2-column tabular datasets (``sequence``, ``label``) -- a header row is expected but its column names are not checked. There is no internal train/test/validation splitting; use the ``sklearn_train_test_split`` tool beforehand if you need to split a single dataset.
 
 **Per-residue (H5) output**
 

@@ -35,13 +35,7 @@ from transformers import (  # noqa: E402
 _FAMILY_BY_MODEL_TYPE = {"esm": "esm", "bert": "protbert", "t5": "prott5"}
 
 
-def resolve_device(requested: str = "auto") -> torch.device:
-    if requested == "cpu":
-        return torch.device("cpu")
-    if requested == "cuda" and not torch.cuda.is_available():
-        fail("GPU requested but no CUDA device is available.", exit_code=2)
-    if requested == "cuda":
-        return torch.device("cuda")
+def resolve_device() -> torch.device:
     return torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
