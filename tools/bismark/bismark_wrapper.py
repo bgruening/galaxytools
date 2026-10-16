@@ -205,6 +205,9 @@ def __main__():
     # Build bismark command
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join(tmp_bismark_dir, "results")
+    # bismark 3.x no longer creates the output directory passed via -o,
+    # so it has to exist before the mapping is started
+    os.makedirs(output_dir, exist_ok=True)
     cmd = [
         "bismark",
         "--bam",
