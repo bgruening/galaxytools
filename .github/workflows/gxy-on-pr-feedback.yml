@@ -40,9 +40,21 @@ jobs:
     env:
       PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
     steps:
+      - name: Check PR is not from a fork
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          HEAD_REPO=$(gh pr view $PR_NUMBER --json headRepository --jq '.headRepository.nameWithOwner')
+          if [ "$HEAD_REPO" != "${{ github.repository }}" ]; then
+            gh pr comment $PR_NUMBER --body "⚠️ The feedback flow can't work on PRs from forks: it pushes fix commits to the PR branch, and \`GITHUB_TOKEN\` only has write access to this repository, not \`$HEAD_REPO\`. To use it, push your branch to this repository and open the PR from there, or address the feedback manually."
+            echo "PR head is on fork $HEAD_REPO — feedback requires same-repo branches."
+            exit 1
+          fi
+      # refs/pull/<N>/head lives on the base repo, so it resolves for fork
+      # PRs too — and for workflow_dispatch runs, where pull_request is null.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || '' }}
+          ref: refs/pull/${{ env.PR_NUMBER }}/head
           fetch-depth: 0
       - name: Restore config from default branch
         run: |
@@ -56,7 +68,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --no-cache-dir gxy-tool-bot==0.2.0
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.1
       - run: pip install "planemo>=0.75.43"
       - name: Install micromamba
         run: |
@@ -83,8 +95,13 @@ jobs:
           if [ -z "$TOOL_DIR" ] && [ -f tools/*/.tool-name ]; then
             TOOL_DIR=$(cat tools/*/.tool-name 2>/dev/null | head -1)
           fi
+          # Fallback: derive from the PR's changed files under tools/
           if [ -z "$TOOL_DIR" ]; then
-            echo "Could not determine tool directory from PR title or .tool-name"
+            TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+' | sort -u | head -1)
+            [ -n "$TOOL_DIR" ] && echo "Derived tool directory from PR diff: $TOOL_DIR"
+          fi
+          if [ -z "$TOOL_DIR" ]; then
+            echo "Could not determine tool directory from PR title, .tool-name, or changed files"
             exit 1
           fi
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
@@ -139,7 +156,23 @@ jobs:
               COMMIT_MSG="Address feedback on PR #$PR_NUMBER"
             fi
             git commit -m "$COMMIT_MSG"
-            git push
+            # Checked out refs/pull/<N>/head (detached HEAD) — push must be
+            # explicit. GITHUB_TOKEN can't write to contributor forks, so for
+            # fork PRs the fixes go to a tool-bot/* branch here and the
+            # contributor merges them into their branch.
+            HEAD_REPO=$(gh pr view $PR_NUMBER --json headRepository --jq '.headRepository.nameWithOwner')
+            HEAD_BRANCH=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
+            if [ "$HEAD_REPO" = "${{ github.repository }}" ]; then
+              git push origin "HEAD:$HEAD_BRANCH"
+            else
+              BOT_BRANCH="tool-bot/feedback-pr-$PR_NUMBER"
+              # -f: a previous run may have left an unmerged branch tip that
+              # isn't an ancestor of this commit. Safe to clobber — the
+              # namespace is bot-owned and each run regenerates fixes against
+              # the current PR head.
+              git push -f origin "HEAD:$BOT_BRANCH"
+              gh pr comment $PR_NUMBER --body "🔧 Feedback fixes committed to \`$BOT_BRANCH\` in this repo — the bot cannot push to fork \`$HEAD_REPO\`. To apply them on your \`$HEAD_BRANCH\` branch:\n\n\`\`\`bash\ngit fetch https://github.com/${{ github.repository }}.git $BOT_BRANCH\ngit merge FETCH_HEAD\ngit push\n\`\`\`"
+            fi
           fi
           # Clean up intermediary file
           rm -f "$GITHUB_WORKSPACE/.commit-msg"
