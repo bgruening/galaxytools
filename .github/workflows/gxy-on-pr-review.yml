@@ -21,9 +21,12 @@ jobs:
       group: pr-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     steps:
+      # refs/pull/<N>/head lives on the base repo, so it resolves for fork
+      # PRs too — head.ref alone is just a branch name that doesn't exist
+      # here when the contributor's branch is on their fork.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
           fetch-depth: 0
       - name: Restore config from default branch
         run: |
@@ -37,7 +40,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --no-cache-dir gxy-tool-bot==0.2.0
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.1
       - run: pip install "planemo>=0.75.43"
       - name: Install micromamba
         run: |
@@ -63,6 +66,11 @@ jobs:
           # Fallback: check for .tool-name in the PR branch
           if [ -z "$TOOL_DIR" ] && [ -f tools/*/.tool-name ]; then
             TOOL_DIR=$(cat tools/*/.tool-name 2>/dev/null | head -1)
+          fi
+          # Fallback: derive from the PR's changed files under tools/
+          if [ -z "$TOOL_DIR" ]; then
+            TOOL_DIR=$(gh pr diff ${{ github.event.pull_request.number }} --name-only | grep -oP '^tools/\K[^/]+' | sort -u | head -1)
+            [ -n "$TOOL_DIR" ] && echo "Derived tool directory from PR diff: $TOOL_DIR"
           fi
           # Fallback: find directories with .xml files under tools/
           if [ -z "$TOOL_DIR" ]; then
