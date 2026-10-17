@@ -1,0 +1,103 @@
+<tool id="mumemto_coverage" name="mumemto coverage" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>MUM coverage analysis per sequence</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="stdio"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+ln -s '$m' input.mums &&
+ln -s '$l' input.lengths &&
+
+mumemto coverage
+--mums input.mums
+--lengths input.lengths
+--len-filter $L
+--seq-idx $seq_idx
+## The coverage figure is written to stderr, so stderr has to be captured. Replay the
+## capture on failure, otherwise the reason ends up in the output instead of the job log.
+2> coverage.txt || { cat coverage.txt >&2; exit 1; }
+]]></command>
+    <inputs>
+        <expand macro="input_mums"/>
+        <expand macro="input_lengths"/>
+        <expand macro="param_length_filter"/>
+        <param argument="--seq-idx" type="integer" value="0" min="0" label="Sequence index" help="Index of the sequence to report coverage for (0-based). Default: 0 (first sequence)."/>
+    </inputs>
+    <outputs>
+        <data name="coverage_output" format="txt" from_work_dir="coverage.txt" label="${tool.name} coverage on ${on_string}"/>
+    </outputs>
+    <tests>
+        <!-- The 100 bp MUM starts at 0 in the first 200 bp sequence -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="l" value="test1.lengths" ftype="txt"/>
+            <output name="coverage_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line_matching expression="^seq0: 50\.000%$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Same MUM against the second sequence: 100 bp of 220 bp -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="l" value="test1.lengths" ftype="txt"/>
+            <param name="seq_idx" value="1"/>
+            <output name="coverage_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line_matching expression="^seq1: 45\.455%$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Length filter above the only MUM's length, so nothing is counted -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="l" value="test1.lengths" ftype="txt"/>
+            <param name="L" value="200"/>
+            <output name="coverage_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line_matching expression="^seq0: 0\.000%$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Multi-FASTA lengths file as written by mumemto: the per-contig lengths are
+             summed, so the first sequence is 240 bp rather than the 200 bp above -->
+        <test expect_num_outputs="1">
+            <param name="m" value="test1.mums" ftype="txt"/>
+            <param name="l" value="test1_multilengths.lengths" ftype="txt"/>
+            <output name="coverage_output" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line_matching expression="^seq0: 41\.667%$"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Computes how much of one sequence is covered by MUMs from a mumemto run. The
+sequence is chosen with *Sequence index*, and coverage is reported as a percentage
+of that sequence's total length. Overlapping MUMs are counted once.
+
+*Length filter* is in base pairs: MUMs shorter than it are left out of the
+calculation entirely.
+
+**Input**
+
+- A `.mums` file from mumemto
+- The `.lengths` file from mumemto. Either form works here — the multi-FASTA file
+  mumemto writes (per-contig lengths are summed per input FASTA) or a simplified
+  two-column one.
+
+**Output**
+
+A single line, `seqN: P%`, giving the covered percentage to three decimal places
+for the selected sequence.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
