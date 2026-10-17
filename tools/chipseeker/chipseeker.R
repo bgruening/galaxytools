@@ -17,6 +17,10 @@ suppressPackageStartupMessages({
   library(ggupset)
 })
 
+# makeTxDbFromGFF has moved from GenomicFeatures to the txdbmaker package
+# (defunct in GenomicFeatures >= 1.61.1); load txdbmaker if it is available.
+have_txdbmaker <- requireNamespace("txdbmaker", quietly = TRUE)
+
 option_list <- list(
   make_option(c("-i", "--infile"), type = "character", help = "Peaks file to be annotated"),
   make_option(c("-H", "--header"), type = "logical", help = "Peaks file contains header row"),
@@ -72,7 +76,11 @@ if (!is.null(args$header)) {
 peaks <- readPeakFile(peaks, header = header)
 
 # Make TxDb from GTF
-txdb <- makeTxDbFromGFF(gtf, format = "gtf")
+if (have_txdbmaker) {
+  txdb <- txdbmaker::makeTxDbFromGFF(gtf, format = "gtf")
+} else {
+  txdb <- GenomicFeatures::makeTxDbFromGFF(gtf, format = "gtf")
+}
 
 # Annotate peaks
 peak_anno <-  annotatePeak(
