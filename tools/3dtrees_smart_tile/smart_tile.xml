@@ -6,8 +6,8 @@
         <xml name="tile_collection" tokens="index">
             <collection name="output_tiles_@INDEX@" type="list" label="${tool.name}: Tiles, output @INDEX@">
                 <filter>operation['task'] == 'tile' and len(operation['tile_outputs']) &gt;= @INDEX@</filter>
-                <discover_datasets pattern="(?P&lt;designation&gt;.+?)(?:\.copc)?\.la[sz]$" directory="output_dir/subsampled_res@INDEX@" format="laz"/>
-                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.ply$" directory="output_dir/subsampled_res@INDEX@" format="plybinary"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.laz$" directory="collections/tiles_@INDEX@" format="laz"/>
+                <discover_datasets pattern="(?P&lt;designation&gt;.+)\.ply$" directory="collections/tiles_@INDEX@" format="plybinary"/>
             </collection>
         </xml>
         <xml name="formats">
@@ -41,9 +41,8 @@
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
 #import re
-#def link($folder, $f, $suffix)
-#set $name = re.sub(r'(?i)(_trees(_info|_mesh)?)?(\.(las|laz|txt|ply))?$', '', str($f.element_identifier))
-ln -s '$f' '$folder/${re.sub(r"[^\w.-]", "_", $name)}$suffix' &&
+#def link($folder, $f, $ext)
+ln -s '$f' '$folder/${re.sub(r"[^\w.-]", "_", str($f.element_identifier))}.$ext' &&
 #end def
 #def merged_args($p)
 #if $p.merged_resolution.mode == 'full':
@@ -59,11 +58,12 @@ mkdir -p output_dir &&
 #if $op.task == 'tile':
     mkdir -p input_dir &&
     #for $f in $op.input_files:
-        $link('input_dir', $f, '.' + $f.ext)
+        $link('input_dir', $f, $f.ext)
     #end for
     #set $outputs = ','.join(['%s:%s' % ('original' if $o.resolution.mode == 'original' else int($o.resolution.resolution_cm) / 100.0, $o.format) for $o in $op.tile_outputs])
     python -u /src/run.py --task tile
         --workers "\${GALAXY_SLOTS:-1}"
+        --collection-dir collections
         --input-dir input_dir
         --output-dir output_dir
         --tile-length '$op.tile_length'
@@ -85,35 +85,37 @@ mkdir -p output_dir &&
 #elif $op.task == 'merge':
     mkdir -p input_segmented &&
     #for $f in $op.input_segmented:
-        $link('input_segmented', $f, '.' + $f.ext)
+        $link('input_segmented', $f, $f.ext)
     #end for
     #if $op.model.type == 'raycloudtools':
+        mkdir -p tree_tables tree_info tree_meshes &&
         #for $f in $op.model.tree_tables:
-            $link('input_segmented', $f, '_trees.txt')
+            $link('tree_tables', $f, 'txt')
         #end for
         #for $f in $op.model.tree_info_tables:
-            $link('input_segmented', $f, '_trees_info.txt')
+            $link('tree_info', $f, 'txt')
         #end for
         #if $op.model.meshes.include == 'yes':
             #for $f in $op.model.meshes.tree_meshes:
-                $link('input_segmented', $f, '_trees_mesh.ply')
+                $link('tree_meshes', $f, 'ply')
             #end for
         #end if
     #end if
     #if $op.target.type == 'original':
         mkdir -p input_original_laz &&
         #for $f in $op.target.original_files:
-            $link('input_original_laz', $f, '.' + $f.ext)
+            $link('input_original_laz', $f, $f.ext)
         #end for
     #elif $op.target.type == 'subsampled':
         mkdir -p input_res1 &&
         #for $f in $op.target.input_res1:
-            $link('input_res1', $f, '.' + $f.ext)
+            $link('input_res1', $f, $f.ext)
         #end for
     #end if
     #set $segmented_res = int($op.segmented_resolution_cm) / 100.0
     python -u /src/run.py --task merge
         --workers "\${GALAXY_SLOTS:-1}"
+        --collection-dir collections
         --tile-bounds-json '$op.tile_bounds_json'
         --output-tiles-folder output_dir/output_tiles
         --filter-anchor '$op.advanced.filter_anchor'
@@ -134,6 +136,11 @@ mkdir -p output_dir &&
             --original-laz-output-dir output_dir/original_with_predictions
         #end if
         #if $op.model.type == 'raycloudtools':
+            --tree-tables-folder tree_tables
+            --tree-info-folder tree_info
+            #if $op.model.meshes.include == 'yes':
+                --tree-meshes-folder tree_meshes
+            #end if
             --instance-dimension PredInstance_RCT
             --disable-matching
         #else
@@ -153,7 +160,7 @@ mkdir -p output_dir &&
 #elif $op.task == 'remap':
     mkdir -p input_original_laz &&
     #for $f in $op.original_files:
-        $link('input_original_laz', $f, '.' + $f.ext)
+        $link('input_original_laz', $f, $f.ext)
     #end for
     #set $folders = []
     #for $i, $c in enumerate([$op.first_prediction_collection] + list($op.prediction_collections)):
@@ -161,11 +168,12 @@ mkdir -p output_dir &&
         #silent $folders.append($folder)
         mkdir -p '$folder' &&
         #for $f in $c.collection:
-            $link($folder, $f, '.' + $f.ext)
+            $link($folder, $f, $f.ext)
         #end for
     #end for
     python -u /src/run.py --task remap
         --workers "\${GALAXY_SLOTS:-1}"
+        --collection-dir collections
         --segmented-folders '${",".join($folders)}'
         #if $op.remap_dims:
             --remap-dims '$op.remap_dims'
@@ -193,11 +201,12 @@ mkdir -p output_dir &&
         #silent $folders.append($folder)
         mkdir -p '$folder' &&
         #for $f in $c.files:
-            $link($folder, $f, '.' + $f.ext)
+            $link($folder, $f, $f.ext)
         #end for
     #end for
     python -u /src/run.py --task create_merged_file
         --workers "\${GALAXY_SLOTS:-1}"
+        --collection-dir collections
         --original-with-predictions-dir '${",".join($folders)}'
         --output-dir output_dir
         $merged_args($op)
@@ -378,36 +387,37 @@ mkdir -p output_dir &&
         <expand macro="tile_collection" index="1"/>
         <expand macro="tile_collection" index="2"/>
         <expand macro="tile_collection" index="3"/>
-        <data name="output_png" format="png" label="${tool.name}: Tiling preview" from_work_dir="output_dir/overview_copc_tiles.png">
+        <data name="output_png" format="png" label="${tool.name}: Tiling preview" from_work_dir="collections/overview_copc_tiles.png">
             <filter>operation['task'] == 'tile'</filter>
         </data>
-        <data name="tile_bounds_json" format="json" label="${tool.name}: Tile bounds JSON" from_work_dir="output_dir/tile_bounds_tindex.json">
+        <data name="tile_bounds_json" format="json" label="${tool.name}: Tile bounds JSON" from_work_dir="collections/tile_bounds_tindex.json">
             <filter>operation['task'] == 'tile'</filter>
         </data>
         <collection name="output_merge_tiles" type="list" label="${tool.name}: Merged tiles">
             <filter>operation['task'] == 'merge'</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.la[sz]$" directory="output_dir/output_tiles" format="laz"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.laz$" directory="collections/merged_tiles" format="laz"/>
         </collection>
         <collection name="output_tree_files" type="list" label="${tool.name}: Tree tables">
             <filter>operation['task'] == 'merge' and operation['model']['type'] == 'raycloudtools'</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt$" directory="output_dir/segmented_filtered" format="txt"/>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.ply$" directory="output_dir/segmented_filtered" format="plybinary"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt$" directory="collections/tree_tables" format="txt"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.txt$" directory="collections/tree_info_tables" format="txt"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.ply$" directory="collections/tree_meshes" format="plybinary"/>
         </collection>
         <collection name="output_originals_with_dims" type="list" label="${tool.name}: Originals with predictions">
             <filter>operation['task'] == 'remap' or (operation['task'] == 'merge' and operation['target']['type'] == 'original')</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.(?P&lt;ext&gt;la[sz])$" directory="output_dir/original_with_predictions"/>
+            <discover_datasets pattern="__designation_and_ext__" directory="collections/originals_with_predictions"/>
         </collection>
         <collection name="merged_laz" type="list" label="${tool.name}: Merged LAZ">
             <filter>'laz' in operation.get('prod_merged', operation).get('merged_output_formats', '')</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;(?:prod_merged_.*|merged)(?&lt;!\.copc))\.laz$" directory="output_dir" format="laz"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.laz$" directory="collections/merged_laz" format="laz"/>
         </collection>
         <collection name="merged_copc" type="list" label="${tool.name}: Merged COPC LAZ">
             <filter>'copc' in operation.get('prod_merged', operation).get('merged_output_formats', '')</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;prod_merged_.*|merged)\.copc\.laz$" directory="output_dir" format="laz"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.laz$" directory="collections/merged_copc" format="laz"/>
         </collection>
         <collection name="merged_ply" type="list" label="${tool.name}: Merged PLY">
             <filter>'ply' in operation.get('prod_merged', operation).get('merged_output_formats', '')</filter>
-            <discover_datasets pattern="(?P&lt;designation&gt;prod_merged_.*|merged)\.ply$" directory="output_dir" format="plybinary"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.ply$" directory="collections/merged_ply" format="plybinary"/>
         </collection>
     </outputs>
     <tests>
@@ -457,7 +467,7 @@ mkdir -p output_dir &&
         <test expect_num_outputs="3">
             <conditional name="operation">
                 <param name="task" value="tile"/>
-                <param name="input_files" value="original_with_ids.laz"/>
+                <param name="input_files" value="original_with_ids" ftype="laz"/>
                 <conditional name="instances">
                     <param name="mode" value="whole"/>
                     <param name="instance_dimension" value="PredInstance_SAT"/>
@@ -607,7 +617,7 @@ mkdir -p output_dir &&
                     </param>
                 </section>
                 <param name="remap_dims" value="PredSpecies"/>
-                <param name="original_files" value="original_with_ids.laz"/>
+                <param name="original_files" value="original_with_ids" ftype="laz"/>
                 <param name="match_instances" value="true"/>
                 <conditional name="prod_merged">
                     <param name="create" value="True"/>
