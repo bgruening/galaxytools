@@ -41,7 +41,7 @@
             <when value="export">
                 <expand macro="identity" />
                 <param name="enriched" type="data" format="laz" label="Method result point cloud" help="The method's output for the same item: the base points in the same order plus the method's new columns" />
-                <param name="columns" type="text" optional="true" label="Columns to keep" help="Empty keeps every column the method added. Comma-separated names keep only those, for example species_id_SAT,species_prob_SAT when the result also repeats SAT's columns.">
+                <param name="columns" type="text" optional="true" label="Columns to keep" help="Empty keeps every column the method added. Comma-separated names store only those, for example species_id_SAT,species_prob_SAT for a species result that also repeats SAT's columns; the others are left out with a warning.">
                     <validator type="regex" message="Comma-separated column names">^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*$</validator>
                 </param>
             </when>
@@ -94,9 +94,12 @@
             <output name="report" ftype="json">
                 <assert_contents>
                     <has_text text="PredSemantic_SAT" />
-                    <not_has_text text="PredInstance_FM" />
+                    <has_text text="&quot;dropped&quot;: [" />
                 </assert_contents>
             </output>
+            <assert_stderr>
+                <has_text text="columns not kept" />
+            </assert_stderr>
         </test>
         <!-- Export rejects an output without added columns. -->
         <test expect_failure="true">
@@ -220,29 +223,48 @@
         </test>
     </tests>
     <help><![CDATA[
-**Export** cuts the columns a method added out of its result and stores them,
-with each point's number, as one item's sidecar (a Parquet file). The result
-must hold the base points unchanged and in the same order, or it is refused, so
-the sidecar can later be joined back by point number alone. *Columns to keep*
-names the columns to store when the result holds more than this method's own,
-for example a species result that repeats SAT's labels, or an old file with
-several methods' results (run once per method).
+**What it does**
 
-**Assemble** writes one item's downloadable point cloud: every field of the
-standard base, unchanged and in order, plus the columns of each added sidecar,
-whichever method wrote it. Any subset is valid, so a partial run (one
-segmentation) still gets a complete download.
+Sidecar keeps each method's results apart from the point cloud. For every item
+it stores only the columns a method added (for example ``PredInstance_SAT``),
+together with each point's number, in a small Parquet file: a *sidecar*. A
+downloadable point cloud is built from the standardized file plus any chosen
+sidecars, joined by point number, never by coordinates.
 
-**Check** runs as its own job after publication. It rebuilds the download point
-cloud from the base and the same sidecars and compares every value of every
-point.
+.. image:: $PATH_TO_IMAGES/sidecar_workflow.png
+   :width: 100%
 
-Every task writes a JSON report (identity, point count, dimensions and SHA-256
-hashes) so the 3Dtrees worker can verify the stored bytes without downloading
-point clouds. One job handles one item; map the tool over collections whose
-element identifiers are the Dataset item ids. *Standard generation id* labels the
-standardization the base came from; the platform passes its id, and by hand any
-UUID works if export, assemble and check get the same one.
+**Tasks**
+
+- **Export**: turns one method's result into a sidecar. The result must hold the
+  standardized points unchanged and in the same order, or the job fails. By
+  default every column the method added is stored. *Columns to keep* stores only
+  the named columns, for example ``species_id_SAT,species_prob_SAT`` for a
+  species result that also repeats SAT's columns, or one method's columns from
+  an old file that holds several (run once per method). Columns that are not
+  kept are listed as a warning in the job's output and report.
+- **Assemble**: builds one item's download point cloud: every field of the
+  standardized file unchanged, plus the columns of each added *Sidecar*. Add one
+  entry per method, from any method; none gives the points only.
+- **Check**: rebuilds the download point cloud from the standardized file and
+  the same sidecars, and compares it value by value with the file given as
+  *Published member point cloud*. The job fails on any difference.
+
+**Inputs every task needs**
+
+- *Standard base point cloud*: the standardized LAZ of one item. Map the tool
+  over a collection whose element identifiers are the dataset item ids; the item
+  id is read from there.
+- *Standard generation id*: a UUID naming the standardization the base came
+  from. The 3Dtrees platform passes its own; by hand, use any UUID and the same
+  one for export, assemble and check. A sidecar is refused with a different
+  generation, item or base file.
+
+**Outputs**
+
+Export writes the sidecar, assemble the download LAZ. Every task also writes a
+JSON report with point count, columns and SHA-256 hashes, so the 3Dtrees
+platform can verify the results without downloading point clouds.
     ]]></help>
     <expand macro="citations" />
 </tool>
