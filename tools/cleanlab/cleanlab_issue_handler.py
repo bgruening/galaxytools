@@ -8,6 +8,26 @@ from sklearn.linear_model import LinearRegression
 from sklearn.model_selection import cross_val_predict, KFold, StratifiedKFold
 from xgboost import XGBClassifier
 
+
+def resolve_column(column, columns):
+    """Resolve a header name or a one-based Galaxy column index."""
+    column = str(column)
+    if column in columns:
+        return column
+
+    index_value = column[1:] if column.lower().startswith('c') else column
+    if index_value.isdigit():
+        index = int(index_value) - 1
+        if 0 <= index < len(columns):
+            return columns[index]
+
+    available_columns = ", ".join(map(str, columns))
+    raise ValueError(
+        f"Target column '{column}' was not found. Use a header name or a one-based "
+        f"column index (for example, '1' or 'c1'). Available columns: {available_columns}"
+    )
+
+
 # -------------------
 # Issue Handler
 # -------------------
@@ -110,7 +130,17 @@ def main():
     parser = argparse.ArgumentParser(description="Cleanlab Issue Handler CLI")
     parser.add_argument("--input_file", nargs=2, required=True, metavar=('FILE', 'EXT'), help="Input file path and its extension")
     parser.add_argument("--task", required=True, choices=["classification", "regression"], help="Type of ML task")
-    parser.add_argument("--target_column", default="target", help="Name of the target column")
+    parser.add_argument(
+        "--target_column",
+        default="target",
+        help="Target column as a header name or one-based column index (N or cN)",
+    )
+    parser.add_argument(
+        "--no-header",
+        action="store_false",
+        dest="has_header",
+        help="Treat the first row as data instead of column headers",
+    )
     parser.add_argument("--method", default="remove", choices=["remove", "replace"], help="Cleaning method")
     parser.add_argument("--summary", action="store_true", help="Print and save issue summary only, no cleaning")
     parser.add_argument("--no-label-issues", action="store_true", help="Exclude label issues from cleaning")
@@ -127,17 +157,23 @@ def main():
 
     print(f"Loading dataset from: {file_path} with extension: {file_ext}")
 
+    read_options = {} if args.has_header else {"header": None}
     if file_ext == "csv":
-        df = pd.read_csv(file_path)
+        df = pd.read_csv(file_path, **read_options)
     elif file_ext in ["tsv", "tabular"]:
-        df = pd.read_csv(file_path, sep="\t")
+        df = pd.read_csv(file_path, sep="\t", **read_options)
     else:
         raise ValueError(f"Unsupported file format: {file_ext}")
+
+    if not args.has_header:
+        df.columns = [f"c{index}" for index in range(1, len(df.columns) + 1)]
+
+    target_column = resolve_column(args.target_column, df.columns)
 
     # Run IssueHandler
     handler = IssueHandler(dataset=df,
                            task=args.task,
-                           target_column=args.target_column,
+                           target_column=target_column,
                            quality_threshold=args.quality_threshold)
     _, issues, summary = handler.report_issues()
 
@@ -170,9 +206,9 @@ def main():
 
     output_filename = "cleaned_data"
     if file_ext == "csv":
-        cleaned_df.to_csv(output_filename, index=False)
+        cleaned_df.to_csv(output_filename, index=False, header=args.has_header)
     elif file_ext in ["tsv", "tabular"]:
-        cleaned_df.to_csv(output_filename, sep="\t", index=False)
+        cleaned_df.to_csv(output_filename, sep="\t", index=False, header=args.has_header)
     else:
         raise ValueError(f"Unsupported output format: {file_ext}")
 
