@@ -6,12 +6,18 @@
     <expand macro="edam_ontology"/>
     <expand macro="requirements"/>
     <command detect_errors="aggressive"><![CDATA[
-        ## fastq_info reports validation problems (duplicated readnames,
-        ## truncated files, unpaired reads) on stderr and exits non-zero.
-        ## The report is the tool's output, so everything is captured in
-        ## output.txt and the exit code is not propagated to Galaxy,
-        ## otherwise invalid FASTQ files would fail the job before the
-        ## validation result could be inspected.
+        ## fastq_info signals validation findings with a non-zero exit status
+        ## (upstream src/fastq.h): 1 = PARAMS_ERROR (bad arguments, file that
+        ## cannot be opened, truncated entries) and 3 = FASTQ_FORMAT_ERROR
+        ## (duplicated readnames, unpaired reads, undeterminable quality
+        ## encoding). Those findings are the tool's result and are collected
+        ## in output.txt, so they must not fail the job - otherwise an
+        ## invalid FASTQ would never return its validation report.
+        ## Any other exit code (2 = internal error, 127 = command not found,
+        ## >= 128 = killed by a signal) means fastq_info itself broke: the
+        ## log is echoed to stderr and the exit code re-raised so that Galaxy
+        ## fails the job instead of reporting success.
+        exit_code=0;
         fastq_info
         #if $input_option.input_type == 'single'
             $input_option.fastq_1
@@ -21,8 +27,17 @@
         #end if
         $r
         $q
-        > ./output.txt 2>&1 || true
-    ]]>    </command>
+        > ./output.txt 2>&1 || exit_code=\$?;
+        case "\$exit_code" in
+            0|1|3)
+                ## expected outcome: report was produced
+                ;;
+            *)
+                cat ./output.txt >&2
+                exit "\$exit_code"
+                ;;
+        esac
+    ]]></command>
     <inputs>
         <conditional name="input_option">
             <param name="input_type" type="select" label="Single reads or paired reads" help="Select between paired and single end data">
