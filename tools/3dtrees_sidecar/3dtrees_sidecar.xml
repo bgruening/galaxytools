@@ -6,14 +6,15 @@
     <expand macro="requirements" />
     <command detect_errors="exit_code"><![CDATA[
         python /src/run.py '$operation.task'
-        @IDENTITY@
+        --generation '$operation.generation'
         #if $operation.task == 'export'
+            --item '$operation.enriched.element_identifier'
             --enriched '$operation.enriched'
-            #if $operation.columns
-                --columns '$operation.columns'
-            #end if
+            --columns '$operation.columns'
             --output sidecar.parquet
         #else
+            --base '$operation.base'
+            --item '$operation.base.element_identifier'
             #for $selected in $operation.sidecars
                 --sidecar '$selected.sidecar'
             #end for
@@ -39,18 +40,20 @@
                 <option value="check">Check: verify a published download point cloud</option>
             </param>
             <when value="export">
-                <expand macro="identity" />
-                <param name="enriched" type="data" format="laz" label="Method result point cloud" help="The method's output for the same item: the base points in the same order plus the method's new columns" />
-                <param name="columns" type="text" optional="true" label="Columns to keep" help="Empty keeps every column the method added. Comma-separated names store only those, for example species_id_SAT,species_prob_SAT for a species result that also repeats SAT's columns; the others are left out with a warning.">
+                <param name="enriched" type="data" format="laz" label="Method result point cloud" help="One item's output of a method; its name in the collection must be the item id" />
+                <param name="columns" type="text" label="Columns to keep" help="Comma-separated names of the columns to store, for example PredInstance_SAT,PredSemantic_SAT. Every other column is left out with a warning.">
                     <validator type="regex" message="Comma-separated column names">^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*$</validator>
                 </param>
+                <expand macro="generation" />
             </when>
             <when value="assemble">
-                <expand macro="identity" />
+                <expand macro="base" />
+                <expand macro="generation" />
                 <expand macro="sidecars" />
             </when>
             <when value="check">
-                <expand macro="identity" />
+                <expand macro="base" />
+                <expand macro="generation" />
                 <expand macro="sidecars" />
                 <param name="member" type="data" format="laz" label="Point cloud to verify" help="The download point cloud made by assemble" />
             </when>
@@ -69,45 +72,46 @@
         <!-- Export. Test datasets are named like collection elements: the name is the item id. -->
         <test expect_num_outputs="2">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="export" />
-                <param name="enriched" value="sat.laz" ftype="laz" />
+                <param name="enriched" value="sat/11353" ftype="laz" />
+                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             </conditional>
             <output name="report" ftype="json">
                 <assert_contents>
                     <has_text text="&quot;item_id&quot;: 11353" />
                     <has_text text="PredInstance_SAT" />
-                    <has_text text="3dtrees-scientific-sidecar-proof-v1" />
+                    <has_text text="points_sha256" />
+                    <has_text text="3dtrees-scientific-sidecar-proof-v2" />
                 </assert_contents>
             </output>
         </test>
         <!-- Export: split a combined legacy file, keeping only the SAT columns. -->
         <test expect_num_outputs="2">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="export" />
-                <param name="enriched" value="legacy.laz" ftype="laz" />
+                <param name="enriched" value="legacy/11353" ftype="laz" />
                 <param name="columns" value="PredInstance_SAT,PredSemantic_SAT" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             </conditional>
             <output name="report" ftype="json">
                 <assert_contents>
                     <has_text text="PredSemantic_SAT" />
                     <has_text text="&quot;dropped&quot;: [" />
+                    <has_text text="PredInstance_FM" />
                 </assert_contents>
             </output>
             <assert_stderr>
                 <has_text text="columns not kept" />
             </assert_stderr>
         </test>
-        <!-- Export rejects an output without added columns. -->
+        <!-- Export rejects columns the point cloud does not have. -->
         <test expect_failure="true">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="export" />
-                <param name="enriched" value="base.laz" ftype="laz" />
+                <param name="enriched" value="11353" ftype="laz" />
+                <param name="columns" value="PredInstance_SAT" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             </conditional>
         </test>
         <!-- Assemble: points only (no analysis published yet). -->
@@ -161,6 +165,17 @@
                     <has_text text="PredInstance_SAT" />
                 </assert_contents>
             </output>
+        </test>
+        <!-- Assemble rejects a sidecar exported from points in another order. -->
+        <test expect_failure="true">
+            <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
+                <param name="task" value="assemble" />
+                <repeat name="sidecars">
+                    <param name="sidecar" value="reordered.parquet" ftype="parquet" />
+                </repeat>
+            </conditional>
         </test>
         <!-- Check: a points-only member. -->
         <test expect_num_outputs="1">
@@ -226,7 +241,7 @@
 **What it does**
 
 Sidecar keeps each method's results apart from the point cloud. For every item
-it stores only the columns a method added (for example ``PredInstance_SAT``),
+it stores only the columns you name (for example ``PredInstance_SAT``),
 together with each point's number, in a small Parquet file: a *sidecar*. A
 downloadable point cloud is built from the standardized file plus any chosen
 sidecars, joined by point number, never by coordinates.
@@ -236,29 +251,37 @@ sidecars, joined by point number, never by coordinates.
 
 **Tasks**
 
-- **Export**: turns one method's result into a sidecar. The result must hold the
-  standardized points unchanged and in the same order, or the job fails. By
-  default every column the method added is stored. *Columns to keep* stores only
-  the named columns, for example ``species_id_SAT,species_prob_SAT`` for a
-  species result that also repeats SAT's columns, or one method's columns from
-  an old file that holds several (run once per method). Columns that are not
-  kept are listed as a warning in the job's output and report.
+- **Export**: turns one method's result into a sidecar. It stores only the
+  columns named in *Columns to keep*, for example
+  ``PredInstance_SAT,PredSemantic_SAT`` for SAT, ``species_id_SAT,species_prob_SAT``
+  for a species result that also repeats SAT's columns, or one method's columns
+  from an old file that holds several (run once per method). Every other column
+  is left out and listed as a warning in the job's output and report. The
+  sidecar also records a fingerprint of the result's points.
 - **Assemble**: builds one item's download point cloud: every field of the
   standardized file unchanged, plus the columns of each added *Sidecar*. Add one
-  entry per method, from any method; none gives the points only.
+  entry per method, from any method; none gives the points only. A sidecar is
+  refused when its fingerprint differs from the standardized file, that is when
+  the method changed, dropped or reordered points.
 - **Check**: rebuilds the download point cloud from the standardized file and
   the same sidecars, and compares it value by value with the file given as
   *Point cloud to verify*. The job fails on any difference.
 
-**Inputs every task needs**
+**Several items**
 
-- *Standard base point cloud*: the standardized LAZ of one item. Map the tool
-  over a collection whose element identifiers are the dataset item ids; the item
-  id is read from there.
-- *Standard generation id*: a UUID naming the standardization the base came
-  from. The 3Dtrees platform passes its own; by hand, use any UUID and the same
-  one for export, assemble and check. A sidecar is refused with a different
-  generation, item or base file.
+Run every task on collections, one element per item, with the dataset item id
+as element identifier (for example ``11353``). Galaxy then runs one job per
+element and the item id is read from the element identifier. When assemble or
+check gets the standardized collection and sidecar collections together, Galaxy
+pairs their elements in collection order, so the collections must list the
+same items in the same order. A mispaired sidecar is refused because its item
+id and fingerprint do not match.
+
+**Standard generation id**
+
+A UUID naming the standardization the points come from. The 3Dtrees platform
+passes its own; by hand, use any UUID and the same one for export, assemble and
+check. A sidecar with a different generation is refused.
 
 **Outputs**
 
