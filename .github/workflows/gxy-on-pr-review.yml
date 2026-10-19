@@ -21,6 +21,20 @@ jobs:
       group: pr-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     steps:
+      - name: Check PR is not from a fork
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gh resolves the repo from git remotes — this step runs before
+          # checkout, so there is no .git and gh needs GH_REPO explicitly.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          HEAD_REPO=$(gh pr view ${{ github.event.pull_request.number }} --json headRepository --jq '.headRepository.nameWithOwner')
+          if [ "$HEAD_REPO" != "${{ github.repository }}" ]; then
+            # On fork PRs the token is read-only and secrets are withheld —
+            # a comment couldn't post anyway, so the log line is the message.
+            echo "PR head is on fork $HEAD_REPO — review requires same-repo branches (fork tokens are read-only and secrets are withheld)."
+            exit 1
+          fi
       # refs/pull/<N>/head lives on the base repo, so it resolves for fork
       # PRs too — head.ref alone is just a branch name that doesn't exist
       # here when the contributor's branch is on their fork.
@@ -63,9 +77,11 @@ jobs:
           # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
           PR_TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title --jq '.title' 2>/dev/null || echo "")
           TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
-          # Fallback: check for .tool-name in the PR branch
-          if [ -z "$TOOL_DIR" ] && [ -f tools/*/.tool-name ]; then
-            TOOL_DIR=$(cat tools/*/.tool-name 2>/dev/null | head -1)
+          # Fallback: check for .tool-name in the PR branch (find, not a
+          # glob test — a bare tools/*/ glob errors on multiple matches).
+          TOOL_NAME_FILE=$(find tools -maxdepth 2 -name .tool-name 2>/dev/null | head -1)
+          if [ -z "$TOOL_DIR" ] && [ -n "$TOOL_NAME_FILE" ]; then
+            TOOL_DIR=$(head -1 "$TOOL_NAME_FILE" 2>/dev/null)
           fi
           # Fallback: derive from the PR's changed files under tools/
           if [ -z "$TOOL_DIR" ]; then
@@ -78,6 +94,12 @@ jobs:
           fi
           if [ -z "$TOOL_DIR" ]; then
             echo "Could not determine tool directory from PR title, .tool-name, or XML files"
+            exit 1
+          fi
+          # TOOL_DIR feeds paths under tools/ later — reject anything that
+          # isn't a plain directory name (traversal via a retitled PR).
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "Refusing unsafe tool directory name: $TOOL_DIR"
             exit 1
           fi
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
