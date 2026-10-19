@@ -9,11 +9,10 @@
         @IDENTITY@
         #if $operation.task == 'export'
             --enriched '$operation.enriched'
-            #if $operation.carried
-                --carried '$operation.carried'
-            #end if
-            #if $operation.columns
-                --columns '$operation.columns'
+            #if $operation.mode.kind == 'species'
+                --carried '$operation.mode.carried'
+            #elif $operation.mode.kind == 'legacy'
+                --columns '$operation.mode.columns'
             #end if
             --output sidecar.parquet
         #else
@@ -35,26 +34,40 @@
         #end if
     ]]></command>
     <inputs>
-        <expand macro="identity" />
         <conditional name="operation">
             <param name="task" type="select" label="Task">
-                <option value="export">Export: one method's columns as a sidecar</option>
-                <option value="assemble">Assemble: base plus sidecars as a downloadable point cloud</option>
-                <option value="check">Check: rebuild and compare a published point cloud</option>
+                <option value="export">Export: cut one method's new columns out of its result</option>
+                <option value="assemble">Assemble: build the download point cloud from base and sidecars</option>
+                <option value="check">Check: verify a published download point cloud</option>
             </param>
             <when value="export">
-                <param name="enriched" type="data" format="laz" label="Method output point cloud" help="The base points in their original order plus the method's added dimensions" />
-                <param name="carried" type="data" format="parquet" optional="true" label="Parent sidecar the output repeats" help="Species results repeat their segmentation's labels; each repeated column must equal this sidecar and is then dropped" />
-                <param name="columns" type="text" optional="true" label="Columns to keep" help="Comma-separated dimensions for this method, to split a combined file (a legacy analysis) into one sidecar per method. Empty keeps every added dimension.">
-                    <validator type="regex" message="Comma-separated dimension names">^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*$</validator>
-                </param>
+                <expand macro="identity" />
+                <param name="enriched" type="data" format="laz" label="Method result point cloud" help="The method's output for the same item: the base points in the same order plus the method's new columns" />
+                <conditional name="mode">
+                    <param name="kind" type="select" label="Kind of result">
+                        <option value="plain">A method's own result (SAT, ForestMamba, RayCloudTools, ...)</option>
+                        <option value="species">Species result that repeats its segmentation's labels</option>
+                        <option value="legacy">Old file holding several methods' results</option>
+                    </param>
+                    <when value="plain" />
+                    <when value="species">
+                        <param name="carried" type="data" format="parquet" label="Segmentation sidecar" help="The sidecar of the segmentation the species run used; its repeated columns are checked against it and left out" />
+                    </when>
+                    <when value="legacy">
+                        <param name="columns" type="text" label="Columns to keep" help="Comma-separated, for example PredInstance_SAT,PredSemantic_SAT; run once per method">
+                            <validator type="regex" message="Comma-separated column names">^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*$</validator>
+                        </param>
+                    </when>
+                </conditional>
             </when>
             <when value="assemble">
+                <expand macro="identity" />
                 <expand macro="sidecars" />
             </when>
             <when value="check">
+                <expand macro="identity" />
                 <expand macro="sidecars" />
-                <param name="member" type="data" format="laz" label="Published member point cloud" />
+                <param name="member" type="data" format="laz" label="Published download point cloud" />
             </when>
         </conditional>
     </inputs>
@@ -70,9 +83,9 @@
     <tests>
         <!-- Export. Test datasets are named like collection elements: the name is the item id. -->
         <test expect_num_outputs="2">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="export" />
                 <param name="enriched" value="sat.laz" ftype="laz" />
             </conditional>
@@ -86,12 +99,15 @@
         </test>
         <!-- Export: split a combined legacy file, keeping only the SAT columns. -->
         <test expect_num_outputs="2">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="export" />
                 <param name="enriched" value="legacy.laz" ftype="laz" />
-                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT" />
+                <conditional name="mode">
+                    <param name="kind" value="legacy" />
+                    <param name="columns" value="PredInstance_SAT,PredSemantic_SAT" />
+                </conditional>
             </conditional>
             <output name="report" ftype="json">
                 <assert_contents>
@@ -102,18 +118,18 @@
         </test>
         <!-- Export rejects an output without added columns. -->
         <test expect_failure="true">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="export" />
                 <param name="enriched" value="base.laz" ftype="laz" />
             </conditional>
         </test>
         <!-- Assemble: points only (no analysis published yet). -->
         <test expect_num_outputs="2">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="assemble" />
             </conditional>
             <output name="report" ftype="json">
@@ -125,9 +141,9 @@
         </test>
         <!-- Assemble: one segmentation published (partial run). -->
         <test expect_num_outputs="2">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="assemble" />
                 <repeat name="sidecars">
                     <param name="sidecar" value="sat.parquet" ftype="parquet" />
@@ -142,9 +158,9 @@
         </test>
         <!-- Assemble: both segmentations. -->
         <test expect_num_outputs="2">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="assemble" />
                 <repeat name="sidecars">
                     <param name="sidecar" value="sat.parquet" ftype="parquet" />
@@ -163,9 +179,9 @@
         </test>
         <!-- Check: a points-only member. -->
         <test expect_num_outputs="1">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="check" />
                 <param name="member" value="base.laz" ftype="laz" />
             </conditional>
@@ -178,9 +194,9 @@
         </test>
         <!-- Check: a member with both segmentations. -->
         <test expect_num_outputs="1">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="check" />
                 <repeat name="sidecars">
                     <param name="sidecar" value="sat.parquet" ftype="parquet" />
@@ -198,18 +214,18 @@
         </test>
         <!-- Check rejects a member with columns the selection lacks. -->
         <test expect_failure="true">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="check" />
                 <param name="member" value="sat.laz" ftype="laz" />
             </conditional>
         </test>
         <!-- Check rejects a member missing a selected sidecar's columns. -->
         <test expect_failure="true">
-            <param name="base" value="11353" ftype="laz" />
-            <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
             <conditional name="operation">
+                <param name="base" value="11353" ftype="laz" />
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
                 <param name="task" value="check" />
                 <repeat name="sidecars">
                     <param name="sidecar" value="sat.parquet" ftype="parquet" />
@@ -222,25 +238,29 @@
         </test>
     </tests>
     <help><![CDATA[
-**Export** writes one item's indexed sidecar: a Parquet file with ``point_index``
-and only the dimensions the method added to the standard base. It refuses an
-output whose base points or point order changed, so the sidecar can later be
-joined back by index alone. *Columns to keep* splits a combined file (a legacy
-analysis with several methods) into one sidecar per method.
+**Export** cuts the columns a method added out of its result and stores them,
+with each point's number, as one item's sidecar (a Parquet file). The result
+must hold the base points unchanged and in the same order, or it is refused, so
+the sidecar can later be joined back by point number alone. A species result
+repeats its segmentation's labels; give that segmentation's sidecar and those
+columns are checked and left out. An old file with several methods' results is
+split by naming one method's columns per run.
 
 **Assemble** writes one item's downloadable point cloud: every field of the
 standard base, unchanged and in order, plus the columns of each added sidecar,
 whichever method wrote it. Any subset is valid, so a partial run (one
 segmentation) still gets a complete download.
 
-**Check** runs as its own job after publication. It rebuilds the point cloud
-from the published base and sidecars and compares every dimension point by
+**Check** runs as its own job after publication. It rebuilds the download point
+cloud from the base and the same sidecars and compares every value of every
 point.
 
 Every task writes a JSON report (identity, point count, dimensions and SHA-256
 hashes) so the 3Dtrees worker can verify the stored bytes without downloading
 point clouds. One job handles one item; map the tool over collections whose
-element identifiers are the Dataset item ids.
+element identifiers are the Dataset item ids. *Standard generation id* labels the
+standardization the base came from; the platform passes its id, and by hand any
+UUID works if export, assemble and check get the same one.
     ]]></help>
     <expand macro="citations" />
 </tool>
