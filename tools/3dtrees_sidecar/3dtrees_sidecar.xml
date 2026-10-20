@@ -1,36 +1,51 @@
-<tool id="3dtrees_sidecar" name="3Dtrees: Sidecar" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+<tool id="3dtrees_sidecar" name="3Dtrees: Sidecar" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.0">
     <description>Store method results as sidecars and assemble point clouds</description>
     <macros>
         <token name="@TOOL_VERSION@">0.1.0</token>
         <token name="@VERSION_SUFFIX@">0</token>
         <xml name="generation">
-            <param name="generation" type="text" label="Standard generation id" help="Which standardization the points come from. The platform fills this in; by hand, use any UUID and the same one for every task">
-                <validator type="regex" message="A generation UUID is required">^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$</validator>
+            <param argument="--generation" type="text" label="Standard generation id" help="Which standardization the points come from. The platform fills this in; by hand, use any UUID and the same one for every task">
+                <validator type="regex" message="A generation UUID is required">^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\Z</validator>
             </param>
         </xml>
         <xml name="base">
-            <param name="base" type="data" format="laz" label="Standard base point cloud" help="The standardized point cloud of one item; its name in the collection must be the item id" />
+            <param argument="--base" type="data" format="laz" label="Standard base point cloud" help="The standardized point cloud of one item; its collection element identifier (or dataset name outside a collection) must be a positive numeric item id"/>
         </xml>
         <xml name="sidecars">
+            <!-- Separate inputs let Galaxy map each method's collection together
+                 with the base collection, preserving one job per item. -->
             <repeat name="sidecars" title="Sidecar" help="Add one per method result to include; none gives the points only">
-                <param name="sidecar" type="data" format="parquet" label="Sidecar" />
+                <param argument="--sidecar" type="data" format="parquet" label="Sidecar"/>
             </repeat>
         </xml>
     </macros>
     <requirements>
+        <!-- Release built from upstream 28eb4811ef34901619a9a26c406a074cdb5fa7ea;
+             tested digest: sha256:9b93700a8c328a1789fd8e5e434d97a353172392167523632d33d12772e51067. -->
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees_sidecar:@TOOL_VERSION@</container>
     </requirements>
-    <command detect_errors="exit_code"><![CDATA[
+    <version_command>python /src/run.py --version</version_command>
+    <command detect_errors="aggressive"><![CDATA[
+        #import re
+        #if $operation.task == 'export'
+            #set $item_id = str($operation.enriched.element_identifier)
+        #else
+            #set $item_id = str($operation.base.element_identifier)
+        #end if
+        ## Identifiers are untrusted. Pass only ASCII digits to the shell;
+        ## the CLI rejects the sentinel with its positive-item-id error.
+        #if not re.match(r'^[0-9]+\Z', $item_id)
+            #set $item_id = 'invalid'
+        #end if
         python -u /src/run.py '$operation.task'
         --generation '$operation.generation'
+        --item '$item_id'
         #if $operation.task == 'export'
-            --item '$operation.enriched.element_identifier'
             --enriched '$operation.enriched'
             --columns '$operation.columns'
             --output sidecar.parquet
         #else
             --base '$operation.base'
-            --item '$operation.base.element_identifier'
             #for $selected in $operation.sidecars
                 --sidecar '$selected.sidecar'
             #end for
@@ -41,193 +56,341 @@
             #end if
         #end if
         --report '$report'
-        #if $operation.task == 'export'
-            && mv sidecar.parquet '$sidecar'
-        #elif $operation.task == 'assemble'
-            && mv member.laz '$member'
-        #end if
     ]]></command>
     <inputs>
         <conditional name="operation">
             <param name="task" type="select" label="Task">
-                <option value="export">Export: cut one method's new columns out of its result</option>
+                <option value="export" selected="true">Export: cut one method's new columns out of its result</option>
                 <option value="assemble">Assemble: build the download point cloud from base and sidecars</option>
                 <option value="check">Check: verify a published download point cloud</option>
             </param>
             <when value="export">
-                <param name="enriched" type="data" format="laz" label="Method result point cloud" help="One item's output of a method; its name in the collection must be the item id" />
-                <param name="columns" type="text" label="Columns to keep" help="Comma-separated names of the columns to store, for example PredInstance_SAT,PredSemantic_SAT. Every other column is left out with a warning.">
-                    <validator type="regex" message="Comma-separated column names">^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*$</validator>
+                <param argument="--enriched" type="data" format="laz" label="Method result point cloud" help="One item's method output; its collection element identifier (or dataset name outside a collection) must be a positive numeric item id"/>
+                <param argument="--columns" type="text" label="Columns to keep" help="Comma-separated names of the columns to store, for example PredInstance_SAT,PredSemantic_SAT. Every other added column is left out with a warning.">
+                    <validator type="regex" message="Comma-separated column names without spaces">^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*\Z</validator>
                 </param>
-                <expand macro="generation" />
+                <expand macro="generation"/>
             </when>
             <when value="assemble">
-                <expand macro="base" />
-                <expand macro="generation" />
-                <expand macro="sidecars" />
+                <expand macro="base"/>
+                <expand macro="generation"/>
+                <expand macro="sidecars"/>
             </when>
             <when value="check">
-                <expand macro="base" />
-                <expand macro="generation" />
-                <expand macro="sidecars" />
-                <param name="member" type="data" format="laz" label="Point cloud to verify" help="The download point cloud made by assemble" />
+                <expand macro="base"/>
+                <expand macro="generation"/>
+                <expand macro="sidecars"/>
+                <param argument="--member" type="data" format="laz" label="Point cloud to verify" help="The download point cloud made by assemble"/>
             </when>
         </conditional>
     </inputs>
     <outputs>
-        <data name="sidecar" format="parquet" label="${tool.name} on ${on_string}: Sidecar">
+        <data name="sidecar" format="parquet" from_work_dir="sidecar.parquet" label="${tool.name} on ${on_string}: Sidecar">
             <filter>operation['task'] == 'export'</filter>
         </data>
-        <data name="member" format="laz" label="${tool.name} on ${on_string}: Point cloud">
+        <data name="member" format="laz" from_work_dir="member.laz" label="${tool.name} on ${on_string}: Point cloud">
             <filter>operation['task'] == 'assemble'</filter>
         </data>
-        <data name="report" format="json" label="${tool.name} on ${on_string}: Report" />
+        <data name="report" format="json" label="${tool.name} on ${on_string}: Report"/>
     </outputs>
     <tests>
+        <!-- Export both SAT columns and verify the actual Parquet values. -->
         <test expect_num_outputs="2">
             <conditional name="operation">
-                <param name="task" value="export" />
-                <param name="enriched" value="sat/11353" ftype="laz" />
-                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
+                <param name="task" value="export"/>
+                <param name="enriched" value="sat/11353" ftype="laz"/>
+                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
             </conditional>
+            <output name="sidecar" file="sat.parquet" ftype="parquet"/>
             <output name="report" ftype="json">
                 <assert_contents>
-                    <has_text text="&quot;item_id&quot;: 11353" />
-                    <has_text text="PredInstance_SAT" />
-                    <has_text text="3dtrees-scientific-sidecar-proof-v2" />
+                    <has_json_property_with_value property="item_id" value="11353"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="generation" value="&quot;0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c&quot;"/>
+                    <has_json_property_with_value property="dimensions" value="{&quot;PredInstance_SAT&quot;: &quot;&lt;u4&quot;, &quot;PredSemantic_SAT&quot;: &quot;&lt;u4&quot;}"/>
+                    <has_json_property_with_value property="dropped" value="[]"/>
+                    <has_json_property_with_value property="contract" value="&quot;3dtrees-scientific-sidecar-proof-v2&quot;"/>
+                    <has_json_property_with_value property="sidecar_sha256" value="&quot;9ef25bb8b0ad4c67f0066d171105a1078ca514742ede89e06a2fc840d7ceb1ce&quot;"/>
                 </assert_contents>
             </output>
         </test>
+        <!-- Export only the requested method from a combined result. -->
         <test expect_num_outputs="2">
             <conditional name="operation">
-                <param name="task" value="export" />
-                <param name="enriched" value="legacy/11353" ftype="laz" />
-                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
+                <param name="task" value="export"/>
+                <param name="enriched" value="legacy/11353" ftype="laz"/>
+                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
             </conditional>
+            <output name="sidecar" file="sat.parquet" ftype="parquet"/>
             <output name="report" ftype="json">
                 <assert_contents>
-                    <has_text text="PredSemantic_SAT" />
-                    <has_text text="&quot;dropped&quot;: [" />
-                    <has_text text="PredInstance_FM" />
+                    <has_json_property_with_value property="dimensions" value="{&quot;PredInstance_SAT&quot;: &quot;&lt;u4&quot;, &quot;PredSemantic_SAT&quot;: &quot;&lt;u4&quot;}"/>
+                    <has_json_property_with_value property="dropped" value="[&quot;PredInstance_FM&quot;, &quot;PredScore_FM&quot;, &quot;PredSemantic_FM&quot;]"/>
+                    <has_json_property_with_value property="points" value="500"/>
                 </assert_contents>
             </output>
             <assert_stderr>
-                <has_text text="columns not kept" />
+                <has_text text="columns not kept"/>
             </assert_stderr>
         </test>
-        <test expect_failure="true">
+        <!-- Reject columns absent from the method output. -->
+        <test expect_failure="true" expect_exit_code="2">
             <conditional name="operation">
-                <param name="task" value="export" />
-                <param name="enriched" value="11353" ftype="laz" />
-                <param name="columns" value="PredInstance_SAT" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
+                <param name="task" value="export"/>
+                <param name="enriched" value="11353" ftype="laz"/>
+                <param name="columns" value="PredInstance_SAT"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
             </conditional>
+            <assert_stderr>
+                <has_text text="Requested columns are not in the output: ['PredInstance_SAT']"/>
+            </assert_stderr>
         </test>
+        <!-- No sidecars preserves every byte of the standardized point cloud. -->
         <test expect_num_outputs="2">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
-                <param name="task" value="assemble" />
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
             </conditional>
+            <output name="member" file="base.laz" ftype="laz"/>
             <output name="report" ftype="json">
                 <assert_contents>
-                    <has_text text="&quot;dimensions&quot;: []" />
-                    <has_text text="&quot;points&quot;: 500" />
+                    <has_json_property_with_value property="item_id" value="11353"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="dimensions" value="[]"/>
+                    <has_json_property_with_value property="output_sha256" value="&quot;d17e81acab190140096ab49a53c73c9630ee9fc120ac175bcd6131aa7c4bfcae&quot;"/>
                 </assert_contents>
             </output>
         </test>
+        <!-- Assemble one method and verify its values and the base fields. -->
         <test expect_num_outputs="2">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
-                <param name="task" value="assemble" />
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
                 <repeat name="sidecars">
-                    <param name="sidecar" value="sat.parquet" ftype="parquet" />
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
                 </repeat>
             </conditional>
+            <output name="member" file="sat.laz" ftype="laz"/>
             <output name="report" ftype="json">
                 <assert_contents>
-                    <has_text text="&quot;PredInstance_SAT&quot;" />
-                    <not_has_text text="PredInstance_FM" />
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="dimensions" value="[&quot;PredInstance_SAT&quot;, &quot;PredSemantic_SAT&quot;]"/>
                 </assert_contents>
             </output>
         </test>
+        <!-- Assemble two methods and verify every output byte. -->
         <test expect_num_outputs="2">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
-                <param name="task" value="assemble" />
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
                 <repeat name="sidecars">
-                    <param name="sidecar" value="sat.parquet" ftype="parquet" />
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
                 </repeat>
                 <repeat name="sidecars">
-                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet" />
+                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet"/>
                 </repeat>
             </conditional>
-            <output name="member" file="member_both.laz" ftype="laz" compare="sim_size" delta="0" />
+            <output name="member" file="member_both.laz" ftype="laz"/>
             <output name="report" ftype="json">
                 <assert_contents>
-                    <has_text text="PredInstance_FM" />
-                    <has_text text="PredInstance_SAT" />
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="dimensions" value="[&quot;PredInstance_FM&quot;, &quot;PredInstance_SAT&quot;, &quot;PredScore_FM&quot;, &quot;PredSemantic_FM&quot;, &quot;PredSemantic_SAT&quot;]"/>
+                    <has_json_property_with_value property="output_sha256" value="&quot;33e2594b8e9a9f874bdb6a86ef4b528b9cdc82f27fa26906a71ad6accd652f21&quot;"/>
                 </assert_contents>
             </output>
         </test>
+        <!-- Check a point cloud without sidecars. -->
         <test expect_num_outputs="1">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
-                <param name="task" value="check" />
-                <param name="member" value="base.laz" ftype="laz" />
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <param name="member" value="base.laz" ftype="laz"/>
             </conditional>
             <output name="report" ftype="json">
                 <assert_contents>
-                    <has_text text="3dtrees-sidecar-check-v1" />
-                    <has_text text="&quot;points&quot;: 500" />
+                    <has_json_property_with_value property="contract" value="&quot;3dtrees-sidecar-check-v1&quot;"/>
+                    <has_json_property_with_value property="item_id" value="11353"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="generation" value="&quot;0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c&quot;"/>
+                    <has_json_property_with_value property="sidecars" value="[]"/>
+                    <has_json_property_with_value property="member_sha256" value="&quot;d17e81acab190140096ab49a53c73c9630ee9fc120ac175bcd6131aa7c4bfcae&quot;"/>
                 </assert_contents>
             </output>
         </test>
+        <!-- Check a point cloud with both methods. -->
         <test expect_num_outputs="1">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
-                <param name="task" value="check" />
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
                 <repeat name="sidecars">
-                    <param name="sidecar" value="sat.parquet" ftype="parquet" />
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
                 </repeat>
                 <repeat name="sidecars">
-                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet" />
+                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet"/>
                 </repeat>
-                <param name="member" value="member_both.laz" ftype="laz" />
+                <param name="member" value="member_both.laz" ftype="laz"/>
             </conditional>
             <output name="report" ftype="json">
                 <assert_contents>
-                    <has_text text="3dtrees-sidecar-check-v1" />
+                    <has_json_property_with_value property="contract" value="&quot;3dtrees-sidecar-check-v1&quot;"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="member_sha256" value="&quot;33e2594b8e9a9f874bdb6a86ef4b528b9cdc82f27fa26906a71ad6accd652f21&quot;"/>
+                    <has_json_property_with_value property="sidecars" value="[{&quot;sha256&quot;: &quot;9ef25bb8b0ad4c67f0066d171105a1078ca514742ede89e06a2fc840d7ceb1ce&quot;, &quot;dimensions&quot;: [&quot;PredInstance_SAT&quot;, &quot;PredSemantic_SAT&quot;]}, {&quot;sha256&quot;: &quot;98c11dac255db0d88de0879e7c80503d328520c70a7a4f2bce7fecb0014ea679&quot;, &quot;dimensions&quot;: [&quot;PredInstance_FM&quot;, &quot;PredScore_FM&quot;, &quot;PredSemantic_FM&quot;]}]"/>
                 </assert_contents>
             </output>
         </test>
-        <test expect_failure="true">
+        <!-- Reject a member with extra unselected columns. -->
+        <test expect_failure="true" expect_exit_code="2">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
-                <param name="task" value="check" />
-                <param name="member" value="sat.laz" ftype="laz" />
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <param name="member" value="sat.laz" ftype="laz"/>
             </conditional>
+            <assert_stderr>
+                <has_text text="Member dimensions differ from the selected sidecars"/>
+            </assert_stderr>
         </test>
-        <test expect_failure="true">
+        <!-- Reject a member missing the selected columns. -->
+        <test expect_failure="true" expect_exit_code="2">
             <conditional name="operation">
-                <param name="base" value="11353" ftype="laz" />
-                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c" />
-                <param name="task" value="check" />
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
                 <repeat name="sidecars">
-                    <param name="sidecar" value="sat.parquet" ftype="parquet" />
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
                 </repeat>
                 <repeat name="sidecars">
-                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet" />
+                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet"/>
                 </repeat>
-                <param name="member" value="base.laz" ftype="laz" />
+                <param name="member" value="base.laz" ftype="laz"/>
             </conditional>
+            <assert_stderr>
+                <has_text text="Member dimensions differ from the selected sidecars"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject another standardization generation. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="11111111-1111-4111-8111-111111111111"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Sidecar base identity mismatch"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject a sidecar from another item. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="11354" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Sidecar base identity mismatch"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject a sidecar with fewer points. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat_short.parquet" ftype="parquet"/>
+                </repeat>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Sidecar point count mismatch"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject overlapping columns from multiple sidecars. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Scientific dimension ownership collision"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject a changed value even when dimensions and point count match. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet"/>
+                </repeat>
+                <param name="member" value="member_changed.laz" ftype="laz"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Base point order or dimension changed: PredInstance_SAT"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject nonnumeric dataset names outside collections. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="base.laz" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="item must be a positive Dataset item id"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject standard fields as exported method columns. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="export"/>
+                <param name="enriched" value="sat/11353" ftype="laz"/>
+                <param name="columns" value="X"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Standard point fields cannot be owned"/>
+            </assert_stderr>
+        </test>
+        <!-- Accept and normalize uppercase UUID input. -->
+        <test expect_num_outputs="2">
+            <conditional name="operation">
+                <param name="task" value="export"/>
+                <param name="enriched" value="sat/11353" ftype="laz"/>
+                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT"/>
+                <param name="generation" value="0B0A6F1E-6A4E-4D8E-9F3C-1D2E3F4A5B6C"/>
+            </conditional>
+            <output name="sidecar" file="sat.parquet" ftype="parquet"/>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="generation" value="&quot;0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c&quot;"/>
+                    <has_json_property_with_value property="dimensions" value="{&quot;PredInstance_SAT&quot;: &quot;&lt;u4&quot;, &quot;PredSemantic_SAT&quot;: &quot;&lt;u4&quot;}"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
@@ -269,6 +432,14 @@ check gets the standardized collection and sidecar collections together, Galaxy
 pairs their elements in collection order, so the collections must list the
 same items in the same order. A mispaired sidecar is refused because its item
 id does not match.
+
+For a single dataset outside a collection, rename the method result (export)
+or standardized base (assemble and check) to its positive numeric item id,
+without a file extension. The item id is read from that dataset name.
+
+Use one *Sidecar* entry per method and select that method's collection in
+Galaxy's batch input mode. This lets Galaxy map the standardized file and each
+method's sidecar together for every item.
 
 **Standard generation id**
 
