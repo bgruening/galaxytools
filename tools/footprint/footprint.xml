@@ -6,7 +6,19 @@
         <requirement type="package" version="@TOOL_VERSION@">footprint</requirement>
     </requirements>
     <command detect_errors="aggressive"><![CDATA[
+## The pipeline writes several files next to its inputs (e.g. an extended bed
+## file, a fasta index) and Galaxy datasets live on a read-only filesystem.
+## Link the relevant inputs into the writable working directory first, so that
+## those sidecar files are created next to the links and not next to the
+## datasets themselves.
 ln -s '$bam_file' ./bam_file.bam
+&&
+ln -s '$motif_coords' ./motif_coords.bed
+&&
+#if $refGenomeSource.genomeSource == "history":
+    ## samtools faidx writes the .fai index next to the fasta file.
+    ln -s '$refGenomeSource.ownFile' ./genome.fa
+#end if
 &&
 ## footprint 1.0.1 ships the protocol bias profiles in
 ## share/footprint-pipeline/ of the conda package. Resolve that directory
@@ -21,9 +33,9 @@ ln -s '$bam_file' ./bam_file.bam
 find_footprints.sh
     ./bam_file.bam
     '$chrom_sizes'
-    '$motif_coords'
+    ./motif_coords.bed
     #if $refGenomeSource.genomeSource == "history":
-        '$refGenomeSource.ownFile'
+        ./genome.fa
     #else
         '$refGenomeSource.builtin.fields.path'
     #end if
@@ -45,7 +57,7 @@ mv *.plot1.png plot1.png
         <param name="chrom_sizes" type="data" format="tabular" label="chromosome length" help=""/>
         <param name="motif_coords" type="data" format="bed" label="coordinates of motif" help=""/>
         <conditional name="refGenomeSource">
-            <param name="genomeSource" type="select" label="Will you select a reference genome from your                 history or use a built-in genome?" help="The version of genome against which the reads were aligned.">
+            <param name="genomeSource" type="select" label="Will you select a reference genome from your history or use a built-in genome?" help="The version of genome against which the reads were aligned.">
                 <option value="fai" selected="True">
                     Use a built-in genome</option>
                 <option value="history">
@@ -53,9 +65,9 @@ mv *.plot1.png plot1.png
             </param>
             <when value="fai">
                 <param name="builtin" type="select" label="Select a reference genome">
-                    <options from_data_table="sam_fa_indices">
+                    <options from_data_table="all_fasta">
                         <filter type="sort_by" column="1"/>
-                        <validator type="no_options" message="A built-in reference genome is not available                         for the build associated with the selected input file"/>
+                        <validator type="no_options" message="A built-in reference genome is not available for the build associated with the selected input file"/>
                     </options>
                 </param>
             </when>
@@ -109,11 +121,15 @@ mv *.plot1.png plot1.png
             <param name="bam_file" value="input_ATAC_HEK293_hg19_chr1.bam"/>
             <param name="chrom_sizes" value="input_hg19.chr1.chrom.size"/>
             <param name="motif_coords" value="input_CTCF_motifs_hg19_chr1.bed"/>
-            <param name="refGenomeSource|genomeSource" value="history"/>
-            <param name="refGenomeSource|ownFile" value="input_hg19_chr1.fa"/>
+            <conditional name="refGenomeSource">
+                <param name="genomeSource" value="history"/>
+                <param name="ownFile" value="input_hg19_chr1.fa"/>
+            </conditional>
             <param name="factor_name" value="CTCF"/>
-            <param name="bias_source|bias_source_selector" value="bundled"/>
-            <param name="bias_source|bias_file_bundled" value="ATAC"/>
+            <conditional name="bias_source">
+                <param name="bias_source_selector" value="bundled"/>
+                <param name="bias_file_bundled" value="ATAC"/>
+            </conditional>
             <param name="peak_file" value="input_CTCF_HEK293_chip_hg19_chr1.bed"/>
             <param name="no_of_components" value="2"/>
             <param name="background" value="Seq"/>
@@ -121,8 +137,16 @@ mv *.plot1.png plot1.png
             <!-- The EM initialisation of the mixture model is randomised (the
                  upstream code calls sample() without set.seed), so the numeric
                  columns differ slightly between runs: compare sizes only. -->
-            <output name="RESULTS" file="output.RESULTS" ftype="tabular" compare="sim_size" delta="200"/>
-            <output name="PARAM" file="output.PARAM" ftype="txt" compare="sim_size" delta="200"/>
+            <output name="RESULTS" file="output.RESULTS" ftype="tabular" compare="sim_size" delta="200">
+                <assert_contents>
+                    <has_n_columns n="10"/>
+                </assert_contents>
+            </output>
+            <output name="PARAM" file="output.PARAM" ftype="txt" compare="sim_size" delta="200">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                </assert_contents>
+            </output>
             <output name="plot1" file="output_plot1.png" ftype="png" compare="sim_size" delta="15000"/>
             <output name="plot2" file="output_plot2.png" ftype="png" compare="sim_size" delta="15000"/>
         </test>
@@ -131,17 +155,29 @@ mv *.plot1.png plot1.png
             <param name="bam_file" value="input_ATAC_HEK293_hg19_chr1.bam"/>
             <param name="chrom_sizes" value="input_hg19.chr1.chrom.size"/>
             <param name="motif_coords" value="input_CTCF_motifs_hg19_chr1.bed"/>
-            <param name="refGenomeSource|genomeSource" value="history"/>
-            <param name="refGenomeSource|ownFile" value="input_hg19_chr1.fa"/>
+            <conditional name="refGenomeSource">
+                <param name="genomeSource" value="history"/>
+                <param name="ownFile" value="input_hg19_chr1.fa"/>
+            </conditional>
             <param name="factor_name" value="CTCF"/>
-            <param name="bias_source|bias_source_selector" value="history"/>
-            <param name="bias_source|bias_file" value="input_SeqBias_ATAC.txt"/>
+            <conditional name="bias_source">
+                <param name="bias_source_selector" value="history"/>
+                <param name="bias_file" value="input_SeqBias_ATAC.txt"/>
+            </conditional>
             <param name="peak_file" value="input_CTCF_HEK293_chip_hg19_chr1.bed"/>
             <param name="no_of_components" value="2"/>
             <param name="background" value="Seq"/>
             <param name="fixed_bg" value="TRUE"/>
-            <output name="RESULTS" file="output.RESULTS" ftype="tabular" compare="sim_size" delta="200"/>
-            <output name="PARAM" file="output.PARAM" ftype="txt" compare="sim_size" delta="200"/>
+            <output name="RESULTS" file="output.RESULTS" ftype="tabular" compare="sim_size" delta="200">
+                <assert_contents>
+                    <has_n_columns n="10"/>
+                </assert_contents>
+            </output>
+            <output name="PARAM" file="output.PARAM" ftype="txt" compare="sim_size" delta="200">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                </assert_contents>
+            </output>
             <output name="plot1" file="output_plot1.png" ftype="png" compare="sim_size" delta="15000"/>
             <output name="plot2" file="output_plot2.png" ftype="png" compare="sim_size" delta="15000"/>
         </test>
@@ -231,8 +267,7 @@ This is a pipeline to find transcription factor footprints in ATAC-seq or DNase-
 * A plot only with the final trained components.
 * In a model where 2 components are used, this plot is identical to the bottom panel in plot1.
 * When 3 components are used, this plot shows the weighted average of the 2 footprint components as the final footprint profile.
-]]>
-    </help>
+]]></help>
     <citations>
         <citation type="bibtex">@ARTICLE{footprint,
         author = {Aslihan Karabacak, Galip Gurkan Yardimci, Ricardo Wurmus, Dilmurat Yusuf, Uwe Ohler},
