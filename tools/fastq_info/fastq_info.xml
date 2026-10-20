@@ -1,42 +1,40 @@
-<tool id="fastq_info" name="FASTQ info" version="@TOOL_VERSION@+Galaxy@SUFFIX_VERSION@" profile="20.01">
+<tool id="fastq_info" name="FASTQ info" version="@TOOL_VERSION@+galaxy@SUFFIX_VERSION@" profile="25.0">
     <description>validates single or paired fastq files</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="edam_ontology"/>
     <expand macro="requirements"/>
+    <version_command>fastq_info -h 2&gt;&amp;1 | head -n 1</version_command>
     <command detect_errors="aggressive"><![CDATA[
-        ## fastq_info signals validation findings with a non-zero exit status
-        ## (upstream src/fastq.h): 1 = PARAMS_ERROR (bad arguments, file that
-        ## cannot be opened, truncated entries) and 3 = FASTQ_FORMAT_ERROR
-        ## (duplicated readnames, unpaired reads, undeterminable quality
-        ## encoding). Those findings are the tool's result and are collected
-        ## in output.txt, so they must not fail the job - otherwise an
-        ## invalid FASTQ would never return its validation report.
-        ## Any other exit code (2 = internal error, 127 = command not found,
-        ## >= 128 = killed by a signal) means fastq_info itself broke: the
-        ## log is echoed to stderr and the exit code re-raised so that Galaxy
-        ## fails the job instead of reporting success.
+        ## Keep FASTQ validation findings in the report. Upstream uses exit 3
+        ## for format errors, but fastq_read_entry() exits 1 for truncation.
+        ## Exit 1 also covers bad arguments and unreadable files, so accept
+        ## it only with the specific truncation diagnostic from src/fastq.c.
         exit_code=0;
         fastq_info
         #if $input_option.input_type == 'single'
-            $input_option.fastq_1
+            '$input_option.fastq_1'
         #else
-            $input_option.fastq_1
-            $input_option.fastq_2
+            '$input_option.fastq_1'
+            '$input_option.fastq_2'
         #end if
         $r
         $q
         > ./output.txt 2>&1 || exit_code=\$?;
         case "\$exit_code" in
-            0|1|3)
-                ## expected outcome: report was produced
+            0|3)
+                exit 0
                 ;;
-            *)
-                cat ./output.txt >&2
-                exit "\$exit_code"
+            1)
+                if grep -Eq '^ERROR: Error in file .+: line [0-9]+: file truncated$' ./output.txt; then
+                    exit 0;
+                fi
                 ;;
-        esac
+        esac;
+        ## Preserve diagnostics and fail for execution errors, including signals.
+        cat ./output.txt >&2;
+        exit "\$exit_code"
     ]]></command>
     <inputs>
         <conditional name="input_option">
@@ -52,12 +50,11 @@
                 <param name="fastq_2" type="data" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" label="FASTQ file: reverse reads"/>
             </when>
         </conditional>
-        <param argument="-q" type="boolean" truevalue="" falsevalue="-q" checked="True" label="Determine quality scoring" help="If this option is disabled, it won't fail if the quality encoding cannot be determined"/>
+        <param argument="-q" type="boolean" truevalue="" falsevalue="-q" checked="True" label="Determine quality scoring" help="If this option is disabled, an undetermined quality encoding is reported as NA"/>
         <param argument="-r" type="boolean" truevalue="-r" falsevalue="" checked="False" label="Skip check for duplicated readnames" help="By using this option no checks are made to determine if the read names/identifiers are unique (it will run faster and use less memory)"/>
     </inputs>
     <outputs>
-        <data name="output" format="txt" from_work_dir="./output.txt" label="${tool.name} on ${on_string}: Validation result">
-        </data>
+        <data name="output" format="txt" from_work_dir="output.txt" label="${tool.name} on ${on_string}: Validation result"/>
     </outputs>
     <tests>
         <test expect_num_outputs="1">
@@ -65,10 +62,12 @@
                 <param name="input_type" value="single"/>
                 <param name="fastq_1" value="R1.fastq"/>
             </conditional>
-            <output name="output" file="output.txt" ftype="txt" lines_diff="2">
+            <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="362" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 9"/>
+                    <has_line line="Quality encoding: 33"/>
+                    <has_line line="Read length: 25 25 25"/>
                 </assert_contents>
             </output>
         </test>
@@ -76,12 +75,13 @@
         <test expect_num_outputs="1">
             <conditional name="input_option">
                 <param name="input_type" value="single"/>
-                <param name="fastq_1" value="R1.fastq.gz"/>
+                <param name="fastq_1" value="R1.fastq.gz" ftype="fastqsanger.gz"/>
             </conditional>
             <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="368" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 1000"/>
+                    <has_line line="Quality encoding: 33"/>
                 </assert_contents>
             </output>
         </test>
@@ -94,8 +94,9 @@
             </conditional>
             <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="544" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 9"/>
+                    <has_line line="Quality encoding: 33"/>
                 </assert_contents>
             </output>
         </test>
@@ -104,12 +105,13 @@
             <param name="q" value="False"/>
             <conditional name="input_option">
                 <param name="input_type" value="single"/>
-                <param name="fastq_1" value="R1.fastq"/>
+                <param name="fastq_1" value="unknown_quality.fastq" ftype="fastq"/>
             </conditional>
             <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="362" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 1"/>
+                    <has_line line="Quality encoding: NA"/>
                 </assert_contents>
             </output>
         </test>
@@ -122,7 +124,7 @@
             <output name="output" ftype="txt">
                 <assert_contents>
                     <has_text text="line 36: duplicated sequence SRR1294492.1207358/1"/>
-                    <has_size value="311" delta="100"/>
+                    <not_has_text text="OK"/>
                 </assert_contents>
             </output>
         </test>
@@ -135,8 +137,9 @@
             </conditional>
             <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="193" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_text text="Skipping check for duplicated read names"/>
+                    <has_line line="Number of reads: 9"/>
                 </assert_contents>
             </output>
         </test>
@@ -150,7 +153,7 @@
             <output name="output" ftype="txt">
                 <assert_contents>
                     <has_text text="line 32: file truncated"/>
-                    <has_size value="285" delta="100"/>
+                    <not_has_text text="OK"/>
                 </assert_contents>
             </output>
         </test>
@@ -164,7 +167,35 @@
             <output name="output" ftype="txt">
                 <assert_contents>
                     <has_text text="unpaired read - SRR1294492.2047212/"/>
-                    <has_size value="557" delta="100"/>
+                    <not_has_text text="OK"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Unknown quality encoding is a validation finding by default. -->
+        <test expect_num_outputs="1">
+            <conditional name="input_option">
+                <param name="input_type" value="single"/>
+                <param name="fastq_1" value="unknown_quality.fastq" ftype="fastq"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="Unable to determine quality encoding - unknown range [32,126]"/>
+                    <not_has_text text="OK"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Paired inputs can mix compressed and uncompressed files. -->
+        <test expect_num_outputs="1">
+            <conditional name="input_option">
+                <param name="input_type" value="paired"/>
+                <param name="fastq_1" value="R1.fastq"/>
+                <param name="fastq_2" value="R2.fastq.gz" ftype="fastqsanger.gz"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_line line="Number of reads: 9"/>
+                    <has_line line="Quality encoding: 33"/>
+                    <has_line line="OK"/>
                 </assert_contents>
             </output>
         </test>
@@ -174,7 +205,9 @@
 
 FASTQ info is part of [FASTQ utils](https://github.com/nunofonseca/fastq_utils), a set of Linux utilities to validate and manipulate fastq files.
 
-The tool checks that the input FASTQ file(s) are well formed and reports the number of reads, the quality encoding and the read length distribution. If a problem is found (truncated file, duplicated read names, unpaired reads in paired-end data), the error message is reported in the output.
+The tool checks that the input FASTQ file(s) are well formed and reports the number of reads, the quality encoding and the minimum, maximum and median read lengths. Both uncompressed and gzip-compressed FASTQ files are supported.
+
+Validation findings (such as truncated files, duplicated read names, unpaired reads or undetermined quality encoding) are reported in the output dataset. A successful Galaxy job means the validation ran; inspect the report for an **OK** result or a validation error. Processing stops at the first validation error, so statistics may be incomplete. Execution failures, such as unreadable input files or insufficient memory, fail the Galaxy job.
     ]]></help>
     <expand macro="citations"/>
 </tool>
