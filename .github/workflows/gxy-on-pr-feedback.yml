@@ -43,10 +43,14 @@ jobs:
       - name: Check PR is not from a fork
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gh resolves the repo from git remotes — this step runs before
+          # checkout, so there is no .git and gh needs GH_REPO explicitly.
+          GH_REPO: ${{ github.repository }}
         run: |
           HEAD_REPO=$(gh pr view $PR_NUMBER --json headRepository --jq '.headRepository.nameWithOwner')
           if [ "$HEAD_REPO" != "${{ github.repository }}" ]; then
-            gh pr comment $PR_NUMBER --body "⚠️ The feedback flow can't work on PRs from forks: it pushes fix commits to the PR branch, and \`GITHUB_TOKEN\` only has write access to this repository, not \`$HEAD_REPO\`. To use it, push your branch to this repository and open the PR from there, or address the feedback manually."
+            # Label-triggered runs on fork PRs get a read-only token, so a
+            # comment can't post anyway — the log line is the message.
             echo "PR head is on fork $HEAD_REPO — feedback requires same-repo branches."
             exit 1
           fi
@@ -91,9 +95,11 @@ jobs:
           # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
           PR_TITLE=$(gh pr view $PR_NUMBER --json title --jq '.title' 2>/dev/null || echo "")
           TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
-          # Fallback: check for .tool-name in the PR branch
-          if [ -z "$TOOL_DIR" ] && [ -f tools/*/.tool-name ]; then
-            TOOL_DIR=$(cat tools/*/.tool-name 2>/dev/null | head -1)
+          # Fallback: check for .tool-name in the PR branch (find, not a
+          # glob test — a bare tools/*/ glob errors on multiple matches).
+          TOOL_NAME_FILE=$(find tools -maxdepth 2 -name .tool-name 2>/dev/null | head -1)
+          if [ -z "$TOOL_DIR" ] && [ -n "$TOOL_NAME_FILE" ]; then
+            TOOL_DIR=$(head -1 "$TOOL_NAME_FILE" 2>/dev/null)
           fi
           # Fallback: derive from the PR's changed files under tools/
           if [ -z "$TOOL_DIR" ]; then
@@ -102,6 +108,12 @@ jobs:
           fi
           if [ -z "$TOOL_DIR" ]; then
             echo "Could not determine tool directory from PR title, .tool-name, or changed files"
+            exit 1
+          fi
+          # TOOL_DIR feeds 'rm -rf tools/$TOOL_DIR' later — reject anything
+          # that isn't a plain directory name (traversal via a retitled PR).
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "Refusing unsafe tool directory name: $TOOL_DIR"
             exit 1
           fi
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
@@ -143,7 +155,7 @@ jobs:
           TOOL_DIR=${{ steps.find_tool_dir.outputs.tool_dir }}
           rm -f "tools/$TOOL_DIR/.tool-name"
           # Detect files that are gitignored (e.g. .tar test data)
-          IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --files-from=- 2>/dev/null || true)
+          IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --stdin 2>/dev/null || true)
           # Add everything that isn't ignored
           git add tools/$TOOL_DIR/ || true
           if git diff --cached --quiet; then
@@ -157,22 +169,10 @@ jobs:
             fi
             git commit -m "$COMMIT_MSG"
             # Checked out refs/pull/<N>/head (detached HEAD) — push must be
-            # explicit. GITHUB_TOKEN can't write to contributor forks, so for
-            # fork PRs the fixes go to a tool-bot/* branch here and the
-            # contributor merges them into their branch.
-            HEAD_REPO=$(gh pr view $PR_NUMBER --json headRepository --jq '.headRepository.nameWithOwner')
+            # explicit. The fork check above guarantees the PR head branch
+            # lives in this repo, so this always targets the PR's own branch.
             HEAD_BRANCH=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
-            if [ "$HEAD_REPO" = "${{ github.repository }}" ]; then
-              git push origin "HEAD:$HEAD_BRANCH"
-            else
-              BOT_BRANCH="tool-bot/feedback-pr-$PR_NUMBER"
-              # -f: a previous run may have left an unmerged branch tip that
-              # isn't an ancestor of this commit. Safe to clobber — the
-              # namespace is bot-owned and each run regenerates fixes against
-              # the current PR head.
-              git push -f origin "HEAD:$BOT_BRANCH"
-              gh pr comment $PR_NUMBER --body "🔧 Feedback fixes committed to \`$BOT_BRANCH\` in this repo — the bot cannot push to fork \`$HEAD_REPO\`. To apply them on your \`$HEAD_BRANCH\` branch:\n\n\`\`\`bash\ngit fetch https://github.com/${{ github.repository }}.git $BOT_BRANCH\ngit merge FETCH_HEAD\ngit push\n\`\`\`"
-            fi
+            git push origin "HEAD:$HEAD_BRANCH"
           fi
           # Clean up intermediary file
           rm -f "$GITHUB_WORKSPACE/.commit-msg"
