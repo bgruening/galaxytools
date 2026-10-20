@@ -9,6 +9,18 @@ from sklearn.model_selection import cross_val_predict, KFold, StratifiedKFold
 from xgboost import XGBClassifier
 
 
+def parse_bool(value):
+    """Parse a command-line boolean value."""
+    if isinstance(value, bool):
+        return value
+    normalized_value = value.lower()
+    if normalized_value in {"true", "yes", "1"}:
+        return True
+    if normalized_value in {"false", "no", "0"}:
+        return False
+    raise argparse.ArgumentTypeError(f"Expected a boolean value, received: {value}")
+
+
 def resolve_column(column, columns):
     """Resolve a header name or a one-based Galaxy column index."""
     column = str(column)
@@ -135,18 +147,13 @@ def main():
         default="target",
         help="Target column as a header name or one-based column index (N or cN)",
     )
-    parser.add_argument(
-        "--no-header",
-        action="store_false",
-        dest="has_header",
-        help="Treat the first row as data instead of column headers",
-    )
+    parser.add_argument("--has_header", type=parse_bool, default=True, help="Whether the first row contains column headers")
     parser.add_argument("--method", default="remove", choices=["remove", "replace"], help="Cleaning method")
-    parser.add_argument("--summary", action="store_true", help="Print and save issue summary only, no cleaning")
-    parser.add_argument("--no-label-issues", action="store_true", help="Exclude label issues from cleaning")
-    parser.add_argument("--no-outliers", action="store_true", help="Exclude outlier issues from cleaning")
-    parser.add_argument("--no-near-duplicates", action="store_true", help="Exclude near-duplicate issues from cleaning")
-    parser.add_argument("--no-non-iid", action="store_true", help="Exclude non-i.i.d. issues from cleaning")
+    parser.add_argument("--summary_only", type=parse_bool, default=False, help="Only print and save the issue summary")
+    parser.add_argument("--label_issues", type=parse_bool, default=True, help="Include label issues in cleaning")
+    parser.add_argument("--outliers", type=parse_bool, default=True, help="Include outlier issues in cleaning")
+    parser.add_argument("--near_duplicates", type=parse_bool, default=True, help="Include near-duplicate issues in cleaning")
+    parser.add_argument("--non_iid", type=parse_bool, default=True, help="Include non-i.i.d. issues in cleaning")
     parser.add_argument('--quality-threshold', type=float, default=0.2, help='Threshold for low-quality labels (regression only)')
 
     args = parser.parse_args()
@@ -189,16 +196,16 @@ def main():
                 f.write(str(summary))
         print("Issue summary saved to: summary.txt")
 
-    if args.summary:
+    if args.summary_only:
         return
 
     # Clean selected issues
     cleaned_df = handler.clean_selected_issues(
         method=args.method,
-        label_issues=not args.no_label_issues,
-        outliers=not args.no_outliers,
-        near_duplicates=not args.no_near_duplicates,
-        non_iid=not args.no_non_iid
+        label_issues=args.label_issues,
+        outliers=args.outliers,
+        near_duplicates=args.near_duplicates,
+        non_iid=args.non_iid
     )
 
     print(f"Cleaned dataset shape: {cleaned_df.shape}")
