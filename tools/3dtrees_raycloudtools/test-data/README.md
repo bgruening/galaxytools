@@ -18,3 +18,8 @@ size comparison is not a byte-for-byte geometry or point-value comparison.
 Known producer limitation: dotted dataset identifiers can produce an incorrect
 Treeinfo path in v1.2.2. These fixtures preserve the legacy supported naming
 convention; this test-only change does not repair that runtime limitation.
+
+`ground` is a 16,353-point, 20 m by 20 m ground-only crop of a SmartTile tile
+in which RayCloudTools finds no trees. With 1.2.3 every output exists: the
+tree table and tree info table are header only, and the tree mesh has no
+vertices or faces.
