@@ -19,7 +19,7 @@
 #   * a branch whose last commit wasn't authored by the bot → never overwritten.
 on:
   schedule:
-    - cron: "0 4 * * *"  # daily, 04:00 UTC — adjust as needed
+    - cron: "0 4 * * *"  # daily, 04:00 UTC
   workflow_dispatch:
     inputs:
       tool_dir:
@@ -83,6 +83,15 @@ jobs:
             --tools-dir tools "${ARGS[@]}")
           echo "$TOOLS"
           echo "tools=$TOOLS" >> $GITHUB_OUTPUT
+      - name: Report detect failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Without this, a detect failure silently skips the update job and
+          # no one is told the scheduled run died.
+          gh issue create --title "Autoupdate error: detect job" \
+            --body "⚠️ The autoupdate detect job failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details." || true
 
   update:
     name: Update ${{ matrix.tool.tool_dir }}
@@ -97,7 +106,6 @@ jobs:
       # One LLM job per outdated dir — cap concurrency so a run can't fire
       # dozens of concurrent agent runs/API calls (GitHub also caps matrices
       # at 256 jobs). autoupdate.max_tools_per_run bounds the total per run.
-      # Kept low: the configured endpoint (llm.ai.e-infra.cz) is shared infra.
       max-parallel: 2
       matrix:
         tool: ${{ fromJSON(needs.detect.outputs.tools) }}
@@ -174,7 +182,7 @@ jobs:
           cp -r generated/. "tools/$TOOL_DIR/"
           rm -rf generated/
           rm -f "tools/$TOOL_DIR/.tool-name"
-          IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --files-from=- 2>/dev/null || true)
+          IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --stdin 2>/dev/null || true)
           git add "tools/$TOOL_DIR/" || true
           if git diff --cached --quiet; then
             # The agent can legitimately produce no changes (e.g. it declines
@@ -239,7 +247,7 @@ jobs:
             ${{ github.workspace }}/tools/${{ matrix.tool.tool_dir }}/test-data/*.tar
           if-no-files-found: ignore
       - name: Report autoupdate failure
-        if: steps.autoupdate.outcome == 'failure'
+        if: steps.autoupdate.outcome == 'failure' || steps.create_pr.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
