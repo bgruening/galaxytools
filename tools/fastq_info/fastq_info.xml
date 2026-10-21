@@ -6,7 +6,22 @@
     <expand macro="edam_ontology"/>
     <expand macro="requirements"/>
     <version_command>fastq_info -h 2&gt;&amp;1 | head -n 1</version_command>
-    <command detect_errors="exit_code" strict="true"><![CDATA[
+    <command detect_errors="aggressive" strict="true"><![CDATA[
+        ## fastq_info reports everything - the report as well as validation errors -
+        ## through stdout/stderr and signals findings with a non-zero exit status
+        ## (upstream src/fastq.h): 1 = unreadable or truncated file, 3 = duplicated
+        ## read names, unpaired reads or an undeterminable quality encoding. Those
+        ## findings are the result this tool exists to produce, so exit codes 1 and 3
+        ## are passed through as a successful job whose dataset holds the report;
+        ## anything else (2 = internal error, 127 = command not found, >= 128 = killed
+        ## by a signal) means fastq_info itself broke, so the log is echoed to stderr
+        ## and the exit code re-raised to make Galaxy fail the job. A blanket `|| true`
+        ## or piping into `tee` would instead mask every one of those, including real
+        ## execution failures, as a silently successful job. The report is kept out of
+        ## the job stdout/stderr so that detect_errors="aggressive" cannot mistake an
+        ## "ERROR:" line of the report for a crash. Statements are separated by ';'
+        ## because Galaxy joins consecutive command template lines with spaces.
+        exit_code=0;
         fastq_info
         #if $input_option.input_type == 'single'
             '$input_option.fastq_1'
@@ -16,7 +31,8 @@
         #end if
         $r
         $q
-        2>&1 | tee ./output.txt
+        > ./output.txt 2>&1 || exit_code=\$?;
+        case "\$exit_code" in 0|1|3) ;; *) cat ./output.txt >&2; exit "\$exit_code" ;; esac
     ]]></command>
     <inputs>
         <conditional name="input_option">
@@ -97,16 +113,17 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- Test duplicated id -->
-        <test expect_failure="true" expect_exit_code="3">
+        <!-- Duplicated read names: reported in the dataset, job stays usable -->
+        <test expect_num_outputs="1">
             <conditional name="input_option">
                 <param name="input_type" value="single"/>
                 <param name="fastq_1" value="R1_duplicated.fastq"/>
             </conditional>
-            <assert_stdout>
-                <has_text text="line 36: duplicated sequence SRR1294492.1207358/1"/>
-                <not_has_text text="OK"/>
-            </assert_stdout>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="line 36: duplicated sequence SRR1294492.1207358/1"/>
+                </assert_contents>
+            </output>
         </test>
         <!-- Test r option-->
         <test expect_num_outputs="1">
@@ -124,39 +141,42 @@
             </output>
         </test>
         <!-- Test truncated file 01 -->
-        <test expect_failure="true" expect_exit_code="1">
+        <test expect_num_outputs="1">
             <conditional name="input_option">
                 <param name="input_type" value="paired"/>
                 <param name="fastq_1" value="R1_truncated.fastq"/>
                 <param name="fastq_2" value="R2.fastq"/>
             </conditional>
-            <assert_stdout>
-                <has_text text="line 32: file truncated"/>
-                <not_has_text text="OK"/>
-            </assert_stdout>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="line 32: file truncated"/>
+                </assert_contents>
+            </output>
         </test>
         <!-- Test truncated file 02 -->
-        <test expect_failure="true" expect_exit_code="3">
+        <test expect_num_outputs="1">
             <conditional name="input_option">
                 <param name="input_type" value="paired"/>
                 <param name="fastq_1" value="R1_truncated_entry.fastq"/>
                 <param name="fastq_2" value="R2.fastq"/>
             </conditional>
-            <assert_stdout>
-                <has_text text="unpaired read - SRR1294492.2047212/"/>
-                <not_has_text text="OK"/>
-            </assert_stdout>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="unpaired read - SRR1294492.2047212/"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- Unknown quality encoding fails validation unless explicitly skipped. -->
-        <test expect_failure="true" expect_exit_code="3">
+        <!-- Unknown quality encoding is an error unless explicitly skipped -->
+        <test expect_num_outputs="1">
             <conditional name="input_option">
                 <param name="input_type" value="single"/>
                 <param name="fastq_1" value="unknown_quality.fastq" ftype="fastq"/>
             </conditional>
-            <assert_stdout>
-                <has_text text="Unable to determine quality encoding - unknown range [32,126]"/>
-                <not_has_text text="OK"/>
-            </assert_stdout>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="Unable to determine quality encoding - unknown range [32,126]"/>
+                </assert_contents>
+            </output>
         </test>
         <!-- Paired inputs can mix compressed and uncompressed files. -->
         <test expect_num_outputs="1">
@@ -181,9 +201,13 @@ FASTQ info is part of [FASTQ utils](https://github.com/nunofonseca/fastq_utils),
 
 The tool checks that the input FASTQ file(s) are well formed and reports the number of reads, the quality encoding and the minimum, maximum and median read lengths. Both uncompressed and gzip-compressed FASTQ files are supported.
 
-Invalid FASTQ input fails the Galaxy job. The job output includes the first validation error, such as a truncated file, duplicated read name, unpaired read or undetermined quality encoding. Execution failures also fail the job. Successful validation produces a report ending in **OK**.
+-----
 
-The options to skip duplicate read-name checks or allow undetermined quality encoding disable those specific checks.
+**Reading the result**
+
+A file that passes every check produces a report ending in **OK**. If a problem is found - a truncated file, a duplicated read name, an unpaired read in paired-end data, or a quality encoding that cannot be determined - the offending line and the reason are written to the report instead of **OK**.
+
+The two options disable individual checks: skipping the duplicate read-name check, or accepting a quality encoding that cannot be determined (reported as `NA`). A file that only violates a disabled check is reported as valid.
     ]]></help>
     <expand macro="citations"/>
 </tool>
