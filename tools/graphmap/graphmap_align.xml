@@ -1,64 +1,82 @@
-<tool id="graphmap_align" name="Mapper" version="@VERSION@">
-    <description>for long, error-prone reads, like Nanopore ONT and PacBio</description>
+<tool id="graphmap_align" name="Mapper" version="@VERSION@+galaxy@VERSION_SUFFIX@" profile="21.05">
+    <description>for long, error-prone reads (e.g. Oxford Nanopore or PacBio)</description>
     <macros>
         <import>macros.xml</import>
     </macros>
-    <expand macro="xrefs" />
-    <expand macro="requirements" />
-    <command detect_errors="exit_code">
-    <![CDATA[
-        ln -s '$r' ref.${r.ext} && 
-        ln -s '$d' reads.${d.ext} && 
-
-        graphmap align  
-        -r ref.${r.ext} 
-        -d reads.${d.ext}
-        #if $preset:
-            -x $preset
-        #end if
-        -t \${GALAXY_SLOTS:-4} |
-        samtools view -b -u | samtools sort -@ "\${GALAXY_SLOTS:-4}" -T tmp -O bam -o output.bam -
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <!-- graphmap2 has no dedicated version flag. Running it without any arguments
+         prints a version banner (to stderr, with exit code 1), so it is grepped out. -->
+    <version_command>graphmap2 2&gt;&amp;1 | grep -m1 Version</version_command>
+    <command detect_errors="aggressive"><![CDATA[
+        @SYMLINK_INPUTS@
+        graphmap2 align
+            -r ref.${r.ext}
+            -d reads.${d.ext}
+            #if $preset:
+                -x $preset
+            #end if
+            $extcigar
+            -e $error_rate
+            --min-read-len $min_read_len
+            -t \${GALAXY_SLOTS:-4}
+            | samtools view -b -u - |
+              samtools sort -@ \${GALAXY_SLOTS:-4} -T tmp -O bam -o output.bam -
     ]]></command>
     <inputs>
-        <param argument="-r" type="data"  format="fasta,fastq" label="reference sequence" />
-        <param argument="-d" type="data"  format="fasta,fastq" label="reads" />
-        <param name="preset" type="select" optional="True" label="Pre-set parameters to increase sensitivity for different sequencing technologies. (-x)">
-            <option value="illumina">illumina preset</option>
-            <option value="overlap">overlap preset</option>
-            <option value="sensitive">sensitive preset</option>
+        <param argument="-r" type="data" format="fasta,fastq" label="Reference sequence"/>
+        <param argument="-d" type="data" format="fasta,fastq" label="Reads"/>
+        <param name="preset" type="select" label="Pre-set parameters (-x)" optional="true">
+            <option value="illumina">Illumina</option>
+            <option value="overlap">Overlap</option>
+            <option value="sensitive">Sensitive</option>
         </param>
-<!-- 
-        <param type="data" name="reference" format="fasta,fastq" label="Sequences"/>
-        <param type="data" name="reads" format="fasta,fastq" label="Sequences"/>
-        <param type="data" name="overlaps" format="sam,tabular" label="Overlaps"/>
-        <param type="data" name="corrected_reads" format="fasta,fasta.gz,fastq,fastq.gz" label="Target sequences"/> -->
-
+        <!-- None of the presets above sets these options, so they can be
+             freely combined with a preset. -->
+        <param argument="--error-rate" type="float" min="0" max="1" value="0.45" label="Maximal error rate" help="Expected sequencing error rate, e.g. 0.15 for 15% errors."/>
+        <param argument="--min-read-len" type="integer" min="1" value="80" label="Minimal read length" help="Reads shorter than this are ignored."/>
+        <param argument="--extcigar" type="boolean" truevalue="--extcigar" falsevalue="" checked="false" label="Output extended CIGAR" help="Use = and X symbols instead of M in the CIGAR string."/>
     </inputs>
     <outputs>
-        <data name="output" format="bam" from_work_dir="output.bam" />
+        <data name="output" format="bam" from_work_dir="output.bam" label="GraphMap alignment on ${on_string}"/>
     </outputs>
     <tests>
-        <test>
-            <param name="r" value="Loman_E.coli_MAP006-1_2D_50x_first_500_reads.fasta"/>
-            <param name="d" value="E.coli_contigs.fasta"/>
-            <output name="output" ftype="bam" file="result1_map.bam" lines_diff="2"/>
+        <test expect_num_outputs="1">
+            <param name="r" value="Loman_E.coli_MAP006-1_2D_50x_first_500_reads.fasta" ftype="fasta"/>
+            <param name="d" value="E.coli_contigs.fasta" ftype="fasta"/>
+            <output name="output" file="result1_map.bam" ftype="bam" lines_diff="2"/>
         </test>
-        <test>
-            <param name="r" value="Loman_E.coli_MAP006-1_2D_50x_first_500_reads.fasta"/>
-            <param name="d" value="E.coli_contigs.fasta"/>
+        <test expect_num_outputs="1">
+            <param name="r" value="Loman_E.coli_MAP006-1_2D_50x_first_500_reads.fasta" ftype="fasta"/>
+            <param name="d" value="E.coli_contigs.fasta" ftype="fasta"/>
             <param name="preset" value="illumina"/>
-            <output name="output" ftype="bam" file="result2_map.bam" lines_diff="2"/>
+            <output name="output" file="result2_map.bam" ftype="bam" lines_diff="2"/>
         </test>
-        <test>
-            <param name="r" value="Loman_E.coli_MAP006-1_2D_50x_first_500_reads.fasta"/>
-            <param name="d" value="E.coli_contigs.fasta"/>
+        <test expect_num_outputs="1">
+            <param name="r" value="Loman_E.coli_MAP006-1_2D_50x_first_500_reads.fasta" ftype="fasta"/>
+            <param name="d" value="E.coli_contigs.fasta" ftype="fasta"/>
             <param name="preset" value="sensitive"/>
-            <output name="output" ftype="bam" file="result3_map.bam" lines_diff="2"/>
-        </test></tests>
-    <help><![CDATA[
-        GraphMap - A very accurate and sensitive long-read, high error-rate sequence mapper
-        GraphMap (c) by Ivan Sovic, Mile Sikic and Niranjan Nagarajan
-        GraphMap is licensed under The MIT License.
-    ]]></help>
-    <expand macro="citations" />
+            <output name="output" file="result3_map.bam" ftype="bam" lines_diff="2"/>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="r" value="Loman_E.coli_MAP006-1_2D_50x_first_500_reads.fasta" ftype="fasta"/>
+            <param name="d" value="E.coli_contigs.fasta" ftype="fasta"/>
+            <param name="error_rate" value="0.2"/>
+            <output name="output" file="result4_map.bam" ftype="bam" lines_diff="2"/>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+GraphMap - A very accurate and sensitive long-read, high error-rate sequence mapper.
+
+GraphMap has been developed to align long, error-prone third-generation sequencing data. It is designed to handle Oxford Nanopore MinION 1d and 2d reads with very high sensitivity and accuracy.
+
+For more information please take a look at the [GraphMap homepage](https://github.com/lbcb-sci/graphmap2).
+
+-----
+
+(c) Ivan Sovic, Mile Sikic, Niranjan Nagarajan.
+
+GraphMap is licensed under The MIT License.
+]]></help>
+    <expand macro="citations"/>
 </tool>
