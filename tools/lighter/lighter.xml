@@ -1,36 +1,71 @@
-<tool id="lighter" name="lighter" version="1.0" profile="16.04">
+<tool id="lighter" name="lighter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="16.04">
     <description>can correct the reads containing sequence errors</description>
-    <xrefs>
-        <xref type="bio.tools">lighter</xref>
-    </xrefs>
-    <requirements>
-        <requirement type="package" version="1.1.1">lighter</requirement>
-    </requirements>
-    <command><![CDATA[
-       lighter
-           #for $file in $r:
-               -r $file
-           #end for
-           #if str($kmer.k_select) == "smallk":
-               -k $kmer.k_parameter_string
-           #elif str($kmer.k_select) == "bigK":
-               -K $kmer.K_parameter_string 
-           #end if
-           -od ./
-           -t \${GALAXY_SLOTS:-4}
-           #if $maxcor:
-               -maxcor $maxcor
-           #end if
-           $trim
-           $discard
-           $noQual
-           #if $newQual:
-               -newQual '$newQual'
-           #end if
-           $stable
-            > $outfile
-    ]]>
-    </command>
+    <!-- No bio.tools xref: the registry has no entry for "lighter" (verified with
+         planemo's BioToolsValid check), so an xref would only produce a lint warning. -->
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+        ## Lighter derives the name of each corrected file from the input basename
+        ## ('X.fq' -> 'X.cor.fq'), so stage every input under a predictable name first.
+        #set $counter = 0
+        #for $file in $r:
+            #if str($file.ext).endswith('gz'):
+                #set $staged = 'input_' + str($counter) + '.fastq.gz'
+            #else if str($file.ext).startswith('fasta'):
+                #set $staged = 'input_' + str($counter) + '.fasta'
+            #else:
+                #set $staged = 'input_' + str($counter) + '.fastq'
+            #end if
+            ln -s -f '${file}' ${staged} &&
+            #set $counter = $counter + 1
+        #end for
+        lighter
+        #set $counter = 0
+        #for $file in $r:
+            #if str($file.ext).endswith('gz'):
+                #set $staged = 'input_' + str($counter) + '.fastq.gz'
+            #else if str($file.ext).startswith('fasta'):
+                #set $staged = 'input_' + str($counter) + '.fasta'
+            #else:
+                #set $staged = 'input_' + str($counter) + '.fastq'
+            #end if
+            -r ${staged}
+            #set $counter = $counter + 1
+        #end for
+        #if str($kmer.k_select) == "smallk":
+            -k $kmer.k_parameter_string
+        #elif str($kmer.k_select) == "bigK":
+            -K $kmer.K_parameter_string
+        #end if
+        -od ./
+        -t \${GALAXY_SLOTS:-4}
+        ## -zlib 0 keeps Lighter from gzipping the corrected reads, so the outputs can be
+        ## concatenated without depending on gzip being available at runtime.
+        -zlib 0
+        #if str($maxcor):
+            -maxcor $maxcor
+        #end if
+        $trim
+        $discard
+        $noQual
+        #if str($newQual):
+            -newQual '$newQual'
+        #end if
+        $stable
+        &&
+        ## Lighter writes one corrected file per input into the output directory; concatenate
+        ## them into the single Galaxy output dataset. The stem is globbed because Lighter
+        ## picks '.cor.fa' or '.cor.fq' from the file content, not from the file name.
+        cat /dev/null > $outfile
+        #set $counter = 0
+        #for $file in $r:
+            && cat input_${counter}.cor.* >> $outfile
+            #set $counter = $counter + 1
+        #end for
+    ]]></command>
     <inputs>
         <param argument="-r" multiple="True" type="data" format="fasta,fastq,fasta.gz,fastq.gz" label="Input file"/>
         <conditional name="kmer">
@@ -39,56 +74,98 @@
                 <option value="bigK">big K</option>
             </param>
             <when value="smallk">
-                <param name="k_parameter_string" size="30" type="text" value="13 20 0.2" label="type in 3 parameters"
-                    help="(—k kmer_length genome_size alpha)" />
+                <param name="k_parameter_string" size="30" type="text" value="13 20 0.2" label="type in 3 parameters" help="(-k kmer_length genome_size alpha)"/>
             </when>
             <when value="bigK">
-                <param name="K_parameter_string" size="30" type="text" value="13 20" label="type in 2 parameters"
-                    help="(—K kmer_length genome_size)" />
+                <param name="K_parameter_string" size="30" type="text" value="13 20" label="type in 2 parameters" help="(-K kmer_length genome_size). Alpha is estimated from the genome size in an extra pass."/>
             </when>
         </conditional>
-        <param argument="-maxcor" type="integer" value="4" optional="True" 
-            label="Maximum number of correction for within a kmer length window" help=""/>
-        <param argument="-trim" type="boolean" truevalue="-trim" falsevalue="" checked="False" 
-            label="Whether or not to allow trimming"/>
-        <param argument="-discard" type="boolean" truevalue="-discard" falsevalue="" checked="False" 
-            label="Whether or not to discard unfixable reads. Will lose paired-end matching when discarding"/>
-        <param argument="-noQual" type="boolean" truevalue="-noQual" falsevalue="" checked="False" 
-            label="Whether or not to ignore the quality socre"/>
-        <param argument="-newQual" size="30" type="text" value="" optional="True" 
-            label="Quality for the bases corrected to the specified score" help="" />
-        <param argument="-stable" type="boolean" truevalue="-stable" falsevalue="" checked="False"
-            label="Sequentialize the sampling stage, output the same result with different runs"/>
+        <param argument="-maxcor" type="integer" value="4" label="Maximum number of correction for within a kmer length window" help="Lighter raises this automatically when the estimated error rate is high; setting it explicitly disables that adjustment."/>
+        <param argument="-trim" type="boolean" truevalue="-trim" falsevalue="" checked="false" label="Whether or not to allow trimming"/>
+        <param argument="-discard" type="boolean" truevalue="-discard" falsevalue="" checked="false" label="Whether or not to discard unfixable reads. Will lose paired-end matching when discarding"/>
+        <param argument="-noQual" type="boolean" truevalue="-noQual" falsevalue="" checked="false" label="Whether or not to ignore the quality score"/>
+        <param argument="-newQual" size="30" type="text" value="" label="Quality for the bases corrected to the specified score" help="Only the first character of this field is used by Lighter (an ASCII quality character, e.g. I)."/>
+        <param argument="-stable" type="boolean" truevalue="-stable" falsevalue="" checked="false" label="Sequentialize the sampling stage, output the same result with different runs"/>
     </inputs>
     <outputs>
         <data name="outfile" format_source="r"/>
     </outputs>
     <tests>
-        <test>
+        <!-- Test values below avoid '.' so they are not mistaken for test-data file names.
+             '2e-1' is the same sampling rate as '0.2' and produces identical output.
+             The -k code path is deterministic across thread counts, so the output can be
+             compared byte for byte. -->
+        <test expect_num_outputs="1">
             <param name="r" value="bwa-mem-fastq1.fq"/>
-            <param name="k_select" value="smallk"/>
-            <param name="newQual" value="12 12 0.1"/>
+            <param name="kmer|k_select" value="smallk"/>
+            <param name="kmer|k_parameter_string" value="13 20 2e-1"/>
+            <param name="newQual" value="I"/>
             <param name="noQual" value="True"/>
             <param name="stable" value="False"/>
-            <output name="outfile" file="lighter_result1.fq"/>
+            <output name="outfile" ftype="fastqsanger" file="lighter_result1.fq">
+                <assert_contents>
+                    <has_line line="@M01368:8:000000000-A3GHV:1:1101:6911:8255/1 unfixable_error lc"/>
+                    <has_text text="M01368:8:000000000-A3GHV:1:1101:25545:21098/1"/>
+                </assert_contents>
+            </output>
         </test>
-        <test>
+        <!-- The -K code path samples differently with 1 thread than with more, so this
+             test asserts thread independent properties instead of a fixed file. -->
+        <test expect_num_outputs="1">
             <param name="r" value="bwa-mem-fastq1.fq"/>
-            <param name="k_select" value="bigK"/>
-            <param name="newQual" value="20 14"/>
+            <param name="kmer|k_select" value="bigK"/>
+            <param name="kmer|K_parameter_string" value="13 20"/>
+            <param name="newQual" value="2"/>
             <param name="noQual" value="False"/>
             <param name="stable" value="True"/>
-            <output name="outfile" file="lighter_result2.fq"/>
+            <output name="outfile" ftype="fastqsanger">
+                <assert_contents>
+                    <has_line line="@M01368:8:000000000-A3GHV:1:1101:6911:8255/1 unfixable_error lc"/>
+                    <has_text text="M01368:8:000000000-A3GHV:1:1101:18422:19051/1"/>
+                    <has_text text="unfixable_error"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
-    <help>
+    <help format="markdown"><![CDATA[
 **What it does**
 
-Lighter is a kmer-based error correction method for whole genome sequencing data. Lighter uses sampling
-(rather than counting) to obtain a set of kmers that are likely from the genome. Using this information,
-Lighter can correct the reads containing sequence errors.
-    </help>
-    <citations>
-        <citation type="doi">10.1186/s13059-014-0509-9</citation>
-    </citations>
-</tool> 
+**Lighter** is a kmer-based error correction method for whole genome sequencing data.
+Lighter uses sampling (rather than counting) to obtain a set of kmers that are likely from
+the genome, and uses that information to correct reads containing sequence errors.
+
+Because no kmer counting is performed, Lighter is fast and needs little memory, which makes
+it suitable for large whole-genome sequencing datasets.
+
+-----
+
+**Choosing k or K**
+
+* `-k kmer_length genome_size alpha` -- you supply the sampling rate `alpha` yourself.
+  A good starting point is `alpha = 7 / coverage`.
+* `-K kmer_length genome_size` -- Lighter estimates `alpha` from the average coverage in an
+  extra pass over the reads, which requires a reasonably accurate `genome_size`.
+
+The `genome_size` should be at least the size of the sequenced genome.
+
+-----
+
+**Output**
+
+The corrected reads from all input files are returned in a single dataset. Lighter annotates
+each read header with its correction status, for example `cor` (corrected),
+`bad_suffix` / `bad_prefix` (low quality stretch) or `unfixable_error`, with the reason being
+`lc` (low coverage), `ak` (ambiguous candidate kmer) or `oc` (over-corrected).
+
+-----
+
+**Notes**
+
+* `-stable` is accepted for backwards compatibility but is a no-op in current Lighter
+  releases; the corrected output is already reproducible across runs and thread counts.
+* Lighter 1.1.2 added `-saveTrustedKmers` / `-loadTrustedKmers` for persisting the trusted
+  kmer set between runs. `-saveTrustedKmers` makes Lighter stop after the sampling stage
+  without writing any corrected reads, so these options are not exposed here.
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
