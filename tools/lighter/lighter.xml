@@ -1,94 +1,180 @@
-<tool id="lighter" name="lighter" version="1.0" profile="16.04">
-    <description>can correct the reads containing sequence errors</description>
-    <xrefs>
-        <xref type="bio.tools">lighter</xref>
-    </xrefs>
-    <requirements>
-        <requirement type="package" version="1.1.1">lighter</requirement>
-    </requirements>
-    <command><![CDATA[
-       lighter
-           #for $file in $r:
-               -r $file
-           #end for
-           #if str($kmer.k_select) == "smallk":
-               -k $kmer.k_parameter_string
-           #elif str($kmer.k_select) == "bigK":
-               -K $kmer.K_parameter_string 
-           #end if
-           -od ./
-           -t \${GALAXY_SLOTS:-4}
-           #if $maxcor:
-               -maxcor $maxcor
-           #end if
-           $trim
-           $discard
-           $noQual
-           #if $newQual:
-               -newQual '$newQual'
-           #end if
-           $stable
-            > $outfile
-    ]]>
-    </command>
+<tool id="lighter" name="lighter" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1">
+    <description>kmer-based error correction for WGS reads</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+        ## Lighter derives the name of each corrected file from the input basename
+        ## ('X.fq' -> 'X.cor.fq'), so stage every input under a predictable name first.
+        ##
+        ## The staged names always end in '.gz': Lighter only gzip compresses its output
+        ## when the read file name ends in 'gz' and the compression level is > 0, and its
+        ## gzip reader transparently accepts uncompressed data. Staging every input under a
+        ## '.gz' name therefore makes the output gzip compressed regardless of whether the
+        ## incoming dataset was compressed or not.
+        #set $counter = 0
+        #for $file in $r:
+            ln -s -f '${file}' input_${counter}.fastq.gz &&
+            #set $counter = $counter + 1
+        #end for
+        lighter
+        #set $counter = 0
+        #for $file in $r:
+            -r input_${counter}.fastq.gz
+            #set $counter = $counter + 1
+        #end for
+        #if str($kmer.k_select) == "smallk":
+            -k $kmer.k_parameter_string
+        #elif str($kmer.k_select) == "bigK":
+            -K $kmer.K_parameter_string
+        #end if
+        -od ./
+        -t "\${GALAXY_SLOTS:-4}"
+        ## Compression level of the corrected reads. The level only takes effect because
+        ## the staged input names end in '.gz' (see above).
+        -zlib 1
+        #if str($maxcor):
+            -maxcor $maxcor
+        #end if
+        $trim
+        $discard
+        $noQual
+        #if str($newQual):
+            -newQual '$newQual'
+        #end if
+        $stable
+        &&
+        ## Lighter writes one corrected file per input into the output directory; concatenate
+        ## them into the single Galaxy output dataset. Concatenating gzip members yields a
+        ## valid gzip stream, so the members can simply be cat'ed together. The stem is
+        ## globbed because Lighter picks '.cor.fa' or '.cor.fq' from the file content, not
+        ## from the file name.
+        cat /dev/null > $outfile
+        #set $counter = 0
+        #for $file in $r:
+            && cat input_${counter}.cor.* >> $outfile
+            #set $counter = $counter + 1
+        #end for
+    ]]></command>
     <inputs>
-        <param argument="-r" multiple="True" type="data" format="fasta,fastq,fasta.gz,fastq.gz" label="Input file"/>
+        <param argument="-r" multiple="true" type="data" format="fasta,fastq,fasta.gz,fastq.gz" label="Input file(s)"/>
         <conditional name="kmer">
-            <param name="k_select" type="select" label="Do you want k or K?">
-                <option value="smallk">small k</option>
-                <option value="bigK">big K</option>
+            <param name="k_select" type="select" label="Kmer mode">
+                <option value="smallk" selected="true">-k: supply kmer length, genome size and alpha</option>
+                <option value="bigK">-K: supply kmer length and genome size, Lighter estimates alpha</option>
             </param>
             <when value="smallk">
-                <param name="k_parameter_string" size="30" type="text" value="13 20 0.2" label="type in 3 parameters"
-                    help="(—k kmer_length genome_size alpha)" />
+                <param name="k_parameter_string" type="text" value="13 20 0.2" label="kmer_length genome_size alpha">
+                    <help>Three space separated values: kmer length, genome size and the sampling rate alpha. A good starting point for alpha is 7 / coverage.</help>
+                </param>
             </when>
             <when value="bigK">
-                <param name="K_parameter_string" size="30" type="text" value="13 20" label="type in 2 parameters"
-                    help="(—K kmer_length genome_size)" />
+                <param name="K_parameter_string" type="text" value="13 20" label="kmer_length genome_size">
+                    <help>Two space separated values: kmer length and genome size. Lighter estimates alpha from the average coverage in an extra pass over the reads.</help>
+                </param>
             </when>
         </conditional>
-        <param argument="-maxcor" type="integer" value="4" optional="True" 
-            label="Maximum number of correction for within a kmer length window" help=""/>
-        <param argument="-trim" type="boolean" truevalue="-trim" falsevalue="" checked="False" 
-            label="Whether or not to allow trimming"/>
-        <param argument="-discard" type="boolean" truevalue="-discard" falsevalue="" checked="False" 
-            label="Whether or not to discard unfixable reads. Will lose paired-end matching when discarding"/>
-        <param argument="-noQual" type="boolean" truevalue="-noQual" falsevalue="" checked="False" 
-            label="Whether or not to ignore the quality socre"/>
-        <param argument="-newQual" size="30" type="text" value="" optional="True" 
-            label="Quality for the bases corrected to the specified score" help="" />
-        <param argument="-stable" type="boolean" truevalue="-stable" falsevalue="" checked="False"
-            label="Sequentialize the sampling stage, output the same result with different runs"/>
+        <param argument="-maxcor" type="integer" value="4" label="Maximum number of corrections allowed per read" help="Setting this value explicitly disables Lighter's automatic adjustment of the value when the error rate is high."/>
+        <param argument="-trim" type="boolean" checked="false" truevalue="-trim" falsevalue="" label="Allow trimming of reads with low quality stretches"/>
+        <param argument="-discard" type="boolean" checked="false" truevalue="-discard" falsevalue="" label="Discard reads that cannot be corrected" help="Discarded reads are not written to the output, which breaks the matching of paired end reads."/>
+        <param argument="-noQual" type="boolean" checked="false" truevalue="-noQual" falsevalue="" label="Ignore the quality scores of the input reads"/>
+        <param argument="-newQual" type="text" value="" label="Quality string used for corrected bases" help="Only the first character is used, e.g. 'I' for a quality of 40."/>
+        <param argument="-stable" type="boolean" checked="false" truevalue="-stable" falsevalue="" label="Keep the output stable across runs"/>
     </inputs>
     <outputs>
-        <data name="outfile" format_source="r"/>
+        <!-- Lighter is forced to write gzip compressed reads (see the command section), so
+             the output format is the gzipped variant of the input format. -->
+        <data name="outfile" format="fastqsanger.gz">
+            <change_format>
+                <when input_dataset="r" attribute="ext" value="fastq" format="fastq.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastqsanger" format="fastqsanger.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastqsolexa" format="fastqsolexa.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastqillumina" format="fastqillumina.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastqcssanger" format="fastqcssanger.gz"/>
+                <when input_dataset="r" attribute="ext" value="fasta" format="fasta.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastq.gz" format="fastq.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastqsanger.gz" format="fastqsanger.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastqsolexa.gz" format="fastqsolexa.gz"/>
+                <when input_dataset="r" attribute="ext" value="fastqillumina.gz" format="fastqillumina.gz"/>
+                <when input_dataset="r" attribute="ext" value="fasta.gz" format="fasta.gz"/>
+            </change_format>
+        </data>
     </outputs>
     <tests>
-        <test>
+        <!-- Test values below avoid '.' so they are not mistaken for test-data file names.
+             '2e-1' is the same sampling rate as '0.2' and produces identical output.
+             The expected files are kept uncompressed: with 'decompress' Galaxy detects the
+             gzip compression of the output from its magic bytes (not from the file name),
+             so no gzipped duplicates of the expected files are needed. -->
+        <test expect_num_outputs="1">
             <param name="r" value="bwa-mem-fastq1.fq"/>
-            <param name="k_select" value="smallk"/>
-            <param name="newQual" value="12 12 0.1"/>
+            <conditional name="kmer">
+                <param name="k_select" value="smallk"/>
+                <param name="k_parameter_string" value="13 20 2e-1"/>
+            </conditional>
+            <param name="newQual" value="I"/>
             <param name="noQual" value="True"/>
             <param name="stable" value="False"/>
-            <output name="outfile" file="lighter_result1.fq"/>
+            <output name="outfile" ftype="fastqsanger.gz" decompress="true" file="lighter_result1.fq">
+                <assert_contents>
+                    <has_line line="@M01368:8:000000000-A3GHV:1:1101:6911:8255/1 unfixable_error lc"/>
+                    <has_text text="M01368:8:000000000-A3GHV:1:1101:25545:21098/1"/>
+                </assert_contents>
+            </output>
         </test>
-        <test>
+        <!-- The -K code path samples differently with 1 thread than with more, so the
+             expected file was generated with the single thread that the Galaxy test
+             harness uses by default (the local job runner exports GALAXY_SLOTS=1). -->
+        <test expect_num_outputs="1">
             <param name="r" value="bwa-mem-fastq1.fq"/>
-            <param name="k_select" value="bigK"/>
-            <param name="newQual" value="20 14"/>
+            <conditional name="kmer">
+                <param name="k_select" value="bigK"/>
+                <param name="K_parameter_string" value="13 20"/>
+            </conditional>
+            <param name="newQual" value="2"/>
             <param name="noQual" value="False"/>
             <param name="stable" value="True"/>
-            <output name="outfile" file="lighter_result2.fq"/>
+            <output name="outfile" ftype="fastqsanger.gz" decompress="true" file="lighter_result2.fq">
+                <assert_contents>
+                    <has_line line="@M01368:8:000000000-A3GHV:1:1101:6911:8255/1 unfixable_error lc"/>
+                    <has_text text="M01368:8:000000000-A3GHV:1:1101:18422:19051/1"/>
+                    <has_text text="unfixable_error"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
-    <help>
+    <help format="markdown"><![CDATA[
 **What it does**
 
-Lighter is a kmer-based error correction method for whole genome sequencing data. Lighter uses sampling
-(rather than counting) to obtain a set of kmers that are likely from the genome. Using this information,
-Lighter can correct the reads containing sequence errors.
-    </help>
-    <citations>
-        <citation type="doi">10.1186/s13059-014-0509-9</citation>
-    </citations>
-</tool> 
+**Lighter** is a kmer-based error correction method for whole genome sequencing data.
+Lighter uses sampling (rather than counting) to obtain a set of kmers that are likely from
+the genome, and uses that information to correct reads containing sequence errors.
+
+Because no kmer counting is performed, Lighter is fast and needs little memory, which makes
+it suitable for large whole-genome sequencing datasets.
+
+-----
+
+**Choosing -k or -K**
+
+* `-k kmer_length genome_size alpha` -- you supply the sampling rate `alpha` yourself.
+  A good starting point is `alpha = 7 / coverage`.
+* `-K kmer_length genome_size` -- Lighter estimates `alpha` from the average coverage in an
+  extra pass over the reads, which requires a reasonably accurate `genome_size`.
+
+The `genome_size` should be at least the size of the sequenced genome.
+
+-----
+
+**Output**
+
+The corrected reads of all input files are returned in a single gzip compressed dataset.
+Lighter annotates each read header with its correction status, for example `cor`
+(corrected), `bad_suffix` / `bad_prefix` (low quality stretch) or `unfixable_error`, with
+the reason being `lc` (low coverage), `ak` (ambiguous candidate kmer) or `oc`
+(over-corrected).
+    ]]></help>
+    <expand macro="citations"/>
+</tool>
