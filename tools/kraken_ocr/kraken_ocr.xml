@@ -16,49 +16,75 @@
     <command detect_errors="exit_code"><![CDATA[
         #set $native_out_ext = 'txt'
         @SET_OUTPUT_EXTENSION@
-        @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
-
-        ln -s '$input_type.image' 'input.${input_type.image.ext}' &&
-        #if $input_type.source == 'segmented'
-            #set $segmentation_ext = 'xml'
-            #set $image_filename_jq_paths = {
-                'alto': '.alto.Description.sourceImageInformation.fileName',
-                'page.xml': '.PcGts.Page."@imageFilename"'
-            }
-            #set $image_filename_jq_path = $image_filename_jq_paths[str($input_type.segmentation.ext)]
-            xq -x --arg filename 'input.${input_type.image.ext}'
-                '$image_filename_jq_path = \$filename'
-                '$input_type.segmentation' > 'segmentation.${segmentation_ext}' &&
-        #end if
-
-        #if $input_type.image.ext != 'pdf'
-            ln -s '$output' 'kraken_output.${out_ext}' &&
-        #end if
-
         #if $model_source.source == 'history'
             #set $model_name = str($model_source.model.name)
             ln -s '$model_source.model' '$model_name' &&
         #end if
 
-        @RUN_KRAKEN_OCR@
-            #if $model_source.source == 'datatable'
-                --model '$model'
+        #set $is_collection = $input_type.source == 'segmented' and $input_type.input_source.source == 'collection'
+        #if $is_collection
+            #set $pairs = $input_type.input_source.segmentation_collection
+            mkdir -p results &&
+        #else
+            #set $pairs = [None]
+        #end if
+        #for $i, $pair in enumerate($pairs)
+            #if $is_collection
+                #set $image = $pair.forward
+                #set $segmentation = $pair.reverse
+            #elif $input_type.source == 'segmented'
+                #set $image = $input_type.input_source.image
+                #set $segmentation = $input_type.input_source.segmentation
             #else
-                --model '$model_name'
+                #set $image = $input_type.image
             #end if
-            --pad '$pad'
-            --temperature '$temperature'
-            $reordering.mode
-            #if $reordering.mode == '--reorder'
-                --base-dir '$reordering.base_dir'
+            @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
+            #if $input_type.source == 'segmented'
+                mkdir -p 'input_${i}' &&
+                ln -s '$image' 'input_${i}/input.${image.ext}' &&
+            #else
+                ln -s '$image' 'input.${image.ext}' &&
             #end if
-            #if $input_type.source == 'line'
-                --no-segmentation
+            #if $input_type.source == 'segmented'
+                #if $segmentation.ext == 'alto'
+                    #set $image_filename_jq_path = '.alto.Description.sourceImageInformation.fileName'
+                #else
+                    #set $image_filename_jq_path = '.PcGts.Page."@imageFilename"'
+                #end if
+                xq -x --arg filename 'input.${image.ext}'
+                    '$image_filename_jq_path = \$filename'
+                    '$segmentation' > 'input_${i}/segmentation.xml' &&
             #end if
-            --text-direction '$text_direction'
-            #if $no_legacy_polygons
-                --no-legacy-polygons
+            #if $is_collection
+                #set $ocr_output = 'results/page_%06d.%s' % ($i, $out_ext)
+            #else
+                #set $ocr_output = 'kraken_output.' + $out_ext
+                #if $image.ext != 'pdf'
+                    ln -s '$output' '$ocr_output' &&
+                #end if
             #end if
+            @RUN_KRAKEN_OCR@
+                #if $model_source.source == 'datatable'
+                    --model '$model'
+                #else
+                    --model '$model_name'
+                #end if
+                --pad '$pad'
+                --temperature '$temperature'
+                $reordering.mode
+                #if $reordering.mode == '--reorder'
+                    --base-dir '$reordering.base_dir'
+                #end if
+                #if $input_type.source == 'line'
+                    --no-segmentation
+                #end if
+                --text-direction '$text_direction'
+                #if $no_legacy_polygons
+                    --no-legacy-polygons
+                #end if
+            &&
+        #end for
+        true
     ]]></command>
     <expand macro="env_vars"/>
     <inputs>
@@ -68,8 +94,19 @@
                 <option value="line">Single line image</option>
             </param>
             <when value="segmented">
-                <param name="image" type="data" format="jpg,png,tiff" label="Image"/>
-                <param name="segmentation" type="data" format="alto,page.xml" label="Segmentation XML" help="File containing pre-segmented text regions in ALTO or PAGE format"/>
+                <conditional name="input_source">
+                    <param name="source" type="select" label="Input method">
+                        <option value="individual" selected="true">Select an individual image and segmentation</option>
+                        <option value="collection">List of paired datasets</option>
+                    </param>
+                    <when value="individual">
+                        <param name="image" type="data" format="jpg,png,tiff" label="Image"/>
+                        <param name="segmentation" type="data" format="alto,page.xml" label="Segmentation XML" help="File containing pre-segmented text regions in ALTO or PAGE format"/>
+                    </when>
+                    <when value="collection">
+                        <param name="segmentation_collection" type="data_collection" collection_type="list:paired" format="jpg,png,tiff,alto,page.xml" label="Image/segmentation pairs" help="For every pair, the forward element must be the source image and the reverse element must be its corresponding ALTO or PAGE XML segmentation."/>
+                    </when>
+                </conditional>
             </when>
             <when value="line">
                 <param name="image" type="data" format="jpg,png,tiff,pdf" label="Line image"/>
@@ -122,7 +159,12 @@
         </param>
         <param name="no_legacy_polygons" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Disable legacy polygon output" help="Choose whether to support legacy polygon formats in segmentation input. Enable it for compatibility with older segmentation files."/>
     </inputs>
-    <expand macro="segment_ocr_outputs" native_format="txt" input_image="input_type['image']"/>
+    <expand macro="segment_ocr_outputs" native_format="txt" input_image="(input_type['image'] if input_type['source'] == 'line' else input_type['input_source']['image'])" single_input="(input_type['source'] == 'line' or input_type['input_source']['source'] == 'individual')">
+        <collection name="paired_output" type="list" label="${tool.name} paired images on ${on_string}">
+            <filter>input_type['source'] == 'segmented' and input_type['input_source']['source'] == 'collection'</filter>
+            <expand macro="discover_ocr_outputs" native_format="txt" directory="results"/>
+        </collection>
+    </expand>
     <tests>
         <!-- Segmentation references input.png, but the uploaded image is JPEG. -->
         <test expect_num_outputs="1">
@@ -223,6 +265,34 @@
                 <has_text text="Detected 2 pages"/>
             </assert_stderr>
         </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_collection" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto">
+                <element name="page_two">
+                    <collection type="paired">
+                        <element name="forward" value="input_binarized.png" ftype="png"/>
+                        <element name="reverse" value="input_binarized_seg_page.xml" ftype="page.xml"/>
+                    </collection>
+                </element>
+            </expand>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-n"/>
+            <output_collection name="paired_output" type="list" count="2">
+                <element name="page_000000" ftype="txt">
+                    <assert_contents><has_text text="HISTOIRE"/></assert_contents>
+                </element>
+                <element name="page_000001" ftype="txt">
+                    <assert_contents><has_text text="HISTOIRE"/></assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_failure="true">
+            <expand macro="use_presegmented_collection" image="input_2pages.tiff" image_ftype="tiff" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <assert_stderr>
+                <has_text text="multi-page TIF(F) input is not supported"/>
+                <has_text text="Detected 2 pages"/>
+            </assert_stderr>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
@@ -238,6 +308,10 @@ For document images, a segmentation file in
 [PAGE XML](https://github.com/PRImA-Research-Lab/PAGE-XML/wiki) format is required.
 This additional input file can be produced by the Kraken segmentation tool,
 which is also available in the Kraken OCR suite.
+Select an individual image and segmentation, or provide a `list:paired` collection:
+
+- **forward**: source image in PNG, JPEG, or TIFF format
+- **reverse**: corresponding ALTO or PAGE XML segmentation
 
 The OCR process requires a pre-trained model. You can either upload your own model in
 [mlmodel](https://apple.github.io/coremltools/mlmodel/index.html) or
