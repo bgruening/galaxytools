@@ -3,8 +3,11 @@
     <macros>
         <import>macros.xml</import>
         <import>macros_for_testing.xml</import>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
-    <expand macro="requirements"/>
+    <expand macro="requirements">
+        <requirement type="package" version="4.1.2">yq</requirement>
+    </expand>
     <creator>
         <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
         <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
@@ -17,8 +20,15 @@
 
         ln -s '$input_type.image' 'input.${input_type.image.ext}' &&
         #if $input_type.source == 'segmented'
-           #set $segmentation_ext = 'xml'
-            ln -s '$input_type.segmentation' 'segmentation.${segmentation_ext}' &&
+            #set $segmentation_ext = 'xml'
+            #set $image_filename_jq_paths = {
+                'alto': '.alto.Description.sourceImageInformation.fileName',
+                'page.xml': '.PcGts.Page."@imageFilename"'
+            }
+            #set $image_filename_jq_path = $image_filename_jq_paths[str($input_type.segmentation.ext)]
+            xq -x --arg filename 'input.${input_type.image.ext}'
+                '$image_filename_jq_path = \$filename'
+                '$input_type.segmentation' > 'segmentation.${segmentation_ext}' &&
         #end if
 
         #if $input_type.image.ext != 'pdf'
@@ -114,6 +124,29 @@
     </inputs>
     <expand macro="segment_ocr_outputs" native_format="txt" input_image="input_type['image']"/>
     <tests>
+        <!-- Segmentation references input.png, but the uploaded image is JPEG. -->
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" image="input.jpg" image_ftype="jpg" segmentation="input_binarized_seg_alto.xml" segmentation_ftype="alto"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-a"/>
+            <output name="output" ftype="alto">
+                <assert_contents>
+                    <xml_element path=".//@NS_ALTO@fileName[.='input.jpg']"/>
+                    <has_text text="HISTOIRE"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_input" image="input.jpg" image_ftype="jpg" segmentation="input_binarized_seg_page.xml" segmentation_ftype="page.xml"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-x"/>
+            <output name="output" ftype="page.xml">
+                <assert_contents>
+                    <xml_element path="./@NS_PAGE@Page[@imageFilename='input.jpg']"/>
+                    <has_text text="HISTOIRE"/>
+                </assert_contents>
+            </output>
+        </test>
         <expand macro="test_bidi_reordering" mode="--reorder" bidi_value="True">
             <param name="base_dir" value="auto"/>
         </expand>
