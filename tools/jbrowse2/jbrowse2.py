@@ -20,7 +20,7 @@ from collections import defaultdict
 logging.basicConfig(level=logging.DEBUG)
 log = logging.getLogger("jbrowse")
 
-JB2VER = "v2.15.4"
+JB2VER = "v4.3.0"
 # version pinned if cloning - but not cloning now
 logCommands = True
 # useful for seeing what's being written but not for production setups
