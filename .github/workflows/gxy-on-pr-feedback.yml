@@ -1,16 +1,65 @@
 on:
   pull_request:
     types: [labeled]
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: "PR number to address feedback on"
+        required: true
+        type: string
+      max_iterations:
+        description: "Override max tool iterations per round (blank = config default)"
+        required: false
+        type: string
+        default: ""
+      max_retries:
+        description: "Override max validation retry rounds (blank = config default)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   address-feedback:
     name: Address PR Feedback
-    if: contains(github.event.pull_request.labels.*.name, 'address-feedback')
+    # Dual-match: both the prefixed (tool-bot:*) and original unprefixed label
+    # names trigger. If your repo only has the prefixed labels (e.g. created by
+    # scripts/create-labels.sh), you can drop the unprefixed alternative.
+    if: contains(github.event.pull_request.labels.*.name, 'tool-bot:address-feedback') || contains(github.event.pull_request.labels.*.name, 'address-feedback') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: read
+      checks: read
+    # Shared group with on-pr-review: a review run must wait for a feedback
+    # run to finish pushing, or it reports findings on superseded files.
+    concurrency:
+      group: pr-${{ github.event.pull_request.number || inputs.pr_number }}
+      cancel-in-progress: false
+    env:
+      PR_NUMBER: ${{ github.event.pull_request.number || inputs.pr_number }}
     steps:
+      - name: Check PR is not from a fork
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # gh resolves the repo from git remotes — this step runs before
+          # checkout, so there is no .git and gh needs GH_REPO explicitly.
+          GH_REPO: ${{ github.repository }}
+        run: |
+          HEAD_REPO=$(gh pr view $PR_NUMBER --json headRepository --jq '.headRepository.nameWithOwner')
+          if [ "$HEAD_REPO" != "${{ github.repository }}" ]; then
+            # Label-triggered runs on fork PRs get a read-only token, so a
+            # comment can't post anyway — the log line is the message.
+            echo "PR head is on fork $HEAD_REPO — feedback requires same-repo branches."
+            exit 1
+          fi
+      # refs/pull/<N>/head lives on the base repo, so it resolves for fork
+      # PRs too — and for workflow_dispatch runs, where pull_request is null.
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref }}
+          persist-credentials: false
+          ref: refs/pull/${{ env.PR_NUMBER }}/head
           fetch-depth: 0
       - name: Restore config from default branch
         run: |
@@ -20,17 +69,24 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "🔧 Addressing feedback — [view progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          gh pr comment $PR_NUMBER --body "🔧 Addressing feedback — [view progress](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --no-cache-dir gxy-tool-bot==0.1.2
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.1
       - run: pip install "planemo>=0.75.43"
+      - name: Install micromamba
+        run: |
+          curl -Ls "https://micro.mamba.pm/api/micromamba/linux-64/latest" | tar -xvj -C /tmp
+          echo "/tmp/bin" >> $GITHUB_PATH
       - name: Remove address-feedback label
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr edit ${{ github.event.pull_request.number }} \
+          # Remove whichever spelling(s) exist — prefixed and legacy.
+          gh pr edit $PR_NUMBER \
+            --remove-label "tool-bot:address-feedback" || true
+          gh pr edit $PR_NUMBER \
             --remove-label "address-feedback" || true
       - name: Find tool directory
         id: find_tool_dir
@@ -38,14 +94,27 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # PR title format: "tool_dir: auto-generated tool wrapper (issue #N)"
-          PR_TITLE=$(gh pr view ${{ github.event.pull_request.number }} --json title --jq '.title' 2>/dev/null || echo "")
+          PR_TITLE=$(gh pr view $PR_NUMBER --json title --jq '.title' 2>/dev/null || echo "")
           TOOL_DIR=$(echo "$PR_TITLE" | cut -d':' -f1 | xargs)
-          # Fallback: check for .tool-name in the PR branch
-          if [ -z "$TOOL_DIR" ] && [ -f tools/*/.tool-name ]; then
-            TOOL_DIR=$(cat tools/*/.tool-name 2>/dev/null | head -1)
+          # Fallback: check for .tool-name in the PR branch (find, not a
+          # glob test — a bare tools/*/ glob errors on multiple matches).
+          TOOL_NAME_FILE=$(find tools -maxdepth 2 -name .tool-name 2>/dev/null | head -1)
+          if [ -z "$TOOL_DIR" ] && [ -n "$TOOL_NAME_FILE" ]; then
+            TOOL_DIR=$(head -1 "$TOOL_NAME_FILE" 2>/dev/null)
+          fi
+          # Fallback: derive from the PR's changed files under tools/
+          if [ -z "$TOOL_DIR" ]; then
+            TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+' | sort -u | head -1)
+            [ -n "$TOOL_DIR" ] && echo "Derived tool directory from PR diff: $TOOL_DIR"
           fi
           if [ -z "$TOOL_DIR" ]; then
-            echo "Could not determine tool directory from PR title or .tool-name"
+            echo "Could not determine tool directory from PR title, .tool-name, or changed files"
+            exit 1
+          fi
+          # TOOL_DIR feeds 'rm -rf tools/$TOOL_DIR' later — reject anything
+          # that isn't a plain directory name (traversal via a retitled PR).
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+            echo "Refusing unsafe tool directory name: $TOOL_DIR"
             exit 1
           fi
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
@@ -55,13 +124,24 @@ jobs:
         env:
           GXY_TOOL_BOT_API_KEY: ${{ secrets.GXY_TOOL_BOT_API_KEY }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          MAX_ITERATIONS_INPUT: ${{ inputs.max_iterations }}
+          MAX_RETRIES_INPUT: ${{ inputs.max_retries }}
         run: |
+          OVERRIDE_ARGS=()
+          if [ -n "$MAX_ITERATIONS_INPUT" ]; then
+            OVERRIDE_ARGS+=(--max-iterations "$MAX_ITERATIONS_INPUT")
+          fi
+          if [ -n "$MAX_RETRIES_INPUT" ]; then
+            OVERRIDE_ARGS+=(--max-retries "$MAX_RETRIES_INPUT")
+          fi
           gxy-tool-bot address-feedback \
-            --pr ${{ github.event.pull_request.number }} \
+            --pr $PR_NUMBER \
             --config .gxy-tool-bot.yml \
             --tool-dir tools/${{ steps.find_tool_dir.outputs.tool_dir }} \
-            --actor ${{ github.event.sender.login }} \
-            --commit-msg-path $GITHUB_WORKSPACE/.commit-msg
+            --actor ${{ github.event.sender.login || 'manual' }} \
+            --commit-msg-path $GITHUB_WORKSPACE/.commit-msg \
+            "${OVERRIDE_ARGS[@]}"
       - name: Format updated XML with planemo
         if: steps.address.outcome == 'success'
         run: |
@@ -71,12 +151,14 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # Checkout does not persist the token; git push gets it from GH_TOKEN via gh.
+          gh auth setup-git
           git config user.name "gxy-tool-bot"
           git config user.email "gxy-tool-bot@users.noreply.github.com"
           TOOL_DIR=${{ steps.find_tool_dir.outputs.tool_dir }}
           rm -f "tools/$TOOL_DIR/.tool-name"
           # Detect files that are gitignored (e.g. .tar test data)
-          IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --files-from=- 2>/dev/null || true)
+          IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --stdin 2>/dev/null || true)
           # Add everything that isn't ignored
           git add tools/$TOOL_DIR/ || true
           if git diff --cached --quiet; then
@@ -86,10 +168,14 @@ jobs:
             if [ -f "$GITHUB_WORKSPACE/.commit-msg" ]; then
               COMMIT_MSG=$(cat "$GITHUB_WORKSPACE/.commit-msg")
             else
-              COMMIT_MSG="Address feedback on PR #${{ github.event.pull_request.number }}"
+              COMMIT_MSG="Address feedback on PR #$PR_NUMBER"
             fi
             git commit -m "$COMMIT_MSG"
-            git push
+            # Checked out refs/pull/<N>/head (detached HEAD) — push must be
+            # explicit. The fork check above guarantees the PR head branch
+            # lives in this repo, so this always targets the PR's own branch.
+            HEAD_BRANCH=$(gh pr view $PR_NUMBER --json headRefName --jq '.headRefName')
+            git push origin "HEAD:$HEAD_BRANCH"
           fi
           # Clean up intermediary file
           rm -f "$GITHUB_WORKSPACE/.commit-msg"
@@ -100,7 +186,7 @@ jobs:
               IGNORED_MSG+=" - \`$f\`\n"
             done
             IGNORED_MSG+="\nThese files are needed for the tool tests. To include them, a maintainer can run \`git add -f\` for each file, or download them from the [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
-            gh pr comment ${{ github.event.pull_request.number }} --body "$(echo -e "$IGNORED_MSG")"
+            gh pr comment $PR_NUMBER --body "$(echo -e "$IGNORED_MSG")"
           fi
       - name: Upload gitignored files as artifacts
         if: steps.address.outcome == 'success'
@@ -116,7 +202,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -f "$GITHUB_WORKSPACE/.validation-failed" ]; then
-            gh pr comment ${{ github.event.pull_request.number }} --body "⚠️ Validation issues were found after addressing feedback. Add the \`address-feedback\` label to have the bot attempt fixes again."
+            gh pr comment $PR_NUMBER --body "⚠️ Validation issues were found after addressing feedback. Add the \`tool-bot:address-feedback\` (or \`address-feedback\`) label to have the bot attempt fixes again."
             rm -f "$GITHUB_WORKSPACE/.validation-failed"
           fi
       - name: Handle failure
@@ -124,4 +210,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh pr comment ${{ github.event.pull_request.number }} --body "⚠️ Failed to address feedback. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          if [ -f "$GITHUB_WORKSPACE/.gave-up" ]; then
+            # The CLI already posted the agent's give-up reason — don't post
+            # a second, contradictory comment.
+            rm -f "$GITHUB_WORKSPACE/.gave-up"
+          else
+            gh pr comment $PR_NUMBER --body "⚠️ Failed to address feedback. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi

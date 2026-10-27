@@ -1,8 +1,25 @@
 <tool id="3dtrees_raycloudtools" name="3Dtrees: RayCloudTools" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1" license="BSD-3-Clause">
     <description>Tree instance segmentation</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.2.1</token>
+        <token name="@TOOL_VERSION@">1.2.3</token>
         <token name="@VERSION_SUFFIX@">0</token>
+        <xml name="test_mesh_outputs">
+            <output name="tree_mesh_ply" file="mikro_trees_mesh.ply" compare="sim_size" delta="200" ftype="plybinary">
+                <assert_contents>
+                    <has_text text="format binary_little_endian 1.0"/>
+                    <has_text text="element face 540"/>
+                    <has_text text="property uint tree_id"/>
+                    <has_text text="rct_tree_count 2"/>
+                </assert_contents>
+            </output>
+            <output name="terrain_mesh_ply" file="mikro_mesh.ply" compare="sim_size" delta="200" ftype="plybinary">
+                <assert_contents>
+                    <has_text text="format binary_little_endian 1.0"/>
+                    <has_text text="element face 444"/>
+                    <not_has_text text="property uint tree_id"/>
+                </assert_contents>
+            </output>
+        </xml>
     </macros>
     <requirements>
         <container type="docker">
@@ -11,10 +28,9 @@
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
-    #set $input_name = str($input.element_identifier)
-        ln -sf '$input' '${input_name}.${input.ext}' &&
+        ln -sf '$input' input.laz &&
         python3 -u /src/run.py
-        --dataset-path '${input_name}.${input.ext}'
+        --dataset-path input.laz
         --output-dir 'out'
         --gradient '$gradient'
         --max-diameter '$max_diameter'
@@ -30,13 +46,12 @@
         $branch_data
         &&
         ## Mesh artifacts can be absent depending on the run
-        mv "out/${input_name}_segmented.laz" '$segmented_laz' &&
-        if [ -f "out/${input_name}_trees_mesh.ply" ]; then mv "out/${input_name}_trees_mesh.ply" '$tree_mesh_ply'; fi &&
-        if [ -f "out/${input_name}_mesh.ply" ]; then mv "out/${input_name}_mesh.ply" '$terrain_mesh_ply'; fi &&
+        mv "out/input_segmented.laz" '$segmented_laz' &&
+        if [ -f "out/input_trees_mesh.ply" ]; then mv "out/input_trees_mesh.ply" '$tree_mesh_ply'; fi &&
+        if [ -f "out/input_mesh.ply" ]; then mv "out/input_mesh.ply" '$terrain_mesh_ply'; fi &&
+        mv "out/input_trees.txt" '$tree_model_txt'
         #if $treeinfo
-            mv "out/${input_name}_trees_info.txt" '$tree_info_txt'
-        #else
-            mv "out/${input_name}_trees.txt" '$tree_model_txt'
+            && mv "out/input_trees_info.txt" '$tree_info_txt'
         #end if
         ]]>
     </command>
@@ -62,9 +77,7 @@
 
     <outputs>
         <data name="segmented_laz" format="laz" label="RCT: Segmented point cloud"/>
-        <data name="tree_model_txt" format="txt" label="RCT: Tree-file">
-            <filter>not treeinfo</filter>
-        </data>
+        <data name="tree_model_txt" format="txt" label="RCT: Tree-file"/>
         <data name="tree_info_txt" format="txt" label="RCT: Tree-file incl. treeinfo">
             <filter>treeinfo</filter>
         </data>
@@ -73,21 +86,102 @@
     </outputs>
 
     <tests>
+        <!-- Extensionless fixture matches the original wrapper test convention.
+             The legacy command appends the extension to the dataset identifier. -->
+        <!-- Default outputs: the same no-GPS input, four output datasets. -->
         <test expect_num_outputs="4">
-            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
-            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
-            <output name="tree_model_txt" file="Example_Tree_RCT_trees.txt" compare="contains" ftype="txt"/>
-            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
-            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <param name="input" value="mikro" ftype="laz"/>
+            <output name="segmented_laz" file="mikro_segmented.laz" compare="sim_size" delta="2000" ftype="laz">
+                <assert_contents>
+                    <has_size size="95000" delta="2000"/>
+                    <has_text text="LASF"/>
+                    <has_text text="PredInstance_RCT"/>
+                    <not_has_text text="PredBranch_RCT"/>
+                </assert_contents>
+            </output>
+            <output name="tree_model_txt" file="mikro_trees.txt" compare="contains" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                    <not_has_text text="DBH"/>
+                    <not_has_text text="branch_order"/>
+                </assert_contents>
+            </output>
+            <expand macro="test_mesh_outputs"/>
         </test>
-        <!-- Test 2: treeinfo enabled -->
-        <test expect_num_outputs="4">
-            <param name="input" value="Example_Tree_RCT" ftype="laz"/>
+        <!-- Tree information: the same no-GPS input, five output datasets. -->
+        <test expect_num_outputs="5">
+            <param name="input" value="mikro" ftype="laz"/>
             <param name="treeinfo" value="true"/>
-            <output name="segmented_laz" file="Example_Tree_RCT_segmented.laz" compare="sim_size" delta="5000" ftype="laz"/>
-            <output name="tree_info_txt" file="Example_Tree_RCT_trees_info.txt" compare="contains" ftype="txt"/>
-            <output name="tree_mesh_ply" file="Example_Tree_RCT_trees_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
-            <output name="terrain_mesh_ply" file="Example_Tree_RCT_mesh.ply" compare="sim_size" delta="20000" ftype="plybinary"/>
+            <output name="segmented_laz" file="mikro_segmented.laz" compare="sim_size" delta="2000" ftype="laz">
+                <assert_contents>
+                    <has_size size="95000" delta="2000"/>
+                    <has_text text="LASF"/>
+                    <has_text text="PredInstance_RCT"/>
+                    <not_has_text text="PredBranch_RCT"/>
+                </assert_contents>
+            </output>
+            <output name="tree_info_txt" file="mikro_trees_info.txt" compare="contains" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                    <has_text text="DBH"/>
+                    <not_has_text text="branch_order"/>
+                </assert_contents>
+            </output>
+            <expand macro="test_mesh_outputs"/>
+        </test>
+        <!-- Branch labels and attributes: the same no-GPS input, five output datasets. -->
+        <test expect_num_outputs="5">
+            <param name="input" value="mikro" ftype="laz"/>
+            <param name="treeinfo" value="true"/>
+            <param name="branch_segmentation" value="true"/>
+            <param name="branch_data" value="true"/>
+            <output name="segmented_laz" file="mikro_branch_segmented.laz" compare="sim_size" delta="2000" ftype="laz">
+                <assert_contents>
+                    <has_size size="95000" delta="2000"/>
+                    <has_text text="LASF"/>
+                    <has_text text="PredInstance_RCT"/>
+                    <has_text text="PredBranch_RCT"/>
+                </assert_contents>
+            </output>
+            <output name="tree_info_txt" file="mikro_trees_info_branch.txt" compare="contains" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                    <has_text text="DBH"/>
+                    <has_text text="branch_order"/>
+                </assert_contents>
+            </output>
+            <expand macro="test_mesh_outputs"/>
+        </test>
+        <test expect_num_outputs="5">
+            <param name="input" value="ground" ftype="laz"/>
+            <param name="treeinfo" value="true"/>
+            <output name="segmented_laz" ftype="laz">
+                <assert_contents>
+                    <has_text text="PredInstance_RCT"/>
+                </assert_contents>
+            </output>
+            <output name="tree_model_txt" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                </assert_contents>
+            </output>
+            <output name="tree_info_txt" ftype="txt">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_text text="x,y,z,radius,parent_id,section_id"/>
+                </assert_contents>
+            </output>
+            <output name="tree_mesh_ply" ftype="plybinary">
+                <assert_contents>
+                    <has_text text="rct_tree_count 0"/>
+                    <has_text text="element vertex 0"/>
+                    <has_text text="element face 0"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
 

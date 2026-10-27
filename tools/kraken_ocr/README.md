@@ -37,6 +37,7 @@ Below is an example `job_conf.xml`:
 </job_conf>
 ```
 
+
 Note, GPU processing is only supported for kraken `segment` and `ocr`.
 
 ## Test-data Sources & Attribution
