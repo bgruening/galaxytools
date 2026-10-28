@@ -7,52 +7,49 @@
     <expand macro="requirements"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
-#import re
-#set $bam_basename = re.sub('[^\w\.\-]', '_', str($bam.element_identifier))
-ln -s '${bam}' '${bam_basename}.bam' &&
-#if $bam.metadata.bam_index:
-    ln -s '${bam.metadata.bam_index}' '${bam_basename}.bam.bai' &&
-#else
-    samtools index '${bam_basename}.bam' &&
-#end if
+## Fixed names avoid double extensions: FADU derives the index path and the
+## output filename (BAM basename + '.counts.txt') from the BAM path, which
+## behaves unpredictably when the BAM filename contains '.bam' more than once.
+ln -s '${bam}' input.bam &&
+ln -s '${bam.metadata.bam_index}' input.bam.bai &&
 mkdir -p fadu_output &&
 fadu
-    -b '${bam_basename}.bam'
+    -b 'input.bam'
     -g '${gff3}'
-    -o fadu_output
+    -o 'fadu_output'
     -s '${stranded}'
     -f '${feature_type}'
     -a '${attribute_type}'
     #if $exclude_regions:
         -x '${exclude_regions}'
     #end if
-    ${keep_only_proper_pairs}
-    #if str($max_fragment_size) != '' and str($max_fragment_size) != 'None':
-        -m ${max_fragment_size}
+    ${fragment_handling.keep_only_proper_pairs}
+    #if str($fragment_handling.max_fragment_size) != '' and str($fragment_handling.max_fragment_size) != 'None':
+        -m ${fragment_handling.max_fragment_size}
     #end if
     #if str($multimapped.multimapped_selector) == 'remove':
         -M
     #else:
         -e ${multimapped.em_iterations}
     #end if
-    ${no_output_header}
-    --log_level '${log_level}'
-&& mv 'fadu_output/${bam_basename}.counts.txt' '$output_counts'
+    ${output_options.no_output_header}
+    --log_level '${output_options.log_level}'
+&& mv 'fadu_output/input.counts.txt' '$output_counts'
     ]]></command>
     <inputs>
-        <param name="bam" type="data" format="bam" label="Position-sorted alignments" help="Coordinate-sorted BAM file. SAM input is not supported. A BAM index is required; if the input dataset carries one it is reused, otherwise it is created automatically."/>
+        <param name="bam" type="data" format="bam" label="Position-sorted alignments" help="Coordinate-sorted BAM file. SAM input is not supported. The BAM index is read automatically."/>
         <param name="gff3" type="data" format="gff3" label="Annotation" help="GFF3 file; GTF is not supported. Feature types and attribute keys are matched exactly (case-sensitive)."/>
         <param name="exclude_regions" type="data" format="bed" optional="true" label="Exclude regions" help="Optional BED file; alignments overlapping these regions are ignored, e.g. to skip rRNA/tRNA contamination."/>
-        <param name="stranded" type="select" label="Strandedness" help="How the read strand relates to the reference strand.">
+        <param name="stranded" argument="-s" type="select" label="Strandedness" help="How the read strand relates to the reference strand.">
             <option value="no" selected="true">no (unstranded)</option>
             <option value="yes">yes</option>
             <option value="reverse">reverse</option>
         </param>
-        <param name="feature_type" type="text" value="gene" label="Feature type" help="Only GFF3 records of this type (column 3) are counted. Case-sensitive, e.g. gene or CDS.">
-            <validator type="regex" message="Feature type must be a non-empty string without whitespace.">^\S+$</validator>
+        <param name="feature_type" argument="-f" type="text" value="gene" label="Feature type" help="Only GFF3 records of this type (column 3) are counted. Case-sensitive, e.g. gene or CDS.">
+            <validator type="regex" message="Feature type must only contain letters, digits, underscores, dots, colons and dashes.">^[\w\.\:\-]+$</validator>
         </param>
-        <param name="attribute_type" type="text" value="ID" label="Attribute type" help="GFF3 attribute key (column 9) used as the feature identifier. Case-sensitive, e.g. ID or locus_tag.">
-            <validator type="regex" message="Attribute type must be a non-empty string without whitespace.">^\S+$</validator>
+        <param name="attribute_type" argument="-a" type="text" value="ID" label="Attribute type" help="GFF3 attribute key (column 9) used as the feature identifier. Case-sensitive, e.g. ID or locus_tag.">
+            <validator type="regex" message="Attribute type must only contain letters, digits, underscores, dots, colons and dashes.">^[\w\.\:\-]+$</validator>
         </param>
         <section name="fragment_handling" title="Fragment handling" expanded="false">
             <param name="keep_only_proper_pairs" argument="-p" type="boolean" truevalue="-p" falsevalue="" checked="false" label="Keep only proper pairs" help="Restrict counting to alignments flagged as properly paired. Fragments exceeding the maximum fragment size are discarded when this is set."/>
@@ -69,8 +66,8 @@ fadu
             <when value="remove"/>
         </conditional>
         <section name="output_options" title="Output options" expanded="false">
-            <param argument="--no_output_header" type="boolean" truevalue="--no_output_header" falsevalue="" checked="false" label="Omit header line" help="Write the counts table without the 'featureID uniq_len num_alignments counts tpm' header line."/>
-            <param argument="--log_level" type="select" label="Log level">
+            <param name="no_output_header" argument="--no_output_header" type="boolean" truevalue="--no_output_header" falsevalue="" checked="false" label="Omit header line" help="Write the counts table without the 'featureID uniq_len num_alignments counts tpm' header line."/>
+            <param name="log_level" argument="--log_level" type="select" label="Log level" help="Verbosity of the log messages written to stderr.">
                 <option value="DEBUG">DEBUG</option>
                 <option value="INFO" selected="true">INFO</option>
                 <option value="WARNING">WARNING</option>
@@ -88,13 +85,16 @@ fadu
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
             <output name="output_counts" ftype="tabular" file="expected_default.counts.txt"/>
         </test>
-        <!-- Test 2: reverse stranded, CDS features -->
+        <!-- Test 2: reverse stranded, CDS features (upstream example command) -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
             <param name="stranded" value="reverse"/>
             <param name="feature_type" value="CDS"/>
             <param name="attribute_type" value="ID"/>
+            <assert_command>
+                <has_text text="-s 'reverse'"/>
+            </assert_command>
             <output name="output_counts" ftype="tabular" file="expected.counts.txt"/>
         </test>
         <!-- Test 3: remove multimapped reads instead of EM -->
@@ -107,6 +107,9 @@ fadu
             <conditional name="multimapped">
                 <param name="multimapped_selector" value="remove"/>
             </conditional>
+            <assert_command>
+                <has_text text="-M"/>
+            </assert_command>
             <output name="output_counts" ftype="tabular" file="expected_M.counts.txt"/>
         </test>
         <!-- Test 4: explicit EM iteration count -->
@@ -157,6 +160,8 @@ fadu
 FADU quantifies gene (or CDS) expression for **prokaryotic RNA-Seq** from a position-sorted BAM and a GFF3 annotation. Because prokaryotic transcripts are frequently polycistronic (operons), fragments often span several neighbouring features; instead of discarding those fragments, FADU assigns each one **fractional counts proportional to the overlap** between the fragment and the non-overlapping portion of each feature. Single-end reads are weighted half of paired fragments to avoid overcounting.
 
 **Inputs:** position-sorted BAM + GFF3 annotation. SAM input and GTF annotations are not supported, and eukaryotic (splice-aware) data is not supported.
+
+Documentation: https://igs.github.io/FADU/
 
 -----
 
