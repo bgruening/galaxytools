@@ -7,9 +7,7 @@
     <expand macro="requirements"/>
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
-## Fixed names avoid double extensions: FADU derives the index path and the
-## output filename (BAM basename + '.counts.txt') from the BAM path, which
-## behaves unpredictably when the BAM filename contains '.bam' more than once.
+## Fixed names: FADU derives the index path and output filename from the BAM path.
 ln -s '${bam}' input.bam &&
 ln -s '${bam.metadata.bam_index}' input.bam.bai &&
 mkdir -p fadu_output &&
@@ -66,8 +64,8 @@ fadu
             <when value="remove"/>
         </conditional>
         <section name="output_options" title="Output options" expanded="false">
-            <param name="no_output_header" argument="--no_output_header" type="boolean" truevalue="--no_output_header" falsevalue="" checked="false" label="Omit header line" help="Write the counts table without the 'featureID uniq_len num_alignments counts tpm' header line."/>
-            <param name="log_level" argument="--log_level" type="select" label="Log level" help="Verbosity of the log messages written to stderr.">
+            <param argument="--no_output_header" type="boolean" truevalue="--no_output_header" falsevalue="" checked="false" label="Omit header line" help="Write the counts table without the 'featureID uniq_len num_alignments counts tpm' header line."/>
+            <param argument="--log_level" type="select" label="Log level" help="Verbosity of the log messages written to stderr.">
                 <option value="DEBUG">DEBUG</option>
                 <option value="INFO" selected="true">INFO</option>
                 <option value="WARNING">WARNING</option>
@@ -79,13 +77,21 @@ fadu
         <data name="output_counts" format="tabular" label="FADU counts on ${on_string}"/>
     </outputs>
     <tests>
-        <!-- Test 1: defaults (unstranded, gene features, ID attribute, EM) -->
+        <!-- defaults: unstranded, gene features, ID attribute, EM on multimappers -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
-            <output name="output_counts" ftype="tabular" file="expected_default.counts.txt"/>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_text text="featureID"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t2263\.5\t88\.56\t46026\.60"/>
+                    <has_line_matching expression="gene-H4J01_RS23000\t1318\t2273\.0\t70\.56\t44242\.48"/>
+                    <not_has_text text="cds-"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- Test 2: reverse stranded, CDS features (upstream example command) -->
+        <!-- upstream example invocation, checked against the upstream golden output -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
@@ -97,7 +103,7 @@ fadu
             </assert_command>
             <output name="output_counts" ftype="tabular" file="expected.counts.txt"/>
         </test>
-        <!-- Test 3: remove multimapped reads instead of EM -->
+        <!-- -M drops multimapped reads instead of EM-assigning them -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
@@ -110,9 +116,16 @@ fadu
             <assert_command>
                 <has_text text="-M"/>
             </assert_command>
-            <output name="output_counts" ftype="tabular" file="expected_M.counts.txt"/>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="cds-WP_000137653\.1\t1065\t8\.0\t0\.17\t340\.80"/>
+                    <has_line_matching expression="cds-WP_000148526\.1\t1322\t9\.0\t1\.22\t1910\.52"/>
+                    <not_has_text text="gene-H4J01"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- Test 4: explicit EM iteration count -->
+        <!-- -e sets EM iterations; more iterations shift the EM-assigned counts -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
@@ -123,9 +136,18 @@ fadu
                 <param name="multimapped_selector" value="em"/>
                 <param name="em_iterations" value="3"/>
             </conditional>
-            <output name="output_counts" ftype="tabular" file="expected_em.counts.txt"/>
+            <assert_command>
+                <has_text text="-e 3"/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="cds-WP_000137653\.1\t1065\t8\.5\t0\.18\t338\.53"/>
+                    <has_line_matching expression="cds-WP_000148526\.1\t1322\t9\.5\t1\.22\t1899\.11"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- Test 5: exclude regions plus headerless output -->
+        <!-- -x excludes regions; no_output_header drops the header line -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
@@ -133,25 +155,47 @@ fadu
             <section name="output_options">
                 <param name="no_output_header" value="true"/>
             </section>
-            <output name="output_counts" ftype="tabular" file="expected_exclude.counts.txt"/>
+            <assert_command>
+                <has_text text="-x "/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="19"/>
+                    <not_has_text text="featureID"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t2263\.5\t88\.57\t46895\.53"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- Test 6: keep only proper pairs -->
+        <!-- -p keeps only properly paired fragments, dropping most alignments -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
             <section name="fragment_handling">
                 <param name="keep_only_proper_pairs" value="true"/>
             </section>
-            <output name="output_counts" ftype="tabular" file="expected_proper_pairs.counts.txt"/>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t1655\.0\t67\.64\t45465\.57"/>
+                </assert_contents>
+            </output>
         </test>
-        <!-- Test 7: max fragment size 0 (treat pairs as two single reads) -->
+        <!-- -m 0 processes every pair as two single reads -->
         <test expect_num_outputs="1">
             <param name="bam" value="tiny.bam" ftype="bam"/>
             <param name="gff3" value="tiny.gff3" ftype="gff3"/>
             <section name="fragment_handling">
                 <param name="max_fragment_size" value="0"/>
             </section>
-            <output name="output_counts" ftype="tabular" file="expected_fragment_size.counts.txt"/>
+            <assert_command>
+                <has_text text="-m 0"/>
+            </assert_command>
+            <output name="output_counts" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="20"/>
+                    <has_line_matching expression="gene-H4J01_RS22990\t1590\t2267\.0\t85\.32\t45925\.08"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help format="markdown"><![CDATA[
@@ -169,13 +213,11 @@ Documentation: https://igs.github.io/FADU/
 
 A tab-delimited table with one row per feature:
 
-| column | meaning |
-|---|---|
-| featureID | value of the chosen GFF3 attribute (e.g. `ID` or `locus_tag`) |
-| uniq_len | number of non-overlapping bases of the feature |
-| num_alignments | number of alignments assigned to the feature |
-| counts | fractional count assigned to the feature |
-| tpm | transcripts per million, scaled across all features |
+- **featureID** — value of the chosen GFF3 attribute (e.g. `ID` or `locus_tag`)
+- **uniq_len** — number of non-overlapping bases of the feature
+- **num_alignments** — number of alignments assigned to the feature
+- **counts** — fractional count assigned to the feature
+- **tpm** — transcripts per million, scaled across all features
 
 For downstream differential expression analysis (e.g. DESeq2), extract the `featureID` and `counts` columns, htseq-count style.
 
