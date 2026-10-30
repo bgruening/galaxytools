@@ -3,18 +3,24 @@
 # Fork PRs get no secrets on `pull_request`, so this runs on
 # `pull_request_target`, in the base repository with its secrets. That is
 # only safe because nothing from the PR is executed: the job checks out the
-# default branch, extracts the PR's tool files with `git archive` as plain
+# default branch, extracts the PR's files into a detached worktree as plain
 # data, and the reviewer has no shell tools. Do NOT add a checkout of the PR
 # or any step that runs its content.
 #
-# Every push to a fork PR starts a run that waits on the `fork-review`
-# environment; a required reviewer approves it for that exact commit.
+# A maintainer requests a review by applying the `review` (or
+# `tool-bot:review`) label; nothing runs on PR open or new pushes. Applying
+# a label needs write access, so the requester is always a maintainer — and
+# their login is passed to the bot as --actor for the allowed_maintainers
+# check.
 #
-# Setup:
-#   - Environment `fork-review` with required reviewers (Settings →
-#     Environments). Optionally give it its own GXY_TOOL_BOT_API_KEY, which
-#     takes precedence over the repository secret, so it can be revoked on
-#     its own.
+# Optional extra gate: create a `fork-review` environment with required
+# reviewers (Settings → Environments). Each run then waits for an approval
+# before proceeding, and the approver sees the commit under review. Give it
+# its own GXY_TOOL_BOT_API_KEY to be able to revoke that access on its own.
+# Without the environment, runs proceed as soon as a maintainer labels —
+# still maintainer-gated, just without the explicit confirmation.
+#
+# Deployment note:
 #   - Public repositories block `pull_request_target` by default unless an
 #     Actions event policy allows it (enforced from November 2026). Allow it
 #     for this workflow only:
@@ -25,7 +31,7 @@
 #       EOF
 on:
   pull_request_target:
-    types: [opened, synchronize, reopened]
+    types: [labeled]
 
 permissions: {}
 
@@ -35,7 +41,11 @@ permissions: {}
 jobs:
   review:
     name: Review fork PR
-    if: github.event.pull_request.head.repo.full_name != github.repository
+    # Fork PRs only, and only the review labels count.
+    if: |
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      (github.event.label.name == 'review' ||
+       github.event.label.name == 'tool-bot:review')
     runs-on: ubuntu-latest
     environment: fork-review
     permissions:
@@ -57,7 +67,9 @@ jobs:
         id: pr_files
         run: |
           TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+' | sort -u | head -1)
-          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+          # First character must not be a dot: '.' and '..' pass
+          # [A-Za-z0-9_.-] but resolve outside tools/.
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
             echo "No reviewable tool directory under tools/ in this PR (got '$TOOL_DIR')"
             exit 1
           fi
@@ -66,8 +78,9 @@ jobs:
             echo "Approved commit $HEAD_SHA is not on the PR any more; the new push has its own run."
             exit 1
           fi
-          mkdir -p "$RUNNER_TEMP/pr"
-          git archive "$HEAD_SHA" "tools/$TOOL_DIR" | tar -x -C "$RUNNER_TEMP/pr"
+          # A worktree, not `git archive`: archive honors `export-ignore`, so a
+          # PR could hide a file from review with its own .gitattributes.
+          git worktree add --detach "$RUNNER_TEMP/pr" "$HEAD_SHA"
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
           echo "Reviewing tools/$TOOL_DIR at $HEAD_SHA"
       - uses: actions/setup-python@v5
@@ -92,10 +105,13 @@ jobs:
           GITHUB_REF_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
           TOOL_DIR: ${{ steps.pr_files.outputs.tool_dir }}
         run: |
+          # The sender is the maintainer who applied the label — the same
+          # actor semantics as same-repo review.
           gxy-tool-bot review \
             --pr $PR_NUMBER \
             --config .gxy-tool-bot.yml \
             --tool-dir "$RUNNER_TEMP/pr/tools/$TOOL_DIR" \
+            --actor ${{ github.event.sender.login }} \
             --comment-dir "$RUNNER_TEMP/comments"
       - name: Upload comments
         if: always()
