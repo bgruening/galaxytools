@@ -2,16 +2,16 @@
     <description>Standardize LAS/LAZ files or validate collections for consistency</description>
     <macros>
         <token name="@TOOL_VERSION@">1.2.1</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
     <requirements>
         <container type="docker">ghcr.io/3dtrees-earth/3dtrees-pc-standard:@TOOL_VERSION@</container>
     </requirements>
     <command detect_errors="exit_code"><![CDATA[
         #if $mode.task == 'single_file':
-            cp '$mode.input' input.laz &&
+            cp '$mode.input' 'input.${mode.input.ext}' &&
             Rscript /src/run.R
-            --dataset-path ./input.laz
+            --dataset-path './input.${mode.input.ext}'
             --output-dir ./
             --method single_file
             --min-density '$mode.min_density'
@@ -21,7 +21,7 @@
         #else:
             mkdir -p ./input_files &&
             #for $f in $mode.input_collection
-                cp '$f' ./input_files/'${f.element_identifier}.laz' &&
+                cp '$f' ./input_files/'${f.element_identifier}.${f.ext}' &&
             #end for
             Rscript /src/run.R
             --dataset-path ./input_files/
@@ -40,7 +40,7 @@
                 <option value="collection">Collection Validation</option>
             </param>
             <when value="single_file">
-                <param name="input" type="data" format="laz" label="Point Cloud File" 
+                <param name="input" type="data" format="laz,las" label="Point Cloud File" 
                        help="LAS/LAZ point cloud file to standardize (CRS validation, density check, format normalization)"/>
                 <param argument="--min-density" type="integer" min="1" max="10000" value="10" 
                        label="Minimum Point Density" 
@@ -50,7 +50,7 @@
                        help="Space-separated list of attribute names to remove (e.g., 'Intensity UserData'). Leave empty for auto-detection."/>
             </when>
             <when value="collection">
-                <param name="input_collection" type="data" format="laz" multiple="true" label="Point Cloud Collection" 
+                <param name="input_collection" type="data" format="laz,las" multiple="true" label="Point Cloud Collection" 
                        help="Multiple LAZ/LAS files to validate for consistency (CRS homogeneity, attribute consistency, overlaps)"/>
                 <param argument="--approx-location" type="text" optional="true"
                        label="Approximate location (lon, lat)"
@@ -206,6 +206,40 @@
                     <has_json_property_with_value property="concave_hull_source" value='"wgs84_transform"'/>
                     <has_json_property_with_value property="centroid" value='{"longitude": 7.86, "latitude": 48.01, "crs": "EPSG:4326", "source": "approximate_input", "available": true}'/>
                     <has_json_property_with_value property="multipolygon_wkt" value='"MULTIPOLYGON (((7.880911 48.27433, 7.880911 48.27432, 7.880911 48.27432, 7.880909 48.27432, 7.880908 48.27432, 7.880904 48.27432, 7.880865 48.27432, 7.880864 48.27432, 7.880687 48.27432, 7.880685 48.27432, 7.880683 48.27432, 7.880682 48.27432, 7.88068 48.27441, 7.88068 48.27444, 7.88068 48.27444, 7.880683 48.27445, 7.880885 48.27445, 7.880889 48.27445, 7.880899 48.27445, 7.880902 48.27445, 7.880909 48.27439, 7.88091 48.27438, 7.880911 48.27433)), ((7.880911 48.27433, 7.880911 48.27432, 7.880911 48.27432, 7.880909 48.27432, 7.880908 48.27432, 7.880904 48.27432, 7.880865 48.27432, 7.880864 48.27432, 7.880826 48.27432, 7.880823 48.27432, 7.880822 48.27432, 7.880822 48.27433, 7.88082 48.27443, 7.88082 48.27444, 7.880822 48.27444, 7.880839 48.27445, 7.88085 48.27445, 7.880885 48.27445, 7.880889 48.27445, 7.880899 48.27445, 7.880902 48.27445, 7.880909 48.27439, 7.88091 48.27438, 7.880911 48.27433)))"'/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="3">
+            <conditional name="mode">
+                <param name="task" value="single_file"/>
+                <param name="input" value="micro.las" ftype="las"/>
+            </conditional>
+            <output name="pc_standardized" ftype="laz">
+                <assert_contents>
+                    <has_size min="1000"/>
+                </assert_contents>
+            </output>
+            <output name="convex_hull" ftype="geojson">
+                <assert_contents>
+                    <has_json_property_with_text property="type" text="FeatureCollection"/>
+                </assert_contents>
+            </output>
+            <output name="metadata_json" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="point_count" value="397"/>
+                    <has_json_property_with_value property="standardized" value="true"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="mode">
+                <param name="task" value="collection"/>
+                <param name="input_collection" value="micro.las" ftype="las"/>
+            </conditional>
+            <output name="collection_summary" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="n_tiles" value="1"/>
+                    <has_json_property_with_value property="homogeneous_crs" value="true"/>
                 </assert_contents>
             </output>
         </test>
