@@ -26,8 +26,10 @@ on:
 #
 # Shared group with on-pr-review: a review run must wait for a feedback
 # run to finish pushing, or it reports findings on superseded files.
+# Only runs that address feedback join it (same test as the start job): a
+# run for any other label would queue there and cancel a pending review.
 concurrency:
-  group: pr-${{ github.event.pull_request.number || inputs.pr_number }}
+  group: ${{ (github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'tool-bot:address-feedback') || contains(github.event.pull_request.labels.*.name, 'address-feedback')) && format('pr-{0}', github.event.pull_request.number || inputs.pr_number) || github.run_id }}
   cancel-in-progress: false
 
 env:
@@ -81,12 +83,16 @@ jobs:
       checks: read
     outputs:
       tool_dir: ${{ steps.find_tool_dir.outputs.tool_dir }}
-      # A failed exec-user check fails the fix, so publish reports that.
-      outcome: ${{ steps.isolation.outcome == 'success' && steps.address.outcome || 'failure' }}
+      # Publish commits on top of this commit, so a push made meanwhile
+      # makes its push fail instead of being reverted.
+      sha: ${{ steps.pr.outputs.commit }}
+      # A failed exec-user check or format fails the fix, so publish reports that.
+      outcome: ${{ steps.isolation.outcome == 'success' && steps.format.outcome != 'failure' && steps.address.outcome || 'failure' }}
     steps:
       # refs/pull/<N>/head lives on the base repo, and also resolves for
       # workflow_dispatch runs, where pull_request is null.
       - uses: actions/checkout@v4
+        id: pr
         with:
           persist-credentials: false
           ref: refs/pull/${{ env.PR_NUMBER }}/head
@@ -197,6 +203,8 @@ jobs:
       - name: Stop the exec user and check the tool dir
         id: isolation
         if: always() && env.WORK_TOOL_DIR != ''
+        env:
+          TOOL_DIR: ${{ steps.find_tool_dir.outputs.tool_dir }}
         run: |
           sudo pkill -KILL -u gxyexec || true
           sudo crontab -r -u gxyexec 2>/dev/null || true
@@ -206,12 +214,20 @@ jobs:
             exit 1
           fi
           cp -a "$WORK_TOOL_DIR" "$RUNNER_TEMP/tool"
-          if [ -n "$(find "$RUNNER_TEMP/tool" ! -type f ! -type d)" ]; then
-            echo "::error::The tool dir holds links or special files:"
-            find "$RUNNER_TEMP/tool" ! -type f ! -type d
+          # Links are allowed only where the PR has the same link (some tools
+          # keep links in test-data).
+          BAD=$(cd "$RUNNER_TEMP/tool" && find . ! -type f ! -type d | while IFS= read -r p; do
+            orig="$GITHUB_WORKSPACE/tools/$TOOL_DIR/$p"
+            if [ -L "$p" ] && [ -L "$orig" ] && [ "$(readlink "$p")" = "$(readlink "$orig")" ]; then continue; fi
+            echo "$p"
+          done)
+          if [ -n "$BAD" ]; then
+            echo "::error::The tool dir holds new links or special files:"
+            echo "$BAD"
             exit 1
           fi
       - name: Format updated XML with planemo
+        id: format
         if: steps.address.outcome == 'success' && steps.isolation.outcome == 'success'
         run: |
           planemo format --recursive "$RUNNER_TEMP/tool/"
@@ -227,14 +243,15 @@ jobs:
           for f in .gave-up .validation-failed; do
             [ -f "$GITHUB_WORKSPACE/$f" ] && cp "$GITHUB_WORKSPACE/$f" "$RUNNER_TEMP/result/"
           done
-          true
+          # An artifact stores every file as 644: a tarball keeps the
+          # executable bits and the PR's links.
+          tar -C "$RUNNER_TEMP" -cf "$RUNNER_TEMP/result.tar" result
       - name: Upload result
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: feedback-result
-          path: ${{ runner.temp }}/result/
-          include-hidden-files: true
+          path: ${{ runner.temp }}/result.tar
           if-no-files-found: ignore
 
   publish:
@@ -250,17 +267,23 @@ jobs:
       TOOL_DIR: ${{ needs.fix.outputs.tool_dir }}
       FIX_OUTCOME: ${{ needs.fix.outputs.outcome }}
     steps:
+      # The commit the fix job worked on, not the branch as it is now.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-          ref: refs/pull/${{ env.PR_NUMBER }}/head
+          ref: ${{ needs.fix.outputs.sha || format('refs/pull/{0}/head', env.PR_NUMBER) }}
           fetch-depth: 0
       # Everything in the artifact is model output: copy it as data, never run it.
       - uses: actions/download-artifact@v4
         continue-on-error: true
         with:
           name: feedback-result
-          path: ${{ runner.temp }}/result
+          path: ${{ runner.temp }}/artifact
+      - name: Unpack result
+        run: |
+          if [ -f "$RUNNER_TEMP/artifact/result.tar" ]; then
+            tar -C "$RUNNER_TEMP" --no-same-owner -xf "$RUNNER_TEMP/artifact/result.tar"
+          fi
       - name: Check result
         id: check
         if: env.FIX_OUTCOME == 'success'
@@ -272,9 +295,15 @@ jobs:
           if [ ! -d "$RESULT" ]; then
             echo "::error::No tool files in the result"; exit 1
           fi
-          # Only plain files and directories, and a sane size.
-          if [ -n "$(find "$RESULT" ! -type f ! -type d)" ]; then
-            echo "::error::Result contains symlinks or special files:"; find "$RESULT" ! -type f ! -type d; exit 1
+          # Only plain files and directories (and the PR's own links, as in
+          # the fix job), and a sane size.
+          BAD=$(cd "$RESULT" && find . ! -type f ! -type d | while IFS= read -r p; do
+            orig="$GITHUB_WORKSPACE/tools/$TOOL_DIR/$p"
+            if [ -L "$p" ] && [ -L "$orig" ] && [ "$(readlink "$p")" = "$(readlink "$orig")" ]; then continue; fi
+            echo "$p"
+          done)
+          if [ -n "$BAD" ]; then
+            echo "::error::Result contains new symlinks or special files:"; echo "$BAD"; exit 1
           fi
           if [ "$(du -sb "$RESULT" | cut -f1)" -gt 104857600 ]; then
             echo "::error::Result is larger than 100 MB"; exit 1

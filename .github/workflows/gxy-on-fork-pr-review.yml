@@ -73,14 +73,19 @@ jobs:
             echo "No reviewable tool directory under tools/ in this PR (got '$TOOL_DIR')"
             exit 1
           fi
-          git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
-          if ! git cat-file -e "$HEAD_SHA^{commit}"; then
-            echo "Approved commit $HEAD_SHA is not on the PR any more; the new push has its own run."
+          # The tool dir above comes from the PR as it is now: only review
+          # if that is still the labeled commit.
+          if [ "$(gh pr view $PR_NUMBER --json headRefOid --jq .headRefOid)" != "$HEAD_SHA" ]; then
+            echo "The PR has new commits since the label was applied; apply the label again to review them."
             exit 1
           fi
+          git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
           # A worktree, not `git archive`: archive honors `export-ignore`, so a
           # PR could hide a file from review with its own .gitattributes.
-          git worktree add --detach "$RUNNER_TEMP/pr" "$HEAD_SHA"
+          # core.symlinks=false checks links out as plain files holding the
+          # target path: the bot reads tool files following links, so a PR
+          # link to e.g. /proc/self/environ would put the key in the prompt.
+          git -c core.symlinks=false worktree add --detach "$RUNNER_TEMP/pr" "$HEAD_SHA"
           echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
           echo "Reviewing tools/$TOOL_DIR at $HEAD_SHA"
       - uses: actions/setup-python@v5
@@ -124,8 +129,9 @@ jobs:
   post:
     name: Post review
     needs: review
-    # Not when the review job was skipped (same-repo PR) or never approved.
-    if: always() && (needs.review.result == 'success' || needs.review.result == 'failure')
+    # Not when the review job was skipped (same-repo PR or another label).
+    # A cancelled or timed-out run still gets its label removed.
+    if: always() && needs.review.result != 'skipped'
     runs-on: ubuntu-latest
     permissions:
       pull-requests: write
