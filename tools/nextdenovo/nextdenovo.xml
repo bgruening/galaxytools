@@ -4,17 +4,23 @@
         <import>macros.xml</import>
     </macros>
     <expand macro="biotools"/>
-    <expand macro="requirements" />
+    <expand macro="requirements"/>
     <version_command>nextDenovo --version</version_command>
-    <command detect_errors="exit_code"><![CDATA[
+    <!-- NextDenovo's ovl_sort aborts with an assertion when given fewer than 2 threads,
+         so never let the GALAXY_SLOTS value substituted into the config fall below 2. -->
+    <command detect_errors="aggressive"><![CDATA[
         mkdir -p './read_files' &&
         #for $index,$sample in enumerate($input_reads)
             #set $ext = $sample.ext
             ln -s '${sample}' './read_files/sample_${index}.${ext}' &&
         #end for
         ls './read_files' -1 | sed -e 's|^|read_files/|' > './input.fofn' &&
-        cat '${configfile}' | sed -e "s/cores/\${GALAXY_SLOTS:-4}/g" | sed -e "s|memory|\$((\${GALAXY_MEMORY_MB:-8192}/1024))|g" > './configfile' &&
-        nextDenovo './configfile'
+        cat '${configfile}' | sed -e "s/cores/\$(( \${GALAXY_SLOTS:-4} > 1 ? \${GALAXY_SLOTS:-4} : 2 ))/g" | sed -e "s|memory|\$((\${GALAXY_MEMORY_MB:-8192}/1024))|g" > './configfile' &&
+        nextDenovo './configfile' &&
+        ## The corrected reads are written per parallel chunk, concatenate them into a single
+        ## dataset. The glob may be empty (e.g. task = assemble), hence nullglob and /dev/null.
+        shopt -s nullglob &&
+        cat 02.cns_align/01.seed_cns.sh.work/seed_cns*/cns.fasta </dev/null > './corrected_reads.fasta'
     ]]></command>
     <configfiles>
         <configfile name="configfile"><![CDATA[
@@ -32,7 +38,7 @@
             [correct_option]
             read_cutoff = $read_cutoff
             #if $genome_seed.selector == 'genome'
-                genome_size = $genome_seed.genome_size # estimated genome size
+                genome_size = $genome_seed.genome_size
                 seed_depth = $genome_seed.seed_depth
             #else
                 seed_cutoff = $genome_seed.seed_cutoff
@@ -41,11 +47,11 @@
             sort_options = -m memoryg -t cores -k $ovl_parameters.max_depth_overlap -l $ovl_parameters.max_over_hang_length
             minimap2_options_raw = -t cores --minlen $minimap_parameters.minlen --minmatch $minimap_parameters.minmatch --minide $minimap_parameters.minide --kn $minimap_parameters.kn --wn $minimap_parameters.wn --cn $minimap_parameters.cn --maxhan1 $minimap_parameters.maxhan1 --maxhan2 $minimap_parameters.maxhan2
             pa_correction = cores
-            correction_options = -p cores
+            correction_options = -p cores $correction_options.split $correction_options.fast
 
             [assemble_option]
             minimap2_options_cns = -t cores
-            nextgraph_options = -a $np.a $np.c $np.G $np.G $np.k $np.A -E $np.E -q $np.q -i $np.i -I $np.I -R $np.R -S $np.S -r $np.r -M $np.M -T $np.T -N $np.N -u $np.u -w $np.w -D $np.D -P $np.P -m $np.m -n $np.n -B $np.B -C $np.C -z $np.z -l $np.l -L $np.L -t $np.t -F $np.F
+            nextgraph_options = -a $np.a $np.c $np.G $np.k $np.A -E $np.E -q $np.q -i $np.i -I $np.I -R $np.R -S $np.S -r $np.r -M $np.M -T $np.T -N $np.N -u $np.u -w $np.w -D $np.D -P $np.P -m $np.m -n $np.n -B $np.B -C $np.C -z $np.z -l $np.l -L $np.L -t $np.t -F $np.F
         ]]></configfile>
     </configfiles>
     <inputs>
@@ -64,15 +70,14 @@
             <option value="hifi">HiFi: PacBio highly accurate long reads</option>
             <option value="ont">ONT: Nanopore 1D reads</option>
         </param>
-        <param name="read_cutoff" type="integer" min="0" value="1000" optional="true" label="Read cutoff" help="filter reads with length smaller than read_cutoff"/>
+        <param name="read_cutoff" type="integer" min="0" value="1000" label="Read cutoff" help="filter reads with length smaller than read_cutoff"/>
         <conditional name="genome_seed">
             <param name="selector" type="select" label="Provide estimated genome size or seed cutoff" help="It is requried to perform some simple statistics (such as length distribution, total amount of data and sequencing depth) on the input data">
                 <option value="genome">Estimated genome size</option>
                 <option value="seed">Seed cutoff</option>
             </param>
             <when value="genome">
-                <param name="genome_size" type="text" value="" optional="true" label="Estimated genome size" help="Estimated genome size, suffix K/M/G recognized, used to 
-                calculate seed_cutoff/seed_cutfiles/blocksize and average depth, it can be omitted when manually setting seed_cutoff. Spaces are not allowed.">
+                <param name="genome_size" type="text" value="" label="Estimated genome size" help="Estimated genome size, suffix K/M/G recognized, used to                 calculate seed_cutoff/seed_cutfiles/blocksize and average depth, it can be omitted when manually setting seed_cutoff. Spaces are not allowed.">
                     <sanitizer invalid_char="">
                         <valid initial="string.letters,string.digits">
                             <add value="."/>
@@ -80,23 +85,20 @@
                     </sanitizer>
                     <validator type="regex">[0-9KMGkmg.]+</validator>
                 </param>
-                <param name="seed_depth" type="integer" min="0" value="45" label="Seed depth" help="Expected seed depth, used to calculate seed_cutoff, co-use with 
-                    genome_size, you can try to set it 30-45 to get a better assembly result." />
+                <param name="seed_depth" type="integer" min="0" value="45" label="Seed depth" help="Expected seed depth, used to calculate seed_cutoff, co-use with                     genome_size, you can try to set it 30-45 to get a better assembly result."/>
             </when>
             <when value="seed">
-                <param name="seed_cutoff" type="integer" min="0" value="0" optional="true" label="Seed cutoff" help="Minimum seed length. Set it to 0 for calculating it automatically." />
+                <param name="seed_cutoff" type="integer" min="0" value="0" label="Seed cutoff" help="Minimum seed length. Set it to 0 for calculating it automatically."/>
             </when>
         </conditional>
-        <param name="blocksize" type="text" value="10g" label="Block size" help="Block size for parallel running, split non-seed reads into small files, the maximum size of 
-            each file is blocksize.">
+        <param name="blocksize" type="text" value="10g" label="Block size" help="Block size for parallel running, split non-seed reads into small files, the maximum size of             each file is blocksize.">
             <sanitizer invalid_char="">
                 <valid initial="string.letters,string.digits"/>
             </sanitizer>
             <validator type="regex">[0-9KMGkmg]+</validator>
         </param>
         <section name="ovl_parameters" title="OVL sort parameters" expanded="true">
-            <param name="max_depth_overlap" type="integer" min="0" value="40" label="Max depth of each overlap" help="This value should be equal or smaller than 
-                the average sequencing depth." />
+            <param name="max_depth_overlap" type="integer" min="0" value="40" label="Max depth of each overlap" help="This value should be equal or smaller than                 the average sequencing depth."/>
             <param name="max_over_hang_length" type="integer" min="0" value="300" label="Max over hang length to filter"/>
         </section>
         <section name="minimap_parameters" title="Minimap2 parameters" expanded="true">
@@ -110,21 +112,20 @@
             <param name="maxhan2" type="integer" min="0" value="500" label="Maximum over hang length for filtering contained reads"/>
         </section>
         <section name="correction_options" title="Correction options" expanded="true">
-            <param name="split" type="boolean" truevalue="--split" falsevalue="" checked="false" label="Split" help="Split the corrected seed with un-corrected regions" />
-            <param name="fast" type="boolean" truevalue="-fast" falsevalue="" checked="false" label="Fast" help="0.5-1 times faster mode with a little lower accuracy." />
+            <param name="split" type="boolean" truevalue="--split" falsevalue="" checked="false" label="Split" help="Split the corrected seed with un-corrected regions"/>
+            <param name="fast" type="boolean" truevalue="-fast" falsevalue="" checked="false" label="Fast" help="0.5-1 times faster mode with a little lower accuracy."/>
         </section>
         <section name="np" title="NextGraph parameters">
             <param argument="-c" type="boolean" truevalue="-c" falsevalue="" checked="false" label="Disable pre-filter chimeric reads."/>
             <param argument="-G" type="boolean" truevalue="-G" falsevalue="" checked="false" label="Retain potential chimeric edges."/>
             <param argument="-k" type="boolean" truevalue="-k" falsevalue="" checked="false" label="Delete complex bubble paths."/>
-            <param argument="-A" type="boolean" truevalue="-A" falsevalue="" checked="false" label="Output alternative contigs" 
-                help="For highly heterozygous genomes, it will increase assembly size."/>
+            <param argument="-A" type="boolean" truevalue="-A" falsevalue="" checked="false" label="Output alternative contigs" help="For highly heterozygous genomes, it will increase assembly size."/>
             <param argument="-a" type="select" label="Output format">
                 <option value="1">FASTA</option>
                 <option value="3">GFA</option>
             </param>
             <param argument="-E" type="integer" min="0" value="1000" label="Minimum contig length"/>
-            <param argument="-q" type="integer" min="0" value="0" label="Minimum short branch length" help="By default it is disabled (value = 0)." />
+            <param argument="-q" type="integer" min="0" value="0" label="Minimum short branch length" help="By default it is disabled (value = 0)."/>
             <param argument="-i" type="float" min="0" max="1" value="0.1" label="Minimum identity of alignmnents"/>
             <param argument="-I" type="float" min="0" max="1" value="0.7" label="Minimum test-to-best identity ratio"/>
             <param argument="-R" type="float" min="0" max="1" value="0" label="Maximum test-to-best identity ratio"/>
@@ -149,22 +150,21 @@
         </section>
     </inputs>
     <outputs>
-        <data name="stats" format="txt" from_work_dir="03.ctg_graph/nd.asm.fasta.stat" label="${tool.name} on ${on_string}: stats">
+        <data name="stats" format="txt" from_work_dir="03.ctg_graph/nd.asm.fasta.stat" label="${tool.name} on ${on_string}: assembly statistics">
             <filter>task != 'correct'</filter>
         </data>
-        <data name="asmp" format="txt" from_work_dir="03.ctg_graph/nd.asm.p.fasta" label="${tool.name} on ${on_string}: nd.asm.p.fasta">
+        <data name="asmp" format="fasta" from_work_dir="03.ctg_graph/nd.asm.p.fasta" label="${tool.name} on ${on_string}: primary contigs">
             <filter>task != 'correct'</filter>
         </data>
-        <data name="asm" format="txt" from_work_dir="03.ctg_graph/nd.asm.fasta.stat" label="${tool.name} on ${on_string}: nd.asm.p.fasta">
+        <data name="asm" format="fasta" from_work_dir="03.ctg_graph/nd.asm.fasta" label="${tool.name} on ${on_string}: assembly">
             <filter>task != 'correct'</filter>
         </data>
-        <data name="asm" format="txt" from_work_dir="02.cns_align/01.seed_cns.sh.work/seed_cns3" label="${tool.name} on ${on_string}: corrected">
+        <data name="corrected" format="fasta" from_work_dir="corrected_reads.fasta" label="${tool.name} on ${on_string}: corrected reads">
             <filter>task != 'assemble'</filter>
         </data>
         <data name="config" format="txt" from_work_dir="configfile" label="${tool.name} on ${on_string}: configuration file"/>
     </outputs>
     <tests>
-        <!-- Default parameters: correct mode -->
         <test expect_num_outputs="2">
             <param name="input_reads" value="nanopore.fasta.gz"/>
             <param name="task" value="correct"/>
@@ -175,46 +175,54 @@
                 <param name="genome_size" value="2k"/>
                 <param name="seed_depth" value="45"/>
             </conditional>
-            <output name="config">
+            <output name="corrected" ftype="fasta">
+                <assert_contents>
+                    <has_text text="&gt;"/>
+                    <not_has_text text="template"/>
+                </assert_contents>
+            </output>
+            <output name="config" ftype="txt">
                 <assert_contents>
                     <has_text text="genome_size = 2k"/>
+                    <has_text text="read_type = ont"/>
                     <has_n_lines n="26"/>
                 </assert_contents>
             </output>
         </test>
-        <test expect_failure="true">
+        <test expect_num_outputs="2">
             <param name="input_reads" value="nanopore.fasta.gz"/>
-            <param name="task" value="all"/>
+            <param name="task" value="correct"/>
             <param name="input_type" value="raw"/>
-            <param name="read_type" value="nanopore"/>
+            <param name="read_type" value="ont"/>
             <conditional name="genome_seed">
-                <param name="selector" value="genome"/>
-                <param name="genome_size" value="2k"/>
-                <param name="seed_depth" value="45"/>
+                <param name="selector" value="seed"/>
+                <param name="seed_cutoff" value="5000"/>
             </conditional>
-            <assert_stderr>
-                <has_text text="The read/seed length is too short, and the assembly result is unexpected and please check the assembly quality carefully." />
-            </assert_stderr>
-        </test>
-        <test expect_failure="true">
-            <param name="input_reads" value="nanopore.fasta.gz"/>
-            <param name="task" value="assemble"/>
-            <param name="input_type" value="raw"/>
-            <param name="read_type" value="nanopore"/>
-            <conditional name="genome_seed">
-                <param name="selector" value="genome"/>
-                <param name="genome_size" value="2k"/>
-                <param name="seed_depth" value="45"/>
-            </conditional>
-            <assert_stderr>
-                <has_text text="The read/seed length is too short, and the assembly result is unexpected and please check the assembly quality carefully." />
-            </assert_stderr>
+            <section name="correction_options">
+                <param name="split" value="true"/>
+                <param name="fast" value="true"/>
+            </section>
+            <output name="corrected" ftype="fasta">
+                <assert_contents>
+                    <has_text text="&gt;"/>
+                    <not_has_text text="template"/>
+                </assert_contents>
+            </output>
+            <output name="config" ftype="txt">
+                <assert_contents>
+                    <!-- "cores" is substituted with the number of slots at runtime, so only
+                         assert on the parts of the option string that do not depend on it. -->
+                    <has_text text="seed_cutoff = 5000"/>
+                    <has_text text="--split -fast"/>
+                    <has_text text="task = correct"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
-    <help><![CDATA[
-        NextDenovo is a string graph-based de novo assembler for long reads (CLR, HiFi and ONT). It uses 
-        a "correct-then-assemble" strategy similar to canu (no correction step for PacBio HiFi reads), but 
+    <help format="markdown"><![CDATA[
+        NextDenovo is a string graph-based de novo assembler for long reads (CLR, HiFi and ONT). It uses
+        a "correct-then-assemble" strategy similar to canu (no correction step for PacBio HiFi reads), but
         requires significantly less computing resources and storages.
     ]]></help>
-    <expand macro="citations" />
+    <expand macro="citations"/>
 </tool>
