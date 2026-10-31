@@ -16,6 +16,12 @@
        ln -s '$input_sortedAlignBAM' ./infile.bam &&
        ln -s '${input_sortedAlignBAM.metadata.bam_index}' infile.bai &&
 
+        ## Build the FASTA index once, before MethylDackel starts any worker threads.
+        ## Each MethylDackel worker thread calls fai_load() on the reference and would
+        ## otherwise race against the other threads while creating the same .fai file,
+        ## which can crash the job (faidx_fetch_seq returned -2 / SIGSEGV).
+        samtools faidx reference.fasta &&
+
         MethylDackel
             $main_task.task
 
@@ -36,7 +42,7 @@
                     --CTOB $main_task.CTOB
                 #end if
                 #if str($main_task.mappability_options.mappability_status) == 'True':
-                    -M '${main_task.mappability_options.mappability}'
+                    --mappability '${main_task.mappability_options.mappability}'
                     --mappabilityThreshold $main_task.mappability_options.mappabilityThreshold
                     --minMappableBases $main_task.mappability_options.minMappableBases            
                 #end if
@@ -89,7 +95,7 @@
             ./infile.bam
 
             #if $main_task.task == 'mbias':
-                out_mbias $main_task.tsv > out_mbias.tsv &&
+                out_mbias $main_task.txt > out_mbias.tsv &&
                 touch out_mbias_OT.svg &&
                 touch out_mbias_OB.svg &&
                 touch out_mbias_CTOT.svg &&
@@ -108,7 +114,7 @@
                 </param>
             </when>
             <when value="history">
-                <param name="ref_file" type="data" format="fasta" label="Use the folloing dataset as the reference sequence" help="REFERENCE_SEQUENCE; You can upload a FASTA sequence to the history and use it as reference"/>
+                <param name="ref_file" type="data" format="fasta" label="Use the following dataset as the reference sequence" help="REFERENCE_SEQUENCE; You can upload a FASTA sequence to the history and use it as reference"/>
             </when>
         </conditional>
         <param name="input_sortedAlignBAM" multiple="False" type="data" format="bam" label="Sorted BAM file"/>
@@ -146,7 +152,7 @@
                 <param argument="--mergeContext" type="boolean" checked="false" truevalue="--mergeContext" falsevalue="" label="Merge per-Cytosine metrics" help="Merge per-Cytosine metrics from CpG and CHG contexts into per-CPG or per-CHG metrics"/>
                 <param argument="--OT" type="text" value="" label="Original top strand bounds (comma-separated, no spaces)" help="Inclusion bounds for methylation calls from reads/pairs origination from the original top strand. Suggested values can                           be obtained from the MBias program. Each integer represents a 1-based position on a read. For example --OT A,B,C,D                           translates to, 'Include calls at positions from A through B on read #1 and C through D on read #2'. If a 0 is used a any                           position then that is translated to mean start/end of the alignment, as appropriate. For example, --OT 5,0,0,0 would                           include all but the first 4 bases on read #1. Users are strongly advised to consult a methylation bias plot, for                           example by using the MBias program."/>
                 <param argument="--OB" type="text" value="" label="Original bottom strand bounds (comma-separated, no spaces)"/>
-                <param argument="--CTOT" type="text" value="" label="Complementary to the original bottom strand bounds (comma-separated, no spaces)"/>
+                <param argument="--CTOT" type="text" value="" label="Complementary to the original top strand bounds (comma-separated, no spaces)"/>
                 <param argument="--CTOB" type="text" value="" label="Complementary to the original bottom strand bounds (comma-separated, no spaces)" help="As with --OT, but for the original bottom, complementary to the original top, and complementary to the original bottom                           strands, respectively."/>
                 <param name="extract_outputs" type="select" label="Output options">
                     <option value="" selected="True">CpG context methylation metrics</option>
@@ -158,29 +164,29 @@
                 </param>
             </when>
             <when value="mbias">
-                <param name="tsv" type="boolean" truevalue="--txt" falsevalue="" label="Output tab separated mbias metrics" help="It can be imported into R or another program for manual plotting and analysis. Note that coordinates are 1-based."/>
+                <param argument="--txt" type="boolean" truevalue="--txt" falsevalue="" label="Output tab separated mbias metrics" help="It can be imported into R or another program for manual plotting and analysis. Note that coordinates are 1-based."/>
             </when>
         </conditional>
         <section name="advanced_options" title="Advanced options" expanded="false">
-            <param name="mbias_regionString" type="text" value="" label="Region string in which to extract methylation (e.g. chr1:1-100)"/>
+            <param name="mbias_regionString" argument="-r" type="text" value="" label="Region string in which to extract methylation (e.g. chr1:1-100)"/>
             <param argument="--keepDupes" type="boolean" checked="false" truevalue="--keepDupes" falsevalue="" label="Keep duplicated alignments" help="By default, any alignment marked as a duplicate is ignored. This option causes them to be incorporated."/>
             <param argument="--keepSingleton" type="boolean" checked="false" truevalue="--keepSingleton" falsevalue="" label="Keep singletons" help="By default, if only one read in a pair aligns (a singleton) then it's ignored."/>
-            <param argument="--keepDiscordant" type="boolean" checked="false" truevalue="--keepDiscordant" falsevalue="" label="Keep discordant alignmetns" help="By default, paired-end alignments with the properly-paired bit unset in the FLAG field are ignored. Note that the definition of concordant and discordant is based on your aligner settings."/>
+            <param argument="--keepDiscordant" type="boolean" checked="false" truevalue="--keepDiscordant" falsevalue="" label="Keep discordant alignments" help="By default, paired-end alignments with the properly-paired bit unset in the FLAG field are ignored. Note that the definition of concordant and discordant is based on your aligner settings."/>
             <param name="min_mapq" argument="-q" type="integer" value="10" label="Minimum MAPQ threshold" help="Minimum MAPQ threshold to include an alignment (default 10)"/>
             <param name="min_phred" argument="-p" type="integer" value="5" label="Minimum Phred threshold" help="Minimum Phred threshold to include a base (default 5). This must be &gt;0."/>
             <param name="min_pbdepth" argument="-d" type="integer" value="1" min="1" label="Minimum per-base depth" help="Minimum per-base depth for reporting output. If you use --mergeContext, then this applies to the merged CpG/CHG (default 1)."/>
-            <param argument="--ignoreFlags" type="integer" value="3840" label="Ignore certain alignments" help="By deault, any alignment marked as secondary (bit 0x100), failing QC (bit 0x200), a PCR/optical duplicate (0x400) or supplemental (0x800) is ignored. This equates to a value of 0xF00 or 3840 in decimal. If you would like to change that, you can specify a new value here."/>
+            <param argument="--ignoreFlags" type="integer" value="3840" label="Ignore certain alignments" help="By default, any alignment marked as secondary (bit 0x100), failing QC (bit 0x200), a PCR/optical duplicate (0x400) or supplemental (0x800) is ignored. This equates to a value of 0xF00 or 3840 in decimal. If you would like to change that, you can specify a new value here."/>
             <param argument="--requireFlags" type="integer" value="0" label="Require alignment flags" help="Require each alignment to have all bits in this value present, or else the alignment is ignored. This is equivalent to the -f option in samtools. The default is 0, which includes all alignments."/>
-            <!-- Options added in MethylDackel 0.6.x: insert size filtering and multi-mapper exclusion -->
+            <!-- Options added in MethylDackel 0.6.x: insert size filtering and multi-mapper handling -->
             <param argument="--minInsertSize" type="integer" value="0" min="0" label="Minimum insert size" help="Minimum insert size for an alignment to be included (default 0, i.e. no minimum)."/>
             <param argument="--maxInsertSize" type="integer" value="2000" min="1" label="Maximum insert size" help="Maximum insert size for an alignment to be included (default 2000)."/>
-            <param argument="--ignoreNH" type="boolean" checked="false" truevalue="--ignoreNH" falsevalue="" label="Ignore multi-mapping alignments" help="Ignore alignments with an NH tag greater than 1, i.e. alignments that map to more than one location."/>
+            <param argument="--ignoreNH" type="boolean" checked="false" truevalue="--ignoreNH" falsevalue="" label="Include multi-mapping alignments" help="By default, MethylDackel ignores alignments with an NH tag greater than 1, i.e. alignments that map to more than one location. Enabling this option ignores the NH tag and includes such multi-mapping alignments in the metrics."/>
             <param argument="--minOppositeDepth" type="integer" value="0" min="0" label="Minimum depth for variant avoidance" help="The minimum depth on the strand opposite of a C required to flag the position as possibly being a SNP. The default is 0 (ignore possible SNPs). Setting this to a value above 0 will cause the position to be ignored if a given fraction of non-G bases are present on the opposite strand and the overall coverage there is at least what is specified here."/>
             <param argument="--maxVariantFrac" type="float" value="1.0" min="0.0" max="1.0" label="Maximum tolerated variant fraction" help="If the depth on the strand opposite of a C is at least that specified by 'Minimum depth for variant avoidance', and the fraction of non-G bases exceeds this value, then methylation extraction is skipped for this position."/>
             <param argument="--nOT" type="text" value="" label="Original top strand absolute bounds (comma-separated, no spaces)" help="Like --OT, but always exclude INT bases from a given end from inclusion,regardless of the length of an alignment. This                         is useful in cases where reads may have already been trimmed to different lengths, but still none-the-less contain a                         certain length bias at one or more ends."/>
             <param argument="--nOB" type="text" value="" label="Original bottom strand absolute bounds (comma-separated, no spaces)"/>
-            <param argument="--nCTOT" type="text" value="" label="Complementary to the original bottom strand absolute bounds (comma-separated, no spaces)"/>
-            <param argument="--nCTOB" type="text" value="" label="Complementary to the original bottom strand absolute bounds (comma-separated, no spaces)" help="As with --nOT, but for the original bottom complementary to the original top, and complementary to the                         original bottom strands, respectively."/>
+            <param argument="--nCTOT" type="text" value="" label="Complementary to the original top strand absolute bounds (comma-separated, no spaces)"/>
+            <param argument="--nCTOB" type="text" value="" label="Complementary to the original bottom strand absolute bounds (comma-separated, no spaces)" help="As with --nOT, but for the original bottom complementary to the original top, and complementary to                         the original bottom strands, respectively."/>
             <param name="methylation_metrics" type="select" multiple="True" optional="True" label="Context methylation metrics options">
                 <option value="--CHG">Output CHG context methylation metrics (--CHG)</option>
                 <option value="--CHH">Output CHH context methylation metrics (--CHH)</option>
@@ -264,7 +270,7 @@
         </data>
         <data name="outFileMbiasTSV" format="tabular" from_work_dir="out_mbias.tsv" label="${tool.name} on ${on_string}: methylation bias (tsv)">
             <filter>main_task['task']  == 'mbias'</filter>
-            <filter>main_task['tsv']</filter>
+            <filter>main_task['txt']</filter>
         </data>
         <data name="outFileMbiasCpGOT" format="svg" from_work_dir="out_mbias_OT.svg" label="${tool.name} on ${on_string}: methylation bias (original top strand)">
             <filter>main_task['task']  == 'mbias'</filter>
@@ -302,6 +308,10 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- Regression test for the multithreaded mbias crash: without a
+             pre-built FASTA index the mbias worker threads race while writing
+             the same .fai file, which can end in a SIGSEGV. This test exercises
+             the samtools faidx step with several allocated slots. -->
         <test expect_num_outputs="4">
             <conditional name="reference_source">
                 <param name="reference_source_selector" value="history"/>
@@ -317,6 +327,7 @@
             <output name="outFileMbiasCpGOT" ftype="svg">
                 <assert_contents>
                     <has_size value="14614"/>
+                    <has_text text="Original Top Strand"/>
                 </assert_contents>
             </output>
             <output name="outFileMbiasCpGOB" ftype="svg">
@@ -425,7 +436,7 @@
             <param name="input_sortedAlignBAM" value="cg_aln.bam" ftype="bam"/>
             <conditional name="main_task">
                 <param name="task" value="mbias"/>
-                <param name="tsv" value="--txt"/>
+                <param name="txt" value="--txt"/>
             </conditional>
             <section name="advanced_options">
                 <param name="min_mapq" value="2"/>
@@ -441,6 +452,7 @@
             <output name="outFileMbiasCpGOT" ftype="svg">
                 <assert_contents>
                     <has_size value="14614"/>
+                    <has_text text="Original Top Strand"/>
                 </assert_contents>
             </output>
             <output name="outFileMbiasCpGOB" ftype="svg">
@@ -564,7 +576,7 @@
                 <param name="task" value="extract"/>
                 <param name="extract_outputs" value="--cytosine_report"/>
             </conditional>
-            <output name="outFileExtractCpG" ftype="txt">
+            <output name="outFileCytosineReport" ftype="txt">
                 <assert_contents>
                     <has_size value="2147"/>
                 </assert_contents>
@@ -585,7 +597,6 @@
                 <param name="min_mapq" value="2"/>
                 <param name="minInsertSize" value="50"/>
                 <param name="maxInsertSize" value="150"/>
-                <param name="ignoreNH" value="true"/>
             </section>
             <output name="outFileExtractCpG" ftype="bedgraph">
                 <assert_contents>
@@ -615,8 +626,55 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- Test the NH tag handling with an NH:i:2 tagged copy of the fixture:
+             by default alignments with NH greater than 1 are discarded, leaving
+             only the bedGraph header line. -->
+        <test expect_num_outputs="1">
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="history"/>
+                <param name="ref_file" value="cg100.fa" ftype="fasta"/>
+            </conditional>
+            <param name="input_sortedAlignBAM" value="cg_aln_nh2.bam" ftype="bam"/>
+            <conditional name="main_task">
+                <param name="task" value="extract"/>
+            </conditional>
+            <section name="advanced_options">
+                <param name="min_mapq" value="2"/>
+            </section>
+            <output name="outFileExtractCpG" ftype="bedgraph">
+                <assert_contents>
+                    <has_n_lines n="1"/>
+                    <has_line_matching expression="^track type=&quot;bedGraph&quot; description=&quot;output CpG methylation levels&quot;$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- With the ignoreNH option enabled the NH tag is ignored and the
+             multi-mapping alignments of the same NH:i:2 fixture are included
+             again. -->
+        <test expect_num_outputs="1">
+            <conditional name="reference_source">
+                <param name="reference_source_selector" value="history"/>
+                <param name="ref_file" value="cg100.fa" ftype="fasta"/>
+            </conditional>
+            <param name="input_sortedAlignBAM" value="cg_aln_nh2.bam" ftype="bam"/>
+            <conditional name="main_task">
+                <param name="task" value="extract"/>
+            </conditional>
+            <section name="advanced_options">
+                <param name="min_mapq" value="2"/>
+                <param name="ignoreNH" value="true"/>
+            </section>
+            <output name="outFileExtractCpG" ftype="bedgraph">
+                <assert_contents>
+                    <has_size value="1016"/>
+                    <has_n_lines n="49"/>
+                    <has_line_matching expression="^chrCG\t0\t1\t100\t1\t0$"/>
+                    <has_line_matching expression="^chrCG\t96\t97\t100\t1\t0$"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
-    <help format="markdown"><![CDATA[
+    <help format="markdown"><![CDATA[ 
 
 **What it does**
 
@@ -647,9 +705,9 @@ All coordinates are 0-based half open, which conforms to the bedGraph definition
 
 An example of the output is below::
 
-#track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
-#1   25115   25116   100 3   0
-#1   29336   29337   50  1   1
+    #track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
+    #1   25115   25116   100 3   0
+    #1   29336   29337   50  1   1
 
 Note the header line, which starts with "track". The "description" field is used as a label in programs such as IGV. Each of the subsequent lines describe single Cytosines, the 25116th and 29337th base on chromosome 1, respectively. The first position has 3 alignments (or pairs of alignments) indicating methylation and 0 indicating unmethylation (100% methylation) and the second position has 1 alignment each supporting methylation and unmethylation (50% methylation).
 
@@ -657,14 +715,14 @@ Note the header line, which starts with "track". The "description" field is used
 
 In many circumstances, it's desireable for metrics from individual Cytosines in a CpG to be merged, producing per-CpG metrics rather than per-Cytosine metrics. This can be accomplished with the **Merge per-Cytosine** parameter. If this is used, then this output::
 
-#track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
-#1   25114   25115   100 2   1
-#1   25115   25116   100 3   0
+    #track type="bedGraph" description="SRR1182519.sorted CpG methylation levels"
+    #1   25114   25115   100 2   1
+    #1   25115   25116   100 3   0
 
 is changed to this::
 
-#track type="bedGraph" description="SRR1182519.sorted merged CpG methylation levels"
-#1   25114   25116   100 5   1
+    #track type="bedGraph" description="SRR1182519.sorted merged CpG methylation levels"
+    #1   25114   25116   100 5   1
 
 This also works for CHG-level metrics. If bedGraph files containing per-Cytosine metrics already exist, they can be converted to instead contain per-CpG/CHG metrics with MethylDackel mergeContext.
 
@@ -674,7 +732,6 @@ In an ideal experiment, we expect that the probability of observing a methylated
 
 That command will create a methylation bias (mbias for short) plot for each of the strands for which there are valid alignments.
 The resulting mbias graphs are in SVG format and can be viewed in most modern web browsers.
-
 
 If you have paired-end data, both reads in the pair will be shown separately, as is the case above. The program will suggest regions for inclusion ("--OT 2,0,0,98" above) and mark them on the plot, if applicable. The format of this output is described in MethylDackel extract -h. These suggestions should not be accepted blindly; users are strongly encouraged to have a look for themselves and tweak the actual bounds as appropriate. The lines indicate the average methylation percentage at a given position and the shaded regions the 99.9% confidence interval around it. This is useful in gauging how many methylation calls a given position has relative to its neighbors. Note the spike in methylation at the end of read #2 and the corresponding dip at the beginning of read #1. This is common and these regions can be ignored with the suggested trimming bounds. Note also that the numbers refer to the first and last base that should be included during methylation extraction, not the last and first base to ignore!.
 
@@ -706,7 +763,7 @@ Note that if one additionally specifies `--mergeContext`, that a given CpG or CH
 
 **Filtering alignments by insert size and multi-mapping**
 
-Alignments can additionally be filtered by their insert size (the **Minimum** and **Maximum insert size** options) or by discarding any alignment whose `NH` tag reports more than one mapping location (**Ignore multi-mapping alignments**).
+Alignments can additionally be filtered by their insert size (the **Minimum** and **Maximum insert size** options). By default, alignments with an `NH` tag greater than 1, i.e. alignments that map to more than one location, are discarded. Enabling the **Include multi-mapping alignments** option ignores the `NH` tag and incorporates such alignments into the metrics.
 
 -----
 
