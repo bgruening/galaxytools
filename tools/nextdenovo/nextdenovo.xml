@@ -7,53 +7,56 @@
     <expand macro="requirements"/>
     <version_command>nextDenovo --version</version_command>
     <command detect_errors="aggressive"><![CDATA[
-        ## Number of cores allocated to this job. NextDenovo's ovl_sort aborts when run with
-        ## fewer than 2 threads and every pipeline step gets its thread count from the
-        ## configuration, so the job itself has to provide at least 2 cores. This is an
-        ## allocation (job runner) concern and is NOT worked around by inflating the
-        ## values written into the configuration.
-        #set $cores = $('\${GALAXY_SLOTS}')
-        #if $cores == 1
-            ## Fail loudly instead of silently oversubscribing a single-slot allocation.
-            #import sys
-            #silent $sys.exit('NextDenovo requires at least 2 cores. Please re-run the tool on a destination providing 2 or more cores.')
-        #end if
+        ## NextDenovo separates the number of concurrently running subtasks (parallel_jobs,
+        ## pa_correction, seed_cutfiles -- all hard-wired to 1 in the configuration below) from
+        ## the number of threads each subtask uses. Only the latter is derived from the cores
+        ## allocated to this job, so the tool never runs more work in parallel than allocated.
+        threads="\${GALAXY_SLOTS:-1}" &&
+        ## ovl_sort aborts with 'Assertion `opts.thread >= 2' failed' below two threads, so the
+        ## per-subtask thread count is floored at 2. Concurrency stays at 1, therefore a
+        ## single-core job runs one subtask at a time instead of failing outright.
+        threads=\$(( threads < 2 ? 2 : threads )) &&
+        ## Memory buffer of the overlap sort, in GB, from the memory allocated to this job.
+        sort_mem=\$(( \${GALAXY_MEMORY_MB:-8192} / 1024 )) &&
+        sort_mem=\$(( sort_mem < 1 ? 1 : sort_mem )) &&
         mkdir -p './read_files' &&
-        #for $index,$sample in enumerate($input_reads)
-            #set $ext = $sample.ext
-            ln -s '${sample}' './read_files/sample_${index}.${ext}' &&
+        #for $index, $sample in enumerate($input_reads)
+            ln -s '${sample}' './read_files/sample_${index}.${sample.ext}' &&
         #end for
         ls './read_files' -1 | sed -e 's|^|read_files/|' > './input.fofn' &&
-        ## Only one of each of the concurrent jobs / per-job threads may run at a time so
-        ## the product of both stays within the allocation:
-        ##   parallel_jobs (concurrent subtasks) = 1, pa_correction (concurrent correctors) = 1
-        ##   and the per-job thread counts (minimap2 -t, ovl_sort -t, nextcorrect -p) = cores.
-        ## See https://github.com/Nextomics/NextDenovo/blob/v2.5.2/doc/FAQ.rst
-        cat '${configfile}' | sed -e "s/jobs/1/g" | sed -e "s/cores/$cores/g" | sed -e "s|memory|\$((\${GALAXY_MEMORY_MB:-8192}/1024))|g" > './configfile' &&
+        ## Substitute the runtime resource values into the configuration. The placeholders are
+        ## unambiguous tokens so that no configuration *key* is rewritten (a plain
+        ## `s/jobs/1/g` would also turn `parallel_jobs` into `parallel_1`, which makes the
+        ## parser fall back to its default of 10 concurrent subtasks).
+        sed -e "s/@THREADS@/\$threads/g" -e "s/@SORTMEM@/\$sort_mem/g" '${config_template}' > './configfile' &&
         nextDenovo './configfile' &&
-        ## Corrected reads are written per seed; concatenate them into one dataset. The glob
-        ## may be empty when no correction is run, hence nullglob and /dev/null.
+        ## Corrected seeds are written per subtask; concatenate them into a single dataset.
+        ## The glob is empty when no correction is run, hence nullglob and the /dev/null input.
         shopt -s nullglob &&
         cat 02.cns_align/01.seed_cns.sh.work/seed_cns*/cns.fasta </dev/null > './corrected_reads.fasta'
     ]]></command>
     <configfiles>
-        <configfile name="configfile"><![CDATA[
+        <configfile name="config_template"><![CDATA[
             [General]
             job_type = local
             job_prefix = nextDenovo
-            #if $input_type == 'raw':
-                task = $task
-            #else
-                ## input_type=corrected forces the task to assembly-only (see
-                ## https://github.com/Nextomics/NextDenovo/blob/v2.5.2/lib/config_parser.py):
-                ## running the correction on already corrected reads is not possible, so
-                ## do not offer a combination that the parser would silently normalize.
+            #if $input_type == 'corrected'
+                ## input_type = corrected forces the task to assembly-only, and task = assemble
+                ## with raw input forces the full pipeline (see lib/config_parser.py _check()).
+                ## Write the effective task so that the configuration matches the outputs.
                 task = assemble
+            #else if $task == 'assemble'
+                task = all
+            #else
+                task = $task
             #end if
             rewrite = yes
             deltmp = yes
-            parallel_jobs = jobs
-            seed_cutfiles = jobs
+            ## Concurrency is kept at 1 and every subtask gets all allocated cores, so the
+            ## number of cores in use never exceeds the job allocation.
+            ## See https://github.com/Nextomics/NextDenovo/blob/v2.5.2/doc/FAQ.rst
+            parallel_jobs = 1
+            seed_cutfiles = 1
             input_type = $input_type
             read_type = $read_type
             input_fofn = input.fofn
@@ -67,13 +70,13 @@
                 seed_cutoff = $genome_seed.seed_cutoff
             #end if
             blocksize = $blocksize
-            sort_options = -m memoryg -t cores -k $ovl_parameters.max_depth_overlap -l $ovl_parameters.max_over_hang_length
-            minimap2_options_raw = -t cores --minlen $minimap_parameters.minlen --minmatch $minimap_parameters.minmatch --minide $minimap_parameters.minide --kn $minimap_parameters.kn --wn $minimap_parameters.wn --cn $minimap_parameters.cn --maxhan1 $minimap_parameters.maxhan1 --maxhan2 $minimap_parameters.maxhan2
-            pa_correction = jobs
-            correction_options = -p cores $correction_options.split $correction_options.fast
+            sort_options = -m @SORTMEM@g -t @THREADS@ -k $ovl_parameters.max_depth_overlap -l $ovl_parameters.max_over_hang_length
+            minimap2_options_raw = -t @THREADS@ --minlen $minimap_parameters.minlen --minmatch $minimap_parameters.minmatch --minide $minimap_parameters.minide --kn $minimap_parameters.kn --wn $minimap_parameters.wn --cn $minimap_parameters.cn --maxhan1 $minimap_parameters.maxhan1 --maxhan2 $minimap_parameters.maxhan2
+            pa_correction = 1
+            correction_options = -p @THREADS@ $correction_options.split $correction_options.fast
 
             [assemble_option]
-            minimap2_options_cns = -t cores
+            minimap2_options_cns = -t @THREADS@
             nextgraph_options = -a $np.a $np.c $np.G $np.k $np.A -E $np.E -q $np.q -i $np.i -I $np.I -R $np.R -S $np.S -r $np.r -M $np.M -T $np.T -N $np.N -u $np.u -w $np.w -D $np.D -P $np.P -m $np.m -n $np.n -B $np.B -C $np.C -z $np.z -l $np.l -L $np.L -t $np.t -F $np.F
         ]]></configfile>
     </configfiles>
@@ -173,32 +176,38 @@
         </section>
     </inputs>
     <outputs>
-        ## NextDenovo only reports final FASTA/statistics when nextgraph outputs FASTA
-        ## (np.a = 1). With np.a = 3 it writes the graph as GFA2 and exits after graph
-        ## construction, without producing a final consensus assembly.
+        <!-- The filters below mirror the task normalization performed by NextDenovo's own
+             configuration parser: with input_type = corrected only the assembly is produced,
+             with input_type = raw the correction always runs (task = assemble is promoted to
+             all). Hence an assembly is skipped only for task = correct with raw input. -->
+        <!-- NextDenovo reports the final FASTA assembly and its statistics only when nextgraph
+             writes FASTA (np.a = 1); with np.a = 3 it writes the graph and stops. -->
         <data name="stats" format="txt" from_work_dir="03.ctg_graph/nd.asm.fasta.stat" label="${tool.name} on ${on_string}: assembly statistics">
-            <filter>task != 'correct' and $np.a == '1'</filter>
+            <filter>not (task == 'correct' and input_type == 'raw') and np['a'] == '1'</filter>
         </data>
-        ## The preliminary (graph) contigs are produced by the ctg_graph step inside its
-        ## subtask work directory and are never copied to 03.ctg_graph/.
+        <!-- The preliminary (graph) contigs are written by the ctg_graph subtask inside its own
+             work directory and are never copied to 03.ctg_graph/, see upstream
+             get_ctg_graph_output(). -->
         <data name="asmp" format="fasta" from_work_dir="03.ctg_graph/01.ctg_graph.sh.work/ctg_graph1/nd.asm.p.fasta" label="${tool.name} on ${on_string}: preliminary contigs">
-            <filter>task != 'correct'</filter>
+            <filter>not (task == 'correct' and input_type == 'raw') and np['a'] == '1'</filter>
         </data>
         <data name="asm" format="fasta" from_work_dir="03.ctg_graph/nd.asm.fasta" label="${tool.name} on ${on_string}: assembly">
-            <filter>task != 'correct' and $np.a == '1'</filter>
+            <filter>not (task == 'correct' and input_type == 'raw') and np['a'] == '1'</filter>
         </data>
-        <data name="graph" format="gfa" from_work_dir="03.ctg_graph/01.ctg_graph.sh.work/ctg_graph1/nd.asm.p.gfa" label="${tool.name} on ${on_string}: string graph">
-            <filter>task != 'correct' and $np.a == '3'</filter>
+        <!-- In GFA mode NextDenovo names the graph nd.asm.p.gfa (GFA version 2) and exits after
+             graph construction, so no FASTA assembly or statistics exist in this branch. -->
+        <data name="graph" format="gfa2" from_work_dir="03.ctg_graph/01.ctg_graph.sh.work/ctg_graph1/nd.asm.p.gfa" label="${tool.name} on ${on_string}: string graph">
+            <filter>not (task == 'correct' and input_type == 'raw') and np['a'] == '3'</filter>
         </data>
-        ## No correction is performed for input_type = corrected, the parser forces the
-        ## task to assemble in that case, so never expose a (empty) corrected reads dataset.
+        <!-- The correction only runs for raw input, so never expose an empty dataset here. -->
         <data name="corrected" format="fasta" from_work_dir="corrected_reads.fasta" label="${tool.name} on ${on_string}: corrected reads">
-            <filter>task != 'assemble' and input_type == 'raw'</filter>
+            <filter>input_type == 'raw'</filter>
         </data>
         <data name="config" format="txt" from_work_dir="configfile" label="${tool.name} on ${on_string}: configuration file"/>
     </outputs>
     <tests>
-        <!-- Automatic seed cutoff calculation from the genome size, correction only. -->
+        <!-- Automatic seed cutoff calculation from the genome size (2k bases at 45x gives a
+             seed cutoff of 19120 bp here), correction only. -->
         <test expect_num_outputs="2">
             <param name="input_reads" value="nanopore.fasta.gz"/>
             <param name="task" value="correct"/>
@@ -211,19 +220,30 @@
             </conditional>
             <output name="corrected" ftype="fasta">
                 <assert_contents>
-                    <has_text text="&gt;"/>
-                    <not_has_text text="template"/>
+                    <!-- the two seeds of this dataset are reads 141 and 49 -->
+                    <has_text text="&gt;141 "/>
+                    <has_text text="&gt;49 "/>
+                    <has_n_lines n="4"/>
                 </assert_contents>
             </output>
             <output name="config" ftype="txt">
                 <assert_contents>
                     <has_text text="genome_size = 2k"/>
+                    <has_text text="seed_depth = 45"/>
                     <has_text text="read_type = ont"/>
-                    <has_n_lines n="27"/>
+                    <has_text text="task = correct"/>
+                    <!-- The concurrency keys must survive with their real names, otherwise the
+                         parser silently falls back to 10 parallel subtasks. -->
+                    <has_text text="parallel_jobs = 1"/>
+                    <has_text text="pa_correction = 1"/>
+                    <has_text text="seed_cutfiles = 1"/>
+                    <not_has_text text="@THREADS@"/>
+                    <not_has_text text="@SORTMEM@"/>
                 </assert_contents>
             </output>
         </test>
-        <!-- Manual seed cutoff, correction only. -->
+        <!-- Manual seed cutoff, correction only, with both correction flags enabled: the split
+             flag appends a part number to the name of every corrected seed. -->
         <test expect_num_outputs="2">
             <param name="input_reads" value="nanopore.fasta.gz"/>
             <param name="task" value="correct"/>
@@ -231,7 +251,7 @@
             <param name="read_type" value="ont"/>
             <conditional name="genome_seed">
                 <param name="selector" value="seed"/>
-                <param name="seed_cutoff" value="5000"/>
+                <param name="seed_cutoff" value="12000"/>
             </conditional>
             <section name="correction_options">
                 <param name="split" value="true"/>
@@ -239,15 +259,13 @@
             </section>
             <output name="corrected" ftype="fasta">
                 <assert_contents>
-                    <has_text text="&gt;"/>
-                    <not_has_text text="template"/>
+                    <has_text text="&gt;141_1 "/>
+                    <has_n_lines n="34"/>
                 </assert_contents>
             </output>
             <output name="config" ftype="txt">
                 <assert_contents>
-                    <!-- "cores" is substituted with the number of slots at runtime, so only
-                         assert on the parts of the option string that do not depend on it. -->
-                    <has_text text="seed_cutoff = 5000"/>
+                    <has_text text="seed_cutoff = 12000"/>
                     <has_text text="--split -fast"/>
                     <has_text text="task = correct"/>
                 </assert_contents>
@@ -261,42 +279,46 @@
             <param name="read_type" value="ont"/>
             <conditional name="genome_seed">
                 <param name="selector" value="seed"/>
-                <param name="seed_cutoff" value="5000"/>
+                <param name="seed_cutoff" value="12000"/>
             </conditional>
             <section name="np">
-                <param argument="-q" value="5"/>
+                <param name="q" value="5"/>
             </section>
             <output name="corrected" ftype="fasta">
                 <assert_contents>
-                    <has_text text="&gt;"/>
-                    <not_has_text text="template"/>
+                    <has_text text="&gt;141 "/>
+                    <has_n_lines n="34"/>
                 </assert_contents>
             </output>
             <output name="asmp" ftype="fasta">
                 <assert_contents>
                     <has_text text="&gt;ctg000000 type:s:linear"/>
-                    <has_text text="length:i:33153"/>
+                    <has_line_matching expression="^&gt;ctg000000 type:s:linear length:i:3\d{4} .*qv:i:"/>
+                    <has_n_lines n="2"/>
                 </assert_contents>
             </output>
             <output name="asm" ftype="fasta">
                 <assert_contents>
                     <has_text text="&gt;ctg000000 type:s:linear"/>
-                    <has_text text="length:i:33204"/>
+                    <has_line_matching expression="^&gt;ctg000000 type:s:linear length:i:3\d{4} node:i:\d+$"/>
+                    <has_n_lines n="2"/>
                 </assert_contents>
             </output>
             <output name="stats" ftype="txt">
                 <assert_contents>
-                    <has_text text="Total length"/>
+                    <has_text text="N50"/>
+                    <has_line_matching expression="^Total\s+3\d{4}\s+1$"/>
                 </assert_contents>
             </output>
             <output name="config" ftype="txt">
                 <assert_contents>
                     <has_text text="task = all"/>
+                    <has_text text="seed_cutoff = 12000"/>
                 </assert_contents>
             </output>
         </test>
-        <!-- GFA2 graph output: NextDenovo exits after graph construction, no FASTA
-             assembly or statistics are produced in this branch. -->
+        <!-- GFA2 graph output: NextDenovo exits after graph construction, so neither the FASTA
+             assembly nor the statistics may be collected in this branch. -->
         <test expect_num_outputs="3">
             <param name="input_reads" value="nanopore.fasta.gz"/>
             <param name="task" value="all"/>
@@ -304,32 +326,33 @@
             <param name="read_type" value="ont"/>
             <conditional name="genome_seed">
                 <param name="selector" value="seed"/>
-                <param name="seed_cutoff" value="5000"/>
+                <param name="seed_cutoff" value="12000"/>
             </conditional>
             <section name="np">
-                <param argument="-a" value="3"/>
-                <param argument="-q" value="5"/>
+                <param name="a" value="3"/>
+                <param name="q" value="5"/>
             </section>
             <output name="corrected" ftype="fasta">
                 <assert_contents>
-                    <has_text text="&gt;"/>
-                    <not_has_text text="template"/>
+                    <has_text text="&gt;141 "/>
+                    <has_n_lines n="34"/>
                 </assert_contents>
             </output>
-            <output name="graph" ftype="gfa">
+            <output name="graph" ftype="gfa2">
                 <assert_contents>
                     <has_text text="VN:Z:2.0"/>
-                    <has_text text="ctg000000 33153"/>
+                    <has_line_matching expression="^S\s+ctg000000\s+3\d{4}"/>
+                    <not_has_text text="&gt;ctg000000"/>
                 </assert_contents>
             </output>
             <output name="config" ftype="txt">
                 <assert_contents>
-                    <has_text text="task = all"/>
+                    <has_text text="nextgraph_options = -a 3"/>
                 </assert_contents>
             </output>
         </test>
-        <!-- Corrected reads as input: the task is normalized to assembly-only by
-             NextDenovo's config parser, so no corrected reads dataset is produced. -->
+        <!-- Corrected reads as input: the parser normalizes the task to assembly-only, so no
+             corrected-reads dataset may be produced. -->
         <test expect_num_outputs="4">
             <param name="input_reads" value="corrected_reads.fasta"/>
             <param name="task" value="all"/>
@@ -337,24 +360,26 @@
             <param name="read_type" value="ont"/>
             <conditional name="genome_seed">
                 <param name="selector" value="seed"/>
-                <param name="seed_cutoff" value="5000"/>
+                <param name="seed_cutoff" value="12000"/>
             </conditional>
             <section name="np">
-                <param argument="-q" value="5"/>
+                <param name="q" value="5"/>
             </section>
             <output name="asmp" ftype="fasta">
                 <assert_contents>
-                    <has_text text="&gt;ctg000000 type:s:linear"/>
+                    <has_line_matching expression="^&gt;ctg000000 type:s:linear length:i:3\d{4} .*qv:i:"/>
+                    <has_n_lines n="2"/>
                 </assert_contents>
             </output>
             <output name="asm" ftype="fasta">
                 <assert_contents>
-                    <has_text text="&gt;ctg000000 type:s:linear"/>
+                    <has_line_matching expression="^&gt;ctg000000 type:s:linear length:i:3\d{4} node:i:\d+$"/>
+                    <has_n_lines n="2"/>
                 </assert_contents>
             </output>
             <output name="stats" ftype="txt">
                 <assert_contents>
-                    <has_text text="Total length"/>
+                    <has_line_matching expression="^Total\s+3\d{4}\s+1$"/>
                 </assert_contents>
             </output>
             <output name="config" ftype="txt">
@@ -366,54 +391,68 @@
         </test>
     </tests>
     <help format="markdown"><![CDATA[
-        NextDenovo is a string graph-based de novo assembler for long reads (CLR, HiFi and ONT). It uses
-        a "correct-then-assemble" strategy similar to canu (no correction step for PacBio HiFi reads), but
-        requires significantly less computing resources and storages.
+NextDenovo is a string graph-based de novo assembler for long reads (CLR, HiFi and ONT). It uses
+a "correct-then-assemble" strategy similar to canu (no correction step for PacBio HiFi reads), but
+requires significantly less computing resources and storage.
 
---------
+-----
 
-**Input**
+# Input
 
 - **Sequence reads**: one or more FASTA or FASTQ datasets (optionally gzipped) of raw or already
-  corrected long reads. Raw reads are filtered by *Read cutoff*; seeds (reads at least *Seed cutoff*
-  long) are selected for the correction step. Provide either an estimated **genome size** and **seed
-  depth** — NextDenovo then computes the seed cutoff automatically — or set the **seed cutoff**
-  manually (0 for automatic calculation from the input data).
+  corrected long reads. Reads shorter than *Read cutoff* are discarded; reads at least
+  *Seed cutoff* long are selected as *seeds* for the correction step.
+- Provide either an estimated **genome size** together with a **seed depth** — NextDenovo then
+  computes the seed cutoff from the sequencing depth of your data — or set the **seed cutoff**
+  manually (set it to 0 to have it estimated from the input alone).
+- **Read type** selects the preset alignment and correction parameters; choose the one matching
+  your data (ONT 1D, PacBio CLR or HiFi).
 
-**Task**
+-----
+
+# Task
 
 - **All**: correct the raw reads and assemble the corrected reads.
-- **Correct**: only produce the corrected reads. This is the cheapest way to validate that the input
-  data and parameters are suitable for an assembly.
-- **Assemble**: only assemble, requires *Input type = corrected* (raw reads cannot be skipped to the
-  assembly step) or *Read type = HiFi*.
+- **Correct**: only produce the corrected reads. This is the cheapest way to check that the input
+  data and the seed cutoff are suitable for an assembly.
+- **Assemble**: only assemble, requires *Input type = corrected* (or HiFi reads).
 
-If the *Input type* is *corrected*, the task is always reduced to *assemble*: NextDenovo's
-configuration parser enforces this, since running the correction on already corrected reads is not
-supported. No corrected-reads output is produced in that case.
+NextDenovo normalizes impossible combinations: with *Input type = corrected* the task always
+becomes *assemble* (already corrected reads are not corrected again), and *task = assemble* with
+*Input type = raw* becomes *all*. The written configuration file and the returned outputs follow
+the effective task, not the literal selection.
 
-**Outputs**
+-----
+
+# Outputs
 
 - **Corrected reads**: the consensus of the seed corrections, one FASTA record per corrected seed.
-- **Preliminary contigs** (`nd.asm.p.fasta`): contigs derived directly from the string graph. They
-  may contain more structural and base errors than the final assembly, but can be used as the final
-  result after validation (see the NextDenovo FAQ for the comparison of the two assemblies).
-- **Assembly** (`nd.asm.fasta`): the final consensus assembly, produced by mapping the corrected
-  reads back to the preliminary contigs and generating a new consensus.
-- **Assembly statistics**: N10..N90, total and average contig length and contig counts.
-- **String graph**: when the NextGraph *output format* is set to **GFA**, the graph is written as
-  GFA2 instead of a FASTA assembly, and NextDenovo stops after graph construction. The final
-  assembly and its statistics are not produced in this mode.
-- **Configuration file**: the NextDenovo configuration as it was executed, useful for reproducing a
-  run or for troubleshooting.
+- **Preliminary contigs**: contigs derived directly from the string graph. They can be used as the
+  final result after validation, but may contain more errors than the final assembly.
+- **Assembly**: the final consensus assembly, produced by mapping the corrected reads back onto the
+  preliminary contigs and calling a new consensus.
+- **Assembly statistics**: N10–N90, minimum, maximum and average contig length, and contig counts.
+- **String graph**: if the NextGraph *output format* is set to **GFA**, the graph is written as
+  GFA2 and the run stops after graph construction — no FASTA assembly or statistics are produced.
+- **Configuration file**: the NextDenovo configuration exactly as executed, useful to reproduce or
+  troubleshoot a run.
 
-**Parallelization**
+-----
 
-NextDenovo distinguishes the number of concurrently running subtasks (*parallel_jobs*,
-*pa_correction*) from the number of threads each subtask uses. This wrapper keeps concurrency at 1
-and gives every subtask all cores of the job allocation, so the tool never uses more cores than
-allocated. Larger inputs benefit from an allocation of several cores; note that NextDenovo's overlap
-sorting requires at least 2 threads, so the tool cannot run on a single-core destination.
+# Resources
+
+NextDenovo distinguishes the number of concurrently running subtasks from the number of threads
+each subtask uses. This wrapper always runs one subtask at a time and gives it all cores allocated
+to the job, so it never uses more cores than requested. Larger datasets simply take longer on small
+allocations; requesting several cores speeds up the alignment and correction steps. The memory
+allocated to the job is passed to the overlap sorting step.
+
+# Tips
+
+- A too high *Seed cutoff* discards seeds and can leave the assembly empty; a too low one makes the
+  correction slow. Start with an estimated genome size and inspect the corrected reads output.
+- If the assembly is empty or heavily fragmented, raise *Minimum short branch length*
+  (NextGraph `-q`, e.g. to 5) and check the sequencing depth of your data.
     ]]></help>
     <expand macro="citations"/>
 </tool>
