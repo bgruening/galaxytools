@@ -1,4 +1,4 @@
-<tool id="minced" name="detect CRISPR sequences" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@">
+<tool id="minced" name="detect CRISPR sequences" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1">
     <description>(minced)</description>
     <macros>
         <import>macros.xml</import>
@@ -8,6 +8,15 @@
     <version_command>minced --version</version_command>
     <command detect_errors="aggressive">
 <![CDATA[
+        ## minced reads the FASTA through a plain java.io.FileReader and has no gzip
+        ## support, so gzipped inputs are unpacked into a job-local FASTA that every
+        ## minced invocation below uses as its input.
+        #if $input.is_of_type('fasta.gz'):
+            gunzip -c '$input' > minced_input.fasta &&
+        #else:
+            ln -s '$input' minced_input.fasta &&
+        #end if
+
         ## The spacers FASTA is written next to the report as <report>_spacers.fa, where
         ## minced strips everything after the first dot of the report name, so the report
         ## name must not contain a dot (a mktemp() path would therefore be wrong).
@@ -28,7 +37,7 @@
             #if '-spacers' in $outputs:
                 -spacers
             #end if
-            $input
+            minced_input.fasta
             \$temp_output
             ;
 
@@ -49,7 +58,7 @@
             gff_report_full=\$(mktemp);
             minced \$minced_opts
                 -gffFull
-                $input
+                minced_input.fasta
                 \$gff_report_full
                 results_full.gff
                 ;
@@ -58,7 +67,7 @@
             gff_report=\$(mktemp);
             minced \$minced_opts
                 -gff
-                $input
+                minced_input.fasta
                 \$gff_report
                 results.gff
                 ;
@@ -69,7 +78,7 @@
         <param format="fasta,fasta.gz" name="input" type="data" label="Input sequence as FASTA"/>
         <param name="minNR" type="integer" value="3" label="Minimum number of repeats a CRISPER must have"/>
         <param name="minRL" type="integer" value="19" label="Minimum length of a CRISPER repeated region"/>
-        <param name="maxRL" type="integer" value="38" label="Maximum length of a CRISPR repeated region"/>
+        <param name="maxRL" type="integer" value="38" label="Maximum length of a CRISPER repeated region"/>
         <param name="minSL" type="integer" value="19" label="Minimum length of CRISPER non repeated region" help="or spacer region"/>
         <param name="maxSL" type="integer" value="48" label="Maximum length of CRISPER non repeated region" help="or spacer region"/>
         <param name="searchWL" type="select" label="Length of search window to used to discover CRISPERs">
@@ -107,6 +116,20 @@
     <tests>
         <test expect_num_outputs="2">
             <param name="input" value="sequence.fasta" ftype="fasta"/>
+            <param name="minNR" value="3"/>
+            <param name="minRL" value="29"/>
+            <param name="maxRL" value="38"/>
+            <param name="minSL" value="19"/>
+            <param name="maxSL" value="48"/>
+            <param name="searchWL" value="none"/>
+            <param name="outputs" value="BED,TABULAR"/>
+            <output name="output" file="minced.tabular" ftype="tabular"/>
+            <output name="output_region" file="minced.bed" ftype="bed"/>
+        </test>
+        <!-- The same dataset gzip-compressed: minced cannot read gzip itself, so the
+             wrapper decompresses it first and the results must be unchanged. -->
+        <test expect_num_outputs="2">
+            <param name="input" value="sequence.fasta.gz" ftype="fasta.gz"/>
             <param name="minNR" value="3"/>
             <param name="minRL" value="29"/>
             <param name="maxRL" value="38"/>
@@ -162,7 +185,8 @@ CRT.
 
 Depending on the selection under *Additional output format* the tool produces:
 
-- **BED** — one interval per detected CRISPR array
+- **BED** — one interval per detected CRISPR array, in zero-based, half-open
+  coordinates as required by the BED format
 - **Tabular** — one row per repeat/spacer unit with the repeat position, the repeat
   and spacer sequences and their lengths
 - **GFF (summary / detailed)** — `repeat_region` features, or additionally the
