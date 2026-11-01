@@ -1,0 +1,169 @@
+# Bot review for PRs from forks.
+#
+# Fork PRs get no secrets on `pull_request`, so this runs on
+# `pull_request_target`, in the base repository with its secrets. That is
+# only safe because nothing from the PR is executed: the job checks out the
+# default branch, extracts the PR's files into a detached worktree as plain
+# data, and the reviewer has no shell tools. Do NOT add a checkout of the PR
+# or any step that runs its content.
+#
+# A maintainer requests a review by applying the `review` (or
+# `tool-bot:review`) label; nothing runs on PR open or new pushes. Applying
+# a label needs write access, so the requester is always a maintainer — and
+# their login is passed to the bot as --actor for the allowed_maintainers
+# check.
+#
+# Optional extra gate: create a `fork-review` environment with required
+# reviewers (Settings → Environments). Each run then waits for an approval
+# before proceeding, and the approver sees the commit under review. Give it
+# its own GXY_TOOL_BOT_API_KEY to be able to revoke that access on its own.
+# Without the environment, runs proceed as soon as a maintainer labels —
+# still maintainer-gated, just without the explicit confirmation.
+#
+# Deployment note:
+#   - Public repositories block `pull_request_target` by default unless an
+#     Actions event policy allows it (enforced from November 2026). Allow it
+#     for this workflow only:
+#       gh api -X POST repos/OWNER/REPO/actions/policies --input - <<'EOF'
+#       {"name": "fork review", "enforcement": "active",
+#        "conditions": {"workflow_path": {"include": [".github/workflows/gxy-on-fork-pr-review.yml"], "exclude": []}},
+#        "rules": [{"type": "restrict_action_events", "parameters": {"allowed_events": ["pull_request_target"]}}]}
+#       EOF
+on:
+  pull_request_target:
+    types: [labeled]
+
+permissions: {}
+
+# Two jobs so no job holds both the LLM key and a GitHub write token:
+#   review — LLM key, read-only token: reviews the files, writes the comment
+#   post   — write token, no key, no PR content: posts it
+jobs:
+  review:
+    name: Review fork PR
+    # Fork PRs only, and only the review labels count.
+    if: |
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      (github.event.label.name == 'review' ||
+       github.event.label.name == 'tool-bot:review')
+    runs-on: ubuntu-latest
+    environment: fork-review
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+      # The commit the reviewer approved — never the branch, which can move.
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+    steps:
+      # Default branch only: config and workflow come from here, not the PR.
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Extract the PR's tool files
+        id: pr_files
+        run: |
+          TOOL_DIR=$(gh pr diff $PR_NUMBER --name-only | grep -oP '^tools/\K[^/]+' | sort -u | head -1)
+          # First character must not be a dot: '.' and '..' pass
+          # [A-Za-z0-9_.-] but resolve outside tools/.
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
+            echo "No reviewable tool directory under tools/ in this PR (got '$TOOL_DIR')"
+            exit 1
+          fi
+          # The tool dir above comes from the PR as it is now: only review
+          # if that is still the labeled commit.
+          if [ "$(gh pr view $PR_NUMBER --json headRefOid --jq .headRefOid)" != "$HEAD_SHA" ]; then
+            echo "The PR has new commits since the label was applied; apply the label again to review them."
+            exit 1
+          fi
+          git fetch --no-tags origin "refs/pull/$PR_NUMBER/head"
+          # A worktree, not `git archive`: archive honors `export-ignore`, so a
+          # PR could hide a file from review with its own .gitattributes.
+          # core.symlinks=false checks links out as plain files holding the
+          # target path: the bot reads tool files following links, so a PR
+          # link to e.g. /proc/self/environ would put the key in the prompt.
+          git -c core.symlinks=false worktree add --detach "$RUNNER_TEMP/pr" "$HEAD_SHA"
+          echo "tool_dir=$TOOL_DIR" >> $GITHUB_OUTPUT
+          echo "Reviewing tools/$TOOL_DIR at $HEAD_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.2
+      # The bot offers its planemo_test / run_in_conda (shell) tools whenever
+      # planemo, micromamba or conda is on PATH. The runner image symlinks
+      # /usr/bin/conda.
+      - name: Keep shell tools off PATH
+        run: |
+          sudo rm -f /usr/bin/conda
+          for t in planemo micromamba conda; do
+            if command -v "$t" >/dev/null; then
+              echo "::error::$t is on PATH, the review bot would get shell tools"
+              exit 1
+            fi
+          done
+      - name: Review tool files
+        env:
+          GXY_TOOL_BOT_API_KEY: ${{ secrets.GXY_TOOL_BOT_API_KEY }}
+          GITHUB_REF_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          TOOL_DIR: ${{ steps.pr_files.outputs.tool_dir }}
+        run: |
+          # The sender is the maintainer who applied the label — the same
+          # actor semantics as same-repo review.
+          gxy-tool-bot review \
+            --pr $PR_NUMBER \
+            --config .gxy-tool-bot.yml \
+            --tool-dir "$RUNNER_TEMP/pr/tools/$TOOL_DIR" \
+            --actor ${{ github.event.sender.login }} \
+            --comment-dir "$RUNNER_TEMP/comments"
+      - name: Upload comments
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: review-comments
+          path: ${{ runner.temp }}/comments/
+          if-no-files-found: ignore
+
+  post:
+    name: Post review
+    needs: review
+    # Not when the review job was skipped (same-repo PR or another label).
+    # A cancelled or timed-out run still gets its label removed.
+    if: always() && needs.review.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      # Label edits on a PR go through the issues endpoint.
+      issues: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+      PR_NUMBER: ${{ github.event.pull_request.number }}
+    steps:
+      # Left on, the label would block a re-review (that needs a new label
+      # event) and make on-pr-review.yml start and fail its fork check on
+      # every later label.
+      - name: Remove review label
+        run: |
+          gh pr edit $PR_NUMBER --remove-label "tool-bot:review" || true
+          gh pr edit $PR_NUMBER --remove-label "review" || true
+      # The comments are model output: post them as plain bodies, never run them.
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: review-comments
+          path: ${{ runner.temp }}/comments
+      - name: Post comments
+        env:
+          REVIEW_RESULT: ${{ needs.review.result }}
+        run: |
+          shopt -s nullglob
+          files=("$RUNNER_TEMP"/comments/*.md)
+          for f in "${files[@]}"; do
+            gh pr comment $PR_NUMBER --body-file "$f"
+          done
+          if [ "$REVIEW_RESULT" != "success" ] && [ ${#files[@]} -eq 0 ]; then
+            gh pr comment $PR_NUMBER --body "⚠️ Review failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          fi

@@ -54,7 +54,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install --no-cache-dir gxy-tool-bot==0.2.1
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.2
       - run: pip install "planemo>=0.75.43"
       - name: Install micromamba
         run: |
@@ -74,6 +74,29 @@ jobs:
             --remove-label "tool-bot:generation-failed" || true
           gh issue edit $ISSUE_NUMBER \
             --remove-label "generation-failed" || true
+      # planemo_test / run_in_conda run model-chosen commands next to the LLM
+      # key and a write token. The bot runs them as this unprivileged user
+      # (GXY_TOOL_BOT_EXEC_USER), which can't read the bot process's
+      # environment. The bot writes its output outside the runner's home,
+      # which stays closed to that user.
+      - name: Create the exec user
+        id: exec_user
+        run: |
+          # An older gxy-tool-bot ignores GXY_TOOL_BOT_EXEC_USER and would run the
+          # model's commands as this user, next to the key: refuse it.
+          python -c "from gxy_tool_bot.generator import _run_model_command" || {
+            echo "::error::This gxy-tool-bot can't run commands as another user; update it"; exit 1; }
+          sudo useradd -M -s /usr/sbin/nologin gxyexec
+          # The runner runs cron: without this, a crontab outlives the pkill below.
+          echo gxyexec | sudo tee -a /etc/cron.deny >/dev/null
+          if sudo -u gxyexec sudo -n true 2>/dev/null || sudo -u gxyexec docker ps >/dev/null 2>&1; then
+            echo "::error::gxyexec must have neither sudo nor docker"
+            exit 1
+          fi
+          WORK=$(mktemp -d /tmp/gxy-work.XXXXXX)
+          chmod 755 "$WORK"
+          echo "GXY_TOOL_BOT_EXEC_USER=gxyexec" >> "$GITHUB_ENV"
+          echo "WORK=$WORK" >> "$GITHUB_ENV"
       - name: Generate tool files
         id: generate
         env:
@@ -93,11 +116,35 @@ jobs:
           gxy-tool-bot generate \
             --issue $ISSUE_NUMBER \
             --config .gxy-tool-bot.yml \
-            --output generated/ \
+            --output "$WORK/generated" \
             --actor ${{ github.event.sender.login || 'manual' }} \
             --commit-msg-path $GITHUB_WORKSPACE/.commit-msg \
             --pr-body-path $GITHUB_WORKSPACE/.pr-body \
             "${OVERRIDE_ARGS[@]}"
+      # Before this job touches the files again: nothing of gxyexec's may keep
+      # running, and the output may hold only plain files and dirs (a link
+      # would be followed by the steps below). The steps below use a snapshot
+      # in generated/, which gxyexec can't reach.
+      - name: Stop the exec user and check the output
+        id: isolation
+        if: always() && env.WORK != ''
+        run: |
+          sudo pkill -KILL -u gxyexec || true
+          sudo crontab -r -u gxyexec 2>/dev/null || true
+          sleep 1
+          if pgrep -u gxyexec >/dev/null; then
+            echo "::error::gxyexec still has processes running"
+            exit 1
+          fi
+          rm -rf generated
+          [ -d "$WORK/generated" ] || exit 0
+          cp -a "$WORK/generated" generated
+          if [ -n "$(find generated ! -type f ! -type d)" ]; then
+            echo "::error::The output holds links or special files:"
+            find generated ! -type f ! -type d
+            rm -rf generated
+            exit 1
+          fi
       - name: Format generated XML with planemo
         id: format
         if: steps.generate.outcome == 'success'
@@ -116,7 +163,9 @@ jobs:
           TOOL_DIR=$(cat generated/.tool-name)
           # .tool-name is agent-written and feeds 'rm -rf tools/$TOOL_DIR'
           # below — reject anything that isn't a plain directory name.
-          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_.-]+$ ]]; then
+          # The first character must not be a dot: '.' and '..' would pass
+          # [A-Za-z0-9_.-] but resolve outside tools/.
+          if [[ ! "$TOOL_DIR" =~ ^[A-Za-z0-9_-][A-Za-z0-9_.-]*$ ]]; then
             echo "Refusing unsafe tool directory name: $TOOL_DIR"
             exit 1
           fi
@@ -228,7 +277,7 @@ jobs:
           fi
           rm -f "$GITHUB_WORKSPACE/.validation-failed"
       - name: Handle generation failure
-        if: steps.generate.outcome == 'failure'
+        if: failure() && (steps.exec_user.outcome == 'failure' || steps.generate.outcome == 'failure' || steps.isolation.outcome == 'failure')
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -242,7 +291,7 @@ jobs:
               gh issue edit $ISSUE_NUMBER --add-label "generation-failed"
           fi
       - name: Handle PR creation failure
-        if: steps.create_pr.outcome == 'failure'
+        if: failure() && steps.create_pr.outcome == 'failure'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
