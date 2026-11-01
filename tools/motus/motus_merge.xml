@@ -1,45 +1,30 @@
-<tool id="mereg_mOTUs_tables" name="Merge" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
-    <description>Merge mOTUs aboundance or count tables</description>
+<tool id="motus_merge" name="Merge mOTUs tables" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>combines several mOTUs profiles into one table</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="biotools"/>
     <expand macro="requirements"/>
-    <command detect_errors="exit_code"><![CDATA[
-        #if $db.db_source == 'cached'
-            #set $DATABASE_DIR=$db.db_cached.fields.path
-        #else
-            #set $database_path = $db.database
-            mkdir database_dir &&
-            tar -xvf '$database_path' -C database_dir/ &&
-            #set $DATABASE_DIR = 'database_dir/db_mOTU' ##the actual DB folder in the archive called db_mOTU
-        #end if
-        echo "Database Directory:" $DATABASE_DIR  &&
-
+    <command detect_errors="aggressive"><![CDATA[
+        @DATABASE_DIR_SETUP@
         motus merge
-        -db '$DATABASE_DIR'
-        -i '${','.join([str($file) for $file in $files])}'
-        #if $add_profiles
-        -a '$add_profiles'
-        #end if
-        #if $biom_format
-        -o '$output_biom'
-        $biom_format
-        #else
-        -o '$output_txt'
-        #end if
+            -db '$DATABASE_DIR'
+            -i
+            #for $file in $files:
+                '$file'
+            #end for
+            -o merged.motus
+        && mv merged.motus '$output_txt'
     ]]></command>
     <inputs>
-        <param name="files" type="data" format="txt" multiple="true" label="mOTU profiles to merge"/>
-        <param argument="add_profiles" type="text" label="Add pre-computed profiles" help="Add pre-computed profiles from different environmental samples" optional="true"/>
-        <param argument="biom_format" type="boolean" truevalue="-B" falsevalue="" checked="false" label="Output in BIOM format?"/>
+        <param name="files" type="data" format="tabular" multiple="true" min="2" label="mOTUs profiles" help="Two or more profiles generated with the same mOTUs database and the same profiling parameters"/>
         <conditional name="db">
-            <param name="db_source" type="select" label="mOTUs Database">
-                <option value="cached">Use a pre-installed database</option>
-                <option value="history">Use a database from history</option>
+            <param name="db_source" type="select" label="mOTUs database source">
+                <option value="cached" selected="true">Use a pre-installed mOTUs database</option>
+                <option value="history">Use a database from the history</option>
             </param>
             <when value="cached">
-                <param name="db_cached" type="select" label="A pre-installed mOTUs databese" help="no pre-installed mOTUs databases are avalable yet">
+                <param name="db_cached" type="select" label="mOTUs database">
                     <options from_data_table="motus_db_versioned">
                         <filter type="sort_by" column="1"/>
                         <validator type="no_options" message="No compatible motus database is available"/>
@@ -47,48 +32,33 @@
                 </param>
             </when>
             <when value="history">
-                <param name="database" type="data" format="tar" label="Database from history" help="Custom database or other version of mOTUs database from link: https://zenodo.org/records/5140350"/>
+                <param name="database_path" type="data" format="tar.gz,tgz" label="mOTUs database archive" help="The tar.gz archive of the mOTUs marker gene database that was used to create the profiles"/>
             </when>
         </conditional>
     </inputs>
     <outputs>
-        <data name="output_txt" format="txt" label="${tool.name} on ${on_string}: Merged taxon tables">
-            <filter>not biom_format</filter>
-        </data>
-        <data name="output_biom" format="biom1" label="${tool.name} on ${on_string}: BIOM Output">
-            <filter>biom_format</filter>
-        </data>
+        <data name="output_txt" format="tabular" label="${tool.name} on ${on_string}: merged profile"/>
     </outputs>
     <tests>
         <test expect_num_outputs="1">
-            <param name="files" value="SAMEA2466887-default.motus,SAMEA2466889-default.motus"/>
-            <param name="biom_format" value="false"/>
-            <conditional name="db">
-                <!-- Local db -->
-                <param name="db_source" value="history"/>
-                <param name="database" location="https://zenodo.org/record/7778108/files/db_mOTU_v3.1.0.tar.gz"/>
-                <!-- <param name="database" value="db_mOTU_v3.1.0.tar.gz"/> -->
-            </conditional>
-            <output name="output_txt" ftype="txt">
-                <assert_contents>
-                    <has_text_matching expression="Enterobacterales sp.*"/>
-                    <has_text_matching expression="Klebsiella michiganensis.*"/>
-                    <has_text_matching expression="Streptococcus sp.*"/>
-                    <has_text_matching expression="Streptococcus pseudopneumoniae.*"/>
-                </assert_contents>
-            </output>
+            <param name="files" value="motus4_profile_single.motus,motus4_profile_single_2.motus" ftype="tabular"/>
+            <param name="db|db_source" value="history"/>
+            <param name="db|database_path" value="motus4_db_toy.tar.gz" ftype="tar.gz"/>
+            <output name="output_txt" file="motus4_merge.motus" ftype="tabular" lines_diff="0"/>
         </test>
     </tests>
-    <help><![CDATA[
-        
-What it does
-============
+    <help format="markdown"><![CDATA[
+# Merge mOTUs profiles
 
-The mOTUs tool performs taxonomic profiling of metagenomics and metatrancriptomics samples.
+Combine several single-sample mOTUs profiles into one multi-sample table.
 
-mOTUs merge is specifically developed for merging and consolidating taxonomic profiles generated by the mOTU profiler. 
-It facilitates the combination of taxon abundance or count data from multiple samples or datasets into a single output.
+All profiles must have been generated with the same mOTUs database version
+and the same profiling parameters, and every sample name must be unique.
 
+## Output
+
+A tabular file with one row per mOTU and one abundance column per input
+sample. mOTUs that were not detected in a sample get an abundance of 0.
     ]]></help>
     <expand macro="citations"/>
 </tool>
