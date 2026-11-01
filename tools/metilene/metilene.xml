@@ -1,152 +1,165 @@
-<?xml version="1.0" encoding="utf-8"?>
-<tool id="metilene" name="metilene" version="0.2.6.1">
-    <description>
-        calling differentially methylated regions from bisulfite sequencing data
-    </description>
-    <requirements>
-        <requirement type="package" version="0.2.6">metilene</requirement>
-        <requirement type="package" version="3.5.1">r-base</requirement>
-        <requirement type="package" version="2.24">bedtools</requirement>
-        <requirement type="package" version="8.25">coreutils</requirement>
-    </requirements>
-    <stdio>
-        <exit_code range=":-1"/>
-        <exit_code range="1:" />
-    </stdio>
-    <version_command>echo "0.2.6"</version_command>
-    <command><![CDATA[
-    ## preprocessing
-    ## generate metilene_g1_g2.input from multiple bedgraph files
-    metilene_input.pl
-        --in1 '$opt_in1'
-        --in2 '$opt_in2'
-        >/dev/null 
-       ##2>/dev/null
-    &&
-    ## metilene main program
-    metilene
-        -M $Options.opt_M
-        -m $Options.opt_m
-        -d $Options.opt_d
-        -t \${GALAXY_SLOTS:-4}
-        #if $B:
-            -f 2
-            -B "$B"
-        #else:
-            -f 1
-        #end if
-        #if $Options.Y:
-	   -Y $Options.Y
-        #end if
-        #if $Options.X:
-           -X $Options.X
-        #end if
-
-        -v $Options.opt_v
-        metilene_g1_g2.input
-        > '$output_bedlike'
-        ##2> /dev/null
-    &&
-    ## postprocessing
-    cut -f1-4 $output_bedlike > $output_bedgraph 2>/dev/null
-    &&
-    ## write to job directory
-    metilene_output.pl
-        -q '$output_bedlike'
-        -p 0.05
-        -o ./metilene 
-        ##>/dev/null 
-        ##2>/dev/null
+<tool id="metilene" name="metilene" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>calling differentially methylated regions from bisulfite sequencing data</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <command detect_errors="aggressive"><![CDATA[
+metilene_input.pl --in1 '$in1' --in2 '$in2'
+&& metilene
+    --maxdist $Options.maxdist
+    --mincpgs $Options.mincpgs
+    --minMethDiff $Options.minMethDiff
+    --threads "\${GALAXY_SLOTS:-4}"
+    #if $bed:
+        --mode 2
+        --bed '$bed'
+    #else
+        --mode 1
+    #end if
+    --mtc $Options.mtc
+    #if $Options.maxseg:
+        --maxseg $Options.maxseg
+    #end if
+    #if $Options.minNoA:
+        --minNoA $Options.minNoA
+    #end if
+    #if $Options.minNoB:
+        --minNoB $Options.minNoB
+    #end if
+    --valley $Options.valley
+    metilene_g1_g2.input
+    > metilene_raw.out
+## metilene emits the DMRs in genomic order only when run on a single thread,
+## so the (otherwise identical) results are sorted here to keep the output
+## deterministic and comparable regardless of the number of allocated slots.
+&& LC_ALL=C sort -k1,1 -k2,2n metilene_raw.out > '$output_bedlike'
+&& cut -f1-4 '$output_bedlike' > '$output_bedgraph'
+&& metilene_output.pl -q '$output_bedlike' -p 0.05 -o ./metilene
     ]]></command>
     <inputs>
-        <!-- input bedgraph files 1 -->
-        <param name="opt_in1" type="data" format="bed,bedgraph" multiple="true"
-            label="Input group 1"
-            help="Set of sorted bedgraph/bed input profiles of group 1" />
-        <!-- input bedgraph files 2 -->
-        <param name="opt_in2" type="data" format="bed,bedgraph" multiple="true"
-            label="Input group 2"
-            help="Set of sorted bedgraph/bed input profiles of group 2" />
-
-        <param argument="-B" type="data" format="bed" optional="True"
-            label="BED file containing regions of interest"
-            help="Regions that should be checked for differential methylation." />
-
-        <!-- Advanced parameters (folded) -->
-        <section name="Options" title="Advanced Options" expanded="False">
-            <param name="opt_M" type="integer" value="300"
-                label="The allowed nt distance between two CpGs within a DMR"
-                help="-M, --maxdist"/>
-
-            <param name="opt_m" type="integer" value="10"
-                label="The minimum # of CpGs in a DMR"
-                help="-m, --mincpgs"/>
-
-            <param argument="X" type="integer" value="" optional="True"
-                label="Specify how many replicates must contain data for a certain CpG position in group 1"
-                help="to estimate missing ones"/>
-
-            <param argument="Y" type="integer" value="" optional="True"
-                label="Specify how many replicates must contain data for a certain CpG position in group 2"
-                help="to estimate missing ones"/>
-
-            <param name="opt_d" type="float" value="0.1"
-                label="The minimum mean methylation difference for calling DMRs"
-                help="-d, --minMethDiff"/>
-
-            <param name="opt_v" type="float" value="0.7" label="Stringency of the valley filter (0.0 - 1.0)"
-                help="-v, --valley">
-                <validator type="in_range" min="0.0" max="1.0" message="Valley filter value must be in [0,1]." />
+        <param argument="--in1" type="data" format="bed,bedgraph" multiple="true" label="Group 1 input (e.g. treatment)" help="Multiple input files are allowed. All files have to be sorted by chromosome and position, e.g. with the Sort (bedtools) tool."/>
+        <param argument="--in2" type="data" format="bed,bedgraph" multiple="true" label="Group 2 input (e.g. control)" help="Multiple input files are allowed. All files have to be sorted by chromosome and position, e.g. with the Sort (bedtools) tool."/>
+        <param argument="--bed" type="data" format="bed" optional="true" label="BED file with regions of interest" help="If this file is given, metilene will only search for DMRs in these regions (--mode 2 --bed). The file has to be sorted like the methylation data. If this field is left empty, metilene searches for DMRs de-novo (--mode 1)."/>
+        <section name="Options" title="Advanced Options">
+            <param argument="--maxdist" type="integer" value="300" label="Maximum distance between two CpGs in a DMR" help="In bp."/>
+            <param argument="--maxseg" type="integer" optional="true" min="1" label="Maximum segment length" help="Restricts the maximum length of the segments that are loaded into memory at once. Increase this value if metilene runs into memory problems. Leave empty to use the metilene default (-1: no limit). New option in metilene v0.2.8."/>
+            <param argument="--mincpgs" type="integer" value="10" label="Minimum number of CpGs in a DMR"/>
+            <param argument="--minMethDiff" type="float" value="0.1" label="Minimum mean methylation difference" help="Effect size threshold: DMRs with a smaller absolute difference in mean methylation between the two groups are not reported."/>
+            <param argument="--mtc" type="select" label="Multiple testing correction" help="Method used to adjust the p-values for multiple testing. New option in metilene v0.2.8.">
+                <option value="1" selected="true">Bonferroni correction</option>
+                <option value="2">Benjamini-Hochberg (FDR)</option>
             </param>
+            <param argument="--valley" type="float" value="0.7" label="Stringency of the valley filter (0.0 - 1.0)" help="Controls how aggressively metilene splits a region into separate DMRs. A region is segmented further as long as a sub-window falls below this fraction of the mean methylation difference of the whole region, which prevents calling large regions with a dip in the difference signal as a single DMR. Lower the value to weaken the filter, use 0 to switch it off. This is not an effect size threshold - see the minimum mean methylation difference for that.">
+                <validator type="in_range" message="Value must be between 0.0 and 1.0" min="0.0" max="1.0"/>
+            </param>
+            <param argument="--minNoA" type="integer" optional="true" label="Minimum number of replicates with data in group 1" help="Metilene will skip regions where fewer than this number of group 1 replicates have data. Leave empty for no filtering."/>
+            <param argument="--minNoB" type="integer" optional="true" label="Minimum number of replicates with data in group 2" help="Metilene will skip regions where fewer than this number of group 2 replicates have data. Leave empty for no filtering."/>
         </section>
     </inputs>
     <outputs>
-        <!-- finally: for bed-like use format=tabular -->
-        <data format="tabular" name="output_bedlike" 
-              label="${tool.name} on ${on_string}" />
-        <data format="bedgraph" name="output_bedgraph" 
-              label="${tool.name} bedgraph on ${on_string}" />
-        <data format="bedgraph" name="output_qval_bedgraph" 
-              label="${tool.name} qval&lt;0.05 bedgraph on ${on_string}"
-              from_work_dir="metilene_qval.0.05.bedgraph" />
-        <data format="pdf" name="output_qval_pdf" 
-              label="${tool.name} qval&lt;0.05 plots on ${on_string}"
-              from_work_dir="metilene_qval.0.05.pdf" />
-        <data format="bedgraph" name="output_qval_out" 
-              label="${tool.name} qval&lt;0.05 out on ${on_string}"
-              from_work_dir="metilene_qval.0.05.out" />
+        <data format="tabular" name="output_bedlike"/>
+        <data format="bedgraph" name="output_bedgraph" label="${tool.name} DMRs (first 4 columns) on ${on_string}"/>
+        <data format="tabular" name="output_qval_out" from_work_dir="metilene_qval.0.05.out" label="${tool.name} significant DMRs on ${on_string}"/>
+        <data format="bedgraph" name="output_qval_bedgraph" from_work_dir="metilene_qval.0.05.bedgraph" label="${tool.name} significant DMRs (bedgraph) on ${on_string}"/>
+        <data format="pdf" name="output_qval_pdf" from_work_dir="metilene_qval.0.05.pdf" label="${tool.name} plots on ${on_string}"/>
     </outputs>
     <tests>
-        <test>
-            <param name="opt_in1" value="example_S1.bedgraph,example_S2.bedgraph,example_S3.bedgraph,example_S4.bedgraph" />
-            <param name="opt_in2" value="example_S5.bedgraph,example_S6.bedgraph,example_S7.bedgraph,example_S8.bedgraph" />
-            <output name="output_bedlike" file="metilene.out" />
+        <test expect_num_outputs="5">
+            <param name="in1" value="example_S1.bedgraph,example_S2.bedgraph,example_S3.bedgraph,example_S4.bedgraph" ftype="bedgraph"/>
+            <param name="in2" value="example_S5.bedgraph,example_S6.bedgraph,example_S7.bedgraph,example_S8.bedgraph" ftype="bedgraph"/>
+            <output name="output_bedlike" file="metilene.out" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="102"/>
+                    <has_n_columns n="10"/>
+                    <has_line_matching expression="^chr19\s+10624503\s+10624742\s+3\.3059e-16\s+-0\.383986\s+37\s+4\.3299e-14\s+1\.4825e-19\s+0\.25041\s+0\.63439$"/>
+                </assert_contents>
+            </output>
+            <output name="output_bedgraph" file="metilene.bedgraph" ftype="bedgraph">
+                <assert_contents>
+                    <has_n_lines n="102"/>
+                    <has_n_columns n="4"/>
+                </assert_contents>
+            </output>
+            <output name="output_qval_out" file="metilene_qval.0.05.out" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="35"/>
+                    <has_n_columns n="8"/>
+                    <has_line_matching expression="^chr19\s+10624503\s+10624742\s+3\.3059e-16\s+-0\.383986\s+37\s+0\.25041\s+0\.63439$"/>
+                </assert_contents>
+            </output>
+            <output name="output_qval_bedgraph" file="metilene_qval.0.05.bedgraph" ftype="bedgraph">
+                <assert_contents>
+                    <has_n_lines n="35"/>
+                    <has_n_columns n="4"/>
+                    <has_line_matching expression="^chr19\s+10624503\s+10624742\s+-0\.383986$"/>
+                </assert_contents>
+            </output>
+            <!-- the PDF generated by metilene_output.R embeds a creation
+                 timestamp and is therefore not byte-comparable between runs,
+                 so only its size is asserted -->
+            <output name="output_qval_pdf" ftype="pdf">
+                <assert_contents>
+                    <has_size min="1000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="5">
+            <param name="in1" value="example_S1.bedgraph,example_S2.bedgraph,example_S3.bedgraph,example_S4.bedgraph" ftype="bedgraph"/>
+            <param name="in2" value="example_S5.bedgraph,example_S6.bedgraph,example_S7.bedgraph,example_S8.bedgraph" ftype="bedgraph"/>
+            <!-- Benjamini-Hochberg FDR instead of the default Bonferroni
+                 correction, plus an explicit maximum segment length -->
+            <param name="Options|mtc" value="2"/>
+            <param name="Options|maxseg" value="1000000"/>
+            <output name="output_bedlike" file="metilene_bh.out" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="102"/>
+                    <has_n_columns n="10"/>
+                    <has_line_matching expression="^chr19\s+10624503\s+10624742\s+6\.6119e-17\s+-0\.383986\s+37\s+4\.3299e-14\s+1\.4825e-19\s+0\.25041\s+0\.63439$"/>
+                </assert_contents>
+            </output>
+            <output name="output_bedgraph" file="metilene_bh.bedgraph" ftype="bedgraph">
+                <assert_contents>
+                    <has_n_lines n="102"/>
+                    <has_n_columns n="4"/>
+                </assert_contents>
+            </output>
+            <!-- the FDR correction is much less conservative than Bonferroni,
+                 so 67 (instead of 35) DMRs pass the q-value cutoff -->
+            <output name="output_qval_out" ftype="tabular">
+                <assert_contents>
+                    <has_n_lines n="67"/>
+                    <has_n_columns n="8"/>
+                </assert_contents>
+            </output>
+            <output name="output_qval_bedgraph" ftype="bedgraph">
+                <assert_contents>
+                    <has_n_lines n="67"/>
+                    <has_n_columns n="4"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
-    <help><![CDATA[
-**Fast and sensitive calling of differentially methylated regions
-from bisulfite sequencing data**
+    <help format="markdown"><![CDATA[
+**metilene** calls differentially methylated regions (DMRs) from bisulfite
+sequencing data. It compares two groups of methylation profiles with a
+two-dimensional statistical test that takes both the methylation level and the
+coverage of each CpG into account.
 
-Detailed documentation of the stand-alone tool metilene is available at
-.. __: http://www.bioinf.uni-leipzig.de/Software/metilene/manual.pdf
+-----
 
-The software metilene is available for download at
-.. __: http://www.bioinf.uni-leipzig.de/Software/metilene/
+## Outputs
+
+- **DMRs**: all detected DMRs with their adjusted p-value, mean methylation
+  difference, number of CpGs and the mean methylation of both groups.
+- **DMRs (first 4 columns)**: the same regions as chromosome, start, end and
+  adjusted p-value.
+- **Significant DMRs**: the subset of the DMRs above that passes the
+  significance and effect size filters of metilene, as a table and as a
+  bedgraph.
+- **Plots**: PDF with the methylation and the DMR length distributions.
     ]]></help>
-
     <citations>
-        <citation type="bibtex">@Article{Juhling_Kretzmer_Bernhart-metil_Fast_and-2015,
-  author =   {Juhling, Frank and Kretzmer, Helene and Bernhart, Stephan 
-                  H. and Otto, Christian and Stadler, Peter F. and Hoffmann, 
-                  Steve},
-  title =    {metilene: {Fast} and sensitive calling of differentially 
-                  methylated regions from bisulfite sequencing data},
-  page =         {[Epub ahead of print]},
-  journal =  {Genome Res},
-  year =     {2015},
-  pmid =     {26631489},
-  doi =      {10.1101/gr.196394.115},
-  issn =     {1088-9051},
-  issn =     {1549-5469}}</citation>
+        <citation type="doi">10.1101/gr.196394.115</citation>
     </citations>
 </tool>
