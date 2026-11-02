@@ -1,0 +1,156 @@
+<tool id="pynxtools_dataconverter" name="NeXus converter" version="@CONVERTER_VERSION@+galaxy@CONVERTER_SUFFIX@" profile="@PROFILE@">
+    <description>for scanning probe microscopy (SPM) data, with pynxtools</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements_converter"/>
+    <required_files>
+        <include path="nxs_convert.py"/>
+    </required_files>
+    <version_command>echo @CONVERTER_VERSION@</version_command>
+    <!-- exit_code only: the converter prints WARNING lines on successful conversions. -->
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        #set $raw_name = re.sub(r'[^\w.\-]', '_', str($raw_file.element_identifier))
+        python '$__tool_directory__/nxs_convert.py'
+        '$raw_file'
+        --raw-name '$raw_name'
+        --eln '$eln_file'
+        #if $config_file
+            --config '$config_file'
+        #end if
+        --reader '$reader'
+        --nxdl '$nxdl'
+        --output-nxs '$output_nxs'
+        --status-json '$status_json'
+        --log '$converter_log'
+        --tool-version '@CONVERTER_VERSION@+galaxy@CONVERTER_SUFFIX@'
+    ]]></command>
+    <inputs>
+        <param name="raw_file" type="data" format="binary,txt" label="Raw SPM file" help="For example a Nanonis .sxm image. The file name must keep its original extension, because the reader chooses the parser from it."/>
+        <param name="eln_file" type="data" format="yaml" label="ELN file (YAML)" help="Metadata that the raw file does not contain, such as user, sample and experiment technique."/>
+        <param name="config_file" type="data" format="json" optional="true" label="Reader config (JSON)" help="Optional. Maps raw-file fields to NeXus paths. Left empty, the reader uses its default config."/>
+        <param name="reader" type="select" label="Reader">
+            <option value="spm" selected="true">spm (pynxtools-spm)</option>
+        </param>
+        <param name="nxdl" type="select" label="NeXus application definition">
+            <option value="auto" selected="true">From the ELN's definition field</option>
+            <option value="NXstm">NXstm (scanning tunneling microscopy)</option>
+            <option value="NXsts">NXsts (scanning tunneling spectroscopy)</option>
+            <option value="NXafm">NXafm (atomic force microscopy)</option>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="output_nxs" format="h5" label="${tool.name} on ${on_string}: NeXus"/>
+        <data name="status_json" format="json" label="${tool.name} on ${on_string}: Status"/>
+        <data name="converter_log" format="txt" label="${tool.name} on ${on_string}: Converter log"/>
+    </outputs>
+    <tests>
+        <!-- Test 01: Nanonis STM image to NXstm. -->
+        <test expect_num_outputs="3">
+            <param name="raw_file" value="const_dos_No14_003.sxm" ftype="binary"/>
+            <param name="eln_file" value="eln_data.yaml" ftype="yaml"/>
+            <param name="config_file" value="config.json" ftype="json"/>
+            <param name="nxdl" value="auto"/>
+            <output name="output_nxs" ftype="h5">
+                <assert_contents>
+                    <has_h5_keys keys="entry/definition,entry/z_forward,entry/current_forward,entry/instrument,entry/sample"/>
+                    <has_h5_attribute key="NX_class" value="NXroot"/>
+                </assert_contents>
+            </output>
+            <output name="status_json" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;success&quot;"/>
+                    <has_text text="&quot;error&quot;: null"/>
+                    <has_text text="&quot;nxdl&quot;: &quot;NXstm&quot;"/>
+                </assert_contents>
+            </output>
+            <output name="converter_log" ftype="txt">
+                <assert_contents>
+                    <has_text text="The output file generated"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: a broken raw file is a green job with a recorded failure. -->
+        <test expect_num_outputs="3">
+            <param name="raw_file" value="broken.sxm" ftype="binary"/>
+            <param name="eln_file" value="eln_data.yaml" ftype="yaml"/>
+            <param name="config_file" value="config.json" ftype="json"/>
+            <param name="nxdl" value="NXstm"/>
+            <output name="output_nxs" ftype="h5">
+                <assert_contents>
+                    <has_size value="0"/>
+                </assert_contents>
+            </output>
+            <output name="status_json" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;failed&quot;"/>
+                    <has_text text="No valid parser found"/>
+                    <has_text text="&quot;raw_name&quot;: &quot;broken.sxm&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 03: without the original extension the reader cannot pick a parser. -->
+        <test expect_num_outputs="3">
+            <param name="raw_file" value="raw_without_extension" ftype="binary"/>
+            <param name="eln_file" value="eln_data.yaml" ftype="yaml"/>
+            <param name="nxdl" value="NXstm"/>
+            <output name="status_json" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;failed&quot;"/>
+                    <has_text text="Data file is required"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 04: `auto` with an ELN without definition is a recorded failure. -->
+        <test expect_num_outputs="3">
+            <param name="raw_file" value="const_dos_No14_003.sxm" ftype="binary"/>
+            <param name="eln_file" value="eln_without_definition.yaml" ftype="yaml"/>
+            <param name="nxdl" value="auto"/>
+            <output name="status_json" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;failed&quot;"/>
+                    <has_text text="the ELN has no `definition`"/>
+                    <has_text text="&quot;nxdl&quot;: null"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Converts one raw scanning probe microscopy (SPM) file to a NeXus/HDF5 file with
+[pynxtools](https://github.com/FAIRmat-NFDI/pynxtools) and its
+[pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm) reader, following an SPM
+application definition (`NXstm`, `NXsts` or `NXafm`).
+
+-----
+
+**Inputs**
+
+- **Raw SPM file**, for example a Nanonis `.sxm` image. Keep the original file name: the
+  reader chooses the parser from its extension.
+- **ELN file** (YAML) with the metadata the raw file does not hold, such as user, sample
+  and `experiment_technique`.
+- **NeXus application definition**: by default taken from the ELN's `definition` field, so
+  one run can convert STM images and STS spectra.
+- **Reader config** (JSON, optional). Without it the reader uses its default config.
+
+-----
+
+**Outputs**
+
+- **NeXus**: the converted file. It is empty when the conversion failed.
+- **Status**: JSON with `status` (`success` or `failed`), `error`, the raw file's `sha256`,
+  `reader`, `nxdl` and `tool_version`.
+- **Converter log**: the full converter output, including validation warnings.
+
+A failed conversion does **not** fail the job. It is recorded in the status, so that over a
+collection one bad file does not stop the others and every failure reason is kept.
+    ]]></help>
+    <citations>
+        <expand macro="citation_pynxtools"/>
+        <expand macro="citation_pynxtools_spm"/>
+    </citations>
+    <expand macro="creators"/>
+</tool>
