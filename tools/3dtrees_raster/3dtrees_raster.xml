@@ -1,0 +1,368 @@
+<tool id="3dtrees_raster" name="3Dtrees: Raster" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>forest-structure metrics, DTM, CHM and voxel counts</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.0.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <creator>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_raster:@TOOL_VERSION@</container>
+    </requirements>
+    <version_command>Rscript /opt/foreststructure/run_julia_memory_safe.R --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        cp '$point_cloud' 'input.$point_cloud.ext' &&
+        #if $area.restrict == 'yes':
+            cp '$area.aoi' aoi.geojson &&
+        #end if
+        mkdir -p output &&
+        Rscript /opt/foreststructure/run_julia_memory_safe.R
+            --point-cloud 'input.$point_cloud.ext'
+            #if $area.restrict == 'yes':
+                --aoi-geojson aoi.geojson
+            #end if
+            #if str($instance_dimension):
+                --instance-dimension '$instance_dimension'
+            #end if
+            --denoise '$denoising.denoise'
+            #if $denoising.denoise == 'knn':
+                --denoise-neighbors '$denoising.denoise_neighbors'
+                --denoise-sigma '$denoising.denoise_sigma'
+            #end if
+            --tile-size '$advanced.tile_size'
+            --grid-search-step '$advanced.grid_search_step'
+            --voxel-resolution '$advanced.voxel_resolution'
+            --voxel-count-resolution '$advanced.voxel_count_resolution'
+            --dtm-resolution '$advanced.dtm_resolution'
+            --chm-resolution '$advanced.chm_resolution'
+            --ptd-resolution '$advanced.ptd_resolution'
+            --vegetation-minimum-height '$advanced.vegetation_minimum_height'
+            --gap-height-threshold '$advanced.gap_height_threshold'
+            --minimum-tree-voxels '$advanced.minimum_tree_voxels'
+            --apex-minimum-height '$advanced.apex_minimum_height'
+            --minimum-tree-thickness '$advanced.minimum_tree_thickness'
+            --minimum-occupied-layers '$advanced.minimum_occupied_layers'
+            --raster-format '$advanced.raster_format'
+            --output-dir output
+            --temp-dir "\${TMPDIR:-\$_GALAXY_JOB_TMP_DIR}"
+    ]]></command>
+    <inputs>
+        <param name="point_cloud" type="data" format="laz,las" label="Segmented point cloud" help="One full-resolution point cloud with at least one tree instance dimension (PredInstance, PredInstance_SAT, PredInstance_FM or PredInstance_RCT); coordinates in metres, a CRS (if present) projected in metres."/>
+        <conditional name="area">
+            <param name="restrict" type="select" label="Restrict to an area of interest" help="Without an area of interest the full point-cloud extent is analysed.">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="aoi" type="data" format="geojson,json" label="Area of interest" help="Polygon or MultiPolygon (GeoJSON) in the point cloud's coordinate system; it is not reprojected. Only whole tiles and voxel cells inside it are reported."/>
+            </when>
+        </conditional>
+        <param argument="--instance-dimension" type="text" value="" optional="true" label="Instance dimensions" help="Leave empty to process every one present of PredInstance, PredInstance_SAT, PredInstance_FM and PredInstance_RCT. Or type one or more of them, separated by commas without spaces; each must exist in the point cloud, otherwise the job fails.">
+            <validator type="regex" message="Enter PredInstance, PredInstance_SAT, PredInstance_FM or PredInstance_RCT, separated by commas without spaces">^PredInstance(_SAT|_FM|_RCT)?(,PredInstance(_SAT|_FM|_RCT)?)*\Z</validator>
+        </param>
+        <conditional name="denoising">
+            <param argument="--denoise" type="select" label="Point-noise filtering" help="The kNN distance filter flags points far from their neighbours before the terrain model and metrics. Raw voxel counts always include every recorded point.">
+                <option value="none" selected="true">None</option>
+                <option value="knn">kNN distance filter</option>
+            </param>
+            <when value="knn">
+                <param argument="--denoise-neighbors" type="integer" min="2" max="1000" value="8" label="Neighbours" help="Nearest neighbours for each point's mean distance, counting the point itself as lidR::sor() does."/>
+                <param argument="--denoise-sigma" type="float" min="0.001" max="100" value="2" label="Standard deviations" help="Points whose mean distance exceeds the whole cloud's mean plus this many standard deviations are flagged."/>
+            </when>
+            <when value="none"/>
+        </conditional>
+        <section name="advanced" title="Advanced parameters" expanded="false" help="Defaults are the published 3Dtrees settings. Every run records the values it used in its run provenance.">
+            <param argument="--tile-size" type="float" min="0.001" max="1000" value="20" label="Tile size (m)" help="Width of the square analysis tiles."/>
+            <param argument="--grid-search-step" type="float" min="0.001" max="1000" value="0.5" label="Tile-grid search step (m)" help="Step of the offset search that places the tile grid. Must not exceed the tile size."/>
+            <param argument="--voxel-resolution" type="float" min="0.001" max="1" value="0.2" label="Metric voxel size (m)" help="Voxel edge length for the tile and tree metrics."/>
+            <param argument="--voxel-count-resolution" type="float" min="0.001" max="10" value="0.5" label="Voxel count size (m)" help="Voxel edge length, horizontal and vertical, of the voxel point counts."/>
+            <param argument="--dtm-resolution" type="float" min="0.001" max="60" value="1" label="DTM resolution (m)"/>
+            <param argument="--chm-resolution" type="float" min="0.001" max="1" value="0.5" label="CHM resolution (m)"/>
+            <param argument="--ptd-resolution" type="float" min="0.001" max="1000" value="20" label="Ground-seed resolution (m)" help="Seed resolution of the progressive TIN densification (PTD) ground classification."/>
+            <param argument="--vegetation-minimum-height" type="float" min="0" max="100" value="0.5" label="Minimum vegetation height (m)"/>
+            <param argument="--gap-height-threshold" type="float" min="0" max="100" value="3" label="Gap height threshold (m)" help="CHM height below which a cell counts as a canopy gap."/>
+            <param argument="--minimum-tree-voxels" type="integer" min="1" max="1000000" value="100" label="Minimum tree voxels" help="Occupied metric voxels a segment needs to be accepted as a tree."/>
+            <param argument="--apex-minimum-height" type="float" min="0" max="100" value="3" label="Minimum apex height (m)" help="A tree's highest point must be strictly above this height."/>
+            <param argument="--minimum-tree-thickness" type="float" min="0" max="100" value="0.5" label="Minimum tree thickness (m)" help="Smallest PCA extent a tree must reach."/>
+            <param argument="--raster-format" type="select" label="Raster format" help="Format of the DTM, CHM, DSM, gap-filled CHM and voxel-count rasters. A Cloud Optimized GeoTIFF is a regular GeoTIFF that web viewers can read in parts.">
+                <option value="COG" selected="true">Cloud Optimized GeoTIFF</option>
+                <option value="GTiff">GeoTIFF</option>
+            </param>
+            <param argument="--minimum-occupied-layers" type="integer" min="1" max="100" value="3" label="Minimum occupied layers" help="One-metre height layers a tree must occupy."/>
+        </section>
+    </inputs>
+    <outputs>
+        <collection name="tile_metrics" type="list" label="${tool.name} on ${on_string}: Tile metrics">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)_tile_metrics\.csv" directory="output/tile_metrics" format="csv" sort_by="designation"/>
+        </collection>
+        <collection name="segment_diagnostics" type="list" label="${tool.name} on ${on_string}: Segment diagnostics">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)_segment_diagnostics\.csv" directory="output/segment_diagnostics" format="csv" sort_by="designation"/>
+        </collection>
+        <collection name="tiles" type="list" label="${tool.name} on ${on_string}: Tiles">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)_tiles\.geojson" directory="output/tiles" format="geojson" sort_by="designation"/>
+        </collection>
+        <data name="dtm" format="tiff" from_work_dir="output/foreststructure_dtm.tif" label="${tool.name} on ${on_string}: DTM"/>
+        <data name="chm" format="tiff" from_work_dir="output/foreststructure_chm.tif" label="${tool.name} on ${on_string}: CHM"/>
+        <data name="chm_filled" format="tiff" from_work_dir="output/foreststructure_chm_filled.tif" label="${tool.name} on ${on_string}: Gap-filled CHM"/>
+        <data name="dsm" format="tiff" from_work_dir="output/foreststructure_dsm.tif" label="${tool.name} on ${on_string}: DSM"/>
+        <data name="tiles_overview" format="png" from_work_dir="output/foreststructure_tiles.png" label="${tool.name} on ${on_string}: Tile overview"/>
+        <data name="voxel_counts" format="csv" from_work_dir="output/foreststructure_voxel_counts.csv" label="${tool.name} on ${on_string}: Occupied voxel counts"/>
+        <data name="voxel_counts_raster" format="tiff" from_work_dir="output/foreststructure_voxel_counts.tif" label="${tool.name} on ${on_string}: Voxel count raster"/>
+        <data name="voxel_counts_validity" format="tiff" from_work_dir="output/foreststructure_voxel_counts_validity.tif" label="${tool.name} on ${on_string}: Voxel validity raster"/>
+        <data name="voxel_counts_metadata" format="json" from_work_dir="output/foreststructure_voxel_counts.json" label="${tool.name} on ${on_string}: Voxel count metadata"/>
+        <data name="voxel_points" format="laz" from_work_dir="output/foreststructure_voxel_counts.copc.laz" label="${tool.name} on ${on_string}: Voxel points (COPC)"/>
+        <data name="noise_points" format="csv" from_work_dir="output/foreststructure_noise_points.csv" label="${tool.name} on ${on_string}: Rejected noise points">
+            <filter>denoising['denoise'] == 'knn'</filter>
+        </data>
+        <data name="denoising_report" format="json" from_work_dir="output/foreststructure_denoising.json" label="${tool.name} on ${on_string}: Denoising report">
+            <filter>denoising['denoise'] == 'knn'</filter>
+        </data>
+        <data name="run_provenance" format="json" from_work_dir="output/foreststructure_julia_memory_safe_run.json" label="${tool.name} on ${on_string}: Run provenance"/>
+        <data name="aoi_conversion" format="json" from_work_dir="output/foreststructure_aoi_conversion.json" label="${tool.name} on ${on_string}: Analysis footprint"/>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="17">
+            <param name="point_cloud" value="forest_patch.copc.laz" ftype="laz"/>
+            <conditional name="denoising">
+                <param name="denoise" value="knn"/>
+            </conditional>
+            <output_collection name="tile_metrics" type="list" count="3">
+                <element name="PredInstance_SAT" ftype="csv">
+                    <assert_contents>
+                        <has_n_lines n="5"/>
+                        <has_text text="metric_height_upper_m"/>
+                        <has_text text="input.laz"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="segment_diagnostics" type="list" count="3">
+                <element name="PredInstance_FM" ftype="csv">
+                    <assert_contents>
+                        <has_text text="apex_in_tile"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="tiles" type="list" count="3">
+                <element name="PredInstance" ftype="geojson">
+                    <assert_contents>
+                        <has_text text="EPSG::32632"/>
+                        <has_text text="tile_xmin"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="dtm" ftype="tiff">
+                <assert_contents>
+                    <has_size min="1000"/>
+                </assert_contents>
+            </output>
+            <output name="chm" ftype="tiff">
+                <assert_contents>
+                    <has_size min="1000"/>
+                </assert_contents>
+            </output>
+            <output name="chm_filled" ftype="tiff">
+                <assert_contents>
+                    <has_size min="1000"/>
+                </assert_contents>
+            </output>
+            <output name="dsm" ftype="tiff">
+                <assert_contents>
+                    <has_size min="1000"/>
+                </assert_contents>
+            </output>
+            <output name="voxel_counts" ftype="csv">
+                <assert_contents>
+                    <has_text text="x_center,y_center,height_lower_m,height_upper_m,point_count"/>
+                </assert_contents>
+            </output>
+            <output name="voxel_counts_metadata" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="voxel_size_m" value="[0.5, 0.5, 0.5]"/>
+                    <has_json_property_with_value property="noise_mask_applied_to_counts" value="false"/>
+                </assert_contents>
+            </output>
+            <output name="voxel_points" ftype="laz">
+                <assert_contents>
+                    <has_size min="1000"/>
+                </assert_contents>
+            </output>
+            <output name="noise_points" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="496"/>
+                    <has_line line="OriginalPointIndex"/>
+                </assert_contents>
+            </output>
+            <output name="denoising_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="method" value='"global_knn_distance"'/>
+                    <has_json_property_with_value property="rejected_points" value="495"/>
+                </assert_contents>
+            </output>
+            <output name="run_provenance" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="requested_is_copc" value="true"/>
+                    <has_json_property_with_value property="instance_dimension_selection" value='"all present"'/>
+                    <has_json_property_with_value property="raster_format" value='"COG"'/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="15">
+            <param name="point_cloud" value="forest_patch.laz" ftype="laz"/>
+            <conditional name="area">
+                <param name="restrict" value="yes"/>
+                <param name="aoi" value="forest_patch_aoi.geojson" ftype="geojson"/>
+            </conditional>
+            <param name="instance_dimension" value="PredInstance_SAT"/>
+            <output_collection name="tile_metrics" type="list" count="1">
+                <element name="PredInstance_SAT" ftype="csv">
+                    <assert_contents>
+                        <has_n_lines n="3"/>
+                        <has_text text="input.laz"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="segment_diagnostics" type="list" count="1"/>
+            <output_collection name="tiles" type="list" count="1"/>
+            <output name="aoi_conversion" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="area" value="800"/>
+                </assert_contents>
+            </output>
+            <output name="run_provenance" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="requested_is_copc" value="false"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="15">
+            <param name="point_cloud" value="forest_patch.laz" ftype="laz"/>
+            <param name="instance_dimension" value="PredInstance"/>
+            <section name="advanced">
+                <param name="tile_size" value="10"/>
+                <param name="voxel_count_resolution" value="1"/>
+                <param name="minimum_tree_voxels" value="50"/>
+                <param name="raster_format" value="GTiff"/>
+            </section>
+            <output_collection name="tile_metrics" type="list" count="1"/>
+            <output_collection name="segment_diagnostics" type="list" count="1"/>
+            <output_collection name="tiles" type="list" count="1"/>
+            <output name="voxel_counts_metadata" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="voxel_size_m" value="[1, 1, 1]"/>
+                </assert_contents>
+            </output>
+            <output name="run_provenance" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="tile_size" value="10"/>
+                    <has_json_property_with_value property="voxel_count_resolution" value="1"/>
+                    <has_json_property_with_value property="minimum_tree_voxels" value="50"/>
+                    <has_json_property_with_value property="raster_format" value='"GTiff"'/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="17">
+            <param name="point_cloud" value="forest_patch.laz" ftype="laz"/>
+            <param name="instance_dimension" value="PredInstance_SAT"/>
+            <conditional name="denoising">
+                <param name="denoise" value="knn"/>
+            </conditional>
+            <output_collection name="tile_metrics" type="list" count="1"/>
+            <output_collection name="segment_diagnostics" type="list" count="1"/>
+            <output_collection name="tiles" type="list" count="1"/>
+            <output name="noise_points" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="496"/>
+                    <has_line line="OriginalPointIndex"/>
+                </assert_contents>
+            </output>
+            <output name="denoising_report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="method" value='"global_knn_distance"'/>
+                    <has_json_property_with_value property="rejected_points" value="495"/>
+                </assert_contents>
+            </output>
+            <output name="run_provenance" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="requested_is_copc" value="false"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="point_cloud" value="forest_patch.laz" ftype="laz"/>
+            <param name="instance_dimension" value="PredInstance_RCT"/>
+            <assert_stderr>
+                <has_text text="missing requested instance dimension"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# What it does
+
+3Dtrees: Raster computes fixed-size tile metrics of forest structure (20 m
+tiles by default) from one segmented point cloud. It also writes a digital
+terrain model (DTM), a canopy height model (CHM), a digital surface model
+(DSM), a gap-filled CHM, full-resolution voxel point counts (0.5 m voxels by
+default) and provenance records. No points are subsampled, and the input file
+is never modified. The method and every output are described in the
+[tool README](https://github.com/3dTrees-earth/3Dtrees_Raster#readme).
+
+# Input
+
+- **Segmented point cloud**: one full-resolution LAS/LAZ or COPC file with a
+  CRS projected in metres, or no CRS (then the products carry none), and at
+  least one supported tree instance dimension:
+  `PredInstance`, `PredInstance_SAT` (SegmentAnyTree), `PredInstance_FM`
+  (ForestMamba) or `PredInstance_RCT` (RayCloudTools).
+- **Restrict to an area of interest** (default No): select Yes to supply a
+  GeoJSON polygon in the point cloud's XY coordinates. Only whole tiles and
+  voxel columns inside it are reported.
+- **Instance dimensions** (optional): empty processes every one of the
+  dimensions above that the point cloud has. Or name one or more, separated by
+  commas without spaces; the job fails if one is missing from the point cloud.
+- **Point-noise filtering** (default None): the kNN distance filter flags
+  points whose mean distance to their 8 nearest neighbours exceeds the whole
+  cloud's mean plus two standard deviations. The terrain model, canopy models
+  and tile metrics then use the remaining points.
+- **Advanced parameters**: tile size, voxel sizes, raster resolutions and the
+  tree-acceptance thresholds. Keep the defaults to stay comparable with other
+  3Dtrees products.
+
+CPU, memory and scratch space come from the Galaxy job allocation.
+
+# Outputs
+
+Per instance dimension (collections named by dimension):
+
+- **Tile metrics**: one row per tile with vegetation density, height
+  statistics, vertical complexity, canopy roughness and tree statistics.
+- **Segment diagnostics**: one row per segment with the tree-acceptance checks,
+  apex position, crown area and voxel volume.
+- **Tiles**: the tile metrics as GeoJSON polygons.
+
+Shared:
+
+- **DTM**, **CHM**, **gap-filled CHM** and **DSM** as Cloud Optimized
+  GeoTIFFs (plain GeoTIFF on request), and a PNG tile overview.
+- **Voxel point counts**: occupied voxels as CSV, a multiband UInt32 GeoTIFF
+  (band b holds heights from (b-1)×s to b×s above the DTM for voxel size s), a
+  validity raster (0 excluded, 1 valid, 2 invalid DTM), the same voxels as a
+  COPC point cloud for 3D viewers, and grid metadata. Counts include every
+  recorded point, also those flagged as noise.
+- **Rejected noise points** and a **Denoising report** (with the filter only).
+- **Run provenance** and **Analysis footprint** records.
+    ]]></help>
+    <citations>
+        <citation type="bibtex">
+            @misc{3dtrees_raster,
+              title = {3Dtrees: Raster},
+              author = {3Dtrees-Project},
+              year = {2026},
+              url = {https://github.com/3dTrees-earth/3Dtrees_Raster}
+            }
+        </citation>
+        <citation type="doi">10.1016/j.rse.2020.112061</citation>
+    </citations>
+</tool>
