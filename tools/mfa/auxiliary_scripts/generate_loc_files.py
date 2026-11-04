@@ -112,19 +112,6 @@ def main():
 
     # 4. Other files needed for other tools
 
-    # Audio Only Corpus
-    audio_dir = os.path.join(TEST_DATA_DIR, "temp_audio")
-    ensure_dir(audio_dir)
-    for root, dirs, files in os.walk(base_dir):
-        for file in files:
-            if file.endswith(".wav"):
-                rel_path = os.path.relpath(root, base_dir)
-                target_dir = os.path.join(audio_dir, rel_path)
-                ensure_dir(target_dir)
-                shutil.copy(os.path.join(root, file), os.path.join(target_dir, file))
-    create_zip("test_corpus_audio.zip", audio_dir)
-    shutil.rmtree(audio_dir)
-
     # Words List
     words_path = os.path.join(TEST_DATA_DIR, "test_words.txt")
     with open(words_path, "w") as f:

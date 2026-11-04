@@ -65,19 +65,7 @@ def main():
                 f.write("hello world")
     create_zip("test_corpus.zip", base_dir)
 
-    # 2. Create 'test_corpus_audio'
-    audio_dir = "temp_audio"
-    ensure_dir(audio_dir)
-    for root, dirs, files in os.walk(base_dir):
-        for file in files:
-            if file.endswith(".wav"):
-                rel_path = os.path.relpath(root, base_dir)
-                target_dir = os.path.join(audio_dir, rel_path)
-                ensure_dir(target_dir)
-                shutil.copy(os.path.join(root, file), os.path.join(target_dir, file))
-    create_zip("test_corpus_audio.zip", audio_dir)
-
-    # 3. Create 'test_corpus_raw'
+    # 2. Create 'test_corpus_raw'
     raw_dir = "temp_raw"
     ensure_dir(os.path.join(raw_dir, "jp_speaker"))
     create_sine_wave(os.path.join(raw_dir, "jp_speaker", "jp1.wav"), freq=500)
@@ -85,7 +73,7 @@ def main():
         f.write("こんにちは世界")
     create_zip("test_corpus_raw.zip", raw_dir)
 
-    # 4. Create 'test_dict.txt'
+    # 3. Create 'test_dict.txt'
     dict_path = os.path.join(TEST_DATA_DIR, "test_dict.txt")
     with open(dict_path, "w") as f:
         f.write("hello\tHH AH0 L OW1\n")
@@ -93,12 +81,12 @@ def main():
         f.write("yes\tY EH1 S\n")
         f.write("no\tN OW1\n")
 
-    # 5. Create 'test_words.txt'
+    # 4. Create 'test_words.txt'
     words_path = os.path.join(TEST_DATA_DIR, "test_words.txt")
     with open(words_path, "w") as f:
         f.write("test\n")
 
-    # 6. Create 'arpabet_to_ipa.yaml'
+    # 5. Create 'arpabet_to_ipa.yaml'
     yaml_path = os.path.join(TEST_DATA_DIR, "arpabet_to_ipa.yaml")
     with open(yaml_path, "w") as f:
         f.write("HH: h\n")
@@ -113,7 +101,7 @@ def main():
         f.write("S: s\n")
         f.write("N: n\n")
 
-    # 7. Create 'dummy_acoustic_model.zip' (ARPABET)
+    # 6. Create 'dummy_acoustic_model.zip' (ARPABET)
     model_dir = "temp_model"
     ensure_dir(model_dir)
     with open(os.path.join(model_dir, "meta.json"), "w") as f:
@@ -125,7 +113,7 @@ def main():
     create_zip("dummy_acoustic_model.zip", model_dir)
     shutil.rmtree(model_dir)
 
-    # 8. Create 'test_corpus_aligned.zip'
+    # 7. Create 'test_corpus_aligned.zip'
     aligned_dir = "temp_aligned"
     ensure_dir(os.path.join(aligned_dir, "s1"))
     create_sine_wave(os.path.join(aligned_dir, "s1", "1.wav"))
@@ -153,7 +141,7 @@ item []:
     create_zip("test_corpus_aligned.zip", aligned_dir)
     shutil.rmtree(aligned_dir)
 
-    # 9. Create 'dummy_ipa_model.zip' (TARGET PHONES for Remap Test)
+    # 8. Create 'dummy_ipa_model.zip' (TARGET PHONES for Remap Test)
     # This model defines the IPA phones we are mapping TO.
     ipa_model_dir = "temp_ipa_model"
     ensure_dir(ipa_model_dir)
@@ -166,7 +154,7 @@ item []:
     create_zip("dummy_ipa_model.zip", ipa_model_dir)
     shutil.rmtree(ipa_model_dir)
 
-    # 10. Create 'dummy_language_model.zip' (For Transcribe)
+    # 9. Create 'dummy_language_model.zip' (For Transcribe)
     lm_dir = "temp_lm"
     ensure_dir(lm_dir)
     with open(os.path.join(lm_dir, "test.arpa"), "w") as f:
@@ -176,7 +164,6 @@ item []:
 
     # Cleanup
     shutil.rmtree(base_dir)
-    shutil.rmtree(audio_dir)
     shutil.rmtree(raw_dir)
     print("Cleanup complete. Test data generated.")
 
