@@ -1,5 +1,5 @@
 <tool id="salmon" name="Salmon quant" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE_VERSION@">
-    <description>Perform dual-phase, reads or mapping-based estimation of transcript abundance from RNA-seq reads</description>
+    <description>Quantifies transcripts from sequencing reads or alignments</description>
     <macros>
         <import>macros.xml</import>
     </macros>
@@ -21,9 +21,6 @@
         @salquant@
         #if $quant_type.qtype == "reads" and $quant_type.bam_options.writeMappings:
             && @bam_sort@ ./output/samout.sam
-        #end if
-        #if $quant_type.qtype == "alignment" and $quant_type.sampleOut:
-            && @bam_sort@ ./output/postSample.bam
         #end if
         #if $generate_aux
             #if $quant_type.qtype == "reads"
@@ -48,7 +45,10 @@
                 <expand macro="align"/>
             </when>
         </conditional>
-        <param name="generate_aux" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Generate auxiliary files tarball (for MultiQC)" help="Bundles aux_info and libParams outputs into a tarball which can be used in MultiQC"/>
+        <!-- This is a wrapper-internal toggle (it only controls whether the
+             aux_info/libParams directories are tarred up), so it carries no
+             CLI flag of its own. -->
+        <param name="generate_aux" type="boolean" truevalue="aux" falsevalue="" checked="false" label="Generate auxiliary files tarball (for MultiQC)" help="Bundles aux_info and libParams outputs into a tarball which can be used in MultiQC"/>
         <expand macro="quantboth"/>
     </inputs>
     <outputs>
@@ -58,9 +58,6 @@
         </data>
         <data name="output_bam" format="bam" from_work_dir="output/bamout.bam" label="${tool.name} on ${on_string}: BAM">
             <filter>quant_type['qtype'] == "reads" and quant_type['bam_options']['writeMappings']</filter>
-        </data>
-        <data name="postSample" format="bam" from_work_dir="output/bamout.bam" label="${tool.name} on ${on_string}: sampled input alignments">
-            <filter>quant_type['qtype'] == "alignment" and quant_type['sampleOut']</filter>
         </data>
         <data name="aux_files" format="tar" from_work_dir="aux_files.tar" label="${tool.name} on ${on_string}: auxiliary files (for MultiQC)">
             <filter>generate_aux</filter>
@@ -112,48 +109,6 @@
                 <has_text text="--libType IU"/>
             </assert_command>
         </test>
-        <test expect_num_outputs="2">
-            <conditional name="quant_type">
-                <param name="qtype" value="reads"/>
-                <conditional name="refTranscriptSource">
-                    <param name="TranscriptSource" value="history"/>
-                    <section name="s_index">
-                        <param name="fasta" value="transcripts.fasta"/>
-                    </section>
-                </conditional>
-                <section name="input">
-                    <conditional name="single_or_paired">
-                        <param name="single_or_paired_opts" value="paired_collection"/>
-                        <param name="input_1">
-                            <collection type="paired" name="mates">
-                                <element name="forward" value="fastqs/reads_1.fastq"/>
-                                <element name="reverse" value="fastqs/reads_2.fastq"/>
-                            </collection>
-                        </param>
-                    </conditional>
-                </section>
-                <conditional name="bam_options">
-                    <param name="writeMappings" value="--writeMappings=./output/samout.sam"/>
-                </conditional>
-            </conditional>
-            <output name="output_quant" ftype="tabular">
-                <assert_contents>
-                    <has_text text="EffectiveLength"/>
-                    <has_text text="TPM"/>
-                    <has_text text="NM_001168316"/>
-                    <has_text text="NM_174914"/>
-                    <has_text text="NM_018953"/>
-                    <has_text text="NR_003084"/>
-                    <has_text text="NM_017410"/>
-                    <has_text text="NM_153693"/>
-                    <has_text text="NR_031764"/>
-                    <has_n_columns n="5"/>
-                </assert_contents>
-            </output>
-            <assert_command>
-                <has_text text="--libType A"/>
-            </assert_command>
-        </test>
         <test expect_num_outputs="1">
             <conditional name="quant_type">
                 <param name="qtype" value="reads"/>
@@ -172,9 +127,6 @@
                                 <element name="reverse" value="fastqs/reads_2.fastq"/>
                             </collection>
                         </param>
-                        <conditional name="libtype">
-                            <param name="strandedness" value="U"/>
-                        </conditional>
                     </conditional>
                 </section>
             </conditional>
@@ -192,6 +144,9 @@
                     <has_n_columns n="5"/>
                 </assert_contents>
             </output>
+            <assert_command>
+                <has_text text="--libType A"/>
+            </assert_command>
         </test>
         <test expect_num_outputs="1">
             <conditional name="quant_type">
@@ -227,39 +182,29 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- Test 05 -->
-        <test expect_num_outputs="2">
+        <!-- Test 05: alignment-based quantification. salmon 2.x requires
+             read-name-grouped alignments, so the wrapper now collates the
+             input BAM before handing it to salmon. The long-read mode and
+             the alignment sampling options were removed upstream. -->
+        <test expect_num_outputs="1">
             <conditional name="quant_type">
                 <param name="qtype" value="alignment"/>
                 <param name="afile" value="salmonbam.bam"/>
                 <param name="transcript" value="transcripts.fasta"/>
-                <param name="sampleOut" value="true"/>
-                <param name="sampleUnaligned" value="true"/>
+                <param name="discardOrphans" value="true"/>
                 <param name="noErrorModel" value="true"/>
                 <param name="numErrorBins" value="5"/>
             </conditional>
-            <!-- bam output uses non-deterministic sampling, so can only use compare="sim_size" -->
-            <output name="postSample" ftype="bam" value="postSample.bam" compare="sim_size" delta="20000"/>
-            <assert_stderr>
-                <has_text text="Sampling alignments; outputting results to ./output/postSample.bam"/>
-            </assert_stderr>
-        </test>
-        <test expect_num_outputs="2">
-            <conditional name="quant_type">
-                <param name="qtype" value="alignment"/>
-                <param name="afile" value="salmonbam.bam"/>
-                <param name="ont" value="true"/>
-                <param name="transcript" value="transcripts.fasta"/>
-                <param name="sampleOut" value="true"/>
-                <param name="sampleUnaligned" value="true"/>
-                <param name="noErrorModel" value="true"/>
-                <param name="numErrorBins" value="5"/>
-            </conditional>
-            <assert_stderr>
-                <has_text text="Sampling alignments; outputting results to ./output/postSample.bam"/>
-            </assert_stderr>
+            <output name="output_quant" ftype="tabular">
+                <assert_contents>
+                    <has_text text="EffectiveLength"/>
+                    <has_text text="TPM"/>
+                    <has_text text="NM_001168316"/>
+                    <has_n_columns n="5"/>
+                </assert_contents>
+            </output>
             <assert_command>
-                <has_text text=" --ont "/>
+                <has_text text="samtools collate"/>
             </assert_command>
         </test>
         <test expect_num_outputs="1">
@@ -286,9 +231,6 @@
                     </conditional>
                 </section>
                 <param name="discardOrphansQuasi" value="true"/>
-                <conditional name="validmap">
-                    <param name="validateMappings" value="--validateMappings"/>
-                </conditional>
                 <param name="dovetail" value="true"/>
                 <param name="recoverOrphans" value="true"/>
             </conditional>
@@ -329,13 +271,11 @@
             </conditional>
             <param name="seqBias" value="true"/>
             <param name="gcBias" value="true"/>
+            <param name="posBias" value="true"/>
             <section name="adv">
                 <param name="dumpEq" value="true"/>
-                <param name="minAssignedFrags" value="10"/>
-                <!-- can not be enabled simultaneously with seqBias <param name="noLengthCorrection" value="true"/> -->
                 <param name="initUniform" value="true"/>
                 <param name="useEM" value="true"/>
-                <param name="noGammaDraw" value="true"/>
             </section>
             <output name="output_quant" ftype="tabular">
                 <assert_contents>
@@ -382,8 +322,8 @@
                 </assert_contents>
             </output>
         </test>
-        <!-- Test 10 -->
-        <!-- Test writeQualities option-->
+        <!-- Test 09: compressed reads are now passed to salmon directly, as
+             salmon 2.x detects gzip and bzip2 by content. -->
         <test expect_num_outputs="2">
             <conditional name="quant_type">
                 <param name="qtype" value="reads"/>
@@ -398,15 +338,14 @@
                         <param name="single_or_paired_opts" value="paired_collection"/>
                         <param name="input_1">
                             <collection type="paired" name="mates">
-                                <element name="forward" value="fastqs/reads_1.fastq"/>
-                                <element name="reverse" value="fastqs/reads_2.fastq"/>
+                                <element name="forward" value="fastqs/reads_1.fastq.gz"/>
+                                <element name="reverse" value="fastqs/reads_2.fastq.gz"/>
                             </collection>
                         </param>
                     </conditional>
                 </section>
                 <conditional name="bam_options">
                     <param name="writeMappings" value="--writeMappings=./output/samout.sam"/>
-                    <param name="writeQualities" value="true"/>
                 </conditional>
             </conditional>
             <output name="output_quant" ftype="tabular">
@@ -427,7 +366,8 @@
                 <has_text text="--libType A"/>
             </assert_command>
         </test>
-        <!-- Test genome input for decoy index -->
+        <!-- Test 10: genome input for the decoy-aware index. The flag was
+             renamed from the singular to the plural form in salmon 2.x. -->
         <test expect_num_outputs="2">
             <conditional name="quant_type">
                 <param name="qtype" value="reads"/>
@@ -472,7 +412,58 @@
             </output>
             <assert_command>
                 <has_text text="--libType IU"/>
-                <has_text text="--decoy"/>
+                <has_text text="--decoys"/>
+            </assert_command>
+        </test>
+        <!-- Test 11: new salmon 2.x options, sketch mode and the flag that
+             ignores transcript version suffixes in the gene map. -->
+        <test expect_num_outputs="2">
+            <conditional name="quant_type">
+                <param name="qtype" value="reads"/>
+                <conditional name="refTranscriptSource">
+                    <param name="TranscriptSource" value="history"/>
+                    <section name="s_index">
+                        <param name="fasta" value="transcripts.fasta"/>
+                    </section>
+                </conditional>
+                <section name="input">
+                    <conditional name="single_or_paired">
+                        <param name="single_or_paired_opts" value="paired_collection"/>
+                        <param name="input_1">
+                            <collection type="paired" name="mates">
+                                <element name="forward" value="fastqs/reads_1.fastq"/>
+                                <element name="reverse" value="fastqs/reads_2.fastq"/>
+                            </collection>
+                        </param>
+                        <conditional name="libtype">
+                            <param name="strandedness" value="U"/>
+                        </conditional>
+                    </conditional>
+                </section>
+            </conditional>
+            <param name="geneMap" value="minitxp.tsv" ftype="tabular"/>
+            <param name="ignoreTxVersion" value="true"/>
+            <section name="adv">
+                <param name="sketch" value="true"/>
+            </section>
+            <output name="output_quant" ftype="tabular">
+                <assert_contents>
+                    <has_text text="EffectiveLength"/>
+                    <has_text text="TPM"/>
+                    <has_text text="NM_001168316"/>
+                    <has_n_columns n="5"/>
+                </assert_contents>
+            </output>
+            <output name="output_gene_quant" ftype="tabular">
+                <assert_contents>
+                    <has_text text="EffectiveLength"/>
+                    <has_text text="TPM"/>
+                    <has_n_columns n="5"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--sketch"/>
+                <has_text text="--ignoreTxVersion"/>
             </assert_command>
         </test>
         <test expect_num_outputs="2">
@@ -530,8 +521,42 @@
             </output>
         </test>
     </tests>
-    <help><![CDATA[
+    <help format="markdown"><![CDATA[
         @salmonhelp@
+
+        **Salmon quant**
+
+        Salmon quant can be run in two modes:
+
+        - **Reads**: salmon maps the reads itself. Selective alignment is the
+          default mapping mode in salmon 2.x; the new sketch option switches
+          to pseudoalignment, which is faster and uses less memory.
+        - **Alignment**: salmon quantifies from an existing alignment BAM.
+          Salmon 2.x requires the alignments to be *read-name-grouped*, so
+          the tool runs `samtools collate` on the input BAM before
+          quantifying.
+
+        **Input**
+
+        The reference transcriptome can be selected from a *pre-built index*
+        (if your Galaxy instance provides one) or provided as a FASTA file in
+        the history, in which case the index is built on the fly. Optionally a
+        reference genome FASTA can be supplied to build a decoy-aware index.
+
+        Reads may be plain FASTA/FASTQ, or gzip or bzip2 compressed; salmon
+        2.x detects the compression automatically.
+
+        **Output**
+
+        - `quant.sf`: the transcript-level quantification table with columns
+          Name, Length, EffectiveLength, TPM and NumReads.
+        - `quant.genes.sf`: gene-level quantification, only produced when a
+          gene map (GTF/GFF or transcript-to-gene TSV) is provided. Use the
+          *ignore transcript versions* option when the transcript FASTA
+          carries version suffixes that the gene map lacks.
+        - Optionally the computed alignments (returned as a sorted BAM) and
+          an auxiliary files tarball for MultiQC (`aux_info/`, `libParams/`,
+          `lib_format_counts.json`).
     ]]></help>
     <expand macro="citations"/>
 </tool>
