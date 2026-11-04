@@ -1,7 +1,7 @@
 import math
 import os
 import random
-import shutil
+import tempfile
 import struct
 import wave
 import zipfile
@@ -13,8 +13,7 @@ DURATION = 0.5
 
 
 def ensure_dir(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    os.makedirs(directory, exist_ok=True)
 
 
 def create_sine_wave(filename, duration=DURATION, freq=440):
@@ -48,12 +47,15 @@ def create_zip(zip_name, source_dir):
 
 
 def main():
-    if os.path.exists(TEST_DATA_DIR):
-        shutil.rmtree(TEST_DATA_DIR)
     ensure_dir(TEST_DATA_DIR)
+    with tempfile.TemporaryDirectory(prefix="mfa-test-data-") as work_dir:
+        generate_test_data(work_dir)
+    print("Cleanup complete. Test data generated.")
 
+
+def generate_test_data(work_dir):
     # 1. Create 'test_corpus'
-    base_dir = "temp_corpus"
+    base_dir = os.path.join(work_dir, "temp_corpus")
     ensure_dir(base_dir)
     for spk in range(1, 6):
         spk_dir = os.path.join(base_dir, f"speaker{spk}")
@@ -66,7 +68,7 @@ def main():
     create_zip("test_corpus.zip", base_dir)
 
     # 2. Create 'test_corpus_raw'
-    raw_dir = "temp_raw"
+    raw_dir = os.path.join(work_dir, "temp_raw")
     ensure_dir(os.path.join(raw_dir, "jp_speaker"))
     create_sine_wave(os.path.join(raw_dir, "jp_speaker", "jp1.wav"), freq=500)
     with open(os.path.join(raw_dir, "jp_speaker", "jp1.lab"), "w") as f:
@@ -102,7 +104,7 @@ def main():
         f.write("N: n\n")
 
     # 6. Create 'dummy_acoustic_model.zip' (ARPABET)
-    model_dir = "temp_model"
+    model_dir = os.path.join(work_dir, "temp_model")
     ensure_dir(model_dir)
     with open(os.path.join(model_dir, "meta.json"), "w") as f:
         f.write('{"version": "3.0.0", "phones": ["HH", "AH0", "L", "OW1", "W", "ER1", "D", "Y", "EH1", "S", "N"], "features": {"type": "mfcc"}}')
@@ -111,10 +113,9 @@ def main():
     with open(os.path.join(model_dir, "tree"), "wb") as f:
         f.write(b"DUMMY")
     create_zip("dummy_acoustic_model.zip", model_dir)
-    shutil.rmtree(model_dir)
 
     # 7. Create 'test_corpus_aligned.zip'
-    aligned_dir = "temp_aligned"
+    aligned_dir = os.path.join(work_dir, "temp_aligned")
     ensure_dir(os.path.join(aligned_dir, "s1"))
     create_sine_wave(os.path.join(aligned_dir, "s1", "1.wav"))
     tg_content = """File type = "ooTextFile"
@@ -139,11 +140,10 @@ item []:
     with open(os.path.join(aligned_dir, "s1", "1.TextGrid"), "w") as f:
         f.write(tg_content)
     create_zip("test_corpus_aligned.zip", aligned_dir)
-    shutil.rmtree(aligned_dir)
 
     # 8. Create 'dummy_ipa_model.zip' (TARGET PHONES for Remap Test)
     # This model defines the IPA phones we are mapping TO.
-    ipa_model_dir = "temp_ipa_model"
+    ipa_model_dir = os.path.join(work_dir, "temp_ipa_model")
     ensure_dir(ipa_model_dir)
     with open(os.path.join(ipa_model_dir, "meta.json"), "w") as f:
         f.write('{"version": "3.0.0", "phones": ["h", "ə", "l", "oʊ", "w", "ɝ", "d", "j", "ɛ", "s", "n"], "features": {"type": "mfcc"}}')
@@ -152,20 +152,14 @@ item []:
     with open(os.path.join(ipa_model_dir, "tree"), "wb") as f:
         f.write(b"DUMMY")
     create_zip("dummy_ipa_model.zip", ipa_model_dir)
-    shutil.rmtree(ipa_model_dir)
 
     # 9. Create 'dummy_language_model.zip' (For Transcribe)
-    lm_dir = "temp_lm"
+    lm_dir = os.path.join(work_dir, "temp_lm")
     ensure_dir(lm_dir)
     with open(os.path.join(lm_dir, "test.arpa"), "w") as f:
         f.write("\\data\\\nngram 1=3\n\\1-grams:\n-1.0 hello\n-1.0 world\n-1.0 </s>\n\\end\\")
     create_zip("dummy_language_model.zip", lm_dir)
-    shutil.rmtree(lm_dir)
 
-    # Cleanup
-    shutil.rmtree(base_dir)
-    shutil.rmtree(raw_dir)
-    print("Cleanup complete. Test data generated.")
 
 
 if __name__ == "__main__":
