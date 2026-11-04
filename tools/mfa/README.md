@@ -28,10 +28,18 @@ In download_mfa_models.sh
 TARGET_DIR="/data/db/mfa"  # <--- Change this to your preferred path
 Run: `bash download_mfa_models.sh [GITHUB_TOKEN]`
 
-**2. Generate Data Tables Edit and run generate_loc_files.py to create the Galaxy .loc files based on the models downloaded in step 1.**
-In generate_loc_files.py
-MFA_MODELS_ROOT = "/data/db/mfa/pretrained_models" # <--- Must match the path from step 1
-Run `python3 generate_loc_files.py`
+**2. Generate Data Tables**
+From the suite directory, run:
+
+```bash
+python3 auxiliary_scripts/generate_loc_files.py --models-root /data/db/mfa/pretrained_models
+```
+
+The model root must match `TARGET_DIR/pretrained_models` from step 1.
+This writes the five four-column `.loc` files into the suite's `tool-data`
+directory, replacing existing files. Use `--output-dir /path/to/tool-data`
+to select a different destination. Model types with no downloaded files get
+an empty table with a header. This command does not generate or modify test data.
 
 **3. Generate Test Data To run planemo test, generate the lightweight dummy datasets (sine waves and synthetic text).**
 Run: python3 generate_test_data.py
