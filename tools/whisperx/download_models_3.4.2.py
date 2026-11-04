@@ -1,5 +1,6 @@
 import argparse
 import os
+import sys
 import urllib.request
 from pathlib import Path
 
@@ -68,6 +69,8 @@ TORCHAUDIO_MODEL_FILES = {
     "VOXPOPULI_ASR_BASE_10K_IT": "wav2vec2_voxpopuli_base_10k_asr_it.pt",
 }
 
+FAILED = []
+
 TORCHAUDIO_BASE_URL = "https://download.pytorch.org/torchaudio/models/"
 
 
@@ -85,7 +88,9 @@ def download_torchaudio_models(model_dir):
             urllib.request.urlretrieve(url, dest)
             print(f"Downloaded: {filename}")
         except Exception as e:
+            dest.unlink(missing_ok=True)  # a partial file would be skipped on rerun
             print(f"Failed to download {pipeline_name}: {e}")
+            FAILED.append(pipeline_name)
 
 
 def download_hf_alignment_models(model_dir, token):
@@ -97,6 +102,7 @@ def download_hf_alignment_models(model_dir, token):
             print(f"Downloaded: {repo_id}")
         except Exception as e:
             print(f"Failed to download {repo_id}: {e}")
+            FAILED.append(repo_id)
 
 
 def download_asr_models(model_dir, token):
@@ -119,6 +125,7 @@ def download_asr_models(model_dir, token):
             print(f"Downloaded: {model_name}")
         except Exception as e:
             print(f"Failed to download {model_name}: {e}")
+            FAILED.append(model_name)
 
 
 PYANNOTE_REPOS = [
@@ -137,6 +144,7 @@ def download_pyannote_model(model_dir, token):
             print(f"Downloaded: {repo_id}")
         except Exception as e:
             print(f"Failed to download {repo_id}: {e}")
+            FAILED.append(repo_id)
 
 
 def main():
@@ -162,6 +170,11 @@ def main():
     download_hf_alignment_models(model_dir, token)
     download_asr_models(model_dir, token)
     download_pyannote_model(model_dir, token)
+
+    if FAILED:
+        # remove the loc rows for these models, or fix the cause and rerun
+        print(f"Failed to download {len(FAILED)} model(s): {', '.join(FAILED)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":
