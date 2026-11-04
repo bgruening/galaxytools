@@ -1,0 +1,268 @@
+# Scheduled autoupdate flow: detect outdated tool versions on conda and open
+# one PR per outdated tool — no issue or plan step. The PR is the review gate.
+#
+# Opt in via `.gxy-tool-bot.yml`:
+#   autoupdate:
+#     enabled: true
+#     channels: [bioconda, conda-forge]   # where to look up latest versions
+#     skip: [my_tool]                      # tool dirs to never touch
+#     skip_file: autoupdate-skip.txt       # or a file listing them (one per line)
+#
+# How often this runs is controlled by the cron schedule below — GitHub reads
+# it from this file, not from the bot config.
+#
+# Dedup rules (mirroring planemo-autoupdate):
+#   * an open PR on the tool's autoupdate branch → skipped, unless a newer
+#     version appeared since it opened (new commits fold into the open PR);
+#   * a closed, unmerged autoupdate PR → only a newer version than the declined
+#     one reopens it, so maintainers decline a version by closing its PR;
+#   * a branch whose last commit wasn't authored by the bot → never overwritten.
+on:
+  schedule:
+    - cron: "0 4 * * *"  # daily, 04:00 UTC
+  workflow_dispatch:
+    inputs:
+      tool_dir:
+        description: "Only check this tools/<dir> (blank = all tools)"
+        required: false
+        type: string
+        default: ""
+      max_tools:
+        description: "Cap tools updated this run (blank = autoupdate.max_tools_per_run)"
+        required: false
+        type: string
+        default: ""
+      max_iterations:
+        description: "Override max tool iterations per round (blank = config default)"
+        required: false
+        type: string
+        default: ""
+      max_retries:
+        description: "Override max validation retry rounds (blank = config default)"
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  detect:
+    name: Detect outdated tools
+    runs-on: ubuntu-latest
+    outputs:
+      tools: ${{ steps.detect.outputs.tools }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.1
+      - name: Detect outdated tools
+        id: detect
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TOOL_DIR_INPUT: ${{ inputs.tool_dir }}
+          MAX_TOOLS_INPUT: ${{ inputs.max_tools }}
+        run: |
+          ARGS=()
+          if [ -n "$MAX_TOOLS_INPUT" ]; then
+            ARGS+=(--max-tools "$MAX_TOOLS_INPUT")
+          fi
+          # Restrict to a single tool dir when triggered manually with one.
+          if [ -n "$TOOL_DIR_INPUT" ]; then
+            ARGS+=(--tool-dir "$TOOL_DIR_INPUT")
+          fi
+          # With GH_TOKEN set, detect filters out tools an open/declined PR
+          # or a manually-edited branch already covers, so skipped tools
+          # don't consume max_tools slots every run.
+          TOOLS=$(gxy-tool-bot autoupdate-detect \
+            --config .gxy-tool-bot.yml \
+            --tools-dir tools "${ARGS[@]}")
+          echo "$TOOLS"
+          echo "tools=$TOOLS" >> $GITHUB_OUTPUT
+      - name: Report detect failure
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Without this, a detect failure silently skips the update job and
+          # no one is told the scheduled run died.
+          gh issue create --title "Autoupdate error: detect job" \
+            --body "⚠️ The autoupdate detect job failed. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details." || true
+
+  update:
+    name: Update ${{ matrix.tool.tool_dir }}
+    needs: detect
+    if: needs.detect.outputs.tools != '[]'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: autoupdate-${{ matrix.tool.tool_dir }}
+      cancel-in-progress: false
+    strategy:
+      fail-fast: false
+      # One LLM job per outdated dir — cap concurrency so a run can't fire
+      # dozens of concurrent agent runs/API calls (GitHub also caps matrices
+      # at 256 jobs). autoupdate.max_tools_per_run bounds the total per run.
+      max-parallel: 2
+      matrix:
+        tool: ${{ fromJSON(needs.detect.outputs.tools) }}
+    env:
+      TOOL_DIR: ${{ matrix.tool.tool_dir }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: pip install --no-cache-dir gxy-tool-bot==0.2.1
+      - run: pip install "planemo>=0.75.43"
+      - name: Install micromamba
+        run: |
+          curl -Ls "https://micro.mamba.pm/api/micromamba/linux-64/latest" | tar -xvj -C /tmp
+          echo "/tmp/bin" >> $GITHUB_PATH
+      - name: Run autoupdate
+        id: autoupdate
+        env:
+          GXY_TOOL_BOT_API_KEY: ${{ secrets.GXY_TOOL_BOT_API_KEY }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REF_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          MAX_ITERATIONS_INPUT: ${{ inputs.max_iterations }}
+          MAX_RETRIES_INPUT: ${{ inputs.max_retries }}
+        run: |
+          OVERRIDE_ARGS=()
+          if [ -n "$MAX_ITERATIONS_INPUT" ]; then
+            OVERRIDE_ARGS+=(--max-iterations "$MAX_ITERATIONS_INPUT")
+          fi
+          if [ -n "$MAX_RETRIES_INPUT" ]; then
+            OVERRIDE_ARGS+=(--max-retries "$MAX_RETRIES_INPUT")
+          fi
+          # Re-detects the version and applies the PR/branch dedup rules;
+          # writes .autoupdate-skip when there's nothing to do.
+          gxy-tool-bot autoupdate \
+            --tool-dir "tools/$TOOL_DIR" \
+            --config .gxy-tool-bot.yml \
+            --output generated/ \
+            --commit-msg-path $GITHUB_WORKSPACE/.commit-msg \
+            --pr-body-path $GITHUB_WORKSPACE/.pr-body \
+            --pr-title-path $GITHUB_WORKSPACE/.pr-title \
+            "${OVERRIDE_ARGS[@]}"
+      - name: Check skip marker
+        id: check
+        if: steps.autoupdate.outcome == 'success'
+        run: |
+          if [ -f "$GITHUB_WORKSPACE/.autoupdate-skip" ]; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+            cat "$GITHUB_WORKSPACE/.autoupdate-skip"
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+      - name: Format generated XML with planemo
+        id: format
+        if: steps.check.outputs.skip == 'false'
+        run: |
+          planemo format --recursive generated/
+      - name: Create branch and PR
+        id: create_pr
+        if: steps.check.outputs.skip == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Checkout does not persist the token; git push gets it from GH_TOKEN via gh.
+          gh auth setup-git
+          git config user.name "gxy-tool-bot"
+          git config user.email "gxy-tool-bot@users.noreply.github.com"
+          BRANCH="tool-bot/autoupdate-$TOOL_DIR"
+          DEFAULT_BRANCH=${{ github.event.repository.default_branch }}
+          git fetch origin "$DEFAULT_BRANCH"
+          # Always rebuild the branch fresh from the default branch — the
+          # dedup step already guaranteed only bot commits can be on it.
+          git checkout -B "$BRANCH" "origin/$DEFAULT_BRANCH"
+          rm -rf "tools/$TOOL_DIR"
+          mkdir -p "tools/$TOOL_DIR"
+          cp -r generated/. "tools/$TOOL_DIR/"
+          rm -rf generated/
+          rm -f "tools/$TOOL_DIR/.tool-name"
+          IGNORED_FILES=$(find "tools/$TOOL_DIR" -type f | git check-ignore --no-index --stdin 2>/dev/null || true)
+          git add "tools/$TOOL_DIR/" || true
+          if git diff --cached --quiet; then
+            # The agent can legitimately produce no changes (e.g. it declines
+            # the update) — commit and PR creation would fail on an empty diff.
+            echo "No changes to commit — skipping PR creation"
+          else
+          git commit -m "$(cat $GITHUB_WORKSPACE/.commit-msg)"
+          PR_NUMBER=""
+          if [ -f "$GITHUB_WORKSPACE/.autoupdate-pr" ]; then
+            PR_NUMBER=$(cat "$GITHUB_WORKSPACE/.autoupdate-pr")
+            STATE=$(gh pr view "$PR_NUMBER" --json state --jq '.state')
+            if [ "$STATE" = "CLOSED" ]; then
+              # GitHub refuses to reopen a PR whose head was force-pushed
+              # while closed — reopen BEFORE pushing. If reopening fails,
+              # fall back to creating a fresh PR on the same branch.
+              if ! gh pr reopen "$PR_NUMBER"; then
+                echo "Could not reopen PR #$PR_NUMBER — will create a fresh PR"
+                PR_NUMBER=""
+              fi
+            fi
+          fi
+          if ! git push origin "$BRANCH" --force; then
+            # The PR may have just been reopened — tell the maintainer why
+            # it shows the old (declined) commits rather than the update.
+            if [ -n "$PR_NUMBER" ]; then
+              gh pr comment "$PR_NUMBER" --body "⚠️ Autoupdate reopened this PR but could not push the updated branch (\`$BRANCH\`). The update is retried on the next run — see the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})." || true
+            fi
+            exit 1
+          fi
+          if [ -n "$PR_NUMBER" ]; then
+            # Sync the title with the version the branch now targets.
+            gh pr edit "$PR_NUMBER" --title "$(cat $GITHUB_WORKSPACE/.pr-title)"
+            gh pr comment "$PR_NUMBER" --body "🔄 Autoupdate run — pushed new commits. [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          else
+            # PR title format: "tool_dir: update tool wrapper to X.Y.Z"
+            # The address-feedback workflow parses this title (cut -d':' -f1) to
+            # find the tool directory. If this format changes, the feedback
+            # loop will break unless the tool-dir detection logic is updated.
+            gh pr create \
+              --head "$BRANCH" \
+              --base "$DEFAULT_BRANCH" \
+              --title "$(cat $GITHUB_WORKSPACE/.pr-title)" \
+              --body "$(cat $GITHUB_WORKSPACE/.pr-body)"
+            PR_NUMBER=$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          fi
+          fi
+          if [ -n "$IGNORED_FILES" ] && [ -n "$PR_NUMBER" ]; then
+            IGNORED_MSG="⚠️ The following files were generated but are excluded by .gitignore and were NOT committed:\n\n"
+            for f in $IGNORED_FILES; do
+              IGNORED_MSG+=" - \`$f\`\n"
+            done
+            IGNORED_MSG+="\nThese files are needed for the tool tests. To include them, a maintainer can run \`git add -f\` for each file, or download them from the [workflow artifacts](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})."
+            gh pr comment "$PR_NUMBER" --body "$(echo -e "$IGNORED_MSG")"
+          fi
+          rm -f "$GITHUB_WORKSPACE/.commit-msg" "$GITHUB_WORKSPACE/.pr-body" "$GITHUB_WORKSPACE/.pr-title" "$GITHUB_WORKSPACE/.autoupdate-skip" "$GITHUB_WORKSPACE/.autoupdate-pr"
+      - name: Upload gitignored files as artifacts
+        if: steps.create_pr.outcome == 'success'
+        uses: actions/upload-artifact@v4
+        with:
+          name: gitignored-test-data-${{ matrix.tool.tool_dir }}
+          path: |
+            ${{ github.workspace }}/tools/${{ matrix.tool.tool_dir }}/test-data/*.tar
+          if-no-files-found: ignore
+      - name: Report autoupdate failure
+        if: steps.autoupdate.outcome == 'failure' || steps.create_pr.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Modelled on planemo-autoupdate's error reporting: one open issue
+          # per tool collects repeated failures instead of spamming new ones.
+          EXISTING=$(gh issue list --search "\"Autoupdate error: $TOOL_DIR\" in:title" --state open --json number --jq '.[0].number' 2>/dev/null || echo "")
+          BODY="⚠️ Autoupdate failed for \`tools/$TOOL_DIR/\`. Check the [workflow logs](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}) for details."
+          if [ -n "$EXISTING" ]; then
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            gh issue create --title "Autoupdate error: $TOOL_DIR" --body "$BODY"
+          fi

@@ -1,0 +1,217 @@
+<tool id="coxph" name="Cox Proportional Hazards" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Multivariate survival regression and hazard ratio forest plot</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="edam"/>
+    <expand macro="requirements"/>
+    <expand macro="creators"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+Rscript '$rscript'
+    ]]></command>
+    <configfiles>
+        <configfile name="rscript"><![CDATA[
+suppressWarnings(suppressMessages({
+    library(survival)
+    library(survminer)
+}))
+
+data <- read.delim("${input_data}", sep = "\t", stringsAsFactors = TRUE, check.names = TRUE)
+
+## Resolve column selection - data_column may pass index or name
+resolve_col_name <- function(data, col_value) {
+    col_value <- trimws(col_value)
+    col_idx <- suppressWarnings(as.integer(col_value))
+    if (!is.na(col_idx) && col_idx >= 1 && col_idx <= ncol(data)) {
+        return(colnames(data)[col_idx])
+    }
+    return(col_value)
+}
+
+time_col_name <- resolve_col_name(data, "${time_col}")
+status_col_name <- resolve_col_name(data, "${status_col}")
+print(paste("Using time column:", time_col_name))
+print(paste("Using status column:", status_col_name))
+## Covariates come from a multi-select data_column as a comma-separated list of indices
+covariate_values <- strsplit("${covariates}", ",")[[1]]
+covariate_names <- vapply(covariate_values, function(v) resolve_col_name(data, v), character(1))
+covariate_names <- unname(covariate_names)
+print(paste("Using covariates:", paste(covariate_names, collapse = ", ")))
+
+## Ensure status and time are numeric
+data[[status_col_name]] <- as.numeric(as.character(data[[status_col_name]]))
+data[[time_col_name]] <- as.numeric(as.character(data[[time_col_name]]))
+
+## Note: covariates are left as-is. Numeric columns are treated as continuous
+## predictors; character/categorical columns were already converted to
+## factors by read.delim(stringsAsFactors = TRUE) above.
+
+cox_formula <- as.formula(paste0(
+    "Surv(`", time_col_name, "`, `", status_col_name, "`) ~ ",
+    paste0("`", covariate_names, "`", collapse = " + ")
+))
+
+fit <- coxph(cox_formula, data = data)
+
+#set $ap = $sec_appearance
+p <- ggforest(
+  fit, data = data,
+#if str($ap.main_title).strip():
+  main = "${ap.main_title}",
+#end if
+  fontsize = ${ap.fontsize}
+)
+
+#if $output_format == "pdf":
+pdf("forest", width = ${ap.plot_width}, height = ${ap.plot_height})
+#else:
+png("forest", width = ${ap.plot_width} * 300, height = ${ap.plot_height} * 300, res = 300)
+#end if
+print(p)
+dev.off()
+
+#if $ph_test:
+zph <- cox.zph(fit)
+zph_table <- as.data.frame(zph\$table)
+write.table(zph_table, file = "ph_test.tsv", sep = "\t", quote = FALSE, col.names = NA)
+#end if
+        ]]></configfile>
+    </configfiles>
+    <inputs>
+        <expand macro="common_survival_param" name="covariates" optional="false" multiple="true" label="Covariates to include in the model" help="Select one or more columns. Numeric columns are treated as continuous predictors; text columns are treated as categorical (factor) predictors."/>
+        <param name="ph_test" type="boolean" checked="false" truevalue="true" falsevalue="false" label="Test the proportional-hazards assumption?" help="Runs cox.zph() and outputs a table of Schoenfeld-residual test results per covariate (and GLOBAL)."/>
+        <section name="sec_appearance" expanded="false" title="Appearance Options">
+            <param name="main_title" type="text" optional="true" label="Plot title" help="Leave empty to use survminer's default title (&quot;Hazard ratio&quot;)"/>
+            <expand macro="plot_size_param" value_width="8" value_height="6" help_height="Increase for models with many covariates" optional_font="false" value_font="0.7"/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="output_plot" from_work_dir="forest" format="png" label="${tool.name} on ${on_string}: Forest plot">
+            <change_format>
+                <when input="output_format" value="pdf" format="pdf"/>
+            </change_format>
+        </data>
+        <data name="ph_test_output" from_work_dir="ph_test.tsv" format="tabular" label="${tool.name} on ${on_string}: Proportional-hazards test">
+            <filter>ph_test</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Test 1: Basic multivariate Cox model, PNG output, no PH test -->
+        <test expect_num_outputs="1">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="covariates" value="3"/>
+            <param name="output_format" value="png"/>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using covariates: sex"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1200,898" eps="50"/>
+                    <has_image_channels channels="1"/>
+                    <has_image_height height="1800"/>
+                    <has_image_width width="2400"/>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 2: With PH assumption test enabled, PDF output -->
+        <test expect_num_outputs="2">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="covariates" value="3"/>
+            <param name="output_format" value="pdf"/>
+            <param name="ph_test" value="True"/>
+            <section name="sec_appearance">
+                <param name="main_title" value="Lung Cancer Cox Model"/>
+            </section>
+            <output name="output_plot" ftype="pdf">
+                <assert_contents>
+                    <has_text text="%PDF"/>
+                </assert_contents>
+            </output>
+            <output name="ph_test_output" ftype="tabular">
+                <assert_contents>
+                    <has_text text="GLOBAL"/>
+                    <has_text text="sex"/>
+                    <has_n_columns n="4"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 3: Basic multivariate Cox model, PNG output, 2 covariates -->
+        <test expect_num_outputs="1">
+            <param name="input_data" ftype="tabular" value="lung.tsv"/>
+            <param name="time_col" value="1"/>
+            <param name="status_col" value="2"/>
+            <param name="covariates" value="3,4"/>
+            <param name="output_format" value="png"/>
+            <section name="sec_appearance">
+                <param name="plot_height" value="10"/>
+            </section>
+            <assert_stdout>
+                <has_text text="Using time column: time"/>
+                <has_text text="Using status column: status"/>
+                <has_text text="Using covariates: sex, multi"/>
+            </assert_stdout>
+            <output name="output_plot" ftype="png">
+                <assert_contents>
+                    <has_image_center_of_mass center_of_mass="1200,1500" eps="100"/>
+                    <has_image_channels channels="1"/>
+                    <has_image_height height="3000"/>
+                    <has_image_width width="2400"/>
+                    <has_size value="5000" delta="95000"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help>
+**What it does**
+
+This tool fits a multivariate Cox proportional hazards regression model using
+the R **survival** package's ``coxph()`` function, and visualizes the
+estimated hazard ratios as a forest plot using **survminer**'s
+``ggforest()``.
+
+Unlike the companion Kaplan-Meier tool, which compares survival between
+groups without adjusting for other variables, this tool estimates the
+independent effect of each selected covariate on the hazard of the event,
+holding the others constant.
+
+**Input**
+
+A tabular file (TSV) containing at minimum:
+
+- A **time** column (numeric survival/follow-up time)
+- A **status/event** column (0 = censored, 1 = event occurred)
+- One or more **covariate** columns to include in the model
+
+Numeric covariate columns are treated as continuous predictors. Text
+covariate columns are treated as categorical (factor) predictors.
+
+**Output**
+
+- A forest plot (PNG or PDF) showing the hazard ratio and 95% confidence
+  interval for each covariate.
+- Optionally, a table of proportional-hazards assumption test results
+  (Schoenfeld residuals, via ``cox.zph()``), one row per covariate plus a
+  GLOBAL row. A small p-value (conventionally &lt; 0.05) suggests the
+  proportionality assumption may not hold for that covariate, meaning its
+  effect on the hazard may change over time rather than staying constant -
+  in which case the hazard ratio from this model should be interpreted with
+  caution.
+
+.. class:: infomark
+
+**note**
+
+**Status encoding:** The R `survival` package uses 1 = event, 0 = censored by
+default. Some datasets (e.g. `lung`) use 2 = event; `Surv()` treats any
+non-zero value as an event.
+    </help>
+    <expand macro="citations"/>
+</tool>

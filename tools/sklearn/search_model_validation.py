@@ -3,7 +3,6 @@ import json
 import os
 import sys
 import warnings
-from distutils.version import LooseVersion as Version
 
 import imblearn
 import joblib
@@ -12,7 +11,7 @@ import pandas as pd
 import skrebate
 from galaxy_ml import __version__ as galaxy_ml_version
 from galaxy_ml.binarize_target import IRAPSClassifier
-from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5
+from galaxy_ml.model_persist import dump_model_to_h5, load_model_from_h5, ModelToHDF5
 from galaxy_ml.utils import (
     clean_params,
     get_cv,
@@ -21,8 +20,9 @@ from galaxy_ml.utils import (
     get_scoring,
     read_columns,
     SafeEval,
-    try_get_attr
+    try_get_attr,
 )
+from packaging.version import Version
 from scipy.io import mmread
 from sklearn import (
     cluster,
@@ -34,7 +34,7 @@ from sklearn import (
 )
 from sklearn.exceptions import FitFailedWarning
 from sklearn.model_selection import _search, _validation
-from sklearn.model_selection._validation import _score, cross_validate
+from sklearn.model_selection._validation import cross_validate
 from sklearn.preprocessing import LabelEncoder
 from skopt import BayesSearchCV
 
@@ -51,6 +51,8 @@ NON_SEARCHABLE = (
     "callbacks",
 )
 
+ModelToHDF5.dispatch[type(np.mean)] = ModelToHDF5.save_global
+
 
 def _eval_search_params(params_builder):
     search_params = {}
@@ -63,14 +65,16 @@ def _eval_search_params(params_builder):
         param_name = p["sp_name"]
         if param_name.lower().endswith(NON_SEARCHABLE):
             print(
-                "Warning: `%s` is not eligible for search and was "
-                "omitted!" % param_name
+                "Warning: `%s` is not eligible for search and was omitted!" % param_name
             )
             continue
 
         if not search_list.startswith(":"):
-            safe_eval = SafeEval(load_scipy=True, load_numpy=True)
-            ev = safe_eval(search_list)
+            if search_list == "[np.mean]":
+                ev = [np.mean]
+            else:
+                safe_eval = SafeEval(load_scipy=True, load_numpy=True)
+                ev = safe_eval(search_list)
             search_params[param_name] = ev
         else:
             # Have `:` before search list, asks for estimator evaluatio
@@ -116,7 +120,7 @@ def _eval_search_params(params_builder):
                 skrebate.SURFstar(n_jobs=N_JOBS),
                 skrebate.MultiSURF(n_jobs=N_JOBS),
                 skrebate.MultiSURFstar(n_jobs=N_JOBS),
-                imblearn.under_sampling.ClusterCentroids(random_state=0, n_jobs=N_JOBS),
+                imblearn.under_sampling.ClusterCentroids(random_state=0),
                 imblearn.under_sampling.CondensedNearestNeighbour(
                     random_state=0, n_jobs=N_JOBS
                 ),
@@ -133,16 +137,14 @@ def _eval_search_params(params_builder):
                 ),
                 imblearn.under_sampling.RandomUnderSampler(random_state=0),
                 imblearn.under_sampling.TomekLinks(n_jobs=N_JOBS),
-                imblearn.over_sampling.ADASYN(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.BorderlineSMOTE(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.KMeansSMOTE(random_state=0, n_jobs=N_JOBS),
+                imblearn.over_sampling.ADASYN(random_state=0),
+                imblearn.over_sampling.BorderlineSMOTE(random_state=0),
+                imblearn.over_sampling.KMeansSMOTE(random_state=0),
                 imblearn.over_sampling.RandomOverSampler(random_state=0),
-                imblearn.over_sampling.SMOTE(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.SMOTEN(random_state=0, n_jobs=N_JOBS),
-                imblearn.over_sampling.SMOTENC(
-                    categorical_features=[], random_state=0, n_jobs=N_JOBS
-                ),
-                imblearn.over_sampling.SVMSMOTE(random_state=0, n_jobs=N_JOBS),
+                imblearn.over_sampling.SMOTE(random_state=0),
+                imblearn.over_sampling.SMOTEN(random_state=0),
+                imblearn.over_sampling.SMOTENC(categorical_features=[], random_state=0),
+                imblearn.over_sampling.SVMSMOTE(random_state=0),
                 imblearn.combine.SMOTEENN(random_state=0),
                 imblearn.combine.SMOTETomek(random_state=0),
             )
@@ -409,9 +411,7 @@ def _do_train_test_split_val(
         X, X_test, y, y_test = train_test_split(X, y, **split_options)
     elif split_options["shuffle"] == "group":
         if groups is None:
-            raise ValueError(
-                "No group based CV option was choosen for " "group shuffle!"
-            )
+            raise ValueError("No group based CV option was choosen for group shuffle!")
         split_options["labels"] = groups
         if y is None:
             X, X_test, groups, _ = train_test_split(X, groups, **split_options)
@@ -438,7 +438,7 @@ def _do_train_test_split_val(
 
     scorer_ = searcher.scorer_
 
-    best_estimator_ = getattr(searcher, "best_estimator_")
+    best_estimator_ = searcher.best_estimator_
 
     # TODO Solve deep learning models in pipeline
     if best_estimator_.__class__.__name__ == "KerasGBatchClassifier":
@@ -447,7 +447,13 @@ def _do_train_test_split_val(
             scorer=scorer_,
         )
     else:
-        test_score = _score(best_estimator_, X_test, y_test, scorer_)
+        if isinstance(scorer_, dict):
+            test_score = {
+                name: score(best_estimator_, X_test, y_test)
+                for name, score in scorer_.items()
+            }
+        else:
+            test_score = scorer_(best_estimator_, X_test, y_test)
 
     if not isinstance(scorer_, dict):
         test_score = {primary_scoring: test_score}
@@ -564,8 +570,8 @@ def main(
             "_fit_and_score",
         )
 
-        setattr(_search, "_fit_and_score", _fit_and_score)
-        setattr(_validation, "_fit_and_score", _fit_and_score)
+        _search._fit_and_score = _fit_and_score
+        _validation._fit_and_score = _fit_and_score
 
     search_algos_and_options = params["search_algos"]
     optimizer = search_algos_and_options.pop("selected_search_algo")
@@ -624,13 +630,12 @@ def main(
     if optimizer == "skopt.BayesSearchCV" and isinstance(options["scoring"], dict):
         options["scoring"] = options["scoring"][primary_scoring]
         warnings.warn(
-            "BayesSearchCV doesn't support multiple "
-            "scorings! Primary scoring is used."
+            "BayesSearchCV doesn't support multiple scorings! Primary scoring is used."
         )
     if options["error_score"]:
         options["error_score"] = "raise"
     else:
-        options["error_score"] = np.NaN
+        options["error_score"] = np.nan
     if options["refit"] and isinstance(options["scoring"], dict):
         options["refit"] = primary_scoring
     if "pre_dispatch" in options and options["pre_dispatch"] == "":
@@ -687,7 +692,7 @@ def main(
                 cv=outer_cv,
                 n_jobs=N_JOBS,
                 verbose=options["verbose"],
-                fit_params={"groups": groups},
+                params={"groups": groups},
                 return_estimator=(params["save"] == "save_estimator"),
                 error_score=options["error_score"],
                 return_train_score=True,
@@ -705,7 +710,7 @@ def main(
                         cv=outer_cv,
                         n_jobs=N_JOBS,
                         verbose=options["verbose"],
-                        fit_params={"groups": groups},
+                        params={"groups": groups},
                         return_estimator=(params["save"] == "save_estimator"),
                         error_score=options["error_score"],
                         return_train_score=True,

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 import random
@@ -5,7 +6,13 @@ import sys
 import time
 
 import yaml
-from openai import InternalServerError, OpenAI
+from openai import (
+    APIConnectionError,
+    APITimeoutError,
+    InternalServerError,
+    OpenAI,
+    RateLimitError,
+)
 
 context_files = json.loads(sys.argv[1])
 question = sys.argv[2]
@@ -14,6 +21,13 @@ model_type = sys.argv[4]
 temperature_arg = sys.argv[5]
 temperature = float(temperature_arg) if temperature_arg else None
 provider = sys.argv[6]
+# Galaxy user id, for request attribution on the proxy. The literal
+# "Anonymous" for anonymous sessions, in which case no per-user id is sent.
+galaxy_user_id = sys.argv[7] if len(sys.argv) > 7 else ""
+if galaxy_user_id == "Anonymous":
+    galaxy_user_id = ""
+# Galaxy instance URL ($__galaxy_url__), used to namespace the user id below.
+galaxy_url = sys.argv[8] if len(sys.argv) > 8 else ""
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -41,9 +55,17 @@ if not litellm_base_url:
         "LiteLLM base URL is not configured! Please set LITELLM_BASE_URL environment variable."
     )
 
+# LLM generation can be slow for large contexts; allow a generous, configurable
+# timeout. We disable the SDK's internal retries so the loop below owns backoff
+# and logging. Override via LITELLM_REQUEST_TIMEOUT / MAX_RETRIES / MAX_DELAY in
+# the config file or environment.
+request_timeout = float(os.environ.get("LITELLM_REQUEST_TIMEOUT", "600"))
+
 client = OpenAI(
     api_key=litellm_api_key,
     base_url=litellm_base_url,
+    timeout=request_timeout,
+    max_retries=0,
 )
 
 
@@ -124,23 +146,152 @@ if not contents:
 messages = [{"role": "user", "content": contents}]
 
 
-max_retries = config.get("MAX_RETRIES", 3)
-max_delay = config.get("MAX_DELAY", 900)
+max_retries = int(config.get("MAX_RETRIES", 3))
+max_delay = float(config.get("MAX_DELAY", 900))
+
+# Transient errors that are safe to retry: timeouts and connection failures
+# (network/proxy hiccups), rate limiting, and upstream 5xx.
+retryable_errors = (
+    APITimeoutError,
+    APIConnectionError,
+    RateLimitError,
+    InternalServerError,
+)
+
+# Timeouts on a long generation usually mean the work exceeds the per-request
+# budget, so re-sending reproduces the same timeout.  Cap timeout retries
+# separately (other transient errors keep the full max_retries budget).
+max_timeout_retries = int(os.environ.get("MAX_TIMEOUT_RETRIES") or config.get("MAX_TIMEOUT_RETRIES", 1))
+timeout_attempts = 0
+
+# We send no max_tokens: a fixed cap is dangerous for reasoning models (e.g.
+# OpenAI o-series, DeepSeek-R1, GLM thinking models), which spend a large,
+# unpredictable token budget on chain-of-thought before emitting any answer, so
+# a small cap yields finish_reason='length' with empty content.  Rely on the
+# model/proxy default instead; truncation is surfaced explicitly below.
+
+
+def stream_completion():
+    """Run one streaming chat completion. Returns (answer_text, finish_reason).
+
+    Streaming keeps the connection alive token-by-token (reasoning models stream
+    their chain-of-thought continuously), so request_timeout bounds inter-chunk
+    idle rather than total walltime -- the fix for the 600s idle timeout that
+    killed long non-streaming jobs.  The answer arrives on `content`;
+    `reasoning_content` (chain-of-thought, absent on non-reasoning models) is
+    ignored since a Galaxy tool produces a single dataset.
+    """
+    api_params = {"model": model, "messages": messages, "stream": True}
+    # Attribute the request to the Galaxy user so proxies (e.g. LiteLLM) can
+    # meter usage and apply per-user budgets/rate limits, via the standard
+    # OpenAI `user` field. The id is namespaced by the Galaxy instance URL and
+    # hashed: the URL keeps ids unique when several Galaxy instances share one
+    # proxy (e.g. usegalaxy.eu), and hashing means no instance-identifying or
+    # personal data leaves for the provider. Anonymous users (no id) fall back
+    # to a per-instance shared "anonymous" bucket.
+    raw_user = galaxy_user_id or "anonymous"
+    api_params["user"] = hashlib.sha256(f"{galaxy_url}|{raw_user}".encode()).hexdigest()
+    if temperature is not None:
+        api_params["temperature"] = temperature
+
+    answer_parts = []
+    finish_reason = None
+    with client.chat.completions.create(**api_params) as stream:
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            choice = chunk.choices[0]
+            delta = choice.delta
+            piece = getattr(delta, "content", None)
+            if piece:
+                answer_parts.append(piece)
+            # Discard reasoning_content (chain-of-thought); keep only the answer.
+            _ = getattr(delta, "reasoning_content", None)
+            if choice.finish_reason is not None:
+                finish_reason = choice.finish_reason
+    return "".join(answer_parts), finish_reason
+
+
 for attempt in range(max_retries):
     try:
-        api_params = {"model": model, "messages": messages}
-        if temperature is not None:
-            api_params["temperature"] = temperature
+        answer, finish_reason = stream_completion()
 
-        response = client.chat.completions.create(**api_params)
+        # An empty answer is never a usable dataset -- fail loudly before
+        # writing instead of silently emitting a blank output.md.
+        if not answer:
+            if finish_reason == "length":
+                sys.exit(
+                    "The model exhausted its token budget before producing an "
+                    "answer (finish_reason='length', empty content). The input "
+                    "is likely too large for the model/proxy token limit; split "
+                    "it into smaller chunks and re-run."
+                )
+            sys.exit(
+                "The model returned an empty response with no answer content "
+                f"(finish_reason={finish_reason!r}). The upstream model/proxy "
+                "may have dropped the stream; try again or use a different model."
+            )
+
+        # Warn (but still write) when the result may be partial: a token-budget
+        # cutoff, upstream content filtering, or a stream that ended without an
+        # explicit stop signal.
+        if finish_reason == "length":
+            print(
+                "WARNING: model output was truncated (finish_reason='length'). "
+                "The written file is a PARTIAL result. For large inputs, split "
+                "them into smaller chunks and re-run.",
+                file=sys.stderr,
+            )
+        elif finish_reason == "content_filter":
+            print(
+                "WARNING: the model output was filtered by the upstream "
+                "model/proxy (finish_reason='content_filter'). The written file "
+                "may be partial or altered; please verify and re-run if needed.",
+                file=sys.stderr,
+            )
+        elif finish_reason is None:
+            print(
+                "WARNING: the stream ended without an explicit stop signal "
+                "(finish_reason is None). The written result may be incomplete; "
+                "please verify and re-run if needed.",
+                file=sys.stderr,
+            )
+
         with open("output.md", "w") as f:
-            f.write(response.choices[0].message.content or "")
+            f.write(answer)
         break
-    except InternalServerError as e:
-        if attempt == max_retries - 1:
-            sys.exit("Max retries reached. Exiting.")
+    except APITimeoutError as e:
+        timeout_attempts += 1
+        if attempt == max_retries - 1 or timeout_attempts > max_timeout_retries:
+            sys.exit(
+                f"Stopped after {timeout_attempts} timeout(s) "
+                f"(cap {max_timeout_retries}). Last error: "
+                f"{type(e).__name__}: {e}. The request may be too large for the "
+                f"timeout budget ({request_timeout}s). Increase "
+                f"LITELLM_REQUEST_TIMEOUT or reduce the input size."
+            )
         sleep_time = min(2**attempt + random.uniform(0, 1), max_delay)
         print(
-            f"InternalServerError encountered ({e}). Retrying in {sleep_time:.2f} seconds..."
+            f"{type(e).__name__} encountered ({e}). Timeout attempt "
+            f"{timeout_attempts}/{max_timeout_retries}; retrying in "
+            f"{sleep_time:.2f}s...",
+            file=sys.stderr,
+        )
+        time.sleep(sleep_time)
+    except retryable_errors as e:
+        if attempt == max_retries - 1:
+            sys.exit(
+                f"Max retries ({max_retries}) reached. Last error: "
+                f"{type(e).__name__}: {e}"
+            )
+        sleep_time = min(2**attempt + random.uniform(0, 1), max_delay)
+        if isinstance(e, RateLimitError) and hasattr(e, "response") and e.response is not None:
+            retry_after = e.response.headers.get("retry-after")
+            if retry_after:
+                sleep_time = min(float(retry_after), max_delay)
+        print(
+            f"{type(e).__name__} encountered ({e}). Retrying in "
+            f"{sleep_time:.2f} seconds...",
+            file=sys.stderr,
         )
         time.sleep(sleep_time)

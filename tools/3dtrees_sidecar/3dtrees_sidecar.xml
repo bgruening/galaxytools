@@ -1,0 +1,349 @@
+<tool id="3dtrees_sidecar" name="3Dtrees: Sidecar" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>Store method results as sidecars and assemble point clouds</description>
+    <macros>
+        <token name="@TOOL_VERSION@">0.1.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <xml name="generation">
+            <param argument="--generation" type="text" label="Standard generation id" help="Which standardization the points come from. The platform fills this in; by hand, use any UUID and the same one for every task">
+                <validator type="regex" message="A generation UUID is required">^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\Z</validator>
+            </param>
+        </xml>
+        <xml name="base">
+            <param argument="--base" type="data" format="laz" label="Standard base point cloud" help="The standardized point cloud of one item; its collection element identifier (or dataset name outside a collection) must be a positive numeric item id"/>
+        </xml>
+        <xml name="sidecars">
+            <repeat name="sidecars" title="Sidecar" help="Add one per method result to include; none gives the points only">
+                <param argument="--sidecar" type="data" format="parquet" label="Sidecar"/>
+            </repeat>
+        </xml>
+    </macros>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_sidecar:@TOOL_VERSION@</container>
+    </requirements>
+    <version_command>python /src/run.py --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        #if $operation.task == 'export'
+            #set $item_id = str($operation.enriched.element_identifier)
+        #else
+            #set $item_id = str($operation.base.element_identifier)
+        #end if
+        #if not re.match(r'^[0-9]+\Z', $item_id)
+            #set $item_id = 'invalid'
+        #end if
+        python -u /src/run.py '$operation.task'
+        --generation '$operation.generation'
+        --item '$item_id'
+        #if $operation.task == 'export'
+            --enriched '$operation.enriched'
+            --columns '$operation.columns'
+            --output sidecar.parquet
+        #else
+            --base '$operation.base'
+            #for $selected in $operation.sidecars
+                --sidecar '$selected.sidecar'
+            #end for
+            #if $operation.task == 'assemble'
+                --output member.laz
+            #else
+                --member '$operation.member'
+            #end if
+        #end if
+        --report '$report'
+    ]]></command>
+    <inputs>
+        <conditional name="operation">
+            <param name="task" type="select" label="Task">
+                <option value="export">Export: cut one method's new columns out of its result</option>
+                <option value="assemble">Assemble: build the download point cloud from base and sidecars</option>
+                <option value="check">Check: verify a published download point cloud</option>
+            </param>
+            <when value="export">
+                <param argument="--enriched" type="data" format="laz" label="Method result point cloud" help="One item's method output; its collection element identifier (or dataset name outside a collection) must be a positive numeric item id"/>
+                <param argument="--columns" type="text" label="Columns to keep" help="Comma-separated names of the columns to store, for example PredInstance_SAT,PredSemantic_SAT. Every other added column is left out with a warning.">
+                    <validator type="regex" message="Comma-separated column names without spaces">^[A-Za-z_][A-Za-z0-9_]*(,[A-Za-z_][A-Za-z0-9_]*)*\Z</validator>
+                </param>
+                <expand macro="generation"/>
+            </when>
+            <when value="assemble">
+                <expand macro="base"/>
+                <expand macro="generation"/>
+                <expand macro="sidecars"/>
+            </when>
+            <when value="check">
+                <expand macro="base"/>
+                <expand macro="generation"/>
+                <expand macro="sidecars"/>
+                <param argument="--member" type="data" format="laz" label="Point cloud to verify" help="The download point cloud made by assemble"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="sidecar" format="parquet" from_work_dir="sidecar.parquet" label="${tool.name} on ${on_string}: Sidecar">
+            <filter>operation['task'] == 'export'</filter>
+        </data>
+        <data name="member" format="laz" from_work_dir="member.laz" label="${tool.name} on ${on_string}: Point cloud">
+            <filter>operation['task'] == 'assemble'</filter>
+        </data>
+        <data name="report" format="json" label="${tool.name} on ${on_string}: Report"/>
+    </outputs>
+    <tests>
+        <!-- Export both SAT columns and verify the actual Parquet values. -->
+        <test expect_num_outputs="2">
+            <conditional name="operation">
+                <param name="task" value="export"/>
+                <param name="enriched" value="sat/11353" ftype="laz"/>
+                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+            </conditional>
+            <output name="sidecar" file="sat.parquet" ftype="parquet"/>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="item_id" value="11353"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="generation" value="&quot;0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c&quot;"/>
+                    <has_json_property_with_value property="dimensions" value="{&quot;PredInstance_SAT&quot;: &quot;&lt;u4&quot;, &quot;PredSemantic_SAT&quot;: &quot;&lt;u4&quot;}"/>
+                    <has_json_property_with_value property="dropped" value="[]"/>
+                    <has_json_property_with_value property="contract" value="&quot;3dtrees-scientific-sidecar-proof-v2&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Export only the requested method from a combined result. -->
+        <test expect_num_outputs="2">
+            <conditional name="operation">
+                <param name="task" value="export"/>
+                <param name="enriched" value="legacy/11353" ftype="laz"/>
+                <param name="columns" value="PredInstance_SAT,PredSemantic_SAT"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+            </conditional>
+            <output name="sidecar" file="sat.parquet" ftype="parquet"/>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="dimensions" value="{&quot;PredInstance_SAT&quot;: &quot;&lt;u4&quot;, &quot;PredSemantic_SAT&quot;: &quot;&lt;u4&quot;}"/>
+                    <has_json_property_with_value property="dropped" value="[&quot;PredInstance_FM&quot;, &quot;PredScore_FM&quot;, &quot;PredSemantic_FM&quot;]"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                </assert_contents>
+            </output>
+            <assert_stderr>
+                <has_text text="columns not kept"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject columns absent from the method output. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="export"/>
+                <param name="enriched" value="11353" ftype="laz"/>
+                <param name="columns" value="PredInstance_SAT"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Requested columns are not in the output: ['PredInstance_SAT']"/>
+            </assert_stderr>
+        </test>
+        <!-- No sidecars preserves every byte of the standardized point cloud. -->
+        <test expect_num_outputs="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+            </conditional>
+            <output name="member" file="base.laz" ftype="laz"/>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="item_id" value="11353"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="dimensions" value="[]"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Assemble one method and verify its values and the base fields. -->
+        <test expect_num_outputs="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+            </conditional>
+            <output name="member" file="sat.laz" ftype="laz"/>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="dimensions" value="[&quot;PredInstance_SAT&quot;, &quot;PredSemantic_SAT&quot;]"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Assemble two methods and verify every output byte. -->
+        <test expect_num_outputs="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet"/>
+                </repeat>
+            </conditional>
+            <output name="member" file="member_both.laz" ftype="laz"/>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="dimensions" value="[&quot;PredInstance_FM&quot;, &quot;PredInstance_SAT&quot;, &quot;PredScore_FM&quot;, &quot;PredSemantic_FM&quot;, &quot;PredSemantic_SAT&quot;]"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Check a point cloud without sidecars. -->
+        <test expect_num_outputs="1">
+            <conditional name="operation">
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <param name="member" value="base.laz" ftype="laz"/>
+            </conditional>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="contract" value="&quot;3dtrees-sidecar-check-v1&quot;"/>
+                    <has_json_property_with_value property="item_id" value="11353"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                    <has_json_property_with_value property="generation" value="&quot;0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c&quot;"/>
+                    <has_json_property_with_value property="sidecars" value="[]"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Check a point cloud with both methods. -->
+        <test expect_num_outputs="1">
+            <conditional name="operation">
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet"/>
+                </repeat>
+                <param name="member" value="member_both.laz" ftype="laz"/>
+            </conditional>
+            <output name="report" ftype="json">
+                <assert_contents>
+                    <has_json_property_with_value property="contract" value="&quot;3dtrees-sidecar-check-v1&quot;"/>
+                    <has_json_property_with_value property="points" value="500"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Reject a member with extra unselected columns. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <param name="member" value="sat.laz" ftype="laz"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Member dimensions differ from the selected sidecars"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject a member missing the selected columns. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="check"/>
+                <param name="base" value="11353" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="sat.parquet" ftype="parquet"/>
+                </repeat>
+                <repeat name="sidecars">
+                    <param name="sidecar" value="forestmamba.parquet" ftype="parquet"/>
+                </repeat>
+                <param name="member" value="base.laz" ftype="laz"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Member dimensions differ from the selected sidecars"/>
+            </assert_stderr>
+        </test>
+        <!-- Reject nonnumeric dataset names outside collections. -->
+        <test expect_failure="true" expect_exit_code="2">
+            <conditional name="operation">
+                <param name="task" value="assemble"/>
+                <param name="base" value="base.laz" ftype="laz"/>
+                <param name="generation" value="0b0a6f1e-6a4e-4d8e-9f3c-1d2e3f4a5b6c"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="item must be a positive Dataset item id"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help><![CDATA[
+**What it does**
+
+Sidecar keeps each method's results apart from the point cloud. For every item
+it stores only the columns you name (for example ``PredInstance_SAT``),
+together with each point's number, in a small Parquet file: a *sidecar*. A
+downloadable point cloud is built from the standardized file plus any chosen
+sidecars, joined by point number, never by coordinates.
+
+.. image:: $PATH_TO_IMAGES/sidecar_workflow.png
+   :width: 100%
+
+**Tasks**
+
+- **Export**: turns one method's result into a sidecar. It stores only the
+  columns named in *Columns to keep*, for example
+  ``PredInstance_SAT,PredSemantic_SAT`` for SAT, ``species_id_SAT,species_prob_SAT``
+  for a species result that also repeats SAT's columns, or one method's columns
+  from an old file that holds several (run once per method). Every other column
+  is left out and listed as a warning in the job's output and report. The
+  result must hold the standardized points in the same order, because the
+  sidecar is joined back by point number only.
+- **Assemble**: builds one item's download point cloud: every field of the
+  standardized file unchanged, plus the columns of each added *Sidecar*. Add one
+  entry per method, from any method; none gives the points only. A sidecar is
+  refused when its item, generation or point count differs.
+- **Check**: rebuilds the download point cloud from the standardized file and
+  the same sidecars, and compares it value by value with the file given as
+  *Point cloud to verify*. The job fails on any difference.
+
+**Several items**
+
+Run every task on collections, one element per item, with the dataset item id
+as element identifier (for example ``11353``). Galaxy then runs one job per
+element and the item id is read from the element identifier. When assemble or
+check gets the standardized collection and sidecar collections together, Galaxy
+pairs their elements in collection order, so the collections must list the
+same items in the same order. A mispaired sidecar is refused because its item
+id does not match.
+
+For a single dataset outside a collection, rename the method result (export)
+or standardized base (assemble and check) to its positive numeric item id,
+without a file extension. The item id is read from that dataset name.
+
+Use one *Sidecar* entry per method and select that method's collection in
+Galaxy's batch input mode. This lets Galaxy map the standardized file and each
+method's sidecar together for every item.
+
+**Standard generation id**
+
+A UUID naming the standardization the points come from. The 3Dtrees platform
+passes its own; by hand, use any UUID and the same one for export, assemble and
+check. A sidecar with a different generation is refused.
+
+**Outputs**
+
+Export writes the sidecar, assemble the download LAZ. Every task also writes a
+JSON report with point count, columns and SHA-256 hashes, so the 3Dtrees
+platform can verify the results without downloading point clouds.
+    ]]></help>
+    <creator>
+        <person name="Janusch Vajna-Jehle" email="janusch.jehle@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-0034-9387"/>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <citations>
+        <citation type="bibtex">
+            @misc{3dtrees_sidecar, title = {3Dtrees: Sidecar}, author = {3Dtrees-Project}, year = {2026}, url = {https://github.com/3dTrees-earth/3dtrees_sidecar}}
+        </citation>
+    </citations>
+</tool>

@@ -1,0 +1,506 @@
+<tool id="kat_comp" name="KAT Comp" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>compares k-mer count hashes</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="xrefs"/>
+    <expand macro="requirements"/>
+    <stdio>
+        <regex match="corrupted double-linked list" source="stderr" level="warning" description="KAT C++ heap corruption — output files were still produced correctly"/>
+        <exit_code range="2:133" level="fatal" description="Error occurred"/>
+        <exit_code range="135:" level="fatal" description="Error occurred"/>
+        <exit_code range=":-1" level="fatal" description="Error occurred"/>
+    </stdio>
+    <version_command>echo @TOOL_VERSION@</version_command>
+    <command><![CDATA[
+        ## Link dataset 1 files with appropriate extensions
+        #for $i, $f in enumerate($input1.files):
+            @SET_EXT@
+            cp '$f' 'input1_${i}${ext}' &&
+        #end for
+
+        ## Link dataset 2 files with appropriate extensions
+        #for $i, $f in enumerate($input2.files):
+            @SET_EXT@
+            cp '$f' 'input2_${i}${ext}' &&
+        #end for
+
+        ## Link optional dataset 3 files with appropriate extensions
+        #if $input3.use_input3 == 'yes':
+            #for $i, $f in enumerate($input3.files):
+                @SET_EXT@
+                cp '$f' 'input3_${i}${ext}' &&
+            #end for
+        #end if
+
+        kat comp
+            -o kat-comp
+            -t "\${GALAXY_SLOTS:-1}"
+            -x '$dataset_options.d1_scale'
+            -y '$dataset_options.d2_scale'
+            -i '$dataset_options.d1_bins'
+            -j '$dataset_options.d2_bins'
+            #if str($dataset_options.d1_5ptrim).strip():
+                --d1_5ptrim '$dataset_options.d1_5ptrim'
+            #end if
+            #if str($dataset_options.d2_5ptrim).strip():
+                --d2_5ptrim '$dataset_options.d2_5ptrim'
+            #end if
+            $input1.non_canonical_1
+            $input2.non_canonical_2
+            $kmer_options.disable_hash_grow
+            -m '$kmer_options.mer_len'
+            -H '$kmer_options.hash_size_1'
+            -I '$kmer_options.hash_size_2'
+            $output_options.density_plot
+            -p '$output_options.output_type'
+            $output_options.output_hists
+            #if $input3.use_input3 == 'yes':
+                $input3.non_canonical_3
+                -J '$input3.hash_size_3'
+                #if str($input3.d3_5ptrim).strip():
+                    --d3_5ptrim '$input3.d3_5ptrim'
+                #end if
+            #end if
+            #for $i, $f in enumerate($input1.files):
+                @SET_EXT@
+                'input1_${i}${ext}'
+            #end for
+            #for $i, $f in enumerate($input2.files):
+                @SET_EXT@
+                'input2_${i}${ext}'
+            #end for
+            #if $input3.use_input3 == 'yes':
+                #for $i, $f in enumerate($input3.files):
+                    @SET_EXT@
+                    'input3_${i}${ext}'
+                #end for
+            #end if
+    ]]></command>
+    <inputs>
+        <!-- Dataset 1 -->
+        <section name="input1" title="Dataset 1" expanded="true">
+            <param name="files" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz,jellyfish" multiple="true" label="Dataset 1 files" help="First set of FASTA/FASTQ files (gzip accepted) or a pre-counted Jellyfish hash. For the reads-vs-assembly use case, provide reads here."/>
+            <param argument="--non_canonical_1" type="boolean" truevalue="--non_canonical_1" falsevalue="" checked="false" label="Non-canonical k-mers (dataset 1)" help="Store explicit k-mer as found. By default, canonical k-mers are stored, counting both strands."/>
+        </section>
+
+        <!-- Dataset 2 -->
+        <section name="input2" title="Dataset 2" expanded="true">
+            <param name="files" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz,jellyfish" multiple="true" label="Dataset 2 files" help="Second set of FASTA/FASTQ files (gzip accepted) or a pre-counted Jellyfish hash. For the reads-vs-assembly use case, provide the assembly here."/>
+            <param argument="--non_canonical_2" type="boolean" truevalue="--non_canonical_2" falsevalue="" checked="false" label="Non-canonical k-mers (dataset 2)" help="Store explicit k-mer as found. By default, canonical k-mers are stored, counting both strands."/>
+        </section>
+
+        <!-- Optional Dataset 3 -->
+        <conditional name="input3">
+            <param name="use_input3" type="select" label="Use a third dataset as a k-mer filter">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="files" type="data" format="fasta,fastqsanger,fasta.gz,fastqsanger.gz,jellyfish" multiple="true" label="Dataset 3 files" help="Optional third dataset used as a k-mer filter, restricting analysis to k-mers present in this set."/>
+                <param argument="--non_canonical_3" type="boolean" truevalue="--non_canonical_3" falsevalue="" checked="false" label="Non-canonical k-mers (dataset 3)" help="Store explicit k-mer as found. By default, canonical k-mers are stored, counting both strands."/>
+                <param argument="--hash_size_3" type="integer" value="100000000" min="1" label="Hash size (dataset 3)" help="Hash size for k-mer counting of dataset 3 if counting is required. (default: 100000000)"/>
+                <param name="d3_5ptrim" type="text" value="" label="5' trim length (dataset 3)" help="Ignore the first X bases from reads in dataset 3. For multiple files, provide comma-separated values (e.g. 5,10,0). Leave blank to disable.">
+                    <validator type="regex" message="Must be empty, a number, or comma-separated numbers">^[0-9]+(,[0-9]+)*$|^$</validator>
+                </param>
+            </when>
+        </conditional>
+
+        <!-- Dataset scaling and binning -->
+        <section name="dataset_options" title="Dataset Options" expanded="false">
+            <param argument="--d1_scale" type="float" value="1.0" min="0.0" label="Dataset 1 scaling factor" help="Float multiplier applied to k-mer counts from dataset 1 before comparison. (default: 1.0)"/>
+            <param argument="--d2_scale" type="float" value="1.0" min="0.0" label="Dataset 2 scaling factor" help="Float multiplier applied to k-mer counts from dataset 2 before comparison. (default: 1.0)"/>
+            <param argument="--d1_bins" type="integer" value="1001" min="1" label="Dataset 1 bins" help="Number of bins (rows in the matrix) for dataset 1. (default: 1001)"/>
+            <param argument="--d2_bins" type="integer" value="1001" min="1" label="Dataset 2 bins" help="Number of bins (columns in the matrix) for dataset 2. (default: 1001)"/>
+            <param argument="--d1_5ptrim" type="text" value="" label="5' trim length (dataset 1)" help="Ignore the first X bases from reads in dataset 1. For multiple files, provide comma-separated values (e.g. 5,10,0). Leave blank to disable.">
+                <validator type="regex" message="Must be empty, a number, or comma-separated numbers">^[0-9]+(,[0-9]+)*$|^$</validator>
+            </param>
+            <param argument="--d2_5ptrim" type="text" value="" label="5' trim length (dataset 2)" help="Ignore the first X bases from reads in dataset 2. For multiple files, provide comma-separated values (e.g. 5,10,0). Leave blank to disable.">
+                <validator type="regex" message="Must be empty, a number, or comma-separated numbers">^[0-9]+(,[0-9]+)*$|^$</validator>
+            </param>
+        </section>
+
+        <!-- K-mer options -->
+        <section name="kmer_options" title="K-mer Options" expanded="false">
+            <param argument="--mer_len" type="integer" value="27" min="1" label="K-mer length" help="Larger values provide more discriminating power between k-mers but require more memory and result in lower coverage. (default: 27)"/>
+            <param argument="--hash_size_1" type="integer" value="100000000" min="1" label="Hash size (dataset 1)" help="Hash size for k-mer counting of dataset 1 if counting is required. Doubled automatically if too small. (default: 100000000)"/>
+            <param argument="--hash_size_2" type="integer" value="100000000" min="1" label="Hash size (dataset 2)" help="Hash size for k-mer counting of dataset 2 if counting is required. Doubled automatically if too small. (default: 100000000)"/>
+            <param argument="--disable_hash_grow" type="boolean" truevalue="--disable_hash_grow" falsevalue="" checked="false" label="Disable automatic hash growing" help="By default, jellyfish doubles the hash size if filled and recounts. Enabling this disables that behaviour and throws an error instead. Useful for large genomes or strict memory limits."/>
+        </section>
+
+        <!-- Output options -->
+        <section name="output_options" title="Output Options" expanded="false">
+            <expand macro="output_type_param"/>
+            <param argument="--density_plot" type="boolean" truevalue="--density_plot" falsevalue="" checked="false" label="Create density plot" help="Makes a density plot. By default a spectra-cn plot is created."/>
+            <param argument="--output_hists" type="boolean" truevalue="--output_hists" falsevalue="" checked="false" label="Output histogram data and plots" help="Whether to output histogram data and plots for dataset 1 and dataset 2."/>
+        </section>
+    </inputs>
+
+    <outputs>
+        <!-- Comparison matrix -->
+        <data name="output_matrix" format="tabular" from_work_dir="kat-comp-main.mx" label="${tool.name} on ${on_string}: Comparison matrix"/>
+
+        <!-- Main plots -->
+        <data name="output_plot_png" format="png" from_work_dir="kat-comp-main.mx.spectra-cn.png" label="${tool.name} on ${on_string}: Spectra-CN Plot (PNG)">
+            <filter>output_options['output_type'] == 'png' and not output_options['density_plot']</filter>
+        </data>
+
+        <data name="output_plot_density_png" format="png" from_work_dir="kat-comp-main.mx.density.png" label="${tool.name} on ${on_string}: Density-CN Plot (PNG)">
+            <filter>output_options['output_type'] == 'png' and output_options['density_plot']</filter>
+        </data>
+
+        <data name="output_plot_pdf" format="pdf" from_work_dir="kat-comp-main.mx.spectra-cn.pdf" label="${tool.name} on ${on_string}: Spectra-CN Plot (PDF)">
+            <filter>output_options['output_type'] == 'pdf' and not output_options['density_plot']</filter>
+        </data>
+
+        <data name="output_plot_density_pdf" format="pdf" from_work_dir="kat-comp-main.mx.density.pdf" label="${tool.name} on ${on_string}: Density-CN Plot (PDF)">
+            <filter>output_options['output_type'] == 'pdf' and output_options['density_plot']</filter>
+        </data>
+
+        <!-- Stats -->
+        <data name="output_stats" format="tabular" from_work_dir="kat-comp.stats" label="${tool.name} on ${on_string}: Statistics"/>
+
+        <!-- Dataset 1 histogram (optional) -->
+        <data name="output_hist1" format="tabular" from_work_dir="kat-comp.1.hist" label="${tool.name} on ${on_string}: Dataset 1 histogram data">
+            <filter>output_options['output_hists']</filter>
+        </data>
+        <data name="output_hist1_plot_png" format="png" from_work_dir="kat-comp.1.hist.png" label="${tool.name} on ${on_string}: Dataset 1 histogram plot (PNG)">
+            <filter>output_options['output_hists'] and output_options['output_type'] == 'png'</filter>
+        </data>
+        <data name="output_hist1_plot_pdf" format="pdf" from_work_dir="kat-comp.1.hist.pdf" label="${tool.name} on ${on_string}: Dataset 1 histogram plot (PDF)">
+            <filter>output_options['output_hists'] and output_options['output_type'] == 'pdf'</filter>
+        </data>
+
+        <!-- Dataset 2 histogram (optional) -->
+        <data name="output_hist2" format="tabular" from_work_dir="kat-comp.2.hist" label="${tool.name} on ${on_string}: Dataset 2 histogram data">
+            <filter>output_options['output_hists']</filter>
+        </data>
+        <data name="output_hist2_plot_png" format="png" from_work_dir="kat-comp.2.hist.png" label="${tool.name} on ${on_string}: Dataset 2 histogram plot (PNG)">
+            <filter>output_options['output_hists'] and output_options['output_type'] == 'png'</filter>
+        </data>
+        <data name="output_hist2_plot_pdf" format="pdf" from_work_dir="kat-comp.2.hist.pdf" label="${tool.name} on ${on_string}: Dataset 2 histogram plot (PDF)">
+            <filter>output_options['output_hists'] and output_options['output_type'] == 'pdf'</filter>
+        </data>
+
+        <!-- Matrices generated if 3rd dataset is provided -->
+        <data name="kat_ends_matrix" format="tabular" from_work_dir="kat-comp-ends.mx" label="${tool.name} on ${on_string}: Ends Comparison matrix">
+            <filter>input3['use_input3'] == 'yes'</filter>
+        </data>
+
+        <data name="kat_middle_matrix" format="tabular" from_work_dir="kat-comp-middle.mx" label="${tool.name} on ${on_string}: Middle Comparison matrix">
+            <filter>input3['use_input3'] == 'yes'</filter>
+        </data>
+
+        <data name="kat_mixed_matrix" format="tabular" from_work_dir="kat-comp-mixed.mx" label="${tool.name} on ${on_string}: Mixed Comparison matrix">
+            <filter>input3['use_input3'] == 'yes'</filter>
+        </data>
+    </outputs>
+
+    <tests>
+        <!-- Test 01: Two FASTQ read sets (read-vs-read, density plot), PNG -->
+        <test expect_num_outputs="3">
+            <section name="input1">
+                <param name="files" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            </section>
+            <section name="input2">
+                <param name="files" value="ecoli_r2.1K.fastq" ftype="fastqsanger"/>
+            </section>
+            <conditional name="input3">
+                <param name="use_input3" value="no"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="png"/>
+                <param name="density_plot" value="true"/>
+            </section>
+            <output name="output_matrix" location="https://zenodo.org/records/20347489/files/kat_comp_matrix.mx">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="1013"/>
+                    <has_text text="# MaxVal:55758"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot_density_png" file="kat_comp_density.png">
+                <assert_contents>
+                    <has_image_channels channels="4"/> 
+                    <has_image_height height="1800"/> 
+                    <has_image_width width="2400"/> 
+                </assert_contents>
+            </output>
+            <output name="output_stats" file="kat_comp_stats.tsv">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="39"/>
+                    <has_text text=" - Total shared found in hash 1: 14741"/>
+                    <has_text text=" - Total shared found in hash 2: 14213"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 02: Two FASTQ read sets (read-vs-read, density plot), PDF -->
+        <test expect_num_outputs="3">
+            <section name="input1">
+                <param name="files" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            </section>
+            <section name="input2">
+                <param name="files" value="ecoli_r2.1K.fastq" ftype="fastqsanger"/>
+            </section>
+            <conditional name="input3">
+                <param name="use_input3" value="no"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="pdf"/>
+                <param name="density_plot" value="true"/>
+            </section>
+            <output name="output_matrix">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="1013"/>
+                    <has_text text="# MaxVal:55758"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot_density_pdf">
+                <assert_contents>
+                    <has_size value="21334"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="39"/>
+                    <has_text text=" - Total shared found in hash 1: 14741"/>
+                    <has_text text=" - Total shared found in hash 2: 14213"/>
+                </assert_contents>
+            </output>
+        </test>
+
+
+        <!-- Test 03: Reads vs assembly (spectra-cn), PNG -->
+        <test expect_num_outputs="3">
+            <section name="input1">
+                <param name="files" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            </section>
+            <section name="input2">
+                <param name="files" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            </section>
+            <conditional name="input3">
+                <param name="use_input3" value="no"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="png"/>
+                <param name="density_plot" value="false"/>
+            </section>
+            <output name="output_matrix">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="1013"/>
+                    <has_text text="# MaxVal:4485405"/>
+                </assert_contents>
+            </output>
+            <output name="output_hist1_plot_png">
+                <assert_contents>
+                    <has_image_channels channels="4"/> 
+                    <has_image_height height="1800"/> 
+                    <has_image_width width="2400"/> 
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="39"/>
+                    <has_text text=" - Total shared found in hash 1: 37899"/>
+                    <has_text text=" - Total shared found in hash 2: 45921"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 04: Reads vs assembly with histogram outputs, PDF -->
+        <test expect_num_outputs="7">
+            <section name="input1">
+                <param name="files" value="ecoli_r1.1K.fastq" ftype="fastqsanger"/>
+            </section>
+            <section name="input2">
+                <param name="files" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            </section>
+            <conditional name="input3">
+                <param name="use_input3" value="no"/>
+            </conditional>
+            <section name="kmer_options">
+                <param name="mer_len" value="27"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="pdf"/>
+                <param name="output_hists" value="true"/>
+            </section>
+            <output name="output_matrix">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="1013"/>
+                    <has_text text="# MaxVal:4485405"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot_pdf">
+                <assert_contents>
+                    <has_size value="14721"/>
+                </assert_contents>
+            </output>
+            <output name="output_hist1">
+                <assert_contents>
+                    <has_size size="6010"/>
+                    <has_text text="# XLabel:27-mer frequency"/>
+                </assert_contents>
+            </output>
+            <output name="output_hist1_plot_pdf">
+                <assert_contents>
+                    <has_size value="11727"/>
+                </assert_contents>
+            </output>
+            <output name="output_hist2">
+                <assert_contents>
+                    <has_text text="# XLabel:27-mer frequency"/>
+                    <has_size size="6031"/>
+                </assert_contents>
+            </output>
+            <output name="output_hist1_plot_pdf">
+                <assert_contents>
+                    <has_size value="11727"/>
+                </assert_contents>
+            </output>
+            <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="39"/>
+                    <has_text text=" - Total shared found in hash 1: 37899"/>
+                    <has_text text=" - Total shared found in hash 2: 45921"/>
+                </assert_contents>
+            </output>
+        </test>
+
+        <!-- Test 05: Three datasets, custom bins and scaling, gzipped inputs -->
+        <test expect_num_outputs="6">
+            <section name="input1">
+                <param name="files" value="ecoli_r1.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            </section>
+            <section name="input2">
+                <param name="files" value="ecoli_r2.1K.fastq.gz" ftype="fastqsanger.gz"/>
+            </section>
+            <conditional name="input3">
+                <param name="use_input3" value="yes"/>
+                <param name="files" location="https://zenodo.org/records/20347489/files/EcoliK12.fasta" ftype="fasta"/>
+            </conditional>
+            <section name="dataset_options">
+                <param name="d1_scale" value="0.5"/>
+                <param name="d2_scale" value="0.5"/>
+                <param name="d1_bins" value="500"/>
+                <param name="d2_bins" value="500"/>
+            </section>
+            <section name="kmer_options">
+                <param name="mer_len" value="21"/>
+            </section>
+            <section name="output_options">
+                <param name="output_type" value="png"/>
+            </section>
+            <output name="output_matrix">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="512"/>
+                    <has_text text="# MaxVal:60421"/>
+                    <has_size value="500312"/>
+                </assert_contents>
+            </output>
+            <output name="output_plot_png">
+                <assert_contents>
+                    <has_image_channels channels="4"/> 
+                    <has_image_height height="1800"/> 
+                    <has_image_width width="2400"/> 
+                </assert_contents>
+            </output>
+            <output name="kat_ends_matrix">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="502"/>
+                    <has_size value="500146"/>
+                </assert_contents>
+            </output>
+            <output name="kat_middle_matrix">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="502"/>
+                    <has_size value="500148"/>
+                </assert_contents>
+            </output>
+            <output name="kat_mixed_matrix">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="502"/>
+                    <has_size value="500177"/>
+                </assert_contents>
+            </output>
+             <output name="output_stats">
+                <assert_contents>
+                    <has_n_columns n="1"/>
+                    <has_n_lines n="42"/>
+                    <has_text text=" - Total shared found in hash 1: 17153"/>
+                    <has_text text=" - Total shared found in hash 2: 16531"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+
+    <help format="markdown"><![CDATA[
+**KAT Comp - K-mer Hash Comparison**
+
+KAT (K-mer Analysis Toolkit) Comp compares k-mer spectra from two (or optionally three) datasets, producing an intersection matrix and a visualisation plot.
+
+-----
+
+**What it does**
+
+There are three main use cases:
+
+1. **Reads vs reads** – Compares k-mer spectra from two read datasets. The intersection matrix is visualised as a density plot showing how related the two spectra are.
+
+2. **Reads vs assembly** – Compares k-mers from a read set (dataset 1) against those from an assembly (dataset 2). The matrix is visualised as a stacked spectra-cn histogram, revealing how well the assembly represents the read data and highlighting missing, duplicated, or collapsed content.
+
+3. **Filtered comparison** – A third dataset can be provided as a k-mer filter, restricting the comparison to only k-mers present in that set.
+
+-----
+
+**Inputs**
+
+- **Dataset 1**: One or more FASTA/FASTQ files (gzip accepted) or a pre-counted Jellyfish hash. For the reads-vs-assembly use case, provide reads here.
+- **Dataset 2**: One or more FASTA/FASTQ files (gzip accepted) or a pre-counted Jellyfish hash. For the reads-vs-assembly use case, provide the assembly here.
+- **Dataset 3** *(optional)*: A third dataset used as a k-mer filter. Only k-mers present in this set are considered during comparison.
+
+-----
+
+**Outputs**
+
+- **Comparison matrix** (`.mx`): Tab-separated matrix of intersected k-mer counts, with rows corresponding to dataset 1 bins and columns to dataset 2 bins.
+- **Plot**: Visualisation of the matrix in the selected format (PNG, PDF, or PostScript). A spectra-cn plot by default, or a density plot if selected.
+- **Histogram data and plots** *(optional)*: Per-dataset k-mer frequency histograms and corresponding plots, enabled via *Output histogram data and plots*.
+
+-----
+
+**Notes**
+
+- For the reads-vs-assembly use case, dataset 1 must be the **reads** and dataset 2 the **assembly**.
+- **Scaling factors** can be used to normalise coverage differences between datasets before comparison.
+- **5' trim** values can be specified per file using comma-separated integers (e.g. `5,5` for two files).
+- Use **Disable automatic hash growing** when working with large genomes or under strict memory limits.
+- If inputs are already Jellyfish hashes, k-mer length and hash size settings are ignored for those inputs.
+
+
+    ]]></help>
+    <expand macro="citations"/>
+    <expand macro="creator"/>
+</tool>

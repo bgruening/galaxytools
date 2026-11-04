@@ -1,15 +1,16 @@
-<tool id="instagraal" name="instaGRAAL" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="22.01">
+<tool id="instagraal" name="instaGRAAL" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>Large genome reassembly based on Hi-C data</description>
+    <macros>
+        <token name="@TOOL_VERSION@">0.2.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">25.0</token>
+    </macros>
     <xrefs>
         <xref type="bio.tools">instagraal</xref>
     </xrefs>
-    <macros>
-        <token name="@TOOL_VERSION@">0.1.6</token>
-        <token name="@VERSION_SUFFIX@">0</token>
-    </macros>
     <requirements>
         <!-- use a versioned copy of the upstream container at koszullab/instagraal -->
-        <container type="docker">quay.io/galaxy/instagraal:0.1.6</container>
+        <container type="docker">quay.io/galaxy/instagraal:v@TOOL_VERSION@</container>
         <resource type="cuda_version_min">10.0</resource>
         <resource type="cuda_compute_capability">3.0</resource>
         <resource type="cuda_device_count_min">1</resource>
@@ -42,90 +43,105 @@ ln -s '$info_contigs' hic_folder/info_contigs.txt &&
 instagraal
     ./hic_folder
     $ref_genome
-    ./outputs/
-
+    -o ./outputs/
     --level $level
     --cycles $cycles
     --coverage-std $coverage_std
     --neighborhood $neighborhood
-
-$circular
-$bomb
-$pyramid_only
-$simple
+    $circular
+    $bomb
+    $pyramid_only
+    $simple
+    $save_matrix
 &&
 
 mv ./outputs/*/test_*/genome.fasta ./outputs/genome.fasta &&
-mv ./outputs/*/test_*/info_frags.txt ./outputs/info_frags.txt
+mv ./outputs/*/test_*/info_frags.txt ./outputs/info_frags.txt &&
+
+mkdir -p matrix_previews &&
+( mv ./outputs/*/test_*/matrix_cycle_*.png matrix_previews/ 2>/dev/null || true )
 
 &&
 instagraal-polish
   -m polishing
   -i ./outputs/info_frags.txt
   -f $ref_genome
-  -o ./outputs/curated.fasta
+  -o ./polish_out
   -j $gap_string
-
     ]]>
     </command>
     <inputs>
- 
         <param name="abs_fragments_contacts_weighted" type="data" format="tabular" label="Abs fragments contacts weighted"/>
         <param name="fragments_list" type="data" format="tabular" label="Fragments list"/>
         <param name="info_contigs" type="data" format="tabular" label="info_contigs"/>
-
         <conditional name="ref_source">
             <param type="select" name="source" label="Reference genome source">
                 <option value="history" selected="true">History</option>
                 <option value="builtin">Built-in</option>
             </param>
             <when value="history">
-                <param type="data" format="fasta" name="ref_fasta" label="Reference genome" />
+                <param type="data" format="fasta" name="ref_fasta" label="Reference genome"/>
             </when>
             <when value="builtin">
                 <param type="select" name="ref_fasta_builtin" label="Reference genome">
-                    <options from_data_table="all_fasta" />
+                    <options from_data_table="all_fasta"/>
                 </param>
             </when>
         </conditional>
-
-        <param argument="--level" type="integer" value="4" min="3" max="6" label="Level (resolution) of the contact map"
-            help="Increasing level by one means a threefold smaller resolution but also a threefold faster computation time."/>
-
-        <param argument="--cycles" type="integer" value="30" min="20" max="100" label="Number of iterations to perform for each bin (row/column of the contact map)"
-            help="A high number of cycles has diminishing returns but there is a necessary minimum for assembly convergence."/>
-
-        <param argument="--coverage-std" type="integer" value="1" min="0" max="1" label="Number of standard deviations below the mean"
-            help="Coverage below which fragments should be filtered out prior to binning." />
-
-        <param argument="--neighborhood" type="integer" value="5" min="0" max="100" label="Number of neighbors to sample for potential mutations for each bin" />
-        <param argument="--circular" type="boolean" truevalue="--circular" falsevalue="" label="Indicates genome is circular" />
-        <param argument="--bomb" type="boolean" truevalue="--bomb" falsevalue="" label="Explode the genome prior to scaffolding" />
-        <param argument="--pyramid-only" type="boolean" truevalue="--pyramid-only" falsevalue="" label="Only build multi-resolution contact maps (pyramids) and don't do any scaffolding" />
-        <param argument="--simple" type="boolean" truevalue="--simple" falsevalue="" label="Only perform operations at the edge of the contigs" />
-        <param name="number_of_n" type="integer" value="10" min="1" label="Number of Ns that you want to include during the polishing step" />
-
+        <param argument="--level" type="integer" value="4" min="3" max="6" label="Level (resolution) of the contact map" help="Increasing level by one means a threefold smaller resolution but also a threefold faster computation time."/>
+        <param argument="--cycles" type="integer" value="30" min="20" max="100" label="Number of iterations to perform for each bin (row/column of the contact map)" help="A high number of cycles has diminishing returns but there is a necessary minimum for assembly convergence."/>
+        <param argument="--coverage-std" type="float" value="1.0" min="0" label="Number of standard deviations below the mean" help="Coverage below which fragments should be filtered out prior to binning."/>
+        <param argument="--neighborhood" type="integer" value="5" min="0" max="100" label="Number of neighbors to sample for potential mutations for each bin"/>
+        <param argument="--circular" type="boolean" truevalue="--circular" falsevalue="" label="Indicates genome is circular"/>
+        <param argument="--bomb" type="boolean" truevalue="--bomb" falsevalue="" label="Explode the genome prior to scaffolding"/>
+        <param argument="--pyramid-only" type="boolean" truevalue="--pyramid-only" falsevalue="" label="Only build multi-resolution contact maps (pyramids) and don't do any scaffolding"/>
+        <param argument="--simple" type="boolean" truevalue="--simple" falsevalue="" label="Only perform operations at the edge of the contigs"/>
+        <param argument="--save-matrix" type="boolean" truevalue="--save-matrix" falsevalue="" checked="false" label="Save a contact-map preview (PNG) after each cycle"/>
+        <param name="number_of_n" type="integer" value="10" min="1" label="Number of Ns that you want to include during the polishing step"/>
     </inputs>
     <outputs>
         <data name="genome" format="fasta" from_work_dir="./outputs/genome.fasta" label="${tool.name} on ${on_string}: Genome sequence"/>
         <data name="frags" format="tabular" from_work_dir="./outputs/info_frags.txt" label="${tool.name} on ${on_string}: Fragment information"/>
-        <data name="curated" format="fasta" from_work_dir="./outputs/curated.fasta" label="${tool.name} on ${on_string}: Curated sequences"/>
+        <data name="curated" format="fasta" from_work_dir="./polish_out/polished_genome.fa" label="${tool.name} on ${on_string}: Curated sequences"/>
+        <collection name="matrix_previews" type="list" format="png" label="${tool.name} on ${on_string}: Contact map previews">
+            <discover_datasets pattern="__name_and_ext__" directory="matrix_previews"/>
+            <filter>save_matrix is True</filter>
+        </collection>
     </outputs>
     <tests>
-        <test>
-            <param name="abs_fragments_contacts_weighted" value="abs_fragments_contacts_weighted.tabular" />
-            <param name="fragments_list" value="fragments_list.tabular" />
-            <param name="info_contigs" value="info_contigs.tabular" />
+        <test expect_num_outputs="3">
+            <param name="abs_fragments_contacts_weighted" value="abs_fragments_contacts_weighted.tabular"/>
+            <param name="fragments_list" value="fragments_list.tabular"/>
+            <param name="info_contigs" value="info_contigs.tabular"/>
             <conditional name="ref_source">
                 <param name="source" value="history"/>
-                <param name="ref_fasta" value="fake.fasta" />
+                <param name="ref_fasta" value="fake.fasta"/>
             </conditional>
             <assert_command>
-                <has_text text="NNNNNNNNNN"/> <!--  10 long, the default -->
-                <not_has_text text="NNNNNNNNNNN"/> <!-- too long -->
-                <has_text text="--cycles 30" />
-                <has_text text="instagraal" />
-                <has_text text="instagraal-polish" />
+                <has_text text="NNNNNNNNNN"/>
+                <!--  10 long, the default -->
+                <not_has_text text="NNNNNNNNNNN"/>
+                <!-- too long -->
+                <has_text text="--cycles 30"/>
+                <has_text text="-o ./outputs/"/>
+                <has_text text="instagraal"/>
+                <has_text text="instagraal-polish"/>
+                <has_text text="-o ./polish_out"/>
+                <not_has_text text="--save-matrix"/>
+                <!-- off by default -->
+            </assert_command>
+        </test>
+        <test expect_num_outputs="4">
+            <param name="abs_fragments_contacts_weighted" value="abs_fragments_contacts_weighted.tabular"/>
+            <param name="fragments_list" value="fragments_list.tabular"/>
+            <param name="info_contigs" value="info_contigs.tabular"/>
+            <conditional name="ref_source">
+                <param name="source" value="history"/>
+                <param name="ref_fasta" value="fake.fasta"/>
+            </conditional>
+            <param name="save_matrix" value="true"/>
+            <assert_command>
+                <has_text text="--save-matrix"/>
             </assert_command>
         </test>
     </tests>
@@ -154,6 +170,8 @@ After the scaffolder is done running, whatever path you specified as output will
 
 * genome.fasta: the scaffolded genome. Scaffolds will be ordered by increasing size in fragments, which roughly (but not always) translates into increasing size in bp.
 * info_frags.txt: a file that contains, for each newly formed scaffold, the original coordinates of every single bin in that scaffold, in the format chromosome, id, orientation, start, end. Each bin has a unique ID that provides a convenient way of tracking consecutive stretches. Orientations are relative to one another, and when "-1" is supplied, it is understood that the reverse complement should be taken.
+
+If *Save a contact-map preview (PNG) after each cycle* is enabled, a collection of per-cycle contact-map preview images (matrix_cycle_N.png) is also produced.
 
 
     ]]>

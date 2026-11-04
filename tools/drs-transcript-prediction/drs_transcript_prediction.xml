@@ -1,0 +1,297 @@
+<tool id="drs_transcript_prediction" name="drs-transcript-prediction" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Predicts transcripts from direct RNA sequencing reads for organisms without splicing</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <!-- detect_errors="aggressive" is safe: the tool writes informational and verbose
+         messages to stdout, never stderr (verified on the bioconda package). -->
+    <command detect_errors="aggressive"><![CDATA[
+drs-transcript-prediction
+-r '$reads_bed'
+-d '$ranges_bed'
+## An unset optional value renders as an empty string or as the string "None",
+## depending on the Galaxy version; guard against both representations.
+#if str($chromosome).strip() not in ("", "None")
+-c '$chromosome'
+#end if
+--min_depth '${sec_region.min_depth}'
+#if str($sec_region.max_depth).strip() not in ("", "None")
+--max_depth '${sec_region.max_depth}'
+#end if
+--min_region_positional_depth '${sec_region.min_region_positional_depth}'
+--candidate_offset_len '${sec_candidate.candidate_offset_len}'
+--depth_delta_threshold '${sec_candidate.depth_delta_threshold}'
+--candidate_read_threshold '${sec_candidate.candidate_read_threshold}'
+--assigned_read_ratio_threshold '${sec_candidate.assigned_read_ratio_threshold}'
+${candidates_only}
+${verbose}
+## The output prefix is fixed so the output names cannot collide with the input paths
+-o 'output'
+]]></command>
+    <inputs>
+        <param argument="--reads_bed" type="data" format="bed" label="Reads BED file" help="Position-sorted BED file of direct RNA sequencing reads. The first 6 BED columns (chrom, start, end, name, score, strand) are required. A read is only used if it lies entirely within a range of the same strand. Leading '#', 'track', 'browser' and blank lines are skipped."/>
+        <param argument="--ranges_bed" type="data" format="bed" label="Ranges BED file" help="BED file of distinct, non-overlapping interval ranges per strand. The first 4 columns (chrom, start, end, strand) are read and any additional columns are ignored. Leading '#', 'track', 'browser' and blank lines are skipped. A typical source is a strand-aware 'bedtools merge' over the reads BED."/>
+        <param argument="--chromosome" type="text" optional="true" label="Chromosome to analyze" help="Restrict the analysis to this single chromosome/contig ID. Leave empty to loop over all chromosomes present in the ranges file. The ID is compared as a string, so numeric chromosome names (e.g. '1') work as expected.">
+            <validator type="regex" message="Chromosome/contig IDs may only contain letters, numbers and the characters '_', '.', '-', '|', ':' and '*'.">^[\w.\-|:*]+$</validator>
+        </param>
+        <section name="sec_region" title="Region filtering" expanded="false">
+            <param argument="--min_depth" type="integer" value="1" min="0" label="Minimum depth per region" help="Minimum required depth for a distinct region to have candidate transcripts searched for."/>
+            <param argument="--max_depth" type="integer" optional="true" min="1" label="Maximum depth per region" help="Maximum allowed depth for a distinct region. Regions above this depth are skipped and reported in the tool output. Leave empty to disable the maximum threshold."/>
+            <param argument="--min_region_positional_depth" type="integer" value="2" min="0" label="Minimum positional depth within a region" help="Minimum required positional depth within a region. Reads mapping to positions below this threshold are discarded and new distinct sub-regions are created from the remaining runs of positions. Sub-region names gain a '/N' suffix."/>
+        </section>
+        <section name="sec_candidate" title="Candidate and transcript filtering" expanded="false">
+            <param argument="--candidate_offset_len" type="integer" value="100" min="0" label="Minimum distance between candidate coordinates" help="Candidate start/end coordinates can be very close together. When a candidate start or end coordinate is encountered, require the next candidate position to be at least this many bases away."/>
+            <param argument="--depth_delta_threshold" type="integer" value="4" min="0" label="Depth change threshold for start/stop sites" help="If the absolute change in depth between two consecutive positions exceeds this number, consider it a potential transcript start or stop site."/>
+            <param argument="--candidate_read_threshold" type="integer" value="2" min="0" label="Minimum overlapping reads per candidate" help="Discard a candidate transcript if the number of reads overlapping within it is below this threshold."/>
+            <param argument="--assigned_read_ratio_threshold" type="float" value="0.2" min="0" max="1" label="Minimum assigned read ratio" help="Ratio of reads assigned solely to a candidate transcript to all reads overlapping within that transcript. Transcripts exceeding this ratio are kept in the predicted output."/>
+        </section>
+        <param name="candidates_only" type="boolean" truevalue="--candidates_only" falsevalue="" checked="false" label="Output candidate transcripts only" help="Skip the alternative-transcript filtering step and only report the candidate transcripts BED. The predicted transcripts BED and GFF3 outputs are not produced."/>
+        <param name="verbose" type="boolean" truevalue="-v" falsevalue="" checked="false" label="Verbose output" help="Print the resolved arguments and per-region progress to the tool output."/>
+    </inputs>
+    <outputs>
+        <data name="candidates_bed" format="bed" from_work_dir="output.candidates.bed" label="${tool.name} candidate transcripts on ${on_string}"/>
+        <data name="predicted_transcripts_bed" format="bed" from_work_dir="output.bed" label="${tool.name} predicted transcripts on ${on_string}">
+            <filter>not candidates_only</filter>
+        </data>
+        <data name="predicted_transcripts_gff3" format="gff3" from_work_dir="output.gff3" label="${tool.name} predicted transcripts (GFF3) on ${on_string}">
+            <filter>not candidates_only</filter>
+        </data>
+    </outputs>
+    <tests>
+        <!-- Defaults: all three outputs, compared against the upstream-derived expected files -->
+        <test expect_num_outputs="3">
+            <param name="reads_bed" ftype="bed" value="E2348_69_plasmids.reads.bed"/>
+            <param name="ranges_bed" ftype="bed" value="E2348_69_plasmids.ranges.bed"/>
+            <output name="candidates_bed" ftype="bed" file="expected/E2348_69_plasmids.candidates.bed">
+                <assert_contents>
+                    <has_n_lines n="16"/>
+                    <has_text text="R_10_T4"/>
+                    <!-- candidate from a sub-region split by the positional depth filter -->
+                    <has_text text="R_7/1_T1"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_bed" ftype="bed" file="expected/E2348_69_plasmids.bed">
+                <assert_contents>
+                    <has_n_lines n="13"/>
+                    <!-- present in the candidates output, but removed by the ratio filter -->
+                    <not_has_text text="R_10_T2"/>
+                    <has_line_matching expression="^NZ_CP059841\t0\t913\tR_0_T1\t\.\t\+$"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_gff3" ftype="gff3" file="expected/E2348_69_plasmids.gff3">
+                <assert_contents>
+                    <has_n_lines n="14"/>
+                    <has_text text="##gff-version 3"/>
+                    <has_text text="tp.py"/>
+                    <has_text text="transcript"/>
+                    <!-- GFF3 coordinates are 1-based/inclusive, i.e. BED start plus one -->
+                    <has_line_matching expression="^NZ_CP059841\ttp\.py\ttranscript\t1\t913\t1\.0\t\+\t\.\tID=R_0_T1$"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- -c restricts to one chromosome; candidates_only skips the filtering outputs -->
+        <test expect_num_outputs="1">
+            <param name="reads_bed" ftype="bed" value="E2348_69_plasmids.reads.bed"/>
+            <param name="ranges_bed" ftype="bed" value="E2348_69_plasmids.ranges.bed"/>
+            <param name="chromosome" value="NZ_CP059842"/>
+            <param name="candidates_only" value="true"/>
+            <output name="candidates_bed" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="7"/>
+                    <has_line_matching expression="^NZ_CP059842\t4665\t5217\tR_9_T0\t\.\t\+$"/>
+                    <has_line_matching expression="^NZ_CP059842\t28\t1647\tR_10_T0\t\.\t-$"/>
+                    <not_has_text text="NZ_CP059841"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="-c 'NZ_CP059842'"/>
+                <has_text text="--candidates_only"/>
+                <not_has_text text="--max_depth"/>
+            </assert_command>
+        </test>
+        <!-- max_depth skips the over-covered regions 7 and 10 of NZ_CP059842 -->
+        <test expect_num_outputs="3">
+            <param name="reads_bed" ftype="bed" value="E2348_69_plasmids.reads.bed"/>
+            <param name="ranges_bed" ftype="bed" value="E2348_69_plasmids.ranges.bed"/>
+            <section name="sec_region">
+                <param name="max_depth" value="200"/>
+            </section>
+            <output name="candidates_bed" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="10"/>
+                    <not_has_text text="R_10_T"/>
+                    <not_has_text text="R_7/1_T"/>
+                    <has_line_matching expression="^NZ_CP059841\t13103\t14591\tR_6_T2\t\.\t-$"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_bed" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="9"/>
+                    <has_line_matching expression="^NZ_CP059842\t1832\t2310\tR_8_T1\t\.\t\+$"/>
+                    <!-- R_8_T3 is a candidate but drops out of the filtered output -->
+                    <not_has_text text="R_8_T3"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_gff3" ftype="gff3">
+                <assert_contents>
+                    <has_n_lines n="10"/>
+                    <has_text text="##gff-version 3"/>
+                    <has_line_matching expression="^NZ_CP059842\ttp\.py\ttranscript\t1833\t2310\t1\.0\t\+\t\.\tID=R_8_T1$"/>
+                    <!-- the GFF3 score column carries the assigned-read ratio -->
+                    <has_text text="0.82"/>
+                    <not_has_text text="ID=R_10"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--max_depth '200'"/>
+            </assert_command>
+        </test>
+        <!-- looser detection thresholds produce many more candidates -->
+        <test expect_num_outputs="3">
+            <param name="reads_bed" ftype="bed" value="E2348_69_plasmids.reads.bed"/>
+            <param name="ranges_bed" ftype="bed" value="E2348_69_plasmids.ranges.bed"/>
+            <section name="sec_region">
+                <param name="min_region_positional_depth" value="1"/>
+            </section>
+            <section name="sec_candidate">
+                <param name="candidate_offset_len" value="50"/>
+                <param name="depth_delta_threshold" value="2"/>
+            </section>
+            <output name="candidates_bed" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="89"/>
+                    <!-- an extra start candidate split off by the looser offset threshold -->
+                    <has_line_matching expression="^NZ_CP059841\t21296\t21916\tR_1_T1\t\.\t\+$"/>
+                    <has_line_matching expression="^NZ_CP059842\t2580\t2740\tR_10_T57\t\.\t-$"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_bed" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="38"/>
+                    <!-- R_0 gains a second predicted transcript, absent from the default run -->
+                    <has_line_matching expression="^NZ_CP059841\t0\t1053\tR_0_T2\t\.\t\+$"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_gff3" ftype="gff3">
+                <assert_contents>
+                    <has_n_lines n="39"/>
+                    <has_line_matching expression="^NZ_CP059841\ttp\.py\ttranscript\t1\t1053\t0\.39\t\+\t\.\tID=R_0_T2$"/>
+                    <has_text text="0.35"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--min_region_positional_depth '1'"/>
+                <has_text text="--candidate_offset_len '50'"/>
+                <has_text text="--depth_delta_threshold '2'"/>
+            </assert_command>
+        </test>
+        <!-- a stricter assignment ratio keeps only the most confidently assigned transcripts -->
+        <test expect_num_outputs="3">
+            <param name="reads_bed" ftype="bed" value="E2348_69_plasmids.reads.bed"/>
+            <param name="ranges_bed" ftype="bed" value="E2348_69_plasmids.ranges.bed"/>
+            <section name="sec_candidate">
+                <param name="assigned_read_ratio_threshold" value="0.9"/>
+            </section>
+            <!-- The ratio threshold only affects the filtered outputs: the candidates
+                 file is unchanged, so it is compared against the default expected file. -->
+            <output name="candidates_bed" ftype="bed" file="expected/E2348_69_plasmids.candidates.bed">
+                <assert_contents>
+                    <has_n_lines n="16"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_bed" ftype="bed">
+                <assert_contents>
+                    <has_n_lines n="10"/>
+                    <!-- kept: all reads assigned -->
+                    <has_line_matching expression="^NZ_CP059841\t10526\t11625\tR_5_T0\t\.\t-$"/>
+                    <has_line_matching expression="^NZ_CP059842\t751\t871\tR_7/1_T3\t\.\t\+$"/>
+                    <!-- dropped: only 0.56 of the reads uniquely assigned -->
+                    <not_has_text text="R_5_T1"/>
+                    <not_has_text text="R_10_T2"/>
+                </assert_contents>
+            </output>
+            <output name="predicted_transcripts_gff3" ftype="gff3">
+                <assert_contents>
+                    <has_n_lines n="11"/>
+                    <not_has_text text="0.56"/>
+                    <has_line_matching expression="^NZ_CP059842\ttp\.py\ttranscript\t29\t1647\t0\.94\t-\t\.\tID=R_10_T0$"/>
+                </assert_contents>
+            </output>
+            <assert_command>
+                <has_text text="--assigned_read_ratio_threshold '0.9'"/>
+            </assert_command>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+**drs-transcript-prediction** (TP, "Transcript Prediction") predicts transcripts from
+direct RNA sequencing (dRNA-seq) reads, such as those produced by nanopore direct RNA
+protocols. Because such reads start and stop at the real 5' and 3' ends of a transcript,
+transcript boundaries show up as sharp changes in read depth. TP:
+
+1. Builds a per-position read depth profile for each distinct genomic range you supply.
+2. Flags positions where the absolute depth change exceeds a threshold as candidate
+   transcript **start** (depth increases) or **stop** (depth decreases) sites.
+3. Combines candidate starts with candidate ends to enumerate possible transcripts.
+4. Assigns reads to candidates and discards alternative transcripts that are not supported
+   by enough reads uniquely assigned to them, resolving start/stop combinations that could
+   otherwise explain the same reads.
+
+**Inputs**
+
+- **Reads BED file** — a position-sorted BED of reads. The first 6 BED columns
+  (chrom, start, end, name, score, strand) are required. A read is only used if it lies
+  *entirely* within one range and on the same strand.
+- **Ranges BED file** — distinct, non-overlapping interval ranges, one line per range and
+  strand. The first 4 columns (chrom, start, end, strand) are read and extra columns are
+  ignored. A convenient way to build this is to merge your reads per strand, e.g.
+  `bedtools merge -i reads.bed -s -c 6,4 -o distinct,count`, keeping the ranges with enough
+  support.
+- **Chromosome to analyze** — optionally restrict the run to a single chromosome/contig ID.
+
+**Outputs**
+
+- **Candidate transcripts (BED)** — every candidate transcript considered, before
+  filtering. BED6: chrom, start, end, name, score (`.`), strand. Names are `R_<region>_T<n>`;
+  a region name of the form `R_<region>/<split>` indicates a sub-region created by the
+  minimum positional depth filter.
+- **Predicted transcripts (BED)** — the candidates that pass the read-count and
+  read-assignment ratio cutoffs.
+- **Predicted transcripts (GFF3)** — the same transcripts as GFF3 (source `tp.py`, type
+  `transcript`, `ID=<name>`), with a normalized prediction score in the score column.
+  Coordinates are converted to 1-based/inclusive, so they are offset by one base from the
+  BED output.
+
+The predicted transcripts BED and GFF3 are not produced when *Output candidate transcripts
+only* is enabled.
+
+**Tuning the prediction**
+
+- *Minimum/Maximum depth per region* — regions whose depth is below the minimum or above
+  the maximum are skipped entirely; skipped regions are listed in the tool output.
+- *Minimum positional depth within a region* — positions with less support are dropped and
+  the remaining contiguous runs of positions become new sub-regions. Useful to split ranges
+  that were merged too aggressively.
+- *Minimum distance between candidate coordinates* — collapses candidate starts/ends that
+  are nearly identical; lower it to resolve closely spaced isoform boundaries.
+- *Depth change threshold* — the core sensitivity knob. Lower values call more (and weaker)
+  start/stop sites, producing more candidates.
+- *Minimum overlapping reads per candidate* — drops candidates with too little read support.
+- *Minimum assigned read ratio* — how much of a candidate's read support must be uniquely
+  assignable to it. Raise it to keep only confidently distinguished isoforms.
+
+-----
+
+**References**
+
+- Mattick JSA, Bromley RE, Watson KJ, Adkins RS, Holt CI, Lebov JF, Sparklin BC, Tyson TS,
+  Rasko DA, Dunning Hotopp JC. *Deciphering transcript architectural complexity in bacteria
+  and archaea.* mBio. 2024. [doi:10.1128/mbio.02359-24](https://doi.org/10.1128/mbio.02359-24)
+- Tool source and README: [Dunning-Hotopp-Lab/Direct_RNA_Sequencing](@REPO_URL@)
+    ]]></help>
+    <expand macro="citations"/>
+</tool>

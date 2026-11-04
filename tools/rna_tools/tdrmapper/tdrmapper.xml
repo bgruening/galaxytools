@@ -1,0 +1,133 @@
+<tool id="tdrmapper" name="tDRmapper" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description> mapping, naming, and quantifying tDRs while annotating and quantifying mismatches and deletions</description>
+    <macros> 
+        <token name="@TOOL_VERSION@">1.1</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@PROFILE@">25.0</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="@TOOL_VERSION@">tdrmapper</requirement>
+    </requirements>
+    <command><![CDATA[
+
+        #import re
+
+        #if $reference.ext.endswith('.gz'):
+            gunzip -c '$reference' > 'input.fa' &&
+        #else
+            ln -s '$reference' 'input.fa' &&
+        #end if
+
+        #set $sam = re.sub('[^\w\-_\.]', '_', $sample.element_identifier)
+        ln -s '$sample' '$sam' &&
+
+        TdrMappingScripts.pl
+        'input.fa'
+        '$sam'
+
+        &&
+
+        mv '${sam}.hq_cs' '$hq_cs' &&
+        mv '${sam}.hq_cs.mapped' '$mapped' &&
+        mv '${sam}.hq_cs.mapped.covg.txt' '$mapped_covg' &&
+        mv '${sam}.hq_cs.mapped.covgPre.txt' '$mapped_covg_pre' &&
+        mv '${sam}.hq_cs.mapped.speciesInfo.txt' '$spec_info' &&
+        mv '${sam}.hq_cs.mapped.top50covg.txt' '$top_50' &&
+        mv '${sam}.hq_cs.mapped.top50covgPre.txt' '$pre_top_50'
+
+    ]]></command>
+    <inputs>
+        <param name="reference" type="data" format="fasta,fasta.gz" label="Input reference tRNA"/>
+        <param name="sample" type="data" format="fastq,fastq.gz" label="Input sample trimmed tRNA"/>  
+    </inputs>
+    <outputs>
+        <data name="hq_cs" format="tabular" label="${tool.name} on ${on_string}: Read count"/>
+        <data name="mapped" format="tabular" label="${tool.name} on ${on_string}: Mapped read"/>
+        <data name="mapped_covg" format="txt" label="${tool.name} on ${on_string}: Map coverage"/>
+        <data name="mapped_covg_pre" format="txt" label="${tool.name} on ${on_string}: Pre map coverage"/>
+        <data name="spec_info" format="txt" label="${tool.name} on ${on_string}: Species information"/>
+        <data name="top_50" format="txt" label="${tool.name} on ${on_string}: Map coverage (Top 50)"/>
+        <data name="pre_top_50" format="txt" label="${tool.name} on ${on_string}: Pre map coverage (Top 50)"/>  
+    </outputs>
+    <tests>
+        <test expect_num_outputs="7">
+            <param name="reference" value="hg19_mature_and_pre.fa" ftype="fasta"/>
+            <param name="sample" value="tdrmapper_both_test.fastq.gz" ftype="fastq.gz"/>
+        </test>
+        <test expect_num_outputs="7">
+            <param name="reference" value="hg19_mature_and_pre.fa.gz" ftype="fasta.gz"/>
+            <param name="sample" value="tdrmapper_both_test.fastq.gz" ftype="fastq.gz"/>
+        </test>
+    </tests>
+    <help>
+        <![CDATA[
+
+        Small RNA-sequencing has revealed the diversity and high abundance of small RNAs derived from tRNAs, referred to as tRNA-derived RNAs (tDRs).
+
+        tRNA-derived RNAs have unique features that limit the utility of conventional alignment tools and quantification methods. tDRmapper is a tool for mapping, naming, and quantifying tDRs while annotating and quantifying mismatches and deletions.
+
+        **Inputs**
+
+        - reference fa file
+        - sample fastq.gz file
+
+        **Outputs**
+
+        - Matched read count file
+        - File with mapping
+        - File with mapping coverage
+        - File with pre mapped coverage
+        - File with species info
+        - File with top 50 tRNA
+        - PDF file with graphics of top 50 tRNA
+        - File with pre top 50 tRNA 
+        - PDF file with graphics of pre top 50 tRNA
+        
+        **How to generate reference fa file**
+
+        Will need bedtools and mm10.fa
+
+        1) from gtRNAdb, click on desired species fasta, click on "Download tRNAscan-SE Results", unzip the folder
+
+        2) make mature FASTA, makeMatureGenome.pl  mm10-tRNAs.fa mm10-tRNAs.ss.sort > mature_m10.fa
+
+        3) make pre-tRNA fasta: 
+	        (a) makeBedMM10.pl mm10-tRNAs.fa > mm10_bed_for_pre.bed
+	        (b) bsub bedtools getfasta -name -fi genome/mm10.fa -bed mm10_bed_for_pre.bed -fo mm10_bed_for_pre.fa
+
+        4) combine mature and pre: cat mature_m10.fa mm10_bed_for_pre.fa > mm10_mature_pre_for_tdrMapper.fa 
+        
+        NOTE: makeMatureGenome.pl is a script with can be found in the GitHub repo of this tool in the directory makeMm10Fasta together with makeBedMM10.pl. 
+
+        **Steps of the tools**
+
+        This program executes the commands below:
+
+            1. Filters reads with high quality at each position, programmed for Phred 33. perl quality_at_positions.pl $file
+
+            2. Maps the high quality reads to tRNA sequences, exact matches only. Reads that do not map are outputted to $file.hq_cs.notEM. perl tdrMappingExactMatches.pl $tRNAFasta $file.hq_cs > $file.hq_cs.mapped
+
+            3. Reads that did not map in the previous step are mapped, allowing for one mismatch. Reads that do not map are outputted to $file.hq_cs.notEM.not1MM. perl tdrMappingOneMisMatch.pl $tRNAFasta $file.hq_cs.notEM >> $file.hq_cs.mapped
+
+            4. Reads that did not map in the previous step are mapped, allowing for one deletion. Reads that do not map are outputted to $file.hq_cs.notEM.not1MM.not1del. perl tdrMappingOneGap.pl $tRNAFasta $file.hq_cs.notEM.not1MM >> $file.hq_cs.mapped
+
+            5. Reads that did not map in the previous step are mapped, allowing for two mismatches. Reads that do not map are outputted to $file.hq_cs.notEM.not1MM.not1del.not2MM. perl tdrMappingTwoMisMatches.pl $tRNAFasta $file.hq_cs.notEM.not1MM.not1del >> $file.hq_cs.mapped
+
+            6. Reads that did not map in the previous step are mapped, allowing for two deletions. Reads that do not map are outputted to $file.hq_cs.notEM.not1MM.not1del.not2MM.not2del. perl tdrMappingTwoDeletions.pl $tRNAFasta $file.hq_cs.notEM.not1MM.not1del.not2MM >> $file.hq_cs.mapped
+
+            7. Reads that did not map in the previous step are mapped, allowing for a three base pair deletions. Reads that do not map are outputted to $file.hq_cs.notEM.not1MM.not1del.not2MM.not2del.not3cons. perl tdrMappingThreeConsGap.pl $tRNAFasta $file.hq_cs.notEM.not1MM.not1del.not2MM.not2del >> $file.hq_cs.mapped
+
+            8. The directory is cleaned up. If you do not want files automatically removed, then delete or comment out this line. rm $file.hq_cs.*not*
+
+            9. All of the mapped reads above are in one file, small_RNA-seq.fastq.mapped. This file is then assessed for tDR quantification. perl makeCovgPlotTop50_and_overallStats.pl $tRNAFasta $file.hq_cs.mapped
+
+            10. Generates visualization of the top 50 (ranked by expression) tDRs derived from mature tRNAs. Rscript rCovgPlot.r $file.hq_cs.mapped.top50covg.txt
+
+            11. Generates visualization of the top 50 (ranked by expression) tDRs derived from pre-tRNAs. Rscript rCovgPlotPre.r $file.hq_cs.mapped.top50covgPre.txt
+
+        ]]>
+    </help>
+    <citations>
+        <citation type="doi">10.1186/s12859-015-0800-0</citation>
+    </citations>
+</tool>

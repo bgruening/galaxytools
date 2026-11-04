@@ -1,0 +1,1629 @@
+<tool id="langchain_text_splitters" name="LangChain Text Splitters" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
+    <description>Split text into chunks for LLM and RAG workflows</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements"/>
+    <expand macro="creators"/>
+    <required_files>
+        <include path="split_text.py"/>
+    </required_files>
+    <command detect_errors="exit_code"><![CDATA[
+
+    #if str($splitter.method) in ["character", "sentence"]
+        #set $chunk_size = $splitter.length.chunk_size
+        #set $chunk_overlap = $splitter.length.chunk_overlap
+    #else
+        #set $chunk_size = $splitter.chunk_size
+        #set $chunk_overlap = $splitter.chunk_overlap
+    #end if
+
+    python '$__tool_directory__/split_text.py'
+        --input '$input'
+        --output-text '$chunks_text'
+        --output-json '$chunks_json'
+        --output-tsv '$chunks_tsv'
+        --chunks-dir chunks
+        --chunk-size '$chunk_size'
+        --chunk-overlap '$chunk_overlap'
+        ## The instance's own ceiling on datasets discovered per job, so the tool
+        ## stops early instead of being failed by Galaxy after all the work.
+        --max-chunk-files '$__app__.config.max_discovered_files'
+        #if $splitter.method == "character"
+            #if $splitter.character_splitter.type == "recursive"
+                --splitter-type recursive_character
+            #else
+                --splitter-type character
+            #end if
+
+            --keep-separator '$splitter.character_splitter.keep_separator'
+            --length-mode '$splitter.length.length_mode'
+
+            #if str($splitter.length.length_mode) == "token"
+                #set $tiktoken_options = $splitter.length.tiktoken_options
+                @TIKTOKEN_ARGS@
+            #end if
+
+            #if $splitter.character_splitter.type == "recursive"
+                #if $splitter.character_splitter.separator_settings.mode == "custom"
+                    --separator-specs
+                    #for $separator in $splitter.character_splitter.separator_settings.separators
+                        #if $separator.separator_definition.sep_opt == "custom"
+                            'custom:$separator.separator_definition.value'
+                        #else
+                            'predefined:$separator.separator_definition.sep_opt.value'
+                        #end if
+                    #end for
+                #end if
+            #else
+                #if $splitter.character_splitter.separator_definition.sep_opt == "custom"
+                    ## Passed as a single token so that a separator starting with a dash is not read as an option.
+                    --separator='$splitter.character_splitter.separator_definition.value'
+                #else
+                    --separator-name '$splitter.character_splitter.separator_definition.sep_opt.value'
+                #end if
+            #end if
+            $splitter.strip_whitespace
+        #elif str($splitter.method) == "sentence"
+            --splitter-type '$splitter.sentence_splitter.type'
+            --length-mode '$splitter.length.length_mode'
+
+            #if str($splitter.sentence_splitter.type) == "nltk"
+                --sentence-language '$splitter.sentence_splitter.language'
+            #else
+                --spacy-pipeline '$splitter.sentence_splitter.pipeline_settings.pipeline'
+                --spacy-max-length '$splitter.sentence_splitter.pipeline_settings.max_length'
+            #end if
+            $splitter.strip_whitespace
+
+            #if str($splitter.length.length_mode) == "token"
+                #set $tiktoken_options = $splitter.length.tiktoken_options
+                @TIKTOKEN_ARGS@
+            #end if
+        #else
+            --splitter-type token
+            --length-mode token
+            #set $tiktoken_options = $splitter.tiktoken_options
+            @TIKTOKEN_ARGS@
+        #end if
+]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt" label="Input text dataset"/>
+        <conditional name="splitter">
+            <param name="method" type="select" label="Text splitting boundaries" help="Choose where the input should be split. Recommended is on a character level, by paragraphs, lines, spaces etc. In between token can be useful for a LLM workflow which expects a specific token count per chunk.">
+                <option value="character" selected="true">
+                    Character
+                </option>
+                <option value="sentence">
+                    Sentence
+                </option>
+                <option value="token">
+                    Between tokens
+                </option>
+            </param>
+            <when value="character">
+                <conditional name="character_splitter">
+                    <param name="type" type="select" label="Character splitter" help="The recursive approach is recommended as it attempts to keep larger units such as paragraphs intact by only falling back to finer levels if the chunk size limit (character or token count) is exceeded. Alternatively, you can specify which character (sequence) should be used for splitting.">
+                        <option value="recursive" selected="true">
+                            Recursively split text using an ordered list of separators
+                        </option>
+                        <option value="simple">
+                            Split text by specific character (sequence)
+                        </option>
+                    </param>
+                    <when value="recursive">
+                        <conditional name="separator_settings">
+                            <param name="mode" type="select" label="Text splitting separators and their order of use" help="Separators used to determine where text may be divided, ordered descending starting from the preferred (larger) boundaries. By default it tries paragraph breaks ('\n\n'), followed by line breaks ('\n'), spaces (' '), and finally in between individual characters(''). For languages without explicit word boundaries, such as Chinese, Japanese, and Thai, add language-specific punctuation or zero-width spaces to avoid splitting words between chunks.">
+                                <option value="default" selected="true">Use default separators (order): \n\n ; \n ;  " " ; ""</option>
+                                <option value="custom">Customize separators</option>
+                            </param>
+                            <when value="default"/>
+                            <when value="custom">
+                                <repeat name="separators" title="Text splitting separator" min="1" default="1" max="20" help="Add separators in the order they should be tried. Note, the in between character separator ('') will be automatically added as the last resort.">
+                                    <expand macro="separator_definition"/>
+                                </repeat>
+                            </when>
+                        </conditional>
+                        <param name="keep_separator" type="select" label="What happens to the separator used for splitting?" help="Choose whether a separator at a chunk boundary is attached to the beginning of the following chunk, attached to the end of the preceding chunk, or discarded.">
+                            <option value="start" selected="true">Place separator at the beginning of the following chunk → ["First paragraph.", "\n\nSecond paragraph."]</option>
+                            <option value="end">Place separator at end of the preceding chunk → ["First paragraph.\n\n", "Second paragraph."]</option>
+                            <option value="false">Discard separator</option>
+                        </param>
+                    </when>
+                    <when value="simple">
+                        <expand macro="separator_definition"/>
+                        <param name="keep_separator" type="select" label="What happens to the separator used for splitting?" help="Choose whether a separator at a chunk boundary is attached to the beginning of the following chunk, attached to the end of the preceding chunk, or discarded.">
+                            <option value="false" selected="true">Discard separator</option>
+                            <option value="start">Attach separator to chunk start</option>
+                            <option value="end">Attach separator to chunk end</option>
+                        </param>
+                    </when>
+                </conditional>
+                <!-- The token splitter does not offer this option, so it never
+                     receives the flag and reports strip_whitespace as false. -->
+                <expand macro="strip_whitespace"/>
+                <conditional name="length">
+                    <param name="length_mode" type="select" label="Target chunk size should be determined by the count of" help="Choose whether the target chunk size should be determined by characters or token count.">
+                        <option value="characters" selected="true">Characters</option>
+                        <option value="token">Tokens</option>
+                    </param>
+                    <when value="characters">
+                        <expand macro="chunk_params"/>
+                    </when>
+                    <when value="token">
+                        <expand macro="chunk_params"/>
+                        <expand macro="tiktoken_options"/>
+                    </when>
+                </conditional>
+            </when>
+            <when value="sentence">
+                <conditional name="sentence_splitter">
+                    <param name="type" type="select" label="Sentence boundary detector" help="Detect sentence boundaries with NLTK or spaCy. Complete sentences are subsequently merged until the target chunk size is reached.">
+                        <option value="nltk">
+                            NLTK Punkt sentence tokenizer
+                        </option>
+                        <option value="spacy" selected="true">
+                            spaCy sentence segmentation
+                        </option>
+                    </param>
+                    <when value="nltk">
+                        <param name="language" type="select" label="Language">
+                            <option value="czech">Czech</option>
+                            <option value="danish">Danish</option>
+                            <option value="dutch">Dutch</option>
+                            <option value="english" selected="true">English</option>
+                            <option value="estonian">Estonian</option>
+                            <option value="finnish">Finnish</option>
+                            <option value="french">French</option>
+                            <option value="german">German</option>
+                            <option value="greek">Greek</option>
+                            <option value="italian">Italian</option>
+                            <option value="malayalam">Malayalam</option>
+                            <option value="norwegian">Norwegian</option>
+                            <option value="polish">Polish</option>
+                            <option value="portuguese">Portuguese</option>
+                            <option value="russian">Russian</option>
+                            <option value="slovene">Slovene</option>
+                            <option value="spanish">Spanish</option>
+                            <option value="swedish">Swedish</option>
+                            <option value="turkish">Turkish</option>
+                        </param>
+                    </when>
+                    <when value="spacy">
+                        <!-- The upper bound of the input length keeps a single job
+                             from exhausting the memory of a shared compute node.
+                             The two pipelines cannot share one bound: the model
+                             keeps a dependency parser and costs more than twenty
+                             times as much per character as the sentencizer, so a
+                             limit that is safe for the model would needlessly
+                             stop the sentencizer on inputs it handles easily. -->
+                        <conditional name="pipeline_settings">
+                            <param name="pipeline" type="select" label="spaCy pipeline">
+                                <option value="sentencizer" selected="true">
+                                    Rule-based sentencizer (fast, no model required)
+                                </option>
+                                <option value="en_core_web_sm">
+                                    English model (en_core_web_sm)
+                                </option>
+                            </param>
+                            <when value="sentencizer">
+                                <param name="max_length" type="integer" value="1000000" min="1" max="20000000" label="Maximum input length" help="Maximum number of input characters. The tool stops with an error if the input is longer. The rule-based sentencizer needs roughly 0.2 kB per input character, so the maximum of 20 million characters needs in the order of 4 GB."/>
+                            </when>
+                            <when value="en_core_web_sm">
+                                <param name="max_length" type="integer" value="1000000" min="1" max="2000000" label="Maximum input length" help="Maximum number of input characters. The tool stops with an error if the input is longer. The English model keeps a dependency parser and needs roughly 4 kB per input character, so the maximum of 2 million characters already needs in the order of 9 GB. Select the rule-based sentencizer for larger inputs."/>
+                            </when>
+                        </conditional>
+                    </when>
+                </conditional>
+                <expand macro="strip_whitespace" checked="false"/>
+                <conditional name="length">
+                    <param name="length_mode" type="select" label="Target chunk size should be determined by the count of">
+                        <option value="characters" selected="true">Characters</option>
+                        <option value="token">Tokens</option>
+                    </param>
+                    <when value="characters">
+                        <expand macro="chunk_params"/>
+                    </when>
+                    <when value="token">
+                        <expand macro="chunk_params"/>
+                        <expand macro="tiktoken_options"/>
+                    </when>
+                </conditional>
+            </when>
+            <when value="token">
+                <expand macro="chunk_params" size_label="Tokens per chunk" size_help="Number of tokens in each full chunk. The final chunk may contain fewer tokens." overlap_label="Overlapping tokens" overlap_help="Number of tokens shared by adjacent chunks."/>
+                <expand macro="tiktoken_options"/>
+            </when>
+        </conditional>
+    </inputs>
+    <outputs>
+        <data name="chunks_text" format="txt" label="${tool.name} chunks on ${on_string}"/>
+        <data name="chunks_json" format="json" label="${tool.name} chunk metadata on ${on_string}"/>
+        <data name="chunks_tsv" format="tabular" label="${tool.name} on ${on_string}: chunk table">
+            <actions>
+                <action name="column_names" type="metadata" default="chunk#,content,${'tokens' if str($splitter.method) == 'token' or str($splitter.length.length_mode) == 'token' else 'characters'}"/>
+            </actions>
+        </data>
+        <collection name="chunks_collection" type="list" label="${tool.name} chunk files on ${on_string}">
+            <discover_datasets pattern="(?P&lt;designation&gt;chunk_[0-9]+)\.txt$" directory="chunks" format="txt"/>
+        </collection>
+    </outputs>
+    <tests>
+        <!-- Default recursive character workflow. -->
+        <test>
+            <param name="input" value="recursive_default.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="16"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_text">
+                <assert_contents>
+                    <has_text text="Splitter: recursive_character"/>
+                    <has_text text="Length function: characters"/>
+                </assert_contents>
+            </output>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_unit" text="characters"/>
+                    <has_json_property_with_text property="length_function" text="characters"/>
+                    <has_json_property_with_text property="splitter_type" text="recursive_character"/>
+                    <has_json_property_with_text property="keep_separator" text="start"/>
+                    <has_json_property_with_value property="strip_whitespace" value="true"/>
+                    <has_json_property_with_value property="chunk_size" value="16"/>
+                    <has_json_property_with_value property="chunk_overlap" value="0"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\AAlpha beta\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\AGamma delta\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\AEpsilon zeta\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- The simple splitter discards full stops that fall on chunk boundaries. -->
+        <test>
+            <param name="input" value="simple_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="ascii_full_stop"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="6"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_unit" text="characters"/>
+                    <has_json_property_with_text property="splitter_type" text="character"/>
+                    <has_json_property_with_text property="keep_separator" text="false"/>
+                    <has_json_property_with_value property="strip_whitespace" value="true"/>
+                    <has_json_property_with_value property="chunk_size" value="6"/>
+                    <has_json_property_with_value property="chunk_overlap" value="0"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\Abeta\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test a built-in Unicode separator mapping. -->
+        <test>
+            <param name="input" value="unicode_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="ideographic_full_stop"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="6"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="character"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\Abeta\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test with a custom Unicode separator -->
+        <test>
+            <param name="input" value="unicode_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="custom"/>
+                        <param name="value" value="\u3002"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="6"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="character"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\Abeta\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test the simple splitter with a custom separator. -->
+        <test>
+            <param name="input" value="custom_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="custom"/>
+                        <param name="value" value="###"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="character"/>
+                    <has_json_property_with_text property="keep_separator" text="false"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\Abeta\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test the repeat parameter, custom separator, keep=end, and disabled stripping. -->
+        <test>
+            <param name="input" value="custom_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="custom"/>
+                        <repeat name="separators">
+                            <conditional name="separator_definition">
+                                <param name="sep_opt" value="custom"/>
+                                <param name="value" value="###"/>
+                            </conditional>
+                        </repeat>
+                    </conditional>
+                    <param name="keep_separator" value="end"/>
+                </conditional>
+                <param name="strip_whitespace" value="false"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="recursive_character"/>
+                    <has_json_property_with_text property="keep_separator" text="end"/>
+                    <has_json_property_with_value property="strip_whitespace" value="false"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha###\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\Abeta###\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma&#10;\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Verify that positive overlap shares content between adjacent chunks. -->
+        <test>
+            <param name="input" value="overlap_words.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="space"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="13"/>
+                    <param name="chunk_overlap" value="5"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="chunk_size" value="13"/>
+                    <has_json_property_with_value property="chunk_overlap" value="5"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aone two three\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\Athree four\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Afour five\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Character boundaries with tiktoken determining the target length. -->
+        <test>
+            <param name="input" value="token_words.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="token"/>
+                    <param name="chunk_size" value="4"/>
+                    <param name="chunk_overlap" value="1"/>
+                    <section name="tiktoken_options">
+                        <conditional name="tokenizer">
+                            <param name="tokenizer_selection_method" value="encoding"/>
+                            <param name="encoding_name" value="gpt2"/>
+                        </conditional>
+                        <param name="allowed_special" value="none"/>
+                    </section>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_unit" text="tokens"/>
+                    <has_json_property_with_text property="length_function" text="tiktoken:gpt2"/>
+                    <has_json_property_with_text property="splitter_type" text="recursive_character"/>
+                    <has_json_property_with_value property="chunk_size" value="4"/>
+                    <has_json_property_with_value property="chunk_overlap" value="1"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <!-- Overlapping token-based splitting also triggers the upstream invalid start-index bug. -->
+                    <has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <!-- Depends on https://github.com/langchain-ai/langchain/issues/29884 ; revisit on a version bump. -->
+                <has_text text="WARNING: The reported position of the following chunk(s)"/>
+            </assert_stdout>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aone two three four\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\Afour five six seven\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Aseven eight\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- NLTK keeps the abbreviation "Dr." inside the first sentence.
+
+             The warning about the dropped character is expected and is pinned
+             below. convert_newlines() in galaxy/lib/galaxy/datatypes/sniff.py
+             appends a newline to an uploaded file that has none, and punkt
+             reports sentence spans with the trailing whitespace trimmed, so
+             that one character falls outside the last span. The tool reports
+             what it dropped rather than hiding it; stripping the newline off
+             the input instead would silently change the result for every input
+             that legitimately ends in one. -->
+        <test>
+            <param name="input" value="sentence_nltk_english.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="nltk"/>
+                    <param name="language" value="english"/>
+                </conditional>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="30"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_unit" text="characters"/>
+                    <has_json_property_with_text property="length_function" text="characters"/>
+                    <has_json_property_with_text property="splitter_type" text="nltk"/>
+                    <has_json_property_with_text property="sentence_language" text="english"/>
+                    <has_json_property_with_value property="strip_whitespace" value="false"/>
+                    <has_json_property_with_value property="chunk_size" value="30"/>
+                    <has_json_property_with_value property="chunk_overlap" value="0"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\ADr\. Smith arrived early\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;The meeting started promptly\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;Everyone took notes\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <assert_stdout>
+                <has_text text="WARNING: The NLTK sentence splitter dropped the 1 character(s) after the last sentence."/>
+            </assert_stdout>
+        </test>
+        <!-- Main() in our python wrapper strips whitespace only after NLTK has assembled the
+             finished chunks. This must keep the whitespace between sentences
+             in a chunk and adjust the start index by the whitespace removed
+             from its beginning. -->
+        <test>
+            <param name="input" value="sentence_spacy_prose.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="nltk"/>
+                    <param name="language" value="english"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="50"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="nltk"/>
+                    <has_json_property_with_value property="strip_whitespace" value="true"/>
+                    <has_json_property_with_value property="number_of_chunks" value="2"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                    <has_json_property_with_value property="start_index" value="47"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="2">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <!-- The space between the sentences must survive. -->
+                        <has_text_matching expression="\AThe cat sat on the mat\. The dog barked loudly\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\ABirds flew away\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Exercise NLTK's language selection with the German Punkt model. -->
+        <test>
+            <param name="input" value="sentence_nltk_german.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="nltk"/>
+                    <param name="language" value="german"/>
+                </conditional>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="24"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="nltk"/>
+                    <has_json_property_with_text property="sentence_language" text="german"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\ADas ist z\.B\. wichtig\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;Der Test beginnt jetzt\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;Alles funktioniert gut\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- NLTK overlap is applied at complete-sentence granularity. The chunk
+             size must fit the overlapping sentence plus the following one,
+             otherwise the overlap is dropped again to make room. -->
+        <test>
+            <param name="input" value="sentence_overlap.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="nltk"/>
+                    <param name="language" value="english"/>
+                </conditional>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="25"/>
+                    <param name="chunk_overlap" value="13"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="chunk_size" value="25"/>
+                    <has_json_property_with_value property="chunk_overlap" value="13"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\AAlpha one\.&#10;Beta two\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;Beta two\.&#10;Gamma three\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;Gamma three\.&#10;Delta four\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test spaCy's model-free rule-based sentencizer. -->
+        <test>
+            <param name="input" value="sentence_spacy.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="spacy"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="sentencizer"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
+                </conditional>
+                <param name="strip_whitespace" value="false"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="31"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_unit" text="characters"/>
+                    <has_json_property_with_text property="splitter_type" text="spacy"/>
+                    <has_json_property_with_text property="spacy_pipeline" text="sentencizer"/>
+                    <has_json_property_with_value property="strip_whitespace" value="false"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\AFirst sentence is short\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;Second sentence is also short\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <!-- Galaxy's upload appends a trailing newline to the input file. -->
+                        <has_text_matching expression="\A&#10;Third sentence ends here\.&#10;\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test the installed spaCy model and merging of adjacent sentences. -->
+        <test>
+            <param name="input" value="sentence_spacy.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="spacy"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="en_core_web_sm"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="56"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="spacy"/>
+                    <has_json_property_with_text property="spacy_pipeline" text="en_core_web_sm"/>
+                    <has_json_property_with_value property="chunk_size" value="56"/>
+                    <has_json_property_with_value property="number_of_chunks" value="2"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="2">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\AFirst sentence is short\.&#10;Second sentence is also short\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\AThird sentence ends here\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Stripping must remove only the whitespace around a chunk, never the
+             whitespace between two sentences inside it. Every other sentence
+             fixture separates its sentences with a line break, which the
+             splitter attaches to the following sentence, so only a fixture with
+             space separated sentences can catch that. -->
+        <test>
+            <param name="input" value="sentence_spacy_prose.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="spacy"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="sentencizer"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="50"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="strip_whitespace" value="true"/>
+                    <has_json_property_with_value property="number_of_chunks" value="2"/>
+                    <!-- A stripped chunk stays a verbatim slice of the input, so
+                         its position remains known. -->
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                    <has_json_property_with_value property="start_index" value="47"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="2">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <!-- The space after "mat." must survive. -->
+                        <has_text_matching expression="\AThe cat sat on the mat\. The dog barked loudly\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <!-- The trailing line break of the input is gone. -->
+                        <has_text_matching expression="\ABirds flew away\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Sentence boundaries with tiktoken determining the target length. -->
+        <test>
+            <param name="input" value="sentence_tokens.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="sentence"/>
+                <conditional name="sentence_splitter">
+                    <param name="type" value="spacy"/>
+                    <conditional name="pipeline_settings">
+                        <param name="pipeline" value="sentencizer"/>
+                        <param name="max_length" value="1000000"/>
+                    </conditional>
+                </conditional>
+                <param name="strip_whitespace" value="false"/>
+                <conditional name="length">
+                    <param name="length_mode" value="token"/>
+                    <param name="chunk_size" value="4"/>
+                    <param name="chunk_overlap" value="0"/>
+                    <section name="tiktoken_options">
+                        <conditional name="tokenizer">
+                            <param name="tokenizer_selection_method" value="encoding"/>
+                            <param name="encoding_name" value="gpt2"/>
+                        </conditional>
+                        <param name="allowed_special" value="none"/>
+                    </section>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_unit" text="tokens"/>
+                    <has_json_property_with_text property="length_function" text="tiktoken:gpt2"/>
+                    <has_json_property_with_text property="splitter_type" text="spacy"/>
+                    <has_json_property_with_text property="spacy_pipeline" text="sentencizer"/>
+                    <has_json_property_with_value property="chunk_size" value="4"/>
+                    <has_json_property_with_value property="chunk_overlap" value="0"/>
+                    <!-- The sentencizer reports the trailing newline that Galaxy's
+                         upload appends as a fourth sentence. Whitespace-only
+                         chunks are kept when stripping is off, so that the
+                         chunks still add up to the whole input. -->
+                    <has_json_property_with_value property="number_of_chunks" value="4"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <not_has_text text="held nothing but whitespace"/>
+            </assert_stdout>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="4">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aone two\.\Z"/>
+                    </assert_contents>
+                </element>
+                <!-- The sentence separator stays at the start of the following
+                     chunk because strip_whitespace is disabled. -->
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;three four\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;five six\.\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0004">
+                    <assert_contents>
+                        <has_text_matching expression="\A&#10;\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- A cut between two tokens can fall inside a multi-byte character, which
+             the tokenizer then decodes as the replacement character. The chunk text
+             no longer occurs in the input, so its start index cannot be established.
+             The warning has to name the token cut as the cause, because the remedy
+             is to switch splitter, not to change the separator handling. -->
+        <test>
+            <param name="input" value="multibyte_persian.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="token"/>
+                <param name="chunk_size" value="8"/>
+                <param name="chunk_overlap" value="0"/>
+                <section name="tiktoken_options">
+                    <conditional name="tokenizer">
+                        <param name="tokenizer_selection_method" value="encoding"/>
+                        <param name="encoding_name" value="gpt2"/>
+                    </conditional>
+                    <param name="allowed_special" value="none"/>
+                </section>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="token"/>
+                    <has_json_property_with_value property="number_of_chunks" value="6"/>
+                    <has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <has_text text="does not occur in the input: 1, 2. The splitter returned text it had modified"/>
+                <has_text text="A cut between two tokens can fall inside a character that is encoded in several bytes"/>
+                <not_has_text text="Discarding the separator"/>
+            </assert_stdout>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="6"/>
+        </test>
+        <!-- Discarding the separator collapses a run of separators into one, so the
+             chunk text no longer occurs in the input. The same symptom as above, but
+             the opposite remedy, so the warning has to name the separator instead. -->
+        <test>
+            <param name="input" value="repeated_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="ascii_comma"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="false"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="character"/>
+                    <has_json_property_with_text property="keep_separator" text="false"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <has_text text="does not occur in the input: 1. The splitter returned text it had modified"/>
+                <has_text text="Discarding the separator drops the empty pieces between two adjacent separators"/>
+                <not_has_text text="A cut between two tokens"/>
+            </assert_stdout>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3"/>
+        </test>
+        <!-- Test TokenTextSplitter and model-based tokenizer selection. -->
+        <test>
+            <param name="input" value="token_words.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="token"/>
+                <param name="chunk_size" value="4"/>
+                <param name="chunk_overlap" value="1"/>
+                <section name="tiktoken_options">
+                    <conditional name="tokenizer">
+                        <param name="tokenizer_selection_method" value="model"/>
+                        <param name="model_name" value="gpt-5"/>
+                    </conditional>
+                    <param name="allowed_special" value="none"/>
+                </section>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_unit" text="tokens"/>
+                    <has_json_property_with_text property="length_function" text="tiktoken:gpt-5"/>
+                    <has_json_property_with_text property="splitter_type" text="token"/>
+                    <!-- The token splitter never strips whitespace, which has to be visible in the metadata. -->
+                    <has_json_property_with_value property="strip_whitespace" value="false"/>
+                    <has_json_property_with_value property="chunk_size" value="4"/>
+                    <has_json_property_with_value property="chunk_overlap" value="1"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <!-- Overlapping token-based splitting also triggers the upstream invalid start-index bug. -->
+                    <has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <assert_stdout>
+                <!-- Depends on https://github.com/langchain-ai/langchain/issues/29884 ; revisit on a version bump. -->
+                <has_text text="WARNING: The reported position of the following chunk(s)"/>
+            </assert_stdout>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aone two three four\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0002">
+                    <assert_contents>
+                        <has_text_matching expression="\A four five six seven\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\A seven eight&#10;\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Permit a tiktoken special token explicitly. -->
+        <test>
+            <param name="input" value="special_token.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="token"/>
+                <param name="chunk_size" value="10"/>
+                <param name="chunk_overlap" value="0"/>
+                <section name="tiktoken_options">
+                    <conditional name="tokenizer">
+                        <param name="tokenizer_selection_method" value="encoding"/>
+                        <param name="encoding_name" value="gpt2"/>
+                    </conditional>
+                    <param name="allowed_special" value="all"/>
+                </section>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="length_function" text="tiktoken:gpt2"/>
+                    <has_json_property_with_value property="number_of_chunks" value="1"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv" min_lines="1"/>
+            <output_collection name="chunks_collection" type="list" count="1">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\ABefore &lt;\|endoftext\|&gt; after&#10;\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Protect TSV column structure when chunks contain tabs and newlines. -->
+        <test>
+            <param name="input" value="tsv_escape.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="false"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="100"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="number_of_chunks" value="1"/>
+                    <not_has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <output name="chunks_tsv" file="tsv_escape_expected.tsv" ftype="tabular">
+                <assert_contents>
+                    <has_n_columns n="3"/>
+                    <has_n_lines n="1"/>
+                </assert_contents>
+            </output>
+            <output_collection name="chunks_collection" type="list" count="1">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha&#9;beta&#10;C:\\path&#10;omega&#10;\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Fail a text splitting using the non-recursive character splitter when a predefined separator is not found -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="simple_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="paragraph_break"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="100"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The selected separator '\n\n' was not found in the input text."/>
+            </assert_stderr>
+        </test>
+        <!-- Fail a text splitting using the non-recursive character splitter when a custom separator is not found -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="simple_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="custom"/>
+                        <param name="value" value="###"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="100"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The selected separator '###' was not found in the input text."/>
+            </assert_stderr>
+        </test>
+        <!-- Reject a tiktoken special token unless the user allows it. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="special_token.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="token"/>
+                <param name="chunk_size" value="10"/>
+                <param name="chunk_overlap" value="0"/>
+                <section name="tiktoken_options">
+                    <conditional name="tokenizer">
+                        <param name="tokenizer_selection_method" value="encoding"/>
+                        <param name="encoding_name" value="gpt2"/>
+                    </conditional>
+                    <param name="allowed_special" value="none"/>
+                </section>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Encountered text corresponding to disallowed special token"/>
+            </assert_stderr>
+        </test>
+        <!-- The script validates the relation between the two chunk parameters. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="recursive_default.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="10"/>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Chunk overlap must be smaller than chunk size."/>
+            </assert_stderr>
+        </test>
+        <!-- Reproduce the upstream invalid start-index bug when character-based splitting uses token counts to determine the target chunk size. -->
+        <test>
+            <param name="input" value="langchain_docs_sample.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="token"/>
+                    <param name="chunk_size" value="100"/>
+                    <param name="chunk_overlap" value="20"/>
+                    <section name="tiktoken_options">
+                        <conditional name="tokenizer">
+                            <param name="tokenizer_selection_method" value="encoding"/>
+                            <param name="encoding_name" value="gpt2"/>
+                        </conditional>
+                        <param name="allowed_special" value="none"/>
+                    </section>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                    <!-- The position of the last chunk. Unlike the chunk texts and the
+                         first chunk's offset, this changes as soon as the splitting does,
+                         so it is what catches a regression here. -->
+                    <has_json_property_with_value property="start_index" value="663"/>
+                    <!-- An invalid start index is reported as null so that the field keeps a single JSON type. -->
+                    <has_text text="&quot;start_index&quot;: null"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv" min_lines="3"/>
+            <output_collection name="chunks_collection" type="list" count="3"/>
+            <assert_stdout>
+                <!-- Depends on https://github.com/langchain-ai/langchain/issues/29884 ; revisit on a version bump. -->
+                <has_text text="WARNING: The reported position of the following chunk(s)"/>
+            </assert_stdout>
+        </test>
+        <!-- A custom separator that starts with dashes must not be read as a command line option. -->
+        <test>
+            <param name="input" value="dash_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="custom"/>
+                        <param name="value" value="---"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- A separator that Galaxy would otherwise replace by an X must reach the script unchanged. -->
+        <test>
+            <param name="input" value="pipe_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="simple"/>
+                    <conditional name="separator_definition">
+                        <param name="sep_opt" value="custom"/>
+                        <param name="value" value="|"/>
+                    </conditional>
+                    <param name="keep_separator" value="false"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="5"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\Z"/>
+                    </assert_contents>
+                </element>
+                <element name="chunk_0003">
+                    <assert_contents>
+                        <has_text_matching expression="\Agamma\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Cover the predefined branch of the recursive separator repeat. -->
+        <test>
+            <param name="input" value="simple_separator.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="custom"/>
+                        <repeat name="separators">
+                            <conditional name="separator_definition">
+                                <param name="sep_opt" value="ascii_full_stop"/>
+                            </conditional>
+                        </repeat>
+                    </conditional>
+                    <param name="keep_separator" value="end"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="6"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <output name="chunks_json">
+                <assert_contents>
+                    <has_json_property_with_text property="splitter_type" text="recursive_character"/>
+                    <has_json_property_with_value property="number_of_chunks" value="3"/>
+                </assert_contents>
+            </output>
+            <expand macro="assert_chunks_tsv"/>
+            <output_collection name="chunks_collection" type="list" count="3">
+                <element name="chunk_0001">
+                    <assert_contents>
+                        <has_text_matching expression="\Aalpha\.\Z"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- An input without any content to split is rejected instead of producing empty outputs. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="whitespace_only.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="characters"/>
+                    <param name="chunk_size" value="100"/>
+                    <param name="chunk_overlap" value="0"/>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The input dataset is empty or contains only whitespace."/>
+            </assert_stderr>
+        </test>
+        <!-- Reject a tiktoken special token on the character splitter as well, not only on the token splitter. -->
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="input" value="special_token.txt" ftype="txt"/>
+            <conditional name="splitter">
+                <param name="method" value="character"/>
+                <conditional name="character_splitter">
+                    <param name="type" value="recursive"/>
+                    <conditional name="separator_settings">
+                        <param name="mode" value="default"/>
+                    </conditional>
+                    <param name="keep_separator" value="start"/>
+                </conditional>
+                <param name="strip_whitespace" value="true"/>
+                <conditional name="length">
+                    <param name="length_mode" value="token"/>
+                    <param name="chunk_size" value="10"/>
+                    <param name="chunk_overlap" value="0"/>
+                    <section name="tiktoken_options">
+                        <conditional name="tokenizer">
+                            <param name="tokenizer_selection_method" value="encoding"/>
+                            <param name="encoding_name" value="gpt2"/>
+                        </conditional>
+                        <param name="allowed_special" value="none"/>
+                    </section>
+                </conditional>
+            </conditional>
+            <assert_stderr>
+                <has_text text="The input contains a special token string that is rejected by the selected tokenizer."/>
+                <has_text text="Encountered text corresponding to disallowed special token"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown">
+**What it does**
+
+This tool splits a text dataset into chunks with `langchain-text-splitters`.
+It is useful before retrieval-augmented generation, embedding, summarization,
+and other LLM workflows where long text needs to be bounded by a chunk size.
+
+**Leveraged Methods of `langchain-text-splitters`**
+
+- **Character-based splitting:** Splits text at character-based separators. The target chunk size can be measured in characters or tokens.
+    - `RecursiveCharacterTextSplitter`: Recommended for most use cases as it attempts to preserve larger text units by trying an ordered list of separators, from coarser boundaries such as paragraph breaks to finer boundaries such as line breaks, or spaces, down to individual characters.
+    - `CharacterTextSplitter`: Splits text using one defined separator or character sequence, such as a paragraph break, line break, space, or custom separator.
+- **Token-based splitting:** The `TokenTextSplitter` ignores any potential text structure and simply creates chunks of a specified token length.
+- **Sentence-based splitting:** Detects sentence boundaries first and then fills the chunks with whole sentences, so a chunk never ends in the middle of a sentence. Pick this for prose. A single sentence that is already longer than the target chunk size becomes an oversized chunk of its own, because the sentence is never cut.
+    - `NLTKTextSplitter`: Uses NLTK's Punkt sentence tokenizer, which is trained per language and therefore handles language-specific abbreviations such as `Dr.` in English or `z.B.` in German. Select the language of the input.
+    - `SpacyTextSplitter`: Uses spaCy. The rule-based sentencizer is fast and needs no model, but it applies English tokenization rules. The `en_core_web_sm` model is more accurate on English text, and is roughly five times slower and needs about ten times more memory.
+
+For all splitters except `TokenTextSplitter`, leading and trailing whitespace can be removed while preserving whitespace
+between sentences within a chunk. We do not use the `strip_whitespace` option provided by [LangChain's
+text splitters](https://reference.langchain.com/python/langchain-text-splitters/base/TextSplitter),
+because it can produce incorrect chunk start indices relative to the input text.
+Additionally, some splitters, such as `SpacyTextSplitter`, may remove whitespace between
+sentences within the same chunk. Instead, our Python wrapper strips whitespace only after each chunk has been assembled.
+This preserves in between sentences whitespace and allows chunk positions to be determined more reliably.
+If a chunk still cannot be located in the input text, a warning is written to the Tool Standard Output.
+
+The chunk overlap is applied in whole sentences: an overlapping sentence is only carried over if it
+fits into the next chunk together with the following sentence, otherwise the
+overlap is silently smaller than requested.
+
+The NLTK splitter drops the text after the last detected sentence, usually the
+trailing line break, so its chunks do not always add up to the complete input.
+When that happens,  a warning is written to the Tool Standard Output.
+The spaCy splitter in contrast keeps everything.
+
+**Used Library for Token Counting**
+
+OpenAI's fast Byte-Pair Encoding (BPE) tokenizer `tiktoken` library is used
+to determine the number of tokens in a chunk.
+
+`tiktoken` does not ship the encoding files. On first use it downloads them from
+the OpenAI servers, so a Galaxy instance without outgoing internet access on its
+compute nodes has to provide them locally by pointing the `TIKTOKEN_CACHE_DIR`
+environment variable at a directory that already contains the encoding files.
+Without either, any run that counts tokens fails.
+
+**Inputs**
+
+The input dataset has to be UTF-8 encoded text. Line endings are preserved as
+they are, so a dataset with Windows (`\r\n`) line endings keeps them in the
+chunks.
+
+**Outputs**
+
+- Text and JSON file with input/chunk metadata, where each chunk comes along with its size and start index in the input text.
+  The chunk size is reported in the `length` field, and `length_unit` states whether it counts characters or tokens.
+  A `start_index` of `null` means that the splitter returned an invalid position for that chunk; a warning is written to the tool log in that case.
+- TSV file with the following columns: chunk number, content, size in characters or tokens.
+  So that every chunk stays on a single row, backslash, tab, carriage return and newline in the content are escaped as `\\`, `\t`, `\r` and `\n`. Reverse the escaping to recover the exact chunk content, or use the collection below, which holds the raw text.
+- Galaxy collection of text files, with one raw chunk per file
+
+**License**
+Langchain-Text-Splitters is licensed under the MIT License.
+    </help>
+    <citations>
+        <citation type="bibtex">
+        @software{Chase_LangChain_2022,
+            author = {Chase, Harrison},
+            month = oct,
+            title = {{LangChain}},
+            url = {https://github.com/langchain-ai/langchain},
+            year = {2022}
+        }
+        </citation>
+    </citations>
+</tool>

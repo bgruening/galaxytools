@@ -1,0 +1,741 @@
+<macros>
+    <token name="@TOOL_VERSION@">7.1.1</token>
+    <token name="@VERSION_SUFFIX@">0</token>
+    <token name="@PROFILE@">25.1</token>
+    <token name="@REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@"><![CDATA[
+    #if $image.ext in ("tiff", "tif")
+        #set $offsets_file = $image.metadata.offsets
+        {
+            pages=\$(tr -d '[] ' < '$offsets_file' |
+                tr ',' '\n' |
+                grep -c '[0-9]');
+
+            if [ "\$pages" -gt 1 ]; then
+                echo "Multi-page TIF(F) training images are not supported. Detected \$pages pages. Please use a single-page image or split the TIFF first." >&2;
+                exit 1;
+            fi;
+        } &&
+    #end if
+    ]]></token>
+    <token name="@STAGE_INITIAL_MODEL@"><![CDATA[
+        #if $train_opts.initialization.source == 'load' and $train_opts.initialization.model_type == 'checkpoint'
+            ln -s '$train_opts.initialization.model' initial_model.ckpt &&
+        #end if
+    ]]></token>
+    <token name="@RECOGNITION_WEIGHTS_FORMAT@"><![CDATA[
+        #if $train_opts.arch.recognition_arch == 'vgsl'
+            #set $weights_format = $train_opts.arch.weights_format
+        #else
+            #set $weights_format = 'safetensors'
+        #end if
+    ]]></token>
+    <token name="@RECOGNITION_TRAINING_ARGS@"><![CDATA[
+        @RECOGNITION_WEIGHTS_FORMAT@
+        --output model
+        --weights-format '$weights_format'
+        #if $train_opts.initialization.source == 'load'
+            #if $train_opts.initialization.model_type == 'checkpoint'
+                --load 'initial_model.ckpt'
+            #else
+                --load '$train_opts.initialization.model'
+            #end if
+            --resize '$train_opts.initialization.resize_settings.resize'
+            #if $train_opts.initialization.resize_settings.resize == 'new' and $train_opts.initialization.resize_settings.codec
+                --codec '$train_opts.initialization.resize_settings.codec'
+            #end if
+        #elif $train_opts.initialization.source == 'resume'
+            --resume '$train_opts.initialization.checkpoint'
+        #elif $train_opts.initialization.codec
+            --codec '$train_opts.initialization.codec'
+        #end if
+        #set $arch = $train_opts.arch
+        #if $arch.recognition_arch != 'infer'
+            --arch '$arch.recognition_arch'
+        #end if
+        #if $arch.recognition_arch == 'ppocrv6'
+            --variant '$arch.ppocrv6_variant.variant'
+            --lrate '$arch.ppocrv6_variant.lrate'
+            --height '$arch.input_dimensions.height'
+            --max-width '$arch.input_dimensions.max_width'
+            --batch-size '$arch.batch_size'
+            --weight-decay '$arch.optimization.weight_decay'
+            #set $optimizer = $arch.optimization.optimizer_settings
+            --optimizer '$optimizer.optimizer'
+            #if $optimizer.optimizer in ('SGD', 'RMSprop', 'AdamW+Muon')
+                --momentum '$optimizer.momentum'
+            #end if
+            #set $scheduler = $optimizer.scheduler_settings
+            --schedule '$scheduler.schedule'
+            #if $optimizer.optimizer != 'AdamW+Muon'
+                --warmup '$optimizer.warmup'
+            #elif $scheduler.schedule == 'cosine'
+                --warmup '$scheduler.warmup'
+            #end if
+            #if $scheduler.schedule == 'cosine'
+                --cos-min-lr '$scheduler.cos_min_lr'
+                #if $optimizer.optimizer != 'AdamW+Muon'
+                    --cos-max '$scheduler.cos_max'
+                #end if
+            #elif $scheduler.schedule == 'exponential'
+                --gamma '$scheduler.gamma'
+            #elif $scheduler.schedule == 'step'
+                --step-size '$scheduler.step_size'
+                --gamma '$scheduler.gamma'
+            #elif $scheduler.schedule == 'reduceonplateau'
+                --gamma '$scheduler.gamma'
+                --sched-patience '$scheduler.sched_patience'
+            #end if
+        #elif $arch.recognition_arch == 'vgsl'
+            --spec '$arch.vgsl_spec'
+            --freeze-backbone '$arch.freeze_backbone'
+        #end if
+        #if $arch.recognition_arch != 'ppocrv6'
+            #for $name in ('lrate', 'batch_size')
+                #set $value = $arch[$name]
+                #if str($value).strip() and str($value) != 'None'
+                    --${name.replace('_', '-')} '$value'
+                #end if
+            #end for
+            #if str($arch.optimization.weight_decay).strip() and str($arch.optimization.weight_decay) != 'None'
+                --weight-decay '$arch.optimization.weight_decay'
+            #end if
+            #set $optimizer = $arch.optimization.optimizer_settings
+            #if $optimizer.optimizer != 'auto'
+                --optimizer '$optimizer.optimizer'
+                #if str($optimizer.warmup).strip() and str($optimizer.warmup) != 'None'
+                    --warmup '$optimizer.warmup'
+                #end if
+                #if $optimizer.optimizer in ('SGD', 'RMSprop')
+                    #if str($optimizer.momentum).strip() and str($optimizer.momentum) != 'None'
+                        --momentum '$optimizer.momentum'
+                    #end if
+                #end if
+                #set $scheduler = $optimizer.scheduler_settings
+                #if $scheduler.schedule != 'auto'
+                    --schedule '$scheduler.schedule'
+                #end if
+                #if $scheduler.schedule == 'cosine'
+                    --cos-min-lr '$scheduler.cos_min_lr'
+                    --cos-max '$scheduler.cos_max'
+                #elif $scheduler.schedule == 'exponential'
+                    --gamma '$scheduler.gamma'
+                #elif $scheduler.schedule == 'step'
+                    --step-size '$scheduler.step_size'
+                    --gamma '$scheduler.gamma'
+                #elif $scheduler.schedule == 'reduceonplateau'
+                    --gamma '$scheduler.gamma'
+                    --sched-patience '$scheduler.sched_patience'
+                #end if
+            #end if
+        #end if
+        --quit '$arch.stopping.stop_condition.quit'
+        #if $arch.stopping.stop_condition.quit == 'early'
+            --min-epochs '$arch.stopping.stop_condition.min_epochs'
+            --lag '$arch.stopping.stop_condition.lag'
+            --min-delta '$arch.stopping.stop_condition.min_delta'
+        #else
+            --epochs '$arch.stopping.stop_condition.epochs'
+        #end if
+        #if str($arch.stopping.freq).strip() and str($arch.stopping.freq) != 'None'
+            --freq '$arch.stopping.freq'
+        #end if
+        --gradient-clip-val '$train_opts.gradient_settings.gradient_clip_val'
+        --accumulate-grad-batches '$train_opts.gradient_settings.accumulate_grad_batches'
+        $train_opts.image_preprocessing.augment
+        --logger 'tensorboard'
+        --log-dir logs
+    ]]></token>
+    <token name="@TRAINING_ARGS@"><![CDATA[
+        --output model
+        #set $weights_format = 'safetensors'
+        --weights-format '$weights_format'
+        #if str($train_opts.batch_size).strip() and str($train_opts.batch_size) != 'None'
+            --batch-size '$train_opts.batch_size'
+        #end if
+        #if $train_opts.initialization.source == 'load'
+            #if $train_opts.initialization.model_type == 'checkpoint'
+                --load 'initial_model.ckpt'
+            #else
+                --load '$train_opts.initialization.model'
+            #end if
+        #elif $train_opts.initialization.source == 'resume'
+            --resume '$train_opts.initialization.checkpoint'
+        #end if
+        #if str($train_opts.freq).strip() and str($train_opts.freq) != 'None'
+            --freq '$train_opts.freq'
+        #end if
+        #if str($train_opts.stop_condition.quit).strip() and str($train_opts.stop_condition.quit) != 'None'
+            --quit '$train_opts.stop_condition.quit'
+            #if $train_opts.stop_condition.quit == 'early'
+                --min-epochs '$train_opts.stop_condition.min_epochs'
+                --lag '$train_opts.stop_condition.lag'
+                --min-delta '$train_opts.stop_condition.min_delta'
+            #else
+                --epochs '$train_opts.stop_condition.epochs'
+            #end if
+        #end if
+        #if str($train_opts.optimizer).strip() and str($train_opts.optimizer) != 'None'
+            --optimizer '$train_opts.optimizer'
+        #end if
+        #if str($train_opts.momentum).strip() and str($train_opts.momentum) != 'None'
+            --momentum '$train_opts.momentum'
+        #end if
+        #if str($train_opts.weight_decay).strip() and str($train_opts.weight_decay) != 'None'
+            --weight-decay '$train_opts.weight_decay'
+        #end if
+        #if str($train_opts.gradient_settings.gradient_clip_val).strip() and str($train_opts.gradient_settings.gradient_clip_val) != 'None'
+            --gradient-clip-val '$train_opts.gradient_settings.gradient_clip_val'
+        #end if
+        #if str($train_opts.gradient_settings.accumulate_grad_batches).strip() and str($train_opts.gradient_settings.accumulate_grad_batches) != 'None'
+            --accumulate-grad-batches '$train_opts.gradient_settings.accumulate_grad_batches'
+        #end if
+        #if str($train_opts.warmup).strip() and str($train_opts.warmup) != 'None'
+            --warmup '$train_opts.warmup'
+        #end if
+        #if str($train_opts.schedule).strip() and str($train_opts.schedule) != 'None'
+            --schedule '$train_opts.schedule'
+        #end if
+        #if str($train_opts.gamma).strip() and str($train_opts.gamma) != 'None'
+            --gamma '$train_opts.gamma'
+        #end if
+        #if str($train_opts.step_size).strip() and str($train_opts.step_size) != 'None'
+            --step-size '$train_opts.step_size'
+        #end if
+        #if str($train_opts.sched_patience).strip() and str($train_opts.sched_patience) != 'None'
+            --sched-patience '$train_opts.sched_patience'
+        #end if
+        #if str($train_opts.cos_max).strip() and str($train_opts.cos_max) != 'None'
+            --cos-max '$train_opts.cos_max'
+        #end if
+        #if str($train_opts.cos_min_lr).strip() and str($train_opts.cos_min_lr) != 'None'
+            --cos-min-lr '$train_opts.cos_min_lr'
+        #end if
+        #if str($train_opts.partition).strip() and str($train_opts.partition) != 'None'
+            --partition '$train_opts.partition'
+        #end if
+        #if str($train_opts.image_preprocessing.augment).strip() and str($train_opts.image_preprocessing.augment) != 'None'
+            $train_opts.image_preprocessing.augment
+        #end if
+        --logger 'tensorboard'
+        --log-dir logs
+    ]]></token>
+    <token name="@GROUND_TRUTH_ARGS@"><![CDATA[
+        #for $item in $training_data.ground_truth
+            #if str($item).strip() and str($item) != 'None'
+                '$item'
+            #end if
+        #end for
+    ]]></token>
+    <token name="@CAPTURE_TRAINING_OUTPUTS@"><![CDATA[
+        #if $weights_format == 'coreml'
+            #set $weights_extension = 'mlmodel'
+        #else
+            #set $weights_extension = 'safetensors'
+        #end if
+        best_model=\$(find model -maxdepth 1 -type f -name 'best_*.${weights_extension}' | head -n 1);
+        if [ -n "\$best_model" ]; then
+            cp "\$best_model" best_model.weights;
+        fi
+    ]]></token>
+    <xml name="requirements">
+        <requirements>
+            <requirement type="package" version="@TOOL_VERSION@">kraken-ocr</requirement>
+            <yield/>
+        </requirements>
+    </xml>
+    <xml name="creators">
+        <creator>
+            <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
+            <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
+        </creator>
+    </xml>
+    <xml name="env_vars">
+        <environment_variables>
+            <!-- setting columns is important otherwise the model-summary table in the StdOut will be quite narrow -->
+            <environment_variable name="COLUMNS">160</environment_variable>
+            <environment_variable name="LANG">C.UTF-8</environment_variable>
+            <environment_variable name="LC_ALL">C.UTF-8</environment_variable>
+            <environment_variable name="NO_COLOR">1</environment_variable>
+            <environment_variable name="PYTHONIOENCODING">utf-8</environment_variable>
+            <environment_variable name="TERM">dumb</environment_variable>
+            <environment_variable name="TTY_COMPATIBLE">0</environment_variable>
+            <environment_variable name="TTY_INTERACTIVE">0</environment_variable>
+        </environment_variables>
+    </xml>
+    <xml name="citations">
+        <citations>
+            <citation type="doi">10.16995/dscn.8094</citation>
+        </citations>
+    </xml>
+    <xml name="compile_training_data_input" tokens="format_type,pair_label,annotation_format,annotation_label">
+        <when value="@FORMAT_TYPE@">
+            <conditional name="input_source">
+                <param name="source" type="select" label="Input method">
+                    <option value="repeat" selected="true">
+                        Select individual @PAIR_LABEL@ pairs
+                    </option>
+                    <option value="collection">
+                        List of paired datasets
+                    </option>
+                </param>
+                <when value="repeat">
+                    <repeat name="ground_truth_pairs" title="Ground-truth pair" min="1">
+                        <param name="image" type="data" format="jpg,png,tiff" label="Source image"/>
+                        <param name="annotation" type="data" format="@ANNOTATION_FORMAT@" label="@ANNOTATION_LABEL@"/>
+                    </repeat>
+                </when>
+                <when value="collection">
+                    <param name="ground_truth_collection" type="data_collection" collection_type="list:paired" format="jpg,png,tiff,@ANNOTATION_FORMAT@" label="@PAIR_LABEL@ pairs" help="For every pair, the forward element must be the source image and the reverse element must be its corresponding annotation or transcription."/>
+                </when>
+            </conditional>
+            <yield/>
+        </when>
+    </xml>
+    <xml name="compile_xml_extraction_options">
+        <param argument="--linetype" type="select" optional="true" label="Line type" help="Select the type of line data to be extracted">
+            <option value="baselines" selected="true">
+                baselines (use for polygon-dewarped line images)
+            </option>
+            <option value="bbox">
+                bbox (use for plain bounding-box crops)
+            </option>
+        </param>
+        <param argument="--legacy-polygons" type="boolean" truevalue="true" falsevalue="false" checked="false" label="Use legacy polygon extractor"/>
+    </xml>
+    <xml name="compile_training_data_inputs">
+        <expand macro="compile_training_data_input" format_type="path" pair_label="line image/transcription" annotation_format="txt" annotation_label="Ground-truth transcription"/>
+        <expand macro="compile_training_data_input" format_type="alto" pair_label="page image/ALTO" annotation_format="alto" annotation_label="ALTO annotation">
+            <expand macro="compile_xml_extraction_options"/>
+        </expand>
+        <expand macro="compile_training_data_input" format_type="page" pair_label="page image/PAGE" annotation_format="page.xml" annotation_label="PAGE annotation">
+            <expand macro="compile_xml_extraction_options"/>
+        </expand>
+    </xml>
+    <xml name="paired_ground_truth_input" tokens="pair_label,annotation_format,annotation_label">
+        <conditional name="input_source">
+            <param name="source" type="select" label="Input method">
+                <option value="repeat" selected="true">
+                    Select individual @PAIR_LABEL@ pairs
+                </option>
+                <option value="collection">
+                    List of paired datasets
+                </option>
+            </param>
+            <when value="repeat">
+                <repeat name="ground_truth_pairs" title="Ground-truth pair" min="1">
+                    <param name="image" type="data" format="jpg,png,tiff" label="Source image"/>
+                    <param name="annotation" type="data" format="@ANNOTATION_FORMAT@" label="@ANNOTATION_LABEL@"/>
+                </repeat>
+            </when>
+            <when value="collection">
+                <param name="ground_truth_collection" type="data_collection" collection_type="list:paired" format="jpg,png,tiff,@ANNOTATION_FORMAT@" label="@PAIR_LABEL@ pairs" help="For every pair, the forward element must be the source image and the reverse element must be its corresponding annotation or transcription."/>
+            </when>
+        </conditional>
+    </xml>
+    <xml name="recognition_validation">
+        <conditional name="validation">
+            <param name="validation_source" type="select" label="Validation data source">
+                <option value="training_data_split" selected="true">Data split from training data</option>
+                <option value="explicit">Explicit validation data</option>
+            </param>
+            <when value="training_data_split">
+                <param name="partition" type="float" value="0.9" min="0" max="1" label="Training data fraction" help="Fraction of the provided ground-truth samples used for training. The remaining samples are used for validation."/>
+            </when>
+            <when value="explicit">
+                <yield/>
+            </when>
+        </conditional>
+    </xml>
+    <xml name="training_data_input" tokens="format_type,pair_label,annotation_format,annotation_label">
+        <when value="@FORMAT_TYPE@">
+            <expand macro="paired_ground_truth_input" pair_label="@PAIR_LABEL@" annotation_format="@ANNOTATION_FORMAT@" annotation_label="@ANNOTATION_LABEL@"/>
+            <yield/>
+        </when>
+    </xml>
+    <xml name="precision_mode">
+        <param name="mode" type="select" label="Precision mode">
+            <option value="true" selected="true">True</option>
+            <option value="mixed">Mixed</option>
+        </param>
+    </xml>
+    <xml name="ketos_training_options">
+        <section name="global_opts" title="Global options" expanded="false">
+            <conditional name="precision">
+                <param name="dtype" type="select" label="Numerical precision">
+                    <option value="32" selected="true">32-bit single-point precision</option>
+                    <option value="64">64-bit single-point precision</option>
+                    <option value="16">16-bit</option>
+                    <option value="bf16">BFloat16 (BF16)</option>
+                    <!-- below only available when using a NVIDIA GPU -->
+                    <!-- <option value="transformer-engine">Transformer Engine: FP8 mixed precision (BF16 weights)</option>
+                    <option value="transformer-engine-float16">Transformer Engine: FP8 mixed precision (FP16 weights)</option> -->
+                </param>
+                <when value="32"/>
+                <when value="16">
+                    <expand macro="precision_mode"/>
+                </when>
+                <when value="bf16">
+                    <expand macro="precision_mode"/>
+                </when>
+                <when value="64"/>
+                <!-- <when value="transformer-engine"/>
+                <when value="transformer-engine-float16"/> -->
+            </conditional>
+            <conditional name="deterministic">
+                <param name="mode" type="select" label="Deterministic training">
+                    <option value="--deterministic">Enable</option>
+                    <option value="--no-deterministic">Disable</option>
+                </param>
+                <when value="--deterministic">
+                    <param name="seed" type="integer" value="42" min="0" label="Random seed for deterministic training"/>
+                </when>
+                <when value="--no-deterministic"/>
+            </conditional>
+        </section>
+    </xml>
+    <xml name="evaluation_data">
+        <param name="evaluation_data" type="data" multiple="true" format="xml" label="Evaluation data files" help="Ground-truth files used for validation."/>
+    </xml>
+    <xml name="stop_condition" tokens="early_selected,fixed_selected">
+        <section name="stopping" title="Stopping and validation" expanded="true">
+            <conditional name="stop_condition">
+                <param name="quit" type="select" label="Stop condition">
+                    <option value="early" selected="@EARLY_SELECTED@">Early stopping</option>
+                    <option value="fixed" selected="@FIXED_SELECTED@">Fixed epoch count</option>
+                </param>
+                <when value="early">
+                    <param name="min_epochs" type="integer" value="0" min="0" label="Minimum epochs" help="Minimum number of epochs to train for when using early stopping."/>
+                    <param name="lag" type="integer" value="10" min="0" label="Early stopping lag" help="Number of evaluations to wait for improvement in the validation score before stopping training."/>
+                    <param name="min_delta" type="float" value="0.0" min="0" label="Minimum validation improvement" help="Minimum improvement in the validation score required to reset early stopping."/>
+                </when>
+                <when value="fixed">
+                    <param name="epochs" type="integer" value="100" min="1" label="Epochs" help="Number of epochs to train for."/>
+                </when>
+            </conditional>
+            <!-- In theory users could set this to 0, but afaik this would mean validation after every training batch, which could lead to performance issues and early stopping of the training process. -->
+            <param argument="--freq" type="float" value="1.0" min="0.1" label="Validation/report frequency in epochs" help="Model saving and report generation frequency in epochs. If frequency is &gt;1 it must be an integer.">
+                <validator type="expression" message="Validation frequency must be a whole number when greater than 1.">value &lt;= 1 or value % 1 == 0</validator>
+            </param>
+        </section>
+    </xml>
+    <xml name="recognition_explicit_scheduler" token_warmup="1000" token_cosine_selected="true" token_constant_selected="false">
+        <param argument="--warmup" type="integer" min="0" value="@WARMUP@" label="Learning rate warmup" help="Number of steps to linearly ramp the learning rate from zero to the initial learning rate."/>
+        <conditional name="scheduler_settings">
+            <param argument="--schedule" type="select" label="Learning rate scheduler">
+                <option value="cosine" selected="@COSINE_SELECTED@">Cosine</option>
+                <option value="constant" selected="@CONSTANT_SELECTED@">Constant</option>
+                <option value="exponential">Exponential</option>
+                <option value="1cycle">1cycle</option>
+                <option value="step">Step</option>
+                <option value="reduceonplateau">Reduce on plateau</option>
+            </param>
+            <when value="constant"/>
+            <when value="cosine">
+                <param argument="--cos-max" type="integer" min="1" value="10" label="Cosine maximum" help="Epoch at which the cosine learning rate schedule reaches its minimum learning rate."/>
+                <param argument="--cos-min-lr" type="float" min="0" value="0.000001" label="Minimum cosine learning rate"/>
+            </when>
+            <when value="exponential">
+                <param argument="--gamma" type="float" min="0" value="0.1" label="Learning rate decay factor"/>
+            </when>
+            <when value="1cycle"/>
+            <when value="step">
+                <param argument="--step-size" type="integer" min="1" value="10" label="Step size" help="Number of validation runs between learning rate decay steps."/>
+                <param argument="--gamma" type="float" min="0" value="0.1" label="Learning rate decay factor"/>
+            </when>
+            <when value="reduceonplateau">
+                <param argument="--gamma" type="float" min="0" max="1" value="0.1" label="Learning rate decay factor" help="Multiply the learning rate by this factor when validation performance stops improving.">
+                    <validator type="in_range" min="0" max="1" exclude_max="true"/>
+                </param>
+                <param argument="--sched-patience" type="integer" min="0" value="5" label="Scheduler patience" help="Number of validation runs to wait before reducing the learning rate."/>
+            </when>
+        </conditional>
+    </xml>
+    <xml name="ppocrv6_muon_scheduler">
+        <conditional name="scheduler_settings">
+            <param argument="--schedule" type="select" label="Learning rate scheduler" help="AdamW + Muon supports only cosine and constant learning rate schedules.">
+                <option value="cosine" selected="true">Cosine</option>
+                <option value="constant">Constant</option>
+            </param>
+            <when value="cosine">
+                <param argument="--warmup" type="integer" min="0" value="1000" label="Learning rate warmup" help="Number of steps to linearly ramp the learning rate from zero to the initial learning rate."/>
+                <param argument="--cos-min-lr" type="float" min="0" value="0.000001" label="Minimum cosine learning rate"/>
+            </when>
+            <when value="constant"/>
+        </conditional>
+    </xml>
+    <xml name="training_linetype" token_baselines="false" token_bbox="false" token_help="Force the line type of the training data.">
+        <param argument="--linetype" type="select" label="Training data line type" help="@HELP@">
+            <yield/>
+            <option value="baselines" selected="@BASELINES@">Baselines</option>
+            <option value="bbox" selected="@BBOX@">Bounding boxes</option>
+        </param>
+    </xml>
+    <xml name="recognition_training_data_params">
+        <section name="image_preprocessing" title="Image preprocessing" expanded="false">
+            <param argument="--pad" type="integer" min="0" value="16" label="Line padding" help="Padding in pixels around the start and end of each line image."/>
+            <param name="legacy_polygons" type="boolean" checked="false" truevalue="--legacy-polygons" falsevalue="" label="Use legacy polygon extraction" help="Use the slower legacy polygon extractor for training."/>
+            <param name="augment" type="select" label="Image augmentation">
+                <option value="--no-augment" selected="true">disabled</option>
+                <option value="--augment">enabled</option>
+            </param>
+        </section>
+        <section name="text_normalization" title="Text normalization and direction" expanded="true" help="Normalize ground-truth transcriptions and configure text direction before training.">
+            <param argument="--normalization" type="select" label="Normalize Unicode" help="Normalize ground-truth transcriptions using the selected Unicode normalization form. If false, no Unicode normalization is applied.">
+                <option value="None" selected="true">false</option>
+                <option value="NFD">NFD</option>
+                <option value="NFKD">NFKD</option>
+                <option value="NFC">NFC</option>
+                <option value="NFKC">NFKC</option>
+            </param>
+            <param name="normalize_whitespace" type="boolean" checked="true" truevalue="--normalize-whitespace" falsevalue="--no-normalize-whitespace" label="Normalize whitespace" help="Normalize Unicode whitespace characters in the ground truth to U+0020 SPACE."/>
+            <conditional name="bidi_settings">
+                <param name="reorder" type="select" label="Bidirectional text reordering" help="Reorder ground-truth code points according to the Unicode bidirectional algorithm.">
+                    <option value="yes" selected="true">Yes</option>
+                    <option value="no">No</option>
+                </param>
+                <when value="yes">
+                    <param argument="--base-dir" type="select" label="Base text direction" help="Set the base text direction used for bidirectional reordering. Auto uses direction information from the input data when available.">
+                        <option value="auto" selected="true">auto</option>
+                        <option value="L">Left-to-right</option>
+                        <option value="R">Right-to-left</option>
+                    </param>
+                </when>
+                <when value="no"/>
+            </conditional>
+        </section>
+    </xml>
+    <xml name="recognition_standard_scheduler" token_warmup_value="" token_warmup_optional="true">
+        <param argument="--warmup" type="integer" min="0" value="@WARMUP_VALUE@" optional="@WARMUP_OPTIONAL@" label="Learning rate warmup" help="Number of steps to ramp up the learning rate. Leave unset to use Kraken's model defaults; set to 0 to disable warmup."/>
+        <conditional name="scheduler_settings">
+            <param argument="--schedule" type="select" label="Learning rate scheduler">
+                <option value="auto" selected="true">Kraken default</option>
+                <option value="cosine">Cosine</option>
+                <option value="constant">Constant</option>
+                <option value="exponential">Exponential</option>
+                <option value="1cycle">1cycle</option>
+                <option value="step">Step</option>
+                <option value="reduceonplateau">Reduce on plateau</option>
+            </param>
+            <when value="auto"/>
+            <when value="constant"/>
+            <when value="cosine">
+                <param argument="--cos-max" type="integer" min="1" value="10" label="Cosine maximum" help="Epoch at which the cosine learning rate schedule reaches its minimum learning rate."/>
+                <param argument="--cos-min-lr" type="float" min="0" value="0.000001" label="Minimum cosine learning rate"/>
+            </when>
+            <when value="exponential">
+                <param argument="--gamma" type="float" min="0" value="0.1" label="Learning rate decay factor"/>
+            </when>
+            <when value="1cycle"/>
+            <when value="step">
+                <param argument="--step-size" type="integer" min="1" value="10" label="Step size" help="Number of validation runs between learning rate decay steps."/>
+                <param argument="--gamma" type="float" min="0" value="0.1" label="Learning rate decay factor"/>
+            </when>
+            <when value="reduceonplateau">
+                <param argument="--gamma" type="float" min="0" max="1" value="0.1" label="Learning rate decay factor" help="Multiply the learning rate by this factor when validation performance stops improving.">
+                    <validator type="in_range" min="0" max="1" exclude_max="true"/>
+                </param>
+                <param argument="--sched-patience" type="integer" min="0" value="5" label="Scheduler patience" help="Number of validation runs to wait before reducing the learning rate."/>
+            </when>
+        </conditional>
+    </xml>
+    <xml name="recognition_common_training_controls" token_default_warmup="" token_optional_warmup="true">
+        <section name="optimization" title="Optimizer and scheduler" expanded="false">
+            <param argument="--weight-decay" type="float" min="0" label="Weight decay" optional="true" help="Leave unset to use Kraken's model defaults."/>
+            <conditional name="optimizer_settings">
+                <param argument="--optimizer" type="select" label="Optimizer" help="Select an optimizer to configure its warmup and learning rate scheduler. Kraken default leaves these settings to the model.">
+                    <option value="auto" selected="true">Kraken default</option>
+                    <option value="Adam">Adam</option>
+                    <option value="SGD">SGD</option>
+                    <option value="RMSprop">RMSprop</option>
+                    <option value="AdamW">AdamW</option>
+                </param>
+                <when value="auto"/>
+                <when value="Adam">
+                    <expand macro="recognition_standard_scheduler" warmup_value="@DEFAULT_WARMUP@" warmup_optional="@OPTIONAL_WARMUP@"/>
+                </when>
+                <when value="SGD">
+                    <param argument="--momentum" type="float" min="0" optional="true" label="Momentum" help="Momentum used by SGD. Leave unset to use Kraken's model defaults."/>
+                    <expand macro="recognition_standard_scheduler" warmup_value="@DEFAULT_WARMUP@" warmup_optional="@OPTIONAL_WARMUP@"/>
+                </when>
+                <when value="RMSprop">
+                    <param argument="--momentum" type="float" min="0" optional="true" label="Momentum" help="Momentum used by RMSprop. Leave unset to use Kraken's model defaults."/>
+                    <expand macro="recognition_standard_scheduler" warmup_value="@DEFAULT_WARMUP@" warmup_optional="@OPTIONAL_WARMUP@"/>
+                </when>
+                <when value="AdamW">
+                    <expand macro="recognition_standard_scheduler" warmup_value="@DEFAULT_WARMUP@" warmup_optional="@OPTIONAL_WARMUP@"/>
+                </when>
+            </conditional>
+        </section>
+    </xml>
+    <xml name="vgsl_training_controls">
+        <section name="optimization" title="Optimizer and scheduler" expanded="false">
+            <param argument="--weight-decay" type="float" min="0" label="Weight decay" value="0.0"/>
+            <conditional name="optimizer_settings">
+                <param argument="--optimizer" type="select" label="Optimizer" help="Select an optimizer to configure its warmup and learning rate scheduler.">
+                    <option value="Adam">Adam</option>
+                    <option value="SGD">SGD</option>
+                    <option value="RMSprop">RMSprop</option>
+                    <option value="AdamW" selected="true">AdamW</option>
+                </param>
+                <when value="Adam">
+                    <expand macro="recognition_explicit_scheduler" warmup="0" cosine_selected="false" constant_selected="true"/>
+                </when>
+                <when value="SGD">
+                    <param argument="--momentum" type="float" min="0" label="Momentum" help="Momentum used by SGD." value="0.9"/>
+                    <expand macro="recognition_explicit_scheduler" warmup="0" cosine_selected="false" constant_selected="true"/>
+                </when>
+                <when value="RMSprop">
+                    <param argument="--momentum" type="float" min="0" label="Momentum" help="Momentum used by RMSprop." value="0.9"/>
+                    <expand macro="recognition_explicit_scheduler" warmup="0" cosine_selected="false" constant_selected="true"/>
+                </when>
+                <when value="AdamW">
+                    <expand macro="recognition_explicit_scheduler" warmup="0" cosine_selected="false" constant_selected="true"/>
+                </when>
+            </conditional>
+        </section>
+    </xml>
+    <xml name="arch_specific_defaults">
+        <conditional name="arch">
+            <param name="recognition_arch" type="select" label="Recognition architecture" help="Compared with VGSL models, PP-OCRv6 models offer faster recognition and generally produce better results, particularly on large-scale datasets. VGSL can export Safetensors or Core ML weights; PP-OCRv6 exports Safetensors. Inferred architectures use Safetensors, which supports both model types.">
+                <option value="infer">Infer when fine-tuning or resuming training</option>
+                <option value="ppocrv6" selected="true">PP-OCRv6</option>
+                <option value="vgsl">VGSL</option>
+            </param>
+            <when value="ppocrv6">
+                <conditional name="ppocrv6_variant">
+                    <param name="variant" type="select" label="PP-OCRv6 variant">
+                        <option value="tiny">Tiny</option>
+                        <option value="small" selected="true">Small</option>
+                        <option value="medium">Medium</option>
+                    </param>
+                    <when value="tiny">
+                        <param argument="--lrate" type="float" min="0" value="0.001" label="Learning rate"/>
+                    </when>
+                    <when value="small">
+                        <param argument="--lrate" type="float" min="0" value="0.0005" label="Learning rate"/>
+                    </when>
+                    <when value="medium">
+                        <param argument="--lrate" type="float" min="0" value="0.0005" label="Learning rate"/>
+                    </when>
+                </conditional>
+                <param argument="--batch-size" type="integer" min="1" value="64" label="Batch size"/>
+                <section name="input_dimensions" title="Input image dimensions" expanded="false">
+                    <param argument="--height" type="integer" min="1" value="96" label="Input line height (pixels)" help="Target line height after normalization."/>
+                    <param argument="--max-width" type="integer" min="1" value="2560" label="Maximum line width (pixels)" help="Maximum accepted line width after height normalization during training and validation."/>
+                </section>
+                <section name="optimization" title="Optimizer and scheduler" expanded="false">
+                    <param argument="--weight-decay" type="float" min="0" value="0.01" label="Weight decay"/>
+                    <conditional name="optimizer_settings">
+                        <param argument="--optimizer" type="select" label="Optimizer">
+                            <option value="Adam">Adam</option>
+                            <option value="SGD">SGD</option>
+                            <option value="RMSprop">RMSprop</option>
+                            <option value="AdamW">AdamW</option>
+                            <option value="AdamW+Muon" selected="true">AdamW + Muon</option>
+                        </param>
+                        <when value="Adam">
+                            <expand macro="recognition_explicit_scheduler"/>
+                        </when>
+                        <when value="AdamW">
+                            <expand macro="recognition_explicit_scheduler"/>
+                        </when>
+                        <when value="AdamW+Muon">
+                            <param argument="--momentum" type="float" min="0" value="0.95" label="Momentum" help="Momentum used by the Muon component of the AdamW + Muon optimizer."/>
+                            <expand macro="ppocrv6_muon_scheduler"/>
+                        </when>
+                        <when value="SGD">
+                            <param argument="--momentum" type="float" min="0" value="0.95" label="Momentum" help="Momentum used by the SGD optimizer."/>
+                            <expand macro="recognition_explicit_scheduler"/>
+                        </when>
+                        <when value="RMSprop">
+                            <param argument="--momentum" type="float" min="0" value="0.95" label="Momentum" help="Momentum used by the RMSprop optimizer."/>
+                            <expand macro="recognition_explicit_scheduler"/>
+                        </when>
+                    </conditional>
+                </section>
+                <!-- TODO create an upstream issue raising the presumed
+                    incompatibility of early stopping with PP-OCRv6 training. -->
+                <expand macro="stop_condition" early_selected="false" fixed_selected="true"/>
+            </when>
+            <when value="vgsl">
+                <param argument="--weights-format" type="select" label="Output weights format">
+                    <option value="safetensors" selected="true">Safetensors</option>
+                    <option value="coreml">Core ML</option>
+                </param>
+                <param name="vgsl_spec" type="text" optional="false" value="[1,48,0,1 Cr3,3,32 Do0.1,2 Mp2,2 Cr3,3,64 Do0.1,2 Mp2,2 S1(1x12)1,3 Lbx100 Do]" label="VGSL specification" help="VGSL model specification string">
+                    <sanitizer>
+                        <valid initial="default">
+                            <add value="["/>
+                            <add value="]"/>
+                        </valid>
+                    </sanitizer>
+                </param>
+                <param argument="--freeze-backbone" type="integer" min="0" value="0" label="Freeze backbone" help="Number of initial training iterations to keep all but the final layer frozen. Set to 0 to disable."/>
+                <param argument="--lrate" type="float" min="0" value="0.001" label="Learning rate"/>
+                <param argument="--batch-size" type="integer" min="1" value="1" label="Batch size"/>
+                <expand macro="vgsl_training_controls"/>
+                <expand macro="stop_condition" early_selected="true" fixed_selected="false"/>
+            </when>
+            <when value="infer">
+                <param argument="--lrate" type="float" min="0" optional="true" label="Learning rate" help="Leave unset to use Kraken's model defaults."/>
+                <param argument="--batch-size" type="integer" min="1" optional="true" label="Batch size" help="Leave unset to use Kraken's model defaults."/>
+                <expand macro="recognition_common_training_controls"/>
+                <expand macro="stop_condition" early_selected="true" fixed_selected="false"/>
+            </when>
+        </conditional>
+    </xml>
+    <xml name="training_inputs">
+        <section name="train_opts" title="Training options" expanded="true">
+            <conditional name="initialization">
+                <param name="source" type="select" label="Initialization">
+                    <option value="new" selected="true">Train a new model</option>
+                    <option value="load">Load existing weights/checkpoint for a fresh run</option>
+                    <option value="resume">Resume a checkpointed run</option>
+                </param>
+                <when value="new">
+                    <param argument="--codec" type="data" format="json" optional="true" label="Codec definition" help="Optional custom Kraken codec JSON definition. If omitted, the codec is inferred from the training data."/>
+                </when>
+                <when value="load">
+                    <param name="model_type" type="select" label="Model file type" help="Choose checkpoint for a full training checkpoint (.ckpt), or weights for an exported model. Both start a fresh training run. To continue an interrupted run, choose 'Resume a checkpointed run'.">
+                        <option value="weights" selected="true">Weights</option>
+                        <option value="checkpoint">Checkpoint (.ckpt)</option>
+                    </param>
+                    <param name="model" type="data" format="binary,safetensors" label="Existing model or checkpoint"/>
+                    <conditional name="resize_settings">
+                        <param argument="--resize" type="select" label="Codec/output layer resizing" help="Controls how differences between the loaded model's codec and the training data are handled.">
+                            <option value="fail" selected="true">Fail on mismatch</option>
+                            <option value="union">Add new characters</option>
+                            <option value="new">Replace codec with training codec</option>
+                        </param>
+                        <when value="fail"/>
+                        <when value="union"/>
+                        <when value="new">
+                            <param argument="--codec" type="data" format="json" optional="true" label="Codec definition" help="Optional custom codec to use for the new output layer. If omitted, the codec is inferred from the training data."/>
+                        </when>
+                    </conditional>
+                </when>
+                <when value="resume">
+                    <param name="checkpoint" type="data" format="binary" label="Checkpoint to resume" help="Before resuming, check that all training parameters match the run that produced this checkpoint, except settings you intentionally want to change. The form does not populate values from the checkpoint, and form defaults can override saved settings."/>
+                </when>
+            </conditional>
+            <expand macro="arch_specific_defaults"/>
+            <section name="gradient_settings" title="Gradient settings" expanded="false">
+                <param argument="--gradient-clip-val" type="float" value="1.0" min="0" label="Gradient clip value" help="Threshold for clipping gradients to help stabilize training."/>
+                <param argument="--accumulate-grad-batches" type="integer" value="1" min="1" label="Gradient accumulation batches" help="Number of batches to accumulate gradients over before updating model weights."/>
+            </section>
+            <expand macro="recognition_training_data_params"/>
+        </section>
+    </xml>
+    <xml name="training_outputs">
+        <data name="best_model" format="binary" from_work_dir="best_model.weights" label="${tool.name} on ${on_string}: best model"/>
+        <data name="report" format="txt" from_work_dir="training_report.txt" label="${tool.name} on ${on_string}: report"/>
+        <collection name="checkpoints" type="list" label="${tool.name} on ${on_string}: checkpoints">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.ckpt" directory="model" format="binary"/>
+        </collection>
+        <!-- TODO in the galaxy core register tfevents as a new data type -->
+        <collection name="logs" type="list" label="${tool.name} on ${on_string}: logger files">
+            <discover_datasets pattern="(?P&lt;designation&gt;.+\.ya?ml)$" directory="logs" format="yaml" recurse="true" match_relative_path="true"/>
+            <discover_datasets pattern="(?P&lt;designation&gt;(?!.*\.ya?ml$).+)" directory="logs" format="binary" recurse="true" match_relative_path="true"/>
+        </collection>
+    </xml>
+</macros>

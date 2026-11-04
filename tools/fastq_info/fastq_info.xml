@@ -1,22 +1,39 @@
-<tool id="fastq_info" name="FASTQ info" version="@TOOL_VERSION@+Galaxy@SUFFIX_VERSION@" profile="20.01">
+<tool id="fastq_info" name="FASTQ info" version="@TOOL_VERSION@+galaxy@SUFFIX_VERSION@" profile="25.0">
     <description>validates single or paired fastq files</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="edam_ontology"/>
     <expand macro="requirements"/>
-    <command detect_errors="exit_code"><![CDATA[
+    <version_command>fastq_info -h 2&gt;&amp;1 | head -n 1</version_command>
+    <command detect_errors="aggressive" strict="true"><![CDATA[
+        ## fastq_info reports everything - the report as well as validation errors -
+        ## through stdout/stderr and signals findings with a non-zero exit status
+        ## (upstream src/fastq.h): 1 = unreadable or truncated file, 3 = duplicated
+        ## read names, unpaired reads or an undeterminable quality encoding. Those
+        ## findings are the result this tool exists to produce, so exit codes 1 and 3
+        ## are passed through as a successful job whose dataset holds the report;
+        ## anything else (2 = internal error, 127 = command not found, >= 128 = killed
+        ## by a signal) means fastq_info itself broke, so the log is echoed to stderr
+        ## and the exit code re-raised to make Galaxy fail the job. A blanket `|| true`
+        ## or piping into `tee` would instead mask every one of those, including real
+        ## execution failures, as a silently successful job. The report is kept out of
+        ## the job stdout/stderr so that detect_errors="aggressive" cannot mistake an
+        ## "ERROR:" line of the report for a crash. Statements are separated by ';'
+        ## because Galaxy joins consecutive command template lines with spaces.
+        exit_code=0;
         fastq_info
         #if $input_option.input_type == 'single'
-            $input_option.fastq_1
+            '$input_option.fastq_1'
         #else
-            $input_option.fastq_1
-            $input_option.fastq_2
+            '$input_option.fastq_1'
+            '$input_option.fastq_2'
         #end if
         $r
         $q
-        2>&1 | tee ./output.txt
-    ]]>    </command>
+        > ./output.txt 2>&1 || exit_code=\$?;
+        case "\$exit_code" in 0|1|3) ;; *) cat ./output.txt >&2; exit "\$exit_code" ;; esac
+    ]]></command>
     <inputs>
         <conditional name="input_option">
             <param name="input_type" type="select" label="Single reads or paired reads" help="Select between paired and single end data">
@@ -24,19 +41,18 @@
                 <option value="paired">Paired</option>
             </param>
             <when value="single">
-                <param name="fastq_1"  type="data" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" label="FASTQ file" help="Input FASTQ file"/>
+                <param name="fastq_1" type="data" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" label="FASTQ file" help="Input FASTQ file"/>
             </when>
             <when value="paired">
                 <param name="fastq_1" type="data" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" label="FASTQ file: forward reads"/>
                 <param name="fastq_2" type="data" format="fastq,fastqsanger,fastq.gz,fastqsanger.gz" label="FASTQ file: reverse reads"/>
             </when>
         </conditional>
-        <param argument="-q" type="boolean" truevalue="" falsevalue="-q" checked="True" label="Determine quality scoring" help="If this option is disabled, it won't fail if the quality encoding cannot be determined" />
-        <param argument="-r" type="boolean" truevalue="-r" falsevalue="" checked="False" label="Skip check for duplicated readnames" help="By using this option no checks are made to determine if the read names/identifiers are unique (it will run faster and use less memory)" />
+        <param argument="-q" type="boolean" truevalue="" falsevalue="-q" checked="True" label="Determine quality scoring" help="If this option is disabled, an undetermined quality encoding is reported as NA"/>
+        <param argument="-r" type="boolean" truevalue="-r" falsevalue="" checked="False" label="Skip check for duplicated readnames" help="By using this option no checks are made to determine if the read names/identifiers are unique (it will run faster and use less memory)"/>
     </inputs>
     <outputs>
-        <data name="output" format="txt" from_work_dir="./output.txt" label="${tool.name} on ${on_string}: Validation result">
-        </data>
+        <data name="output" format="txt" from_work_dir="output.txt" label="${tool.name} on ${on_string}: Validation result"/>
     </outputs>
     <tests>
         <test expect_num_outputs="1">
@@ -44,10 +60,12 @@
                 <param name="input_type" value="single"/>
                 <param name="fastq_1" value="R1.fastq"/>
             </conditional>
-            <output name="output" file="output.txt" ftype="txt" lines_diff="2">
+            <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="362" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 9"/>
+                    <has_line line="Quality encoding: 33"/>
+                    <has_line line="Read length: 25 25 25"/>
                 </assert_contents>
             </output>
         </test>
@@ -55,12 +73,13 @@
         <test expect_num_outputs="1">
             <conditional name="input_option">
                 <param name="input_type" value="single"/>
-                <param name="fastq_1" value="R1.fastq.gz"/>
+                <param name="fastq_1" value="R1.fastq.gz" ftype="fastqsanger.gz"/>
             </conditional>
             <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="368" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 1000"/>
+                    <has_line line="Quality encoding: 33"/>
                 </assert_contents>
             </output>
         </test>
@@ -71,10 +90,11 @@
                 <param name="fastq_1" value="R1.fastq"/>
                 <param name="fastq_2" value="R2.fastq"/>
             </conditional>
-            <output name="output">
+            <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="544" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 9"/>
+                    <has_line line="Quality encoding: 33"/>
                 </assert_contents>
             </output>
         </test>
@@ -83,25 +103,25 @@
             <param name="q" value="False"/>
             <conditional name="input_option">
                 <param name="input_type" value="single"/>
-                <param name="fastq_1" value="R1.fastq"/>
+                <param name="fastq_1" value="unknown_quality.fastq" ftype="fastq"/>
             </conditional>
-            <output name="output">
+            <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="362" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_line line="Number of reads: 1"/>
+                    <has_line line="Quality encoding: NA"/>
                 </assert_contents>
             </output>
         </test>
-        <!-- Test duplicated id -->
+        <!-- Duplicated read names: reported in the dataset, job stays usable -->
         <test expect_num_outputs="1">
             <conditional name="input_option">
                 <param name="input_type" value="single"/>
                 <param name="fastq_1" value="R1_duplicated.fastq"/>
             </conditional>
-            <output name="output">
+            <output name="output" ftype="txt">
                 <assert_contents>
                     <has_text text="line 36: duplicated sequence SRR1294492.1207358/1"/>
-                    <has_size value="311" delta="100"/>
                 </assert_contents>
             </output>
         </test>
@@ -112,10 +132,11 @@
                 <param name="input_type" value="single"/>
                 <param name="fastq_1" value="R1_duplicated.fastq"/>
             </conditional>
-            <output name="output">
+            <output name="output" ftype="txt">
                 <assert_contents>
-                    <has_text text="OK"/>
-                    <has_size value="193" delta="100"/>
+                    <has_line line="OK"/>
+                    <has_text text="Skipping check for duplicated read names"/>
+                    <has_line line="Number of reads: 9"/>
                 </assert_contents>
             </output>
         </test>
@@ -126,10 +147,9 @@
                 <param name="fastq_1" value="R1_truncated.fastq"/>
                 <param name="fastq_2" value="R2.fastq"/>
             </conditional>
-            <output name="output">
+            <output name="output" ftype="txt">
                 <assert_contents>
                     <has_text text="line 32: file truncated"/>
-                    <has_size value="285" delta="100"/>
                 </assert_contents>
             </output>
         </test>
@@ -140,21 +160,54 @@
                 <param name="fastq_1" value="R1_truncated_entry.fastq"/>
                 <param name="fastq_2" value="R2.fastq"/>
             </conditional>
-            <output name="output">
+            <output name="output" ftype="txt">
                 <assert_contents>
                     <has_text text="unpaired read - SRR1294492.2047212/"/>
-                    <has_size value="557" delta="100"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Unknown quality encoding is an error unless explicitly skipped -->
+        <test expect_num_outputs="1">
+            <conditional name="input_option">
+                <param name="input_type" value="single"/>
+                <param name="fastq_1" value="unknown_quality.fastq" ftype="fastq"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="Unable to determine quality encoding - unknown range [32,126]"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Paired inputs can mix compressed and uncompressed files. -->
+        <test expect_num_outputs="1">
+            <conditional name="input_option">
+                <param name="input_type" value="paired"/>
+                <param name="fastq_1" value="R1.fastq"/>
+                <param name="fastq_2" value="R2.fastq.gz" ftype="fastqsanger.gz"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_line line="Number of reads: 9"/>
+                    <has_line line="Quality encoding: 33"/>
+                    <has_line line="OK"/>
                 </assert_contents>
             </output>
         </test>
     </tests>
-    <help><![CDATA[
-.. class:: infomark
-
+    <help format="markdown"><![CDATA[
 **Purpose**
 
-FASTQ info is part of `FASTQ utils <https://github.com/nunofonseca/fastq_utils>`_, a set of Linux utilities to validate and manipulate fastq files. 
+FASTQ info is part of [FASTQ utils](https://github.com/nunofonseca/fastq_utils), a set of Linux utilities to validate and manipulate fastq files.
 
-    ]]>    </help>
+The tool checks that the input FASTQ file(s) are well formed and reports the number of reads, the quality encoding and the minimum, maximum and median read lengths. Both uncompressed and gzip-compressed FASTQ files are supported.
+
+-----
+
+**Reading the result**
+
+A file that passes every check produces a report ending in **OK**. If a problem is found - a truncated file, a duplicated read name, an unpaired read in paired-end data, or a quality encoding that cannot be determined - the offending line and the reason are written to the report instead of **OK**.
+
+The two options disable individual checks: skipping the duplicate read-name check, or accepting a quality encoding that cannot be determined (reported as `NA`). A file that only violates a disabled check is reported as valid.
+    ]]></help>
     <expand macro="citations"/>
 </tool>
