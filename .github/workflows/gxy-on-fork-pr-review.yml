@@ -8,10 +8,10 @@
 # or any step that runs its content.
 #
 # A maintainer requests a review by applying the `review` (or
-# `tool-bot:review`) label; nothing runs on PR open or new pushes. Applying
-# a label needs write access, so the requester is always a maintainer — and
-# their login is passed to the bot as --actor for the allowed_maintainers
-# check.
+# `tool-bot:review`) label; nothing runs on PR open or new pushes. Triage
+# users can apply labels too, so the job first checks that the labeler has
+# write access; their login is also passed to the bot as --actor for the
+# allowed_maintainers check.
 #
 # Optional extra gate: create a `fork-review` environment with required
 # reviewers (Settings → Environments). Each run then waits for an approval
@@ -41,13 +41,21 @@ permissions: {}
 jobs:
   review:
     name: Review fork PR
-    # Fork PRs only, and only the review labels count.
+    # Fork PRs only, and only the review labels count. pull_request_target
+    # runs the workflow from the PR's base branch, so only PRs against the
+    # default branch: an older branch could hold an older copy of this file.
     if: |
       github.event.pull_request.head.repo.full_name != github.repository &&
+      github.event.pull_request.base.ref == github.event.repository.default_branch &&
       (github.event.label.name == 'review' ||
        github.event.label.name == 'tool-bot:review')
     runs-on: ubuntu-latest
     environment: fork-review
+    # A second label (or the other review label) waits instead of reviewing
+    # the same PR in parallel.
+    concurrency:
+      group: fork-review-pr-${{ github.event.pull_request.number }}
+      cancel-in-progress: false
     permissions:
       contents: read
       pull-requests: read
@@ -59,7 +67,18 @@ jobs:
       # The commit the reviewer approved — never the branch, which can move.
       HEAD_SHA: ${{ github.event.pull_request.head.sha }}
     steps:
-      # Default branch only: config and workflow come from here, not the PR.
+      - name: Check the labeler has write access
+        env:
+          SENDER: ${{ github.event.sender.login }}
+        run: |
+          # "permission" is admin, write (also for maintain), read (also for triage) or none.
+          PERM=$(gh api "repos/$GITHUB_REPOSITORY/collaborators/$SENDER/permission" --jq .permission)
+          if [ "$PERM" != "admin" ] && [ "$PERM" != "write" ]; then
+            echo "::error::$SENDER has $PERM access; only users with write access can request a fork review"
+            exit 1
+          fi
+      # The default branch (see the job's if): config and workflow come from
+      # here, not the PR.
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
@@ -143,8 +162,7 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
     steps:
       # Left on, the label would block a re-review (that needs a new label
-      # event) and make on-pr-review.yml start and fail its fork check on
-      # every later label.
+      # event).
       - name: Remove review label
         run: |
           gh pr edit $PR_NUMBER --remove-label "tool-bot:review" || true
