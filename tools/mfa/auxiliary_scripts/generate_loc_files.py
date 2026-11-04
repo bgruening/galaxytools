@@ -3,7 +3,6 @@
 import argparse
 from pathlib import Path
 
-
 MODEL_EXTENSIONS = {
     "acoustic": ".zip",
     "dictionary": ".dict",
