@@ -3,6 +3,7 @@ import os
 import shutil
 import struct
 import subprocess
+import tempfile
 import wave
 import zipfile
 
@@ -13,8 +14,7 @@ DURATION = 0.5
 
 
 def ensure_dir(directory):
-    if not os.path.exists(directory):
-        os.makedirs(directory)
+    os.makedirs(directory, exist_ok=True)
 
 
 def create_sine_wave(filename, duration=DURATION, freq=440):
@@ -48,10 +48,6 @@ def train_dummy_model(corpus_dir, dict_path, output_model_path):
     """Runs MFA Train to create a REAL, VALID acoustic model for testing."""
     print("Training dummy acoustic model... (This may take a few seconds)")
 
-    # We use a temporary directory for output
-    temp_out = os.path.join(TEST_DATA_DIR, "temp_train_output")
-    ensure_dir(temp_out)
-
     # We need a G2P model or a dictionary with phones.
     # Our test_dict.txt has phones, so we can train directly.
     cmd = [
@@ -80,12 +76,16 @@ def train_dummy_model(corpus_dir, dict_path, output_model_path):
 
 
 def main():
-    if os.path.exists(TEST_DATA_DIR):
-        shutil.rmtree(TEST_DATA_DIR)
     ensure_dir(TEST_DATA_DIR)
+    with tempfile.TemporaryDirectory(prefix="mfa-test-data-") as work_dir:
+        generate_test_data(work_dir)
+    print("Cleanup complete. Valid test data generated.")
+
+
+def generate_test_data(work_dir):
 
     # 1. Create 'test_corpus'
-    base_dir = os.path.join(TEST_DATA_DIR, "temp_corpus")
+    base_dir = os.path.join(work_dir, "temp_corpus")
     ensure_dir(base_dir)
     # 3 speakers, 2 utterances (Small enough to be fast, big enough to train)
     for spk in range(1, 4):
@@ -123,7 +123,7 @@ def main():
         f.write("h: h\nw: w\n")
 
     # Aligned Corpus (TextGrid) - Fixed Header
-    aligned_dir = os.path.join(TEST_DATA_DIR, "temp_aligned")
+    aligned_dir = os.path.join(work_dir, "temp_aligned")
     ensure_dir(os.path.join(aligned_dir, "s1"))
     create_sine_wave(os.path.join(aligned_dir, "s1", "1.wav"))
     tg_content = """File type = "ooTextFile"
@@ -148,7 +148,6 @@ item []:
     with open(os.path.join(aligned_dir, "s1", "1.TextGrid"), "w") as f:
         f.write(tg_content)
     create_zip("test_corpus_aligned.zip", aligned_dir)
-    shutil.rmtree(aligned_dir)
 
     # Dummy IPA Model (for Remap)
     # We can just copy the valid acoustic model we trained, as it uses IPA-like phones
@@ -156,7 +155,7 @@ item []:
         shutil.copy(dummy_model_path, os.path.join(TEST_DATA_DIR, "dummy_ipa_model.zip"))
     else:
         # Fallback if training failed
-        ipa_model_dir = "temp_ipa_model"
+        ipa_model_dir = os.path.join(work_dir, "temp_ipa_model")
         ensure_dir(ipa_model_dir)
         with open(os.path.join(ipa_model_dir, "meta.json"), "w") as f:
             f.write('{"version": "3.0.0", "phones": ["h", "w"], "features": {"type": "mfcc"}}')
@@ -165,17 +164,13 @@ item []:
         with open(os.path.join(ipa_model_dir, "tree"), "wb") as f:
             f.write(b"DUMMY")
         create_zip("dummy_ipa_model.zip", ipa_model_dir)
-        shutil.rmtree(ipa_model_dir)
 
     # LM
-    lm_dir = os.path.join(TEST_DATA_DIR, "temp_lm")
+    lm_dir = os.path.join(work_dir, "temp_lm")
     ensure_dir(lm_dir)
     with open(os.path.join(lm_dir, "test.arpa"), "w") as f:
         f.write("\\data\\\nngram 1=3\n\\1-grams:\n-1.0 hello\n-1.0 world\n-1.0 </s>\n\\end\\")
     create_zip("dummy_language_model.zip", lm_dir)
-    shutil.rmtree(lm_dir)
-
-    print("Cleanup complete. Valid test data generated.")
 
 
 if __name__ == "__main__":

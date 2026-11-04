@@ -1,8 +1,8 @@
 import math
 import os
 import random
-import tempfile
 import struct
+import tempfile
 import wave
 import zipfile
 
@@ -159,7 +159,6 @@ item []:
     with open(os.path.join(lm_dir, "test.arpa"), "w") as f:
         f.write("\\data\\\nngram 1=3\n\\1-grams:\n-1.0 hello\n-1.0 world\n-1.0 </s>\n\\end\\")
     create_zip("dummy_language_model.zip", lm_dir)
-
 
 
 if __name__ == "__main__":
