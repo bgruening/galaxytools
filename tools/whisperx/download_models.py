@@ -1,7 +1,14 @@
+"""Download the models of the Galaxy WhisperX tool into one directory.
+
+The directory works for WhisperX 3.4.2 and 3.8.x and is the `path` of the
+whisperx rows in the huggingface data table.
+"""
+
 import argparse
 import os
 import sys
 import urllib.request
+import zipfile
 from pathlib import Path
 
 import huggingface_hub
@@ -25,6 +32,7 @@ DEFAULT_ALIGN_MODELS_HF = {
     "ru": "jonatasgrosman/wav2vec2-large-xlsr-53-russian",
     "pl": "jonatasgrosman/wav2vec2-large-xlsr-53-polish",
     "hu": "jonatasgrosman/wav2vec2-large-xlsr-53-hungarian",
+    "id": "cahya/wav2vec2-large-xlsr-indonesian",
     "fi": "jonatasgrosman/wav2vec2-large-xlsr-53-finnish",
     "fa": "jonatasgrosman/wav2vec2-large-xlsr-53-persian",
     "el": "jonatasgrosman/wav2vec2-large-xlsr-53-greek",
@@ -75,10 +83,16 @@ TORCHAUDIO_BASE_URL = "https://download.pytorch.org/torchaudio/models/"
 
 
 def download_torchaudio_models(model_dir):
-    checkpoints_dir = Path(model_dir) / "hub" / "checkpoints"
+    # 3.4.2 reads $TORCH_HOME/hub/checkpoints/, 3.8.x reads --model_dir (hub/)
+    hub_dir = Path(model_dir) / "hub"
+    checkpoints_dir = hub_dir / "checkpoints"
     checkpoints_dir.mkdir(parents=True, exist_ok=True)
     for pipeline_name, filename in TORCHAUDIO_MODEL_FILES.items():
         dest = checkpoints_dir / filename
+        link = hub_dir / filename
+        if not link.exists():
+            link.unlink(missing_ok=True)
+            link.symlink_to(Path("checkpoints") / filename)
         if dest.exists():
             print(f"Already exists, skipping: {filename}")
             continue
@@ -129,7 +143,8 @@ def download_asr_models(model_dir, token):
 
 
 PYANNOTE_REPOS = [
-    "pyannote/speaker-diarization-3.1",
+    "pyannote/speaker-diarization-community-1",  # 3.8.x
+    "pyannote/speaker-diarization-3.1",  # 3.4.2, with the next two
     "pyannote/segmentation-3.0",
     "pyannote/wespeaker-voxceleb-resnet34-LM",
 ]
@@ -145,6 +160,30 @@ def download_pyannote_model(model_dir, token):
         except Exception as e:
             print(f"Failed to download {repo_id}: {e}")
             FAILED.append(repo_id)
+
+
+PUNKT_TAB_URL = "https://raw.githubusercontent.com/nltk/nltk_data/gh-pages/packages/tokenizers/punkt_tab.zip"
+
+
+def download_punkt_tab(model_dir):
+    # 3.8.x splits sentences with NLTK punkt_tab (NLTK_DATA=<model_dir>/nltk_data)
+    tokenizers_dir = Path(model_dir) / "nltk_data" / "tokenizers"
+    if (tokenizers_dir / "punkt_tab").is_dir():
+        print("Already exists, skipping: punkt_tab")
+        return
+    tokenizers_dir.mkdir(parents=True, exist_ok=True)
+    archive = tokenizers_dir / "punkt_tab.zip"
+    print(f"Downloading punkt_tab from {PUNKT_TAB_URL} ...")
+    try:
+        urllib.request.urlretrieve(PUNKT_TAB_URL, archive)
+        with zipfile.ZipFile(archive) as z:
+            z.extractall(tokenizers_dir)
+        print("Downloaded: punkt_tab")
+    except Exception as e:
+        print(f"Failed to download punkt_tab: {e}")
+        FAILED.append("punkt_tab")
+    finally:
+        archive.unlink(missing_ok=True)
 
 
 def main():
@@ -170,6 +209,7 @@ def main():
     download_hf_alignment_models(model_dir, token)
     download_asr_models(model_dir, token)
     download_pyannote_model(model_dir, token)
+    download_punkt_tab(model_dir)
 
     if FAILED:
         # remove the loc rows for these models, or fix the cause and rerun
