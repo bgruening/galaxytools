@@ -1,0 +1,50 @@
+A suite of 14 tools for the **[Montreal Forced Aligner (MFA)](https://montreal-forced-aligner.readthedocs.io/en/latest/)**, a state-of-the-art command-line utility for aligning speech and text using Kaldi.
+
+### Tools Included
+This suite wraps the core MFA functionality, split into logical categories:
+
+* **Alignment:** `mfa_align`
+* **Validation:** `mfa_validate`, `mfa_validate_dictionary`, `mfa_find_oovs`
+* **Preparation Utilities:** `mfa_g2p`, `mfa_tokenize`, `mfa_remap_alignments`, `mfa_merge`
+  - `mfa_remap_dictionary` is excluded as I could not perform a functional test using a small sample locally.
+* **Training & Adaptation:** `mfa_train`, `mfa_adapt`, `mfa_train_dictionary`, `mfa_train_g2p`, `mfa_train_lm`, `mfa_train_tokenizer`
+  - `mfa_train_ivector` is excluded for now as I could not wrap it properly
+* **Excluded:** `mfa_transcribe`, `mfa_transcribe_whisper` (Whisper is available as a separate Galaxy tool), `mfa_diarize`
+
+### Technical Implementation & Scope
+
+* **Data Tables:** This implementation uses standard 4-column Data Tables (`value`, `dbkey`, `name`, `path`) to manage Pretrained Models (Acoustic, Dictionary, G2P, LM, Tokenizer). *As this is my first implementation of Galaxy Data Tables, I would appreciate a specific review of the `.loc` file generation logic and table configuration.*
+* **Scope:** This suite covers the most important commands. Some subcommands were omitted either because they strictly require GPU resources (not available on all standard Galaxy nodes) or due to complexity in generating valid unit test data for edge cases.
+* **Domain Context:** Please note that speech processing is different from my background. While the tools pass technical validation and linting, feedback from a domain expert regarding parameter defaults and descriptions would be highly valued. However, this is only possible if we have it on usegalaxy.eu for our specific users to test them.
+
+### Instructions for Reviewers & Admins
+
+To test this tool locally or deploy it, you **should** set up the reference data first. The tools rely on pre-downloaded models to avoid massive downloads during job execution.
+
+**1. Setup Directory & Download Models**
+Edit and run `download_mfa_models.sh`. You likely need to adjust the target directory variable to match your server's storage:
+
+In download_mfa_models.sh
+TARGET_DIR="/data/db/mfa"  # <--- Change this to your preferred path
+Run: `bash download_mfa_models.sh [GITHUB_TOKEN]`
+
+**2. Generate Data Tables**
+From the suite directory, run:
+
+```bash
+python3 auxiliary_scripts/generate_loc_files.py --models-root /data/db/mfa/pretrained_models
+```
+
+The model root must match `TARGET_DIR/pretrained_models` from step 1.
+This writes the five four-column `.loc` files into the suite's `tool-data`
+directory, replacing existing files. Use `--output-dir /path/to/tool-data`
+to select a different destination. Model types with no downloaded files get
+an empty table with a header. This command does not generate or modify test data.
+
+**3. Generate Test Data To run planemo test, generate the lightweight dummy datasets (sine waves and synthetic text).**
+Run: python3 generate_test_data.py
+
+### Testing Strategy
+
+- Synthetic Data: I created a Python script (generate_test_data.py) included in the repo to generate valid dummy data without copyright issues.
+- Optimization: Tests use small dictionaries (4 words) and robust noise-injected audio to ensure MFA's mathematical validation (LDA/MLLT) passes quickly without requiring massive datasets.
