@@ -46,6 +46,9 @@ def main():
         help="Hugging Face token for the gated pyannote model (default: $HF_TOKEN)",
     )
     args = parser.parse_args()
+    if not args.hf_token:
+        # checked first, the gated diarization model is downloaded last
+        parser.error("set HF_TOKEN or --hf-token (needed for the pyannote model)")
 
     root = Path(args.model_dir).resolve()
     hub = root / "hub"  # the tool passes this as --model_dir
@@ -58,6 +61,8 @@ def main():
     # otherwise transformers also fetches a safetensors copy of .bin-only
     # models from the Hub's conversion PR, which offline loading never uses
     os.environ["DISABLE_SAFETENSORS_CONVERSION"] = "true"
+    # pyannote 4 sends usage metrics to otel.pyannote.ai unless disabled
+    os.environ["PYANNOTE_METRICS_ENABLED"] = "false"
 
     import nltk
     from whisperx.alignment import (
