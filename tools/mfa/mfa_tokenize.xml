@@ -9,14 +9,7 @@
     <command detect_errors="aggressive"><![CDATA[
         @PREPARE_ENV@
         @PREPARE_CORPUS@
-
-        ## 2. Prepare Tokenizer
-        #if $tokenizer_type.source == 'history':
-            cp '$tokenizer_type.tokenizer_file' input_tokenizer.zip &&
-            #set $tok_arg = 'input_tokenizer.zip'
-        #else:
-            #set $tok_arg = $tokenizer_type.builtin_tokenizer.fields.path
-        #end if
+        @PREPARE_TOKENIZER@
 
         ## 3. Run Tokenize
         ## Syntax: mfa tokenize [OPTIONS] CORPUS_DIRECTORY TOKENIZER_PATH OUTPUT_DIRECTORY
@@ -27,40 +20,15 @@
             --job_name 'mfa_tokenize_job'
             --num_jobs "\${GALAXY_SLOTS:-1}"
 
-        &&
-        mkdir -p output_dir &&
-        (
-            cd corpus_dir &&
-            find -L . -type f
-                \( -iname '*.wav' -o -iname '*.flac' -o -iname '*.mp3'
-                   -o -iname '*.ogg' -o -iname '*.aiff' -o -iname '*.aif'
-                   -o -iname '*.m4a' \)
-                -exec cp -L --parents -t ../output_dir/ {} +
-        )
+        ## 4. Collect the audio files next to the tokenized transcripts so that
+        ## both end up in the output archive (see macro for details).
+        @COLLECT_AUDIO@
 
         @ZIP_OUTPUT@
     ]]></command>
     <inputs>
         <expand macro="input_corpus"/>
-        <conditional name="tokenizer_type">
-            <param name="source" type="select" label="Tokenizer Source">
-                <option value="builtin" selected="true">Use a built-in MFA Tokenizer</option>
-                <option value="history">Upload from History</option>
-            </param>
-            <when value="builtin">
-                <param name="builtin_tokenizer" type="select" label="Select Tokenizer">
-                    <options from_data_table="mfa_tokenizer">
-                        <column name="value" index="0"/>
-                        <column name="dbkey" index="1"/>
-                        <column name="name" index="2"/>
-                        <column name="path" index="3"/>
-                    </options>
-                </param>
-            </when>
-            <when value="history">
-                <param name="tokenizer_file" type="data" format="mfa_tokenizer_model.zip" label="Tokenizer Model File"/>
-            </when>
-        </conditional>
+        <expand macro="input_tokenizer"/>
     </inputs>
     <outputs>
         <data name="output_archive" format="mfa_corpus.zip" label="${tool.name} on ${on_string}: Tokenized Corpus"/>
@@ -79,7 +47,7 @@
                 <has_text text="Found 1 speaker"/>
                 <has_text text="Done!"/>
             </assert_stderr>
-            <output name="output_archive">
+            <output name="output_archive" ftype="mfa_corpus.zip">
                 <assert_contents>
                     <has_archive_member path="temp_raw/jp_speaker/jp1\.lab"/>
                     <has_archive_member path="temp_raw/jp_speaker/jp1\.wav"/>
@@ -87,7 +55,7 @@
             </output>
         </test>
     </tests>
-    <help><![CDATA[
+    <help format="markdown"><![CDATA[
 **Montreal Forced Aligner: Tokenize**
 
 This tool inserts spaces between words in languages that don't natively use them (like Chinese, Japanese, or Thai).

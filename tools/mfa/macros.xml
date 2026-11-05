@@ -1,5 +1,5 @@
 <macros>
-    <token name="@TOOL_VERSION@">3.4.2</token>
+    <token name="@TOOL_VERSION@">3.4.3</token>
     <token name="@VERSION_SUFFIX@">0</token>
     <token name="@PROFILE@">25.0</token>
     <token name="@PREPARE_ENV@"><![CDATA[
@@ -12,7 +12,6 @@
         ## output goes to stderr; discard stdout to keep the job log clean.
         exec 1>/dev/null &&
     ]]></token>
-
     <token name="@PREPARE_CORPUS@"><![CDATA[
         mkdir -p corpus_dir &&
         #if $corpus_input.source == 'archive':
@@ -30,7 +29,6 @@
             ln -s '$corpus_input.transcript_file' 'corpus_dir/single_speaker/utterance.$single_trans_ext' &&
         #end if
     ]]></token>
-    
     <token name="@PREPARE_DICTIONARY@"><![CDATA[
         #if $dictionary_type.source == 'history':
             ln -s '$dictionary_type.dictionary_file' input_dictionary.txt &&
@@ -63,11 +61,28 @@
             #set $lm_arg = $language_model_type.builtin_lm.fields.path
         #end if
     ]]></token>
+    <token name="@PREPARE_TOKENIZER@"><![CDATA[
+        #if $tokenizer_type.source == 'history':
+            cp '$tokenizer_type.tokenizer_file' input_tokenizer.zip &&
+            #set $tok_arg = 'input_tokenizer.zip'
+        #else:
+            #set $tok_arg = $tokenizer_type.builtin_tokenizer.fields.path
+        #end if
+    ]]></token>
     <token name="@ZIP_OUTPUT@"><![CDATA[
         &&
         cd output_dir &&
         zip -r -q output.zip . &&
         mv output.zip '$output_archive'
+    ]]></token>
+    <token name="@COLLECT_AUDIO@"><![CDATA[
+        &&
+        ## Copy the original audio files next to the tokenized transcripts so
+        ## that both end up in the output archive.  This is a copy of *input*
+        ## audio, not of a tool output: corpus_dir may contain symlinks to
+        ## Galaxy datasets, so -L is required to dereference them.
+        mkdir -p output_dir &&
+        ( cd corpus_dir && find -L . -type f \( -iname '*.wav' -o -iname '*.flac' -o -iname '*.mp3' -o -iname '*.ogg' -o -iname '*.aiff' -o -iname '*.aif' -o -iname '*.m4a' \) -exec cp -L --parents -t ../output_dir/ {} + )
     ]]></token>
     <xml name="input_corpus" token_archive_formats="mfa_corpus.zip">
         <conditional name="corpus_input">
@@ -172,13 +187,34 @@
             </when>
         </conditional>
     </xml>
+    <xml name="input_tokenizer">
+        <conditional name="tokenizer_type">
+            <param name="source" type="select" label="Tokenizer Source">
+                <option value="builtin" selected="true">Use a built-in MFA Tokenizer</option>
+                <option value="history">Upload from History</option>
+            </param>
+            <when value="builtin">
+                <param name="builtin_tokenizer" type="select" label="Select Tokenizer">
+                    <options from_data_table="mfa_tokenizer">
+                        <column name="value" index="0"/>
+                        <column name="dbkey" index="1"/>
+                        <column name="name" index="2"/>
+                        <column name="path" index="3"/>
+                    </options>
+                </param>
+            </when>
+            <when value="history">
+                <param name="tokenizer_file" type="data" format="mfa_tokenizer_model.zip" label="Tokenizer Model File"/>
+            </when>
+        </conditional>
+    </xml>
     <xml name="common_inputs">
         <param argument="--speaker_characters" type="integer" value="0" min="0" label="Speaker Characters" help="Number of characters at the start of filenames to use as speaker ID (0 = use directory structure)."/>
     </xml>
     <xml name="requirements">
         <requirements>
             <requirement type="package" version="@TOOL_VERSION@">montreal-forced-aligner</requirement>
-            <requirement type="package" version="3.13">python</requirement>
+            <requirement type="package" version="3.15.2">python</requirement>
             <requirement type="package" version="3.0">zip</requirement>
             <requirement type="package" version="6.0">unzip</requirement>
         </requirements>
