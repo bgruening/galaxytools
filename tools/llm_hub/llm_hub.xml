@@ -2,7 +2,7 @@
     <description>Call any LLM</description>
     <macros>
         <import>macros.xml</import>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
         <token name="@PROFILE@">24.0</token>
     </macros>
     <requirements>
@@ -16,7 +16,7 @@
 #import re
 
 #set LINK_LIST = []
-#for $input_type, $param in [('text', 'text_context'), ('image', 'image_context')]
+#for $input_type, $param in [('text', 'text_context'), ('image', 'image_context'), ('audio', 'audio_context')]
     #set context = $getVar($param, None)
     #if $model_type in [$input_type, 'multimodal'] and $context
         #for $input in ($context if isinstance($context, list) else [$context])
@@ -29,10 +29,17 @@
 #end for
 #set context_files = json.dumps($LINK_LIST)
 
-#if $model_type == 'image'
+#if $model_type in ['image', 'audio']
     #set prompt = ''
 #end if
+#set language = $model_condition.language if $model_type == 'audio' else ''
 
+## For the tool tests only: models with provider "galaxy-test" use a fake proxy started in the job
+#if str($model.fields.provider) == 'galaxy-test'
+    { python '$__tool_directory__/test-data/fake_transcription.py' fake_litellm.yaml & } && trap "kill \$! 2>/dev/null" EXIT &&
+    for i in \$(seq 50); do [ -f fake_litellm.yaml ] && break; sleep 0.2; done &&
+    export LITELLM_CONFIG_FILE="\$PWD/fake_litellm.yaml" &&
+#end if
 python '$__tool_directory__/llm_hub.py'
 '$context_files'
 '$prompt'
@@ -42,13 +49,15 @@ python '$__tool_directory__/llm_hub.py'
 '$model.fields.provider'
 '$__user_id__'
 '$__galaxy_url__'
+'$language'
     ]]></command>
     <inputs>
         <conditional name="model_condition">
-            <param name="model_type" type="select" label="Choose the model" help="Multimodal models are capable to have image and text as input.">
+            <param name="model_type" type="select" label="Choose the model" help="Multimodal models are capable to have image and text as input. Audio models transcribe a recording to text.">
                 <option value="multimodal" selected="true">Multimodal models</option>
                 <option value="text">Text models</option>
                 <option value="image">Image models</option>
+                <option value="audio">Audio models (speech to text)</option>
             </param>
             <when value="multimodal">
                 <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
@@ -84,13 +93,29 @@ python '$__tool_directory__/llm_hub.py'
                 </param>
                 <param name="image_context" type="data" optional="false" format="jpg,png,gif,tiff,bmp" label="Image Context"/>
             </when>
+            <when value="audio">
+                <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
+                    <options from_data_table="genai_models">
+                        <filter type="static_value" column="3" value="audio"/>
+                    </options>
+                    <validator message="No model annotation is available for LLM Hub" type="no_options"/>
+                </param>
+                <param name="audio_context" type="data" optional="false" format="wav,mp3,ogg,flac,m4a" label="Audio" help="The recording to transcribe"/>
+                <param name="language" type="text" optional="true" label="Language" help="The spoken language as a two-letter ISO 639-1 code, e.g. en or de. Leave empty to detect it.">
+                    <validator type="regex" message="Use a two-letter language code, e.g. en">^([a-z]{2})?$</validator>
+                </param>
+            </when>
         </conditional>
         <section name="advanced" title="Advanced Options" expanded="false">
             <param name="temperature" type="float" optional="true" min="0.0" max="2.0" label="Temperature" help="Controls randomness in the output. Lower values make output more focused and deterministic, while higher values make it more creative and random. If not set, the model's default temperature will be used."/>
         </section>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} (${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" label="${tool.name} (${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md">
+            <change_format>
+                <when input="model_condition.model_type" value="audio" format="txt"/>
+            </change_format>
+        </data>
     </outputs>
     <tests>
         <test expect_failure="true" expect_exit_code="1">
@@ -106,6 +131,32 @@ python '$__tool_directory__/llm_hub.py'
             <assert_stdout>
                 <has_text text="LiteLLM API key is not configured!"/>
             </assert_stdout>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="language" value="de"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="_silence.wav (32044 bytes, language de)."/>
+                    <has_line_matching expression="^Transcript of .*"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_text text="language detected)."/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
     <help><![CDATA[
@@ -134,11 +185,12 @@ Available models depend on what's configured in the LiteLLM proxy by your Galaxy
 
    - **Text models**: Upload multiple text files (TXT, HTML, JSON) as context
    - **Image models**: Upload a single image file (JPG, PNG, GIF, TIFF, BMP) as context  
+   - **Audio models (speech to text)**: Upload one recording (WAV, MP3, OGG, FLAC, M4A). The tool returns its transcript as a text file. Optionally give the spoken language as a two-letter code (e.g. en, de); otherwise the model detects it. Which languages work depends on the model.
    - **Multimodal models**: Upload multiple text files and/or a single image file as context
 
    Vision-capable (multimodal and image) models can process image files, but only one image file is supported per request.
 
-3. **Provide a Prompt**: Specify the task or question you want the LLM to address.
+3. **Provide a Prompt** (not for image and audio models): Specify the task or question you want the LLM to address.
 The more specific the prompt, the more tailored the response will be.
 
 **Advanced Options**
