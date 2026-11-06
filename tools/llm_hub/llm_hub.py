@@ -28,6 +28,8 @@ if galaxy_user_id == "Anonymous":
     galaxy_user_id = ""
 # Galaxy instance URL ($__galaxy_url__), used to namespace the user id below.
 galaxy_url = sys.argv[8] if len(sys.argv) > 8 else ""
+# Spoken language of the audio for speech to text (ISO 639-1), empty to detect it.
+language = sys.argv[9] if len(sys.argv) > 9 else ""
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -111,6 +113,7 @@ valid_model_types = {
     "text": {"text"},
     "image": {"image"},
     "multimodal": {"text", "image"},
+    "audio": {"audio"},
 }
 
 if model_type not in valid_model_types:
@@ -119,10 +122,13 @@ if model_type not in valid_model_types:
     )
 
 contents = []
+audio_files = []
 for file_path, file_type in context_files:
     if file_type not in valid_model_types[model_type]:
         sys.exit(f"File type '{file_type}' not allowed for model_type '{model_type}'.")
-    if file_type == "image":
+    if file_type == "audio":
+        audio_files.append(file_path)
+    elif file_type == "image":
         contents.append(
             {
                 "type": "image_url",
@@ -140,7 +146,9 @@ for file_path, file_type in context_files:
 if question and "text" in valid_model_types[model_type]:
     contents.append({"type": "text", "text": question})
 
-if not contents:
+if model_type == "audio" and len(audio_files) != 1:
+    sys.exit("Speech to text takes exactly one audio file.")
+if not contents and not audio_files:
     sys.exit("No input content provided.")
 
 messages = [{"role": "user", "content": contents}]
@@ -171,6 +179,35 @@ timeout_attempts = 0
 # model/proxy default instead; truncation is surfaced explicitly below.
 
 
+def user_id():
+    """The Galaxy user, hashed, for request attribution on the proxy.
+
+    The id is namespaced by the Galaxy instance URL and hashed: the URL keeps
+    ids unique when several Galaxy instances share one proxy (e.g.
+    usegalaxy.eu), and hashing means no instance-identifying or personal data
+    leaves for the provider. Anonymous users (no id) fall back to a
+    per-instance shared "anonymous" bucket.
+    """
+    raw_user = galaxy_user_id or "anonymous"
+    return hashlib.sha256(f"{galaxy_url}|{raw_user}".encode()).hexdigest()
+
+
+def transcribe():
+    """Speech to text through the proxy's /audio/transcriptions route.
+
+    Returns (text, finish_reason) like stream_completion. The file is sent
+    under its Galaxy link name, whose extension tells the server the format.
+    """
+    params = {"model": model, "extra_body": {"user": user_id()}}
+    if language:
+        params["language"] = language
+    if temperature is not None:
+        params["temperature"] = temperature
+    with open(audio_files[0], "rb") as audio:
+        result = client.audio.transcriptions.create(file=audio, **params)
+    return result.text.strip(), "stop"
+
+
 def stream_completion():
     """Run one streaming chat completion. Returns (answer_text, finish_reason).
 
@@ -184,13 +221,8 @@ def stream_completion():
     api_params = {"model": model, "messages": messages, "stream": True}
     # Attribute the request to the Galaxy user so proxies (e.g. LiteLLM) can
     # meter usage and apply per-user budgets/rate limits, via the standard
-    # OpenAI `user` field. The id is namespaced by the Galaxy instance URL and
-    # hashed: the URL keeps ids unique when several Galaxy instances share one
-    # proxy (e.g. usegalaxy.eu), and hashing means no instance-identifying or
-    # personal data leaves for the provider. Anonymous users (no id) fall back
-    # to a per-instance shared "anonymous" bucket.
-    raw_user = galaxy_user_id or "anonymous"
-    api_params["user"] = hashlib.sha256(f"{galaxy_url}|{raw_user}".encode()).hexdigest()
+    # OpenAI `user` field.
+    api_params["user"] = user_id()
     if temperature is not None:
         api_params["temperature"] = temperature
 
@@ -214,7 +246,7 @@ def stream_completion():
 
 for attempt in range(max_retries):
     try:
-        answer, finish_reason = stream_completion()
+        answer, finish_reason = transcribe() if model_type == "audio" else stream_completion()
 
         # An empty answer is never a usable dataset -- fail loudly before
         # writing instead of silently emitting a blank output.md.
