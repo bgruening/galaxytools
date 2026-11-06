@@ -11,7 +11,8 @@ For each record the script downloads every listed file with ``zenodo_get``
 extracts ``.zip`` archives, computes SHA-256 checksums and classifies every
 file as ``raw``, ``context`` or ``ignored``. Raw files to convert are written
 to ``--raw-dir``, one context bundle per raw file (same file name) to
-``--bundle-dir``, and the record's context files to ``--context-dir``.
+``--bundle-dir``, and every other file not matched by ``ignore_patterns`` to
+``--context-dir``, for the project's ``Complementaries`` folder.
 
 Failures (download, MD5, unsafe archive) are recorded in the manifest and the
 script still exits with 0, so the run goes on with the other files.
@@ -77,16 +78,26 @@ def is_ignored(path, patterns):
 
 
 def classify(path, work_list):
-    """Role and skip reason of a file."""
+    """Role and skip reason of a file.
+
+    An ignored file that no ignore pattern matches is still kept for the project
+    (reason ``complementary`` or ``unsupported_archive``), see ``is_complementary``.
+    """
     if is_ignored(path, work_list.get("ignore_patterns", [])):
-        return "ignored", None
+        return "ignored", "ignore_pattern"
     if has_extension(path, work_list.get("raw_extensions", [])):
         return "raw", None
     if has_extension(path, work_list.get("context_extensions", [])):
         return "context", None
     if has_extension(path, NESTED_ARCHIVE_EXTENSIONS):
         return "ignored", "unsupported_archive"
-    return "ignored", None
+    return "ignored", "complementary"
+
+
+def is_complementary(row):
+    """True for files that go to the project's Complementaries folder: all non-raw
+    files except those matched by an ignore pattern."""
+    return row["role"] != "raw" and row["reason"] != "ignore_pattern"
 
 
 def unsafe_member(info):
@@ -255,12 +266,12 @@ def write_outputs(rows, record, work_list, raw_dir, bundle_dir, context_dir):
             "license", "title", "creators", "description_html",
         )
     }
-    written_context = set()
     for row in rows:
-        if row["role"] == "context" and row["sha256"] not in written_context:
-            written_context.add(row["sha256"])
+        if is_complementary(row):
+            # Same name means same content, so a repeated file is copied once.
             name = element_id(record["record_id"], row["sha256"], row["path"])
-            shutil.copyfile(row["_local"], context_dir / name)
+            if not (context_dir / name).exists():
+                shutil.copyfile(row["_local"], context_dir / name)
         if row["role"] != "raw" or row["action"] != "process":
             continue
         name = element_id(record["record_id"], row["sha256"], row["path"])

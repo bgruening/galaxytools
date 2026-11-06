@@ -6,7 +6,9 @@ the later steps, all keyed by the same element identifiers, and writes:
 
 - ``results.json``: conversion status per raw file (by SHA-256), with
   ``nexus_path``, the NeXus file's path in its project zip;
-- one project zip per record with at least one converted raw file;
+- one project zip per record with at least one converted raw file, laid out as
+  ``<version DOI>/<raw file stem>/`` (raw file, NeXus file, ``eln_data.yaml``)
+  and ``<version DOI>/Complementaries/`` (the record's other files);
 - one log per record version (named after its DOI) and an HTML summary.
 
 ``results.json`` and the zips are read by the NOMAD side,
@@ -25,9 +27,9 @@ from pathlib import Path, PurePosixPath
 
 logger = logging.getLogger("nexus_report_builder")
 
-# Top folder in every project zip, so record files never clash with the
-# `nomad.json` that the NOMAD side adds to the zip's root.
-PROJECT_ROOT = "zenodo"
+# Folder for the record files that are not converted (README, notes, ...).
+COMPLEMENTARIES = "Complementaries"
+ELN_NAME = "eln_data.yaml"
 ZIP_DATE = (2020, 1, 1, 0, 0, 0)  # fixed, so the same content gives the same zip
 MAX_WARNINGS_IN_LOG = 20
 
@@ -53,9 +55,36 @@ def read_json(path):
         return json.load(handle)
 
 
+def version_name(record_id, version_doi):
+    """`10.5281/zenodo.1` → `10.5281_zenodo.1`; `zenodo_<record ID>` without a DOI."""
+    return version_doi.replace("/", "_") if version_doi else f"zenodo_{record_id}"
+
+
 def log_name(record_id, version_doi):
-    """`10.5281/zenodo.1` → `10.5281_zenodo.1.log`."""
-    return f"{version_doi.replace('/', '_')}.log" if version_doi else f"zenodo_{record_id}.log"
+    return f"{version_name(record_id, version_doi)}.log"
+
+
+def folder_names(files):
+    """A unique folder name per raw file: its stem, else `<stem>_<ext>`, else `<stem>_<ext>_<sha6>`."""
+
+    def candidates(file):
+        path = PurePosixPath(file["path"])
+        stem, ext = safe_name(path.stem), safe_name(path.suffix.lstrip("."))
+        with_ext = f"{stem}_{ext}" if ext else stem
+        return [stem, with_ext, f"{with_ext}_{file['sha256'][:6]}"]
+
+    names = {}
+    for level in range(3):
+        counts = {}
+        for file in files:
+            if file["sha256"] not in names:
+                name = candidates(file)[level]
+                counts[name] = counts.get(name, 0) + 1
+        for file in files:
+            name = candidates(file)[level]
+            if file["sha256"] not in names and (counts[name] == 1 or level == 2):
+                names[file["sha256"]] = name
+    return names
 
 
 def missing_warnings(converter_log):
@@ -112,24 +141,29 @@ class Run:
         ]
         if not converted:
             return {}
-        context = {
-            file["path"]: file for file in record["files"] if file["role"] == "context"
-        }
+        root = version_name(record["record_id"], record["version_doi"])
+        folders = folder_names(converted)
         members, nexus_paths = {}, {}
         for file in converted:
             name = element_id(file["record_id"], file["sha256"], file["path"])
-            base = f"{PROJECT_ROOT}/{file['path']}"
-            members[base] = self.raw[name]
-            members[f"{base}.nxs"] = self.nexus[name]
-            nexus_paths[file["sha256"]] = f"{base}.nxs"
+            folder = f"{root}/{folders[file['sha256']]}"
+            raw_name = PurePosixPath(file["path"]).name
+            members[f"{folder}/{raw_name}"] = self.raw[name]
+            nexus_path = f"{folder}/{PurePosixPath(raw_name).stem}.nxs"
+            members[nexus_path] = self.nexus[name]
+            nexus_paths[file["sha256"]] = nexus_path
             if name in self.elns:
-                members[f"{base}.eln_data.yaml"] = self.elns[name]
-            for path in file["context_paths"]:
-                row = context.get(path)
-                source = row and self.context.get(element_id(row["record_id"], row["sha256"], path))
-                if source:
-                    members[f"{PROJECT_ROOT}/{path}"] = source
-        with zipfile.ZipFile(projects_dir / f"{record['record_id']}.zip", "w", zipfile.ZIP_DEFLATED) as archive:
+                members[f"{folder}/{ELN_NAME}"] = self.elns[name]
+        # Every other file the download step kept (context files, images, other
+        # data formats); files matched by an ignore pattern are not in self.context.
+        for file in record["files"]:
+            if file["role"] == "raw":
+                continue
+            source = self.context.get(element_id(file["record_id"], file["sha256"], file["path"]))
+            if source:
+                members[f"{root}/{COMPLEMENTARIES}/{file['path']}"] = source
+        zip_path = projects_dir / f"{record['record_id']}.zip"
+        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
             for arcname in sorted(members):
                 info = zipfile.ZipInfo(arcname, ZIP_DATE)
                 info.compress_type = zipfile.ZIP_DEFLATED
