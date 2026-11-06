@@ -64,7 +64,8 @@ def main():
     )
     parser.add_argument(
         "--hf-token",
-        default=os.getenv("HF_TOKEN"),
+        # an empty HF_TOKEN counts as none; the Hub rejects an empty Bearer header
+        default=os.getenv("HF_TOKEN") or None,
         help="Hugging Face token for the gated models (default: $HF_TOKEN)",
     )
     args = parser.parse_args()
