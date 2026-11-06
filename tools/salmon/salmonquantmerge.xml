@@ -1,75 +1,84 @@
 <tool id="salmonquantmerge" name="Salmon quantmerge" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE_VERSION@">
-    <description>Merge multiple quantification results into a single file</description>
+    <description>Merge several quantification files into a single file</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="xrefs"/>
     <expand macro="requirements"/>
     <expand macro="version_command"/>
-    <command detect_errors="exit_code"><![CDATA[
-    #import re
-
-    #for $counter, $input_data in enumerate($quantfiles):
-        rank_of_series=$counter
-        mkdir ${counter}.quantmerge &&
-        ln -s '$input_data.quants' ${counter}.quantmerge/quant.sf &&
-    #end for
-    salmon --no-version-check quantmerge
-        --quants *.quantmerge
-        --names
-        #for $counter, $input_data in enumerate($quantfiles):
-            #if $input_data.names and re.sub(' ', '', '$input_data.names') != '':
-                '${input_data.names}'
+    <command detect_errors="aggressive"><![CDATA[
+        #import re
+        #set $counter = 0
+        #set $names = []
+        #for $input_data in $quantfiles:
+            #set $counter += 1
+            mkdir ${counter}.quantmerge &&
+            ln -s '$input_data.quants' ${counter}.quantmerge/quant.sf &&
+            #if $input_data.names:
+                #set $cleaned_name = re.sub('[^\w\-\s]', '_', str($input_data.names))
+                #set $_ = $names.append(str($cleaned_name))
             #else:
-                #set $identifier=re.sub('[^\w\-\s]', '_', str($input_data.quants.element_identifier))
-                "$identifier"
+                #set $cleaned_name = re.sub('[^\w\-\s]', '_', str($input_data.quants.element_identifier))
+                #set $_ = $names.append(str($cleaned_name))
             #end if
         #end for
-        --column '${column}'
-        ${genes}
-        #if $missing:
-            --missing '${missing}'
-        #end if
-        -o qmergeout.tab
+        salmon --no-version-check quantmerge
+            --quants *.quantmerge
+            --names #echo ' '.join($names)#
+            --column '${column}'
+            ${genes}
+            #if str($missing):
+                --missing '${missing}'
+            #end if
+            -o 'qmergeout.tab'
     ]]></command>
     <inputs>
-        <repeat name="quantfiles" title="Quant file and names">
-            <param argument="--quants" type="data" format="tsv,tabular" label="Salmon quant tabular output files"/>
-            <param argument="--names" type="text" label="One-word sample names" optional="True"/>
+        <repeat name="quantfiles" title="Quantification files" min="1">
+            <param name="quants" type="data" format="tsv,tabular" label="Quantification file" help="This must be a quant.sf file, or a quant.genes.sf file if the genes option is enabled"/>
+            <param name="names" type="text" optional="true" label="Name for the sample in the merged output" help="If left empty the dataset name is used"/>
         </repeat>
-        <param argument="--column" type="select" label="Columns" help="Name of columns that will be merged in the output file">
-            <option value="len" selected="True">Length</option>
+        <param argument="--column" type="select" label="Column to include in the output" help="The column that will be used to merge the files">
+            <option value="len" selected="true">Length</option>
             <option value="elen">Effective Length</option>
-            <option value="tpm">Transcripts per Million</option>
+            <option value="tpm">TPM</option>
             <option value="numreads">NumReads</option>
         </param>
-        <param argument="--genes" type="boolean" truevalue="--genes" falsevalue="" checked="False" label="Genes" help="Use gene quantifications instead of transcript"/>
-        <param argument="--missing" type="integer" label="Missing" optional="True" help="The value of missing values"/>
+        <param argument="--genes" type="boolean" truevalue="--genes" falsevalue="" checked="false" label="Use gene-level quantification" help="If enabled, the input files will be treated as quant.genes.sf files instead of quant.sf"/>
+        <param argument="--missing" type="text" optional="true" label="Missing Data Value" help="The value that will be used if a requested column is missing from one of the input files, e.g. 'NA'"/>
     </inputs>
     <outputs>
-        <data name="mergedfile" format="tabular" label="${tool.name} on ${on_string}" from_work_dir="qmergeout.tab"/>
+        <data name="mergedfile" format="tabular" label="${tool.name} on ${on_string}: merged quantification" from_work_dir="qmergeout.tab"/>
     </outputs>
     <tests>
         <test expect_num_outputs="1">
             <repeat name="quantfiles">
-                <param name="quants" value="quant2.sf"/>
+                <param name="quants" value="quant2.sf" ftype="tabular"/>
                 <param name="names" value="asdf"/>
             </repeat>
             <repeat name="quantfiles">
-                <param name="quants" value="quant1.sf"/>
+                <param name="quants" value="quant1.sf" ftype="tabular"/>
                 <param name="names" value="qwerty"/>
             </repeat>
-            <output name="mergedfile" ftype="tabular">
-                <assert_contents>
-                    <has_text text="qwerty"/>
-                    <has_text text="NM_014621"/>
-                    <has_n_columns n="3"/>
-                </assert_contents>
-            </output>
+            <output name="mergedfile" ftype="tabular" file="quantmergeout.tsv"/>
         </test>
     </tests>
-    <help><![CDATA[
+    <help format="markdown"><![CDATA[
         @salmonhelp@
+
+        **Salmon quantmerge**
+
+        This tool merges the quantification results (e.g. the TPM or NumReads
+        column) of several `quant.sf` files into a single tab-separated
+        matrix, with one row per transcript and one column per sample.
+
+        The sample names can be set explicitly; otherwise the dataset names
+        of the input files are used. A value to use for missing entries can be
+        supplied (defaults to `NA` upstream).
+
+        Salmon 2.x is stricter than earlier versions about the input files:
+        a `quant.sf` file that has a truncated row, uses a non-tab separator
+        or repeats a target name is rejected instead of being filled with the
+        missing-data value.
     ]]></help>
     <expand macro="citations"/>
 </tool>
