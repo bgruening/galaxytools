@@ -8,42 +8,55 @@
     <expand macro="version_command"/>
     <command detect_errors="aggressive"><![CDATA[
         #import re
-
+        #set $identifiers = [re.sub(r'[^\w\-]', '_', str($dataset.element_identifier)) for $dataset in $quants]
+        #set $identifiers = ['_' + $identifier if $identifier.startswith('-') else $identifier for $identifier in $identifiers]
+        #set $reserved_names = set($identifiers)
+        #set $sample_names = []
+        #for $identifier in $identifiers:
+            #set $sample_name = $identifier
+            #set $suffix = 2
+            #if $sample_name in $sample_names:
+                #set $sample_name = '%s_%s' % ($identifier, $suffix)
+                #while $sample_name in $reserved_names:
+                    #set $suffix += 1
+                    #set $sample_name = '%s_%s' % ($identifier, $suffix)
+                #end while
+            #end if
+            #silent $reserved_names.add($sample_name)
+            #silent $sample_names.append($sample_name)
+        #end for
+        #set $quant_filename = 'quant.genes.sf' if $genes else 'quant.sf'
         #for $counter, $input_data in enumerate($quants):
-            mkdir ${counter}.quantmerge &&
-            ln -s '${input_data}' ${counter}.quantmerge/quant.sf &&
+            mkdir '${counter}.quantmerge' &&
+            ln -s '${input_data}' '${counter}.quantmerge/${quant_filename}' &&
         #end for
         salmon --no-version-check quantmerge
         --quants
         #for $counter, $input_data in enumerate($quants):
-            ${counter}.quantmerge
+            '${counter}.quantmerge'
         #end for
         --names
-        #for $input_data in $quants:
-            #set $identifier = re.sub('[^\w\-]', '_', str($input_data.element_identifier))
-            '${identifier}'
+        #for $sample_name in $sample_names:
+            '${sample_name}'
         #end for
         --column '${column}'
         ${genes}
-        #if str($missing) != "None":
+        #if str($missing) not in ('', 'None'):
             --missing '${missing}'
         #end if
         -o qmergeout.tab
+        && test -s qmergeout.tab
     ]]></command>
     <inputs>
-        <!-- A single multiple-data input (instead of a repeat) so that several quant.sf
-             files can be selected at once, and so that a list collection can be handed
-             over to this parameter in the Galaxy UI (via the "send collection to
-             multiple data parameter" option), producing one merged matrix. -->
-        <param argument="--quants" type="data" format="tsv,tabular" multiple="true" min="1" label="Salmon quant tabular output files" help="Select multiple quant.sf files (e.g. the outputs of Salmon quant); the column names of the merged matrix are derived from the dataset identifiers"/>
+        <param argument="--quants" type="data" format="tsv,tabular" multiple="true" min="1" label="Salmon quantification files" help="Select multiple quant.sf files or a list collection to produce one merged matrix. Column names come from dataset or collection element identifiers; colliding names receive a numeric suffix. For gene quantifications, select quant.genes.sf files and enable Gene-level input files."/>
         <param argument="--column" type="select" label="Columns" help="Name of columns that will be merged in the output file">
             <option value="len" selected="true">Length</option>
             <option value="elen">Effective Length</option>
             <option value="tpm">Transcripts per Million</option>
             <option value="numreads">NumReads</option>
         </param>
-        <param argument="--genes" type="boolean" truevalue="--genes" falsevalue="" checked="false" label="Genes" help="Use gene quantifications instead of transcript"/>
-        <param argument="--missing" type="integer" label="Missing" optional="true" help="The value of missing values"/>
+        <param argument="--genes" type="boolean" truevalue="--genes" falsevalue="" checked="false" label="Gene-level input files" help="Enable for quant.genes.sf inputs. This does not aggregate transcript quantifications into genes."/>
+        <param argument="--missing" type="integer" label="Missing value" optional="true" help="Leave empty to use NA, or enter a value such as 0 for transcripts or genes absent from a sample."/>
     </inputs>
     <outputs>
         <data name="mergedfile" format="tabular" from_work_dir="qmergeout.tab"/>
@@ -80,6 +93,49 @@
                 <has_text text="--missing '0'"/>
             </assert_command>
         </test>
+        <!-- Collisions must not steal an existing sample name or swap columns. -->
+        <test expect_num_outputs="1">
+            <param name="quants" value="sample.one,sample_one,sample_one_2" ftype="tabular"/>
+            <param name="column" value="numreads"/>
+            <param name="missing" value="0"/>
+            <output name="mergedfile" ftype="tabular">
+                <assert_contents>
+                    <has_line line="Name&#9;sample_one&#9;sample_one_3&#9;sample_one_2"/>
+                    <has_line line="tx_shared&#9;1&#9;3&#9;5"/>
+                    <has_line line="tx_first_only&#9;2&#9;0&#9;0"/>
+                    <has_line line="tx_second_only&#9;0&#9;4&#9;0"/>
+                    <has_n_lines n="4"/>
+                    <has_n_columns n="4"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Explicit ordering must also hold beyond the single-digit staging names. -->
+        <test expect_num_outputs="1">
+            <param name="quants" value="sample.one,sample_one,sample.one,sample_one,sample.one,sample_one,sample.one,sample_one,sample.one,sample_one,sample.one" ftype="tabular"/>
+            <output name="mergedfile" ftype="tabular">
+                <assert_contents>
+                    <has_line line="Name&#9;sample_one&#9;sample_one_2&#9;sample_one_3&#9;sample_one_4&#9;sample_one_5&#9;sample_one_6&#9;sample_one_7&#9;sample_one_8&#9;sample_one_9&#9;sample_one_10&#9;sample_one_11"/>
+                    <has_line line="tx_shared&#9;100&#9;200&#9;100&#9;200&#9;100&#9;200&#9;100&#9;200&#9;100&#9;200&#9;100"/>
+                    <has_n_columns n="12"/>
+                    <has_n_lines n="4"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Gene quantifications are read from quant.genes.sf by Salmon. -->
+        <test expect_num_outputs="1">
+            <param name="quants" value="sample.one,sample_one" ftype="tabular"/>
+            <param name="genes" value="true"/>
+            <param name="column" value="elen"/>
+            <output name="mergedfile" ftype="tabular">
+                <assert_contents>
+                    <has_line line="Name&#9;sample_one&#9;sample_one_2"/>
+                    <has_line line="tx_shared&#9;90&#9;180"/>
+                    <has_line line="tx_first_only&#9;40&#9;NA"/>
+                    <has_line line="tx_second_only&#9;NA&#9;60"/>
+                    <has_n_lines n="4"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
         @salmonhelp@
@@ -95,7 +151,12 @@
 
         The column headers of the merged matrix are derived from the dataset identifiers;
         every character that is not a letter, a digit, an underscore or a hyphen is replaced
-        by `_`.
+        by `_`. Names beginning with a hyphen are prefixed with `_`. If names collide
+        after this conversion, numeric suffixes (`_2`, `_3`, ...) make them unique,
+        preserving the names of other inputs and the input order.
+
+        Enable **Gene-level input files** when the inputs contain gene-level quantifications (`quant.genes.sf`).
+        This option does not aggregate transcript-level quantifications into genes.
     ]]></help>
     <expand macro="citations"/>
 </tool>
