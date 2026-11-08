@@ -4,7 +4,19 @@ Galaxy wrappers for salmon
 These wrappers are copyright 2014, updated 2018 by Björn Grüning, Mhd Ramez Alrawas and additional contributors.
 All rights reserved. See the licence text below.
 
-Currently tested with salmon 0.11.2.
+Currently tested with salmon 1.10.3.
+
+Testing the wrappers
+====================
+
+From the repository root, run the tool tests with::
+
+    planemo test tools/salmon
+
+The collection regression workflow checks that a list of quantifications is reduced
+to one matrix, including colliding names and identifiers beginning with a hyphen::
+
+    planemo test --extra_tools tools/salmon/salmonquantmerge.xml --no_shed_install tools/salmon/test-data/quantmerge-collection.gxwf.yml
 
 
 Automated Installation
