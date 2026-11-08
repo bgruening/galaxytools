@@ -1,35 +1,83 @@
-<tool id="sed_stream_editor" name="Manipulation" version="0.0.1">
+<tool id="sed_stream_editor" name="Manipulation" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="@PROFILE@">
     <description>utility that parses and transforms text using regular expressions (sed)</description>
-    <requirements>
-        <requirement type="package" version="4.2.2">sed</requirement>
-    </requirements>
-    <command>
-<![CDATA[
-    sed -r '$pattern'
-        $input > $outfile
-]]>
-    </command>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <!-- The sed expression is deliberately NOT sanitized: it must be able to contain
+         shell metacharacters and regular-expression syntax. See the warning in the help. -->
+    <options sanitize="false"/>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+        sed -r
+            $sandbox
+            '$pattern'
+            $input > $outfile
+    ]]></command>
     <inputs>
-        <param format="txt, tabular" name="input" type="data" label="Replace lines from"/>
-        <param name="pattern" type="text" value="" label="the pattern" help="here you can enter your sed expression (No syntax check or sanitising!)" />
+        <param format="txt,tabular" name="input" type="data" label="Replace lines from"/>
+        <param name="pattern" type="text" value="" label="the pattern" help="here you can enter your sed expression (No syntax check or sanitising!)"/>
+        <!-- Sandbox mode was introduced in GNU sed 4.3, i.e. between the previously
+             wrapped 4.2.2 and the current 4.10. It rejects the r/w/e commands, which
+             would otherwise let an expression read from or write to arbitrary files on
+             the Galaxy worker, so it is enabled by default. -->
+        <param argument="--sandbox" type="boolean" truevalue="--sandbox" falsevalue="" checked="true" label="Run sed in sandbox mode" help="Disable the sed r (read file), w (write file) and e (execute command) commands. Recommended, leave enabled unless your expression needs them."/>
     </inputs>
     <outputs>
-        <data format="input" name="outfile" metadata_source="input"/>
+        <!-- Single output: no label so Galaxy applies its default
+             "${tool.name} on ${on_string}". -->
+        <data format_source="input" name="outfile" metadata_source="input"/>
     </outputs>
-    <options sanitize="False"/>
-    <requirements>
-        <requirement type="binary">sed</requirement>
-    </requirements>
     <tests>
-
+        <!-- Substitution with the legacy -r extended-regex flag (unchanged behaviour in 4.10). -->
+        <test expect_num_outputs="1">
+            <param name="input" value="sed_input.txt" ftype="txt"/>
+            <param name="pattern" value="s/x/-/"/>
+            <param name="sandbox" value="true"/>
+            <output name="outfile" ftype="txt">
+                <assert_contents>
+                    <has_line_matching expression="^ta-on_x_max$"/>
+                    <has_line_matching expression="^sample_01_R1$"/>
+                    <has_n_lines n="4"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Same expression with sandbox mode disabled, on tabular input. -->
+        <test expect_num_outputs="1">
+            <param name="input" value="sed_input.txt" ftype="tabular"/>
+            <param name="pattern" value="s/x/-/"/>
+            <param name="sandbox" value="false"/>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_line_matching expression="^ta-on_x_max$"/>
+                    <has_n_lines n="4"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Extended-regex capture groups and backreferences in the replacement. -->
+        <test expect_num_outputs="1">
+            <param name="input" value="sed_input.txt" ftype="txt"/>
+            <param name="pattern" value="s/^sample_(0[0-9])_R1$/lane-\1/"/>
+            <param name="sandbox" value="true"/>
+            <output name="outfile" ftype="txt" file="sed_output_capture.txt"/>
+        </test>
+        <!-- Several commands chained with ';', including a y (transliterate) command. -->
+        <test expect_num_outputs="1">
+            <param name="input" value="sed_input.txt" ftype="txt"/>
+            <param name="pattern" value="s/sample/SMP/; s/_01//; y/tax/TAX/"/>
+            <param name="sandbox" value="true"/>
+            <output name="outfile" ftype="txt">
+                <assert_contents>
+                    <has_line_matching expression="^SMP_R1$"/>
+                    <has_line_matching expression="^SMP_02_R1$"/>
+                    <has_line_matching expression="^TAXon_X_mAX$"/>
+                    <has_n_lines n="4"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
-    <help>
-<![CDATA[
-
-.. class:: warningmark
-
-Use with caution! Its a plain wrapper around **sed** and the input is not sanitized.
-
+    <help format="markdown"><![CDATA[
+**Warning: use with caution!** This is a plain wrapper around **sed** and the pattern you enter is not sanitized, so it is passed to the shell as-is. A malformed or malicious pattern can break the tool run.
 
 -----
 
@@ -41,19 +89,27 @@ Changes every line of a text file according to a given regular expression.
 
 **Syntax**
 
-Use the **sed**-syntax -> **s/find-pattern/replace-pattern/**
+Use the **sed** syntax -> `s/find-pattern/replace-pattern/`
 
-**Example**
+The wrapper always passes `-r`, so you can use extended regular expressions (`(`, `)`, `+`, `?`, `|`, `{...}`) without escaping them.
 
-- **s/x/-/** Replace all **x** with **-**.
+**Examples**
 
-- **s/_.*//** Splits a string after **_** and replaces the rest with nothing.
-- **s/[^_]*_*//** Splits a string after **_** and replaces the first part with nothing.
+- `s/x/-/` Replace all `x` with `-`.
+- `s/_.*//` Splits a string after `_` and replaces the rest with nothing.
+- `s/[^_]*_*//` Splits a string after `_` and replaces the first part with nothing.
+- `s/\s.*//` Splits a string after whitespaces and replaces the rest with nothing.
+- `s/\S*\s*//` Splits a string after whitespaces and replaces the first part with nothing.
 
-- **s/\\s.*//** Splits a string after whitespaces and replaces the rest with nothing.
-- **s/\\S*\\s*//** Splits a string after whitespaces and replaces the first part with nothing.
+Several commands can be chained with `;`, for example `s/sample/SMP/; s/_01//`.
 
+-----
 
-]]>
-    </help>
+**Sandbox mode**
+
+By default the wrapper runs **sed** in sandbox mode (available since GNU sed 4.3). In sandbox mode the `r` (read from file), `w` (write to file) and `e` (execute shell command) sed commands are rejected, which stops an expression from reading or writing arbitrary files on the Galaxy worker. Disable *Run sed in sandbox mode* only if your expression really needs those commands.
+
+A malformed expression makes **sed** exit with an error, which fails the Galaxy job rather than producing truncated output.
+    ]]></help>
+    <expand macro="citations"/>
 </tool>
