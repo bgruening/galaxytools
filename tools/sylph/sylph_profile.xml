@@ -6,6 +6,9 @@
     <expand macro="requirements">
         <requirement type="package" version="1.2.0">sylph-tax</requirement>
     </expand>
+    <required_files>
+        <include path="merge_taxonomy.py"/>
+    </required_files>
     <command detect_errors="aggressive"><![CDATA[
 #import re
 ##SYMLINK SYLPH DB
@@ -86,22 +89,17 @@
             '$output_sylph_prof'
             -o sylph_taxprof_out/'sylph_tax_out-'
             --taxonomy-metadata $metadata_files
-        ## If no genomes pass the sylph profiling threshold, sylph-tax taxprof
-        ## still exits 0 but writes no .sylphmpa files (a groupby over an empty
-        ## frame yields no groups). An unmatched shell glob is passed to
-        ## sylph-tax merge as a literal filename, which crashes it with a
-        ## FileNotFoundError, so guard the merge with an existence test
-        ## ("ls <glob>" is a POSIX-safe, nullglob-free existence check) and emit
-        ## a header-only report instead of failing a legitimate negative result.
-        ## Explicit ";" separators are required because Galaxy collapses
-        ## newlines in the rendered command into spaces.
-        && if ls sylph_taxprof_out/*.sylphmpa > /dev/null 2>&1; then
-            sylph-tax merge
-                sylph_taxprof_out/*.sylphmpa --column $column -o output_tax_merge.tsv;
-        else
-            printf 'clade_name\n' > output_tax_merge.tsv &&
-            echo "No genomes passed the sylph profiling threshold; the sylph-tax report is empty.";
-        fi
+        ## sylph-tax omits negative samples. Keep their columns, including when
+        ## there are no taxonomy files to pass to the upstream merge command.
+        && python '$__tool_directory__/merge_taxonomy.py'
+            --profile '$output_sylph_prof'
+            --sketches sylph_sketches
+            --taxonomy sylph_taxprof_out
+            --output output_tax_merge.tsv
+            --column '$column'
+            #if $sketch_reads.type_reads in ('paired', 'paired_group'):
+                --paired
+            #end if
     #end if
     ]]></command>
     <configfiles>
@@ -344,6 +342,56 @@
             <output name="sylph_merge_tax_out" value="output_tax-merge_9.tsv" ftype="tabular"/>
             <output_collection name="sylphmpa_files" type="list" count="0"/>
         </test>
+        <!-- All samples are negative, but every input must retain a report column. -->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
+                <param name="input" value="single_1.fastq.gz,single_2.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <param name="min_num_kmers" value="25000"/>
+            <output name="output_sylph_prof" value="output_profile_9.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_10.tsv" ftype="tabular"/>
+            <output_collection name="sylphmpa_files" type="list" count="0"/>
+        </test>
+        <!-- A negative paired sample uses the forward-read name, not the sketch suffix. -->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="paired"/>
+                <param name="input_1" value="single_1.fastq.gz" ftype="fastq"/>
+                <param name="input_2" value="single_2.fastq.gz" ftype="fastq"/>
+            </conditional>
+            <param name="min_num_kmers" value="25000"/>
+            <output name="output_sylph_prof" value="output_profile_9.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_9.tsv" ftype="tabular"/>
+            <output_collection name="sylphmpa_files" type="list" count="0"/>
+        </test>
+        <!-- Synthetic random reads have no matches; retain their zero column beside a positive sample. -->
+        <test expect_num_outputs="3">
+            <conditional name="database_select">
+                <param name="select" value="cached"/>
+                <param name="sylph_database" value="sylph db"/>
+                <param name="column" value="ANI"/>
+            </conditional>
+            <conditional name="sketch_reads">
+                <param name="type_reads" value="single_group_fastq"/>
+                <param name="input" value="single_1.fastq.gz,zero_hit.fastq" ftype="fastq"/>
+            </conditional>
+            <output name="output_sylph_prof" value="output_profile_7.tsv" ftype="tabular"/>
+            <output name="sylph_merge_tax_out" value="output_tax-merge_12.tsv" ftype="tabular"/>
+            <output_collection name="sylphmpa_files" type="list" count="1">
+                <expand macro="element_assert" name="sylph_tax_out-single_1.fastq.gz.sylphmpa" text="d__Bacteria|p__Proteobacteria"/>
+            </output_collection>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
 # What is sylph?
@@ -389,7 +437,7 @@ Sylph profile outputs a TSV (tab-separated values) file. Each row is one genome 
 - **kmers_reassigned**: the number of k-mers reassigned away from the genome.
 - **Contig_name**: name of the first contig in the genome
 
-If no genomes pass the sylph profiling threshold, the profile contains only the header row, the taxonomy collection is empty, and the sylph-tax report is a table with the `clade_name` header only.
+If no genomes pass the sylph profiling threshold, the profile contains only the header row, the taxonomy collection is empty, and the sylph-tax report contains a header with `clade_name` and one column per sample. In mixed results, samples with no detected genomes retain their columns with zero values.
 
 The metaphlan-style output is formatted similarly to that output by [MetaPhlAn](https://github.com/biobakery/MetaPhlAn/wiki/MetaPhlAn-4).
 This output is *NOT* compatible with Krona directly.
