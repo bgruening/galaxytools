@@ -1,7 +1,7 @@
 <tool id="3dtrees_raycloudtools" name="3Dtrees: RayCloudTools" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1" license="BSD-3-Clause">
     <description>Tree instance segmentation</description>
     <macros>
-        <token name="@TOOL_VERSION@">1.2.3</token>
+        <token name="@TOOL_VERSION@">1.3.0</token>
         <token name="@VERSION_SUFFIX@">0</token>
         <xml name="test_mesh_outputs">
             <output name="tree_mesh_ply" file="mikro_trees_mesh.ply" compare="sim_size" delta="200" ftype="plybinary">
@@ -29,10 +29,17 @@
 
     <command detect_errors="exit_code"><![CDATA[
         ln -sf '$input' input.laz &&
+        #if $terrain_mesh:
+            ln -sf '$terrain_mesh' terrain_mesh.ply &&
+        #end if
         python3 -u /src/run.py
         --dataset-path input.laz
         --output-dir 'out'
-        --gradient '$gradient'
+        #if $terrain_mesh:
+            --terrain-mesh terrain_mesh.ply
+        #else
+            --gradient '$gradient'
+        #end if
         --max-diameter '$max_diameter'
         --crop-length '$crop_length'
         --distance-limit '$distance_limit'
@@ -41,12 +48,18 @@
         --global-taper '$global_taper'
         --global-taper-factor '$global_taper_factor'
         --gravity-factor '$gravity_factor'
-        $branch_segmentation
+        #if $instances.mode == 'given':
+            --instance-dimension '$instances.instance_dimension'
+        #else
+            $instances.branch_segmentation
+        #end if
         $treeinfo
         $branch_data
         &&
         ## Mesh artifacts can be absent depending on the run
-        mv "out/input_segmented.laz" '$segmented_laz' &&
+        #if $instances.mode == 'segment':
+            mv "out/input_segmented.laz" '$segmented_laz' &&
+        #end if
         if [ -f "out/input_trees_mesh.ply" ]; then mv "out/input_trees_mesh.ply" '$tree_mesh_ply'; fi &&
         if [ -f "out/input_mesh.ply" ]; then mv "out/input_mesh.ply" '$terrain_mesh_ply'; fi &&
         mv "out/input_trees.txt" '$tree_model_txt'
@@ -59,7 +72,8 @@
     <inputs>
         <param name="input" type="data" format="laz" label="Input point cloud (.laz)" help="Input LAZ file."/>
         <!-- rayextract terrain -->
-        <param argument="--gradient" type="float" min="0.001" max="1000" value="1" label="Gradient" help="Gradient threshold for terrain extraction"/>
+        <param argument="--terrain-mesh" type="data" format="plybinary" optional="true" label="Terrain mesh" help="Optional. Use this terrain mesh as the ground instead of extracting one, for example the terrain of an earlier RayCloudTools run that SmartTile cropped to this tile. It is written out unchanged as the terrain mesh."/>
+        <param argument="--gradient" type="float" min="0.001" max="1000" value="1" label="Gradient" help="Gradient threshold for terrain extraction; not used with a given terrain mesh"/>
         <!-- rayextract trees -->
         <param argument="--max-diameter" type="float" min="0.01" max="100" value="0.9" label="Maximum diameter" help="maximum trunk diameter in segmenting trees (m)"/>
         <param argument="--crop-length" type="float" min="0.01" max="100" value="1" label="Crop length" help="Crops branches up to this distance from tip (m)."/>
@@ -69,14 +83,29 @@
         <param argument="--global-taper" type="float" min="0" max="1" value="0.024" label="Global taper" help="Force taper value (diameter per length) for trees under global_taper_factor of max tree height - use 0 to estimate global taper from the data"/>
         <param argument="--global-taper-factor" type="float" min="0" max="1" value="0.3" label="Global taper factor" help="1 estimates same taper for whole scan, 0 is per-tree tapering, values between 0 and 1 produce soft cutoff at this amount of max tree height"/>
         <param argument="--gravity-factor" type="float" min="0" max="1" value="0.3" label="Gravity factor" help="Larger values preference vertical trees"/>
-        <param argument="--branch-segmentation" type="boolean" checked="false" truevalue="--branch-segmentation" falsevalue="" label="Branch segmentation" help="Segments per branch segment - assigns IDs per branch segment instead of per tree instance"/>
+        <conditional name="instances">
+            <param name="mode" type="select" label="Tree instances" help="Segment the trees with RayCloudTools, or build one QSM per instance of an existing segmentation.">
+                <option value="segment" selected="true">Segment with RayCloudTools</option>
+                <option value="given">Use an existing segmentation</option>
+            </param>
+            <when value="segment">
+                <param argument="--branch-segmentation" type="boolean" checked="false" truevalue="--branch-segmentation" falsevalue="" label="Branch segmentation" help="Segments per branch segment - assigns IDs per branch segment instead of per tree instance"/>
+            </when>
+            <when value="given">
+                <param argument="--instance-dimension" type="text" value="PredInstance_SAT" label="Instance dimension" help="Tree ID field of the input, for example PredInstance_SAT or PredInstance_FM. One QSM per ID above 0; no segmented point cloud is written. Use it only on final, filtered point clouds, such as SmartTile's whole-tree tiles at 10 cm.">
+                    <validator type="regex" message="Use letters, numbers and underscores, starting with a letter or underscore.">^[A-Za-z_][A-Za-z0-9_]*$</validator>
+                </param>
+            </when>
+        </conditional>
         <!-- treeinfo -->
         <param argument="--treeinfo" type="boolean" checked="false" truevalue="--treeinfo" falsevalue="" label="Treeinfo" help="Calculate tree attributes - dbh, height, crown radius, volume, ..."/>
         <param argument="--branch-data" type="boolean" checked="false" truevalue="--branch-data" falsevalue="" label="Branch data" help="Calculate branch attributes - branch number, segment_length, branch order number, extension and position in branch integers per-segment"/>
     </inputs>
 
     <outputs>
-        <data name="segmented_laz" format="laz" label="RCT: Segmented point cloud"/>
+        <data name="segmented_laz" format="laz" label="RCT: Segmented point cloud">
+            <filter>instances['mode'] == 'segment'</filter>
+        </data>
         <data name="tree_model_txt" format="txt" label="RCT: Tree-file"/>
         <data name="tree_info_txt" format="txt" label="RCT: Tree-file incl. treeinfo">
             <filter>treeinfo</filter>
@@ -135,7 +164,10 @@
         <test expect_num_outputs="5">
             <param name="input" value="mikro" ftype="laz"/>
             <param name="treeinfo" value="true"/>
-            <param name="branch_segmentation" value="true"/>
+            <conditional name="instances">
+                <param name="mode" value="segment"/>
+                <param name="branch_segmentation" value="true"/>
+            </conditional>
             <param name="branch_data" value="true"/>
             <output name="segmented_laz" file="mikro_branch_segmented.laz" compare="sim_size" delta="2000" ftype="laz">
                 <assert_contents>
@@ -183,6 +215,43 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- QSMs for an existing segmentation: every output except the segmented point cloud. -->
+        <test expect_num_outputs="4">
+            <param name="input" value="mikro_segmented.laz" ftype="laz"/>
+            <conditional name="instances">
+                <param name="mode" value="given"/>
+                <param name="instance_dimension" value="PredInstance_RCT"/>
+            </conditional>
+            <param name="treeinfo" value="true"/>
+            <output name="tree_info_txt" ftype="txt">
+                <assert_contents>
+                    <has_text text="predinstance"/>
+                    <has_text text="DBH"/>
+                </assert_contents>
+            </output>
+            <output name="tree_mesh_ply" ftype="plybinary">
+                <assert_contents>
+                    <has_text text="property uint tree_id"/>
+                    <has_text text="rct_tree_id_scope instance-dimension"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- A given terrain mesh is used as the ground and written out unchanged. -->
+        <test expect_num_outputs="4">
+            <param name="input" value="mikro_segmented.laz" ftype="laz"/>
+            <param name="terrain_mesh" value="mikro_mesh.ply" ftype="plybinary"/>
+            <conditional name="instances">
+                <param name="mode" value="given"/>
+                <param name="instance_dimension" value="PredInstance_RCT"/>
+            </conditional>
+            <param name="treeinfo" value="true"/>
+            <output name="terrain_mesh_ply" file="mikro_mesh.ply" compare="diff" ftype="plybinary"/>
+            <output name="tree_info_txt" ftype="txt">
+                <assert_contents>
+                    <has_text text="predinstance"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
 
     <help format="markdown">
@@ -197,11 +266,18 @@ It is platform-agnostic and works across airborne (ULS), terrestrial (TLS), and 
 
 - Convert input point cloud to LAZ 1.2
 - Import point cloud as ray cloud
-- Extract terrain
+- Extract terrain, or take the given terrain mesh. Isolated points far below the ground are left out of the terrain only.
 - Extract trees
 - Convert point color (segmentation result) to instance IDs
 - Add instance IDs back to input point cloud
 - Optional: Calculate tree attributes (dbh, height, crown radius, volume, ...)
+
+With **Use an existing segmentation**, RayCloudTools skips its own segmentation
+and builds one QSM per instance ID above 0 of the given dimension, for example
+`PredInstance_SAT`. The tree files then start every tree with its
+`predinstance`, every tree-mesh face carries that ID, and no segmented point
+cloud is written. Use it only on final, filtered point clouds at about 10 cm,
+such as SmartTile's whole-tree tiles.
 
 -----
 
