@@ -9,6 +9,7 @@ import yaml
 from openai import (
     APIConnectionError,
     APITimeoutError,
+    BadRequestError,
     InternalServerError,
     OpenAI,
     RateLimitError,
@@ -30,6 +31,8 @@ if galaxy_user_id == "Anonymous":
 galaxy_url = sys.argv[8] if len(sys.argv) > 8 else ""
 # Spoken language of the audio for speech to text (ISO 639-1), empty to detect it.
 language = sys.argv[9] if len(sys.argv) > 9 else ""
+# Speech to text output: text, or srt / vtt subtitles from the model's timestamps.
+audio_format = sys.argv[10] if len(sys.argv) > 10 else "text"
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -192,20 +195,51 @@ def user_id():
     return hashlib.sha256(f"{galaxy_url}|{raw_user}".encode()).hexdigest()
 
 
+def subtitle_time(seconds, separator):
+    ms = round(seconds * 1000)
+    return f"{ms // 3600000:02d}:{ms // 60000 % 60:02d}:{ms // 1000 % 60:02d}{separator}{ms % 1000:03d}"
+
+
+def subtitles(segments, kind):
+    """SRT or WebVTT cues, one per timestamped segment of the transcript."""
+    separator = "," if kind == "srt" else "."
+    cues = []
+    for number, segment in enumerate(segments, 1):
+        times = f"{subtitle_time(segment.start, separator)} --> {subtitle_time(segment.end, separator)}"
+        cues.append(f"{number}\n{times}\n{segment.text.strip()}\n" if kind == "srt" else f"{times}\n{segment.text.strip()}\n")
+    return ("WEBVTT\n\n" if kind == "vtt" else "") + "\n".join(cues)
+
+
 def transcribe():
     """Speech to text through the proxy's /audio/transcriptions route.
 
     Returns (text, finish_reason) like stream_completion. The file is sent
     under its Galaxy link name, whose extension tells the server the format.
+    Subtitles are built from the segments of verbose_json, which only some
+    models (e.g. Whisper) return.
     """
     params = {"model": model, "extra_body": {"user": user_id()}}
     if language:
         params["language"] = language
     if temperature is not None:
         params["temperature"] = temperature
-    with open(audio_files[0], "rb") as audio:
-        result = client.audio.transcriptions.create(file=audio, **params)
-    return result.text.strip(), "stop"
+    if audio_format != "text":
+        params["response_format"] = "verbose_json"
+    try:
+        with open(audio_files[0], "rb") as audio:
+            result = client.audio.transcriptions.create(file=audio, **params)
+    except BadRequestError as e:
+        if audio_format != "text" and "verbose_json" in str(e):
+            sys.exit(
+                "This model does not return timestamps, so it cannot make subtitles. "
+                "Choose plain text, or a model with timestamps such as Whisper."
+            )
+        raise
+    if audio_format == "text":
+        return result.text.strip(), "stop"
+    if not getattr(result, "segments", None):
+        sys.exit("The model returned no timestamped segments, so no subtitles could be made. Choose plain text instead.")
+    return subtitles(result.segments, audio_format), "stop"
 
 
 def stream_completion():

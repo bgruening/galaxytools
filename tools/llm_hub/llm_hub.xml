@@ -33,6 +33,7 @@
     #set prompt = ''
 #end if
 #set language = $model_condition.language if $model_type == 'audio' else ''
+#set audio_format = $model_condition.audio_format if $model_type == 'audio' else 'text'
 
 ## For the tool tests only: models with provider "galaxy-test" use a fake proxy started in the job
 #if str($model.fields.provider) == 'galaxy-test'
@@ -50,6 +51,7 @@ python '$__tool_directory__/llm_hub.py'
 '$__user_id__'
 '$__galaxy_url__'
 '$language'
+'$audio_format'
     ]]></command>
     <inputs>
         <conditional name="model_condition">
@@ -103,6 +105,11 @@ python '$__tool_directory__/llm_hub.py'
                 <param name="audio_context" type="data" optional="false" format="wav,mp3,ogg,flac,m4a" label="Audio" help="The recording to transcribe"/>
                 <param name="language" type="text" optional="true" label="Language" help="The spoken language as a two-letter ISO 639-1 code, e.g. en or de. Leave empty to detect it.">
                     <validator type="regex" message="Use a two-letter language code, e.g. en">^([a-z]{2})?$</validator>
+                </param>
+                <param name="audio_format" type="select" label="Output" help="Subtitles need a model that returns timestamps, such as Whisper">
+                    <option value="text" selected="true">Plain text</option>
+                    <option value="srt">Subtitles (SRT)</option>
+                    <option value="vtt">Subtitles (WebVTT)</option>
                 </param>
             </when>
         </conditional>
@@ -158,6 +165,46 @@ python '$__tool_directory__/llm_hub.py'
                 </assert_contents>
             </output>
         </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="audio_format" value="srt"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_line line="00:00:00,000 --&gt; 00:00:00,500"/>
+                    <has_line line="Second segment."/>
+                    <has_line line="2"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="audio_format" value="vtt"/>
+            </conditional>
+            <output name="output" ftype="txt">
+                <assert_contents>
+                    <has_line line="WEBVTT"/>
+                    <has_line line="00:00:00.500 --&gt; 00:00:01.000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true">
+            <conditional name="model_condition">
+                <param name="model_type" value="audio"/>
+                <param name="model" value="test-transcriber-no-timestamps"/>
+                <param name="audio_context" value="silence.wav" ftype="wav"/>
+                <param name="audio_format" value="srt"/>
+            </conditional>
+            <assert_stderr>
+                <has_text text="This model does not return timestamps, so it cannot make subtitles."/>
+            </assert_stderr>
+        </test>
     </tests>
     <help><![CDATA[
 
@@ -185,7 +232,7 @@ Available models depend on what's configured in the LiteLLM proxy by your Galaxy
 
    - **Text models**: Upload multiple text files (TXT, HTML, JSON) as context
    - **Image models**: Upload a single image file (JPG, PNG, GIF, TIFF, BMP) as context  
-   - **Audio models (speech to text)**: Upload one recording (WAV, MP3, OGG, FLAC, M4A). The tool returns its transcript as a text file. Optionally give the spoken language as a two-letter code (e.g. en, de); otherwise the model detects it. Which languages work depends on the model.
+   - **Audio models (speech to text)**: Upload one recording (WAV, MP3, OGG, FLAC, M4A). The tool returns its transcript as a text file. Optionally give the spoken language as a two-letter code (e.g. en, de); otherwise the model detects it. Which languages work depends on the model. The output can also be SRT or WebVTT subtitles, for models that return timestamps (e.g. Whisper).
    - **Multimodal models**: Upload multiple text files and/or a single image file as context
 
    Vision-capable (multimodal and image) models can process image files, but only one image file is supported per request.

@@ -4,6 +4,8 @@ Standard library only, so it runs in the tool's own container. It answers
 POST /audio/transcriptions like the real proxy: it checks the API key, the
 model and the uploaded file, and returns a transcript that names the file,
 its size and the language field, so a test can check what reached the server.
+With response_format verbose_json it adds two timestamped segments, like
+Whisper; test-transcriber-no-timestamps rejects that like Voxtral on vLLM.
 
 Once listening, it writes a llm_hub config file pointing to itself. It stops
 when killed, or after 10 minutes.
@@ -18,7 +20,7 @@ from email.policy import HTTP
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API_KEY = "test-key"
-MODELS = {"test-transcriber"}
+MODELS = {"test-transcriber", "test-transcriber-no-timestamps"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -57,7 +59,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": {"message": "No user field was sent."}}, 400)
         # like Whisper and Voxtral, the text starts with a space
         text = f" Transcript of {upload[0]} ({len(upload[1])} bytes, language {fields.get('language') or 'detected'})."
-        self.send_json({"text": text})
+        if fields.get("response_format") != "verbose_json":
+            return self.send_json({"text": text})
+        if fields["model"] == "test-transcriber-no-timestamps":
+            return self.send_json({"error": {"message": "litellm.BadRequestError: Hosted_vllmException - Currently do not support verbose_json for test-transcriber-no-timestamps"}}, 400)
+        segments = [{"id": 0, "start": 0.0, "end": 0.5, "text": text}, {"id": 1, "start": 0.5, "end": 1.0, "text": " Second segment."}]
+        self.send_json({"text": text, "language": fields.get("language") or "en", "duration": 1.0, "segments": segments})
 
 
 server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
