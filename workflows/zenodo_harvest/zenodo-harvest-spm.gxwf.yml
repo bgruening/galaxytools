@@ -1,0 +1,90 @@
+class: GalaxyWorkflow
+label: Zenodo harvest for SPM data
+doc: |
+  Downloads the files of a work list from Zenodo, builds an ELN per raw SPM file, converts the
+  raw files to NeXus and builds the results, NOMAD project zips and logs for the zenodo_harvest
+  Action of nomad-eosc-galaxy-actions.
+license: MIT
+creator:
+  - class: Person
+    name: Rubel Mozumder
+    url: https://github.com/RubelMozumder
+  - class: Organization
+    name: FAIRmat
+    url: https://www.fairmat-nfdi.eu/fairmat/
+# The NOMAD side uploads the work list to step 0 and reads the outputs by these labels
+# (activities.py: GALAXY_WORK_LIST_STEP; workflows.py: GALAXY_*_OUTPUT).
+inputs:
+  work list:
+    type: data
+    format: json
+    doc: work_list.json from the NOMAD side.
+  prefetched files:
+    type: collection
+    collection_type: list
+    optional: true
+    doc: Optional. Files already in Galaxy, with the Zenodo file key as element identifier.
+outputs:
+  manifest:
+    outputSource: download/manifest
+  # Outputs of the middle steps, so the run's Outputs tab lists every file by name.
+  eln files:
+    outputSource: eln/eln
+  eln reports:
+    outputSource: eln/eln_report
+  nexus files:
+    outputSource: convert/output_nxs
+  conversion statuses:
+    outputSource: convert/status_json
+  converter logs:
+    outputSource: convert/converter_log
+  results:
+    outputSource: report/results
+  projects:
+    outputSource: report/projects
+  logs:
+    outputSource: report/logs
+  summary:
+    outputSource: report/summary
+steps:
+  download:
+    tool_id: zenodo_download_unzip
+    tool_version: 0.1.0+galaxy2
+    in:
+      work_list: work list
+      prefetched: prefetched files
+    tool_state:
+      # Keep equal to the converter's version: the NOMAD side retries failed files when it changes.
+      pipeline_version: pynxtools_dataconverter 0.4.2+galaxy1
+  eln:
+    tool_id: nexus_eln_builder
+    tool_version: 0.1.0+galaxy1
+    in:
+      bundle: download/context_bundles
+    tool_state:
+      technique: auto
+  convert:
+    tool_id: pynxtools_dataconverter
+    tool_version: 0.4.2+galaxy1
+    # Raw files and ELNs have the same element identifiers, so Galaxy pairs them.
+    in:
+      raw_file: download/raw_files
+      eln_file: eln/eln
+    # Unconnected optional inputs need an explicit value: Galaxy's API refuses to invoke a
+    # workflow whose tool state it would have to correct.
+    tool_state:
+      config_file: null
+      reader: spm
+      nxdl: auto
+  report:
+    tool_id: nexus_report_builder
+    tool_version: 0.2.0+galaxy0
+    in:
+      manifest: download/manifest
+      statuses: convert/status_json
+      nexus_files: convert/output_nxs
+      elns: eln/eln
+      raw_files: download/raw_files
+      context_files: download/context_files
+      eln_reports: eln/eln_report
+      converter_logs: convert/converter_log
