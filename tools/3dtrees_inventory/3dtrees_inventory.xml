@@ -1,0 +1,469 @@
+<tool id="3dtrees_inventory" name="3Dtrees: Inventory" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>tree position, DBH, height, crown and species per instance</description>
+    <macros>
+        <token name="@TOOL_VERSION@">1.3.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <xml name="segmentations" tokens="min,reserved">
+            <repeat name="segmentations" title="Segmentation" min="@MIN@" help="One block per instance dimension of the point cloud to inventory.">
+                <param argument="--instance-attribute" type="text" value="PredInstance_FM" label="Instance dimension" help="LAS dimension holding the tree IDs, for example PredInstance_SAT or PredInstance_FM. Each dimension only once, and no two that differ only by the PredInstance_ prefix. With CSP, PredInstance_CSP and CSP are reserved for the CSP segmentation.">
+                    <validator type="regex" message="Letters, digits and underscores, starting with a letter; not a reserved name">^(?!@RESERVED@)[A-Za-z][A-Za-z0-9_]{0,63}\Z</validator>
+                </param>
+                <conditional name="species">
+                    <param name="provided" type="select" label="Species prediction" help="Per-point species ID and probability dimensions of this segmentation, for example from 3Dtrees: DetailView.">
+                        <option value="no" selected="true">No</option>
+                        <option value="yes">Yes</option>
+                    </param>
+                    <when value="no"/>
+                    <when value="yes">
+                        <param argument="--species-attribute" type="text" value="species_id_FM" label="Species ID dimension">
+                            <validator type="regex" message="Letters, digits and underscores, starting with a letter">^[A-Za-z][A-Za-z0-9_]{0,63}\Z</validator>
+                        </param>
+                        <param argument="--species-probability-attribute" type="text" value="species_prob_FM" label="Species probability dimension">
+                            <validator type="regex" message="Letters, digits and underscores, starting with a letter">^[A-Za-z][A-Za-z0-9_]{0,63}\Z</validator>
+                        </param>
+                    </when>
+                </conditional>
+            </repeat>
+        </xml>
+    </macros>
+    <creator>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_csp_standsegmentation:@TOOL_VERSION@</container>
+    </requirements>
+    <version_command>Rscript /opt/CspStandSegmentation/exec/run.R --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        cp '$point_cloud' 'input.${point_cloud.ext}' &&
+        #if $terrain.source == 'supplied':
+            ln -s '$terrain.dtm' dtm.tif &&
+        #end if
+        #if $area.restrict == 'yes':
+            ln -s '$area.aoi' aoi.geojson &&
+        #end if
+        #if $names.supply == 'yes':
+            ln -s '$names.species_lookup' species_lookup.tsv &&
+        #end if
+        #if $csp.enable == 'yes' and $csp.seeds.mode == 'supplied':
+            ln -s '$csp.seeds.seed_file' seeds.tsv &&
+        #end if
+        Rscript /opt/CspStandSegmentation/exec/run.R
+            --input 'input.${point_cloud.ext}'
+            --output-dir output
+            #for $segmentation in $csp.segmentations:
+                --instance-attribute '$segmentation.instance_attribute'
+                #if $segmentation.species.provided == 'yes':
+                    --species-attribute '$segmentation.species.species_attribute'
+                    --species-probability-attribute '$segmentation.species.species_probability_attribute'
+                #end if
+            #end for
+            #if str($inventory_attributes):
+                --inventory-attributes '$inventory_attributes'
+            #end if
+            --non-tree-ids '$non_tree_ids'
+            #if $terrain.source == 'supplied':
+                --dtm dtm.tif
+            #else:
+                --dtm-resolution '$terrain.dtm_resolution'
+            #end if
+            #if $area.restrict == 'yes':
+                --aoi-json aoi.geojson
+            #end if
+            #if $names.supply == 'yes':
+                --species-lookup species_lookup.tsv
+            #end if
+            #if $csp.enable == 'yes':
+                --enable-csp true
+                --seed-mode '$csp.seeds.mode'
+                #if $csp.seeds.mode == 'supplied':
+                    --seed-file seeds.tsv
+                #else:
+                    --seed-resolution '$csp.seeds.seed_resolution'
+                    --seed-z-min '$csp.seeds.seed_z_min'
+                    --seed-z-max '$csp.seeds.seed_z_max'
+                    --seed-quantile '$csp.seeds.seed_quantile'
+                    --seed-eps '$csp.seeds.seed_eps'
+                #end if
+                --voxel-resolution '$csp.routing.voxel_resolution'
+                --verticality-weight '$csp.routing.verticality_weight'
+                --linearity-weight '$csp.routing.linearity_weight'
+                --sphericity-weight '$csp.routing.sphericity_weight'
+                --routing-workers "\${GALAXY_SLOTS:-4}"
+            #end if
+            --slice-min '$advanced.slice_min'
+            --slice-max '$advanced.slice_max'
+            --slice-increment '$advanced.slice_increment'
+            --slice-width '$advanced.slice_width'
+            --max-dbh '$advanced.max_dbh'
+            --dbh-runs '$advanced.dbh_runs'
+            --metrics-grid '$advanced.metrics_grid'
+            --geometry-k '$advanced.geometry_k'
+            --random-seed '$advanced.random_seed'
+            $advanced.dbh_evidence
+            --dtm-workers "\${GALAXY_SLOTS:-4}"
+            --inventory-workers "\$(( \${GALAXY_SLOTS:-4} < 16 ? \${GALAXY_SLOTS:-4} : 16 ))"
+            --scratch-dir "\${TMPDIR:-\$_GALAXY_JOB_TMP_DIR}"
+    ]]></command>
+    <inputs>
+        <param name="point_cloud" type="data" format="laz,las" label="Segmented point cloud" help="One full-resolution LAS/LAZ or COPC point cloud with a CRS projected in metres and at least one tree instance dimension."/>
+        <conditional name="csp">
+            <param name="enable" type="select" label="CSP segmentation" help="Also segment the trees with comparative shortest path (CSP) routing and inventory them as PredInstance_CSP. CSP holds the whole cloud in memory; use it for plot-sized clouds.">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no">
+                <expand macro="segmentations" min="1" reserved="PredInstance_\Z"/>
+            </when>
+            <when value="yes">
+                <expand macro="segmentations" min="0" reserved="PredInstance_\Z|(PredInstance_)?CSP\Z"/>
+                <conditional name="seeds">
+                    <param name="mode" type="select" label="Stem seeds" help="Stem positions the CSP routing starts from.">
+                        <option value="automatic" selected="true">Detect from point density</option>
+                        <option value="supplied">Supplied table</option>
+                    </param>
+                    <when value="automatic">
+                        <param argument="--seed-resolution" type="float" min="0.01" max="1" value="0.1" label="Seed raster resolution (m)"/>
+                        <param argument="--seed-z-min" type="float" min="0" max="1.4" value="0.5" label="Seed layer bottom (m above ground)"/>
+                        <param argument="--seed-z-max" type="float" min="1.5" max="10" value="2" label="Seed layer top (m above ground)"/>
+                        <param argument="--seed-quantile" type="float" min="0" max="1" value="0.975" label="Seed density quantile" help="Raster cells denser than this quantile are stem candidates."/>
+                        <param argument="--seed-eps" type="float" min="0.01" max="5" value="0.2" label="Seed merge radius (m)"/>
+                    </when>
+                    <when value="supplied">
+                        <param argument="--seed-file" type="data" format="tabular" label="Seed table" help="Tab-separated with the columns X, Y, Z and TreeID (unique positive integers): X and Y in the point cloud's CRS, Z in metres above the terrain. The seed_x, seed_y and seed_height_m columns of an earlier CSP inventory are such seeds."/>
+                    </when>
+                </conditional>
+                <section name="routing" title="CSP routing" expanded="false">
+                    <param argument="--voxel-resolution" type="float" min="0.01" max="5" value="0.3" label="Routing voxel size (m)"/>
+                    <param argument="--verticality-weight" type="float" min="0" max="1" value="0" label="Verticality weight"/>
+                    <param argument="--linearity-weight" type="float" min="0" max="1" value="0" label="Linearity weight"/>
+                    <param argument="--sphericity-weight" type="float" min="0" max="1" value="0" label="Sphericity weight"/>
+                </section>
+            </when>
+        </conditional>
+        <param argument="--inventory-attributes" type="text" value="" optional="true" label="Extra attributes" help="Leave empty, or name extra point dimensions separated by commas without spaces. PredScore_FM,PredSemantic_FM adds the ForestMamba scores and wood and leaf counts for PredInstance_FM.">
+            <validator type="regex" message="Dimension names separated by commas without spaces">^[A-Za-z][A-Za-z0-9_]{0,63}(,[A-Za-z][A-Za-z0-9_]{0,63})*\Z</validator>
+        </param>
+        <param argument="--non-tree-ids" type="text" value="0" label="Non-tree IDs" help="Instance IDs that are not trees, separated by commas without spaces.">
+            <validator type="regex" message="Integers separated by commas without spaces">^-?[0-9]+(,-?[0-9]+)*\Z</validator>
+        </param>
+        <conditional name="terrain">
+            <param name="source" type="select" label="Terrain model" help="Heights are measured above this terrain model.">
+                <option value="generated" selected="true">Generate from the point cloud</option>
+                <option value="supplied">Supplied GeoTIFF</option>
+            </param>
+            <when value="generated">
+                <param argument="--dtm-resolution" type="float" min="0.1" max="10" value="0.2" label="DTM resolution (m)" help="Ground points from the existing ground class, else cloth simulation (CSF)."/>
+            </when>
+            <when value="supplied">
+                <param argument="--dtm" type="data" format="tiff" label="DTM" help="One band in the point cloud's CRS, covering its whole extent."/>
+            </when>
+        </conditional>
+        <conditional name="area">
+            <param name="restrict" type="select" label="Restrict to an area of interest" help="Without an area of interest the stand area is the point cloud's convex hull.">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param name="aoi" type="data" format="geojson,json" label="Area of interest" help="Polygon or MultiPolygon (GeoJSON) in the point cloud's coordinates; trees outside are left out and the stand area is its area."/>
+            </when>
+        </conditional>
+        <conditional name="names">
+            <param name="supply" type="select" label="Species names" help="Adds scientific names to species IDs.">
+                <option value="no" selected="true">No</option>
+                <option value="yes">Yes</option>
+            </param>
+            <when value="no"/>
+            <when value="yes">
+                <param argument="--species-lookup" type="data" format="tabular" label="Species lookup" help="Tab-separated with segmentation_source, species_id, scientific_name, taxonomy_version and model_version (common_name optional)."/>
+            </when>
+        </conditional>
+        <section name="advanced" title="Advanced parameters" expanded="false" help="Defaults are the upstream CspStandSegmentation settings.">
+            <param argument="--slice-min" type="float" min="0" max="1.2" value="0.3" label="Stem slices from (m above ground)"/>
+            <param argument="--slice-max" type="float" min="1.4" max="10" value="4" label="Stem slices up to (m above ground)"/>
+            <param argument="--slice-increment" type="float" min="0.2" max="1" value="0.2" label="Slice step (m)"/>
+            <param argument="--slice-width" type="float" min="0.01" max="0.1" value="0.1" label="Slice width (m)" help="At most half the slice step, so slices never overlap."/>
+            <param argument="--max-dbh" type="float" min="0.01" max="5" value="1" label="Maximum DBH (m)" help="Larger fits are rejected."/>
+            <param argument="--dbh-runs" type="integer" min="1" max="99" value="5" label="DBH fits per tree" help="The circle fit is random; the run with the median DBH is reported and every run is kept in dbh_fits."/>
+            <param argument="--metrics-grid" type="float" min="0" max="1" value="0.01" label="Measurement grid (m)" help="DBH, height, crown and position use one point per tree and grid cell; point count, species and FM fields use every point. 0 measures every point."/>
+            <param argument="--geometry-k" type="integer" min="3" max="1000" value="10" label="Neighbours for stem geometry" help="Neighbours per point for planarity and verticality."/>
+            <param argument="--random-seed" type="integer" min="0" max="2147483647" value="42" label="Random seed"/>
+            <param argument="--dbh-evidence" type="boolean" truevalue="--dbh-evidence true" falsevalue="--dbh-evidence false" checked="true" label="DBH evidence" help="Fill the dbh_fits, dbh_slices and crown_hull columns."/>
+        </section>
+    </inputs>
+    <outputs>
+        <data name="inventory" format="csv" from_work_dir="output/inventory.csv" label="${tool.name} on ${on_string}: Inventory"/>
+        <data name="inventory_parquet" format="parquet" from_work_dir="output/inventory.parquet" label="${tool.name} on ${on_string}: Inventory (Parquet)"/>
+        <data name="stand_summary" format="csv" from_work_dir="output/stand_summary.csv" label="${tool.name} on ${on_string}: Stand summary"/>
+        <data name="dtm_full" format="tiff" from_work_dir="output/dtm_full.tif" label="${tool.name} on ${on_string}: DTM"/>
+        <data name="dtm_aoi" format="tiff" from_work_dir="output/dtm_aoi.tif" label="${tool.name} on ${on_string}: DTM of the area of interest">
+            <filter>area['restrict'] == 'yes'</filter>
+        </data>
+        <data name="csp_point_cloud" format="laz" from_work_dir="output/segmented_csp.laz" label="${tool.name} on ${on_string}: CSP segmentation">
+            <filter>csp['enable'] == 'yes'</filter>
+        </data>
+    </outputs>
+    <tests>
+        <test expect_num_outputs="4">
+            <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
+            <conditional name="csp">
+                <param name="enable" value="no"/>
+                <repeat name="segmentations">
+                    <param name="instance_attribute" value="PredInstance_FM"/>
+                    <conditional name="species">
+                        <param name="provided" value="yes"/>
+                        <param name="species_attribute" value="species_id_FM"/>
+                        <param name="species_probability_attribute" value="species_prob_FM"/>
+                    </conditional>
+                </repeat>
+            </conditional>
+            <param name="inventory_attributes" value="PredScore_FM,PredSemantic_FM"/>
+            <conditional name="names">
+                <param name="supply" value="yes"/>
+                <param name="species_lookup" value="species_lookup.tsv" ftype="tabular"/>
+            </conditional>
+            <output name="inventory" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="4"/>
+                    <has_n_columns n="34" sep=","/>
+                    <has_line line="segmentation_source,instance_dimension,instance_id,species_id,x,y,z,dbh_m,height_m,convex_hull_area_m2,point_count,metrics_point_count,species_prob,species_conflict_fraction,pred_score_fm_values,wood_point_count,leaf_point_count,wood_share,leaf_share,dbh_quality_code,dbh_quality_label,dbh_runs,dbh_runs_fitted,dbh_spread_m,dbh_band_points,longitude,latitude,scientific_name,taxonomy_version,model_version,common_name,dbh_fits,dbh_slices,crown_hull"/>
+                    <has_line_matching expression="FM,PredInstance_FM,11,1,-40\.300\d*,-67\.121\d*,5\.576\d*,,35\.62,70\.315\d*,9670,9670,0\.8\d*,0,.*\[\{&quot;&quot;score&quot;&quot;:0\.89\d*,&quot;&quot;point_count&quot;&quot;:9670\}\].*,3229,6441,0\.3339\d*,0\.6660\d*,3,dbh_unavailable,5,0,,466,.*,Fagus sylvatica,GBIF 2026-01,DetailView 1\.0,European beech,.*"/>
+                    <has_line_matching expression="FM,PredInstance_FM,12,2,-38\.366\d*,-62\.542\d*,.*,,36\.11,.*,9667,9667,.*,Picea abies,.*"/>
+                    <has_line_matching expression="FM,PredInstance_FM,13,3,-40\.698\d*,-57\.481\d*,.*,,37\.8,.*,9674,9674,.*,Abies alba,.*"/>
+                </assert_contents>
+            </output>
+            <output name="inventory_parquet" ftype="parquet">
+                <assert_contents>
+                    <has_size value="22171" delta="3000"/>
+                </assert_contents>
+            </output>
+            <output name="stand_summary" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_n_columns n="22" sep=","/>
+                    <has_line line="segmentation_source,instance_dimension,area_source,area_m2,tree_count,dbh_measured_tree_count,dbh_coverage_fraction,trees_per_ha,basal_area_m2_per_ha,mean_dbh_m,median_dbh_m,dbh_p05_m,dbh_p25_m,dbh_p75_m,dbh_p95_m,mean_height_m,median_height_m,height_p05_m,height_p25_m,height_p75_m,height_p95_m,crs"/>
+                    <has_line_matching expression="FM,PredInstance_FM,point_cloud_convex_hull,224\.857\d*,3,0,0,133\.41\d*,,,,,,,,36\.51,36\.11,35\.669,35\.865,36\.955,37\.631,EPSG:32632"/>
+                </assert_contents>
+            </output>
+            <output name="dtm_full" ftype="tiff">
+                <assert_contents>
+                    <has_image_width width="76"/>
+                    <has_image_height height="76"/>
+                    <has_image_mean_intensity mean_intensity="3.9109" eps="0.001"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="5">
+            <param name="point_cloud" value="forest_plot.laz" ftype="laz"/>
+            <conditional name="csp">
+                <param name="enable" value="no"/>
+                <repeat name="segmentations">
+                    <param name="instance_attribute" value="PredInstance_SAT"/>
+                </repeat>
+                <repeat name="segmentations">
+                    <param name="instance_attribute" value="PredInstance_ULS"/>
+                </repeat>
+            </conditional>
+            <conditional name="terrain">
+                <param name="source" value="supplied"/>
+                <param name="dtm" value="forest_plot_dtm.tif" ftype="tiff"/>
+            </conditional>
+            <conditional name="area">
+                <param name="restrict" value="yes"/>
+                <param name="aoi" value="forest_plot_aoi.geojson" ftype="geojson"/>
+            </conditional>
+            <output name="inventory" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="3"/>
+                    <has_n_columns n="22" sep=","/>
+                    <has_line_matching expression="SAT,PredInstance_SAT,1,-43\.839\d*,-60\.946\d*,4\.738\d*,,37\.67,101\.798\d*,14504,14504,2,dbh_unavailable,5,0,,796,.*"/>
+                    <has_line_matching expression="ULS,PredInstance_ULS,21,-42\.775\d*,-65\.084\d*,5\.159\d*,,37\.67,101\.491\d*,14503,14503,3,dbh_unavailable,5,0,,625,.*"/>
+                </assert_contents>
+            </output>
+            <output name="inventory_parquet" ftype="parquet">
+                <assert_contents>
+                    <has_size value="13749" delta="2000"/>
+                </assert_contents>
+            </output>
+            <output name="stand_summary" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="3"/>
+                    <has_line_matching expression="SAT,PredInstance_SAT,aoi,120\.08,1,0,0,83\.277\d*,,,,,,,,37\.67,37\.67,37\.67,37\.67,37\.67,37\.67,EPSG:32632"/>
+                    <has_line_matching expression="ULS,PredInstance_ULS,aoi,120\.08,1,0,0,83\.277\d*,,,,,,,,37\.67,37\.67,37\.67,37\.67,37\.67,37\.67,EPSG:32632"/>
+                </assert_contents>
+            </output>
+            <output name="dtm_full" ftype="tiff">
+                <assert_contents>
+                    <has_image_width width="76"/>
+                    <has_image_height height="76"/>
+                    <has_image_mean_intensity mean_intensity="3.9109" eps="0.001"/>
+                </assert_contents>
+            </output>
+            <output name="dtm_aoi" ftype="tiff">
+                <assert_contents>
+                    <has_image_width width="39"/>
+                    <has_image_height height="76"/>
+                    <has_image_mean_intensity mean_intensity="3.4596" eps="0.001"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="5">
+            <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
+            <conditional name="csp">
+                <param name="enable" value="yes"/>
+                <repeat name="segmentations">
+                    <param name="instance_attribute" value="PredInstance_FM"/>
+                </repeat>
+                <conditional name="seeds">
+                    <param name="mode" value="automatic"/>
+                </conditional>
+            </conditional>
+            <output name="inventory" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="9"/>
+                    <has_n_columns n="30" sep=","/>
+                    <has_line_matching expression="CSP,PredInstance_CSP,1,-42\.620\d*,-56\.520\d*,4\.577\d*,-42\.25,-56\.35,1\.1\d*,0\.9716\d*,22\.16,65\.716\d*,3274,3274,,,,,,2,fallback_circle_estimate,5,5,0\.197\d*,349,.*"/>
+                    <has_line_matching expression="CSP,PredInstance_CSP,5,-36\.644\d*,-65\.531\d*,[^,]*,-35\.75,-64\.75,1\.2\d*,,31\.68,.*,11906,11906,,,,,,3,dbh_unavailable,5,0,,547,.*"/>
+                    <has_line_matching expression="FM,PredInstance_FM,13,-40\.698\d*,-57\.481\d*,4\.9456\d*,,,,,37\.8,80\.262\d*,9674,9674,.*,744,.*"/>
+                </assert_contents>
+            </output>
+            <output name="inventory_parquet" ftype="parquet">
+                <assert_contents>
+                    <has_size value="30428" delta="3000"/>
+                </assert_contents>
+            </output>
+            <output name="stand_summary" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="3"/>
+                    <has_line_matching expression="CSP,PredInstance_CSP,point_cloud_convex_hull,224\.857\d*,5,1,0\.2,222\.36\d*,,0\.9716\d*,0\.9716\d*,.*,25\.356,29\.54,13\.84,22\.16,31\.64,31\.672,EPSG:32632"/>
+                </assert_contents>
+            </output>
+            <output name="dtm_full" ftype="tiff">
+                <assert_contents>
+                    <has_image_width width="76"/>
+                    <has_image_height height="76"/>
+                    <has_image_mean_intensity mean_intensity="3.9109" eps="0.001"/>
+                </assert_contents>
+            </output>
+            <output name="csp_point_cloud" ftype="laz">
+                <assert_contents>
+                    <has_size value="174140" delta="10000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="5">
+            <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
+            <conditional name="csp">
+                <param name="enable" value="yes"/>
+                <conditional name="seeds">
+                    <param name="mode" value="supplied"/>
+                    <param name="seed_file" value="forest_plot_seeds.tsv" ftype="tabular"/>
+                </conditional>
+            </conditional>
+            <section name="advanced">
+                <param name="dbh_evidence" value="false"/>
+            </section>
+            <output name="inventory" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="6"/>
+                    <has_n_columns n="25" sep=","/>
+                    <has_line_matching expression="CSP,PredInstance_CSP,1,-42\.620\d*,-56\.520\d*,4\.577\d*,-42\.25,-56\.35,1\.1\d*,0\.9716\d*,22\.16,65\.716\d*,3274,3274,2,fallback_circle_estimate,5,5,0\.197\d*,349,4\.5108\d*,-0\.0005\d*,,,"/>
+                    <has_line_matching expression="CSP,PredInstance_CSP,4,-38\.430\d*,-59\.693\d*,[^,]*,-38\.05,-60\.35,1\.43\d*,,11\.76,.*,1443,1443,3,dbh_unavailable,5,0,,395,.*,,,"/>
+                </assert_contents>
+            </output>
+            <output name="inventory_parquet" ftype="parquet">
+                <assert_contents>
+                    <has_size value="8216" delta="1500"/>
+                </assert_contents>
+            </output>
+            <output name="stand_summary" ftype="csv">
+                <assert_contents>
+                    <has_n_lines n="2"/>
+                    <has_line_matching expression="CSP,PredInstance_CSP,point_cloud_convex_hull,224\.857\d*,5,1,0\.2,222\.36\d*,.*,EPSG:32632"/>
+                </assert_contents>
+            </output>
+            <output name="dtm_full" ftype="tiff">
+                <assert_contents>
+                    <has_image_width width="76"/>
+                    <has_image_height height="76"/>
+                    <has_image_mean_intensity mean_intensity="3.9109" eps="0.001"/>
+                </assert_contents>
+            </output>
+            <output name="csp_point_cloud" ftype="laz">
+                <assert_contents>
+                    <has_size value="174140" delta="10000"/>
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
+            <conditional name="csp">
+                <param name="enable" value="no"/>
+                <repeat name="segmentations">
+                    <param name="instance_attribute" value="PredInstance_FM"/>
+                </repeat>
+                <repeat name="segmentations">
+                    <param name="instance_attribute" value="PredInstance_FM"/>
+                </repeat>
+            </conditional>
+            <assert_stderr>
+                <has_text text="Each instance dimension may only be supplied once"/>
+            </assert_stderr>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+# What it does
+
+3Dtrees: Inventory measures every tree of one or more instance segmentations of
+a point cloud: stem position and diameter at breast height (DBH) from circles
+fitted to stem slices, height above the terrain, crown area and species. It
+uses the forest inventory of CspStandSegmentation unchanged and can also create
+a comparative shortest path (CSP) segmentation. The method and every column are
+described in the [tool README](https://github.com/3dTrees-earth/3dtrees_CSP_StandSegmentation#readme).
+
+# Input
+
+- **Segmented point cloud**: one full-resolution LAS/LAZ or COPC file with a
+  CRS projected in metres and the instance dimensions to inventory.
+- **Segmentation**: one block per instance dimension (for example
+  `PredInstance_SAT`, `PredInstance_FM`), optionally with its species ID and
+  probability dimensions. Each dimension only once.
+- **CSP segmentation** (default No): Yes adds a `PredInstance_CSP`
+  segmentation, seeded from point density or a supplied seed table. CSP keeps
+  the whole cloud in memory, so use it for plot-sized clouds.
+- **Extra attributes**: `PredScore_FM,PredSemantic_FM` adds the ForestMamba
+  scores and wood and leaf counts.
+- **Terrain model**: generated (existing ground class, else cloth simulation)
+  or a supplied GeoTIFF covering the cloud.
+- **Area of interest** and **Species names** are optional.
+- **Advanced parameters**: the stem slices, the DBH fit and the measurement
+  grid. DBH, height, crown and position are measured on one point per tree
+  and 1 cm cell; point counts and species use every point.
+
+CPU and memory come from the Galaxy job allocation.
+
+# Outputs
+
+- **Inventory** (CSV) and **Inventory (Parquet)**: the same table, one row per
+  tree and segmentation, with the DBH fit quality, every DBH run (`dbh_fits`),
+  the stem slices (`dbh_slices`) and the crown polygon (`crown_hull`, GeoJSON).
+- **Stand summary**: one row per segmentation with stand area, trees per
+  hectare, DBH and height statistics and the coordinate reference system.
+- **DTM**, and its crop to the area of interest when one is given.
+- With CSP: the input point cloud with every dimension plus `PredInstance_CSP`.
+  The CSP rows of the inventory carry the seed each tree grew from
+  (`seed_x`, `seed_y`, `seed_height_m`).
+    ]]></help>
+    <citations>
+        <citation type="doi">10.1007/s10342-025-01796-z</citation>
+        <citation type="bibtex">
+            @misc{3dtrees_inventory,
+              title = {3Dtrees: Inventory},
+              author = {3Dtrees-Project},
+              year = {2026},
+              url = {https://github.com/3dTrees-earth/3dtrees_CSP_StandSegmentation}
+            }
+        </citation>
+    </citations>
+</tool>
