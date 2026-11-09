@@ -1,12 +1,30 @@
-<tool id="segemehl" name="segemehl" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.01">
+<tool id="segemehl" name="segemehl" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="25.1">
     <description>short read mapping with gaps</description>
     <macros>
         <import>macros.xml</import>
     </macros>
     <expand macro="bio_tools"/>
     <expand macro="requirements"/>
-    <!-- segemehl 0.3.x offers no version flag, so no version_command is emitted -->
+    <!-- segemehl 0.3.x has no version switch at all (its getopt parser rejects a long
+         'version' option), so no version_command can be emitted -->
     <command detect_errors="aggressive"><![CDATA[
+## segemehl recognises gzip-compressed queries purely by the '.gz' filename suffix, while
+## Galaxy stores datasets as 'dataset_N.dat'. Link gzipped queries to a name carrying that
+## suffix before mapping, otherwise segemehl silently mis-parses them.
+#set $is_single = str( $library.type ) == 'single'
+#set $reads1 = str( $library.input_query ) if $is_single else str( $library.first_strand_query )
+#set $reads2 = '' if $is_single else str( $library.second_strand_query )
+#set $ext1 = $library.input_query.ext if $is_single else $library.first_strand_query.ext
+#set $ext2 = '' if $is_single else $library.second_strand_query.ext
+#if $ext1.endswith( '.gz' )
+ln -sf "$reads1" query_1.fastq.gz &&
+    #set $reads1 = 'query_1.fastq.gz'
+#end if
+#if $ext2.endswith( '.gz' )
+ln -sf "$reads2" query_2.fastq.gz &&
+    #set $reads2 = 'query_2.fastq.gz'
+#end if
+
 ## build a segemehl index on the fly when the reference genome is supplied from the history
 #if $refGenomeSource.genomeSource == "history":
     mkdir ./temp_index/ &&
@@ -27,19 +45,13 @@ segemehl.x
 
 -i $temp_index
 
-## single/paired-end reads
-#if str( $library.type ) == "single":
-    -q ${library.input_query}
+## single/paired-end reads; segemehl accepts exactly one query (-q) and one mate (-p) file
+#if $is_single:
+    -q $reads1
 #else
-    #set $mate1 = list()
-    #set $mate2 = list()
-    #for $mate_pair in $library.mate_list:
-        #silent $mate1.append( str($mate_pair.first_strand_query) )
-        #silent $mate2.append( str($mate_pair.second_strand_query) )
-    #end for
-    -q #echo ','.join($mate1)#
-    -p #echo ','.join($mate2)#
-    -I $library.maxinsertsize
+    -q $reads1
+    -p $reads2
+    -I $library.maxpairinsertsize
 #end if
 
 #if str( $bisulfite ) != "0":
@@ -49,26 +61,23 @@ segemehl.x
 -A $accuracy
 -H $hitstrategy
 #if $maxout:
-    --maxout $maxout
+    -r $maxout
 #end if
-## In 0.3.x -S enables split-read mapping and takes an optional report basename. Without a
-## basename the sidecar .sngl.bed/.mult.bed/.trns.txt reports are named after the -o output.
-## Those extra reports are not collected as Galaxy datasets.
+## -S enables split-read mapping and takes an optional report basename. Without a basename the
+## sidecar .sngl.bed/.mult.bed/.trns.txt reports are named after the -o output; those extra
+## reports are not collected as Galaxy datasets.
 #if str( $splitreads.splits ) == "splits":
     -S
-    --minsplicecover $splitreads.minsplicecover
-    --minfragscore $splitreads.minfragscore
-    --minfraglen $splitreads.minfraglen
-    --splicescorescale $splitreads.splicescorescale
-    --maxsplitevalue $splitreads.maxsplitevalue
+    -W $splitreads.minsplicecover
+    -U $splitreads.minfragscore
+    -Z $splitreads.minfraglen
+    -l $splitreads.splicescorescale
+    -w $splitreads.maxsplitevalue
 #end if
 -M $maxinterval
 -E $evalue
 -D $differences
 -J $jump
-## segemehl 0.2 options removed upstream in 0.3.x and therefore dropped here:
-## -P/-Q (adapter clipping), -R (clipping accuracy), --polyA/--autoclip/--hardclip,
-## -O/--order, and -s (silent mode; 0.3.x always logs progress to stderr)
 -o '$segemehl_out'
 #if str( $nomatchfilename ) == 'yes':
     -u '$segemehl_outunmatched'
@@ -94,6 +103,7 @@ segemehl.x
                 </param>
             </when>
             <when value="history">
+                <!-- gzip is not offered for the reference: segemehl 0.3.x crashes on a gzipped database -->
                 <param name="own_reference_genome" type="data" format="fasta" label="Select the reference genome"/>
             </when>
         </conditional>
@@ -103,15 +113,13 @@ segemehl.x
                 <option value="paired">Paired-end</option>
             </param>
             <when value="single">
-                <param name="input_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads in FASTQ/FASTA files"/>
+                <param name="input_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta,fastqsanger.gz,fastqillumina.gz,fastq.gz,fasta.gz" label="Reads in FASTQ/FASTA files"/>
             </when>
             <when value="paired">
-                <!-- ToDo paired collections -->
-                <repeat name="mate_list" title="Paired End Pairs" min="1">
-                    <param name="first_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads from first strand"/>
-                    <param name="second_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta" label="Reads from second strand"/>
-                </repeat>
-                <param argument="--maxinsertsize" type="integer" value="5000" label="Maximum size of the inserts (paired end)" help="default: 5000"/>
+                <!-- segemehl takes exactly one query and one mate file, so a repeat cannot be used -->
+                <param name="first_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta,fastqsanger.gz,fastqillumina.gz,fastq.gz,fasta.gz" label="Reads from first strand"/>
+                <param name="second_strand_query" type="data" format="fastqsanger,fastqillumina,fastq,fasta,fastqsanger.gz,fastqillumina.gz,fastq.gz,fasta.gz" label="Reads from second strand"/>
+                <param argument="--maxpairinsertsize" type="integer" value="5000" min="1" label="Maximum size of the inserts (paired end)" help="(default: 5000)"/>
             </when>
         </conditional>
         <conditional name="splitreads">
@@ -120,31 +128,30 @@ segemehl.x
                 <option value="splits">Split reads</option>
             </param>
             <when value="splits">
-                <param argument="--minsplicecover" type="integer" value="80" label="Min coverage for spliced transcripts"/>
-                <param argument="--minfragscore" type="integer" value="18" label="Min coverage for spliced transcripts"/>
-                <param argument="--minfraglen" type="integer" value="20" label="Min length of a spliced fragment"/>
-                <param argument="--splicescorescale" type="float" value="1.0" label="Report spliced alignment with score greater than this scale times the score" help="Report only if this value x score is larger than next best spliced alignment"/>
-                <param argument="--maxsplitevalue" type="float" min="0" value="50.000000" label="max evalue for splits"/>
+                <param argument="--minsplicecover" type="integer" value="80" min="1" label="Min coverage for spliced transcripts"/>
+                <param argument="--minfragscore" type="integer" value="18" min="1" label="Min score of a spliced fragment"/>
+                <param argument="--minfraglen" type="integer" value="20" min="1" label="Min length of a spliced fragment"/>
+                <param argument="--splicescorescale" type="float" value="1.0" min="0" label="Report spliced alignment with score greater than this scale times the score" help="Report only if this value x score is larger than next best spliced alignment"/>
+                <param argument="--maxsplitevalue" type="float" min="0" value="50.000000" label="Max evalue for splits"/>
             </when>
-            <when value="nosplit">
-      </when>
+            <when value="nosplit"/>
         </conditional>
         <param argument="--bisulfite" type="select" label="Bisulfite mapping">
             <option value="0">No bisulfite mapping</option>
-            <option value="1">bisulfite mapping with methylC-seq/Lister et al.</option>
-            <option value="2">bs-seq/Cokus et al. protocol</option>
+            <option value="1">Bisulfite mapping with methylC-seq/Lister et al.</option>
+            <option value="2">Bs-seq/Cokus et al. protocol</option>
         </param>
         <param argument="--minsize" type="integer" value="12" min="1" label="Minimum size of queries"/>
         <param argument="--maxout" type="integer" min="0" value="0" label="Maximum number of alignments that will be reported" help="0 means no limit"/>
         <param argument="--accuracy" type="integer" value="85" min="1" max="100" label="Min percentage of matches per read in semi-global alignment"/>
         <param argument="--hitstrategy" type="select" label="Hits to report?">
-            <option value="1">report only best scoring hits</option>
-            <option value="0">report all scoring hits</option>
+            <option value="1">Report only best scoring hits</option>
+            <option value="0">Report all scoring hits</option>
         </param>
-        <param argument="--differences" type="integer" min="0" value="1" label="search seeds initially with n differences"/>
-        <param argument="--jump" type="integer" value="0" min="0" label="search seeds with jump size" help="(0=automatic) (default:0)?"/>
-        <param argument="--evalue" type="float" min="0" value="5.000000" label="max evalue"/>
-        <param argument="--maxinterval" type="integer" min="1" value="100" label="maximum width of a suffix array interval, i.e. a query seed will be omitted if it matches more than n times"/>
+        <param argument="--differences" type="integer" min="0" value="1" label="Search seeds initially with n differences"/>
+        <param argument="--jump" type="integer" value="0" min="0" label="Search seeds with jump size" help="(0=automatic)"/>
+        <param argument="--evalue" type="float" min="0" value="5.000000" label="Max evalue"/>
+        <param argument="--maxinterval" type="integer" min="1" value="100" label="Maximum width of a suffix array interval, i.e. a query seed will be omitted if it matches more than n times"/>
         <param argument="--nomatchfilename" type="boolean" truevalue="yes" falsevalue="no" checked="false" label="Output unmatched reads"/>
     </inputs>
     <outputs>
@@ -204,6 +211,28 @@ segemehl.x
             </output>
             <output name="segemehl_outunmatched" file="testmap2.fastq" ftype="fastq"/>
         </test>
+        <!-- gzipped queries must give the same result as the plain FASTQ of test 1 -->
+        <test expect_num_outputs="1">
+            <conditional name="refGenomeSource">
+                <param name="genomeSource" value="history"/>
+                <param name="own_reference_genome" value="chr1.fa"/>
+            </conditional>
+            <conditional name="library">
+                <param name="type" value="single"/>
+                <param name="input_query" value="test.fastq.gz" ftype="fastq.gz"/>
+            </conditional>
+            <conditional name="splitreads">
+                <param name="splits" value="nosplit"/>
+            </conditional>
+            <output name="segemehl_out" ftype="sam">
+                <assert_contents>
+                    <has_text text="SN:TestChromosomeForGalaxy"/>
+                    <has_text text="VN:0.3.4"/>
+                    <has_text text="NM:i:0" n="4"/>
+                    <has_n_lines n="10"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
@@ -219,29 +248,23 @@ read mapping.
 
 -----
 
+**Inputs**
+
+Reads can be given as FASTQ or FASTA, plain or gzip-compressed. Paired-end libraries are
+supplied as one first-strand and one second-strand file. The reference genome is either
+taken from the history (uncompressed FASTA, the index is then built on the fly) or from a
+pre-built segemehl index installed by your Galaxy administrator.
+
+-----
+
 **Outputs**
 
 The main output is a SAM alignment file. Optionally the unmapped reads can be written to a
 separate FASTQ file.
 
-When split-read detection is enabled, segemehl 0.3.x additionally writes BED-style split
-reports (`*.sngl.bed`, `*.mult.bed`) and a transcript table (`*.trns.txt`) next to the SAM
-file. These extra reports are not collected as Galaxy datasets.
-
------
-
-**Changes in segemehl 0.3.x**
-
-Upstream segemehl 0.3.x removed several command line options that existed in 0.2.x, so the
-corresponding options are no longer offered by this tool:
-
-- Adapter clipping (`-P`, `-Q`), clipping accuracy (`-R`) and the poly-A / autoclip /
-  hard-clip switches
-- `-O` / `--order` — output ordering is fixed in 0.3.x
-- `-s` (silent mode) — segemehl 0.3.x always prints progress information to stderr
-
-If you relied on read clipping, run a dedicated trimming tool such as cutadapt before
-mapping.
+When split-read detection is enabled, segemehl additionally writes BED-style split reports
+(`*.sngl.bed`, `*.mult.bed`) and a transcript table (`*.trns.txt`) next to the SAM file.
+These extra reports are not collected as Galaxy datasets.
 ]]></help>
     <expand macro="citations"/>
 </tool>
