@@ -16,6 +16,8 @@ work list ─► download + unzip ─► ELN builder ─► NeXus converter ─�
 
 The tools are in [`tools/zenodo_nomad_harvest`](../../tools/zenodo_nomad_harvest/).
 
+![The workflow in Galaxy's editor](./zenodo-harvest-spm.png)
+
 ## Inputs and outputs
 
 | Name | Content |
