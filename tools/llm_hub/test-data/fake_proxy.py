@@ -1,4 +1,4 @@
-"""Fake LiteLLM proxy for the llm_hub speech to text tests only.
+"""Fake LiteLLM proxy for the llm_hub speech to text and decision tests only.
 
 Standard library only, so it runs in the tool's own container. It answers
 POST /audio/transcriptions like the real proxy: it checks the API key, the
@@ -6,6 +6,10 @@ model and the uploaded file, and returns a transcript that names the file,
 its size and the language field, so a test can check what reached the server.
 With response_format verbose_json it adds two timestamped segments, like
 Whisper; test-transcriber-no-timestamps rejects that like Voxtral on vLLM.
+
+POST /systemone answers each question in the System One shape: a yes/no
+question is "yes" only if the state contains the word "degraded", a choice
+question picks its first option and a score question returns 0.25.
 
 Once listening, it writes a llm_hub config file pointing to itself. It stops
 when killed, or after 10 minutes.
@@ -21,6 +25,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 API_KEY = "test-key"
 MODELS = {"test-transcriber", "test-transcriber-no-timestamps"}
+DECISION_MODELS = {"test-decider"}
+# like a chat model on a proxy without the System One route
+NO_DECISION_MODELS = {"test-transcriber"}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -38,6 +45,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         if self.headers.get("Authorization") != f"Bearer {API_KEY}":
             return self.send_json({"error": {"message": "Authentication Error"}}, 401)
+        if self.path.endswith("/systemone"):
+            return self.decide()
         if not self.path.endswith("/audio/transcriptions"):
             return self.send_json({"error": {"message": "Not Found"}}, 404)
         body = self.rfile.read(int(self.headers.get("Content-Length", 0)))
@@ -65,6 +74,31 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"error": {"message": "litellm.BadRequestError: Hosted_vllmException - Currently do not support verbose_json for test-transcriber-no-timestamps"}}, 400)
         segments = [{"id": 0, "start": 0.0, "end": 0.5, "text": text}, {"id": 1, "start": 0.5, "end": 1.0, "text": " Second segment."}]
         self.send_json({"text": text, "language": fields.get("language") or "en", "duration": 1.0, "segments": segments})
+
+    def decide(self):
+        body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))))
+        if body.get("model") in NO_DECISION_MODELS:
+            return self.send_json({"error": {"message": "litellm.NotFoundError: NotFoundError: Hosted_vllmException - Not Found"}}, 404)
+        if body.get("model") not in DECISION_MODELS:
+            return self.send_json({"error": {"message": f"Invalid model name passed in model={body.get('model')}."}}, 400)
+        if not body.get("user"):
+            return self.send_json({"error": {"message": "No user field was sent."}}, 400)
+        state = json.dumps(body.get("state"))
+        answers = {}
+        for name, q in body.get("questions", {}).items():
+            if q["type"] == "noul":
+                yes = 1.0 if "degraded" in state else 0.0
+                answers[name] = {"type": "noul", "noul": yes, "probabilities": {"yes": yes, "no": 1 - yes}, "confidence": max(yes, 1 - yes)}
+            elif q["type"] == "choice":
+                labels = list(q["criteria"])
+                probabilities = {label: (1.0 if i == 0 else 0.0) for i, label in enumerate(labels)}
+                answers[name] = {"type": "choice", "choice": labels[0], "confidence": 1.0, "probabilities": probabilities}
+            elif q["type"] == "score":
+                legend = {"0": q["criteria"][0], "1": q["criteria"][-1]}
+                answers[name] = {"type": "score", "score": 0.25, "confidence": 0.75, "legend": legend, "probabilities": {"0": 0.75, "1": 0.25}}
+            else:
+                return self.send_json({"error": {"message": f"Unknown question type {q['type']!r}."}}, 400)
+        self.send_json({"model": body["model"], "answers": answers, "usage": {"input_tokens": len(state), "output_tokens": 0}, "object": "structured_decision"})
 
 
 server = ThreadingHTTPServer(("127.0.0.1", 0), Handler)
