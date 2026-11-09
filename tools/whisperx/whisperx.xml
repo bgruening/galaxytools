@@ -5,7 +5,7 @@
     <macros>
         <import>macros_for_testing.xml</import>
         <token name="@TOOL_VERSION@">3.8.6</token>
-        <token name="@VERSION_SUFFIX@">0</token>
+        <token name="@VERSION_SUFFIX@">1</token>
     </macros>
     <requirements>
         <container type="docker">quay.io/galaxy/whisperx:@TOOL_VERSION@</container>
@@ -16,7 +16,15 @@ export HF_HOME='$model.fields.path' &&
 export HF_HUB_OFFLINE=1 &&
 ## pyannote 4 sends usage metrics to otel.pyannote.ai unless disabled
 export PYANNOTE_METRICS_ENABLED=false &&
-export NLTK_DATA='$model.fields.path'/nltk_data &&
+## NLTK 3.10 only reads data folders that are owned by the job user (or root) and that
+## no one else can write to, which a shared model folder often isn't. So read punkt_tab
+## from a private copy in the job directory (11 MB).
+export NLTK_DATA=\$(mktemp -d "\$PWD/nltk_data.XXXXXX") &&
+if [ -d '$model.fields.path'/nltk_data/tokenizers/punkt_tab ]; then
+    mkdir -p "\$NLTK_DATA/tokenizers" &&
+    cp -r '$model.fields.path'/nltk_data/tokenizers/punkt_tab "\$NLTK_DATA/tokenizers/" &&
+    chmod -R go-w "\$NLTK_DATA";
+fi &&
 ln -s '$infile' ./input.${infile.ext} &&
 whisperx ./input.${infile.ext}
 --model '$model'
