@@ -1,41 +1,35 @@
-# ChatGPT Galaxy tool
+# chatGPT Galaxy tool
 
-## What it does
+Sends your prompt, and optional files, to a large language model (LLM) and saves the answer as a Markdown file.
+You can use OpenAI, or any server with an OpenAI-compatible API, for example Open WebUI, vLLM, Ollama or LiteLLM.
 
-This tool leverages OpenAI's ChatGPT API to generate responses based on user-provided context and prompt.
-Users can upload context data in various formats and ask questions or execute prompts related to that data.
-The tool then uploads the data to a OpenAI server and processes them using the selected ChatGPT model, returning an AI-generated response tailored to the context provided.
+## Credentials
 
-To utilize this tool, users need to input their OpenAI API key in the credentials section. To obtain an API key, visit https://platform.openai.com/account/api-keys.
+Add them once with the **Provide credentials** button at the top of the tool form.
 
-Make sure to setup the payment method in your OpenAI account to use the API key in here: https://platform.openai.com/settings/organization/billing/
+- **OpenAI**: your OpenAI API key ([get one here](https://platform.openai.com/account/api-keys); the account needs [credits](https://platform.openai.com/settings/organization/billing)).
+- **Custom server**: the server URL and, if the server needs one, an API key. The URL is the server address plus its API path, for example `https://my-server.org/v1`. For Open WebUI it ends with `/api`. The job runs on a Galaxy server, so `localhost` means that server, not your computer.
 
-When you run this tool, your input data is sent to OpenAI's servers using your API-key. 
-OpenAI's models process the data and generate a response based on the context and prompt provided. 
-After receiving the response from the OpenAI server, the tool returns it to Galaxy and puts it in your history. 
-The files that have been uploaded are then deleted from the OpenAI's server, so they are not stored beyond their necessary use. 
-If the tool fails to delete your uploaded files automatically, you can manually delete them by visiting https://platform.openai.com/storage/. You might want to check your OpenAI storage from time to time as they also have a quota.
+## Inputs
 
-## Usage
+- **Server**: OpenAI or your custom server.
+- **Model**: for OpenAI, choose from the current models or type any model name. The list is loaded live from the public [OpenRouter model list](https://openrouter.ai/api/v1/models), because OpenAI's own model list needs the user's key, which Galaxy cannot use while building the form. The `*-pro` and `*-codex` models are left out: they only work with OpenAI's Responses API. For a custom server, type the model name as the server knows it. Not sure of the name? Run the tool once: if the name is wrong, the job log lists the models on your server.
+- **Context** (optional): files for the model to read. Text files (TXT, CSV, JSON, HTML) work best. PDF and Word files are not converted, so turn them into text first, for example with the Markitdown tool. Images (JPG, PNG, GIF, max 20 MB each) need a model that can read images: some models ignore images without an error.
+- **Prompt**: your question or task. Be specific.
 
-**Input**
+## Advanced options
 
-1. **Upload Context Data**: Users can upload up to 500 files in formats such as DOC, DOCX, HTML, JSON, PDF, TXT, JPG, JPEG, PNG, WEBP, or GIF. 
-This context data serves as the input for the prompt you wish to execute.
+- **Temperature**: lower (0 to 0.3) gives focused, repeatable answers. Higher (0.7 or more) gives more creative answers.
+- **Top P**: another way to control randomness. Change Temperature or Top P, not both.
+- **Max tokens**: the longest answer allowed. Reasoning models also count their hidden thinking, so a low value can give an empty answer.
+- **System message**: tells the model how to behave, for example "You are a helpful biology assistant".
 
-2. **Provide a Prompt**: Once the context data is added, users can provide a prompt for a task ChatGPT should execute.
-The more specific the prompt, the more tailored the response will be.
+Many reasoning models do not accept Temperature or Top P. The tool then leaves them out and writes a note in the job log.
 
-    [General thoughts on prompting with GPT-4](https://help.openai.com/en/articles/4936848-how-do-i-create-a-good-prompt-for-an-ai-model-like-gpt-4)
+## If something goes wrong
 
-    [Open Ai's prompt example page for more information](https://platform.openai.com/docs/examples)
+The job log says what went wrong in one short sentence, for example a wrong API key, an unknown model name, or files that are too long for the model.
 
-3. **Select a Model**: Choose the ChatGPT model that best fits your needs. 
-Information about different models and their pricing can be found at https://platform.openai.com/docs/models and https://openai.com/api/pricing.
+## Privacy
 
-
-**Output**
-
-The output is a response generated by ChatGPT, crafted based on the provided context data and the prompt posed.
-This response is saved in the `output.txt` file.
-
+Your prompt, system message and files leave Galaxy. They are sent to OpenAI or to your custom server, and that service's data policy applies. Files are sent inside the request (text inline, images as base64), not uploaded to OpenAI's file storage.
