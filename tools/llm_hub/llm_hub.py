@@ -11,6 +11,7 @@ from openai import (
     APITimeoutError,
     BadRequestError,
     InternalServerError,
+    NotFoundError,
     OpenAI,
     RateLimitError,
 )
@@ -33,6 +34,8 @@ galaxy_url = sys.argv[8] if len(sys.argv) > 8 else ""
 language = sys.argv[9] if len(sys.argv) > 9 else ""
 # Speech to text output: text, or srt / vtt subtitles from the model's timestamps.
 audio_format = sys.argv[10] if len(sys.argv) > 10 else "text"
+# Decision models: JSON file with the questions from the tool form.
+questions_file = sys.argv[11] if len(sys.argv) > 11 else ""
 
 litellm_config_file = os.environ.get("LITELLM_CONFIG_FILE")
 if not litellm_config_file:
@@ -117,6 +120,7 @@ valid_model_types = {
     "image": {"image"},
     "multimodal": {"text", "image"},
     "audio": {"audio"},
+    "decision": {"text"},
 }
 
 if model_type not in valid_model_types:
@@ -242,6 +246,58 @@ def transcribe():
     return subtitles(result.segments, audio_format), "stop"
 
 
+def decision_questions():
+    """The form's questions in the System One shape, keyed by name.
+
+    Choice options are one per line, "label: meaning" (the meaning is
+    optional). A score question has two anchors, for 0 and for 1.
+    """
+    with open(questions_file) as f:
+        form = json.load(f)
+    questions = {}
+    for q in form:
+        if q["name"] in questions:
+            sys.exit(f"Two questions are named '{q['name']}'. Give each question its own name.")
+        question = {"type": q["type"], "instructions": q["instructions"]}
+        if q["type"] == "choice":
+            lines = [line.strip() for line in q["options"].splitlines() if line.strip()]
+            criteria = {}
+            for line in lines:
+                label, _, meaning = line.partition(":")
+                criteria[label.strip()] = meaning.strip() or label.strip()
+            if len(criteria) < 2:
+                sys.exit(f"The choice question '{q['name']}' needs at least two options, one per line.")
+            question["criteria"] = criteria
+        elif q["type"] == "score":
+            question["criteria"] = [q["low"], q["high"]]
+        questions[q["name"]] = question
+    return questions
+
+
+def decide():
+    """Answer the questions about the input with a decision model.
+
+    Uses the proxy's System One route (/systemone, LiteLLM 1.104.2 or later).
+    Decision models give typed answers with probabilities instead of text.
+    Returns (answers as JSON, finish_reason) like stream_completion.
+    """
+    body = {
+        "model": model,
+        "state": "\n\n".join(part["text"] for part in contents),
+        "questions": decision_questions(),
+        "user": user_id(),
+    }
+    try:
+        result = client.post("/systemone", body=body, cast_to=object)
+    except NotFoundError:
+        sys.exit(
+            "This model or proxy does not answer decision questions (the System One route returned 404). "
+            "Choose a decision model; the proxy needs LiteLLM 1.104.2 or newer."
+        )
+    answers = result.get("answers") if isinstance(result, dict) else None
+    return (json.dumps(answers, indent=2) if answers else ""), "stop"
+
+
 def stream_completion():
     """Run one streaming chat completion. Returns (answer_text, finish_reason).
 
@@ -280,7 +336,12 @@ def stream_completion():
 
 for attempt in range(max_retries):
     try:
-        answer, finish_reason = transcribe() if model_type == "audio" else stream_completion()
+        if model_type == "audio":
+            answer, finish_reason = transcribe()
+        elif model_type == "decision":
+            answer, finish_reason = decide()
+        else:
+            answer, finish_reason = stream_completion()
 
         # An empty answer is never a usable dataset -- fail loudly before
         # writing instead of silently emitting a blank output.md.
