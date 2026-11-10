@@ -135,8 +135,6 @@ def __main__():
     # paired end options
     parser.add_argument("-I", "--minins", dest="min_insert")
     parser.add_argument("-X", "--maxins", dest="max_insert")
-    parser.add_argument("--no-mixed", dest="no_mixed", action="store_true")
-    parser.add_argument("--no-discordant", dest="no_discordant", action="store_true")
 
     # parse general options
     # default 20
@@ -149,17 +147,6 @@ def __main__():
     parser.add_argument("--seed-mismatches", dest="seed_mismatches", type=int)
     # default 2
     parser.add_argument("--max-reseed", dest="max_reseed", type=int)
-
-    """
-    The number of megabytes of memory a given thread is given to store path
-    descriptors in --best mode. Best-first search must keep track of many paths
-    at once to ensure it is always extending the path with the lowest cumulative
-    cost. Bowtie tries to minimize the memory impact of the descriptors, but
-    they can still grow very large in some cases. If you receive an error message
-    saying that chunk memory has been exhausted in --best mode, try adjusting
-    this parameter up to dedicate more memory to the descriptors. Default: 512.
-    """
-    parser.add_argument("--chunkmbs", type=int, default=512)
 
     args = parser.parse_args()
 
@@ -218,6 +205,9 @@ def __main__():
     # Build bismark command
     tmp_bismark_dir = tempfile.mkdtemp()
     output_dir = os.path.join(tmp_bismark_dir, "results")
+    # bismark 3.x no longer creates the output directory passed via -o,
+    # so it has to exist before the mapping is started
+    os.makedirs(output_dir, exist_ok=True)
     cmd = [
         "bismark",
         "--bam",
@@ -238,26 +228,28 @@ def __main__():
 
     # alignment options
     if args.num_threads > 2:
-        # divide num_threads by 2 here since bismark will spawn 2 jobs with -p threads each
-        cmd.extend(["-p", str(int(math.floor(args.num_threads / 2)))])
-    if args.seed_mismatches:
-        cmd.extend(["-N", str(args.seed_mismatches)])
-    if args.seed_len:
-        cmd.extend(["-L", str(args.seed_len)])
+        # divide num_threads by 2 here since bismark runs the OT and OB
+        # alignment passes with -p threads each; bismark >= 3.0 requires
+        # at least 2 threads per aligner instance
+        cmd.extend(["-p", str(max(2, int(math.floor(args.num_threads / 2))))])
+    if args.seed_mismatches is not None:
+        # -N was renamed to -n/--seedmms in bismark 3.x
+        cmd.extend(["-n", str(args.seed_mismatches)])
+    if args.seed_len is not None:
+        # -L was renamed to -l/--seedlen in bismark 3.x
+        cmd.extend(["-l", str(args.seed_len)])
     if args.seed_extention_attempts:
         cmd.extend(["-D", str(args.seed_extention_attempts)])
     if args.max_reseed:
         cmd.extend(["-R", str(args.max_reseed)])
-    if args.no_discordant:
-        cmd.append("--no-discordant")
-    if args.no_mixed:
-        cmd.append("--no-mixed")
+    # --no-discordant and --no-mixed were removed in bismark 3.x and are no
+    # longer passed through to the aligner
     if args.skip_reads:
         cmd.extend(["--skip", str(args.skip_reads)])
     if args.score_min:
         cmd.extend(["--score_min", str(args.score_min)])
     if args.qupto:
-        cmd.extend(["--upto", "args.qupto"])
+        cmd.extend(["--upto", str(args.qupto)])
     if args.phred64:
         cmd.append("--phred64-quals")
     if args.non_directional:
@@ -269,7 +261,7 @@ def __main__():
     if args.output_unmapped_reads or (
         args.output_unmapped_reads_l and args.output_unmapped_reads_r
     ):
-        cmd.append("--un")
+        cmd.append("--unmapped")
     if args.output_suppressed_reads or (
         args.output_suppressed_reads_l and args.output_suppressed_reads_r
     ):
@@ -390,8 +382,9 @@ def __main__():
                     "sort",
                     "-@",
                     str(args.num_threads),
+                    "-o",
+                    "sorted_bam.bam",
                     bam_path,
-                    "sorted_bam",
                 ]
                 logger.info("Sorting bam with: '%s'", cmd)
                 process = subprocess.Popen(
