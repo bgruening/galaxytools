@@ -12,13 +12,17 @@
         python '$__tool_directory__/nexus_eln_builder.py'
         '$bundle'
         --technique '$technique'
+        #if $raw_file:
+            --raw '$raw_file'
+        #end if
         --eln '$eln'
         --report '$eln_report'
     ]]></command>
     <inputs>
         <param name="bundle" type="data" format="json" label="Context bundle" help="Written by the Zenodo download and unzip tool: record metadata and the text of one raw file's context files."/>
+        <param name="raw_file" type="data" format="binary,txt" optional="true" label="Raw SPM file" help="Optional. The raw file of this bundle; a Nanonis .sxm header gives technique, scan mode and software version."/>
         <param name="technique" type="select" label="Experiment technique">
-            <option value="auto" selected="true">From the raw file's extension</option>
+            <option value="auto" selected="true">From the raw file's header or extension</option>
             <option value="STM">STM (NXstm)</option>
             <option value="STS">STS (NXsts)</option>
             <option value="AFM">AFM (NXafm)</option>
@@ -84,6 +88,75 @@
                 </assert_contents>
             </output>
         </test>
+        <!-- Test 04: an STM .sxm header gives technique, scan mode and software over the context files. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_with_context.json" ftype="json"/>
+            <param name="raw_file" value="const_dos_No14_003.sxm" ftype="binary"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="definition: NXstm"/>
+                    <has_text text="scan_mode: constant current"/>
+                    <has_text text="model: Generic 4"/>
+                    <has_text text="model/@version: '8987'"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;experiment_technique&quot;: &quot;raw file header (recorded channels)&quot;"/>
+                    <has_text text="&quot;scan_mode&quot;: &quot;raw file header (Z-controller status)&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 05: a Nanonis AFM .sxm (recorded Frequency_Shift channel) is AFM; its scan mode is not guessed.
+             afm_header_only.sxm is the header of a pynxtools-spm test file (Apache-2.0), cut at :SCANIT_END:. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_afm_sxm.json" ftype="json"/>
+            <param name="raw_file" value="afm_header_only.sxm" ftype="binary"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="experiment_technique: AFM"/>
+                    <has_text text="definition: NXafm"/>
+                    <not_has_text text="scan_mode:"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_text_matching expression="&quot;missing&quot;: \[[^\]]*&quot;scan_mode&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 06: the technique parameter still overrides the header. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_afm_sxm.json" ftype="json"/>
+            <param name="raw_file" value="afm_header_only.sxm" ftype="binary"/>
+            <param name="technique" value="STM"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="definition: NXstm"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;experiment_technique&quot;: &quot;tool parameter&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 07: an unreadable header falls back to the extension rule. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_with_context.json" ftype="json"/>
+            <param name="raw_file" value="broken.sxm" ftype="binary"/>
+            <output name="eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="definition: NXstm"/>
+                    <not_has_text text="Generic"/>
+                </assert_contents>
+            </output>
+            <output name="eln_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;experiment_technique&quot;: &quot;extension .sxm&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
     </tests>
     <help format="markdown"><![CDATA[
 **What it does**
@@ -97,8 +170,12 @@ context files (readme, notes).
 
 **Where the values come from**
 
-- `experiment_technique` and `definition`: the raw file's extension (`.sxm` → STM, `.dat` → STS,
-  `.spm` → AFM, ...) or the **Experiment technique** parameter.
+- `experiment_technique` and `definition`: the **Experiment technique** parameter; else, for a
+  Nanonis `.sxm` given as **Raw SPM file**, its recorded channels (`Frequency_Shift`, `Excitation`,
+  `Amplitude` or `Phase` → AFM, otherwise STM); else the extension (`.sxm` → STM, `.dat` → STS,
+  `.spm` → AFM, ...).
+- From a Nanonis `.sxm` header: `scan_mode` for STM (Z-controller on → constant current, off →
+  constant height) and the software (`SW Version`, `UI Release`).
 - `identifier_collection`, `citeID`, `experiment_description`: the record's DOI, creators, title
   and description.
 - `Sample/name`, `Sample/description`, `scan_mode`, `User/name`: lines such as
