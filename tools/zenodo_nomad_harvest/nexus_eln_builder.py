@@ -35,10 +35,13 @@ CONTEXT_FIELDS = {
     "Sample.name": r"sample(?:\s+name)?",
     "Sample.description": r"sample\s+description",
     "scan_mode": r"scan\s*mode",
-    "User.name": r"(?:user|operator|measured\s+by)",
 }
 # Fields the SPM reader expects and that only an ELN can give.
-EXPECTED_FIELDS = ["User.name", "Sample.name", "scan_mode"]
+EXPECTED_FIELDS = ["User", "Sample.name", "scan_mode"]
+# The ELN's only user is the person who runs the harvest (from the work list), never a
+# person named in the dataset files; the Zenodo creators are in citeID.
+USER_KEYS = ("name", "email", "affiliation", "address")
+USER_ROLE = "harvested and converted the data"
 
 # Nanonis .sxm: a text header of ":KEY:" lines, each followed by its value lines.
 SXM_START, SXM_END = b":NANONIS_VERSION:", b":SCANIT_END:"
@@ -47,14 +50,22 @@ SXM_START, SXM_END = b":NANONIS_VERSION:", b":SCANIT_END:"
 AFM_CHANNELS = {"Frequency_Shift", "Excitation", "Amplitude", "Phase"}
 
 
-def read_sxm_header(path):
-    """The text header of a Nanonis .sxm file as {key: [value lines]}, or None if it is not one."""
+def sxm_header_text(path):
+    """The text header of a Nanonis .sxm file, or None if it is not one. Also used by nexus_llm_input."""
     with open(path, "rb") as handle:
         data = handle.read(1 << 20)  # the header is a few kB; never read the image data
     if not data.startswith(SXM_START) or SXM_END not in data:
         return None
+    return data[: data.index(SXM_END) + len(SXM_END)].decode("latin-1")
+
+
+def read_sxm_header(path):
+    """The text header of a Nanonis .sxm file as {key: [value lines]}, or None if it is not one."""
+    text = sxm_header_text(path)
+    if text is None:
+        return None
     header, key = {}, None
-    for line in data[: data.index(SXM_END)].decode("latin-1").splitlines():
+    for line in text[: -len(SXM_END)].splitlines():
         if line.startswith(":") and line.endswith(":") and len(line) > 2:
             key = line[1:-1]
             header[key] = []
@@ -153,8 +164,13 @@ def build_eln(bundle, technique, raw_file=None):
     for field, label in CONTEXT_FIELDS.items():
         value, path = find_in_context(bundle.get("context", []), label)
         if value is not None:
-            set_path(eln, field, [value] if field == "User.name" else value)
+            set_path(eln, field, value)
             sources[field] = path
+    user = {key: bundle["user"][key] for key in USER_KEYS if (bundle.get("user") or {}).get(key)}
+    if "name" in user:
+        # A list of users: pynxtools-spm writes USER[user_1].
+        eln["User"] = [user | {"role": USER_ROLE}]
+        sources["User"] = "the harvest's user (work list)"
     # The header describes this very file, so it wins over a context-file line. The Z-controller
     # rule is for STM only; AFM modes (contact, tapping, ...) are not in the .sxm header.
     if "scan_mode" in facts and technique == "STM":

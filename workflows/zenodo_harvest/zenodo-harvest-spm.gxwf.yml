@@ -1,9 +1,9 @@
 class: GalaxyWorkflow
 label: Zenodo harvest for SPM data
 doc: |
-  Downloads the files of a work list from Zenodo, builds an ELN per raw SPM file, converts the
-  raw files to NeXus and builds the results, NOMAD project zips and logs for the zenodo_harvest
-  Action of nomad-eosc-galaxy-actions.
+  Downloads the files of a work list from Zenodo, builds an ELN per raw SPM file (optionally
+  completed by an LLM through LLM Hub), converts the raw files to NeXus and builds the results,
+  NOMAD project zips and logs for the zenodo_harvest Action of nomad-eosc-galaxy-actions.
 license: MIT
 creator:
   - class: Person
@@ -24,14 +24,30 @@ inputs:
     collection_type: list
     optional: true
     doc: Optional. Files already in Galaxy, with the Zenodo file key as element identifier.
+  # New inputs go after the existing ones, so the work list stays step 0.
+  use llm:
+    type: boolean
+    default: true
+    doc: Let an LLM (LLM Hub) fill the ELN fields the rules leave empty. On by default; needs "llm model".
+  llm model:
+    type: text
+    default: mistral-medium-3.5-e-infra.cz
+    doc: >-
+      LLM Hub multimodal model: a value of the server's genai_models table with type "multimodal".
+      The default is a model on usegalaxy.eu.
 outputs:
   manifest:
     outputSource: download/manifest
   # Outputs of the middle steps, so the run's Outputs tab lists every file by name.
+  # The ELN the converter reads: the rule ELN plus the LLM values that passed the checks.
   eln files:
-    outputSource: eln/eln
+    outputSource: merge/merged_eln
   eln reports:
     outputSource: eln/eln_report
+  eln llm reports:
+    outputSource: merge/eln_llm_report
+  llm answers:
+    outputSource: llm/output
   nexus files:
     outputSource: convert/output_nxs
   conversion statuses:
@@ -50,31 +66,70 @@ steps:
   download:
     doc: Download and safely unzip the work list's files; write the manifest.
     tool_id: zenodo_download_unzip
-    tool_version: 0.1.0+galaxy2
+    tool_version: 0.2.0+galaxy0
     in:
       work_list: work list
       prefetched: prefetched files
     tool_state:
       # Keep equal to the converter's version: the NOMAD side retries failed files when it changes.
-      pipeline_version: pynxtools_dataconverter 0.4.2+galaxy1
+      pipeline_version: pynxtools_dataconverter 0.5.0+galaxy0
   eln:
     doc: Build an ELN per raw file from the record metadata and context files.
     tool_id: nexus_eln_builder
-    tool_version: 0.2.0+galaxy0
+    tool_version: 0.2.1+galaxy0
     # Bundles and raw files have the same element identifiers, so Galaxy pairs them.
     in:
       bundle: download/context_bundles
       raw_file: download/raw_files
     tool_state:
       technique: auto
+  llm_input:
+    doc: Write the LLM input per raw file (instructions, base ELN, context texts); cheap, always runs.
+    tool_id: nexus_llm_input
+    tool_version: 0.1.0+galaxy0
+    in:
+      bundle: download/context_bundles
+      eln: eln/eln
+      raw_file: download/raw_files
+  llm:
+    doc: Ask the LLM to fill the empty ELN fields; one job per raw file. Skipped unless "use llm".
+    tool_id: llm_hub
+    tool_version: 2.53.0+galaxy0
+    in:
+      # A list of lists: Galaxy runs one job per inner list, i.e. per raw file.
+      model_condition|text_context: llm_input/llm_context
+      model_condition|model: llm model
+      should_run: use llm
+    when: $(inputs.should_run)
+    tool_state:
+      model_condition:
+        # Fixed: Galaxy 25.0 cannot connect an input to this conditional's selector. Multimodal
+        # models also read text files; Mistral Medium 3.5 gave the best ELN in a comparison (2026-11-12).
+        model_type: multimodal
+        # Unconnected optional input: an explicit value, else Galaxy's API refuses the invocation.
+        image_context: null
+        # Galaxy strips newlines and quotes from text fields: the rules are in eln_instructions.txt.
+        prompt: Follow the instructions in the file eln_instructions.txt exactly. Use only the other context files as sources. Answer with the two YAML blocks only.
+      advanced:
+        temperature: 0.0
+  merge:
+    doc: Keep the LLM values that pass the checks and merge them into the rule ELN.
+    tool_id: nexus_eln_llm_merge
+    tool_version: 0.1.0+galaxy0
+    # A skipped llm step gives "null" answers; the rule ELN is then kept.
+    in:
+      bundle: download/context_bundles
+      eln: eln/eln
+      answer: llm/output
+      raw_file: download/raw_files
   convert:
     doc: Convert each raw file and its ELN to NeXus.
     tool_id: pynxtools_dataconverter
-    tool_version: 0.4.2+galaxy1
+    tool_version: 0.5.0+galaxy0
     # Raw files and ELNs have the same element identifiers, so Galaxy pairs them.
     in:
       raw_file: download/raw_files
-      eln_file: eln/eln
+      eln_file: merge/merged_eln
     # Unconnected optional inputs need an explicit value: Galaxy's API refuses to invoke a
     # workflow whose tool state it would have to correct.
     tool_state:
@@ -89,7 +144,7 @@ steps:
       manifest: download/manifest
       statuses: convert/status_json
       nexus_files: convert/output_nxs
-      elns: eln/eln
+      elns: merge/merged_eln
       raw_files: download/raw_files
       context_files: download/context_files
       eln_reports: eln/eln_report

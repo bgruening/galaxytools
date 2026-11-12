@@ -13,12 +13,15 @@ file as ``raw``, ``context`` or ``ignored``. Raw files to convert are written
 to ``--raw-dir``, one context bundle per raw file (same file name) to
 ``--bundle-dir``, and every other file not matched by ``ignore_patterns`` to
 ``--context-dir``, for the project's ``Complementaries`` folder.
+The text of a PDF context file is read with ``pdftotext`` (Poppler) into the
+bundle's ``pdf_text``; a PDF without text gets ``pdf_text_error`` instead.
 
 Failures (download, MD5, unsafe archive) are recorded in the manifest and the
 script still exits with 0, so the run goes on with the other files.
 """
 
 import argparse
+import functools
 import glob
 import hashlib
 import json
@@ -39,6 +42,9 @@ NESTED_ARCHIVE_EXTENSIONS = (".zip", ".tar", ".tar.gz", ".tgz", ".gz", ".bz2", "
 # Context files whose text goes into the bundle, for the ELN builder.
 TEXT_EXTENSIONS = (".txt", ".md", ".csv", ".json", ".yaml", ".yml", ".rtf")
 MAX_TEXT_BYTES = 1_000_000
+# PDF context files: their text goes into the bundle as `pdf_text`, read by pdftotext (Poppler).
+MAX_PDF_BYTES = 100_000_000
+PDF_TIMEOUT_SECONDS = 120
 SUPPORTED_SCHEMA_VERSION = 1
 
 
@@ -257,8 +263,45 @@ def context_text(row):
     return strip_rtf(text) if has_extension(row["path"], (".rtf",)) else text
 
 
+def pdf_text(row, pdftotext="pdftotext"):
+    """Text of a PDF file and the failure reason (one of them is None).
+
+    No `-layout`: it mixes the two columns of a paper. The LLM prompts were tested on this text.
+    """
+    if row["size"] > MAX_PDF_BYTES:
+        return None, "too_large"
+    command = [pdftotext, "-enc", "UTF-8", str(row["_local"]), "-"]
+    try:
+        completed = subprocess.run(
+            command, capture_output=True, timeout=PDF_TIMEOUT_SECONDS, check=False
+        )
+    except subprocess.TimeoutExpired:
+        return None, "timeout"
+    if completed.returncode != 0:
+        stderr = completed.stderr.decode("utf-8", errors="replace")[-2000:]
+        logger.warning("pdftotext failed for %s: %s", row["path"], stderr)
+        return None, "unreadable"
+    text = completed.stdout.decode("utf-8", errors="replace")
+    # Only page breaks or spaces: a scanned PDF without a text layer.
+    if not text.strip():
+        return None, "no_text"
+    return text, None
+
+
+def context_item(row):
+    """Bundle entry of one context file; a PDF also gets `pdf_text` and `pdf_text_error`."""
+    item = {"path": row["path"], "sha256": row["sha256"], "text": context_text(row)}
+    if has_extension(row["path"], (".pdf",)):
+        item["pdf_text"], item["pdf_text_error"] = pdf_text(row)
+        if item["pdf_text_error"]:
+            logger.warning("No text from PDF %s: %s", row["path"], item["pdf_text_error"])
+    return item
+
+
 def write_outputs(rows, record, work_list, raw_dir, bundle_dir, context_dir):
     by_path = {row["path"]: row for row in rows if row["role"] == "context"}
+    # Many raw files share a context file; read each one (a PDF can be slow) only once.
+    context_items = functools.cache(lambda path: context_item(by_path[path]))
     record_meta = {
         key: record.get(key)
         for key in (
@@ -279,16 +322,11 @@ def write_outputs(rows, record, work_list, raw_dir, bundle_dir, context_dir):
         bundle = {
             "schema_version": 1,
             "run_id": work_list["run_id"],
+            # The person who runs the harvest; the ELN's only user. Optional.
+            "user": work_list.get("user"),
             "record": record_meta,
             "raw": {key: row[key] for key in ("path", "sha256", "size", "source", "archive_key")},
-            "context": [
-                {
-                    "path": path,
-                    "sha256": by_path[path]["sha256"],
-                    "text": context_text(by_path[path]),
-                }
-                for path in row["context_paths"]
-            ],
+            "context": [context_items(path) for path in row["context_paths"]],
         }
         (bundle_dir / name).write_text(json.dumps(bundle, indent=2), encoding="utf-8")
 

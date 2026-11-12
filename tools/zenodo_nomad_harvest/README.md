@@ -20,6 +20,7 @@ A file that cannot be handled is recorded with its reason; the job itself still 
 - **Step 1** downloads the files of each record (MD5 checked) and extracts archives safely (no paths
   outside the folder, size limits). It gives each file a role: `raw`, `context` or `ignored`, from the
   work list's extension lists. Raw files the NOMAD side already knows (`known_sha256`) are skipped.
+  The text of PDF context files is read with `pdftotext` into the bundle's `pdf_text`.
 - **Step 2** fills the ELN from the record metadata and the text of the context files (readme, notes).
   It never guesses a value.
 - **Step 3** runs `pynxtools` with the `spm` reader of
@@ -29,6 +30,23 @@ A file that cannot be handled is recorded with its reason; the job itself still 
 
 Steps 2 and 3 run once per raw file (Galaxy maps them over the collections). Raw files and ELNs share
 element identifiers (`<record id>-<sha256 prefix>-<file name>`), so Galaxy pairs them.
+
+## LLM ELN (optional workflow branch, on by default)
+
+`nexus_llm_input` writes, per raw file, the text files of one
+[LLM Hub](https://github.com/bgruening/galaxytools/tree/master/tools/llm_hub) job:
+
+- `eln_instructions.txt`: fixed instructions per definition, from `eln_instructions/`;
+- `base_eln.txt`: the rule ELN, with the fields the LLM may fill set to `null`;
+- the context texts (PDF text included) and the `.sxm` header.
+
+`eln_rules.yaml` holds the allowed `scan_mode` values per definition and the fields the LLM may
+fill. The tool stops if an instructions file misses one of them, so the two stay in step.
+
+`nexus_eln_llm_merge` checks the LLM answer and merges it into the rule ELN. A value is kept only
+when its quote is in a source file and it passes the field's checks (allowed values, exact values,
+no copied examples). Every kept, dropped or cleaned value is in its report. Without an answer the
+rule ELN is the output. In the workflow, `llm_hub` runs between the two only when `use llm` is true.
 
 ## Exchange with NOMAD
 
