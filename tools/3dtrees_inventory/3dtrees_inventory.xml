@@ -3,10 +3,92 @@
     <macros>
         <token name="@TOOL_VERSION@">1.0.0</token>
         <token name="@VERSION_SUFFIX@">0</token>
-        <xml name="segmentations" tokens="min,reserved">
-            <repeat name="segmentations" title="Segmentation" min="@MIN@" help="One block per instance dimension of the point cloud to inventory.">
-                <param argument="--instance-attribute" type="text" value="PredInstance_FM" label="Instance dimension" help="LAS dimension holding the tree IDs, for example PredInstance_SAT or PredInstance_FM. Each dimension only once, and no two that differ only by the PredInstance_ prefix. With CSP, PredInstance_CSP and CSP are reserved for the CSP segmentation.">
-                    <validator type="regex" message="Letters, digits and underscores, starting with a letter; not a reserved name">^(?!@RESERVED@)[A-Za-z][A-Za-z0-9_]{0,63}\Z</validator>
+    </macros>
+    <creator>
+        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
+        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
+    </creator>
+    <requirements>
+        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_csp_standsegmentation:@TOOL_VERSION@</container>
+    </requirements>
+    <version_command>Rscript /opt/CspStandSegmentation/exec/run.R --version</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        cp '$point_cloud' 'input.${point_cloud.ext}' &&
+        #if $terrain.source == 'supplied':
+            ln -s '$terrain.dtm' dtm.tif &&
+        #end if
+        #if $area.restrict == 'yes':
+            ln -s '$area.aoi' aoi.geojson &&
+        #end if
+        #if $names.supply == 'yes':
+            ln -s '$names.species_lookup' species_lookup.tsv &&
+        #end if
+        #if $instances.csp.enable == 'yes' and $instances.csp.seeds.mode == 'supplied':
+            ln -s '$instances.csp.seeds.seed_file' seeds.tsv &&
+        #end if
+        Rscript /opt/CspStandSegmentation/exec/run.R
+            --input 'input.${point_cloud.ext}'
+            --output-dir output
+            #for $segmentation in $instances.segmentations:
+                --instance-attribute '$segmentation.instance_attribute'
+                #if $segmentation.species.provided == 'yes':
+                    --species-attribute '$segmentation.species.species_attribute'
+                    --species-probability-attribute '$segmentation.species.species_probability_attribute'
+                #end if
+                #if str($segmentation.score_attribute):
+                    --score-attribute '$segmentation.score_attribute'
+                #end if
+                --non-tree-ids '$segmentation.non_tree_ids'
+            #end for
+            #if $terrain.source == 'supplied':
+                --dtm dtm.tif
+            #else:
+                --dtm-resolution '$terrain.dtm_resolution'
+            #end if
+            #if $area.restrict == 'yes':
+                --aoi-json aoi.geojson
+            #end if
+            #if $names.supply == 'yes':
+                --species-lookup species_lookup.tsv
+            #end if
+            #if $instances.csp.enable == 'yes':
+                --enable-csp true
+                --seed-mode '$instances.csp.seeds.mode'
+                #if $instances.csp.seeds.mode == 'supplied':
+                    --seed-file seeds.tsv
+                #else:
+                    --seed-resolution '$instances.csp.seeds.seed_resolution'
+                    --seed-z-min '$instances.csp.seeds.seed_z_min'
+                    --seed-z-max '$instances.csp.seeds.seed_z_max'
+                    --seed-quantile '$instances.csp.seeds.seed_quantile'
+                    --seed-eps '$instances.csp.seeds.seed_eps'
+                #end if
+                --voxel-resolution '$instances.csp.routing.voxel_resolution'
+                --verticality-weight '$instances.csp.routing.verticality_weight'
+                --linearity-weight '$instances.csp.routing.linearity_weight'
+                --sphericity-weight '$instances.csp.routing.sphericity_weight'
+                --routing-workers "\${GALAXY_SLOTS:-4}"
+            #end if
+            --slice-min '$advanced.slice_min'
+            --slice-max '$advanced.slice_max'
+            --slice-increment '$advanced.slice_increment'
+            --slice-width '$advanced.slice_width'
+            --max-dbh '$advanced.max_dbh'
+            --dbh-runs '$advanced.dbh_runs'
+            --metrics-grid '$advanced.metrics_grid'
+            --geometry-k '$advanced.geometry_k'
+            --random-seed '$advanced.random_seed'
+            $advanced.dbh_evidence
+            --dtm-workers "\${GALAXY_SLOTS:-4}"
+            --inventory-workers "\$(( \${GALAXY_SLOTS:-4} < 16 ? \${GALAXY_SLOTS:-4} : 16 ))"
+            --scratch-dir "\${TMPDIR:-\$_GALAXY_JOB_TMP_DIR}"
+    ]]></command>
+    <inputs>
+        <param name="point_cloud" type="data" format="laz,las" label="Segmented point cloud" help="One full-resolution LAS/LAZ or COPC point cloud with a CRS projected in metres and at least one tree instance dimension."/>
+        <section name="instances" title="Instance dimensions" expanded="true">
+            <repeat name="segmentations" title="Segmentation" min="0" help="One block per instance dimension of the point cloud to inventory. At least one segmentation, or CSP below.">
+                <param argument="--instance-attribute" type="text" value="PredInstance_FM" label="Instance dimension" help="LAS dimension holding the tree IDs, for example PredInstance_SAT or PredInstance_FM. Each dimension only once, and no two that differ only by the PredInstance_ prefix. With CSP, PredInstance_CSP and CSP are taken by the CSP segmentation.">
+                    <validator type="regex" message="Letters, digits and underscores, starting with a letter; not a reserved name">^(?!PredInstance_\Z)[A-Za-z][A-Za-z0-9_]{0,63}\Z</validator>
                 </param>
                 <conditional name="species">
                     <param name="provided" type="select" label="Species prediction" help="Per-point species ID and probability dimensions of this segmentation, for example from 3Dtrees: DetailView.">
@@ -30,123 +112,38 @@
                     <validator type="regex" message="Integers separated by commas without spaces">^-?[0-9]+(,-?[0-9]+)*\Z</validator>
                 </param>
             </repeat>
-        </xml>
-    </macros>
-    <creator>
-        <person name="Kilian Gerberding" email="kilian.gerberding@geosense.uni-freiburg.de" url="https://orcid.org/0009-0002-5001-2571"/>
-        <organization name="3Dtrees-Team, University of Freiburg" url="https://github.com/3dTrees-earth"/>
-    </creator>
-    <requirements>
-        <container type="docker">ghcr.io/3dtrees-earth/3dtrees_csp_standsegmentation:@TOOL_VERSION@</container>
-    </requirements>
-    <version_command>Rscript /opt/CspStandSegmentation/exec/run.R --version</version_command>
-    <command detect_errors="exit_code"><![CDATA[
-        cp '$point_cloud' 'input.${point_cloud.ext}' &&
-        #if $terrain.source == 'supplied':
-            ln -s '$terrain.dtm' dtm.tif &&
-        #end if
-        #if $area.restrict == 'yes':
-            ln -s '$area.aoi' aoi.geojson &&
-        #end if
-        #if $names.supply == 'yes':
-            ln -s '$names.species_lookup' species_lookup.tsv &&
-        #end if
-        #if $csp.enable == 'yes' and $csp.seeds.mode == 'supplied':
-            ln -s '$csp.seeds.seed_file' seeds.tsv &&
-        #end if
-        Rscript /opt/CspStandSegmentation/exec/run.R
-            --input 'input.${point_cloud.ext}'
-            --output-dir output
-            #for $segmentation in $csp.segmentations:
-                --instance-attribute '$segmentation.instance_attribute'
-                #if $segmentation.species.provided == 'yes':
-                    --species-attribute '$segmentation.species.species_attribute'
-                    --species-probability-attribute '$segmentation.species.species_probability_attribute'
-                #end if
-                #if str($segmentation.score_attribute):
-                    --score-attribute '$segmentation.score_attribute'
-                #end if
-                --non-tree-ids '$segmentation.non_tree_ids'
-            #end for
-            #if $terrain.source == 'supplied':
-                --dtm dtm.tif
-            #else:
-                --dtm-resolution '$terrain.dtm_resolution'
-            #end if
-            #if $area.restrict == 'yes':
-                --aoi-json aoi.geojson
-            #end if
-            #if $names.supply == 'yes':
-                --species-lookup species_lookup.tsv
-            #end if
-            #if $csp.enable == 'yes':
-                --enable-csp true
-                --seed-mode '$csp.seeds.mode'
-                #if $csp.seeds.mode == 'supplied':
-                    --seed-file seeds.tsv
-                #else:
-                    --seed-resolution '$csp.seeds.seed_resolution'
-                    --seed-z-min '$csp.seeds.seed_z_min'
-                    --seed-z-max '$csp.seeds.seed_z_max'
-                    --seed-quantile '$csp.seeds.seed_quantile'
-                    --seed-eps '$csp.seeds.seed_eps'
-                #end if
-                --voxel-resolution '$csp.routing.voxel_resolution'
-                --verticality-weight '$csp.routing.verticality_weight'
-                --linearity-weight '$csp.routing.linearity_weight'
-                --sphericity-weight '$csp.routing.sphericity_weight'
-                --routing-workers "\${GALAXY_SLOTS:-4}"
-            #end if
-            --slice-min '$advanced.slice_min'
-            --slice-max '$advanced.slice_max'
-            --slice-increment '$advanced.slice_increment'
-            --slice-width '$advanced.slice_width'
-            --max-dbh '$advanced.max_dbh'
-            --dbh-runs '$advanced.dbh_runs'
-            --metrics-grid '$advanced.metrics_grid'
-            --geometry-k '$advanced.geometry_k'
-            --random-seed '$advanced.random_seed'
-            $advanced.dbh_evidence
-            --dtm-workers "\${GALAXY_SLOTS:-4}"
-            --inventory-workers "\$(( \${GALAXY_SLOTS:-4} < 16 ? \${GALAXY_SLOTS:-4} : 16 ))"
-            --scratch-dir "\${TMPDIR:-\$_GALAXY_JOB_TMP_DIR}"
-    ]]></command>
-    <inputs>
-        <param name="point_cloud" type="data" format="laz,las" label="Segmented point cloud" help="One full-resolution LAS/LAZ or COPC point cloud with a CRS projected in metres and at least one tree instance dimension."/>
-        <conditional name="csp">
-            <param name="enable" type="select" label="CSP segmentation" help="Also segment the trees with comparative shortest path (CSP) routing and inventory them as PredInstance_CSP. CSP holds the whole cloud in memory; use it for plot-sized clouds.">
-                <option value="no" selected="true">No</option>
-                <option value="yes">Yes</option>
-            </param>
-            <when value="no">
-                <expand macro="segmentations" min="1" reserved="PredInstance_\Z"/>
-            </when>
-            <when value="yes">
-                <expand macro="segmentations" min="0" reserved="PredInstance_\Z|(PredInstance_)?CSP\Z"/>
-                <conditional name="seeds">
-                    <param name="mode" type="select" label="Stem seeds" help="Stem positions the CSP routing starts from.">
-                        <option value="automatic" selected="true">Detect from point density</option>
-                        <option value="supplied">Supplied table</option>
-                    </param>
-                    <when value="automatic">
-                        <param argument="--seed-resolution" type="float" min="0.01" max="1" value="0.1" label="Seed raster resolution (m)"/>
-                        <param argument="--seed-z-min" type="float" min="0" max="1.4" value="0.5" label="Seed layer bottom (m above ground)"/>
-                        <param argument="--seed-z-max" type="float" min="1.5" max="10" value="2" label="Seed layer top (m above ground)"/>
-                        <param argument="--seed-quantile" type="float" min="0" max="1" value="0.975" label="Seed density quantile" help="Raster cells denser than this quantile are stem candidates."/>
-                        <param argument="--seed-eps" type="float" min="0.01" max="5" value="0.2" label="Seed merge radius (m)"/>
-                    </when>
-                    <when value="supplied">
-                        <param argument="--seed-file" type="data" format="tabular" label="Seed table" help="Tab-separated with the columns X, Y, Z and TreeID (unique positive integers): X and Y in the point cloud's CRS, Z in metres above the terrain. The seed_x, seed_y and seed_height_m columns of an earlier CSP inventory are such seeds."/>
-                    </when>
-                </conditional>
-                <section name="routing" title="CSP routing" expanded="false">
-                    <param argument="--voxel-resolution" type="float" min="0.01" max="5" value="0.3" label="Routing voxel size (m)"/>
-                    <param argument="--verticality-weight" type="float" min="0" max="1" value="0" label="Verticality weight"/>
-                    <param argument="--linearity-weight" type="float" min="0" max="1" value="0" label="Linearity weight"/>
-                    <param argument="--sphericity-weight" type="float" min="0" max="1" value="0" label="Sphericity weight"/>
-                </section>
-            </when>
-        </conditional>
+            <conditional name="csp">
+                <param name="enable" type="select" label="CSP segmentation" help="Also segment the trees with comparative shortest path (CSP) routing and inventory them as PredInstance_CSP. CSP holds the whole cloud in memory; use it for plot-sized clouds.">
+                    <option value="no" selected="true">No</option>
+                    <option value="yes">Yes</option>
+                </param>
+                <when value="no"/>
+                <when value="yes">
+                    <conditional name="seeds">
+                        <param name="mode" type="select" label="Stem seeds" help="Stem positions the CSP routing starts from.">
+                            <option value="automatic" selected="true">Detect from point density</option>
+                            <option value="supplied">Supplied table</option>
+                        </param>
+                        <when value="automatic">
+                            <param argument="--seed-resolution" type="float" min="0.01" max="1" value="0.1" label="Seed raster resolution (m)"/>
+                            <param argument="--seed-z-min" type="float" min="0" max="1.4" value="0.5" label="Seed layer bottom (m above ground)"/>
+                            <param argument="--seed-z-max" type="float" min="1.5" max="10" value="2" label="Seed layer top (m above ground)"/>
+                            <param argument="--seed-quantile" type="float" min="0" max="1" value="0.975" label="Seed density quantile" help="Raster cells denser than this quantile are stem candidates."/>
+                            <param argument="--seed-eps" type="float" min="0.01" max="5" value="0.2" label="Seed merge radius (m)"/>
+                        </when>
+                        <when value="supplied">
+                            <param argument="--seed-file" type="data" format="tabular" label="Seed table" help="Tab-separated with the columns X, Y, Z and TreeID (unique positive integers): X and Y in the point cloud's CRS, Z in metres above the terrain. The seed_x, seed_y and seed_height_m columns of an earlier CSP inventory are such seeds."/>
+                        </when>
+                    </conditional>
+                    <section name="routing" title="CSP routing" expanded="false">
+                        <param argument="--voxel-resolution" type="float" min="0.01" max="5" value="0.3" label="Routing voxel size (m)"/>
+                        <param argument="--verticality-weight" type="float" min="0" max="1" value="0" label="Verticality weight"/>
+                        <param argument="--linearity-weight" type="float" min="0" max="1" value="0" label="Linearity weight"/>
+                        <param argument="--sphericity-weight" type="float" min="0" max="1" value="0" label="Sphericity weight"/>
+                    </section>
+                </when>
+            </conditional>
+        </section>
         <conditional name="terrain">
             <param name="source" type="select" label="Terrain model" help="Heights are measured above this terrain model.">
                 <option value="generated" selected="true">Generate from the point cloud</option>
@@ -201,14 +198,13 @@
             <filter>area['restrict'] == 'yes'</filter>
         </data>
         <data name="csp_point_cloud" format="laz" from_work_dir="output/segmented_csp.laz" label="${tool.name} on ${on_string}: CSP segmentation">
-            <filter>csp['enable'] == 'yes'</filter>
+            <filter>instances['csp']['enable'] == 'yes'</filter>
         </data>
     </outputs>
     <tests>
         <test expect_num_outputs="4">
             <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
-            <conditional name="csp">
-                <param name="enable" value="no"/>
+            <section name="instances">
                 <repeat name="segmentations">
                     <param name="instance_attribute" value="PredInstance_FM"/>
                     <conditional name="species">
@@ -218,7 +214,10 @@
                     </conditional>
                     <param name="score_attribute" value="PredScore_FM"/>
                 </repeat>
-            </conditional>
+                <conditional name="csp">
+                    <param name="enable" value="no"/>
+                </conditional>
+            </section>
             <conditional name="names">
                 <param name="supply" value="yes"/>
                 <param name="species_lookup" value="species_lookup.tsv" ftype="tabular"/>
@@ -256,15 +255,17 @@
         </test>
         <test expect_num_outputs="5">
             <param name="point_cloud" value="forest_plot.laz" ftype="laz"/>
-            <conditional name="csp">
-                <param name="enable" value="no"/>
+            <section name="instances">
                 <repeat name="segmentations">
                     <param name="instance_attribute" value="PredInstance_SAT"/>
                 </repeat>
                 <repeat name="segmentations">
                     <param name="instance_attribute" value="PredInstance_ULS"/>
                 </repeat>
-            </conditional>
+                <conditional name="csp">
+                    <param name="enable" value="no"/>
+                </conditional>
+            </section>
             <conditional name="terrain">
                 <param name="source" value="supplied"/>
                 <param name="dtm" value="forest_plot_dtm.tif" ftype="tiff"/>
@@ -310,15 +311,17 @@
         </test>
         <test expect_num_outputs="5">
             <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
-            <conditional name="csp">
-                <param name="enable" value="yes"/>
+            <section name="instances">
                 <repeat name="segmentations">
                     <param name="instance_attribute" value="PredInstance_FM"/>
                 </repeat>
-                <conditional name="seeds">
-                    <param name="mode" value="automatic"/>
+                <conditional name="csp">
+                    <param name="enable" value="yes"/>
+                    <conditional name="seeds">
+                        <param name="mode" value="automatic"/>
+                    </conditional>
                 </conditional>
-            </conditional>
+            </section>
             <output name="inventory" ftype="csv">
                 <assert_contents>
                     <has_n_lines n="9"/>
@@ -354,13 +357,15 @@
         </test>
         <test expect_num_outputs="5">
             <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
-            <conditional name="csp">
-                <param name="enable" value="yes"/>
-                <conditional name="seeds">
-                    <param name="mode" value="supplied"/>
-                    <param name="seed_file" value="forest_plot_seeds.tsv" ftype="tabular"/>
+            <section name="instances">
+                <conditional name="csp">
+                    <param name="enable" value="yes"/>
+                    <conditional name="seeds">
+                        <param name="mode" value="supplied"/>
+                        <param name="seed_file" value="forest_plot_seeds.tsv" ftype="tabular"/>
+                    </conditional>
                 </conditional>
-            </conditional>
+            </section>
             <section name="advanced">
                 <param name="dbh_evidence" value="false"/>
             </section>
@@ -398,17 +403,25 @@
         </test>
         <test expect_failure="true" expect_exit_code="1">
             <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
-            <conditional name="csp">
-                <param name="enable" value="no"/>
+            <section name="instances">
                 <repeat name="segmentations">
                     <param name="instance_attribute" value="PredInstance_FM"/>
                 </repeat>
                 <repeat name="segmentations">
                     <param name="instance_attribute" value="PredInstance_FM"/>
                 </repeat>
-            </conditional>
+                <conditional name="csp">
+                    <param name="enable" value="no"/>
+                </conditional>
+            </section>
             <assert_stderr>
                 <has_text text="Each instance dimension may only be supplied once"/>
+            </assert_stderr>
+        </test>
+        <test expect_failure="true" expect_exit_code="1">
+            <param name="point_cloud" value="forest_plot.copc.laz" ftype="laz"/>
+            <assert_stderr>
+                <has_text text="Provide at least one --instance-attribute or enable CSP"/>
             </assert_stderr>
         </test>
     </tests>
