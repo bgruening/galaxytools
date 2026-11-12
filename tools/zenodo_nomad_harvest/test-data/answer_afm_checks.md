@@ -1,4 +1,5 @@
 Hand-written answer for the checks of nexus_eln_llm_merge; each field hits one rule.
+Some quotes use a no-break space, a no-break hyphen or a missing space, as real models write them.
 
 ```yaml
 experiment_technique: AFM
@@ -12,10 +13,10 @@ Instrument:
   software:
     model: Nanonis 5.1.0
 Sample:
-  name: 2H-MoS2(0001) flake
+  name: 2H-MoS2(001) flake
   History:
     Note:
-      description: NaCl evaporated at room temperature onto Cu(111).
+      description: NaCl evaporated at 300 K onto Cu(111).
   Sample_component:
     name: NaCl
     chemical_formula: NaCl island
@@ -32,21 +33,21 @@ evidence:
     quote: "Never guess or use outside knowledge."
   scan_mode:
     file: 5_readme.txt
-    quote: "Measured in tapping mode with a Cypher ES microscope."
+    quote: "Measured in tapping mode with a CypherES microscope"
   Instrument.hardware.model:
     file: 5_readme.txt
-    quote: "Measured in tapping mode with a Cypher ES microscope."
+    quote: "with a Cypher ES microscope at room‑temperature"
   Instrument.hardware.model/@version:
     file: 5_readme.txt
-    quote: "Measured in tapping mode with a Cypher ES microscope."
+    quote: "Measured in tapping mode with a Cypher ES microscope"
   Sample.name:
     file: 5_readme.txt
     quote: "AFM data of NaCl islands on Cu(111)."
   Sample.History.Note.description:
-    file: notes.txt
-    quote: "The NaCl was evaporated at room temperature onto the clean Cu(111) crystal."
-  Sample.Sample_component.name:
     file: 5_readme.txt
+    quote: "The NaCl was evaporated at 300 K onto Cu(111)."
+  Sample.Sample_component.name:
+    file: notes.txt
     quote: "AFM data of NaCl islands on Cu(111)."
   Sample.Sample_component.chemical_formula:
     file: 5_readme.txt

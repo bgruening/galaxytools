@@ -63,5 +63,4 @@ The keys are described in the
 planemo test --docker --conda_auto_install tools/zenodo_nomad_harvest
 ```
 
-`test-data/stm_archive.zip` and `traversal.zip` are ignored by `.gitignore` (`*.zip`) and were added
-with `git add -f`. If one changes, update its `md5` and `size` in `work_list*.json` and `manifest.json`.
+Which test files each tool uses, and what they check: [`test-data/README.md`](test-data/README.md).
