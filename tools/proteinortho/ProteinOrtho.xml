@@ -1,194 +1,346 @@
-<tool id="proteinortho" name="ProteinOrtho" version="5.11.0">
-    <description>detect orthologous genes within different species</description>
-    <requirements>
-        <requirement type="package" version="5.11">proteinortho</requirement>
-        <requirement type="package" version="2.2.30">blast+</requirement>
-        <requirement type="package" version="5.18.1">perl</requirement>
-    </requirements>
-    <stdio>
-        <exit_code range="1:" />
-        <exit_code range=":-1" />
-        <regex match="Error:" />
-        <regex match="Exception:" />
-    </stdio>
-    <version_command>Proteinortho with PoFF version 5.11</version_command>
-    <command><![CDATA[
-        #for $counter, $file in enumerate($fasta_input):
-          ln -s "${file}" "${counter}.fasta"
-          &&
-        #end for
-        #if $synteny.compute_synteny:
-            #for $counter, $file in enumerate($synteny.synteny_input):
-                ln -s "${file}" "${counter}.gff" ## 1.gff ... 2.gff
-                &&
-            #end for
-        #end if
-
-        proteinortho5.pl
-            $blast_type
-            $compute_singles
-            $compute_selfblast
-            -e=$evalue_cutoff
-            #if $advanced_options.options:
-                -identity=$advanced_options.identity
-                -cov=$advanced_options.coverage
-                -conn=$advanced_options.connectivity
-                -sim=$advanced_options.similarity
-            #end if
-            #if $synteny.synteny_select == '-synteny':
-                $synteny.synteny_dups
-                -synteny
-                #for $counter, $filename in enumerate($synteny.synteny_input):
-                    "${counter}.gff"
-                #end for
-            #end if
-
-            #for $counter, $filename in enumerate($fasta_input):
-                "${counter}.fasta"
-            #end for
+<tool id="proteinortho" name="ProteinOrtho" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="21.01">
+    <description>detects (co-)orthologous genes across species</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="bio_tools"/>
+    <expand macro="requirements"/>
+    <expand macro="version_command"/>
+    <command detect_errors="aggressive"><![CDATA[
+## ProteinOrtho v6 creates its search databases and intermediate files next to the
+## input FASTA files, therefore the inputs are symlinked into the working directory
+## using a numbered naming scheme (0.fasta, 1.fasta, ...). The GFF files of the
+## PoFF extension are derived from the FASTA file names by the tool itself, so they
+## have to follow the same scheme (0.gff, 1.gff, ...).
+#set $counter = 0
+#for $f in $fasta_input:
+ln -s '${f}' '${counter}.fasta' &&
+#set $counter = $counter + 1
+#end for
+#if str($synteny.synteny_select) == '-synteny':
+#set $counter = 0
+#for $g in $synteny.synteny_input:
+ln -s '${g}' '${counter}.gff' &&
+#set $counter = $counter + 1
+#end for
+#end if
+proteinortho
+    -project=myproject
+    -cpus=\${GALAXY_SLOTS:-1}
+    $blast_type
+    $compute_singles
+    $compute_selfblast
+    $evalue_cutoff
+#if str($advanced.advanced_select) == 'advanced':
+    $advanced.identity
+    $advanced.coverage
+    $advanced.connectivity
+    $advanced.similarity
+    $advanced.minspecies
+    $advanced.core
+#end if
+#if str($synteny.synteny_select) == '-synteny':
+    $synteny.synteny_select
+    $synteny.synteny_dups
+    $synteny.cs
+#end if
+#set $counter = 0
+#for $f in $fasta_input:
+    '${counter}.fasta'
+#set $counter = $counter + 1
+#end for
+    > '$logfile' 2>&1
     ]]></command>
     <inputs>
-        <param name="fasta_input" multiple="True" type="data" format="fasta" label="Gene sequences" min_equals="2"
-            help="All your gene sequences in FASTA format either represented as amino acids or as nucleotides.
-            Add at least two files and each sequence ID in your FASTA files must be unique. Consider renaming the IDs otherwise."/>
-        <param name="blast_type" type="select" label="Sequence type" 
-            help="Is your input a nucleotide- or an amino acid sequence.">
-            <option value="-p=blastp+">Amino acid sequence</option>
-            <option value="-p=blastn+">Nucleotide sequence</option>
+        <param name="fasta_input" type="data" format="fasta" multiple="true" min="2" label="FASTA files, one per species" help="Two or more FASTA files, each representing the protein (or gene) set of one species. Sequence identifiers must be unique within each file."/>
+        <param name="blast_type" type="select" argument="-p" label="Similarity search program" help="Alignment program used for the all-against-all comparison. DIAMOND is a fast alternative to BLASTP+ for amino acid sequences.">
+            <option value="blastp+" selected="true">BLASTP+ (amino acid sequences)</option>
+            <option value="blastn+">BLASTN+ (nucleotide sequences)</option>
+            <option value="tblastx+">TBLASTX+ (nucleotide sequences, translated)</option>
+            <option value="diamond">DIAMOND (amino acid sequences)</option>
         </param>
-        <param name="evalue_cutoff" type="float" value="1e-05" label="Set expectation value cutoff (e-value for blast)"/>
-        <param name="compute_singles" type="boolean" checked="false"
-            truevalue="-singles" falsevalue=""
-            label="Compute singles?"
-            help="Report genes without orthologs in table output (genes without any hit)" />
-        <param name="compute_selfblast" type="boolean" checked="false"
-            truevalue="-selfblast" falsevalue=""
-            label="Use selfblast?"
-            help="Apply selfblast to directly paralogs; normally these are inferred indirectly from orthology data to other species (experimental!)" />
+        <param name="evalue_cutoff" type="float" value="1e-05" min="0.0" argument="-e" label="E-value cutoff" help="Maximum E-value of a reported hit (default 1e-05)."/>
+        <param name="compute_singles" type="boolean" checked="false" truevalue="-singles" falsevalue="" label="Report singletons" help="Also report genes without any hit in the orthologous groups table."/>
+        <param name="compute_selfblast" type="boolean" checked="false" truevalue="-selfblast" falsevalue="" label="Self-BLAST (detect direct paralogs)" help="Additionally performs a self comparison for each species to also detect paralogous genes without orthologs."/>
         <conditional name="synteny">
-            <param name="synteny_select" type="select" label="Compute Synteny?" 
-                help="Activate PoFF extension to separate similar sequences using synteny (requires a GFF file for each FASTA file).
-                When the analysis is done you will find an additional file in your history, namely test.poff.
-                This file is equivalent to the standard ProteinOrtho file but can be considered more accurate as synteny was involved for its construction.">
-                <option value="">No</option>
-                <option value="-synteny">Yes</option>
+            <param name="synteny_select" type="select" label="Synteny (PoFF) extension" help="Uses the gene order (GFF3 annotation) to separate similar sequences and to improve the orthology prediction.">
+                <option value="" selected="true">Do not use synteny</option>
+                <option value="-synteny">Use synteny (PoFF)</option>
             </param>
+            <when value=""/>
             <when value="-synteny">
-                <param name="synteny_input" multiple="True" type="data" format="gff"
-                    label="GFF file of each FASTA file"/>
-                <param name="synteny_dups" type="boolean" checked="false" truevalue="-dups=3" falsevalue=""
-                    label="Reduce noise?"
-                    help="Yes: Reduce noise in the predictions by detecting multiple copies of genomic areas.
-                        No: come closer to one-to-one orthology relations by preferring synthetically conserved copies in the presence of two very similar paralogs. (-dups)"/>
+                <param name="synteny_input" type="data" format="gff" multiple="true" min="2" label="GFF3 annotation files, one per species" help="One GFF3 file for each input FASTA file, given in the same order. Only rows of type CDS (column 3) are considered and column 9 must contain an attribute 'Name=GENE_IDENTIFIER' matching the FASTA identifier (no semicolons)."/>
+                <param name="synteny_dups" type="boolean" checked="false" truevalue="-dups=3" falsevalue="" label="Resolve duplicated regions" help="Enable the reiteration heuristic to determine duplicated regions (recommended when whole genome duplications are suspected)."/>
+                <param name="cs" type="integer" value="3" min="1" argument="-cs" label="Size of a maximum common substring" help="Minimum size of a shared common substring (MCS) for adjacency matches in the PoFF algorithm (default 3)."/>
             </when>
-            <when value=""/>
         </conditional>
-        <conditional name="advanced_options">
-            <param name="options" type="select" label="Advanced options">
-                <option value="">Hide advanced options</option>
-                <option value="yes">Display advanced options</option>
+        <conditional name="advanced">
+            <param name="advanced_select" type="select" label="Advanced clustering options" help="If set to 'Use advanced options' the similarity and clustering thresholds can be adjusted, otherwise the program defaults are used.">
+                <option value="default" selected="true">Use program defaults</option>
+                <option value="advanced">Use advanced options</option>
             </param>
-            <when value="yes">
-                <param name="identity" type="integer" value="25" label="Identity"
-                    help="Minimum percent identity of best blast alignments. (-identity)"/>
-                <param name="coverage" type="integer" value="50" label="Coverage"
-                    help="Minimum coverage of best blast alignments in percent. (-cov)"/>
-                <param name="connectivity" type="float" value="0.1"
-                    label="Connectivity" 
-                    help="Minimum algebraic connectivity of orthologous groups during clustering. (-conn)"/>
-                <param name="similarity" type="float" value="0.95" min="0.0" max="1.0"
-                    label="Minimum similarity for additional hits" help="(-sim)"/>
+            <when value="default"/>
+            <when value="advanced">
+                <param name="identity" type="integer" value="25" min="0" max="100" argument="-identity" label="Minimum percent identity of best hits" help="Minimum percent identity of the best search hits (default 25)."/>
+                <param name="coverage" type="integer" value="50" min="0" max="100" argument="-cov" label="Minimum coverage of best alignments" help="Minimum alignment coverage in percent (default 50)."/>
+                <param name="connectivity" type="float" value="0.1" min="-1" max="1.0" argument="-conn" label="Minimum algebraic connectivity" help="This is the main clustering parameter. Larger values result in more and smaller clusters. Use 0 to only compute connected components without splitting them, or -1 to skip the connectivity calculation (default 0.1)."/>
+                <param name="similarity" type="float" value="0.95" min="0.0" max="1.0" argument="-sim" label="Minimum reciprocal similarity" help="Minimum reciprocal similarity for additional hits (default 0.95). 1 reports only the best reciprocal hits, 0 reports all reciprocal hits within the other boundaries."/>
+                <param name="minspecies" type="integer" value="1" min="0" argument="-minspecies" label="Minimum species per group" help="Orthologous groups that contain less than this number of species are not split any further (default 1)."/>
+                <param name="core" type="boolean" checked="false" truevalue="-core" falsevalue="" label="Core genes only" help="Only report orthologous groups that span all species. Overrules the connectivity parameter."/>
             </when>
-            <when value=""/>
         </conditional>
     </inputs>
     <outputs>
-            <data name="outfile" format="tabular" from_work_dir="myproject.proteinortho" label="${tool.name} on ${on_string} (.proteinortho)" />
-            <data name="outfile_2" format="tabular" from_work_dir="myproject.poff" label="${tool.name} on ${on_string} (.poff)"> 
-                <filter>synteny['synteny_select'] == '-synteny'</filter>
-            </data> 
+        <!-- The first three columns are fixed, every further column holds the gene
+             identifiers of one species, in the order of the input files (which are
+             symlinked as 0.fasta, 1.fasta, ... and are therefore also used as the
+             column headers by ProteinOrtho). -->
+        <data format="tabular" name="outfile" from_work_dir="myproject.proteinortho.tsv" label="${tool.name} on ${on_string}: orthologous groups">
+            <actions>
+                <action name="column_names" type="metadata" default="# Species,Genes,Alg.-Conn.,${','.join([str(i) + '.fasta' for i in range(len($fasta_input))])}"/>
+                <action name="column_types" type="metadata" default="int,int,float,${','.join(['str' for i in range(len($fasta_input))])}"/>
+            </actions>
+        </data>
+        <data format="txt" name="graph" from_work_dir="myproject.proteinortho-graph" label="${tool.name} on ${on_string}: relation graph"/>
+        <data format="tabular" name="poff" from_work_dir="myproject.poff.tsv" label="${tool.name} on ${on_string}: orthologous groups with synteny">
+            <filter>synteny['synteny_select']</filter>
+            <actions>
+                <action name="column_names" type="metadata" default="# Species,Genes,Alg.-Conn.,${','.join([str(i) + '.fasta' for i in range(len($fasta_input))])}"/>
+                <action name="column_types" type="metadata" default="int,int,float,${','.join(['str' for i in range(len($fasta_input))])}"/>
+            </actions>
+        </data>
+        <data format="txt" name="poff_graph" from_work_dir="myproject.poff-graph" label="${tool.name} on ${on_string}: PoFF relation graph">
+            <filter>synteny['synteny_select']</filter>
+        </data>
+        <data format="txt" name="logfile" label="${tool.name} on ${on_string}: log"/>
     </outputs>
+    <!-- The myproject.proteinortho.html report is not exposed as an output because
+         upstream only generates it for small inputs (small relation graphs). -->
     <tests>
-        <test>
-            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" />
-            <param name="evalue_cutoff" value="1e-05" />
-            <output name="outfile" file="test_1.proteinortho" ftype="tabular"/>
+        <!-- Basic run with the default options -->
+        <test expect_num_outputs="3">
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
+            <param name="evalue_cutoff" value="1e-05"/>
+            <output name="outfile" ftype="tabular">
+                <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
+                <metadata name="column_types" value="int,int,float,str,str,str,str"/>
+                <assert_contents>
+                    <has_line_matching expression="^# Species&#9;Genes&#9;Alg\.-Conn\.&#9;0\.fasta&#9;1\.fasta&#9;2\.fasta&#9;3\.fasta$"/>
+                    <has_n_columns n="7"/>
+                    <has_n_lines n="37" delta="2"/>
+                    <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
+                    <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_11&#9;E_11&#9;L_11&#9;M_11$"/>
+                </assert_contents>
+            </output>
+            <output name="graph" ftype="txt">
+                <assert_contents>
+                    <has_text text="0.fasta"/>
+                    <has_text text="C_10"/>
+                </assert_contents>
+            </output>
+            <!-- the banner is printed with ANSI color codes, so only the plain
+                 trailing part of the line can be asserted -->
+            <output name="logfile" ftype="txt">
+                <assert_contents>
+                    <has_text text="with PoFF version 6.3.6"/>
+                    <has_text text="Orthologous groups are written to"/>
+                </assert_contents>
+            </output>
         </test>
-        <test>
-            <param name="compute_selfblast" value="-selfblast" />
-            <param name="compute_singles" value="-singles" />
-            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" />
-            <param name="evalue_cutoff" value="1e-05" />
-            <output name="outfile" file="test_2.proteinortho" ftype="tabular"/>
+        <!-- Report singleton genes without any hit -->
+        <test expect_num_outputs="3">
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
+            <param name="evalue_cutoff" value="1e-05"/>
+            <param name="compute_singles" value="true"/>
+            <output name="outfile" ftype="tabular">
+                <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
+                <metadata name="column_types" value="int,int,float,str,str,str,str"/>
+                <assert_contents>
+                    <has_text text="Species"/>
+                    <has_n_columns n="7"/>
+                    <!-- singletons roughly multiply the number of reported groups,
+                         the delta covers differences between search program versions -->
+                    <has_n_lines n="592" delta="10"/>
+                    <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
+                </assert_contents>
+            </output>
+            <output name="graph" ftype="txt">
+                <assert_contents>
+                    <has_text text="C_10"/>
+                </assert_contents>
+            </output>
+            <output name="logfile" ftype="txt">
+                <assert_contents>
+                    <has_text text="with PoFF version 6.3.6"/>
+                </assert_contents>
+            </output>
         </test>
-        <test>
-            <param name="compute_synteny" value="-synteny" />
-            <param name="compute_selfblast" value="-selfblast" />
-            <param name="compute_singles" value="-singles" />
-            <param name="synteny_input" value="C.gff,E.gff,L.gff,M.gff" />
-            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" />
-            <param name="evalue_cutoff" value="1e-05" />
-            <output name="outfile_2" file="test_3.poff" ftype="tabular"/>
-            <output name="outfile" file="test_3.proteinortho" ftype="tabular"/>
+        <!-- PoFF synteny extension -->
+        <test expect_num_outputs="5">
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
+            <param name="evalue_cutoff" value="1e-05"/>
+            <conditional name="synteny">
+                <param name="synteny_select" value="-synteny"/>
+                <param name="synteny_input" value="C.gff,E.gff,L.gff,M.gff" ftype="gff"/>
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <assert_contents>
+                    <has_text text="Species"/>
+                    <has_n_columns n="7"/>
+                    <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
+                </assert_contents>
+            </output>
+            <output name="poff" ftype="tabular">
+                <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
+                <metadata name="column_types" value="int,int,float,str,str,str,str"/>
+                <assert_contents>
+                    <has_text text="Species"/>
+                    <has_n_columns n="7"/>
+                    <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
+                </assert_contents>
+            </output>
+            <output name="graph" ftype="txt">
+                <assert_contents>
+                    <has_text text="C_10"/>
+                </assert_contents>
+            </output>
+            <output name="poff_graph" ftype="txt">
+                <assert_contents>
+                    <has_text text="0.fasta"/>
+                    <has_text text="same_strand"/>
+                </assert_contents>
+            </output>
+            <output name="logfile" ftype="txt">
+                <assert_contents>
+                    <has_text text="with PoFF version 6.3.6"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Advanced clustering options -->
+        <test expect_num_outputs="3">
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
+            <param name="evalue_cutoff" value="1e-05"/>
+            <conditional name="advanced">
+                <param name="advanced_select" value="advanced"/>
+                <param name="identity" value="30"/>
+                <param name="coverage" value="60"/>
+                <param name="connectivity" value="0.2"/>
+                <param name="similarity" value="0.9"/>
+                <param name="minspecies" value="1"/>
+                <param name="core" value="false"/>
+            </conditional>
+            <output name="outfile" ftype="tabular">
+                <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
+                <metadata name="column_types" value="int,int,float,str,str,str,str"/>
+                <assert_contents>
+                    <has_text text="Species"/>
+                    <has_n_columns n="7"/>
+                    <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
+                </assert_contents>
+            </output>
+            <output name="graph" ftype="txt">
+                <assert_contents>
+                    <has_text text="C_10"/>
+                </assert_contents>
+            </output>
+            <output name="logfile" ftype="txt">
+                <assert_contents>
+                    <has_text text="with PoFF version 6.3.6"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- DIAMOND instead of BLASTP+ (DIAMOND comes with the proteinortho package) -->
+        <test expect_num_outputs="3">
+            <param name="fasta_input" value="C.faa,E.faa,L.faa,M.faa" ftype="fasta"/>
+            <param name="evalue_cutoff" value="1e-05"/>
+            <param name="blast_type" value="diamond"/>
+            <output name="outfile" ftype="tabular">
+                <metadata name="column_names" value="# Species,Genes,Alg.-Conn.,0.fasta,1.fasta,2.fasta,3.fasta"/>
+                <metadata name="column_types" value="int,int,float,str,str,str,str"/>
+                <assert_contents>
+                    <has_text text="Species"/>
+                    <has_n_columns n="7"/>
+                    <has_line_matching expression="^4&#9;4&#9;1(\.0)?&#9;C_10&#9;E_10&#9;L_10&#9;M_10$"/>
+                </assert_contents>
+            </output>
+            <output name="graph" ftype="txt">
+                <assert_contents>
+                    <has_text text="C_10"/>
+                </assert_contents>
+            </output>
+            <output name="logfile" ftype="txt">
+                <assert_contents>
+                    <has_text text="with PoFF version 6.3.6"/>
+                </assert_contents>
+            </output>
         </test>
     </tests>
-    <help><![CDATA[
-**What it does**
+    <help format="markdown"><![CDATA[
+ProteinOrtho
+============
 
-Proteinortho is a tool to detect orthologous genes within different species. For doing so, it compares similarities of given gene sequences and clusters them to find significant groups. The algorithm was designed to handle large-scale data and can be applied to hundreds of species at one.
+ProteinOrtho is a tool to detect (co-)orthologous genes within different
+species. It performs an all-against-all similarity comparison of the input
+FASTA files and partitions the resulting similarity graph into orthologous
+gene groups. The PoFF (Protein Family Finder) extension additionally uses the
+gene order (synteny) to separate similar sequences.
 
-To enhance the prediction accuracy, the relative order of genes (synteny) can be used as additional feature for the discrimination of orthologs. The corresponding extension, namely PoFF (manuscript in preparation), is already build in Proteinortho.
+-----
+Input
+-----
 
-**Settings**
+Two or more FASTA files, one for each species. The files may either contain
+amino acid or nucleotide sequences, but all files must be of the same type and
+must be matched with the corresponding similarity search program. Sequence
+identifiers must be unique within each file.
 
-Basic options of ProteinOrtho::
+------
+Output
+------
 
-    Option    Default value    Description
-    -evalue     1e-05           E-value for blast
-    -blast      blastp          blast program to use: blastn → sequences are given as nucleotides blastp → sequences are given as amino acids
-    -synteny    -               activate PoFF extension to separate similar sequences using synteny (requires a GFF file for each FASTA file)
-    -selfblast  -               apply selfblast to directly paralogs; normally these are inferred indirectly from orthology data to other species (experimental!)
-    -singles    -               Also report genes without orthologs in table output
+**Orthologous groups** (`myproject.proteinortho.tsv`)
 
-Advanced options of ProteinOrtho::
+A tabular file with one row per orthologous group:
 
-    Option    Default value    Description
-    -identity       25          min. percent identity of best blast alignments
-    -coverage       50          min. coverage of best blast alignments in percent
-    -connectivity   0.1         min. algebraic connectivity of orthologous groups during clustering
-    -similarity     0.95        min. similarity for additional hits
+- Column 1: number of species in the group
+- Column 2: number of genes in the group
+- Column 3: algebraic connectivity of the group. The group is split when the
+  connectivity falls below the given threshold (`-conn`, default 0.1). A value
+  of 1 means the group is fully connected.
+- One column per input species with the identifiers of the genes of the group.
+  Species that are absent from a group are marked with `*`. Multiple genes of
+  one species within a group (co-orthologs / paralogs) are separated by commas.
 
+**Relation graph** (`myproject.proteinortho-graph`)
 
-**Output**
+A pairwise list of the relations between all genes of the input files
+(`geneA geneB evalue_ab bitscore_ab evalue_ba bitscore_ba`).
 
-The tab-separated output generated looks like this::
+With the synteny extension the additional files `myproject.poff.tsv` and
+`myproject.poff-graph` are generated, in which the adjacency information is
+combined with the sequence similarity.
 
-    Species    Genes    Alg.-Conn.    M.faa    L.faa    C.faa        E.faa
-    4            4        1           M_10     L_10     C_10         E_10
-    4            4        1           M_11     L_11     C_11         E_11
-    4            4        1           M_14     L_14     C_14         E_14
-    ...
-    4            5        0.2         M_19     L_19     C_22,C_63    E_19
-    ...
+------
+Synteny
+------
 
-The **first line** starting with #is a comment line indicating the meaning of each column for each of the following lines which represent an orthologous group each. The very **first column** indicates the number of species covered by this group. The **second column** indicates the number of genes included in the group. Often, this number will equal the number of species, meaning that there is a single ortholog in each species. If the number of genes is bigger than the number of species, there are co-orthologs present. 
+The PoFF extension requires a GFF3 annotation file for each input FASTA file
+(in the same order). Only rows of type `CDS` (column 3) are considered.
+Column 9 must contain the attribute `Name=GENE_IDENTIFIER`, where the gene
+identifier must match the identifier used in the FASTA file. Semicolons must
+not be used in the attributes.
 
-The **third column** gives rise to the algebraic connectivity of the respective group. Basically, this indicates how densely the genes are connected in the orthology graph that was used for clustering. A connectivity of 1 indicates a perfect dense cluster with each gene similar to each other gene. By default, Proteinortho splits each group into two more dense subgroups when the connectivity is below 0.1. 
+-----
+Options
+-------
 
-In the **second last line** of the example above, there is a group with three paralogs in species C (C.faa). They are separated by a comma (,) indicating that they are co-orthologous the genes in the other species.
-
-**Explanation "synteny" (PoFF extension)**
-
-The PoFF extension allows you to use the relative order of genes (synteny) as an additional criterion to disentangle complex co-orthology relations.
-You can use it to either come closer to one-to-one orthology relations by preferring synthetically conserved copies in the presence of two very similar paralogs (default), or just to reduce noise in the predictions by detecting multiple copies of genomic areas.
-
-Please note that you need additional data to include synteny, namely the gene positions in **GFF3 format**. As Proteinortho is primarily made for proteins, it will only accept GFF entries of type CDS (column #3 in the GFF-file). The attributes column (#9) must contain Name=GENE IDENTIFIER where GENE IDENTIFIER corresponds to the respective identifier in the FASTA format. It may not contain a semicolon (;)!
-
-Of course, this only makes sense if species are sufficiently similar. You won't gain much when comparing e.g. bacteria with fungi.
-
-
+- **E-value cutoff**: maximum E-value of a reported hit (default 1e-05)
+- **Minimum percent identity**: default 25
+- **Minimum coverage**: default 50
+- **Minimum algebraic connectivity**: the main clustering parameter, default 0.1
+- **Minimum reciprocal similarity**: default 0.95
+- **Report singletons**: also report genes without any hit
+- **Self-BLAST**: detect paralogous genes without orthologs
     ]]></help>
-    <citations>
-        <citation type="doi">10.1186/1471-2105-12-124</citation>
-    </citations>
+    <expand macro="citations"/>
 </tool>
