@@ -1,0 +1,171 @@
+<tool id="nexus_llm_input" name="NeXus ELN LLM input" version="@LLM_INPUT_VERSION@+galaxy@LLM_INPUT_SUFFIX@" profile="@PROFILE@">
+    <description>for one SPM file: instructions, base ELN and context texts</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements_eln"/>
+    <required_files>
+        <include path="nexus_llm_input.py"/>
+        <include path="nexus_eln_builder.py"/>
+        <include path="eln_rules.yaml"/>
+        <include type="glob" path="eln_instructions/*.txt"/>
+    </required_files>
+    <version_command>echo @LLM_INPUT_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        python '$__tool_directory__/nexus_llm_input.py'
+        '$bundle'
+        '$eln'
+        #if $raw_file:
+            --raw '$raw_file'
+        #end if
+        --out-dir llm_context
+        --report '$llm_input_report'
+    ]]></command>
+    <inputs>
+        <param name="bundle" type="data" format="json" label="Context bundle" help="Written by the Zenodo download and unzip tool: record metadata and the text of one raw file's context files, PDF text included."/>
+        <param name="eln" type="data" format="yaml" label="Rule ELN" help="Written by the NeXus ELN builder for the same raw file. Its values are kept; the LLM fills only the empty fields."/>
+        <param name="raw_file" type="data" format="binary,txt" optional="true" label="Raw SPM file" help="Optional. The text header of a Nanonis .sxm is added as a context file."/>
+    </inputs>
+    <outputs>
+        <collection name="llm_context" type="list" label="${bundle.element_identifier}: LLM input">
+            <discover_datasets pattern="__designation__" directory="llm_context" format="txt" sort_by="filename"/>
+        </collection>
+        <data name="llm_input_report" format="json" label="${bundle.element_identifier}: LLM input report"/>
+    </outputs>
+    <tests>
+        <!-- Test 01: STM file of Zenodo record 17202182 (CC-BY-4.0): header, readme, PDF text;
+             the broken PDF is left out. Elements are sorted by file name. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <param name="raw_file" value="T190613_004_header_only.sxm" ftype="binary"/>
+            <output_collection name="llm_context" type="list" count="5">
+                <element name="Information.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Nanonis file T190613_004.sxm"/>
+                    </assert_contents>
+                </element>
+                <element name="QPI_visualization_of_Interband_Pairing-SM.pdf" ftype="txt">
+                    <assert_contents>
+                        <has_text text="low-temperature scanning tunneling microscope (JT-SPECS GmbH)"/>
+                    </assert_contents>
+                </element>
+                <element name="T190613_004_header.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text=":REC_DATE:"/>
+                        <has_text text=":SCANIT_END:"/>
+                    </assert_contents>
+                </element>
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="definition: NXstm"/>
+                        <has_text text="scan_mode: constant current"/>
+                        <!-- Always written by the LLM; the record text stays in citeID. -->
+                        <has_text text="experiment_description: null"/>
+                        <has_text text="- OPEN DATASET of the publication"/>
+                        <has_text text="chemical_formula: null"/>
+                        <has_text text="model/@version: null"/>
+                    </assert_contents>
+                </element>
+                <element name="eln_instructions.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Application definition: NXstm."/>
+                        <has_text text="   constant height, constant current&#10;"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output name="llm_input_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;ok&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;unreadable&quot;"/>
+                    <has_text text="&quot;2H-MoS2(001) flake&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: AFM .sxm (header of a pynxtools-spm test file) and a readme; scan_mode is left to the LLM. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_afm.json" ftype="json"/>
+            <param name="eln" value="eln_afm.yaml" ftype="yaml"/>
+            <param name="raw_file" value="afm_header_only.sxm" ftype="binary"/>
+            <output_collection name="llm_context" type="list" count="4">
+                <element name="A151216.123306-02602_header.txt" ftype="txt"/>
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="definition: NXafm"/>
+                        <has_text text="scan_mode: null"/>
+                    </assert_contents>
+                </element>
+                <element name="eln_instructions.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="Application definition: NXafm."/>
+                        <has_text text="peak force tapping mode"/>
+                    </assert_contents>
+                </element>
+                <element name="readme.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="tapping mode"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test 03: STS without context files and without raw file. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_without_context.json" ftype="json"/>
+            <param name="eln" value="eln_sts.yaml" ftype="yaml"/>
+            <output_collection name="llm_context" type="list" count="2">
+                <element name="base_eln.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="definition: NXsts"/>
+                    </assert_contents>
+                </element>
+                <element name="eln_instructions.txt" ftype="txt">
+                    <assert_contents>
+                        <has_text text="constant height, constant current, constant spacing"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <!-- Test 04: no technique, so no definition: only the base ELN; the check step keeps it. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_without_context.json" ftype="json"/>
+            <param name="eln" value="eln_no_technique.yaml" ftype="yaml"/>
+            <output_collection name="llm_context" type="list" count="1">
+                <element name="base_eln.txt" ftype="txt"/>
+            </output_collection>
+            <output name="llm_input_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;no_definition&quot;"/>
+                    <has_text text="&quot;instructions&quot;: null"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Writes the input of one [LLM Hub](https://galaxyproject.org/news/2025-10-10-llm-hub/) job for
+one raw SPM file, so an LLM can fill the ELN fields the rule-based ELN builder left empty.
+
+-----
+
+**Outputs**
+
+- **LLM input** (list of text files):
+  - `eln_instructions.txt`: fixed instructions for the ELN's application definition
+    (`NXstm`, `NXsts` or `NXafm`), with its allowed `scan_mode` values.
+  - `base_eln.txt`: the rule ELN. Fields the LLM may fill are `null`; `experiment_description`
+    is always `null`, as the LLM writes it (the record text stays in `citeID`).
+  - One text file per context file with text; a PDF's text keeps the PDF's name.
+  - `<raw file>_header.txt`: the text header of a Nanonis `.sxm` file.
+- **LLM input report**: the files written, the files left out (no text, broken PDF) and the
+  `Example:` values of the instructions, for the check step.
+
+Without a known definition only `base_eln.txt` is written (status `no_definition`).
+
+Mapped over the raw files, the LLM input becomes a nested list: one LLM Hub job per raw file.
+    ]]></help>
+    <citations>
+        <expand macro="citation_pynxtools_spm"/>
+    </citations>
+    <expand macro="creators"/>
+</tool>

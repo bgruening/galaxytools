@@ -1,0 +1,190 @@
+<tool id="nexus_eln_llm_merge" name="NeXus ELN LLM check and merge" version="@LLM_MERGE_VERSION@+galaxy@LLM_MERGE_SUFFIX@" profile="@PROFILE@">
+    <description>keep only LLM values with evidence, merged into the rule ELN</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements_eln"/>
+    <required_files>
+        <include path="nexus_eln_llm_merge.py"/>
+        <include path="nexus_llm_input.py"/>
+        <include path="nexus_eln_builder.py"/>
+        <include path="eln_rules.yaml"/>
+        <include type="glob" path="eln_instructions/*.txt"/>
+    </required_files>
+    <version_command>echo @LLM_MERGE_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        python '$__tool_directory__/nexus_eln_llm_merge.py'
+        '$bundle'
+        '$eln'
+        #if $answer:
+            --answer '$answer'
+            --answer-label '$answer.name'
+        #end if
+        #if $raw_file:
+            --raw '$raw_file'
+        #end if
+        --out-eln '$merged_eln'
+        --report '$eln_llm_report'
+    ]]></command>
+    <inputs>
+        <param name="bundle" type="data" format="json" label="Context bundle" help="The same bundle the LLM input was written from; its texts are the sources the quotes are checked against."/>
+        <param name="eln" type="data" format="yaml" label="Rule ELN" help="Written by the NeXus ELN builder. Its values are kept; LLM values only fill its empty fields."/>
+        <param name="answer" type="data" format="markdown,txt" optional="true" label="LLM answer" help="Optional. The LLM Hub answer: one YAML block with the ELN and one with the evidence. Without it the rule ELN is the output."/>
+        <param name="raw_file" type="data" format="binary,txt" optional="true" label="Raw SPM file" help="Optional. Give it if the LLM input was written with it: the .sxm header is a source."/>
+    </inputs>
+    <outputs>
+        <data name="merged_eln" format="yaml" label="${bundle.element_identifier}: ELN (eln_data.yaml)"/>
+        <data name="eln_llm_report" format="json" label="${bundle.element_identifier}: ELN LLM report"/>
+    </outputs>
+    <tests>
+        <!-- Test 01: hand-written AFM answer; each field hits one check. Some quotes have a no-break
+             space or hyphen, or a missing space, and are still found. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_afm.json" ftype="json"/>
+            <param name="eln" value="eln_afm.yaml" ftype="yaml"/>
+            <param name="answer" value="answer_afm_checks.md" ftype="markdown"/>
+            <param name="raw_file" value="afm_header_only.sxm" ftype="binary"/>
+            <output name="merged_eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="scan_mode: tapping mode"/>
+                    <has_text text="model: Cypher ES"/>
+                    <!-- From the header in the rule ELN; the answer's software is not taken. -->
+                    <has_text text="model: Generic 4"/>
+                    <has_text text="name: NaCl"/>
+                    <!-- experiment_description dropped: the rule ELN's record text stays. -->
+                    <has_text text="experiment_description: 'Magnetic adatom chains"/>
+                    <not_has_text text="'3.3'"/>
+                    <not_has_text text="MoS2"/>
+                    <not_has_text text="300 K"/>
+                    <not_has_text text="Nanonis 5.1.0"/>
+                    <not_has_text text="Invented Person"/>
+                    <not_has_text text="NaCl island&#10;"/>
+                </assert_contents>
+            </output>
+            <output name="eln_llm_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;merged&quot;"/>
+                    <has_text text="&quot;path&quot;: &quot;eln_instructions/NXafm.txt&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;value_not_in_quote&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;quote_not_found&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;copied_from_instructions: 'MoS2'&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;invalid_formula&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;no_evidence&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;quote_from_instructions_or_base_eln&quot;"/>
+                    <has_text text="not in the named file"/>
+                    <has_text text="quote found only when spaces are ignored"/>
+                    <has_text text="written as the allowed value"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 02: real answer of Mistral Medium 3.5 (usegalaxy.eu, 2026-11-12) for record 17202182.
+             Names are made ASCII; the software quote is only a header key, so it is dropped. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <param name="answer" value="answer_mistral_medium_3_5.md" ftype="markdown"/>
+            <param name="raw_file" value="T190613_004_header_only.sxm" ftype="binary"/>
+            <output name="merged_eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="experiment_description: Topography and lock-in dI/dV at 50 mV"/>
+                    <has_text text="model: JT-SPECS GmbH"/>
+                    <has_text text="chemical_formula: Bi2Pd"/>
+                    <has_text text="  name: beta-Bi2Pd(001) single crystal"/>
+                    <not_has_text text="model: Nanonis"/>
+                    <has_text text="- name: Test Person"/>
+                </assert_contents>
+            </output>
+            <output name="eln_llm_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;reason&quot;: &quot;header_key_only&quot;"/>
+                    <not_has_text text="quote_not_found"/>
+                    <has_text text="name made ASCII"/>
+                    <has_text text="&quot;path&quot;: &quot;eln_instructions/NXstm.txt&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 03: no answer (LLM off): the rule ELN is the output. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <output name="merged_eln" ftype="yaml">
+                <assert_contents>
+                    <has_text text="scan_mode: constant current"/>
+                    <not_has_text text="Sample:"/>
+                </assert_contents>
+            </output>
+            <output name="eln_llm_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;no_answer&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 04: the output of a skipped llm_hub step (LLM off): "null" in an expression.json. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <param name="answer" value="answer_skipped.json" ftype="expression.json"/>
+            <output name="merged_eln" ftype="yaml">
+                <assert_contents>
+                    <not_has_text text="Sample:"/>
+                </assert_contents>
+            </output>
+            <output name="eln_llm_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;no_answer&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+        <!-- Test 05: an answer without YAML blocks: the rule ELN is the output. -->
+        <test expect_num_outputs="2">
+            <param name="bundle" value="bundle_17202182.json" ftype="json"/>
+            <param name="eln" value="eln_17202182.yaml" ftype="yaml"/>
+            <param name="answer" value="answer_no_yaml.md" ftype="markdown"/>
+            <output name="merged_eln" ftype="yaml">
+                <assert_contents>
+                    <not_has_text text="Sample:"/>
+                </assert_contents>
+            </output>
+            <output name="eln_llm_report" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;status&quot;: &quot;unparsable&quot;"/>
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Checks the ELN an LLM wrote (an [LLM Hub](https://galaxyproject.org/news/2025-10-10-llm-hub/)
+answer) and merges the values that pass into the rule ELN of the NeXus ELN builder.
+
+-----
+
+**Checks per field**
+
+Only the fields of `eln_rules.yaml` are taken: those the rule ELN left empty, and
+`experiment_description`. Every other key of the answer is ignored.
+
+- **Evidence:** the quote must be found in a source file (the context texts and the raw file
+  header; never the instructions or the base ELN). Typographic dashes and spaces count as plain
+  ones; a quote that is only a header key (`:NANONIS_VERSION:`) is no evidence.
+- **Exact values** (instrument and software model, version, formula): the value must be in its quote.
+- **Copied examples:** a value containing an `Example:` value of the instructions is dropped,
+  unless a source has it too.
+- **Allowed values:** `scan_mode` must be one of the definition's values.
+- **Clean-up:** formula without spaces and with real element symbols; names in ASCII
+  (`β-Bi2 Pd` → `beta-Bi2Pd`).
+
+-----
+
+**Outputs**
+
+- **ELN**: the rule ELN with the kept values, for the converter.
+- **ELN LLM report**: per field kept, dropped (with the reason) or not filled, with its quote
+  and file and every clean-up. Without an answer, or without YAML in it, the ELN is the rule ELN.
+    ]]></help>
+    <citations>
+        <expand macro="citation_pynxtools_spm"/>
+    </citations>
+    <expand macro="creators"/>
+</tool>

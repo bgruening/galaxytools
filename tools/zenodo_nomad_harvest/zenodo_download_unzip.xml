@@ -1,0 +1,241 @@
+<tool id="zenodo_download_unzip" name="Zenodo download and unzip" version="@DOWNLOAD_VERSION@+galaxy@DOWNLOAD_SUFFIX@" profile="@PROFILE@">
+    <description>for a work list, with a manifest of every file</description>
+    <macros>
+        <import>macros.xml</import>
+    </macros>
+    <expand macro="requirements_download"/>
+    <required_files>
+        <include path="zenodo_download_unzip.py"/>
+    </required_files>
+    <version_command>echo @DOWNLOAD_VERSION@</version_command>
+    <command detect_errors="exit_code"><![CDATA[
+        #import re
+        mkdir -p prefetched &&
+        #if $prefetched:
+            #for $file in $prefetched:
+                ## Same naming rule as safe_name() in the script.
+                ln -s '$file' 'prefetched/${re.sub(r"[^\w.\-]", "_", str($file.element_identifier))}' &&
+            #end for
+        #end if
+        python '$__tool_directory__/zenodo_download_unzip.py'
+        '$work_list'
+        --prefetched-dir prefetched
+        --work-dir work
+        --raw-dir raw_files
+        --bundle-dir context_bundles
+        --context-dir context_files
+        --manifest '$manifest'
+        --tool-version '@DOWNLOAD_VERSION@+galaxy@DOWNLOAD_SUFFIX@'
+        #if str($pipeline_version).strip():
+            --pipeline-version '$pipeline_version'
+        #end if
+    ]]></command>
+    <inputs>
+        <param name="work_list" type="data" format="json" label="Work list (work_list.json)" help="Written by the NOMAD side: the records and files to download, the limits and the extension lists."/>
+        <param name="prefetched" type="data_collection" collection_type="list" optional="true" label="Files already in Galaxy" help="Optional list. An element whose identifier is exactly a Zenodo file key is used instead of downloading that file, for example a file imported through Galaxy's Zenodo file source. Its MD5 is still checked."/>
+        <param name="pipeline_version" type="text" value="" optional="true" label="Pipeline version for the manifest" help="Written as tool_version into the manifest. The NOMAD side retries failed files when it changes, so the workflow sets it to the converter's version. Left empty, this tool's version is used.">
+            <validator type="regex" message="Letters, digits, spaces and . _ + - only">^[\w .+\-]*$</validator>
+        </param>
+    </inputs>
+    <outputs>
+        <data name="manifest" format="json" label="${tool.name} on ${on_string}: Manifest"/>
+        <collection name="raw_files" type="list" label="${tool.name} on ${on_string}: Raw files">
+            <discover_datasets pattern="__designation__" directory="raw_files" format="binary" sort_by="filename"/>
+        </collection>
+        <collection name="context_bundles" type="list" label="${tool.name} on ${on_string}: Context bundles">
+            <discover_datasets pattern="__designation__" directory="context_bundles" format="json" sort_by="filename"/>
+        </collection>
+        <collection name="context_files" type="list" label="${tool.name} on ${on_string}: Context files">
+            <discover_datasets pattern="__designation__" directory="context_files" format="binary" sort_by="filename"/>
+        </collection>
+    </outputs>
+    <tests>
+        <!-- Test 01: archive with raw, context, junk and known files; unsafe, too large and mismatching files. -->
+        <test expect_num_outputs="4">
+            <param name="work_list" value="work_list.json" ftype="json"/>
+            <param name="prefetched">
+                <collection type="list">
+                    <element name="stm_archive.zip" value="stm_archive.zip" ftype="zip"/>
+                    <element name="traversal.zip" value="traversal.zip" ftype="zip"/>
+                    <element name="loose_readme.rtf" value="loose_readme.rtf" ftype="txt"/>
+                    <element name="loose_raw.sxm" value="loose_raw.sxm" ftype="binary"/>
+                    <element name="loose_mismatch.txt" value="loose_mismatch.txt" ftype="txt"/>
+                </collection>
+            </param>
+            <param name="pipeline_version" value="pynxtools_dataconverter 0.4.1+galaxy0"/>
+            <output name="manifest" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;run_id&quot;: &quot;test-batch-001&quot;"/>
+                    <has_text text="&quot;tool_version&quot;: &quot;pynxtools_dataconverter 0.4.1+galaxy0&quot;"/>
+                    <has_text text="&quot;status&quot;: &quot;extracted&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;unsafe_path&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;too_large&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;md5_mismatch&quot;"/>
+                    <has_text text="&quot;reason&quot;: &quot;unsupported_archive&quot;"/>
+                    <has_text text="&quot;action&quot;: &quot;already_known&quot;" n="2"/>
+                    <has_text text="&quot;role&quot;: &quot;ignored&quot;" n="5"/>
+                    <has_text text="&quot;STM data/session 1/notes.md&quot;"/>
+                    <not_has_text text="evil.txt"/>
+                </assert_contents>
+            </output>
+            <!-- Elements are sorted by file name. -->
+            <output_collection name="raw_files" type="list" count="3">
+                <element name="17533355-0d16b332fc2e-loose_raw.sxm" ftype="binary"/>
+                <element name="17533355-bde42f7aaf67-const_dos_No14_003.sxm" ftype="binary">
+                    <assert_contents>
+                        <has_size value="113993"/>
+                    </assert_contents>
+                </element>
+                <element name="17533355-c941e1bfe103-broken.sxm" ftype="binary"/>
+            </output_collection>
+            <output_collection name="context_bundles" type="list" count="3">
+                <element name="17533355-bde42f7aaf67-const_dos_No14_003.sxm" ftype="json">
+                    <assert_contents>
+                        <has_text text="Sample: magnetic adatom chains on a superconductor"/>
+                        <has_text text="Tip: W"/>
+                        <has_text text="Instrument: Nanonis SPM, low temperature"/>
+                        <not_has_text text="fonttbl"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <!-- 3 context files, plus image.png and nested.zip: all non-raw files no ignore pattern matches. -->
+            <output_collection name="context_files" type="list" count="5"/>
+        </test>
+        <!-- Test 02: the zip's index is above the uncompressed limit, so nothing is extracted. -->
+        <test expect_num_outputs="4">
+            <param name="work_list" value="work_list_uncompressed_limit.json" ftype="json"/>
+            <param name="prefetched">
+                <collection type="list">
+                    <element name="stm_archive.zip" value="stm_archive.zip" ftype="zip"/>
+                </collection>
+            </param>
+            <output name="manifest" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;reason&quot;: &quot;uncompressed_limit&quot;"/>
+                    <has_text text="&quot;files&quot;: []"/>
+                    <has_text text="&quot;tool_version&quot;: &quot;@DOWNLOAD_VERSION@+galaxy@DOWNLOAD_SUFFIX@&quot;"/>
+                </assert_contents>
+            </output>
+            <output_collection name="raw_files" type="list" count="0"/>
+        </test>
+        <!-- Test 03: a work list without records gives an empty manifest and empty collections. -->
+        <test expect_num_outputs="4">
+            <param name="work_list" value="work_list_empty.json" ftype="json"/>
+            <output name="manifest" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;archives&quot;: []"/>
+                    <has_text text="&quot;files&quot;: []"/>
+                </assert_contents>
+            </output>
+            <output_collection name="raw_files" type="list" count="0"/>
+            <output_collection name="context_bundles" type="list" count="0"/>
+        </test>
+        <!-- Test 04: context files keep a fixed type, also when Galaxy cannot detect it (binary
+             bytes in a .csv). A detected type "auto" would stop the report step from scheduling. -->
+        <test expect_num_outputs="4">
+            <param name="work_list" value="work_list_loose.json" ftype="json"/>
+            <param name="prefetched">
+                <collection type="list">
+                    <element name="loose_readme.rtf" value="loose_readme.rtf" ftype="txt"/>
+                    <element name="loose_raw.sxm" value="loose_raw.sxm" ftype="binary"/>
+                    <element name="context_unknown.csv" value="context_unknown.csv" ftype="binary"/>
+                </collection>
+            </param>
+            <output_collection name="raw_files" type="list" count="1">
+                <element name="17533355-0d16b332fc2e-loose_raw.sxm" ftype="binary"/>
+            </output_collection>
+            <output_collection name="context_files" type="list" count="2">
+                <element name="17533355-110009dcee21-context_unknown.csv" ftype="binary">
+                    <assert_contents>
+                        <has_size value="512"/>
+                    </assert_contents>
+                </element>
+                <element name="17533355-d6dd8682843d-loose_readme.rtf" ftype="binary"/>
+            </output_collection>
+        </test>
+        <!-- Test 05: PDF text goes into the bundle as pdf_text. A broken PDF and a PDF without a
+             text layer are only reported in the bundle; their files are still kept. context_sm_page2.pdf: page 2 of the Supplementary
+             Material of Zenodo record 17202182 (CC-BY-4.0). -->
+        <test expect_num_outputs="4">
+            <param name="work_list" value="work_list_pdf.json" ftype="json"/>
+            <param name="prefetched">
+                <collection type="list">
+                    <element name="loose_raw.sxm" value="loose_raw.sxm" ftype="binary"/>
+                    <element name="context_sm_page2.pdf" value="context_sm_page2.pdf" ftype="pdf"/>
+                    <element name="context_broken.pdf" value="context_broken.pdf" ftype="binary"/>
+                    <element name="context_no_text.pdf" value="context_no_text.pdf" ftype="pdf"/>
+                </collection>
+            </param>
+            <output name="manifest" ftype="json">
+                <assert_contents>
+                    <has_text text="&quot;role&quot;: &quot;context&quot;" n="3"/>
+                    <has_text text="&quot;files&quot;: ["/>
+                    <has_text text="&quot;download_failures&quot;: []"/>
+                </assert_contents>
+            </output>
+            <output_collection name="context_bundles" type="list" count="1">
+                <element name="17533355-0d16b332fc2e-loose_raw.sxm" ftype="json">
+                    <assert_contents>
+                        <!-- Two-column text in reading order, as in the tested LLM context. -->
+                        <has_text text="low-temperature scanning tunneling microscope (JT-SPECS GmbH)"/>
+                        <has_text text="The crystals were cleaved at approximately 100 K"/>
+                        <has_text text="&quot;pdf_text_error&quot;: &quot;unreadable&quot;"/>
+                        <has_text text="&quot;pdf_text_error&quot;: &quot;no_text&quot;"/>
+                        <has_text text="&quot;pdf_text_error&quot;: null"/>
+                        <has_text text="&quot;text&quot;: null" n="3"/>
+                        <!-- The work list's user, for the ELN. -->
+                        <has_text text="&quot;name&quot;: &quot;Test Person&quot;"/>
+                    </assert_contents>
+                </element>
+            </output_collection>
+            <output_collection name="context_files" type="list" count="3"/>
+        </test>
+    </tests>
+    <help format="markdown"><![CDATA[
+**What it does**
+
+Downloads the files of a **work list** from [Zenodo](https://zenodo.org) with
+[zenodo_get](https://github.com/dvolgyes/zenodo_get), checks each file's MD5 against the
+work list, extracts `.zip` archives safely and classifies every file. It is the first step of
+the Zenodo → Galaxy → NOMAD harvest; the work list comes from the NOMAD side
+([nomad-eosc-galaxy-actions](https://github.com/FAIRmat-NFDI/nomad-eosc-galaxy-actions)).
+
+-----
+
+**Safe extraction**
+
+An archive is refused, and nothing of it extracted, when a member path is absolute, contains
+`..` or is a symbolic link ("zip slip"), or when its total uncompressed size is above the work
+list's limit ("zip bomb"). Archives inside an archive are not extracted.
+
+-----
+
+**Classification**
+
+- `raw`: extension in `raw_extensions`. Converted once per record, unless its SHA-256 is in the
+  record's `known_sha256`.
+- `context`: extension in `context_extensions`, for example a readme. A raw file's context is the
+  context files in its own folder and every parent folder of the same archive, plus the record's
+  loose context files.
+- `ignored`: matches `ignore_patterns`, or has neither extension.
+
+-----
+
+**Outputs**
+
+- **Manifest**: one row per archive and per file, with SHA-256, role, action and reason.
+  Downloads that failed for loose files are listed under `download_failures`.
+- **Raw files**: the raw files to convert.
+- **Context bundles**: one JSON per raw file, with the same element identifier, holding the
+  record metadata and the text of the raw file's context files. The text of a PDF is read with
+  [pdftotext](https://poppler.freedesktop.org/) into `pdf_text`; a PDF without text (broken,
+  scanned, too large) gets the reason in `pdf_text_error` and the run goes on.
+- **Context files**: the record's context files, for the NOMAD project.
+
+Element identifiers are `<record ID>-<first 12 characters of the SHA-256>-<file name>`.
+    ]]></help>
+    <citations>
+        <expand macro="citation_zenodo_get"/>
+    </citations>
+    <expand macro="creators"/>
+</tool>
