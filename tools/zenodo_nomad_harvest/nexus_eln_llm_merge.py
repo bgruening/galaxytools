@@ -21,10 +21,9 @@ import unicodedata
 from pathlib import Path
 
 import yaml
-
 from nexus_llm_input import (
-    BASE_ELN_NAME, INSTRUCTIONS_NAME, TOOL_DIR, definition_of, example_values, has_path,
-    load_instructions, set_path, source_files,
+    BASE_ELN_NAME, definition_of, example_values, has_path, INSTRUCTIONS_NAME,
+    load_instructions, set_path, source_files, TOOL_DIR,
 )
 
 logger = logging.getLogger("nexus_eln_llm_merge")

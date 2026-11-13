@@ -23,7 +23,6 @@ import sys
 from pathlib import Path, PurePosixPath
 
 import yaml
-
 from nexus_eln_builder import sxm_header_text
 
 logger = logging.getLogger("nexus_llm_input")
