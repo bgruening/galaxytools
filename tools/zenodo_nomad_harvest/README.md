@@ -54,8 +54,12 @@ rule ELN is the output. In the workflow, `llm_hub` runs between the two only whe
 - Out: `manifest.json` (every archive and file, with role, action and reason), `results.json`
   (conversion status per raw file, by SHA-256) and the project zips.
 
-The keys are described in the
-[development notes](https://github.com/RubelMozumder/GalaxyService/blob/DiscoverGalaxy/DEVELOPMENT.md).
+Top-level keys (examples in `test-data/`):
+
+| File | Keys |
+|---|---|
+| `work_list.json` | `schema_version`, `run_id`, `user`, `limits`, `raw_extensions`, `context_extensions`, `ignore_patterns`, `records` (each: record metadata, `known_sha256`, `download`) |
+| `manifest.json` | `schema_version`, `run_id`, `tool_version`, `archives`, `files`, `download_failures` |
 
 ## Tests
 
