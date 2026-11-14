@@ -6,11 +6,17 @@
         <token name="@PROFILE@">24.0</token>
     </macros>
     <requirements>
-        <requirement type="package" version="3.12">python</requirement>
+        <requirement type="package" version="3.15.2">python</requirement>
         <requirement type="package" version="6.0.3">pyyaml</requirement>
+        <!-- openai >= 3.0.0 switched the underlying HTTP client to HTTPX2,
+             which is a direct dependency of the openai package and is therefore
+             installed with it: no separate requirement pin is needed. The tool
+             only uses the high level OpenAI client, streaming chat completions
+             and the error classes, none of which changed between the 2.x and
+             3.x majors. -->
         <requirement type="package" version="@TOOL_VERSION@">openai</requirement>
     </requirements>
-    <command detect_errors="exit_code"><![CDATA[
+    <command detect_errors="aggressive"><![CDATA[
 #import json
 #import os
 #import re
@@ -51,38 +57,35 @@ python '$__tool_directory__/llm_hub.py'
                 <option value="image">Image models</option>
             </param>
             <when value="multimodal">
-                <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
+                <param name="model" type="select" label="Model" help="Select the model you want to use.">
                     <options from_data_table="genai_models">
                         <filter type="static_value" column="3" value="multimodal"/>
                     </options>
-                    <validator message="No model annotation is available for LLM Hub" type="no_options"/>
                 </param>
-                <param name="text_context" type="data" multiple="true" optional="true" format="html,json,txt" label="Text Context"/>
-                <param name="image_context" type="data" optional="true" format="jpg,png,gif,tiff,bmp" label="Image Context"/>
-                <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want the LLM to perform." area="true">
-                    <validator type="empty_field"/>
+                <param name="text_context" type="data" multiple="true" optional="true" format="html,json,txt" label="Text Context" help="Optional text file(s) with content the model should use to answer the prompt."/>
+                <param name="image_context" type="data" optional="true" format="jpg,png,gif,tiff,bmp" label="Image Context" help="Optional image the model should use to answer the prompt (only one image per request)."/>
+                <param name="prompt" type="text" label="Prompt" help="Prompts or tasks you want the LLM to perform." area="true">
+                    <validator type="empty_field" message="Please enter a prompt."/>
                 </param>
             </when>
             <when value="text">
-                <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
+                <param name="model" type="select" label="Model" help="Select the model you want to use.">
                     <options from_data_table="genai_models">
                         <filter type="static_value" column="3" value="text"/>
                     </options>
-                    <validator message="No model annotation is available for LLM Hub" type="no_options"/>
                 </param>
-                <param name="text_context" type="data" multiple="true" optional="true" format="html,json,txt" label="Text Context"/>
-                <param name="prompt" type="text" optional="false" label="Prompt" help="Prompts or tasks you want the LLM to perform." area="true">
-                    <validator type="empty_field"/>
+                <param name="text_context" type="data" multiple="true" optional="true" format="html,json,txt" label="Text Context" help="Optional text file(s) with content the model should use to answer the prompt."/>
+                <param name="prompt" type="text" label="Prompt" help="Prompts or tasks you want the LLM to perform." area="true">
+                    <validator type="empty_field" message="Please enter a prompt."/>
                 </param>
             </when>
             <when value="image">
-                <param name="model" type="select" optional="false" label="Model" help="Select the model you want to use.">
+                <param name="model" type="select" label="Model" help="Select the model you want to use.">
                     <options from_data_table="genai_models">
                         <filter type="static_value" column="3" value="image"/>
                     </options>
-                    <validator message="No model annotation is available for LLM Hub" type="no_options"/>
                 </param>
-                <param name="image_context" type="data" optional="false" format="jpg,png,gif,tiff,bmp" label="Image Context"/>
+                <param name="image_context" type="data" format="jpg,png,gif,tiff,bmp" label="Image Context" help="Image the model should process."/>
             </when>
         </conditional>
         <section name="advanced" title="Advanced Options" expanded="false">
@@ -90,70 +93,64 @@ python '$__tool_directory__/llm_hub.py'
         </section>
     </inputs>
     <outputs>
-        <data name="output" format="markdown" label="${tool.name} (${model}) #if $on_string then ' on ' + $on_string else ''#" from_work_dir="./output.md"/>
+        <data name="output" format="markdown" from_work_dir="./output.md"/>
     </outputs>
     <tests>
-        <test expect_failure="true" expect_exit_code="1">
+        <!-- The test environment has no LiteLLM proxy (LITELLM_CONFIG_FILE is
+             not set), so the job is expected to fail on the missing API key
+             while still proving the command line is built correctly. -->
+        <test expect_test_failure="true" expect_exit_code="1" expect_num_outputs="0">
             <conditional name="model_condition">
                 <param name="model_type" value="text"/>
-                <param name="model" value="unknown"/>
+                <param name="model" value="gpt-oss-20b"/>
                 <param name="text_context" value="test.txt" ftype="txt"/>
                 <param name="prompt" value="What is this?"/>
             </conditional>
             <section name="advanced">
                 <param name="temperature" value="0.7"/>
             </section>
+            <assert_command>
+                <has_text text="llm_hub.py"/>
+                <has_text text="gpt-oss-20b-llmlb"/>
+                <has_text text="'text'"/>
+                <has_text text="0.7"/>
+                <has_text text="uni-freiburg"/>
+                <has_text text="What is this?"/>
+            </assert_command>
             <assert_stdout>
                 <has_text text="LiteLLM API key is not configured!"/>
             </assert_stdout>
         </test>
     </tests>
-    <help><![CDATA[
+    <help format="markdown"><![CDATA[
+This tool uses a LiteLLM proxy (configured by the administrator) to call large language models from a wide range of providers (OpenAI, Anthropic, Google, Mistral, DeepSeek, ...). Uploaded context data is processed by the selected model and the answer is returned as a history item.
 
-.. class:: infomark
+-----
 
-**What it does**
+**Inputs**
 
-This tool leverages LiteLLM proxy to access various Large Language Models (LLMs) for generating responses based on user-provided context and prompts.
-Users can upload context data in various formats and ask questions or execute prompts related to that data.
-The tool connects to a LiteLLM proxy server configured by Galaxy administrators, which can provide access to multiple LLM providers including OpenAI, Anthropic, Google, and others.
-
-When you run this tool, your input data is processed by the selected LLM through the configured LiteLLM proxy. 
-The models process the data and generate a response based on the context and prompt provided. 
-After receiving the response from the LLM, the tool returns it to Galaxy and puts it in your history.
-
-Usage
-.....
-
-**Input**
-
-1. **Select a Model**: Choose the LLM model that best fits your needs. 
-Available models depend on what's configured in the LiteLLM proxy by your Galaxy administrators.
-
-2. **Upload Context Data**: You can upload context data in different ways depending on the model type:
-
-   - **Text models**: Upload multiple text files (TXT, HTML, JSON) as context
-   - **Image models**: Upload a single image file (JPG, PNG, GIF, TIFF, BMP) as context  
-   - **Multimodal models**: Upload multiple text files and/or a single image file as context
-
-   Vision-capable (multimodal and image) models can process image files, but only one image file is supported per request.
-
-3. **Provide a Prompt**: Specify the task or question you want the LLM to address.
-The more specific the prompt, the more tailored the response will be.
+- **Choose the model**: the category of model to use.
+- **Model**: the specific model, from the list configured by the administrator (models are defined in the `genai_models` data table).
+- **Text Context**: optional text file(s) (`txt`, `html` or `json`) with content the model should use to answer the prompt.
+- **Image Context**: image file(s) (`jpg`, `png`, `gif`, `tiff`, `bmp`) the model should use to answer the prompt. Only one image per request is supported.
+- **Prompt**: the task or question you want the LLM to address. The more specific the prompt, the more tailored the response will be.
 
 **Advanced Options**
 
-- **Temperature**: An optional parameter that controls the randomness of the model's output (range: 0.0 to 2.0).
-  
-  - **Lower values** (e.g., 0.0-0.3): Make the output more focused, consistent, and deterministic. Use for tasks requiring factual accuracy or consistent formatting.
-  - **Higher values** (e.g., 0.7-2.0): Make the output more creative, diverse, and random. Use for brainstorming, creative writing, or varied responses.
-  - **Not set**: When left empty, the model uses its default temperature setting, which is typically optimized for general-purpose tasks.
+- **Temperature**: optional parameter that controls the randomness of the output (range: 0.0 to 2.0).
+
+  - **Lower values** (e.g. 0.0 - 0.3): make the output more focused, consistent and deterministic. Use for tasks requiring factual accuracy or consistent formatting.
+  - **Higher values** (e.g. 0.7 - 2.0): make the output more creative, diverse and random. Use for brainstorming, creative writing or varied responses.
+  - **Not set**: the model uses its default temperature.
 
 **Output**
 
-The output is a response generated by the selected LLM, crafted based on the provided context data and the prompt.
-This response is saved in a Markdown file.
+A Markdown file with the response generated by the selected model, based on the provided context data and the prompt.
 
+**Notes**
+
+- The response time depends on the model, the provider and the size of the context. Reasoning models may spend several minutes on chain-of-thought before emitting an answer.
+- Requests are attributed to your Galaxy user id on the proxy, so per-user budgets and rate limits can be applied. The id is hashed before it leaves Galaxy.
     ]]></help>
     <citations>
         <citation type="bibtex">
