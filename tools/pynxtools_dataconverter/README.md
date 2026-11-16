@@ -1,8 +1,9 @@
 # pynxtools_dataconverter
 
 Converts one raw file and its ELN to a NeXus file with
-[pynxtools](https://github.com/FAIRmat-NFDI/pynxtools) and the `spm` reader of
-[pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm), in the public pynxtools-spm container.
+[pynxtools](https://github.com/FAIRmat-NFDI/pynxtools) and a reader plugin, chosen in the `reader`
+select. Today: `spm` from [pynxtools-spm](https://github.com/FAIRmat-NFDI/pynxtools-spm), in the
+public pynxtools-spm container. A new reader is one more case of that select, with its definitions.
 A file that cannot be converted gives a status JSON with the reason; the job still succeeds.
 
 ## Tests
