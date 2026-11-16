@@ -2,8 +2,8 @@
 
 Galaxy tools that harvest scanning probe microscopy (SPM) data from [Zenodo](https://zenodo.org),
 convert the raw files to [NeXus](https://www.nexusformat.org) and prepare
-[NOMAD](https://nomad-lab.eu) projects. They are the steps of the
-[Zenodo harvest workflow](../../workflows/zenodo_harvest/), which the `zenodo_harvest` Action of
+[NOMAD](https://nomad-lab.eu) projects. They are the steps of the Zenodo harvest workflow, which
+the `zenodo_harvest` Action of
 [nomad-eosc-galaxy-actions](https://github.com/FAIRmat-NFDI/nomad-eosc-galaxy-actions) starts.
 
 A file that cannot be handled is recorded with its reason; the job itself still succeeds.

@@ -77,8 +77,3 @@ Uses the bundles and rule ELNs of group 3.
 | `manifest_empty.json` | Empty run: empty results, no zips or logs |
 
 File names with `__<record>-<hash>-<name>` are the element identifiers Galaxy gives in the workflow.
-
-## Workflow tests
-
-`workflows/zenodo_harvest/zenodo-harvest-spm-tests.yml` runs the whole chain with the LLM off, using
-`work_list.json`, `work_list_empty.json` and `work_list_loose.json` with their files from group 1.
