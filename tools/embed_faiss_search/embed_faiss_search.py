@@ -133,7 +133,7 @@ def main() -> None:
     log(f"{len(rows)} paragraph(s), {len(queries)} span(s) to look up.")
 
     import numpy as np
-    import torch # noqa: F401
+    import torch  # noqa: F401
     import faiss
 
     if SLOTS:
