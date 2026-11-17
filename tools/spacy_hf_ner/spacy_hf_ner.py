@@ -32,7 +32,6 @@ def log(message: str) -> None:
 def read_txt(path: Path, split: str) -> list[str]:
     text = path.read_text(encoding="utf-8-sig", errors="replace")
     blocks = re.split(r"\n\s*\n", text) if split == "blank" else text.splitlines()
-    # Lines of one block are joined with a space, so wrapped OCR text becomes one paragraph.
     paragraphs = (" ".join(line.strip() for line in block.splitlines() if line.strip()) for block in blocks)
     return [paragraph for paragraph in paragraphs if paragraph]
 
@@ -49,7 +48,7 @@ def read_json(path: Path) -> list[dict]:
     raw = path.read_text(encoding="utf-8-sig")
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:  # JSON Lines
+    except json.JSONDecodeError:
         data = [json.loads(line) for line in raw.splitlines() if line.strip()]
     rows = data if isinstance(data, list) else [data]
     for number, row in enumerate(rows, 1):
@@ -105,7 +104,7 @@ def load_pipeline(repo: str, revision: str | None):
                          + f"\nOriginal error: {exc}")
     if "ner" not in nlp.pipe_names:
         raise SystemExit(f"{repo} has no 'ner' component (it has: {', '.join(nlp.pipe_names)}).")
-    # Only what NER needs; a tagger or parser would just slow the job down.
+    # Only what NER needs
     nlp.select_pipes(enable=[name for name in nlp.pipe_names if name in NER_COMPONENTS])
     return nlp
 
