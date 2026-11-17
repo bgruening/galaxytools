@@ -1,0 +1,150 @@
+<tool id="cross_encoder_rerank" name="Rerank candidates with a cross-encoder" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>pick the best knowledge-base entry for every entity with a Hugging Face reranker</description>
+    <macros>
+        <token name="@TOOL_VERSION@">0.1.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="3.12">python</requirement>
+        <requirement type="package" version="6.3.0">sentence-transformers</requirement>
+        <requirement type="package" version="5.23.0">transformers</requirement>
+        <requirement type="package" version="2.14.1">pytorch-cpu</requirement>
+        <requirement type="package" version="2.5.5">numpy</requirement>
+        <requirement type="package" version="2.4.0">huggingface_hub</requirement>
+        <resource type="cores_min">4</resource>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        python '$__tool_directory__/cross_encoder_rerank.py'
+            --input '$input'
+            --metadata '$metadata'
+            --id-field '${id_field or ""}'
+            --title-field '${title_field or ""}'
+            --text-field '${text_field or ""}'
+            --model '$reranker_model'
+            #if $source.query_source == 'field'
+                --query-field '$source.query_field'
+            #end if
+            --candidates-field '$candidates_field'
+            --dtype '$dtype'
+            --batch-size '$batch_size'
+            --output '$output'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="json,txt" label="Paragraphs with candidates"
+               help="JSON Lines, one object per paragraph, with a &quot;spans&quot; list. Every span needs a description and a list of candidate ids, for example from the embedding search step." />
+        <param name="metadata" type="data" format="json,txt" label="Knowledge-base metadata (JSON Lines)"
+               help="The same file that was used for the search, for example topostext_metadata.jsonl. It gives the text of every candidate." />
+        <param name="reranker_model" type="text" value="Qwen/Qwen3-Reranker-0.6B" label="Reranker model"
+               help="Any cross-encoder on Hugging Face that sentence-transformers can load, for example Qwen/Qwen3-Reranker-0.6B or cross-encoder/ms-marco-MiniLM-L6-v2. Bigger models are better but much slower on a CPU.">
+            <validator type="regex" message="Use the form owner/name, for example Qwen/Qwen3-Reranker-0.6B.">^[A-Za-z0-9][\w.-]*(/[\w.-]+)?$</validator>
+        </param>
+        <param name="id_field" type="text" value="toposid" optional="true" label="ID field in the metadata"
+               help="The field that identifies an entry. Leave empty to use the line number (starting at 0), as the search step does when its ID field is empty.">
+            <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+        </param>
+        <param name="title_field" type="text" value="title" optional="true" label="Title field in the metadata"
+               help="The text of a candidate is its title, then a colon, then its description.">
+            <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+        </param>
+        <param name="text_field" type="text" value="description" optional="true" label="Description field in the metadata">
+            <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+        </param>
+        <conditional name="source">
+            <param name="query_source" type="select" label="Text to match against the candidates"
+                   help="The mention alone worked best in tests: with its whole sentence added, the other words in the sentence started to decide the result.">
+                <option value="mention" selected="true">The mention itself (the characters from start to end)</option>
+                <option value="field">A field of the span, for example a description written by an LLM</option>
+            </param>
+            <when value="mention" />
+            <when value="field">
+                <param name="query_field" type="text" value="recontext" label="Span field to match">
+                    <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+                </param>
+            </when>
+        </conditional>
+        <param name="candidates_field" type="text" value="index_results" label="Span field with the candidate ids"
+               help="The search step writes the candidates as &quot;index_results&quot;.">
+            <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+        </param>
+        <param name="dtype" type="select" label="Numeric precision of the model" help="float32 is usually much faster on a CPU. Models are mostly saved in half precision, which needs half the memory: choose that for very large models.">
+            <option value="float32" selected="true">float32 (default)</option>
+            <option value="auto">As the model was saved</option>
+        </param>
+        <param name="batch_size" type="integer" value="16" min="1" max="256" label="Pairs per batch" help="Larger batches are faster but need more memory." />
+    </inputs>
+    <outputs>
+        <!-- JSON Lines. Galaxy has no JSONL datatype, and "json" keeps it apart from plain text for the next tool. -->
+        <data name="output" format="json" label="${tool.name} on ${on_string}" />
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="rows_candidates.jsonl" ftype="txt" />
+            <param name="metadata" value="places_metadata.jsonl" ftype="txt" />
+            <param name="reranker_model" value="cross-encoder/ms-marco-MiniLM-L6-v2" />
+            <conditional name="source">
+                <param name="query_source" value="field" />
+                <param name="query_field" value="recontext" />
+            </conditional>
+            <output name="output">
+                <assert_contents>
+                    <has_n_lines n="1" />
+                    <has_text text="&quot;reranker_results&quot;: &quot;PIR&quot;" />
+                    <has_text text="&quot;reranker_results&quot;: &quot;DEL&quot;" />
+                    <has_text text="&quot;reranker_results&quot;: null" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="rows_candidates.jsonl" ftype="txt" />
+            <param name="metadata" value="places_metadata.jsonl" ftype="txt" />
+            <param name="reranker_model" value="cross-encoder/ms-marco-MiniLM-L6-v2" />
+            <output name="output">
+                <assert_contents>
+                    <has_n_lines n="1" />
+                    <has_text text="&quot;reranker_results&quot;: &quot;PIR&quot;" />
+                    <has_text text="&quot;reranker_results&quot;: &quot;DEL&quot;" />
+                    <has_text text="&quot;reranker_results&quot;: null" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+**Rerank candidates with a cross-encoder** chooses, for every entity, the best of several candidate entries of a
+knowledge base. A cross-encoder reads the mention of the entity and each candidate together, so it is more
+exact than the vector search that found the candidates. It is the last matching step of the
+`T4.5.2 Geotagging of texts <https://github.com/atrium-research/T4.5.2_Geotagging_of_texts>`_ workflow.
+
+Input
+-----
+
+* **Paragraphs with candidates**: JSON Lines, for example from the embedding search step::
+
+      {"text": "He sailed to Delphi.", "spans": [{"start": 14, "end": 20, "label": "PLACE", "index_results": ["OLY", "DEL"]}]}
+
+  The mention is the text from ``start`` to ``end``. Alternatively, match a field of the span, such as a short
+  description of the entity written by an LLM step.
+
+* **Metadata**: the knowledge-base file of the search step. The candidate ids of a span are looked up in it, and
+  the text of a candidate is its title, a colon and its description.
+* **Reranker model**: any cross-encoder on Hugging Face that sentence-transformers can load. The tool does not run
+  code from the model repository, so models that ask for custom code cannot be used.
+
+Output
+------
+
+The same JSON Lines, with two fields added to every span:
+
+* ``reranker_results``: the id of the best candidate, or ``null`` if the span had no candidates.
+* ``reranker_scores``: ``{"id", "score"}`` for every candidate, best first. The scores depend on the model and are
+  only comparable between candidates of the same span.
+
+Galaxy has no JSON Lines datatype, so the file is labelled ``json``.
+
+Every candidate of every entity is one run of the model. A small model such as Qwen3-Reranker-0.6B takes a few
+tenths of a second per pair on a CPU, and a 4B model several times more. The model is downloaded when the job
+runs, so the server needs internet access.
+    ]]></help>
+    <citations>
+        <citation type="doi">10.18653/v1/D19-1410</citation>
+    </citations>
+</tool>

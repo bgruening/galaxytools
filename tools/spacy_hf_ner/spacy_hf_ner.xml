@@ -1,0 +1,166 @@
+<tool id="spacy_hf_ner" name="spaCy NER from Hugging Face" version="@TOOL_VERSION@+galaxy@VERSION_SUFFIX@" profile="24.2">
+    <description>find named entities with one or more spaCy pipelines from Hugging Face</description>
+    <macros>
+        <token name="@TOOL_VERSION@">0.1.0</token>
+        <token name="@VERSION_SUFFIX@">0</token>
+        <!-- 1.4.0 is the newest on conda-forge. Models saved with spacy-transformers 2.x need 2.0.3 here. -->
+        <token name="@SPACY_TRANSFORMERS_VERSION@">1.4.0</token>
+    </macros>
+    <requirements>
+        <requirement type="package" version="3.12">python</requirement>
+        <requirement type="package" version="3.8.16">spacy</requirement>
+        <requirement type="package" version="@SPACY_TRANSFORMERS_VERSION@">spacy-transformers</requirement>
+        <requirement type="package" version="4.53.2">transformers</requirement>
+        <requirement type="package" version="2.14.1">pytorch-cpu</requirement>
+        <requirement type="package" version="0.36.0">huggingface_hub</requirement>
+        <requirement type="package" version="6.1.3">lxml</requirement>
+        <!-- Newer srsly/msgpack-python from conda-forge break spacy.load ("object is not callable"). -->
+        <requirement type="package" version="2.5.3">srsly</requirement>
+        <requirement type="package" version="1.0.8">msgpack-python</requirement>
+        <resource type="cores_min">4</resource>
+    </requirements>
+    <command detect_errors="exit_code"><![CDATA[
+        #if $input.is_of_type('json')
+            #set $input_format = 'json'
+        #elif $input.is_of_type('xml')
+            #set $input_format = 'tei'
+        #else
+            #set $input_format = 'txt'
+        #end if
+        python '$__tool_directory__/spacy_hf_ner.py'
+            --input '$input'
+            --format '$input_format'
+            --split '$split'
+            #for $ner in $models
+                --model '$ner.model'
+                --revision '${ner.revision or ""}'
+                --label '${ner.label or ""}'
+            #end for
+            --batch-size '$batch_size'
+            --output '$output'
+    ]]></command>
+    <inputs>
+        <param name="input" type="data" format="txt,tei,xml,json" label="Text to analyse"
+               help="Plain text, a TEI/XML file (every &lt;p&gt; is a paragraph) or JSON / JSON Lines with a &quot;text&quot; field on every object, such as the output of this tool." />
+        <repeat name="models" title="NER model" min="1" default="1" help="All models are loaded first. Then each one runs over the whole text, one after another, and all their entities end up in the same output.">
+            <param name="model" type="text" label="Hugging Face model" help="A spaCy pipeline repository, written as owner/name, for example NikosKprl/en_deberta_v3_base_ner_historical_place.">
+                <validator type="regex" message="Use the form owner/name, for example spacy/en_core_web_sm.">^[A-Za-z0-9][\w.-]*/[\w.-]+$</validator>
+            </param>
+            <param name="revision" type="text" optional="true" label="Model revision" help="A branch, tag or commit hash. Leave empty for the latest version. A commit hash makes the run reproducible.">
+                <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+            </param>
+            <param name="label" type="text" optional="true" label="Entity label" help="Name this model's entities with this label instead of the model's own, for example PLACE.">
+                <validator type="regex" message="Use letters, digits, dots, dashes and underscores only.">^[\w.-]+$</validator>
+            </param>
+        </repeat>
+        <param name="split" type="select" label="Paragraphs in plain text" help="Only used for plain text. Text from OCR is wrapped, so blank lines are the better separator.">
+            <option value="blank" selected="true">Separated by blank lines (lines of one paragraph are joined)</option>
+            <option value="line">One paragraph per line</option>
+        </param>
+        <param name="batch_size" type="integer" value="16" min="1" max="256" label="Paragraphs per batch" help="Larger batches are faster but need more memory." />
+    </inputs>
+    <outputs>
+        <!-- JSON Lines. Galaxy has no JSONL datatype, and "json" keeps it apart from plain text for the next tool. -->
+        <data name="output" format="json" label="${tool.name} on ${on_string}" />
+    </outputs>
+    <tests>
+        <test expect_num_outputs="1">
+            <param name="input" value="paragraphs.txt" ftype="txt" />
+            <repeat name="models">
+                <param name="model" value="spacy/en_core_web_sm" />
+            </repeat>
+            <output name="output">
+                <assert_contents>
+                    <has_n_lines n="2" />
+                    <has_text text="&quot;label&quot;: &quot;GPE&quot;" />
+                    <has_text text="Pausanias travelled from Athens to Corinth in the second century." />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="paragraphs.tei.xml" ftype="tei" />
+            <repeat name="models">
+                <param name="model" value="spacy/en_core_web_sm" />
+            </repeat>
+            <output name="output">
+                <assert_contents>
+                    <has_n_lines n="2" />
+                    <has_text text="Delphi" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="rows.json" ftype="json" />
+            <repeat name="models">
+                <param name="model" value="spacy/en_core_web_sm" />
+                <param name="label" value="PLACE" />
+            </repeat>
+            <output name="output">
+                <assert_contents>
+                    <has_n_lines n="1" />
+                    <has_text text="&quot;id&quot;: 7" />
+                    <has_text text="&quot;label&quot;: &quot;AUTHOR&quot;" />
+                    <has_text text="&quot;label&quot;: &quot;PLACE&quot;" />
+                </assert_contents>
+            </output>
+        </test>
+        <test expect_num_outputs="1">
+            <param name="input" value="paragraphs.txt" ftype="txt" />
+            <repeat name="models">
+                <param name="model" value="spacy/en_core_web_sm" />
+            </repeat>
+            <repeat name="models">
+                <param name="model" value="spacy/en_core_web_sm" />
+                <param name="label" value="SECOND" />
+            </repeat>
+            <output name="output">
+                <assert_contents>
+                    <has_n_lines n="2" />
+                    <has_text text="&quot;label&quot;: &quot;GPE&quot;" />
+                    <has_text text="&quot;label&quot;: &quot;SECOND&quot;" />
+                </assert_contents>
+            </output>
+        </test>
+    </tests>
+    <help><![CDATA[
+**spaCy NER from Hugging Face** runs a named-entity pipeline from the Hugging Face Hub over your text, so you
+can use your own trained models without installing them on the server.
+
+Input
+-----
+
+* **Plain text**: paragraphs separated by blank lines (the lines of a paragraph are joined), or one paragraph per line.
+* **TEI/XML**: the text of every ``<p>`` element is one paragraph.
+* **JSON / JSON Lines**: objects with a ``text`` field (a list, or one per line). Other fields, and spans that are already there, are kept.
+
+Output
+------
+
+One file in JSON Lines format (one JSON object per line, one line per paragraph)::
+
+    {"text": "The Cyclades ...", "spans": [{"start": 4, "end": 12, "label": "PLACE"}]}
+
+``start`` and ``end`` are character positions in ``text``. Galaxy has no JSON Lines datatype, so the file is
+labelled ``json``.
+
+Add several **NER models** to run them over the same text, for example place, method, activity and goal.
+All models are loaded first, so a wrong name or an incompatible model stops the job at once. Then the first
+model runs over the whole text, then the second, and so on. Every entity goes into the same ``spans`` list with
+the label of its model (or the label you set). Entities of different models can overlap.
+
+Models
+------
+
+Give the repository as ``owner/name``. It must be a spaCy pipeline with ``meta.json`` and ``config.cfg`` at its
+root and a ``ner`` component, as made by ``spacy huggingface-hub push``. The model is downloaded when the job runs,
+so the server needs internet access and the first run takes a while for large models.
+
+Pipelines are code and weights from the Hub. Only use models you trust.
+
+Models saved with ``spacy-transformers`` 2.x need a newer environment than this version of the tool provides.
+If that is the case, the job stops and says which version the model asks for.
+    ]]></help>
+    <citations>
+        <citation type="doi">10.5281/zenodo.1212303</citation>
+    </citations>
+</tool>
