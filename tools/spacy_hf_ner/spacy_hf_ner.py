@@ -20,6 +20,9 @@ if SLOTS:
     # Galaxy caps the job at GALAXY_SLOTS CPUs; set this before torch/numpy start their thread pools.
     os.environ["OMP_NUM_THREADS"] = os.environ["MKL_NUM_THREADS"] = SLOTS
 
+# The xet downloader of huggingface_hub panics in containers without system CA certificates; plain HTTPS works.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 REPO_RE = re.compile(r"[A-Za-z0-9][\w.-]*/[\w.-]+")
 REVISION_RE = re.compile(r"[\w.-]+")
 NER_COMPONENTS = ("transformer", "tok2vec", "ner")
@@ -32,6 +35,7 @@ def log(message: str) -> None:
 def read_txt(path: Path, split: str) -> list[str]:
     text = path.read_text(encoding="utf-8-sig", errors="replace")
     blocks = re.split(r"\n\s*\n", text) if split == "blank" else text.splitlines()
+    # Lines of one block are joined with a space, so wrapped OCR text becomes one paragraph.
     paragraphs = (" ".join(line.strip() for line in block.splitlines() if line.strip()) for block in blocks)
     return [paragraph for paragraph in paragraphs if paragraph]
 
@@ -48,7 +52,7 @@ def read_json(path: Path) -> list[dict]:
     raw = path.read_text(encoding="utf-8-sig")
     try:
         data = json.loads(raw)
-    except json.JSONDecodeError:
+    except json.JSONDecodeError:  # JSON Lines
         data = [json.loads(line) for line in raw.splitlines() if line.strip()]
     rows = data if isinstance(data, list) else [data]
     for number, row in enumerate(rows, 1):
@@ -104,7 +108,7 @@ def load_pipeline(repo: str, revision: str | None):
                          + f"\nOriginal error: {exc}")
     if "ner" not in nlp.pipe_names:
         raise SystemExit(f"{repo} has no 'ner' component (it has: {', '.join(nlp.pipe_names)}).")
-    # Only what NER needs
+    # Only what NER needs; a tagger or parser would just slow the job down.
     nlp.select_pipes(enable=[name for name in nlp.pipe_names if name in NER_COMPONENTS])
     return nlp
 
