@@ -80,8 +80,6 @@ def load_model(name: str, prompt: str, dtype: str):
     from sentence_transformers import SentenceTransformer
 
     log(f"Loading embedding model {name}.")
-    # "auto" keeps the precision the model was saved in, as the notebook does and as the index was built.
-    # float32 is a little more precise, but then neighbours at the bottom of the top-10 can swap places.
     kwargs = dict(device="cpu")
     if dtype == "float32":
         kwargs["model_kwargs"] = {"dtype": torch.float32}
@@ -112,7 +110,6 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
-    # These values end up in a download request or a dict key, so they are checked here as well as in the form.
     if not MODEL_RE.fullmatch(args.model):
         raise SystemExit(f"Invalid model name {args.model!r}.")
     for option, value in (("--prompt", args.prompt), ("--field", args.field), ("--id-field", args.id_field)):
@@ -136,7 +133,7 @@ def main() -> None:
     log(f"{len(rows)} paragraph(s), {len(queries)} span(s) to look up.")
 
     import numpy as np
-    import torch  # noqa: F401  torch first: imported after faiss, their OpenMP runtimes clash and crash on macOS
+    import torch 
     import faiss
 
     if SLOTS:
