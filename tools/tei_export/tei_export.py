@@ -3,8 +3,7 @@
 
 Input: JSON Lines, one object per paragraph: {"text": ..., "spans": [{"start", "end", ...}]}.
 Every span that has an id in --id-field (default "reranker_results") becomes one annotation that links its
-characters to <base-url><id>. Spans without an id are skipped. The result is one TEI file for the whole input,
-with the structure of the T4.5.2 notebook.
+characters to <base-url><id>. Spans without an id are skipped. The result is one TEI file for the whole input.
 """
 from __future__ import annotations
 
@@ -87,7 +86,7 @@ def main() -> None:
                 start, end = new_position[start], new_position[end]
             note = etree.SubElement(annotations, "annotation", ana=f"{args.base_url}{chosen}",
                                     target=f"{path}::{start} {path}::{end}")
-            note.set(f"{{{NS_XML}}}id", f"UID-FAKE-{written}")  # the notebook's ids, unique within the file
+            note.set(f"{{{NS_XML}}}id", f"UID-FAKE-{written}")  # for recogito studio
             written += 1
 
     args.output.write_bytes(etree.tostring(tei, xml_declaration=True, encoding="utf-8", pretty_print=True))
