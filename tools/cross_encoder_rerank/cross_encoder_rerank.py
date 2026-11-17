@@ -24,6 +24,9 @@ if SLOTS:
     # Galaxy caps the job at GALAXY_SLOTS CPUs; set this before torch starts its thread pools.
     os.environ["OMP_NUM_THREADS"] = os.environ["MKL_NUM_THREADS"] = SLOTS
 
+# The xet downloader of huggingface_hub panics in containers without system CA certificates; plain HTTPS works.
+os.environ.setdefault("HF_HUB_DISABLE_XET", "1")
+
 MODEL_RE = re.compile(r"[A-Za-z0-9][\w.-]*(/[\w.-]+)?")
 NAME_RE = re.compile(r"[\w.-]+")
 
@@ -83,10 +86,12 @@ def load_model(name: str, dtype: str):
 
     log(f"Loading reranker {name}.")
     kwargs = {"device": "cpu"}
+    # float32 was about 4x faster than the bfloat16 most checkpoints are saved in, on the CPU it was measured on.
+    # "auto" keeps the saved precision, which needs half the memory.
     if dtype == "float32":
         kwargs["model_kwargs"] = {"dtype": torch.float32}
     try:
-        return CrossEncoder(name, **kwargs)
+        return CrossEncoder(name, **kwargs)  # trust_remote_code stays off: no code from the Hub is run
     except Exception as exc:
         hint = " This model needs custom code from its repository, which this tool does not run." \
             if "trust_remote_code" in str(exc) else ""
@@ -108,6 +113,7 @@ def main() -> None:
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
+    # These values end up in a download request or a dict key, so they are checked here as well as in the form.
     if not MODEL_RE.fullmatch(args.model):
         raise SystemExit(f"Invalid model name {args.model!r}.")
     for option, value in (("--id-field", args.id_field), ("--title-field", args.title_field),
