@@ -8,7 +8,7 @@ model), from the same loaders the tool uses:
         -v /data/db/whisperx_models:/models \\
         -v "$PWD/download_models.py:/download_models.py:ro" \\
         -e HF_TOKEN=<token> \\
-        quay.io/galaxy/whisperx:3.8.6 python3 /download_models.py --model-dir /models
+        quay.io/galaxy/whisperx:3.8.6-1 python3 /download_models.py --model-dir /models
 
 With rootless Docker, leave out --user. The models need about 60 GB, mostly
 the 35 Hugging Face alignment models. The token needs the terms of the
@@ -56,15 +56,12 @@ def main():
     # anything a loader caches without an explicit path also lands in root
     os.environ["HF_HOME"] = str(root)
     os.environ["TORCH_HOME"] = str(root)
-    # NLTK only writes below NLTK_DATA (the tool sets the same path)
-    os.environ["NLTK_DATA"] = str(root / "nltk_data")
     # otherwise transformers also fetches a safetensors copy of .bin-only
     # models from the Hub's conversion PR, which offline loading never uses
     os.environ["DISABLE_SAFETENSORS_CONVERSION"] = "true"
     # pyannote 4 sends usage metrics to otel.pyannote.ai unless disabled
     os.environ["PYANNOTE_METRICS_ENABLED"] = "false"
 
-    import nltk
     from whisperx.alignment import (
         DEFAULT_ALIGN_MODELS_HF,
         DEFAULT_ALIGN_MODELS_TORCH,
@@ -102,15 +99,6 @@ def main():
         "diarization model",
         lambda: DiarizationPipeline(
             token=args.hf_token, device="cpu", cache_dir=str(hub)
-        ),
-    )
-    fetch(
-        "NLTK punkt_tab",
-        lambda: nltk.download(
-            "punkt_tab",
-            download_dir=str(root / "nltk_data"),
-            quiet=True,
-            raise_on_error=True,
         ),
     )
 
