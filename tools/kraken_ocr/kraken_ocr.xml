@@ -5,9 +5,7 @@
         <import>macros_for_testing.xml</import>
         <token name="@VERSION_SUFFIX@">1</token>
     </macros>
-    <expand macro="requirements">
-        <requirement type="package" version="4.1.2">yq</requirement>
-    </expand>
+    <expand macro="requirements"/>
     <creator>
         <person givenName="Ivo Christopher" familyName="Leist" email="leist@informatik.uni-freiburg.de" identifier="https://orcid.org/0000-0002-9772-443X"/>
         <organization name="AI4SOCIAL+" url="https://cordis.europa.eu/project/id/101292886"/>
@@ -40,26 +38,17 @@
                 #set $image = $input_type.image
             #end if
             @REJECT_MULTIPAGE_TIFF_BASED_ON_FILE_METADATA@
-            #if $input_type.source == 'segmented'
-                mkdir -p 'input_${i}' &&
-                ln -s '$image' 'input_${i}/input.${image.ext}' &&
+            #if $is_collection
+                #set $image_filename = 'page_%06d.%s' % ($i, $image.ext)
+                #set $segmentation_filename = 'segmentation_%06d.xml' % $i
             #else
-                ln -s '$image' 'input.${image.ext}' &&
+                #set $image_filename = 'input.' + str($image.ext)
+                #set $segmentation_filename = 'segmentation.xml'
             #end if
+            ln -s '$image' '$image_filename' &&
             #if $input_type.source == 'segmented'
-                #if $segmentation.ext == 'alto'
-                    #set $image_filename_jq_path = '["alto", "Description", "sourceImageInformation", "fileName"]'
-                #else
-                    #set $image_filename_jq_path = '["PcGts", "Page", "@imageFilename"]'
-                #end if
-                xq -x --arg filename 'input.${image.ext}'
-                    '[paths | select(map(tostring | split(":")[-1]) == $image_filename_jq_path)] as \$image_paths
-                    | if (\$image_paths | length) == 0 then
-                        error("Missing image reference in segmentation XML")
-                      else
-                        reduce \$image_paths[] as \$path (. ; setpath(\$path; \$filename))
-                      end'
-                    '$segmentation' > 'input_${i}/segmentation.xml' &&
+                python '$__tool_directory__/set_image_reference.py'
+                    '$segmentation' '$image_filename' '$segmentation_filename' &&
             #end if
         #end for
         #if not $is_collection
@@ -321,8 +310,8 @@ $json.dumps({'paired_output': {'elements': $elements}})
             <param name="output_format_flag" value="-n"/>
             <assert_command>
                 <has_text_matching expression="\bkraken\s+--device\b" n="1"/>
-                <has_text text="--input 'input_0/segmentation.xml' 'results/page_000000.txt'"/>
-                <has_text text="--input 'input_1/segmentation.xml' 'results/page_000001.txt'"/>
+                <has_text text="--input 'segmentation_000000.xml' 'results/page_000000.txt'"/>
+                <has_text text="--input 'segmentation_000001.xml' 'results/page_000001.txt'"/>
                 <has_text text="--model" n="1"/>
             </assert_command>
             <output_collection name="paired_output" type="list" count="2">
@@ -331,6 +320,19 @@ $json.dumps({'paired_output': {'elements': $elements}})
                 </element>
                 <element name="page two/scan.002" ftype="txt">
                     <assert_contents><has_text text="HISTOIRE"/></assert_contents>
+                </element>
+            </output_collection>
+        </test>
+        <test expect_num_outputs="1">
+            <expand macro="use_presegmented_collection" image="input.jpg" image_ftype="jpg" segmentation="input_binarized_seg_page.xml" segmentation_ftype="page.xml"/>
+            <expand macro="get_document_ocr_model"/>
+            <param name="output_format_flag" value="-x"/>
+            <output_collection name="paired_output" type="list" count="1">
+                <element name="page_one" ftype="page.xml">
+                    <assert_contents>
+                        <xml_element path="./@NS_PAGE@Page[@imageFilename='page_000000.jpg']"/>
+                        <has_text text="HISTOIRE"/>
+                    </assert_contents>
                 </element>
             </output_collection>
         </test>
