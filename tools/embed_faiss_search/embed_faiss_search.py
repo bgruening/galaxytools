@@ -101,6 +101,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", required=True, type=Path)
     parser.add_argument("--entities-field", default="entities", help="item field with the list of entities")
+    parser.add_argument("--labels", default="", help="comma-separated labels; only entities with one of them are looked up (empty = all)")
     parser.add_argument("--index", required=True, type=Path)
     parser.add_argument("--metadata", required=True, type=Path)
     parser.add_argument("--id-field", default="", help="metadata field with the id; empty = row number")
@@ -109,7 +110,7 @@ def main() -> None:
     parser.add_argument("--top-k", type=int, default=30)
     parser.add_argument("--dtype", default="auto", choices=["auto", "float32"], help="precision of the embedding model")
     parser.add_argument("--normalize", action="store_true", help="normalize the query vectors, as when the index was built")
-    parser.add_argument("--batch-size", type=int, default=32)
+    parser.add_argument("--batch-size", type=int, default=16)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
 
@@ -122,9 +123,13 @@ def main() -> None:
             raise SystemExit(f"Invalid value for {option}: {value!r}.")
 
     rows = read_rows(args.input, args.entities_field)
-    queries, missing = [], 0
+    labels = {label.strip().upper() for label in args.labels.split(",") if label.strip()}
+    queries, missing, other_label = [], 0, 0
     for row in rows:
         for entity in row.get(args.entities_field, []):
+            if labels and str(entity.get("label", "")).upper() not in labels:
+                other_label += 1  # left as it is, without index_results
+                continue
             text = mention(row, entity)
             if text:
                 queries.append((entity, text))
@@ -133,7 +138,8 @@ def main() -> None:
     if missing:
         raise SystemExit(f"{missing} entity(ies) have empty or out-of-range 'start' and 'end' positions, so there is "
                          "no mention to look up.")
-    log(f"{len(rows)} text(s), {len(queries)} entity(ies) to look up.")
+    log(f"{len(rows)} text(s), {len(queries)} entity(ies) to look up"
+        + (f", {other_label} with another label left out." if labels else "."))
 
     import numpy as np
     import torch  # noqa: F401  torch first: imported after faiss, their OpenMP runtimes clash and crash on macOS
