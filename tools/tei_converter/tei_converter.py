@@ -24,7 +24,7 @@ XML_BAD = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")  # characters XML 1.0
 
 
 def log(message: str) -> None:
-    print(f"[tei_export] {message}", file=sys.stderr, flush=True)
+    print(f"[tei_converter] {message}", file=sys.stderr, flush=True)
 
 
 def read_rows(path: Path) -> list[dict]:
